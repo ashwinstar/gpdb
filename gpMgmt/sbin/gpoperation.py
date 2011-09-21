@@ -36,12 +36,11 @@ except Exception, e:
         # TODO: Build an ExceptionCapsule that can return the traceback
         # to RemoteOperation as well. See Pyro.
 
+        # logger.exception(e)               # logging 'e' could be necessary for traceback
+
         pickled_ret = pickle.dumps(e)       # Pickle exception for stdout transmission
     except Exception, f:
-        # AK: By design, our gppylib custom exceptions should not cause PicklingErrors.
-        # Thus, it's appropriate to call out PicklingErrors as serious issues.
-
-        # logging.exception(f)          # 'f' is not important to us, except for debugging perhaps
+        # logger.exception(f)               # 'f' is not important to us, except for debugging perhaps
 
         # No hope of pickling a precise Exception back to RemoteOperation.
         # So, provide meaningful trace as text and provide a non-zero return code
