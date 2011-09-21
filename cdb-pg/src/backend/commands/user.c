@@ -1999,7 +1999,7 @@ static void CheckValueBelongsToKey(char *key, char *val, const char **keys, cons
 	}
 	else /* keys[1] */
 	{
-		if (strcasecmp(val, "gphdfs") == 0)
+		if (strcasecmp(val, "gphdfs") == 0 && Gp_role == GP_ROLE_DISPATCH)
 			ereport(WARNING,
 					(errmsg("GRANT/REVOKE on gphdfs is deprecated"),
 					 errhint("Issue the GRANT or REVOKE on the protocol itself"),

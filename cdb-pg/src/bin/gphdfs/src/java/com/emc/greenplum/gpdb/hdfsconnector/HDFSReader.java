@@ -108,13 +108,14 @@ public class HDFSReader
 			while(lrr.nextKeyValue()) {
 				Text val = lrr.getCurrentValue();
 				byte[] bytes = val.getBytes();
-				System.out.write(bytes);
+				System.out.write(bytes, 0, val.getLength());
 				System.out.println();
 				System.out.flush();
 			}
 		}
 		
-		lrr.close();
+		if (segSplits.size() > 0)
+			lrr.close();
 	}
 	
 	/**
@@ -144,7 +145,8 @@ public class HDFSReader
 			}
 		}
 		
-		sfrr.close();
+		if (segSplits.size() > 0)
+			sfrr.close();
 	}
 
 	/**

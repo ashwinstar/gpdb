@@ -168,7 +168,7 @@ CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_validate() RETURNS void
 AS '$libdir/gphdfs.so', 'gphdfsprotocol_validate_urls'
 LANGUAGE C STABLE;
 
-CREATE PROTOCOL gphdfs (
+CREATE TRUSTED PROTOCOL gphdfs (
   writefunc     = 'gphdfs_write',
   readfunc      = 'gphdfs_read',
   validatorfunc = 'gphdfs_validate');

@@ -65,11 +65,6 @@ public class GPDBWritable implements Writable {
 		public TypeMismatchException(String msg) {
 			super(msg);
 		}
-		
-		public TypeMismatchException(int givenType, int expectedType) {
-			super("Column type mismatch: expecting type oid " +
-					expectedType + " but got type oid " + givenType);
-		}
 	}
 
 	/**
@@ -255,7 +250,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setLong(int colIdx, Long val)
 	throws TypeMismatchException {
-		checkType(BIGINT, colIdx);
+		checkType(BIGINT, colIdx, true);
 		colValue[colIdx] = val;
 	}
 
@@ -267,7 +262,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setBoolean(int colIdx, Boolean val)
 	throws TypeMismatchException {
-		checkType(BOOLEAN, colIdx);
+		checkType(BOOLEAN, colIdx, true);
 		colValue[colIdx] = val;
 	}
 
@@ -279,7 +274,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setBytes(int colIdx, byte[] val)
 	throws TypeMismatchException {
-		checkType(BYTEA, colIdx);
+		checkType(BYTEA, colIdx, true);
 		colValue[colIdx] = val;
 	}
 
@@ -291,7 +286,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setString(int colIdx, String val)
 	throws TypeMismatchException {
-		checkType(TEXT, colIdx);
+		checkType(TEXT, colIdx, true);
 		colValue[colIdx] = val;
 	}
 
@@ -303,7 +298,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setFloat(int colIdx, Float val)
 	throws TypeMismatchException {
-		checkType(REAL, colIdx);
+		checkType(REAL, colIdx, true);
 		colValue[colIdx] = val;
 	}
 
@@ -315,7 +310,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setDouble(int colIdx, Double val)
 	throws TypeMismatchException {
-		checkType(FLOAT8, colIdx);
+		checkType(FLOAT8, colIdx, true);
 		colValue[colIdx] = val;
 	}
 
@@ -327,7 +322,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setInt(int colIdx, Integer val)
 	throws TypeMismatchException {
-		checkType(INTEGER, colIdx);
+		checkType(INTEGER, colIdx, true);
 		colValue[colIdx] = val;
 	}
 
@@ -339,7 +334,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public void setShort(int colIdx, Short val)
 	throws TypeMismatchException {
-		checkType(SMALLINT, colIdx);
+		checkType(SMALLINT, colIdx, true);
 		colValue[colIdx] = new Short(val);
 	}
 	
@@ -350,7 +345,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public Long getLong(int colIdx)
 	throws TypeMismatchException {
-		checkType(BIGINT, colIdx);
+		checkType(BIGINT, colIdx, false);
 		return (Long)colValue[colIdx];
 	}
 
@@ -361,7 +356,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public Boolean getBoolean(int colIdx)
 	throws TypeMismatchException {
-		checkType(BOOLEAN, colIdx);
+		checkType(BOOLEAN, colIdx, false);
 		return (Boolean)colValue[colIdx];
 	}
 
@@ -372,7 +367,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public byte[] getBytes(int colIdx)
 	throws TypeMismatchException {
-		checkType(BYTEA, colIdx);
+		checkType(BYTEA, colIdx, false);
 		return (byte[])colValue[colIdx];
 	}
 
@@ -383,7 +378,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public String getString(int colIdx)
 	throws TypeMismatchException {
-		checkType(TEXT, colIdx);
+		checkType(TEXT, colIdx, false);
 		return (String)colValue[colIdx];
 	}
 
@@ -394,7 +389,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public Float getFloat(int colIdx)
 	throws TypeMismatchException {
-		checkType(REAL, colIdx);
+		checkType(REAL, colIdx, false);
 		return (Float)colValue[colIdx];
 	}
 
@@ -405,7 +400,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public Double getDouble(int colIdx)
 	throws TypeMismatchException {
-		checkType(FLOAT8, colIdx);
+		checkType(FLOAT8, colIdx, false);
 		return (Double)colValue[colIdx];
 	}
 	
@@ -416,7 +411,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public Integer getInt(int colIdx)
 	throws TypeMismatchException {
-		checkType(INTEGER, colIdx);
+		checkType(INTEGER, colIdx, false);
 		return (Integer)colValue[colIdx];
 	}
 	
@@ -427,7 +422,7 @@ public class GPDBWritable implements Writable {
 	 */
 	public Short getShort(int colIdx)
 	throws TypeMismatchException {
-		checkType(SMALLINT, colIdx);
+		checkType(SMALLINT, colIdx, false);
 		return (Short)colValue[colIdx];
 	}
 	
@@ -471,20 +466,33 @@ public class GPDBWritable implements Writable {
 	 * via setString.
 	 * Otherwise, the type must match.
 	 */
-	private void checkType(int inTyp, int idx)
+	private void checkType(int inTyp, int idx, boolean isSet)
 	throws TypeMismatchException {
 		if (idx < 0 || idx >= colType.length)
 			throw new TypeMismatchException(
 					"Column index is out of range");
 		
 		int exTyp = colType[idx];
+		String errmsg;
+
 		if (isTextForm(exTyp)) {
 			if (inTyp != TEXT)
-				throw new TypeMismatchException(inTyp, TEXT);
+				throw new TypeMismatchException(formErrorMsg(inTyp, TEXT, isSet));
 		} else if (inTyp != exTyp)
-			throw new TypeMismatchException(inTyp, exTyp);
+			throw new TypeMismatchException(formErrorMsg(inTyp, exTyp, isSet));
 	}
 	
+	private String formErrorMsg(int inTyp, int colTyp, boolean isSet) {
+		String errmsg;
+		if (isSet)
+			errmsg = "Cannot set "+getTypeName(inTyp) + " to a " +
+				getTypeName(colTyp) + " column";
+		else
+			errmsg = "Cannot get "+getTypeName(inTyp) + " from a " +
+				getTypeName(colTyp) + " column";
+		return errmsg;
+	}
+
 	/**
 	 * Private Helper routine to tell whether a type is Text form or not
 	 * @param type the type OID that we want to check
@@ -500,4 +508,31 @@ public class GPDBWritable implements Writable {
 			return false;
 		return true;
 	}
+	
+	/**
+	 * Private Helper to get the type name for rasing error.
+	 * If a given oid is not in the commonly used list, we
+	 * would expect a TEXT for it (for the error message).
+	 */
+	private static String getTypeName(int oid) {
+		switch(oid) {
+		case BOOLEAN  : return "BOOLEAN";
+		case BYTEA    : return "BYTEA";
+		case CHAR     : return "CHAR";
+		case BIGINT   : return "BIGINT";
+		case SMALLINT : return "SMALLINT";
+		case INTEGER  : return "INTEGER";
+		case TEXT     : return "TEXT";
+		case REAL     : return "REAL";
+		case FLOAT8   : return "FLOAT8";
+		case BPCHAR   : return "BPCHAR";
+		case VARCHAR  : return "VARCHAR";
+		case DATE     : return "DATE";
+		case TIME     : return "TIME";
+		case TIMESTAMP: return "TIMESTAMP";
+		case NUMERIC  : return "NUMERIC";
+		default:        return "TEXT";
+		}
+	}
+
 }
