@@ -93,6 +93,6 @@ DATA(insert ( "plperl"		t "plperl_call_handler" "plperl_validator" "$libdir/plpe
 DATA(insert ( "plperlu"		f "plperl_call_handler" "plperl_validator" "$libdir/plperl" _null_ ));
 DATA(insert ( "plpythonu"	f "plpython_call_handler" _null_ "$libdir/plpython" _null_ ));
 DATA(insert ( "plr"         f "plr_call_handler" _null_ "$libdir/plr" _null_ ));
-DATA(insert ( "pljava"      f "pljava_call_handler" _null_ "$libdir/pljava" _null_ ));
-
+DATA(insert ( "pljava"      t "pljava_call_handler" _null_ "$libdir/pljava" _null_ ));
+DATA(insert ( "pljavau"     f "pljavau_call_handler" _null_ "$libdir/pljava" _null_ ));
 #endif   /* PG_PLTEMPLATE_H */

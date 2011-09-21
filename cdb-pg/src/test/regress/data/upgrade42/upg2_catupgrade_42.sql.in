@@ -353,6 +353,22 @@ select @gpupgradeschemaname@.catDML(
 'update @gpupgradeschemaname@.pg_class set relhaspkey = false where relnamespace = 11 and relname = ''gp_relation_node''')
 from gp_dist_random('gp_id');
 
+
+---
+--- Fixes PL/Java template
+---
+update @gpupgradeschemaname@.pg_pltemplate set tmpltrusted=true where tmplname='pljava';
+select catDML('update @gpupgradeschemaname@.pg_pltemplate set tmpltrusted=true where tmplname=''pljava''')
+  from gp_dist_random('gp_id');
+
+insert into @gpupgradeschemaname@.pg_pltemplate 
+  select 'pljavau', false, 'pljavau_call_handler', null, '$libdir/pljava', null
+  where (select count(*) from @gpupgradeschemaname@.pg_pltemplate where tmplname='pljavau')=0;
+select catDML('insert into @gpupgradeschemaname@.pg_pltemplate 
+  select ''pljavau'', false, ''pljavau_call_handler'', null, ''$libdir/pljava'', null
+  where (select count(*) from @gpupgradeschemaname@.pg_pltemplate where tmplname=''pljavau'')=0') from gp_dist_random('gp_id');
+
+
 -- Column compression improvements assume that all CO tables have
 -- per column meta data.
 INSERT INTO @gpupgradeschemaname@.pg_attribute_encoding
