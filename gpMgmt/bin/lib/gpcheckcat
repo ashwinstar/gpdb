@@ -2902,6 +2902,7 @@ def checkTableForeignKey(cat):
     fkeylist = cat.getForeignKeys()
     isShared = cat.isShared()
     pkeylist = cat.getPrimaryKey()
+    coltypes = cat.getTableColtypes()
 
     # skip tables without fkey
     if len(fkeylist) <= 0:
@@ -2930,19 +2931,14 @@ def checkTableForeignKey(cat):
 
     logger.info('Building %d queries to check FK constraint on table %s' % (len(fkeylist),catname))
     for fkeydef in fkeylist:
-        fkeystr     = ', '.join(fkeydef.getColumns())
+        castedFkey  = [c+autoCast.get(coltypes[c],'') for c in fkeydef.getColumns()]
+        fkeystr     = ', '.join(castedFkey)
         cat1fkeystr = 'cat1.' + ', cat1.'.join(fkeydef.getColumns())
         pkeystr     = ', '.join(fkeydef.getPKey())
-        pkeytabname = fkeydef.getPkeyTableName()
+        pkcatname   = fkeydef.getPkeyTableName()
 
-        qry = fkQuery().format(cat1_dot_primary_key = ', '.join(cat1pkeys) ,
-                            primary_key_alias    = ', '.join(pkeys),
-                            FK1      = fkeystr,
-                            CATALOG1 = catname,
-                            CATALOG2 = pkeytabname,
-                            PK2      = pkeystr,
-                            cat2_dot_primary_key = '%s_%s' % (pkeytabname,pkeystr)
-                            )
+        qry = fkQuery(catname, pkcatname, fkeystr, pkeystr, pkeys, cat1pkeys)
+       
         # Execute the query
         try:
             db = connect2(GV.cfg[1], utilityMode=False)
@@ -2951,18 +2947,19 @@ def checkTableForeignKey(cat):
 
             if nrows == 0:
                 logger.info('[OK] Foreign key check for %s(%s) referencing %s(%s)'%
-                            (catname, fkeystr, pkeytabname, pkeystr))
+                            (catname, fkeystr, pkcatname, pkeystr))
             else:
                 setError(ERROR_NOREPAIR)
                 logger.info('[FAIL] Foreign key check for %s(%s) referencing %s(%s)'%
-                            (catname, fkeystr, pkeytabname, pkeystr))
+                            (catname, fkeystr, pkcatname, pkeystr))
                 logger.error('  %s has %d issue(s): entry has NULL reference of %s(%s)'% 
-                            (catname, nrows, pkeytabname, pkeystr))
+                            (catname, nrows, pkcatname, pkeystr))
 
                 fields = curs.listfields()
                 print "    " + " | ".join(fields)
                 for row in curs.getresult():
                     print "    " + " | ".join(map(str, row))
+                processForeignKeyResult(catname, pkcatname, fields, curs.getresult())
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -2972,53 +2969,186 @@ def checkTableForeignKey(cat):
 
 
 #-------------------------------------------------------------------------------
-def fkQuery():
+def fkQuery(catname, pkcatname, fkeystr, pkeystr, pkeys, cat1pkeys):
 
-    qtempl = '''
-    SELECT cat1.gp_segment_id, {cat1_dot_primary_key}, cat1.{FK1} as {cat2_dot_primary_key}
-    FROM
-    gp_dist_random('{CATALOG1}') cat1 LEFT OUTER JOIN
-    gp_dist_random('{CATALOG2}') cat2
-    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-        cat1.{FK1} = cat2.{PK2} )
-    WHERE cat2.{PK2} is NULL
-    AND cat1.{FK1} != 0
-    UNION ALL
-    SELECT -1 as gp_segment_id, {cat1_dot_primary_key}, cat1.{FK1} as {cat2_dot_primary_key}
-    FROM
-    {CATALOG1} cat1 LEFT OUTER JOIN
-    {CATALOG2} cat2
-    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-        cat1.{FK1} = cat2.{PK2} )
-    WHERE cat2.{PK2} is NULL
-    AND cat1.{FK1} != 0
-    ORDER BY {primary_key_alias}, gp_segment_id
-    '''
-    return qtempl
+    qry = """
+          SELECT {primary_key_alias}, {cat2_dot_pk},
+                 array_agg(gp_segment_id order by gp_segment_id) as segids
+          FROM (
+                SELECT cat1.gp_segment_id, {cat1_dot_pk}, cat1.{FK1} as {cat2_dot_pk} 
+                FROM
+                    gp_dist_random('{CATALOG1}') cat1 LEFT OUTER JOIN
+                    gp_dist_random('{CATALOG2}') cat2
+                    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
+                        cat1.{FK1} = cat2.{PK2} )
+                WHERE cat2.{PK2} is NULL
+                  AND cat1.{FK1} != 0
+                UNION ALL
+                SELECT -1 as gp_segment_id, {cat1_dot_pk}, cat1.{FK1} as {cat2_dot_pk} 
+                FROM
+                    {CATALOG1} cat1 LEFT OUTER JOIN
+                    {CATALOG2} cat2
+                    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
+                        cat1.{FK1} = cat2.{PK2} )
+                WHERE cat2.{PK2} is NULL
+                  AND cat1.{FK1} != 0
+                ORDER BY {primary_key_alias}, gp_segment_id
+          ) allresults
+          GROUP BY {primary_key_alias}, {cat2_dot_pk}
+          """.format(FK1      = fkeystr,
+                     PK2      = pkeystr,
+                     CATALOG1 = catname,
+                     CATALOG2 = pkcatname,
+                     cat1_dot_pk = ', '.join(cat1pkeys) ,
+                     cat2_dot_pk = '%s_%s' % (pkcatname,pkeystr),
+                     primary_key_alias    = ', '.join(pkeys))
+
+    return qry
+
 
 
 #-------------------------------------------------------------------------------
-def checkCrossConsistency():
+def checkMissingEntry():
     logger.info('-----------------------------------')
-    logger.info('Performing cross database consistency tests')
+    logger.info('Performing cross consistency tests: checking for missing or extraneous entries')
 
     # looks up information in the catalog:
     tables = GV.catalog.getCatalogTables()
 
     for cat in sorted(tables):
-        checkTableCrossConsistency(cat)
+        checkTableMissingEntry(cat)
 
 
 #-------------------------------------------------------------------------------
-# Cross consistency check for each catalog table
-def checkTableCrossConsistency(cat):
-    
+def checkTableMissingEntry(cat):
+   
+    catname  = cat.getTableName()
+    pkey     = cat.getPrimaryKey()
+    master   = cat.isMasterOnly()
+    isShared = cat.isShared()
+    coltypes = cat.getTableColtypes()
+
+    # Skip master only tables
+    if master:
+        return
+
+    # skip shared/non-shared tables
+    if GV.opt['-S']:
+        if re.match("none", GV.opt['-S'], re.I) and isShared:
+            return
+        if re.match("only", GV.opt['-S'], re.I) and not isShared:
+            return
+
+    # Skip catalogs without primary key
+    if pkey == []:
+        logger.warn("[WARN] Skipped missing/extra entry check for %s" %
+                    catname)
+        return
+
+    castedPkey = cat.getPrimaryKey()
+    castedPkey = [ c+autoCast.get(coltypes[c],'') for c in castedPkey ]
+ 
+    if cat.tableHasConsistentOids():
+        qry = missingEntryQuery(GV.max_content, catname, ['oid'], ['oid'])
+    else:
+        qry = missingEntryQuery(GV.max_content, catname, pkey, castedPkey)
+
+    # Execute the query
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+        curs  = db.query(qry)
+        nrows = curs.ntuples()
+
+        if nrows == 0:
+            logger.info('[OK] Checking for missing or extraneous entries for ' + catname)
+        else:
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] Checking for missing or extraneous entries for ' + catname)
+            logger.error('  %s has %d issue(s)' % (catname, nrows))
+
+            fields = curs.listfields()
+            print "    " + " | ".join(fields)
+            for row in curs.getresult():
+                print "    " + " | ".join(map(str, row))
+            processMissingEntryResult(catname, fields, curs.getresult())
+           
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] Checking for missing or extraneous entries for ' + catname)
+        logger.error('  Execution error: ' + str(e))
+        logger.error(qry)
+
+
+
+#-------------------------------------------------------------------------------
+def missingEntryQuery(max_content, catname, pkey, castedPkey):
+
+    # =================
+    #  Missing / Extra
+    # =================
+    #   Cross product 
+    #       (all unique {primary_key} present on any segment)
+    #       (all unique segment_ids in the system)
+    #   Left join
+    #       (actual ({primary_key}, segment_id) present in the catalog)
+    #   
+    #   Count number not null vs number null in the join:
+    #     If the nulls are <= 1/2 the result report those segments as "missing"
+    #     If the non-nulls are <= 1/2 the result report those segments as "extra"
+
+    qry = """
+          SELECT {oidcasted_pk}, exists, array_agg(segid order by segid) as segids
+          FROM
+          (
+            SELECT ideal.*,
+                   case when actual.segid is null then 'missing' else 'extra' end as exists,
+                   count(*) over (partition by {primary_key}, actual.segid is null) as subcount
+            FROM (
+                 SELECT segid, {primary_key}
+                 FROM ( SELECT distinct {primary_key} FROM {catalog}
+                        UNION 
+                        SELECT distinct {primary_key} FROM gp_dist_random('{catalog}') ) all_pks,
+                      ( SELECT distinct content as segid from gp_segment_configuration) all_segs
+               ) ideal
+               LEFT OUTER JOIN
+               ( SELECT gp_segment_id as segid, {primary_key} FROM {catalog}
+                 UNION ALL
+                 SELECT gp_segment_id as segid, {primary_key} FROM gp_dist_random('{catalog}')
+               ) actual USING (segid, {primary_key})
+          ) missing_extra
+          WHERE subcount <= ({max_content}+1)/2.0
+          GROUP BY {oidcasted_pk}, exists;
+          """.format(oidcasted_pk = ','.join(castedPkey),
+                     primary_key  = ','.join(pkey),
+                     catalog      = catname,
+                     max_content  = max_content)
+
+    return qry
+
+
+#-------------------------------------------------------------------------------
+def checkInconsistentEntry():
+    logger.info('-----------------------------------')
+    logger.info('Performing cross consistency test: checking for inconsistent entries')
+
+    # looks up information in the catalog:
+    tables = GV.catalog.getCatalogTables()
+
+    for cat in sorted(tables):
+        checkTableInconsistentEntry(cat)
+
+
+#-------------------------------------------------------------------------------
+def checkTableInconsistentEntry(cat):
+   
     catname  = cat.getTableName()
     pkey     = cat.getPrimaryKey()
     master   = cat.isMasterOnly()
     isShared = cat.isShared()
     columns  = cat.getTableColumns(with_acl=False)
-
+    coltypes = cat.getTableColtypes()
+   
     # Skip master only tables
     if master:
         return
@@ -3036,7 +3166,14 @@ def checkTableCrossConsistency(cat):
                     catname)
         return
 
-    qry = crossDbquery(GV.max_content, catname, pkey, columns)
+    castedPkey = cat.getPrimaryKey()
+    castedPkey = [ c+autoCast.get(coltypes[c],'') for c in castedPkey ]
+    columns = [ c+autoCast.get(coltypes[c],'') for c in columns ]
+
+    if cat.tableHasConsistentOids():
+        qry = inconsistentEntryQuery(GV.max_content, catname, ['oid'], columns)
+    else:
+        qry = inconsistentEntryQuery(GV.max_content, catname, castedPkey, columns)
 
     # Execute the query
     try:
@@ -3045,115 +3182,77 @@ def checkTableCrossConsistency(cat):
         nrows = curs.ntuples()
 
         if nrows == 0:
-            logger.info('[OK] Cross consistency check for ' + catname)
+            logger.info('[OK] Checking for inconsistent entries for ' + catname)
         else:
             setError(ERROR_NOREPAIR)
-            logger.info('[FAIL] Cross consistency check for ' + catname)
+            logger.info('[FAIL] Checking for inconsistent entries for ' + catname)
             logger.error('  %s has %d issue(s)' % (catname, nrows))
-            # logger.error(qry)
 
-            # TODO: smarter handling of output
-            #   - Improved reporting when all segments are different 
-            #     from master
-            #   - Improved identification of what the difference is
-            #   - Dumping to a file when there is too much data
-            #   - Don't use "print"
             fields = curs.listfields()
             print "    " + " | ".join(fields)
             for row in curs.getresult():
                 print "    " + " | ".join(map(str, row))
+            processInconsistentEntryResult(catname, pkey, fields, curs.getresult())
+
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] Cross consistency check for ' + catname)
+        logger.info('[FAIL] Checking for inconsistent entries for ' + catname)
         logger.error('  Execution error: ' + str(e))
         logger.error(qry)
 
 
 #-------------------------------------------------------------------------------
-def crossDbquery(max_content, catname, pkey, columns):
+def inconsistentEntryQuery(max_content, catname, pkey, columns):
 
-        # Build up the query based on catalog definition
-        pkey      = ', '.join(pkey)
-        catcols   = 'c.' + ', c.'.join(columns)
-
-        # MPP-10286 - oid inconsistencies for temp schemas
-        #
-        # Due to oid differences for temp schemas the query would show
-        # relnamespace and typnamespace differences for any table defined
-        # in a temporary schema.  For the purposes of this consistency
-        # test we hack around this right now by joining to pg_namespace
-        # and eliminating temporary schemas.
-        if catname == 'pg_class':
-            temp_schema_hack_1 = """
-            JOIN gp_dist_random('pg_namespace') as n
-              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_' and
-                  c.gp_segment_id = n.gp_segment_id)
-            """
-            temp_schema_hack_2 = """
-            JOIN pg_namespace as n
-              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_')
-            """
-        elif catname == 'pg_type':
-            temp_schema_hack_1 = """
-            JOIN gp_dist_random('pg_namespace') as n
-              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_' and
-                  c.gp_segment_id = n.gp_segment_id)
-            """
-            temp_schema_hack_2 = """
-            JOIN pg_namespace as n
-              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_')
-            """
-        else:
-            temp_schema_hack_1 = ""
-            temp_schema_hack_2 = ""
-
-
-        # Construct the query
-        # 
-        # Basic idea of the query is:
-        #   SELECT (all rows on segments different from master)
-        #   UNION ALL
-        #   SELECT (all rows on master different from segments)
+        #-- ==============
+        #--  Inconsistent
+        #-- ==============
+        #--   Build set of all values in the instance
+        #--
+        #--   Count number of unique values for the primary key
+        #--     - Ignore rows where this does not equal number of segments
+        #--       (These are the missing/extra rows and are covered by other checks)
+        #--
+        #--   Count number of unique values for all columns
+        #--     - Ignore rows where this equals number of segments
+        #--  
+        #--   Group the majority opinion into one bucket and report everyone who disagrees with
+        #--   the majority individually. 
+        #-- 
+        #--   Majority gets reported with gp_segment_id == null
+        #--
         qry = """
-        SELECT * FROM (
-            SELECT c.gp_segment_id, {columns}
-            FROM   gp_dist_random('{catalog}') as c {schema_join_1}
-            WHERE  ({primary_key}) in (
-               SELECT {primary_key} FROM (
-                   select c.gp_segment_id, {columns}
-                   from   gp_dist_random('{catalog}') as c
-                   except all 
-                   select segid as gp_segment_id, {columns}
-                   from   {catalog} as c, 
-                          generate_series(0,{max_content}) as segid
-               ) segments
-            )
-        ) x
-        UNION ALL
-        SELECT * FROM (
-            select c.gp_segment_id, {columns}
-            from   {catalog} as c {schema_join_2}
-            where ({primary_key}) in (
-               SELECT {primary_key} FROM (
-                   select segid as gp_segment_id, {columns}
-                   from   {catalog} as c, 
-                          generate_series(0,{max_content}) as segid
-                   except all 
-                   select c.gp_segment_id, {columns}
-                   from   gp_dist_random('{catalog}') as c
-               ) master
-            )
-        ) y
-        order by {primary_key}, gp_segment_id
-        """.format(max_content = max_content,
-                   catalog     = catname,
-                   primary_key = pkey,
-                   columns     = catcols,
-                   schema_join_1 = temp_schema_hack_1,
-                   schema_join_2 = temp_schema_hack_2)
+              SELECT {columns}, array_agg(gp_segment_id order by gp_segment_id) as segids
+              FROM
+              (
+                 SELECT DISTINCT
+                   case when dcount <= ({max_content}+2)/2.0 then gp_segment_id else null end as gp_segment_id, {columns}
+                 FROM
+                 (
+                   select count(*) over (partition by {columns}) as dcount,
+                          count(*) over (partition by {pkey}) as pcount,
+                          gp_segment_id, {columns}
+                   from (
+                     select gp_segment_id, {columns}
+                     from   {catalog}
+                     union all
+                     select gp_segment_id, {columns}
+                     from   gp_dist_random('{catalog}')
+                   ) all_segments
+                 ) counted_segments
+                 WHERE dcount != {max_content}+2 and pcount = {max_content}+2
+                 ORDER BY {pkey}, gp_segment_id
+              ) rowresult
+              GROUP BY {columns}
+              ORDER BY {pkey}, segids;
+              """.format(pkey        = ','.join(pkey),
+                         catalog     = catname,
+                         columns     = ','.join(columns),
+                         max_content = max_content)
 
         return qry
+
 
 
 
@@ -3173,12 +3272,20 @@ name_test = {
          "order": 1,
          "online": False
     },
-    "cc":
+    "cc1":
     {
-         "description": "Cross consistency check",
-         "fn": lambda: checkCrossConsistency(),
+         "description": "Cross consistency check: checking for missing or extraneous entries",
+         "fn": lambda: checkMissingEntry(),
          "version": 'main',
          "order": 2,
+         "online": True
+    },
+    "cc2":
+    {
+         "description": "Cross consistency check: checking for inconsistent entries",
+         "fn": lambda: checkInconsistentEntry(),
+         "version": 'main',
+         "order": 3,
          "online": True
     },
     "fk":
@@ -3186,7 +3293,7 @@ name_test = {
          "description": "Foreign key check",
          "fn": lambda: checkForeignKey(),
          "version": 'main',
-         "order": 3,
+         "order": 4,
          "online": True
     },
     "acl":
@@ -3194,7 +3301,7 @@ name_test = {
          "description": "Check ACL",
          "fn": lambda: checkACL(),
          "version": 'main',
-         "order": 4,
+         "order": 5,
          "online": True
     },
     "persistent":
@@ -3202,7 +3309,7 @@ name_test = {
          "description": "Check persistent table: various checks",
          "fn": lambda: checkPersistentTables(),
          "version": 'main',
-         "order": 5,
+         "order": 6,
          "online": False
     },
     "partition":
@@ -3210,7 +3317,7 @@ name_test = {
          "description": "Check pg_partition branch integrity, partition with oids check, partition distribution policy",
          "fn": lambda: checkPartitionIntegrity(),
          "version": 'main',
-         "order": 6,
+         "order": 7,
          "online": True
     },
     "partregularity":
@@ -3218,7 +3325,7 @@ name_test = {
          "description": "Check regularity and enforceability of constraints on partitioned tables",
          "fn": lambda: checkPartitionRegularity(),
          "version": 'main',
-         "order": 6,
+         "order": 8,
          "online": True
     },
     "pgclass":
@@ -3226,7 +3333,7 @@ name_test = {
          "description": "Check pg_class: report entry that does not have any correspond pg_attribute entry",
          "fn": lambda: checkPGClass(),
          "version": 'main',
-         "order": 7,
+         "order": 9,
          "online": False
     },
     "toasttable":
@@ -3234,7 +3341,7 @@ name_test = {
          "description": "Check toast table: report orphaned toast tables, no correspond pg_class entry",
          "fn": lambda: checkPGClassToast(),
          "version": 'main',
-         "order": 8,
+         "order": 10,
          "online": False
     },
     "pgattribute":
@@ -3242,7 +3349,7 @@ name_test = {
          "description": "Check pg_attribute: report entry that does not have correspond pg_class entry",
          "fn": lambda: checkPGAttribute(),
          "version": '4.1',
-         "order": 9,
+         "order": 11,
          "online": False
     },
     "pgtype":
@@ -3250,7 +3357,7 @@ name_test = {
          "description": "Check pg_type: report entry that does not have correspond pg_class entry",
          "fn": lambda: checkPGType(),
          "version": '4.1',
-         "order": 10,
+         "order": 12,
          "online": False
     },
     "exttable":
@@ -3258,7 +3365,7 @@ name_test = {
          "description": "Check pg_exttable: report entry that does not have correspond pg_class entry",
          "fn": lambda: checkPGExtTable(),
          "version": '4.1',
-         "order": 11,
+         "order": 13,
          "online": False
     },
     "distribution":
@@ -3266,7 +3373,7 @@ name_test = {
          "description": "Check constraints on randomly distributed tables",
          "fn": lambda: checkDistribPolicy(),
          "version": 'main',
-         "order": 12,
+         "order": 14,
          "online": False
     },
     "dependencies":
@@ -3274,7 +3381,7 @@ name_test = {
          "description": "Check for dependencies on non-existent objects",
          "fn": lambda: checkDepend(),
          "version": 'main',
-         "order": 13,
+         "order": 15,
          "online": False
     },
     "owners":
@@ -3282,7 +3389,7 @@ name_test = {
          "description": "Check table ownership: report each table that has an inconsistency with the master database",
          "fn": lambda: checkOwners(),
          "version": 'main',
-         "order": 14,
+         "order": 16,
          "online": True
     },
     "indexes":
@@ -3290,7 +3397,7 @@ name_test = {
          "description": "Check for relhasindex variations amongst the segments",
          "fn": lambda: checkIndexes(),
          "version": 'main',
-         "order": 15,
+         "order": 17,
          "online": True
     }
 }
@@ -3552,13 +3659,602 @@ def runAllTests():
     logger.info("Check complete")
 
 
-
-
 #-------------------------------------------------------------------------------
 def getCatalog():
     # Establish a connection to the master & looks up info in the catalog
     db = connect2(GV.cfg[1], utilityMode=False)
     return GPCatalog(db)
+
+
+
+#===============================================================================
+# GPCHECKCAT REPORT
+#===============================================================================
+
+GPObjects = {}     # key = (catname, oid), value = GPObject
+GPObjectGraph = {} # key = GPObject, value=[GPObject]
+#-------------------------------------------------------------------------------
+
+
+# TableMainColumn[catname] = [colname, catname2]
+#    - report this catname's issues as part of catname2
+#    - catname.colname references catname2.oid
+#-------------------------------------------------------------------------------
+TableMainColumn = {}
+# Table with no OID
+TableMainColumn['pg_aggregate'] 				= ['aggfnoid','pg_proc']
+TableMainColumn['pg_amop'] 						= ['amopclaid','pg_opclass']
+TableMainColumn['pg_amproc']      				= ['amopclaid','pg_opclass']
+TableMainColumn['pg_appendonly']  				= ['relid','pg_class']
+TableMainColumn['pg_appendonly_alter_column'] 	= ['relid','pg_class']
+TableMainColumn['pg_attribute']   				= ['attrelid','pg_class']
+TableMainColumn['pg_auth_member'] 				= ['roleid','pg_authid']
+TableMainColumn['pg_auth_time_constraint']      = ['authid', 'pg_authid']
+TableMainColumn['pg_autovacuum']      		    = ['vacrelid','pg_class']
+TableMainColumn['pg_index']                     = ['indexrelid','pg_class']
+TableMainColumn['pg_inherits']    				= ['inhrelid','pg_class']
+TableMainColumn['pg_window']      				= ['winfnoid','pg_proc']
+TableMainColumn['pg_foreign_table']    		    = ['reloid','pg_class']
+TableMainColumn['pg_largeobject']      		    = ['loid','pg_largeobject']
+TableMainColumn['pg_pltemplate']                = ['tmplname', 'pg_pltemplate']
+# Table with OID (special case), these OIDs are known to be inconsistent
+TableMainColumn['pg_attrdef']     = ['adrelid','pg_class']
+TableMainColumn['pg_constraint']  = ['conrelid','pg_class']
+TableMainColumn['pg_trigger']     = ['tgrelid','pg_class']
+TableMainColumn['pg_rewrite']     = ['ev_class','pg_class']
+
+# Cast OID alias type to OID since our graph of objects is based on OID
+# int2vector is also casted to int2[] due to the lack of an <(int2vector, int2vector) operator
+autoCast = {
+  'regproc':      '::oid',
+  'regprocedure': '::oid',
+  'regoper':      '::oid',
+  'regoperator':  '::oid',
+  'regclass':     '::oid',
+  'regtype':      '::oid',
+  'int2vector':   '::int2[]'
+}
+
+#-------------------------------------------------------------------------------
+class QueryException(Exception): pass
+    
+
+#-------------------------------------------------------------------------------
+# Get gpObj from GPObjects, instantiate a new one & add to GPObjects if not found
+def getGPObject(oid, catname):
+
+    gpObj = GPObjects.get((oid, catname),None)
+    if gpObj is None:
+        if catname == 'pg_class':
+            gpObj = RelationObject(oid, catname)
+        else:
+            gpObj = GPObject(oid, catname)
+        GPObjects[(oid,catname)] = gpObj
+    return gpObj
+
+
+
+#-------------------------------------------------------------------------------
+def getOidFromPK(catname, pkeys):
+
+    # pkeys: name-value pair
+    pkeystrList = ["%s='%s'" % (key,value) for key, value in pkeys.iteritems()]
+    pkeystr     = ' and '.join(pkeystrList)
+
+    qry = """
+          SELECT oid 
+          FROM (
+                SELECT oid FROM {catname} 
+                WHERE {pkeystr}
+                UNION ALL
+                SELECT oid FROM gp_dist_random('{catname}')
+                WHERE {pkeystr}
+          ) alloids
+          GROUP BY oid
+          ORDER BY count(*) desc, oid
+          """ .format(catname = catname,
+                      pkeystr = pkeystr)
+
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+        curs = db.query(qry)
+        if (len(curs.dictresult()) == 0):
+            raise QueryException("No such entry '%s' in %s" % (pkeystr,catname))
+
+        return curs.dictresult().pop()['oid']
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('  Execution error: ' + str(e))
+        logger.error(qry)
+
+
+#-------------------------------------------------------------------------------
+def getClassOidForType(oid):
+    # For FK check: pg_type entry is missing, so we need to use pg_class
+    qry = """ 
+          SELECT oid
+          FROM ( 
+               SELECT oid FROM pg_class WHERE reltype=%d
+               UNION ALL
+               SELECT oid FROM gp_dist_random('pg_class') WHERE reltype=%d
+          ) alltyprelids
+          GROUP BY oid ORDER BY count(*) desc LIMIT 1
+          """ % (oid, oid)
+
+    try:
+        db = connect()
+        curs = db.query(qry)
+        if len(curs.dictresult()) == 0: return 0
+        return curs.dictresult().pop()['oid']
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('  Execution error: ' + str(e))
+
+
+#-------------------------------------------------------------------------------
+def getResourceTypeOid(oid):
+    qry = """ 
+          SELECT oid
+          FROM ( 
+               SELECT oid FROM pg_resourcetype WHERE restypid = %d
+               UNION ALL
+               SELECT oid FROM gp_dist_random('pg_resourcetype')
+                WHERE restypid = %d
+          ) alloids
+          GROUP BY oid ORDER BY count(*) desc LIMIT 1
+          """ % (oid, oid)
+
+    try:
+        db = connect()
+        curs = db.query(qry)
+        if len(curs.dictresult()) == 0: return 0
+        return curs.dictresult().pop()['oid']
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('  Execution error: ' + str(e))
+
+  
+#-------------------------------------------------------------------------------
+# Process results of tests (CC and FK) for a particular catalog:
+#   - Categorize entry into GPObject
+#   - Instantiate GPObject if needed
+#-------------------------------------------------------------------------------
+def processMissingEntryResult(catname, colname, allValues):
+
+    '''
+    colname:       proname | pronamespace | proargtypes | exists | segment_ids
+    allValues:         add | 2200 | 23 23 | extra | {2,3}
+                     scube | 2200 | 1700 | missing | {2}
+               scube_accum | 2200 | 1700 1700 | missing | {2}
+    '''
+    gpObjName = catname
+    gpColName = None
+    pknames = [i for i in colname[:-2]] # Everything except the last two columns
+
+    # This catname may not be a GPObject (e.g. pg_attribute)
+    # If these catnames have oids, they are known to be inconsistent
+    if catname in TableMainColumn:
+        gpColName = TableMainColumn[catname][0]
+        gpObjName = TableMainColumn[catname][1]
+    elif 'oid' in pknames:
+        gpColName = 'oid'
+        
+    # Process entries
+    for row in allValues:
+        rowObjName = gpObjName
+        segids = row[-1]                    
+        pkeys = dict((pk, row[colname.index(pk)]) for pk in pknames)
+
+        if gpColName != None:
+            oid = row[colname.index(gpColName)]
+        else:
+            oid = getOidFromPK(catname, pkeys)    
+            pkeys = {'oid': oid}
+        issue = CatMissingIssue(catname, pkeys, segids, row[-2])
+
+        # Special case: constraint for domain, report pg_type.contypid
+        if catname == 'pg_constraint' and oid == 0:
+            oid = row[colname.index('contypid')]
+            rowObjName = 'pg_type'
+        # Special case: if composite type, report as part of RelationObject
+        if rowObjName == 'pg_type':
+            typrelid = getClassOidForType(oid)
+            if typrelid != 0: 
+                oid = typrelid
+                rowObjName = 'pg_class'
+
+        gpObj = getGPObject(oid, rowObjName)
+        gpObj.setMissingIssue(issue)
+
+#-------------------------------------------------------------------------------
+def processInconsistentEntryResult(catname, pknames, colname, allValues):
+    # If tableHasInconsistentOid, columns does not have oid
+    '''
+    17365 | test10 | 2200 | 17366 | 0 | 0 | 17366 | 0 | 0 | 0 | f | r | h | 3 | 0 | 0 | 0 | 0 | 0 | f | f | f | f | None | {0}     -- row1
+    17365 | test10 | 2200 | 17366 | 0 | 0 | 0     | 0 | 0 | 0 | f | r | h | 2 | 0 | 0 | 0 | 0 | 0 | f | f | f | f | None | {NULL}  -- row2
+    '''
+    gpObjName = catname
+    gpColName = None
+
+    # This catname may not be a GPObject (e.g. pg_attribute)
+    # If these catnames have oids, they are known to be inconsistent
+    if catname in TableMainColumn:
+        gpColName = TableMainColumn[catname][0]
+        gpObjName = TableMainColumn[catname][1]
+    elif 'oid' in colname:
+         gpColName = 'oid'
+        
+    values = iter(allValues)
+    for row1, row2 in zip (values, values):
+        rowObjName = gpObjName
+        pkeys = dict((n,row2[colname.index(n)]) for n in pknames)
+
+        if gpColName != None:
+            oid = row2[colname.index(gpColName)]
+        else:
+            oid = getOidFromPK(catname, pkeys)    
+        issue = CatInconsistentIssue(catname, colname, [row1, row2])
+
+        # Special case: constraint for domain, report pg_type.contypid
+        if catname == 'pg_constraint' and oid == 0:
+            oid = row2[colname.index('contypid')]
+            rowObjName = 'pg_type'
+        # Special case: if composite type, report as part of RelationObject
+        if rowObjName == 'pg_type':
+            typrelid = getClassOidForType(oid)
+            if typrelid != 0: 
+                oid = typrelid
+                rowObjName = 'pg_class'
+
+        gpObj = getGPObject(oid, rowObjName)
+        gpObj.setInconsistentIssue(issue)
+
+
+#-------------------------------------------------------------------------------
+def processForeignKeyResult(catname, pkcatname, colname, allValues):
+    
+    '''
+    colname:    pg_class_relname | pg_class_relnamespace | pg_type_oid | segids
+    allValues:            test11 | 2200 | 17389 | {-1,0,1,2,3}
+                           test4 | 2200 | 17077 | {-1,0,1,2,3}
+    '''
+
+    gpObjName = pkcatname
+    gpColName = colname[-2].rsplit('_',1)[1]
+    fkeytab  = catname
+    fkeylist = [name.rsplit('_',1)[1] for name in colname[:-2]]
+
+    # This catname may not be a GPObject (e.g. pg_attribute)
+    #    1. pg_attrdef(adrelid) referencing pg_attribute(attrelid)
+    #    2. pg_rewrite(ev_class) referencing pg_attribute(attrelid)
+    if pkcatname in TableMainColumn:
+        if gpColName == TableMainColumn[catname][0]:
+            gpObjName = TableMainColumn[catname][1]
+
+    # Process each row
+    for row in allValues:
+        rowObjName = gpObjName
+        segids = row[-1]
+        oid = row[len(colname)-2]
+        # Build fkeys dict: used to find oid of pg_class
+        fkeys = dict((n,row[colname.index(fkeytab+'_'+n)]) for n in fkeylist)
+        issue = CatMissingIssue(pkcatname, {gpColName: oid}, segids, 'missing')
+
+        # Special cases:
+        #    1. pg_class(oid) referencing pg_type(oid) - relation & composite type
+        #    2. pg_resqueuecapability(restypid) referencing pg_resourcetype(restypid)
+        if pkcatname == 'pg_type' and fkeytab == 'pg_class':
+            rowObjName = 'pg_class'
+            oid = getOidFromPK(rowObjName, fkeys)
+        elif pkcatname == 'pg_resourcetype' and gpColName == 'restypid':
+            oid = getResourceTypeOid(oid)
+        gpObj = getGPObject(oid, rowObjName)
+        gpObj.setMissingIssue(issue)
+
+
+#-------------------------------------------------------------------------------
+class CatInconsistentIssue:
+
+    def __init__(self, catname, columns, rows):
+
+        self.catname = catname
+        self.columns = columns
+        self.rows = rows
+   
+    def report(self):
+        '''
+        pg_namespace: has inconsistent entries
+                 oid | nspname | nspowner | segids
+               25654 | testschema2 | 10 | {3}
+               25654 | testschema | 10 | {NULL}
+        '''
+        print "  - %s has inconsistent entries:" % self.catname
+        print "      " + " | ".join(self.columns)
+        for row in self.rows:
+            print "      " + " | ".join(map(str,row))
+        
+        
+#-------------------------------------------------------------------------------
+class CatMissingIssue:
+
+    def __init__(self, catname, pkeys, segids, type ):
+
+        self.catname = catname
+        self.pkeys   = pkeys     # string of pkey=xxxx or oid=xxxx 
+        self.segids  = segids    # list of affected segids
+        self.type    = type      # missing or extra
+
+        assert(self.type in ['missing','extra'])
+        self._resetVar()
+       
+
+    def report(self):
+
+        # Missing entry pg_type oid=xxxx on segment {-1,0,1,2,3}
+        # Extra entry pg_class oid=xxxx on segment {2}
+        output = '     %s %s entry of %s on segment %s' \
+             % (self.type.capitalize(), self.catname, str(self.pkeys), str(self.segids))
+        print output
+
+
+    #-------------------------------------------------------------------------
+    def _resetVar(self):
+        # For FK check: convert missing entry to extra entry if needed
+
+        # '{1,2}' => ['1','2'] => [1,2]
+        segids = self.segids[1:-1].split(',')  
+        segids = [int(i) for i in segids]
+
+        allsegids = [x for x in range(-1,GV.max_content+1)]
+        if sorted(segids) != sorted(allsegids) and len(segids) > len(allsegids)/2.0:
+            assert (self.type == 'missing')
+            self.segids = '{%s}' % ','.join([str(i) for i in allsegids if i not in segids])
+            self.type = 'extra'
+
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__ 
+        
+
+#-------------------------------------------------------------------------------
+class GPObject:
+
+    def __init__(self, oid, catname):
+        self.oid          = oid
+        self.catname      = catname
+        self.missingIssues      = [] 	# list of catMissingIssue
+        self.inconsistentIssues = [] 	# list of catInconsistentIssue
+   
+    def setMissingIssue(self, issue):
+        if issue not in self.missingIssues:
+            self.missingIssues.append(issue)
+
+    def setInconsistentIssue(self, issue):
+        self.inconsistentIssues.append(issue)
+
+    def isTopLevel(self):
+        return True
+
+    def reportAllIssues(self):
+        if self.__class__ == GPObject:
+            print '\n'
+            print '----------------------------------------------------'
+            print 'Reporting a top level object '
+            print '----------------------------------------------------'
+            print 'Object oid: %s' % (self.oid)
+            print 'Table name: %s' % (self.catname)
+
+        if len(self.inconsistentIssues):
+            print '  Issues found by inconsistent entries check'
+            for issue in self.inconsistentIssues:
+                issue.report()
+            print '\n'
+
+        if len(self.missingIssues):
+            print '  Issues found by missing/extraneous or foreign key check'
+            for issue in self.missingIssues:
+                issue.report()
+
+#-------------------------------------------------------------------------------
+class RelationObject(GPObject):
+
+    def __init__(self, oid, catname):
+        GPObject.__init__(self, oid, catname)
+        self.relname = None
+        self.nspname = None
+        self.relkind = None
+        self.paroid = None
+
+    def reportAllIssues(self):
+        if self.isTopLevel():
+            print '\n'
+            print '----------------------------------------------------'
+            print 'Reporting a top level object '
+            print '----------------------------------------------------'
+            if self.relkind == 'c':
+                print 'Type oid: %d' % (self.oid)
+                print 'Type name: %s.%s' % (self.nspname, self.relname)
+            else:
+                print 'Relation oid: %d' % (self.oid)
+                print 'Relation name: %s.%s' % (self.nspname, self.relname)
+        else:
+            print '  ----------------------------------------------------'
+            print '  Affected child object: '
+            print '  ----------------------------------------------------'
+            print '  Relation oid: %d' % (self.oid)
+            print '  Relation name: %s.%s' % (self.nspname, self.relname)
+        print ''
+        GPObject.reportAllIssues(self)
+
+    def setRelInfo(self, relname, nspname, relkind, paroid):
+        self.relname = relname
+        self.nspname = nspname
+        self.relkind = relkind
+        self.paroid  = paroid
+
+    def isTopLevel(self):
+        if self.relkind == 'i' or self.relkind == 't' or self.relkind == 'o':
+            return False
+        return True
+
+
+#-------------------------------------------------------------------------------
+def getRelInfo(objects):
+
+    # Get relinfo: relname, relkind, par oid for all oids
+    #   get relname, relkind
+    #   left outer join with union of
+    #    - get par oid for toast
+    #    - get par oid for aoco
+    #    - get par oid for index
+    # for each query: if there is inconsistency, majority wins
+
+    if objects == {}: return
+
+    oids = [oid for (oid, catname) in objects if catname=='pg_class']
+    if oids == []: return
+
+    qry = """
+          SELECT oid, relname, nspname, relkind, paroid
+          FROM (
+             SELECT oid, relname, nspname, relkind
+             FROM (
+               SELECT oid, relname, nspname, relkind, rank() over (partition by oid order by count(*) desc)
+               FROM
+               (
+                 SELECT c.oid, c.relname, c.relkind, n.nspname
+                 FROM   pg_class c
+                        left outer join pg_namespace n
+                        on (c.relnamespace = n.oid)
+                 WHERE  c.oid in ({oids})
+                 UNION ALL
+                 SELECT c.oid, c.relname, c.relkind, n.nspname
+                 FROM   gp_dist_random('pg_class') c
+                        left outer join gp_dist_random('pg_namespace') n
+                        on (c.relnamespace = n.oid and c.gp_segment_id = n.gp_segment_id)
+                 WHERE  c.oid in ({oids})
+               ) allrelinfo
+               GROUP BY oid, relname, nspname, relkind
+             ) relinfo
+             WHERE rank=1
+         ) relinfo
+
+         LEFT OUTER JOIN
+
+         (
+            SELECT reltoastrelid as childoid, oid as paroid
+            FROM (
+              SELECT reltoastrelid, oid, rank() over (partition by reltoastrelid order by count(*) desc)
+                FROM 
+                  ( SELECT reltoastrelid, oid FROM pg_class
+                    WHERE reltoastrelid in ({oids})
+                    UNION ALL
+                    SELECT reltoastrelid, oid FROM gp_dist_random('pg_class')
+                    WHERE reltoastrelid in ({oids})
+                  ) allpar_toast
+               GROUP BY reltoastrelid, oid
+            ) par_toast
+            WHERE rank=1
+
+            UNION ALL
+
+            SELECT segrelid as childoid, relid as paroid
+            FROM (
+               SELECT segrelid, relid, rank() over (partition by segrelid order by count(*) desc)
+                FROM 
+                 ( SELECT segrelid, relid FROM pg_appendonly
+                   WHERE segrelid in ({oids})
+                   UNION ALL
+                   SELECT segrelid, relid FROM gp_dist_random('pg_appendonly')
+                   WHERE segrelid in ({oids})
+                 ) allpar_aoco
+               GROUP BY segrelid, relid
+            ) par_aoco
+            WHERE rank=1
+
+            UNION ALL 
+
+            SELECT indexrelid as childoid, indrelid as paroid
+            FROM (
+               SELECT indexrelid, indrelid, rank() over (partition by indexrelid order by count(*) desc)
+               FROM 
+                ( SELECT indexrelid, indrelid FROM pg_index
+                   WHERE  indexrelid in ({oids})
+                   UNION ALL
+                  SELECT indexrelid, indrelid FROM gp_dist_random('pg_index')
+                   WHERE  indexrelid in ({oids})
+                ) allpar_index
+               GROUP BY indexrelid, indrelid
+            ) par_index
+            WHERE rank=1
+          ) par ON childoid = oid
+          """.format( oids = ','.join(map(str,oids)))
+
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+        curs = db.query(qry)
+        for row in curs.getresult():
+            (oid, relname, nspname, relkind, paroid) = row
+            objects[oid,'pg_class'].setRelInfo(relname, nspname, relkind, paroid)
+            
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('  Execution error: ' + str(e))
+        logger.error(qry)
+
+
+#-------------------------------------------------------------------------------
+def buildGraph():
+
+    def buildGraphRecursive(objects, graph):
+        if objects == {}: return
+        getRelInfo (objects)
+        localObjects = {}
+        for (oid, catname),obj in objects.iteritems():
+            # Top level object, add to graph
+            if obj.isTopLevel():
+                if obj not in graph:
+                    graph[obj] = []
+            # Not top level object, find parent, add to localObjects if needed
+            else:
+                parobj = objects.get((obj.paroid, catname), None)
+                if parobj == None:
+                    parobj = localObjects.get((obj.paroid, catname), None)
+                    if parobj == None:
+                        parobj = RelationObject(obj.paroid, catname)
+                        localObjects[(obj.paroid, catname)] = parobj
+                assert (parobj != None)
+                # Add obj and parobj to graph
+                if parobj not in graph:
+                    graph[parobj] = []
+                if obj not in graph[parobj]:
+                    graph[parobj].append(obj)
+        buildGraphRecursive(localObjects, graph)
+
+    buildGraphRecursive(GPObjects, GPObjectGraph)
+
+
+
+#-------------------------------------------------------------------------------
+def checkcatReport():
+
+    buildGraph()
+
+    if len(GPObjectGraph) > 0:
+        print '======================== SUMMARY REPORT ============================'
+        print 'Connected as user \'%s\' to database \'%s\', version %s' \
+               % (GV.opt['-U'], GV.dbname, GV.version)
+
+    def reportAllIssuesRecursive(par, graph):
+        par.reportAllIssues()
+        if par not in graph: 
+            return
+        for child in graph[par]:
+            reportAllIssuesRecursive(child, graph)
+
+    for par in GPObjectGraph:
+        if par.isTopLevel():
+            reportAllIssuesRecursive(par, GPObjectGraph)
 
 
 
@@ -3585,7 +4281,12 @@ if __name__ == '__main__':
         logger.info("Performing check for database \'%s\', version %s" % (dbname, GV.version ))
         logger.info('-----------------------------------')
 
-        GV.dbname = dbname
+        # Reset global variables
+        GPObjects = {}
+        GPObjectGraph = {} 
+
+        GV.dbname  = dbname
+        GV.retcode = SUCCESS
 
         if GV.opt['-R']:
             runOneTest(GV.opt['-R'])
@@ -3593,7 +4294,8 @@ if __name__ == '__main__':
             namestr = GV.opt['-C']
             try:
                 cat = getCatObj(namestr)
-                checkTableCrossConsistency(cat)
+                checkTableMissingEntry(cat)
+                checkTableInconsistentEntry(cat)
                 checkTableForeignKey(cat)
                 checkTableACL(cat)
             except Exception, e:
@@ -3614,5 +4316,8 @@ if __name__ == '__main__':
         # skip shared tables on subsequent passes
         if not GV.opt['-S']:
             GV.opt['-S'] = "none"
+
+        logger.info('-----------------------------------------------\n\n')
+        checkcatReport()
 
     sys.exit(GV.retcode)

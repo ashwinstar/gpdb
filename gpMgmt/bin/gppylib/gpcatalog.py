@@ -231,7 +231,7 @@ class GPCatalog():
         self._tables['gp_version_at_initdb']._setPrimaryKey(
             "schemaversion productversion")
         self._tables['pg_constraint']._setPrimaryKey(
-            "conname connamespace conrelid")
+            "conname connamespace conrelid contypid")
         if self._version >= "4.0":
             self._tables['pg_resqueuecapability']._setPrimaryKey(
                 "resqueueid restypid")
@@ -405,6 +405,9 @@ class GPCatalogTable():
     def tableHasOids(self):
         return self._has_oid
 
+    def tableHasConsistentOids(self):
+        return (self._has_oid and 'oid' not in self._excluding)
+
     def isMasterOnly(self):
         return self._master
 
@@ -420,6 +423,9 @@ class GPCatalogTable():
     def getForeignKeys(self):
         return self._fkey
     
+    def getTableColtypes(self):
+        return self._coltypes
+
     def getTableColumns(self, with_oid=True, with_acl=True, excluding=None):
         '''
         Returns the list of columns this catalog table contains.
@@ -472,13 +478,15 @@ class GPCatalogTable():
         self._fkey      = []      # foreign key
         self._excluding = set()
         self._columns   = []      # initial value
+        self._coltypes  = {}
         self._acl       = None    # initial value
         self._has_oid   = False   # initial value
 
         # Query the database to lookup the catalog's definition
         qry = """
-          select attname, atttypid 
-          from pg_attribute
+          select a.attname, a.atttypid, t.typname
+          from pg_attribute a
+               left outer join pg_type t on (a.atttypid = t.oid)
           where attrelid = 'pg_catalog.%s'::regclass and 
                (attnum > 0 or attname='oid')
           order by attnum
@@ -494,7 +502,7 @@ class GPCatalogTable():
             raise GPCatalogException("Catalog table %s does not exist" % name)
 
         for row in cur.getresult():
-            (attname, atttype) = row
+            (attname, atttype, typname) = row
 
             # Mark if the catalog has an oid column
             if attname == 'oid':
@@ -506,6 +514,9 @@ class GPCatalogTable():
 
             # Add to the list of columns
             self._columns.append(attname)
+
+            # Add to the coltypes dictionary
+            self._coltypes[attname] = typname
 
         # If a primary key was not specified try to locate a unique index
         if self._pkey == []:
