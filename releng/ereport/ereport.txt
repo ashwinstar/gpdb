@@ -564,91 +564,100 @@ uaad: url:00000375:  /* elog(NOTICE, "- still_running %d, bot %d, top %d, want %
 uaad: url:00000376:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
 uaad: url:00000392:  elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value); 
 uaad: url:00000531:  elog(ERROR, "illegal url '%s'", url); 
-uaad: url:00000559:  elog(ERROR, "hostname too long for url '%s'", url); 
-uaad: url:00000634:  elog(ERROR, "out of memory"); 
-uaad: url:00000673:  ereport(ERROR, 
-uaad: url:00000674:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-uaad: url:00000675:  errmsg("cannot start external table command: %m"), 
-uaad: url:00000676:  errdetail("Command: %s", cmd), 
-uaad: url:00000677:  errOmitLocation(true))); 
-uaad: url:00000721:  elog(ERROR, "out of memory"); 
-uaad: url:00000741:  elog(ERROR, "External Table error opening file: '%s', invalid " 
-uaad: url:00000742:  "file path", url); 
-uaad: url:00000783:  elog(ERROR, "illegal URL: %s", url_cpy); 
-uaad: url:00000803:  elog(ERROR, "internal error: curl_easy_init failed"); 
-uaad: url:00000810:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
-uaad: url:00000811:  e, curl_easy_strerror(e)); 
-uaad: url:00000816:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
-uaad: url:00000817:  e, curl_easy_strerror(e)); 
-uaad: url:00000823:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
-uaad: url:00000824:  e, curl_easy_strerror(e)); 
-uaad: url:00000830:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
-uaad: url:00000831:  e, curl_easy_strerror(e)); 
-uaad: url:00000837:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
-uaad: url:00000838:  e, curl_easy_strerror(e)); 
-uaad: url:00000844:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
-uaad: url:00000845:  e, curl_easy_strerror(e)); 
-uaad: url:00000855:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
-uaad: url:00000856:  e, curl_easy_strerror(e)); 
-uaad: url:00000884:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00000894:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00000912:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00000927:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
-uaad: url:00000935:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
-uaad: url:00000936:  e, curl_easy_strerror(e)); 
-uaad: url:00000944:  elog(ERROR, "internal error: curl_multi_init failed"); 
-uaad: url:00000953:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
-uaad: url:00000954:  e, curl_easy_strerror(e)); 
-uaad: url:00000972:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
-uaad: url:00000973:  e, curl_easy_strerror(e)); 
-uaad: url:00000985:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00000986:  e, curl_easy_strerror(e)); 
-uaad: url:00000993:  elog(ERROR, "error: %s", 
-uaad: url:00000994:  curl_easy_strerror(e)); 
-uaad: url:00001186:  ereport(ERROR, 
-uaad: url:00001187:  (errcode(ERRCODE_INTERNAL_ERROR), 
-uaad: url:00001188:  errmsg_internal("external table type not implemented: %d", type))); 
-uaad: url:00001329:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
-uaad: url:00001335:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
-uaad: url:00001349:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
-uaad: url:00001350:  type, len); 
-uaad: url:00001354:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
-uaad: url:00001355:  curl->in.bot, curl->in.top); 
-uaad: url:00001376:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
-uaad: url:00001381:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
-uaad: url:00001396:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
-uaad: url:00001401:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001430:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
-uaad: url:00001435:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001451:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
-uaad: url:00001456:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001478:  // elog(NOTICE, "D %d", curl->block.datalen); 
-uaad: url:00001482:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
-uaad: url:00001499:  elog(ERROR, "gpfdist server closed connection.\n"); 
-uaad: url:00001508:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
-uaad: url:00001533:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001534:  e, curl_easy_strerror(e)); 
-uaad: url:00001538:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
-uaad: url:00001539:  e, curl_easy_strerror(e)); 
-uaad: url:00001543:  elog(ERROR, "%s error (%d - %s)", 
-uaad: url:00001544:  file->u.curl.curl_url, 
-uaad: url:00001545:  e, curl_easy_strerror(e)); 
-uaad: url:00001549:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
-uaad: url:00001550:  file->u.curl.curl_url, response_code, response_string); 
-uaad: url:00001566:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
-uaad: url:00001567:  file->u.curl.curl_url, 
-uaad: url:00001568:  e, curl_easy_strerror(e)); 
-uaad: url:00001574:  elog(ERROR, "%s error: %s", 
-uaad: url:00001575:  file->u.curl.curl_url, 
-uaad: url:00001576:  curl_easy_strerror(e)); 
-uaad: url:00001591:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001602:  //elog(NOTICE, "curl_fread %d bytes", n); 
-uaad: url:00001617:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001663:  elog(ERROR, "out of memory (curl_fwrite)"); 
-uaad: url:00001748:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00001788:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00001842:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
-uaad: url:00002233:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+uaad: url:00000554:  ereport(ERROR, 
+uaad: url:00000555:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000556:  errmsg("<port> substring size must not exceed %d characters", 8))); 
+uaad: url:00000578:  ereport(ERROR, 
+uaad: url:00000579:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000580:  errmsg("<port> substring size must not exceed %d characters", 8))); 
+uaad: url:00000589:  ereport(ERROR, 
+uaad: url:00000590:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000591:  errmsg("<port> substring must contain only digits"))); 
+uaad: url:00000595:  elog(ERROR, "hostname too long for url '%s'", url); 
+uaad: url:00000682:  elog(ERROR, "out of memory"); 
+uaad: url:00000721:  ereport(ERROR, 
+uaad: url:00000722:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+uaad: url:00000723:  errmsg("cannot start external table command: %m"), 
+uaad: url:00000724:  errdetail("Command: %s", cmd), 
+uaad: url:00000725:  errOmitLocation(true))); 
+uaad: url:00000783:  elog(ERROR, "out of memory"); 
+uaad: url:00000803:  elog(ERROR, "External Table error opening file: '%s', invalid " 
+uaad: url:00000804:  "file path", url); 
+uaad: url:00000845:  elog(ERROR, "illegal URL: %s", url_cpy); 
+uaad: url:00000872:  elog(ERROR, "internal error: curl_easy_init failed"); 
+uaad: url:00000879:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
+uaad: url:00000880:  e, curl_easy_strerror(e)); 
+uaad: url:00000885:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
+uaad: url:00000886:  e, curl_easy_strerror(e)); 
+uaad: url:00000892:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
+uaad: url:00000893:  e, curl_easy_strerror(e)); 
+uaad: url:00000899:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
+uaad: url:00000900:  e, curl_easy_strerror(e)); 
+uaad: url:00000906:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
+uaad: url:00000907:  e, curl_easy_strerror(e)); 
+uaad: url:00000913:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
+uaad: url:00000914:  e, curl_easy_strerror(e)); 
+uaad: url:00000924:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
+uaad: url:00000925:  e, curl_easy_strerror(e)); 
+uaad: url:00000953:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00000963:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00000981:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00000996:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
+uaad: url:00001004:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
+uaad: url:00001005:  e, curl_easy_strerror(e)); 
+uaad: url:00001013:  elog(ERROR, "internal error: curl_multi_init failed"); 
+uaad: url:00001022:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
+uaad: url:00001023:  e, curl_easy_strerror(e)); 
+uaad: url:00001041:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+uaad: url:00001042:  e, curl_easy_strerror(e)); 
+uaad: url:00001054:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001055:  e, curl_easy_strerror(e)); 
+uaad: url:00001062:  elog(ERROR, "error: %s", 
+uaad: url:00001063:  curl_easy_strerror(e)); 
+uaad: url:00001255:  ereport(ERROR, 
+uaad: url:00001256:  (errcode(ERRCODE_INTERNAL_ERROR), 
+uaad: url:00001257:  errmsg_internal("external table type not implemented: %d", type))); 
+uaad: url:00001398:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
+uaad: url:00001404:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
+uaad: url:00001418:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
+uaad: url:00001419:  type, len); 
+uaad: url:00001423:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
+uaad: url:00001424:  curl->in.bot, curl->in.top); 
+uaad: url:00001445:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
+uaad: url:00001450:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
+uaad: url:00001465:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
+uaad: url:00001470:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001499:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
+uaad: url:00001504:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001520:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
+uaad: url:00001525:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001547:  // elog(NOTICE, "D %d", curl->block.datalen); 
+uaad: url:00001551:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
+uaad: url:00001568:  elog(ERROR, "gpfdist server closed connection.\n"); 
+uaad: url:00001577:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
+uaad: url:00001602:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001603:  e, curl_easy_strerror(e)); 
+uaad: url:00001607:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
+uaad: url:00001608:  e, curl_easy_strerror(e)); 
+uaad: url:00001612:  elog(ERROR, "%s error (%d - %s)", 
+uaad: url:00001613:  file->u.curl.curl_url, 
+uaad: url:00001614:  e, curl_easy_strerror(e)); 
+uaad: url:00001618:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
+uaad: url:00001619:  file->u.curl.curl_url, response_code, response_string); 
+uaad: url:00001635:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
+uaad: url:00001636:  file->u.curl.curl_url, 
+uaad: url:00001637:  e, curl_easy_strerror(e)); 
+uaad: url:00001643:  elog(ERROR, "%s error: %s", 
+uaad: url:00001644:  file->u.curl.curl_url, 
+uaad: url:00001645:  curl_easy_strerror(e)); 
+uaad: url:00001660:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001671:  //elog(NOTICE, "curl_fread %d bytes", n); 
+uaad: url:00001686:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001732:  elog(ERROR, "out of memory (curl_fwrite)"); 
+uaad: url:00001817:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00001857:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00001911:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
+uaad: url:00002302:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
 aaaaa GP_IGNORE: gabc: ginarrayproc - ./backend/access/gin/ginarrayproc.c
 gabc: ginarrayproc:00000028:  ereport(ERROR, \ 
 gabc: ginarrayproc:00000029:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \ 
@@ -5735,14 +5744,14 @@ caai: cdbllize:00000230:  "statement is not yet supported in "
 caai: cdbllize:00000231:  "this version of " PACKAGE_NAME ".", 
 caai: cdbllize:00000232:  cmd) 
 caai: cdbllize:00000233:  )); 
-caai: cdbllize:00000748:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caai: cdbllize:00000749:  errmsg("Cannot parallelize that query yet."), 
-caai: cdbllize:00000750:  errdetail("In a subquery FROM clause, a " 
-caai: cdbllize:00000751:  "function invocation cannot contain " 
-caai: cdbllize:00000752:  "a correlated reference."), 
-caai: cdbllize:00000753:  errOmitLocation(true) 
-caai: cdbllize:00000754:  )); 
-caai: cdbllize:00001380:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
+caai: cdbllize:00000429:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caai: cdbllize:00000430:  errmsg("Cannot parallelize that query yet."), 
+caai: cdbllize:00000431:  errdetail("In a subquery FROM clause, a " 
+caai: cdbllize:00000432:  "function invocation cannot contain " 
+caai: cdbllize:00000433:  "a correlated reference."), 
+caai: cdbllize:00000434:  errOmitLocation(true) 
+caai: cdbllize:00000435:  )); 
+caai: cdbllize:00001372:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
 aaaaa GP_IGNORE: cabj: cdblocaldistribxact - ./backend/cdb/cdblocaldistribxact.c
 cabj: cdblocaldistribxact:00000151:  elog(FATAL, "Distributed to local xact element not valid (eyecatcher)"); 
 cabj: cdblocaldistribxact:00000229:  elog(FATAL, "Distributed to local xact element not valid"); 
@@ -7244,9 +7253,9 @@ caba: cdbsubplan:00000325:  errmsg("Failed to locate datatype for paramid %d",
 caba: cdbsubplan:00000326:  paramid 
 caba: cdbsubplan:00000327:  ))); 
 aaaaa GP_IGNORE: cabc: cdbsubselect - ./backend/cdb/cdbsubselect.c
-cabc: cdbsubselect:00000762:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-cabc: cdbsubselect:00000763:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
-cabc: cdbsubselect:00000764:  )); 
+cabc: cdbsubselect:00000785:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+cabc: cdbsubselect:00000786:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
+cabc: cdbsubselect:00000787:  )); 
 aaaaa GP_IGNORE: cabj: cdbtargeteddispatch - ./backend/cdb/cdbtargeteddispatch.c
 cabj: cdbtargeteddispatch:00000539:  elog(ERROR, "Invalid plan node %d", nodeTag(node)); 
 aaaaa GP_IGNORE: cabd: cdbthreadwork - ./backend/cdb/cdbthreadwork.c
@@ -8758,11 +8767,11 @@ daag: define:00000302:  (errcode(ERRCODE_SYNTAX_ERROR),
 daag: define:00000303:  errmsg("invalid argument for %s: \"%s\"", 
 daag: define:00000304:  def->defname, defGetString(def)))); 
 aaaaa GP_IGNORE: eaah: explain - ./backend/commands/explain.c
-eaah: explain:00001973:  elog(ERROR, "no tlist entry for key %d", keyresno); 
-eaah: explain:00002057:  elog(ERROR, "no tlist entry for key %d", keyresno); 
-eaah: explain:00002124:  elog(WARNING, "Gather Motion %s error: no tlist item %d", 
-eaah: explain:00002125:  qlabel, keyresno); 
-eaah: explain:00002172:  elog(ERROR, "cache lookup failed for index %u", indexId); 
+eaah: explain:00001980:  elog(ERROR, "no tlist entry for key %d", keyresno); 
+eaah: explain:00002064:  elog(ERROR, "no tlist entry for key %d", keyresno); 
+eaah: explain:00002131:  elog(WARNING, "Gather Motion %s error: no tlist item %d", 
+eaah: explain:00002132:  qlabel, keyresno); 
+eaah: explain:00002179:  elog(ERROR, "cache lookup failed for index %u", indexId); 
 aaaaa GP_IGNORE: eabf: extprotocolcmds - ./backend/commands/extprotocolcmds.c
 eabf: extprotocolcmds:00000077:  ereport(ERROR, 
 eabf: extprotocolcmds:00000078:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -14052,11 +14061,11 @@ paba: planwindow:00003317:  elog(ERROR,"invalid window coplan");
 paba: planwindow:00003844:  elog(ERROR, "nested window reference invalid"); 
 paba: planwindow:00003858:  elog(ERROR, "nested window key invalid"); 
 aaaaa GP_IGNORE: saah: setrefs - ./backend/optimizer/plan/setrefs.c
-saah: setrefs:00000895:  elog(ERROR, "unrecognized node type: %d", 
-saah: setrefs:00000896:  (int) nodeTag(plan)); 
-saah: setrefs:00001924:  elog(ERROR, "variable not found in subplan target lists"); 
-saah: setrefs:00002024:  elog(ERROR, "variable not found in subplan target list"); 
-saah: setrefs:00002204:  elog(ERROR, "cache lookup failed for function %u", funcid); 
+saah: setrefs:00000902:  elog(ERROR, "unrecognized node type: %d", 
+saah: setrefs:00000903:  (int) nodeTag(plan)); 
+saah: setrefs:00001931:  elog(ERROR, "variable not found in subplan target lists"); 
+saah: setrefs:00002031:  elog(ERROR, "variable not found in subplan target list"); 
+saah: setrefs:00002211:  elog(ERROR, "cache lookup failed for function %u", funcid); 
 aaaaa GP_IGNORE: saaj: subselect - ./backend/optimizer/plan/subselect.c
 saaj: subselect:00000399:  elog(ERROR, "correlated subquery with skip-level correlations is not supported"); 
 saaj: subselect:00000550:  elog(ERROR, "could not find array type for datatype %s", 
