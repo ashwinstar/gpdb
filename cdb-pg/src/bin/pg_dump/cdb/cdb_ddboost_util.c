@@ -1430,9 +1430,12 @@ createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp
 				}
 				else if (lineEndsWith(line, endString))
 				{
-					fwrite(line, 1, strlen(line), fpTemp);
-					output = false;
-					in_schema = false;
+					if (found && output)
+					{
+						fwrite(line, 1, strlen(line), fpTemp);
+						output = false;
+						in_schema = false;
+					}
 				}
 				
 				if(output && in_schema)
