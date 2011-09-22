@@ -175,19 +175,20 @@ CREATE TRUSTED PROTOCOL gphdfs (
 
 create or replace function @gpupgradeschemaname@.grant_gphdfs() returns int as $$
 declare
-  rolname name;
+  rn name;
 begin
-  for rolname in select rolname from pg_authid where rolcreaterexthdfs = true loop
-    execute 'grant usage on protocol gphdfs to '|| rolname;
+  for rn in select rolname from pg_authid where rolcreaterexthdfs = true loop
+    execute 'grant select on protocol gphdfs to '|| rn;
   end loop;
-  for rolname in select rolname from pg_authid where rolcreatewexthdfs = true loop
-    execute 'grant usage on protocol gphdfs to '|| rolname;
+  for rn in select rolname from pg_authid where rolcreatewexthdfs = true loop
+    execute 'grant insert on protocol gphdfs to '|| rn;
   end loop;
   
   return 1;
 end;
 $$ language 'plpgsql';
 
+select @gpupgradeschemaname@.grant_gphdfs();
 drop function @gpupgradeschemaname@.grant_gphdfs();
 
 -- Column compression functions
@@ -439,3 +440,18 @@ create external web table
 select * from @gpupgradeschemaname@.pg_compression_load;
 
 drop external web table @gpupgradeschemaname@.pg_compression_load;
+
+---
+--- Fixes PL/Java template
+---
+update @gpupgradeschemaname@.pg_pltemplate set tmpltrusted=true where tmplname='pljava';
+select catDML('update @gpupgradeschemaname@.pg_pltemplate set tmpltrusted=true where tmplname=''pljava''')
+  from gp_dist_random('gp_id');
+
+insert into @gpupgradeschemaname@.pg_pltemplate 
+  select 'pljavau', false, 'pljavau_call_handler', null, '$libdir/pljava', null
+  where (select count(*) from @gpupgradeschemaname@.pg_pltemplate where tmplname='pljavau')=0;
+select catDML('insert into @gpupgradeschemaname@.pg_pltemplate 
+  select ''pljavau'', false, ''pljavau_call_handler'', null, ''$libdir/pljava'', null
+  where (select count(*) from @gpupgradeschemaname@.pg_pltemplate where tmplname=''pljavau'')=0') from gp_dist_random('gp_id');
+
