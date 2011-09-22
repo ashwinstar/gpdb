@@ -42,6 +42,7 @@ MASTER_ONLY_TABLES = [
     'pg_statistic',
     'pg_filespace_entry',
     'pg_partition_encoding',
+    'pg_auth_time_constraint',
     ]
 
 # Hard coded since "persistent" is not defined in the catalog
