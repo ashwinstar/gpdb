@@ -1,6 +1,6 @@
 -- Adjust the following if this is not the schema you installed into
 \set ORA_SCHEMA oracompat
-set search_path = :ORA_SCHEMA
+set search_path = :ORA_SCHEMA, pg_catalog;
 
 BEGIN;
 DROP FUNCTION IF EXISTS nvl(anyelement, anyelement);

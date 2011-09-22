@@ -440,11 +440,13 @@ RETURNS text
 AS 'MODULE_PATHNAME','orafce_listagg2_transfn'
 LANGUAGE C IMMUTABLE;
 
+DROP AGGREGATE IF EXISTS :ORA_SCHEMA.listagg(text);
 CREATE  AGGREGATE :ORA_SCHEMA.listagg(text) (
   SFUNC=:ORA_SCHEMA.listagg1_transfn,
   STYPE=text
 );
 
+DROP AGGREGATE IF EXISTS :ORA_SCHEMA.listagg(text, text);
 CREATE AGGREGATE :ORA_SCHEMA.listagg(text, text) (
   SFUNC=:ORA_SCHEMA.listagg2_transfn,
   STYPE=text
@@ -480,12 +482,12 @@ AS 'MODULE_PATHNAME', 'ora_nlssort'
 LANGUAGE 'C' IMMUTABLE;
 
 -- SUBSTR
-CREATE FUNCTION substr(str text, start int)
+CREATE OR REPLACE FUNCTION substr(str text, start int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr2'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION substr(str text, start int, len int)
+CREATE OR REPLACE FUNCTION substr(str text, start int, len int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
