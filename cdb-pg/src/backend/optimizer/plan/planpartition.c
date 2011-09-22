@@ -246,6 +246,33 @@ static void ConstructAllNullOuterTargetList(PartitionJoinMutatorContext *ctx)
 }
 
 /**
+ * Given an expression, this returns another one which strips out the top relabel node, if any.
+ */
+static Expr* StripRelabel(Expr *expr)
+{
+	Expr *result = expr;
+	if (IsA(result, RelabelType))
+	{
+		result = ((RelabelType *) result)->arg;
+	}
+	return result;
+}
+
+/**
+ * Does the given expression correspond to a var on partitioned relation. This method
+ * ignores relabeling wrappers
+ */
+static bool IsAppendVar(Expr *expr, PartitionJoinMutatorContext *ctx)
+{
+	Assert(expr);
+	Assert(ctx);
+
+	expr = StripRelabel(expr);
+
+	return (IsA(expr, Var) && ((Var *) expr)->varno == ctx->partitionVarno);
+}
+
+/**
  * Is opexp of the sort (outer_expr = append.partition_key)? If so, we need to extract interesting
  * information out.
  */
@@ -271,16 +298,6 @@ static void MatchEqualityOpExpr(OpExpr *opexp, PartitionJoinMutatorContext *ctx)
 		return;
 	}
 
-	/**
-	 * At least one of the two args must be a var, else no point
-	 */
-	if (!IsA(list_nth(opexp->args, 0), Var)
-			&& !IsA(list_nth(opexp->args, 1), Var))
-	{
-		ctx->safeToConvert = false;
-		return;
-	}
-
 	Assert(lsortOp == rsortOp);
 	Assert(lsortOp != InvalidOid);
 
@@ -290,14 +307,14 @@ static void MatchEqualityOpExpr(OpExpr *opexp, PartitionJoinMutatorContext *ctx)
 	Var *appendVar = NULL;
 	Expr *otherExpr = NULL;
 
-	if (IsA(expr1, Var) && ((Var *) expr1)->varno == ctx->partitionVarno)
+	if (IsAppendVar(expr1, ctx))
 	{
-		appendVar = (Var *) expr1;
+		appendVar = (Var *) StripRelabel(expr1);
 		otherExpr = (Expr *) expr2;
 	}
-	else if (IsA(expr2, Var) && ((Var *) expr2)->varno == ctx->partitionVarno)
+	else if (IsAppendVar(expr2, ctx))
 	{
-		appendVar = (Var *) expr2;
+		appendVar = (Var *) StripRelabel(expr2);
 		otherExpr = (Expr *) expr1;
 	}
 
