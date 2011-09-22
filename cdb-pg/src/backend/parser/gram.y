@@ -64,6 +64,7 @@
 #include "storage/lmgr.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
+#include "utils/guc.h"
 #include "utils/numeric.h"
 #include "cdb/cdbvars.h" /* CDB *//* gp_enable_partitioned_tables */
 
@@ -128,6 +129,8 @@ static Node *doNegate(Node *n, int location);
 static void doNegateFloat(Value *v);
 static List *mergeTableFuncParameters(List *func_args, List *columns);
 static TypeName *TableFuncTypeName(List *columns);
+static void setWindowExclude(WindowFrame *wframe, WindowExclusion exclude);
+
 
 %}
 
@@ -9206,7 +9209,7 @@ window_frame_clause: window_frame_units window_frame_extent
 				{
 					WindowFrame *n = makeNode(WindowFrame);
 					n->is_rows = $1;
-					n->exclude = $3;
+					setWindowExclude(n, $3);
 
 					if (IsA($2, List))
 					{
@@ -13509,6 +13512,46 @@ TableFuncTypeName(List *columns)
 
 	return result;
 }
+
+static void 
+setWindowExclude(WindowFrame *wframe, WindowExclusion exclude)
+{
+	switch (exclude)
+	{
+		case WINDOW_EXCLUSION_NULL:
+			wframe->exclude = exclude;
+			return;
+
+		case WINDOW_EXCLUSION_CUR_ROW:	/* exclude current row */
+		case WINDOW_EXCLUSION_GROUP:	/* exclude rows matching us */
+		case WINDOW_EXCLUSION_TIES:		/* exclude rows matching us, and current row */
+		case WINDOW_EXCLUSION_NO_OTHERS: /* don't exclude */
+
+			/*
+			 * because the syntax has historically existed without doing anything
+			 * we have chosen to add a guc to allow simply ignoring the exclude clause
+			 * rather than raising an error.
+			 */
+			if (gp_ignore_window_exclude)
+			{
+				wframe->exclude = WINDOW_EXCLUSION_NULL;
+				return;
+			}
+
+			/* MPP-13628 */
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("window EXCLUDE clause not yet implemented")));
+			break;
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid window EXCLUDE clause")));
+			break;
+	}
+}
+
 
 /*
  * Must undefine base_yylex before including scan.c, since we want it

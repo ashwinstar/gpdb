@@ -576,6 +576,46 @@ group by vn; -- mvd 3->1
           5 | 30 |     4
 (5 rows)
 
+---- 6 -- Exclude clause ----
+-- MPP-13628: exclude clause doesn't work
+select vn, sum(vn) over (w)
+from sale
+window w as (order by vn rows between unbounded preceding and unbounded following exclude CURRENT ROW);
+ERROR:  window EXCLUDE clause not yet implemented
+select vn, sum(vn) over (w)
+from sale
+window w as (order by vn rows between unbounded preceding and unbounded following exclude GROUP);
+ERROR:  window EXCLUDE clause not yet implemented
+select vn, sum(vn) over (w)
+from sale
+window w as (order by vn rows between unbounded preceding and unbounded following exclude TIES);
+ERROR:  window EXCLUDE clause not yet implemented
+select vn, sum(vn) over (w)
+from sale
+window w as (order by vn rows between unbounded preceding and unbounded following exclude NO OTHERS);
+ERROR:  window EXCLUDE clause not yet implemented
+-- MPP-14244: add guc to ignore exclude clause so the above won't error.
+-- Note: produces the wrong answer, we will probably want to remove this once we fix the MPP-13628
+set gp_ignore_window_exclude = true;
+select vn, sum(vn) over (w)
+from sale
+window w as (order by vn rows between unbounded preceding and unbounded following exclude GROUP);
+ vn | sum 
+----+-----
+ 10 | 410
+ 20 | 410
+ 30 | 410
+ 30 | 410
+ 30 | 410
+ 30 | 410
+ 40 | 410
+ 40 | 410
+ 40 | 410
+ 40 | 410
+ 50 | 410
+ 50 | 410
+(12 rows)
+
 ---- X -- Miscellaneous (e.g. old bugs, etc.) ----
 -- Why was this here? We can't guarantee all correct answers will pass!
 --select 

@@ -200,6 +200,8 @@ extern bool gp_maintenance_mode;
 extern bool gp_maintenance_conn;
 extern bool allow_segment_DML;
 
+extern bool gp_ignore_window_exclude;
+
 extern int verify_checkpoint_interval;
 
 extern bool Debug_print_tablespace;

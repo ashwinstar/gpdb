@@ -523,6 +523,9 @@ bool gp_maintenance_conn;
 bool allow_segment_DML;
 static char *allow_system_table_mods_str;
 
+/* ignore EXCLUDE clauses in window spec for backwards compatibility */
+bool gp_ignore_window_exclude = false;
+
 const char *
 assign_allow_system_table_mods(const char *newval,
 							   bool doit,
@@ -3037,6 +3040,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_log_dynamic_partition_pruning,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_ignore_window_exclude", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+		    gettext_noop("Ignore EXCLUDE in window frame specifications."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_ignore_window_exclude,
 		false, NULL, NULL
 	},
 
