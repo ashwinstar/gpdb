@@ -713,7 +713,7 @@ static void ConstructInitPlan(PartitionJoinMutatorContext *ctx)
 	{
 		int offset = list_length(ctx->root->parse->rtable);
 		AdjustVarno(ctx->root, (Node *) ctx->outerPlan, offset);
-		ctx->root->parse->rtable = list_concat(ctx->root->parse->rtable, ctx->rtable);
+		ctx->root->parse->rtable = list_concat(ctx->root->parse->rtable, copyObject(ctx->rtable));
 	}
 
 	/*
