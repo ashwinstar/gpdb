@@ -8,7 +8,6 @@ Usage: gpcheckcat [<option>] [dbname]
     -h host    : DB host name
     -p port    : DB port number
     -P passwd  : DB password
-    -o         : check OID consistency
     -U uname   : DB User Name
     -v         : verbose
     -T dir     : use <dir> as a temporary working directory
@@ -214,6 +213,8 @@ def parseCommandLine():
                 logger.debug('%s not specified; default to %s (from %s)' % 
                         (x, t, v))
 
+    if GV.opt['-l']: return
+
     if GV.opt['-v']:
         enable_verbose_logging()
 
@@ -241,7 +242,9 @@ def parseCommandLine():
         usage('Too many arguments')
 
     if len(args) == 0:
-        GV.dbname = os.environ.get('PGDATABASE') or GV.opt['-U']
+        GV.dbname = os.environ.get('PGDATABASE') 
+        if GV.dbname is None:
+            GV.dbname = 'template1'
         logger.debug('database is %s' % GV.dbname)
     else:
         GV.dbname = args[0]
@@ -262,7 +265,7 @@ def parseCommandLine():
             usage('Error: invalid value \'%s\' for shared table option. Legal values are (none, only)'% GV.opt['-S']);
         GV.opt['-S'] = GV.opt['-S'].lower()
 
-    logger.info('master at host %s, port %s, user %s, database %s' % 
+    logger.debug('master at host %s, port %s, user %s, database %s' % 
            (GV.opt['-h'], GV.opt['-p'], GV.opt['-U'], GV.dbname))
 
     try:
@@ -303,6 +306,8 @@ def connect2(cfgrec, user=None, password=None, database=None, utilityMode=True):
     port = cfgrec['port']
     datadir = cfgrec['datadir']
     logger.debug('connect %s:%s:%s' % (host, port, datadir))
+    if not database: database = GV.dbname
+
     key = "%s.%s.%s.%s.%s.%s.%s" % (host, port, datadir, user, password, database,
                                  str(utilityMode))
     conns = GV.db.get(key)
@@ -4255,6 +4260,7 @@ def checkcatReport():
     for par in GPObjectGraph:
         if par.isTopLevel():
             reportAllIssuesRecursive(par, GPObjectGraph)
+    print '\n'
 
 
 
@@ -4262,15 +4268,15 @@ def checkcatReport():
 if __name__ == '__main__':
 
     parseCommandLine()
+    if GV.opt['-l']:
+        listAllTests()
+        sys.exit(GV.retcode)
+
     GV.version = getversion()
     GV.cfg = getGPConfiguration()
     GV.max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
     GV.catalog = getCatalog()
     
-    if GV.opt['-l']:
-        listAllTests()
-        sys.exit(GV.retcode)
-
     # turn on toast table check for 3.2
     if GV.opt['-o'] == False and not GV.version == "8.2.6":
         GV.opt['-o'] = True
@@ -4278,9 +4284,10 @@ if __name__ == '__main__':
     for dbname in GV.alldb:
         logger.info('-----------------------------------')
         logger.info('-----------------------------------')
+        logger.info("Master at host %s, port %s, user %s" % (GV.opt['-h'], GV.opt['-p'], GV.opt['-U']))
         logger.info("Performing check for database \'%s\', version %s" % (dbname, GV.version ))
         logger.info('-----------------------------------')
-
+           
         # Reset global variables
         GPObjects = {}
         GPObjectGraph = {} 
