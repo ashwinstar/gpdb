@@ -139,6 +139,19 @@ static void MatchAppendPattern(Plan *append, PartitionJoinMutatorContext *ctx)
 	ctx->partitionOid = InvalidOid;
 
 	/**
+	 * It is possible we have already applied the transformation to this subtree.
+	 * Check for result node as child.
+	 */
+	Append *appendNode = (Append *) append;
+	Assert(list_length(appendNode->appendplans) > 0);
+	Plan *child = (Plan *) list_nth(appendNode->appendplans, 0);
+	if (IsA(child, Result))
+	{
+		ctx->safeToConvert = false;
+		return;
+	}
+
+	/**
 	 * Find all the vars in the targetlist and check if they're from a partitioned table.
 	 */
 	List *allVars = extract_nodes(NULL /* PlannerGlobal */, (Node *) append->targetlist, T_Var);
@@ -457,16 +470,14 @@ static void MatchPartitionJoinPattern(Plan *plan, PartitionJoinMutatorContext *c
 	Assert(IsA(plan->lefttree, Append));
 	MatchAppendPattern(plan->lefttree, ctx);
 
-	if (!ctx->safeToConvert)
+	if (ctx->safeToConvert)
 	{
-		return;
+		/**
+		 * Match the join condition.
+		 */
+		Assert(IsJoin((Node *) plan));
+		MatchJoinPattern(plan, ctx);
 	}
-
-	/**
-	 * Match the join condition.
-	 */
-	Assert(IsJoin((Node *) plan));
-	MatchJoinPattern(plan, ctx);
 
 	MemoryContextSwitchTo(ctx->callerCtx);
 }
