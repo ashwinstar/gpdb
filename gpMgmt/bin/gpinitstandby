@@ -17,6 +17,7 @@ try:
     from gppylib.db import catalog
     from gppylib.userinput import *
     from gppylib.gp_dbid import GpDbidFile
+    from gppylib.operations.package import SyncPackages
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
              'have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -350,21 +351,20 @@ def delete_standby(options):
     except Exception, ex:
         logger.error('Failed to stop gpsyncmaster process on standby master.')
         raise GpInitStandbyException(ex)
-    
+ 
     # delete directory
     remove_standby_filespace_dirs(array)
 
     # Reenable Ctrl-C
     signal.signal(signal.SIGINT,signal.default_int_handler)
   
-    
 #-------------------------------------------------------------------------
 def remove_standby_filespace_dirs(array):
     """Removes the filespace directories on the standby master."""
     
     if array.standbyMaster:
         logger.info('Removing filespace directories on standby master...')
-        
+       
         fs_dirs = array.standbyMaster.getSegmentFilespaces().values()
         
         pool = base.WorkerPool(numWorkers=DEFAULT_BATCH_SIZE)
@@ -440,6 +440,17 @@ def create_standby(options):
         # display summary
         print_summary(options, array, standby_filespace_map)
         
+        # sync packages
+        # The design decision here is to squash any exceptions resulting from the 
+        # synchronization of packages. We should *not* disturb the user's attempts 
+        # initialize a standby.
+        try:
+            logger.info('Syncing Greenplum Database extensions to standby')
+            SyncPackages(options.standby_host).run()
+        except Exception, e:
+            logger.exception('Syncing of Greenplum Database extensions has failed.')
+            logger.warning('Please run gppkg --clean after successful standby initialization.')
+
         # Disable Ctrl-C
         signal.signal(signal.SIGINT,signal.SIG_IGN)
 

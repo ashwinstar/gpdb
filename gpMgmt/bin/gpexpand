@@ -31,6 +31,8 @@ try:
     from pygresql import pg
     from gppylib.gpcoverage import GpCoverage
     from gppylib.gpcatalog import MASTER_ONLY_TABLES
+    from gppylib.operations.package import SyncPackages
+    from gppylib.operations.utils import ParallelOperation
 
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -2287,6 +2289,23 @@ UPDATE gp_distribution_policy
         c = dbconn.connect(test_url, encoding='UTF8', allowSystemTableMods='dml')
         return c
 
+    def sync_packages(self):
+        """
+        The design decision here is to squash any exceptions resulting from the 
+        synchronization of packages. We should *not* disturb the user's attempts to expand.
+        """
+        try:
+            logger.info('Syncing Greenplum Database extensions')
+            new_segment_list = self.gparray.getExpansionSegDbList() 
+            new_host_set = set([ h.getSegmentHostName() for h in new_segment_list ])
+            operations = [SyncPackages(host) for host in new_host_set] 
+            ParallelOperation(operations, self.numworkers).run()  
+            # introspect outcomes
+            for operation in operations:
+                operation.get_ret()
+        except Exception, e:
+            logger.exception('Syncing of Greenplum Database extensions has failed.')
+            logger.warning('Please run gppkg --clean after successful expansion.')
 
 #-----------------------------------------------
 class ExpandTable():
@@ -2909,6 +2928,7 @@ try:
                     raise ValidationError()
         newSegList = gp_expand.read_input_files()
         gp_expand.addNewSegments(newSegList)
+        gp_expand.sync_packages() 
         gp_expand.start_prepare()
         gp_expand.add_segments()
         gp_expand.update_original_segments()

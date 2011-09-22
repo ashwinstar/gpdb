@@ -18,7 +18,7 @@ try:
     from gppylib.mainUtils import ExceptionNoStackTraceNeeded
     from gppylib.operations import Operation
     from gppylib.operations.utils import RemoteOperation, ParallelOperation
-    from gppylib.operations.unix import RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFilesByPattern
+    from gppylib.operations.unix import CheckDir, MakeDir, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFilesByPattern
 
     import yaml   
     from yaml.scanner import ScannerError
@@ -815,6 +815,8 @@ class SyncPackages(Operation):
     def __init__(self, host):
         self.host = host
     def execute(self):
+        if not CheckDir(GPPKG_ARCHIVE_PATH).run():
+            MakeDir(GPPKG_ARCHIVE_PATH).run()
         if not CheckRemoteDir(GPPKG_ARCHIVE_PATH, self.host).run():
             MakeRemoteDir(GPPKG_ARCHIVE_PATH, self.host).run()
 
@@ -822,9 +824,9 @@ class SyncPackages(Operation):
         master_package_set = set(ListFilesByPattern(GPPKG_ARCHIVE_PATH, '*' + GPPKG_EXTENSION).run())
         # set of packages on the remote host
         remote_package_set = set(ListRemoteFilesByPattern(GPPKG_ARCHIVE_PATH, '*' + GPPKG_EXTENSION, self.host).run())
-        # packages to be installed on the remote host             
+        # packages to be uninstalled on the remote host             
         uninstall_package_set = remote_package_set - master_package_set
-        # packages to be uninstalled on the remote host
+        # packages to be installed on the remote host
         install_package_set = master_package_set - remote_package_set
 
         if not install_package_set and not uninstall_package_set:

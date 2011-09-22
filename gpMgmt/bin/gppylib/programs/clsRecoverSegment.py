@@ -35,6 +35,8 @@ from gppylib.testold.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
                                 PathNormalizationException, normalizeAndValidateInputPath, TableLogger
 from gppylib.gphostcache import GpInterfaceToHostNameCache
+from gppylib.operations.utils import ParallelOperation
+from gppylib.operations.package import SyncPackages 
 
 import gppylib.commands.gp
 
@@ -673,6 +675,21 @@ class GpRecoverSegmentProgram:
         else:
             return self.getRecoveryActionsFromConfiguration(gpEnv, gpArray)
 
+    def syncPackages(self, new_hosts):
+        # The design decision here is to squash any exceptions resulting from the 
+        # synchronization of packages. We should *not* disturb the user's attempts to recover.
+        try:
+            logger.info('Syncing Greenplum Database extensions')
+            operations = [ SyncPackages(host) for host in new_hosts ]
+            ParallelOperation(operations, self.__options.parallelDegree).run()
+            # introspect outcomes
+            for operation in operations:
+                operation.get_ret()
+        except Exception, e:
+            logger.exception('Syncing of Greenplum Database extensions has failed.')
+            logger.warning('Please run gppkg --clean after successful segment recovery.')
+
+
     def displayRecovery(self, mirrorBuilder, gpArray):
         self.logger.info('Greenplum instance recovery parameters')
         self.logger.info('---------------------------------------------------------')
@@ -877,6 +894,10 @@ class GpRecoverSegmentProgram:
             if len(gpArray.get_synchronized_segdbs()) != len(gpArray.getSegDbList()):
                 raise Exception("Some segments are not yet synchronized.  All segments must be synchronized to rebalance.")
 
+        # retain list of hosts that were existing in the system prior to getRecoverActions...
+        # this will be needed for later calculations that determine whether
+        # new hosts were added into the system
+        existing_hosts = set(gpArray.getHostList())
 
         # figure out what needs to be done
         mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpEnv, gpArray)
@@ -922,8 +943,14 @@ class GpRecoverSegmentProgram:
                 if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
                     raise UserAbortedException()
 
-            mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
+            # sync packages
+            current_hosts = set(gpArray.getHostList())
+            new_hosts = current_hosts - existing_hosts
+            if new_hosts:
+                self.syncPackages(new_hosts)
 
+            mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
+            
             confProvider.sendPgElogFromMaster("Recovery of %d segment(s) has been started." % \
                     len(mirrorBuilder.getMirrorsToBuild()), True)
 
@@ -1020,4 +1047,3 @@ class GpRecoverSegmentProgram:
         gprecoverseg at the same time.
         """
         return {'pidfilename':'gprecoverseg.pid', 'parentpidvar':'GPRECOVERPID'}
-
