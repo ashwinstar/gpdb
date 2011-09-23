@@ -174,7 +174,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
 		{
-			ExecEagerFreeBitmapHeapScan(node);
+			if (!node->ss.ps.delayEagerFree)
+			{
+				ExecEagerFreeBitmapHeapScan(node);
+			}
 			
 			return ExecClearTuple(slot);
 		}
@@ -190,7 +193,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 
 		if (!ExecQual(node->bitmapqualorig, econtext, false))
 		{
-			ExecEagerFreeBitmapHeapScan(node);
+			if (!node->ss.ps.delayEagerFree)
+			{
+				ExecEagerFreeBitmapHeapScan(node);
+			}
 
 			ExecClearTuple(slot);		/* would not be returned by scan */
 		}
@@ -344,7 +350,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		return slot;
 	}
 
-	ExecEagerFreeBitmapHeapScan(node);
+	if (!node->ss.ps.delayEagerFree)
+	{
+		ExecEagerFreeBitmapHeapScan(node);
+	}
 
 	/*
 	 * if we get here it means we are at the end of the scan..
@@ -674,6 +683,13 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	outerPlanState(scanstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	initGpmonPktForBitmapHeapScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
+
+	/*
+	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
+	 * then this node is not eager free safe.
+	 */
+	scanstate->ss.ps.delayEagerFree =
+		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
 
 	/*
 	 * all done.
