@@ -42,6 +42,13 @@ int			optreset;
 static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
 static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
 
+struct schemaTableList
+{
+	char *tableName;
+	char *schemaName;
+	struct schemaTableList *next;
+};
+
 struct ddboost_options
 {
 	char *timestamp;
@@ -53,7 +60,7 @@ struct ddboost_options
 	char *to_file;
 	char *deleteDir;
 	char *deleteFile;
-	char *table;
+	struct schemaTableList *tableList;
 	char *database;
 	bool listDir;
 	bool copyFromDDBoost;	
@@ -102,16 +109,87 @@ static int deleteFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
 static float getFreePercent(struct ddboost_options *dd_options);
 static int createDDboostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, const char *path_name);
 static int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
-static int createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn); 
+static int createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn); 
 static int splitSchemaAndTableName(char *schemaTable, char **schema, char **table);
-static int lineStartsWith(char *line, char *pattern);
+static int lineStartsWithSchema(char *line, struct schemaTableList *tableList, char **curSchema);
+static int lineStartsWithTable(char *line, struct schemaTableList *tableList, char *curSchema);
 static int lineEndsWith(char *line, char *pattern);
 static int getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath, char *database);
 static int dumpFileHasDatabaseName(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath, char *database);
 static int syncFilesFromDDBoost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath);
 static int isFileToBeCopied(const char*);
 static int copyFilesFromDir(const char *fromDir, char *toDir, ddp_conn_desc_t ddp_conn);
+static struct schemaTableList *getNode(char *tableName);
+static void insertTableName(char *table, struct ddboost_options **dd_options);
+static void deleteTableName(char *table, char *schema, struct ddboost_options **dd_options);
+static void cleanupTableList(struct ddboost_options **dd_options);
 
+/* Helper routines for multiple -T options */
+struct schemaTableList *getNode(char *schemaTable)
+{
+	char *schema = NULL, *table = NULL;
+
+        struct schemaTableList *temp = (struct schemaTableList*)malloc(sizeof(struct schemaTableList));
+        if (!temp)
+        {
+                printf("\nMemory allocation failed\n");
+                return NULL;
+        }
+
+        temp->next = NULL;
+	/* Get the schema and table name from the string */
+	splitSchemaAndTableName(schemaTable, &schema, &table);
+        temp->tableName = strdup(table);
+	temp->schemaName = strdup(schema);
+
+	free(schema);
+	free(table);
+
+	return temp;
+}
+
+void insertTableName(char *schemaTable, struct ddboost_options **dd_options)
+{
+        struct schemaTableList *temp = NULL;
+
+        temp = getNode(schemaTable);
+        temp->next = (*dd_options)->tableList;
+        (*dd_options)->tableList = temp;
+}
+
+void deleteTableName(char *table, char *schema, struct ddboost_options **dd_options)
+{
+        struct schemaTableList *prev = NULL, *cur = (*dd_options)->tableList;
+
+        while (cur != NULL)
+        {
+                prev = cur;
+                cur = cur->next;
+
+                if ((!strcmp(table, prev->tableName)) && (!strcmp(schema, prev->schemaName)))
+                {
+                        if (prev == (*dd_options)->tableList)
+                                (*dd_options)->tableList = ((*dd_options)->tableList)->next;
+
+                        free(prev->tableName);
+			free(prev->schemaName);
+                        free(prev);
+                }
+        }
+}
+
+void cleanupTableList(struct ddboost_options **dd_options)
+{
+	struct schemaTableList *prev = (*dd_options)->tableList, *cur = NULL;
+
+	while (prev != NULL)
+	{
+		cur = prev->next;
+		deleteTableName(prev->tableName, prev->schemaName, dd_options);
+		prev = cur;
+	}
+}
+	
 int
 main(int argc, char **argv)
 {
@@ -206,9 +284,10 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	if(dd_options->table)
+	if(dd_options->tableList)
 	{
-		failCount = createFakeRestoreFile(dd_options->table, dd_options, ddp_conn);
+		failCount = createFakeRestoreFile(dd_options, ddp_conn);
+		cleanupTableList(&dd_options);
 		goto cleanup;
 	}
 
@@ -263,8 +342,7 @@ usage(void)
 	printf("  --readFile			To read a file on DDBoost\n");	 
 	printf("  --dir=DIR			Pathname of directory to list contents or find latest timestamp\n");
 	printf("  --database=<Databasename>	Database name \n");	
-	printf("  -s				To find the latest timestamp of the dump file\n");	
-	printf("  -t				To restore a specific table\n");
+	printf("  --table				To restore a specific table\n");
 	printf("  --sync			To copy over the config and global dump files\n"); 		
 	printf(("  --help                   	show this help, then exit\n"));
 	printf(("  --version                	output version information, then exit\n"));
@@ -302,7 +380,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"del-file", required_argument, NULL, 11},
 		{"readFile", no_argument, NULL, 12},
 		{"listDirectory", no_argument, NULL, 13},
-		{"t", required_argument, NULL, 14},
+		{"table", required_argument, NULL, 14},
 		{"getLatestTimestamp", no_argument, NULL, 15},
 		{"dir", required_argument, NULL, 16},
 		{"database", required_argument, NULL, 17},
@@ -430,8 +508,8 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				{
 					mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 					return false;
-				}	
-				dd_options->table = Safe_strdup(optarg);
+				}
+				insertTableName(optarg, &dd_options);	
 				break;
 			case 15:
 				dd_options->getLatestTimestamp = true;
@@ -1286,7 +1364,7 @@ static int readFromLocalFileToOutput(char *fileName)
  * for psql statements corresponding to the required table 
  */
 static int 
-createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
+createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 {
         ddp_file_desc_t handle = DDP_INVALID_DESCRIPTOR;
         int err = 0;
@@ -1303,12 +1381,9 @@ createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp
 	char line[101];
 	FILE *fp = NULL, *fpTemp = NULL;
 	int done = false;
-	char *schema = NULL;
-	char *table = NULL;
-	char *searchString = NULL;
 	char *endString = NULL;
-	char *copyString = NULL;
 	int output, in_schema, found;
+	char *curSchema = NULL;
 
 	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
         sprintf(storage_unit_name, "%s", "GPDB");
@@ -1332,9 +1407,6 @@ createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp
                mpp_err_msg(logInfo, progname, "Memory allocation failed\n");
                return -2;
         }
-
-	/* Get the schema and table name from the string */
-	splitSchemaAndTableName(schemaTable, &schema, &table);
 
 	/* Create two processes. In one write to named pipe.
   	 * In the other read from the named pipe and use getline to
@@ -1396,18 +1468,10 @@ createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp
 			return -1;
 		}
 
-		searchString = (char*)malloc(MAX_PATH_NAME);
-		copyString = (char*)malloc(MAX_PATH_NAME);
 		endString = (char*)malloc(MAX_PATH_NAME);
-	
-		memset(searchString, 0, MAX_PATH_NAME);
-		memset(copyString, 0, MAX_PATH_NAME);	
 		memset(endString, 0, MAX_PATH_NAME);
-	
-		sprintf(searchString, "SET search_path = %s", schema);
-		sprintf(copyString, "COPY %s", table);
 		sprintf(endString, "\\.");
-
+	
 		output = false;
 		in_schema = false;
 		found = false;
@@ -1418,30 +1482,31 @@ createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp
 			memset(line, 0, 101);
 			if (fgets(line, 100, fp) != NULL)
 			{
-				if (lineStartsWith(line, searchString))
+				if (lineStartsWithSchema(line, dd_options->tableList, &curSchema))
 				{	
 					fwrite(line, 1, strlen(line), fpTemp);
 					in_schema = true;
 				}
-				else if (in_schema && lineStartsWith(line, copyString))
+				else if (in_schema && lineStartsWithTable(line, dd_options->tableList, curSchema))
 				{
 					found = true;
 					output = true;
+					fwrite(line, 1, strlen(line), fpTemp);
 				}
 				else if (lineEndsWith(line, endString))
 				{
-					if (found && output)
+					if (found && in_schema)
 					{
 						fwrite(line, 1, strlen(line), fpTemp);
 						output = false;
-						in_schema = false;
+						found = false;
 					}
 				}
-				
-				if(output && in_schema)
+				else if (found && output)
 				{
 					fwrite(line, 1, strlen(line), fpTemp);
 				}
+				
 				
 			}
 			else
@@ -1449,6 +1514,7 @@ createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp
 
 		} while (!done);
 		close(fd[0]);
+		ddp_close_file(handle);
 	}
 	
 	return 0;
@@ -1456,20 +1522,54 @@ createFakeRestoreFile(char *schemaTable, struct ddboost_options *dd_options, ddp
 
 /* check if the line starts with the specified pattern */
 int 
-lineStartsWith(char *line, char *pattern)
+lineStartsWithSchema(char *line, struct schemaTableList *tableList, char **curSchema)
 {
 	int i = 0;
+	char schemaLine[MAX_PATH_NAME];
+	struct schemaTableList *cur = tableList;
 	
 	/* Skip spaces at the beginning */	
-	while(line[i] == ' ')
+	while (line[i] == ' ')
 		i++;
 
-	if(strncmp(&line[i], pattern, strlen(pattern)))
-		return 0;
-	else
-		return 1;
+	/* For every schema check if the line begins with SET SEARCH PATH <schema name> */
+	while (cur != NULL)
+	{
+		memset(schemaLine, 0, MAX_PATH_NAME);
+		sprintf(schemaLine, "SET search_path = %s", cur->schemaName); 
+		if (strstr(line, schemaLine))
+		{
+			*curSchema = strdup(cur->schemaName);
+			return 1;
+		}
+		cur = cur->next;
+	}
+	return 0;
 } 
 
+/* check if the line starts with the specified pattern */
+int 
+lineStartsWithTable(char *line, struct schemaTableList *tableList, char *curSchema)
+{
+	int i = 0;
+	char schemaLine[MAX_PATH_NAME];
+	struct schemaTableList *cur = tableList;
+	
+	/* Skip spaces at the beginning */	
+	while (line[i] == ' ')
+		i++;
+
+	/* For every Table check if the line begins with COPY <table name> */
+	while (cur != NULL)
+	{
+		memset(schemaLine, 0, MAX_PATH_NAME);
+		sprintf(schemaLine, "COPY %s", cur->tableName); 
+		if ((!strcmp(curSchema, cur->schemaName) && (strstr(line, schemaLine))))
+			return 1;
+		cur = cur->next;
+	}
+	return 0;
+} 
 /* Check if the line ends with the specified pattern */	
 int 
 lineEndsWith(char *line, char *pattern)
