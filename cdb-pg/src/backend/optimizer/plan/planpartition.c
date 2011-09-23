@@ -23,6 +23,8 @@
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "cdb/cdbvars.h"
+#include "parser/parse_expr.h"
+#include "parser/parse_coerce.h"
 
 extern bool op_mergejoinable(Oid opno, Oid *leftOp, Oid *rightOp);
 extern PartitionNode *RelationBuildPartitionDescByOid(Oid relid,
@@ -318,7 +320,19 @@ static void MatchEqualityOpExpr(OpExpr *opexp, PartitionJoinMutatorContext *ctx)
 		otherExpr = (Expr *) expr1;
 	}
 
-	if (appendVar)
+	/**
+	 * May have to cooerce the other expression
+	 */
+	otherExpr = (Expr *) coerce_to_target_type(NULL,
+			(Node *) otherExpr,
+			exprType( (Node *) otherExpr),
+			exprType((Node *) appendVar),
+			exprTypmod((Node *) appendVar),
+			COERCION_ASSIGNMENT,
+			COERCE_IMPLICIT_CAST,
+			-1);
+
+	if (appendVar && otherExpr)
 	{
 		if (bms_is_member(appendVar->varattno, ctx->partitionKeySet))
 		{
