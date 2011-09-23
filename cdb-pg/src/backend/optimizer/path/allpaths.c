@@ -775,7 +775,14 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	if (root->config->is_initplan)
 	{
 		PlannerConfig *config = CopyPlannerConfig(root->config);
-		subplan = subquery_planner(cteroot->glob, (Query *)cte->ctequery, cteroot,
+
+		/**
+		 * Copy query node since subquery_planner may trash it and we need it intact
+		 * in case we need to create another plan for the CTE
+		 */
+		Query		  *subquery = (Query *) copyObject(cte->ctequery);
+
+		subplan = subquery_planner(cteroot->glob, subquery, cteroot,
 								   tuple_fraction, &subroot, config);
 		cteplaninfo->numInitPlans++;
 
@@ -797,7 +804,13 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	else if (cteplaninfo->subplans == NULL)
 	{
 		PlannerConfig *config = CopyPlannerConfig(root->config);
-		Query		  *subquery = (Query *) cte->ctequery;
+
+		/**
+		 * Copy query node since subquery_planner may trash it and we need it intact
+		 * in case we need to create another plan for the CTE
+		 */
+
+		Query		  *subquery = (Query *) copyObject(cte->ctequery);
 
 		if ((cte->cterefcount - cteplaninfo->numInitPlans) == 1)
 		{

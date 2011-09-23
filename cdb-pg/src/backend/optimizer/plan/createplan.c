@@ -2452,7 +2452,7 @@ create_ctescan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * we satisfy this assumption, so we call SS_finalize_plan
 	 * explicitly here.
 	 */
-	SS_finalize_plan(ctx->root, (Plan *)scan_plan, true);
+	SS_finalize_plan(ctx->root, (Plan *)scan_plan, false);
 
 	return scan_plan;
 	

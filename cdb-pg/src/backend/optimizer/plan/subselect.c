@@ -1084,6 +1084,7 @@ SS_finalize_plan(PlannerInfo *root, Plan *plan, bool attach_initplans)
 	 */
 	if (attach_initplans)
 	{
+		Insist(!plan->initPlan);
 		plan->initPlan = root->init_plans;
 		root->init_plans = NIL;		/* make sure they're not attached twice */
 
