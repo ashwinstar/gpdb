@@ -7879,7 +7879,7 @@ ChooseConstraintNameForPartitionCreate(const char *rname,
 	
 	for (;;)
 	{
-		conname = makeObjectName(rname, cname, label);
+		conname = makeObjectName(rname, cname, modlabel);
 		found = false;
 		
 		foreach(lc, used_names)
