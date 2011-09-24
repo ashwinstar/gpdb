@@ -887,240 +887,33 @@ partitionRegularityChecks = {
     #     This view doesn't actually test this.  Instead, it checks for an
     #     expected pattern of system-defined constraints.
     #     1. The constraints checked are those that don't appear on the root.
-    #     2. Each part has as many constraints as its depth in the partition.
+    #     2. Each part has as many constraints as its depth in the partition
+    #        less any default parts on its path.
     #     Violators are listed as results.
     # 
     # tableid:  pg_class.oid of the partitioned table
     # partid:  pg_class.oid of the (constrained) part table
-    # tabledepth:  maximum depth of partitioned table
-    # partdepth:  depth of part in partition
-    # numcondefs:  number of constraint occurrences expected (incl table)
-    # numconstraints:  number of constraint occurrences observed (incl table)
+    # expected:  number of constraint occurrences expected
+    # actual:  number of constraint occurrences observed
     'irreg_sys_constraint' :
     """select 
-		s.tableid, 
-		s.partid,
-		c.tabledepth, 
-		c.partdepth,
-		count(distinct s.condef) as numcondefs, 
-		count(*) as numconstraints
-	from 
+		coalesce(x.partid, a.partid) as partid,
+		x.tableid, 
+		x.expected, 
+		coalesce(a.actual, 0) as actual                                                                                                                                                                                                                                                                                                                                             
+	from
 		(
-			select 
-				tableid,
-				partid,
-				conid,
-				conname,
-				contype,
-				condef 
-			from (
-					select 
-						x.tableid::regclass as tableid,
-						c.conrelid::regclass as partid,
-						c.oid as conid,
-						c.conname,
-						c.contype,
-						pg_get_constraintdef(c.oid) as condef
-					from 
-						pg_constraint c,
-						(
-							select 
-								tableid,  
-								tabledepth,
-								tableid::regclass partid, 
-								0 as partdepth, 
-								0 as partordinal,
-								'r'::char as partstatus
-							from 
-								(
-									select 
-										parrelid::regclass,
-										max(parlevel)+1
-									from
-										pg_partition
-									group by parrelid
-								) as ptable(tableid, tabledepth) 
-							union all
-							select 
-								parrelid::regclass as tableid,  
-								t.tabledepth as tabledepth,
-								r.parchildrelid::regclass partid, 
-								p.parlevel + 1 as partdepth, 
-								r.parruleord as partordinal,
-								case
-									when t.tabledepth = p.parlevel + 1 then 'l'::char
-									else 'i'::char
-								end as partstatus
-							from 
-								pg_partition p, 
-								pg_partition_rule r,
-								 (
-									select 
-										parrelid::regclass,
-										max(parlevel)+1
-									from
-										pg_partition
-									group by parrelid
-								) as t(tableid, tabledepth) 
-							where 
-								p.oid = r.paroid
-								and not p.paristemplate
-								and p.parrelid = t.tableid
-						) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
-					where
-						x.partid = c.conrelid
-				) as part_constraint(tableid, partid, conid, conname, contype, condef)  
-			where 
-				(partid, condef) not in 
-					(
-						select partid, condef 
-						from (
-					select
-						u.tableid,
-						u.conname, 
-						u.contype,
-						u.condef, 
-						p.partid, 
-						p.conid,
-						coalesce(p.conname) 
-					from
-						(
-							select
-								p.tableid,
-								c.conname,
-								c.contype,
-								pg_get_constraintdef(c.oid) as condef
-							from 
-								(
-									select 
-										parrelid::regclass,
-										max(parlevel)+1
-									from
-										pg_partition
-									group by parrelid
-								) as p(tableid, tabledepth) ,
-								pg_constraint c
-							where
-								p.tableid = c.conrelid
-						) as u(tableid, conname, contype, condef) 
-							join
-						(
-							select 
-								x.tableid::regclass as tableid,
-								c.conrelid::regclass as partid,
-								c.oid as conid,
-								c.conname,
-								c.contype,
-								pg_get_constraintdef(c.oid) as condef
-							from 
-								pg_constraint c,
-								(
-									select 
-										tableid,  
-										tabledepth,
-										tableid::regclass partid, 
-										0 as partdepth, 
-										0 as partordinal,
-										'r'::char as partstatus
-									from 
-										(
-											select 
-												parrelid::regclass,
-												max(parlevel)+1
-											from
-												pg_partition
-											group by parrelid
-										) as ptable(tableid, tabledepth) 
-									union all
-									select 
-										parrelid::regclass as tableid,  
-										t.tabledepth as tabledepth,
-										r.parchildrelid::regclass partid, 
-										p.parlevel + 1 as partdepth, 
-										r.parruleord as partordinal,
-										case
-											when t.tabledepth = p.parlevel + 1 then 'l'::char
-											else 'i'::char
-										end as partstatus
-									from 
-										pg_partition p, 
-										pg_partition_rule r,
-										 (
-											select 
-												parrelid::regclass,
-												max(parlevel)+1
-											from
-												pg_partition
-											group by parrelid
-										) as t(tableid, tabledepth) 
-									where 
-										p.oid = r.paroid
-										and not p.paristemplate
-										and p.parrelid = t.tableid
-								) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
-							where
-								x.partid = c.conrelid
-						) as p(tableid, partid, conid, conname, contype, condef) 
-							on (
-								u.tableid = p.tableid and
-								u.contype = p.contype and
-								u.condef = p.condef
-								)
-				) as part_user_constraint(tableid, tableconname, contype, condef, partid, partconid, partconname) 
-			)  
-		) as s(tableid, partid, conid, conname, contype, condef) ,
+		{expected}
+		) x
+		  full join 
 		(
-			select 
-				tableid,  
-				tabledepth,
-				tableid::regclass partid, 
-				0 as partdepth, 
-				0 as partordinal,
-				'r'::char as partstatus
-			from 
-				(
-					select 
-						parrelid::regclass,
-						max(parlevel)+1
-					from
-						pg_partition
-					group by parrelid
-				) as ptable(tableid, tabledepth) 
-			union all
-			select 
-				parrelid::regclass as tableid,  
-				t.tabledepth as tabledepth,
-				r.parchildrelid::regclass partid, 
-				p.parlevel + 1 as partdepth, 
-				r.parruleord as partordinal,
-				case
-					when t.tabledepth = p.parlevel + 1 then 'l'::char
-					else 'i'::char
-				end as partstatus
-			from 
-				pg_partition p, 
-				pg_partition_rule r,
-				 (
-					select 
-						parrelid::regclass,
-						max(parlevel)+1
-					from
-						pg_partition
-					group by parrelid
-				) as t(tableid, tabledepth) 
-			where 
-				p.oid = r.paroid
-				and not p.paristemplate
-				and p.parrelid = t.tableid
-		) as c(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
-	where
-		s.partid = c.partid
-	group by 
-		 s.tableid, 
-		 s.partid, 
-		 c.tabledepth,
-		 c.partdepth
-	having c.partdepth != count(*)""",
+		{actual}
+		) a                                                                                                                                                                                                                                                                                                                                      
+		  on (x.partid = a.partid) 
+	where 
+		x.expected != a.actual or 
+		x.expected is null or
+		x.expected != coalesce(a.actual,0);""",
         
     # Query: unenforced_unique_constraint
     # 
@@ -1366,8 +1159,297 @@ partitionRegularityChecks = {
 						u.condef = p.condef
 						)
 		) as part_user_constraint(tableid, tableconname, contype, condef, partid, partconid, partconname) 
-    where partconname != tableconname"""
+    where partconname != tableconname""",
+    
+    # Query based on view: part_sys_actual
+	# tableid
+	# partid
+	# actual observed number of system-constraints
+
+    "actual_part_con_query" :
+    """select 
+		tableid, 
+		partid, 
+		count(*) as actual  
+	from (
+			select 
+				tableid,
+				partid,
+				conid,
+				conname,
+				contype,
+				condef 
+			from (
+					select 
+						x.tableid::regclass as tableid,
+						c.conrelid::regclass as partid,
+						c.oid as conid,
+						c.conname,
+						c.contype,
+						pg_get_constraintdef(c.oid) as condef
+					from 
+						pg_constraint c,
+						(
+							select 
+								tableid,  
+								tabledepth,
+								tableid::regclass partid, 
+								0 as partdepth, 
+								0 as partordinal,
+								'r'::char as partstatus
+							from 
+								(
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as ptable(tableid, tabledepth) 
+							union all
+							select 
+								parrelid::regclass as tableid,  
+								t.tabledepth as tabledepth,
+								r.parchildrelid::regclass partid, 
+								p.parlevel + 1 as partdepth, 
+								r.parruleord as partordinal,
+								case
+									when t.tabledepth = p.parlevel + 1 then 'l'::char
+									else 'i'::char
+								end as partstatus
+							from 
+								pg_partition p, 
+								pg_partition_rule r,
+								 (
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as t(tableid, tabledepth) 
+							where 
+								p.oid = r.paroid
+								and not p.paristemplate
+								and p.parrelid = t.tableid
+						) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
+					where
+						x.partid = c.conrelid
+				) as part_constraint(tableid, partid, conid, conname, contype, condef)  
+			where 
+				(partid, condef) not in 
+					(
+						select partid, condef 
+						from (
+							select
+								u.tableid,
+								u.conname, 
+								u.contype,
+								u.condef, 
+								p.partid, 
+								p.conid,
+								coalesce(p.conname) 
+							from
+								(
+									select
+										p.tableid,
+										c.conname,
+										c.contype,
+										pg_get_constraintdef(c.oid) as condef
+									from 
+										(
+											select 
+												parrelid::regclass,
+												max(parlevel)+1
+											from
+												pg_partition
+											group by parrelid
+										) as p(tableid, tabledepth) ,
+										pg_constraint c
+									where
+										p.tableid = c.conrelid
+								) as u(tableid, conname, contype, condef) 
+									join
+								(
+									select 
+										x.tableid::regclass as tableid,
+										c.conrelid::regclass as partid,
+										c.oid as conid,
+										c.conname,
+										c.contype,
+										pg_get_constraintdef(c.oid) as condef
+									from 
+										pg_constraint c,
+										(
+											select 
+												tableid,  
+												tabledepth,
+												tableid::regclass partid, 
+												0 as partdepth, 
+												0 as partordinal,
+												'r'::char as partstatus
+											from 
+												(
+													select 
+														parrelid::regclass,
+														max(parlevel)+1
+													from
+														pg_partition
+													group by parrelid
+												) as ptable(tableid, tabledepth) 
+											union all
+											select 
+												parrelid::regclass as tableid,  
+												t.tabledepth as tabledepth,
+												r.parchildrelid::regclass partid, 
+												p.parlevel + 1 as partdepth, 
+												r.parruleord as partordinal,
+												case
+													when t.tabledepth = p.parlevel + 1 then 'l'::char
+													else 'i'::char
+												end as partstatus
+											from 
+												pg_partition p, 
+												pg_partition_rule r,
+												 (
+													select 
+														parrelid::regclass,
+														max(parlevel)+1
+													from
+														pg_partition
+													group by parrelid
+												) as t(tableid, tabledepth) 
+											where 
+												p.oid = r.paroid
+												and not p.paristemplate
+												and p.parrelid = t.tableid
+										) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
+									where
+										x.partid = c.conrelid
+								) as p(tableid, partid, conid, conname, contype, condef) 
+									on (
+										u.tableid = p.tableid and
+										u.contype = p.contype and
+										u.condef = p.condef
+										)
+						) as part_user_constraint(tableid, tableconname, contype, condef, partid, partconid, partconname) 
+					)  
+		) as part_sys_constraint(tableid, partid, conid, conname, contype, condef)  
+	group by tableid, partid""",
+	
+		# Query contains_directly has a row per step along a path from
+	# root to leaf.  The columns are
+	# tableid - pg_class.oid of the partitioned table.
+	# parentid - pg_class.oid of the "from" table.
+	# childid - pg_class.oid of the "to" table, the target of the step.
+	# npcon - constraint count for this step: 0 if "to" is default, else 1.
+	#    
+	 
+	'contains_directly' :
+	"""(
+		select
+			r.parrelid::regclass as tableid,
+			coalesce(p.parchildrelid, r.parrelid)::regclass as parentid,
+			c.parchildrelid::regclass as childid,
+			case when c.parisdefault then 0 else 1 end as npcon
+		from
+			pg_partition r,
+			pg_partition_rule c
+				left join pg_partition_rule p on (c.parparentrule = p.oid)
+		where
+			not r.paristemplate and
+			not c.parchildrelid = 0 and
+			c.paroid = r.oid 
+		) {alias}""",
+	
+	# The base case is the length 1 path from root or branch to branch 
+	# or leaf. This is always the first union term.
+	
+	'base_query' :
+	"""select
+		start.tableid,
+		start.parentid,
+		start.childid,
+		start.npcon
+	from 
+		{contains_directly_start}""",
+	
+	# A union term is an N-way self join of contains_directly and
+	# identifies paths of length N.  Note that the length of a path
+	# to a part at depth N+1 is N. 
+	 
+	'union_term' :
+	"""select
+		start.tableid,
+		start.parentid,
+		stop.childid,
+		start.npcon -- stop.npcon
+	from
+		{contains_directly_start},
+		{contains_directly_stop}{intermediate_path_from}
+	where
+		start.childid {intermediate_path_where}
+		= stop.parentid""",
+	
+	#
+	
+	'union_query' :
+	"""select tableid, childid as partid, sum(npcon) as expected
+	from (
+		{open_union}
+		) r
+	group by tableid, childid"""
+
     }
+
+#############
+
+# For partitionRegularityChecks.
+def make_union_term(depth):
+    assert depth > 0
+
+    union_term = partitionRegularityChecks['union_term']
+    contains_directly = partitionRegularityChecks['contains_directly']
+    
+    path_from = []
+    path_where = []
+    
+    if depth > 1: # for later .join()
+        path_from.append('')
+        path_where.append('')
+    
+    for i in range(1, depth):
+        path_alias = "path%d" % i
+        path_from.append(contains_directly.format(alias = path_alias))
+        path_where.append("    = %s.parentid and %s.childid" 
+            % (path_alias, path_alias) )
+    
+    return union_term.format(
+        contains_directly_start = contains_directly.format(alias = 'start'),
+        contains_directly_stop = contains_directly.format(alias = 'stop'),
+        intermediate_path_from = ",\n    ".join(path_from),
+        intermediate_path_where = "\n".join(path_where)
+        )
+    
+# For partitionRegularityChecks.
+def expected_part_con_query(maxdepth):
+    cds = partitionRegularityChecks['contains_directly'].format(alias = 'start')
+    base_query = partitionRegularityChecks['base_query']
+    terms = [base_query.format(contains_directly_start=cds)]
+    
+    for depth in range(1, maxdepth+1):
+        terms.append(make_union_term(depth))
+    
+    return partitionRegularityChecks['union_query'].format(
+        open_union = '\n\nunion all\n\n'.join(terms))
+
+# For partitionRegularityChecks.
+def make_irregular_sys_con_query(maxdepth):
+    expected = expected_part_con_query(maxdepth)
+    actual = partitionRegularityChecks['actual_part_con_query']
+    qry = partitionRegularityChecks['irreg_sys_constraint']
+    return qry.format(expected = expected, actual = actual)
+
 
 #############
 def checkPartitionRegularity():
@@ -1404,11 +1486,18 @@ def checkPartitionRegularity():
 
     testname = 'system-defined partition constraint regularity on partitioned tables'
     
-    qry = partitionRegularityChecks['irreg_sys_constraint']    
+    # Determine maximum number of partitioning levels in this database
+    qry = """select max(parlevel)+1 as maxdepth from pg_partition;"""
+    curs = db.query(qry)
+    assert len(curs.dictresult()) == 1 # scalar aggregation!
+    maxdepth = int(curs.dictresult()[0]['maxdepth'])
+        
+    qry = make_irregular_sys_con_query(maxdepth)
+
     err = []
     curs = db.query(qry)
     for row in curs.dictresult():
-        err.append( (row['partid'], row['tableid'], row['numconstraints'], row['partdepth']) ) 
+        err.append( (row['partid'], row['tableid'], row['actual'], row['expected']) ) 
 
     if not err:
         logger.info('[OK]  %s' % testname)
