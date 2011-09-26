@@ -1490,14 +1490,15 @@ def checkPartitionRegularity():
     qry = """select max(parlevel)+1 as maxdepth from pg_partition;"""
     curs = db.query(qry)
     assert len(curs.dictresult()) == 1 # scalar aggregation!
-    maxdepth = int(curs.dictresult()[0]['maxdepth'])
+    maxdepth = curs.dictresult()[0]['maxdepth']
         
-    qry = make_irregular_sys_con_query(maxdepth)
-
     err = []
-    curs = db.query(qry)
-    for row in curs.dictresult():
-        err.append( (row['partid'], row['tableid'], row['actual'], row['expected']) ) 
+    
+    if isinstance(maxdepth, int):
+        qry = make_irregular_sys_con_query(maxdepth)
+        curs = db.query(qry)
+        for row in curs.dictresult():
+            err.append( (row['partid'], row['tableid'], row['actual'], row['expected']) ) 
 
     if not err:
         logger.info('[OK]  %s' % testname)
