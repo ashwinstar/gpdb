@@ -183,6 +183,9 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist);
  * vartypmod for the new Var node.  If 'oldexpr' is a Var node, all fields are
  * copied except for varno, varattno and varlevelsup.
  *
+ * The parameter modifyOld determines if varnoold and varoattno are modified or
+ * not. Rule of thumb is to use modifyOld = false if called before setrefs.
+ *
  * Copying an existing Var node preserves its varnoold and varoattno fields,
  * which are used by EXPLAIN to display the table and column name.
  * Also these fields are tested by equal(), so they may need to be set
@@ -190,7 +193,7 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist);
  * make_canonical_pathkey(), etc.
  */
 Expr *
-cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr);
+cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr, bool modifyOld);
 
 
 /*

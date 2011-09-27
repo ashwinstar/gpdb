@@ -209,7 +209,8 @@ pullUpExpr_mutator(Node *node, void *context)
             else
                 newnode = (Node *)cdbpullup_make_expr(ctx->newvarno,
                                     tle->resno,
-                                    (Expr *)var);
+                                    (Expr *)var,
+                                    true);
         }
 
         /* Planner's RelOptInfo targetlists don't have TargetEntry nodes. */
@@ -238,7 +239,7 @@ pullUpExpr_mutator(Node *node, void *context)
             else
                 newnode = (Node *)cdbpullup_make_expr(ctx->newvarno,
                                                     targetattno,
-                                                    tlistexpr);
+                                                    tlistexpr, true);
         }
 
         /* Make sure we haven't inadvertently changed the data type. */
@@ -263,7 +264,7 @@ pullUpExpr_mutator(Node *node, void *context)
         else
             newnode = (Node *)cdbpullup_make_expr(ctx->newvarno,
                                 tle->resno,
-                                tle->expr);
+                                tle->expr, true);
 
         /* Make sure we haven't inadvertently changed the data type. */
         Assert(exprType(newnode) == exprType(node) &&
@@ -552,6 +553,9 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist)
  * vartypmod for the new Var node.  If 'oldexpr' is a Var node, all fields are
  * copied except for varno, varattno and varlevelsup.
  *
+ * The parameter modifyOld determines if varnoold and varoattno are modified or
+ * not. Rule of thumb is to use modifyOld = false if called before setrefs.
+ *
  * Copying an existing Var node preserves its varnoold and varoattno fields,
  * which are used by EXPLAIN to display the table and column name.
  * Also these fields are tested by equal(), so they may need to be set
@@ -559,7 +563,7 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist)
  * make_canonical_pathkey(), etc.
  */
 Expr *
-cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr)
+cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr, bool modifyOld)
 {
     Assert(oldexpr);
     
@@ -569,8 +573,11 @@ cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr)
         Var        *var = (Var *)copyObject(oldexpr);
         var->varno = varno;
         var->varattno = varattno;
-        var->varoattno = varattno;
-        var->varnoold = varno;
+        if (modifyOld)
+        {
+        	var->varoattno = varattno;
+        	var->varnoold = varno;
+        }
         var->varlevelsup = 0;
         return (Expr *) var;
     }
@@ -675,7 +682,8 @@ cdbpullup_targetentry(TargetEntry  *subplan_targetentry,
         /* Make a Var node referencing the subplan's targetlist entry. */
         newtle->expr = cdbpullup_make_expr(newvarno,
         		kidtle->resno,
-        		kidtle->expr);
+        		kidtle->expr,
+        		true);
     }
 
     /* Until then, a Var's referent is the same anywhere in a Query. */
