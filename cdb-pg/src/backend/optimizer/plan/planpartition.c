@@ -290,13 +290,12 @@ static void MatchEqualityOpExpr(OpExpr *opexp, PartitionJoinMutatorContext *ctx)
 	bool isEqualityOp = op_mergejoinable(opexp->opno, &lsortOp, &rsortOp);
 
 	/**
-	 * If this is not an equijoin, then it is unsafe to perform transformation. Bail out early.
+	 * If this is not an equijoin, then bail out early.
 	 */
 
 	if (!isEqualityOp
 			|| list_length(opexp->args) != 2)
 	{
-		ctx->safeToConvert = false;
 		return;
 	}
 
@@ -389,9 +388,11 @@ static void MatchNLJoinPredicate(NestLoop *nlj, PartitionJoinMutatorContext *ctx
 	ListCell *lc = NULL;
 	foreach (lc, nlj->join.joinqual)
 	{
-		Assert(IsA(lfirst(lc), OpExpr));
-		OpExpr *opexp = (OpExpr *) lfirst(lc);
-		MatchEqualityOpExpr(opexp, ctx);
+		if (IsA(lfirst(lc), OpExpr))
+		{
+			OpExpr *opexp = (OpExpr *) lfirst(lc);
+			MatchEqualityOpExpr(opexp, ctx);
+		}
 	}
 }
 
