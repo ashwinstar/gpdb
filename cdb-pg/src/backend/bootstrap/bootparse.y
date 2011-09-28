@@ -352,6 +352,7 @@ Boot_CreateStmt:
 /* relation id: 3124 - pg_proc_callback 20110829 */
 							case ProcCallbackRelationId:
 								typid = PG_PROC_CALLBACK_RELTYPE_OID;
+								break;
 
 /* relation id: 9903 - pg_partition_encoding 20110814 */
 							case PartitionEncodingRelationId:
