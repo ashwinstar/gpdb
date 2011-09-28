@@ -198,7 +198,7 @@ execute ccddlcheck;
 ---------+--------+--------------------------------------------------------
  ccddl   |      1 | {compresstype=none,blocksize=32768}
  ccddl   |      2 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
- ccddl   |      3 | {compresstype=zlib}
+ ccddl   |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (3 rows)
 
 -- no encoding information for this one though
@@ -209,7 +209,7 @@ execute ccddlcheck;
 ---------+--------+--------------------------------------------------------
  ccddl   |      1 | {compresstype=none,blocksize=32768}
  ccddl   |      2 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
- ccddl   |      3 | {compresstype=zlib}
+ ccddl   |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl   |      4 | {compresstype=none,blocksize=32768}
 (4 rows)
 
@@ -260,10 +260,10 @@ drop table ccddl;
 -----------------------------------------------------------------------
 -- only support CO tables
 create table ccddl (i int encoding (compresstype=quicklz));
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1847)
+ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1854)
 create table ccddl (i int encoding (compresstype=quicklz))
 	with (appendonly = true);
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1847)
+ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1854)
 -- can't add encoding to a non-CO table
 create table ccddl (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
@@ -277,6 +277,18 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 alter table ccddl add column j int encoding (compresstype=quicklz);
 ERROR:  ENCODING clause supplied for table that is not column oriented
 drop table ccddl;
+-- check that we validate the encoding clause for add column
+create table ccddl (i int) with (appendonly=true, orientation=column);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+alter table ccddl add column j int encoding(compresstype=yawn);
+ERROR:  unknown compresstype "yawn"
+alter table ccddl add column j int encoding(compresstype=quicklz,
+compresslevel=100000);
+ERROR:  compresslevel=100000 is out of range (should be between 0 and 9)
+alter table ccddl add column j int encoding(a=b);
+ERROR:  unrecognized parameter "a"
+drop table ccddl;
 -- encoding clause conflicts with WITH clause
 create table a (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
 appendonly=true, orientation=column);
@@ -284,7 +296,7 @@ ERROR:  ENCODING clause conflicts with table WITH clause
 -- conflicting WITH and DEFAULT COLUMN ENCODING clause
 create table t1 (i int, j int, default column encoding (compresstype=quicklz))
 with (compresstype=zlib, appendonly=true, orientation=column);
-ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause (analyze.c:1744)
+ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause (analyze.c:1753)
 -- Invalid encoding clauses
 create table t1 (i int encoding (compresstype=quicklz, compresslevel=9))
 with (appendonly=true, orientation=column);
@@ -476,12 +488,12 @@ execute ccddlcheck;
 select parencattnum, parencattoptions from
 pg_partition_encoding e, pg_partition p, pg_class c
 where c.relname = 'ccddl' and c.oid = p.parrelid and p.oid = e.parencoid;
- parencattnum |    parencattoptions    
---------------+------------------------
-            4 | {compresstype=zlib}
-            3 | {compresstype=zlib}
-            2 | {compresstype=quicklz}
-            1 | {compresstype=zlib}
+ parencattnum |                    parencattoptions                    
+--------------+--------------------------------------------------------
+            4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+            3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+            2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+            1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (4 rows)
 
 insert into ccddl select 1, (i % 19) + 1, ((i+3) % 5) + 1, i+3 from generate_series(1, 100) i;
@@ -596,11 +608,11 @@ insert into ccddl select 1, (i % 19) + 1, ((i+3) % 5) + 1 from generate_series(1
 select parencattnum, parencattoptions from
 pg_partition_encoding e, pg_partition p, pg_class c
 where c.relname = 'ccddl' and c.oid = p.parrelid and p.oid = e.parencoid;
- parencattnum |    parencattoptions    
---------------+------------------------
-            3 | {compresstype=zlib}
-            2 | {compresstype=quicklz}
-            1 | {compresstype=zlib}
+ parencattnum |                    parencattoptions                    
+--------------+--------------------------------------------------------
+            3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+            2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+            1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (3 rows)
 
 select * from ccddl;
@@ -881,10 +893,10 @@ execute ccddlcheck;
  ccddl_1_prt_p2_2_prt_sp1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p3           |      1 | {compresstype=zlib}
- ccddl_1_prt_p3           |      2 | {compresstype=quicklz}
- ccddl_1_prt_p3           |      3 | {compresstype=zlib}
- ccddl_1_prt_p3           |      4 | {compresstype=zlib}
+ ccddl_1_prt_p3           |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3           |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3           |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3           |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (24 rows)
 
 drop table ccddl;
@@ -1258,6 +1270,18 @@ NOTICE:  drop cascades to append only columnar table ccddlchild
 -- Partitioning support
 -- Expect: failure
 -----------------------------------------------------------------------
+-- Make sure we validate the storage directives
+create table gg (i int, k int) with (appendonly=true, orientation=column)
+partition by range(k) (partition p1 start(1) end(2), column i encoding(a=b));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  unrecognized parameter "a"
+create table gg (i int, k int) with (appendonly=true, orientation=column)
+partition by range(k) (partition p1 start(1) end(2), column i
+encoding(compresstype=sdf2sdf));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  unknown compresstype "sdf2sdf"
 -----------------------------------------------------------------------
 -- Type support
 -- Expect: success
@@ -1338,10 +1362,52 @@ execute ccddlcheck;
 (1 row)
 
 drop table ccddl;
+-- Ensure that we can handle the SQL types that are recognized by the parser
+-- but are not represented in the catalog.
+alter type character varying set default encoding (compresstype=quicklz);
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'varchar' and t.oid = e.typid;
+                       typoptions                       
+--------------------------------------------------------
+ {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(1 row)
+
+alter type character set default encoding (compresstype=zlib);
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'bpchar' and t.oid = e.typid;
+                     typoptions                      
+-----------------------------------------------------
+ {compresstype=zlib,compresslevel=1,blocksize=32768}
+(1 row)
+
+alter type timestamp with time zone set default encoding(compresstype=rle_type);
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'timestamptz' and t.oid = e.typid;
+                       typoptions                        
+---------------------------------------------------------
+ {compresstype=rle_type,compresslevel=1,blocksize=32768}
+(1 row)
+
+-- schema qualification
+alter type pg_catalog.text set default encoding (compresstype=quicklz);
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'text' and t.oid = e.typid;
+                       typoptions                       
+--------------------------------------------------------
+ {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(1 row)
+
 -----------------------------------------------------------------------
 -- Type support
 -- Expect: failure
 -----------------------------------------------------------------------
+-- We should reject any extraneous type information during alter type
+alter type numeric(10, 2) set default encoding(compresstype=zlib);
+ERROR:  type precision cannot be specified when setting DEFAULT ENCODING
+alter type int[2][3] set default encoding(compresstype=rle_type);
+ERROR:  syntax error at or near "["
+LINE 1: alter type int[2][3] set default encoding(compresstype=rle_t...
+                      ^
 -- permissions checks
 create role typcheck;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
@@ -1350,14 +1416,25 @@ alter type int42 set default encoding (compresstype=zlib, compresslevel=1);
 ERROR:  must be owner of type int42
 reset session authorization;
 drop role typcheck;
+-- Verify that we validate the storage clause
+alter type text set default encoding (a=b);
+ERROR:  unrecognized parameter "a"
+alter type text set default encoding (compresstype=10);
+ERROR:  unknown compresstype "10"
+alter type text set default encoding (compresstype=quicklz, compresslevel=100);
+ERROR:  compresslevel=100 is out of range (should be between 0 and 9)
 -- dependency check on drop type
 drop type int42 cascade;
 NOTICE:  drop cascades to function int42_out(int42)
 NOTICE:  drop cascades to function int42_in(cstring)
 select * from pg_type_encoding;
- typid | typoptions 
--------+------------
-(0 rows)
+ typid |                       typoptions                        
+-------+---------------------------------------------------------
+  1043 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+  1042 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+  1184 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+    25 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(4 rows)
 
 -- cleanup
 deallocate ccddlcheck;

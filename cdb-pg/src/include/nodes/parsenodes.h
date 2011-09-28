@@ -2284,7 +2284,7 @@ typedef struct AlterOwnerStmt
 typedef struct AlterTypeStmt
 {
 	NodeTag		type;
-	List	   *typname;
+	TypeName   *typname;
 	List	   *encoding;
 } AlterTypeStmt;
 

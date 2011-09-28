@@ -16,6 +16,7 @@
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbappendonlystoragelayer.h"
 #include "utils/builtins.h"
+#include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/formatting.h"
 #include "utils/lsyscache.h"
@@ -23,21 +24,21 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
-
-/*
- * Get all storage options for all user attributes of the table.
- */
-StdRdOptions **
-RelationGetAttributeOptions(Relation rel)
+static Datum *
+get_rel_attoptions(Relation rel)
 {
+	Form_pg_attribute attform;
 	HeapTuple		tuple;
 	ScanKeyData		key;
 	SysScanDesc		scan;
-	StdRdOptions  **opts;
+	Datum		   *dats;
 	Relation 		pgae = heap_open(AttributeEncodingRelationId,
 									 AccessShareLock);
 
-	opts = palloc0(RelationGetNumberOfAttributes(rel) * sizeof(StdRdOptions *));
+	/* used for attbyval and len below */
+	attform = pgae->rd_att->attrs[Anum_pg_attribute_encoding_attoptions - 1];
+
+	dats = palloc0(RelationGetNumberOfAttributes(rel) * sizeof(Datum));
 
 	ScanKeyInit(&key,
 				Anum_pg_attribute_encoding_attrelid,
@@ -57,21 +58,64 @@ RelationGetAttributeOptions(Relation rel)
 		Form_pg_attribute_encoding a = 
 			(Form_pg_attribute_encoding)GETSTRUCT(tuple);
 		int16 attnum = a->attnum;
-		Datum reloptions;
+		Datum attoptions;
 		bool isnull;
 
 		Insist(attnum > 0 && attnum <= RelationGetNumberOfAttributes(rel));
 
-		reloptions = heap_getattr(tuple, Anum_pg_attribute_encoding_attoptions,
+		attoptions = heap_getattr(tuple, Anum_pg_attribute_encoding_attoptions,
 								  RelationGetDescr(pgae), &isnull);
 		Insist(!isnull);
 
-		opts[attnum - 1] = (StdRdOptions *)heap_reloptions(0, reloptions, false);
+		dats[attnum - 1] = datumCopy(attoptions,
+									 attform->attbyval,
+									 attform->attlen);
 	}
 
 	systable_endscan(scan);
 
 	heap_close(pgae, AccessShareLock);
+
+	return dats;
+
+}
+
+List **
+RelationGetUntransformedAttributeOptions(Relation rel)
+{
+	List **l;
+	int i;
+	Datum *dats = get_rel_attoptions(rel);
+
+	l = palloc0(RelationGetNumberOfAttributes(rel) * sizeof(List *));
+
+	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+	{
+		l[i] = untransformRelOptions(dats[i]);
+	}
+
+	return l;
+}
+
+/*
+ * Get all storage options for all user attributes of the table.
+ */
+StdRdOptions **
+RelationGetAttributeOptions(Relation rel)
+{
+	Datum *dats;
+	StdRdOptions **opts;
+	int i;
+
+	opts = palloc0(RelationGetNumberOfAttributes(rel) * sizeof(StdRdOptions *));
+
+	dats = get_rel_attoptions(rel);
+
+	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+	{
+		if (DatumGetPointer(dats[i]) != NULL)
+			opts[i] = (StdRdOptions *)heap_reloptions(0, dats[i], false);
+	}
 
 	return opts;
 }

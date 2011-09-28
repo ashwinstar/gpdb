@@ -6409,6 +6409,8 @@ ATPrepAddColumn(Relation rel, bool recurse, AlterTableCmd *cmd)
 				 errmsg("ENCODING clause supplied for table that is "
 						"not column oriented")));
 
+	if (def->encoding)
+		def->encoding = transformStorageEncodingClause(def->encoding);
 
 	/*
 	 * If we are told not to recurse, there had better not be any child
@@ -12285,12 +12287,22 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 	TupleDesc tupdesc = RelationGetDescr(rel);
 	List *drop_atts = NIL; /* attnums where we want an attribute to drop */
 
-	for (attno = 0; attno < tupdesc->natts; attno++)
+	/* 
+	 * We cannot CTAS and do per column compression for AOCO tables so we need
+	 * to CREATE and then INSERT.
+	 */
+	if (RelationIsAoCols(rel))
+		need_rebuild = true;
+
+	if (!need_rebuild)
 	{
-		if (tupdesc->attrs[attno]->attisdropped)
+		for (attno = 0; attno < tupdesc->natts; attno++)
 		{
-			need_rebuild = true;
-			break;
+			if (tupdesc->attrs[attno]->attisdropped)
+			{
+				need_rebuild = true;
+				break;
+			}
 		}
 	}
 
@@ -12313,10 +12325,10 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		Query *q;
 		char *dstr = "__gp_atsdb_droppedcol";
 		DestReceiver *dest = None_Receiver;
+		List **col_encs = NULL;
 
 		cs->relKind = RELKIND_RELATION;
 		cs->distributedBy = distro;
-		cs->options = opts;
 		cs->relation = tmpname;
 		cs->ownerid = rel->rd_rel->relowner;
 		cs->tablespacename = get_tablespace_name(rel->rd_rel->reltablespace);
@@ -12325,6 +12337,31 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		if (isTmpTableAo &&
 			rel->rd_rel->relhasindex)
 			cs->buildAoBlkdir = true;
+
+		if (RelationIsAoCols(rel))
+		{
+			/* 
+			 * Need to remove table level compression settings for the
+			 * AOCO case since they're set at the column level.
+			 */
+			ListCell *lc;
+
+			foreach(lc, opts)
+			{
+				DefElem *de = lfirst(lc);
+
+				if (de->defname &&
+					(strcmp("compresstype", de->defname) == 0 ||
+					 strcmp("compresslevel", de->defname) == 0 ||
+					 strcmp("blocksize", de->defname) == 0))
+					continue;
+				else
+					cs->options = lappend(cs->options, de);
+			}
+			col_encs = RelationGetUntransformedAttributeOptions(rel);
+		}
+		else
+			cs->options = opts;
 
 		for (attno = 0; attno < tupdesc->natts; attno++)
 		{
@@ -12379,7 +12416,12 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 					/* bound of -1 are fine because this has no effect on data */
 					tname->arrayBounds = lappend(tname->arrayBounds,
 												 makeInteger(-1));
+
+				/* Per column encoding settings */
+				if (col_encs)
+					cd->encoding = col_encs[attno];
 			}
+
 			tname->location = -1;
 			cd->typname = tname;
 			cs->tableElts = lappend(cs->tableElts, cd);

@@ -85,6 +85,7 @@ extern uint32 *RelationGetColumnBlocksize(Relation rel);
 extern uint32 RelationGetRelationBlocksize(Relation rel);
 extern PGFunction  *RelationGetRelationCompressionFuncs(Relation rel);
 extern StdRdOptions **RelationGetAttributeOptions(Relation rel);
+extern List **RelationGetUntransformedAttributeOptions(Relation rel);
 
 extern void AddRelationAttributeEncodings(Relation rel, List *attr_encodings);
 extern void RemoveRelationAttributeEncoding(Oid relid, AttrNumber attnum);

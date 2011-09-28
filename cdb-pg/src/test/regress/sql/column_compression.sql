@@ -114,6 +114,14 @@ create table ccddl (i int) with (appendonly=true);
 alter table ccddl add column j int encoding (compresstype=quicklz);
 drop table ccddl;
 
+-- check that we validate the encoding clause for add column
+create table ccddl (i int) with (appendonly=true, orientation=column);
+alter table ccddl add column j int encoding(compresstype=yawn);
+alter table ccddl add column j int encoding(compresstype=quicklz,
+compresslevel=100000);
+alter table ccddl add column j int encoding(a=b);
+drop table ccddl;
+
 -- encoding clause conflicts with WITH clause
 create table a (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
 appendonly=true, orientation=column);
@@ -258,6 +266,14 @@ drop table ccddlparent cascade;
 -- Expect: failure
 -----------------------------------------------------------------------
 
+-- Make sure we validate the storage directives
+create table gg (i int, k int) with (appendonly=true, orientation=column)
+partition by range(k) (partition p1 start(1) end(2), column i encoding(a=b));
+
+create table gg (i int, k int) with (appendonly=true, orientation=column)
+partition by range(k) (partition p1 start(1) end(2), column i
+encoding(compresstype=sdf2sdf));
+
 -----------------------------------------------------------------------
 -- Type support
 -- Expect: success
@@ -313,10 +329,34 @@ compresstype=none);
 execute ccddlcheck;
 drop table ccddl;
 
+-- Ensure that we can handle the SQL types that are recognized by the parser
+-- but are not represented in the catalog.
+alter type character varying set default encoding (compresstype=quicklz);
+
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'varchar' and t.oid = e.typid;
+
+alter type character set default encoding (compresstype=zlib);
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'bpchar' and t.oid = e.typid;
+
+alter type timestamp with time zone set default encoding(compresstype=rle_type);
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'timestamptz' and t.oid = e.typid;
+
+-- schema qualification
+alter type pg_catalog.text set default encoding (compresstype=quicklz);
+select typoptions from pg_type t, pg_type_encoding e where
+  t.typname = 'text' and t.oid = e.typid;
+
 -----------------------------------------------------------------------
 -- Type support
 -- Expect: failure
 -----------------------------------------------------------------------
+
+-- We should reject any extraneous type information during alter type
+alter type numeric(10, 2) set default encoding(compresstype=zlib);
+alter type int[2][3] set default encoding(compresstype=rle_type);
 
 -- permissions checks
 create role typcheck;
@@ -324,6 +364,11 @@ set session authorization typcheck;
 alter type int42 set default encoding (compresstype=zlib, compresslevel=1);
 reset session authorization;
 drop role typcheck;
+
+-- Verify that we validate the storage clause
+alter type text set default encoding (a=b);
+alter type text set default encoding (compresstype=10);
+alter type text set default encoding (compresstype=quicklz, compresslevel=100);
 
 -- dependency check on drop type
 drop type int42 cascade;

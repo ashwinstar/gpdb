@@ -214,6 +214,12 @@ callCompressionConstructor(PGFunction constructor,
 
 }
 
+void
+callCompressionDestructor(PGFunction destructor, CompressionState *state)
+{
+	DirectFunctionCall1(destructor, PointerGetDatum(state));
+}
+
 /* Actually call a compression (or decompression) function */
 void
 callCompressionActuator(PGFunction func , const void *src , int32 src_sz,
@@ -228,6 +234,18 @@ callCompressionActuator(PGFunction func , const void *src , int32 src_sz,
 
 }
 
+void
+callCompressionValidator(PGFunction func, char *comptype, int32 complevel,
+						 int32 blocksize, Oid typid)
+{
+	StorageAttributes sa;
+
+	sa.comptype = comptype;
+	sa.complevel = complevel;
+	sa.blocksize = blocksize;
+	sa.typid = typid;
+	(void)DirectFunctionCall1(func, PointerGetDatum(&sa));
+}
 
 /*
  * quicklz helper function.

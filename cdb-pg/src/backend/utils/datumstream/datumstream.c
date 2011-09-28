@@ -297,7 +297,7 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
     acc->maxsz = maxsz;
     acc->is_reader = isreader;
 
-    acc->ao_attr.compress = (compLevel > 0);
+    acc->ao_attr.compress = (compType != COMPTYPE_NONE);
     acc->ao_attr.compressType = compType;
     acc->ao_attr.compressLevel = compLevel;
     acc->ao_attr.version = version;

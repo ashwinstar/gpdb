@@ -52,6 +52,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/planmain.h"
 #include "optimizer/var.h"
+#include "parser/analyze.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
@@ -326,6 +327,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 
 	if (encoding)
 	{
+		encoding = transformStorageEncodingClause(encoding);
 		typoptions = transformRelOptions((Datum) 0, encoding, true, false);
 	}
 
@@ -2578,16 +2580,18 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 void
 AlterType(AlterTypeStmt *stmt)
 {
-	Relation 		pgtypeenc = heap_open(TypeEncodingRelationId, RowExclusiveLock);
-	TypeName	   *typname;
+	TypeName	   *typname = stmt->typname;
 	Oid				typid;
 	ScanKeyData		key[1];
 	SysScanDesc		scan;
 	HeapTuple		tup;
 	Datum			typoptions;
+	bool			typmod_set = false;
+	List		   *encoding = NIL;
+	Relation 		pgtypeenc = heap_open(TypeEncodingRelationId,
+										  RowExclusiveLock);
 
 	/* Make a TypeName so we can use standard type lookup machinery */
-	typname = makeTypeNameFromNameList(stmt->typname);
 	typid = LookupTypeName(NULL, typname);
 
 	if (!OidIsValid(typid))
@@ -2604,13 +2608,40 @@ AlterType(AlterTypeStmt *stmt)
 				 errhint("The ENCODING clause cannot be used with row or "
 						 "composite types.")));
 
+	if (typid == BPCHAROID)
+	{
+		/* 
+		 * for character, the user specified character (N) if typmod is not
+		 * VARHDRSZ + 1.
+		 */
+		if (typname->typmod != VARHDRSZ + 1)
+			typmod_set = true;
+	}
+	else if (typname->typmods || typname->typmod != -1)
+		typmod_set = true;
+
+	if (typmod_set)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("type precision cannot be specified when setting "
+						"DEFAULT ENCODING")));
+
+	if (typname->arrayBounds)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("type array bounds cannot be specified when setting "
+						"DEFAULT ENCODING")));
+
+
 	/* check permissions on type */
 	if (!pg_type_ownercheck(typid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
 					   format_type_be(typid));
 
+	encoding = transformStorageEncodingClause(stmt->encoding);
+
 	typoptions = transformRelOptions(PointerGetDatum(NULL),
-									 stmt->encoding,
+									 encoding,
 									 false,
 									 false);
 

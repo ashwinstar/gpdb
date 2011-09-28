@@ -140,6 +140,7 @@ typedef struct StorageAttributes
 	char *comptype; /* compresstype field */
 	int complevel; /* compresslevel field */
 	size_t blocksize; /* blocksize field */
+	Oid	typid; /* Oid of the type being compressed */
 } StorageAttributes;
 
 extern CompressionState *callCompressionConstructor(PGFunction constructor,
@@ -147,9 +148,15 @@ extern CompressionState *callCompressionConstructor(PGFunction constructor,
 										StorageAttributes *sa,
 										bool is_compress);
 
+extern void callCompressionDestructor(PGFunction destructor, CompressionState *state);
+
 extern void callCompressionActuator(PGFunction func, const void *src,
 									int32 src_sz, char *dst, int32 dst_sz,
 									int32 *dst_used, CompressionState *state);
+
+extern void callCompressionValidator(PGFunction func, char *comptype,
+									 int32 complevel, int32 blocksize,
+									 Oid typid);
 
 extern bool compresstype_is_valid(char *compresstype);
 extern List *default_column_encoding_clause(void);

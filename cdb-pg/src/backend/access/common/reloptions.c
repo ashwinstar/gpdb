@@ -432,7 +432,8 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 
 		compresslevel = pg_atoi(values[4], sizeof(int32), 0);
 
-		if (compresstype && compresslevel == 0 && validate)
+		if (compresstype && strcmp(compresstype, "none") != 0
+					&& compresslevel == 0 && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("compresstype can\'t be used with compresslevel 0"),

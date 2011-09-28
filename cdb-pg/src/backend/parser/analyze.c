@@ -255,7 +255,7 @@ static Alias *make_replacement_alias(Query *qry, const char *aname);
 static char *generate_positional_name(AttrNumber attrno);
 static List*generate_alternate_vars(Var *var, grouped_window_ctx *ctx);
 
-static List *transformMissingAttributeEncoding(List *list);
+static List *fillin_encoding(List *list);
 
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
 
@@ -1472,6 +1472,36 @@ encodings_overlap(List *a, List *b, bool test_conflicts)
 }
 
 /*
+ * Transform and validate the actual encoding clauses.
+ *
+ * We need tell the underlying system that these are AO/CO tables too,
+ * hence the concatenation of the extra elements.
+ */
+List *
+transformStorageEncodingClause(List *options)
+{
+	Datum d;
+	List *extra = list_make2(makeDefElem("appendonly",
+										 (Node *)makeString("true")),
+							 makeDefElem("orientation",
+										 (Node *)makeString("column")));
+
+	/* add defaults for missing values */
+	options = fillin_encoding(options);
+
+	/* 
+	 * The following two statements validate that the encoding clause is well
+	 * formed.
+	 */
+	d = transformRelOptions(PointerGetDatum(NULL),
+									  list_concat(extra, options),
+									  true, false);
+	(void)heap_reloptions(0, d, true);
+
+	return options;
+}
+
+/*
  * Validate the sanity of column reference storage clauses.
  *
  * 1. Ensure that we only refer to columns that exist.
@@ -1480,7 +1510,6 @@ encodings_overlap(List *a, List *b, bool test_conflicts)
 static void
 validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 {
-	List *extra = NIL;
 	ListCell *lc;
 	struct HTAB *ht = NULL;
 	struct colent {
@@ -1533,27 +1562,6 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 			Insist(found == false);
 			ce->count = 0;
 		}
-	}
-
-	/*
-	 * Validate the actual encoding clauses. We need tell the underlying system
-	 * that these are AO/CO tables too, hence the concatenation of the extra
-	 * elements.
-	 */
-	extra = list_make2(makeDefElem("appendonly", (Node *)makeString("true")),
-					   makeDefElem("orientation", (Node *)makeString("column")));
-	foreach(lc, stenc)
-	{
-		ColumnReferenceStorageDirective *c = lfirst(lc);
-		Datum options;
-		List *l = list_copy(extra); /* copy since list_concat is destructive */
-
-		Insist(IsA(c, ColumnReferenceStorageDirective));
-
-		options = transformRelOptions(PointerGetDatum(NULL),
-									  list_concat(l, c->encoding),
-									  true, false);
-		(void)heap_reloptions(0, options, true);
 	}
 
 	/*
@@ -1734,6 +1742,7 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 			else
 			{
 				deflt = c;
+				deflt->encoding = transformStorageEncodingClause(deflt->encoding);
 
 				/*
 				 * The default encoding and the with clause better not
@@ -1757,7 +1766,7 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 	{
 		deflt = makeNode(ColumnReferenceStorageDirective);
 		deflt->deflt = true;
-		deflt->encoding = tmpenc;
+		deflt->encoding = transformStorageEncodingClause(tmpenc);
 	}
 
 	/*
@@ -1785,7 +1794,7 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 			{
 				found_enc = true;
 				c->encoding = d->encoding;
-				c->encoding = transformMissingAttributeEncoding(c->encoding);
+				c->encoding = transformStorageEncodingClause(c->encoding);
 			}
 			else
 			{
@@ -1811,7 +1820,7 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 
 				if (s)
 				{
-					s->encoding = transformMissingAttributeEncoding(s->encoding);
+					s->encoding = transformStorageEncodingClause(s->encoding);
 					newenc = lappend(newenc, s);
 					continue;
 				}
@@ -1820,7 +1829,6 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 				if (deflt)
 				{
 					c->encoding = copyObject(deflt->encoding);
-					c->encoding = transformMissingAttributeEncoding(c->encoding);
 				}
 				else
 				{
@@ -1829,7 +1837,6 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 					if (te)
 					{
 						c->encoding = copyObject(te);
-						c->encoding = transformMissingAttributeEncoding(c->encoding);
 					}
 					else
 						c->encoding = default_column_encoding_clause();
@@ -3257,7 +3264,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
  * Add any missing encoding attributes (compresstype = none, blocksize=...).
  */
 static List *
-transformMissingAttributeEncoding(List *list)
+fillin_encoding(List *list)
 {
 	bool foundCompressType = false;
 	bool foundCompressLevel = false;
@@ -6398,6 +6405,14 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	} /* end foreach(lc, partElts) */
 
 	pSpec->enc_clauses = enc_cls;
+
+	/* validate the encoding clauses */
+	foreach(lc, pSpec->enc_clauses)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+
+		c->encoding = transformStorageEncodingClause(c->encoding);
+	}
 
 	/* validate_range_partition might have changed some boundaries */
 	if (pBy->partType == PARTTYP_RANGE)

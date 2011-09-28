@@ -1665,6 +1665,7 @@ _readColumnDef(const char ** str)
 	READ_NODE_FIELD(raw_default);
 	READ_STRING_FIELD(cooked_default);
 	READ_NODE_FIELD(constraints);
+	READ_NODE_FIELD(encoding);
 
 	READ_DONE();
 }
