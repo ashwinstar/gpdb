@@ -668,6 +668,8 @@ AdjustVarnoWalker(Node *node, AdjustVarnoContext *ctx)
 		case T_TidScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
+		case T_SubqueryScan:
+		case T_TableFunctionScan:
 		{
 			/**
 			 * Scan nodes have a scanrelid that is semantically identical to varno.
@@ -675,10 +677,14 @@ AdjustVarnoWalker(Node *node, AdjustVarnoContext *ctx)
 			 */
 			Scan    *splan = (Scan *) node;
 			splan->scanrelid += ctx->offset;
-			break;
+
+			Plan *plan = (Plan *) node;
+			AdjustVarnoWalker((Node *) plan->targetlist, ctx);
+			AdjustVarnoWalker((Node *) plan->qual, ctx);
+			AdjustVarnoWalker((Node *) plan->flow, ctx);
+
+			return false;
 		}
-		case T_SubqueryScan:
-		case T_TableFunctionScan:
 		case T_SubPlan:
 		{
 			/**
