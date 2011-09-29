@@ -404,6 +404,18 @@ static void MatchJoinPattern(Plan *join, PartitionJoinMutatorContext *ctx)
 {
 	Assert(ctx->safeToConvert);
 
+	/**
+	 * If join type is not an inner join, do not apply DPE
+	 */
+	Join *joinNode = (Join *) join;
+
+	if (!(joinNode->jointype == JOIN_INNER
+			|| joinNode->jointype == JOIN_IN))
+	{
+		ctx->safeToConvert = false;
+		return;
+	}
+
 	if (IsA(join, HashJoin))
 	{
 		MatchHashJoinPredicate((HashJoin *) join, ctx);
