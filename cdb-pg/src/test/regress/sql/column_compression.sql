@@ -137,6 +137,14 @@ with (appendonly=true, orientation=column);
 create table t1 (i int encoding (compresstype=quicklz, ahhhh=boooooo))
 with (appendonly=true, orientation=column);
 
+-- Inheritance: check that we don't support inheritance on tables using
+-- column compression
+create table ccddlparent (i int encoding (compresstype=zlib))
+with (appendonly = true, orientation = column);
+create table ccddlchild (j int encoding (compresstype=zlib))
+inherits(ccddlparent) with (appendonly = true, orientation = column);
+drop table ccddlparent cascade;
+
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: success
@@ -244,22 +252,6 @@ drop table ccddl;
 
 -- Should be nothing in pg_partition_encoding now
 select * from pg_partition_encoding;
-
--- Inheritance: check that we haven't broken anything!
-create table ccddlparent (i int encoding (compresstype=zlib))
-with (appendonly = true, orientation = column);
-create table ccddlchild (j int encoding (compresstype=zlib))
-inherits(ccddlparent) with (appendonly = true, orientation = column);
-
-execute ccddlcheck;
-
-insert into ccddlparent select 1 from generate_series(1, 100);
-insert into ccddlchild select 1, 2 from generate_series(1, 100);
-
-select * from ccddlparent;
-select * from ccddlchild;
-
-drop table ccddlparent cascade;
 
 -----------------------------------------------------------------------
 -- Partitioning support

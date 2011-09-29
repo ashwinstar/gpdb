@@ -1858,6 +1858,11 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 
 	validateColumnStorageEncodingClauses(newenc, stmt);
 
+	if (stmt->inhRelations && found_enc)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("INHERITS clause cannot be used with column encoding")));
+
 	return newenc;
 }
 
