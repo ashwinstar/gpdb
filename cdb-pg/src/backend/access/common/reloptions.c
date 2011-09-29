@@ -475,6 +475,19 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 				compresslevel = setDefaultCompressionLevel(compresstype);
 			}
 		}
+		
+		if (compresstype && (pg_strcasecmp(compresstype, "rle_type") == 0) &&
+			(compresslevel != 1))
+		{
+			if (validate)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("compresslevel=%d is out of range for rle_type "
+								"(should be 1)", compresslevel),
+						 errOmitLocation(true)));
+			
+			compresslevel = setDefaultCompressionLevel(compresstype);
+		}
 	}
 	else
 	{
@@ -538,6 +551,18 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 		}
 
 		columnstore = (pg_strcasecmp(values[6], "column") == 0 ? true : false);
+		
+		if (compresstype && 
+			(pg_strcasecmp(compresstype, "rle_type") == 0) &&
+			! columnstore)
+		{
+			if (validate)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("%s cannot be used with Append Only relations row orientation",
+								compresstype),
+						 errOmitLocation(true)));
+		}
 	}
 
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
@@ -725,7 +750,8 @@ void validateAppendOnlyRelOptions(bool ao,
 								  int complevel,
 								  char* comptype,
 								  bool checksum,
-								  char relkind)
+								  char relkind,
+								  bool co)
 {
 	if (relkind != RELKIND_RELATION)
 	{
@@ -747,8 +773,19 @@ void validateAppendOnlyRelOptions(bool ao,
 
 	if (comptype &&
 		(pg_strcasecmp(comptype, "quicklz") == 0 ||
-		 pg_strcasecmp(comptype, "zlib") == 0))
+		 pg_strcasecmp(comptype, "zlib") == 0 ||
+		 pg_strcasecmp(comptype, "rle_type") == 0))
 	{
+		
+		if (! co &&
+			pg_strcasecmp(comptype, "rle_type") == 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("%s cannot be used with Append Only relations row orientation",
+							comptype)));			
+		}
+		
 		if (comptype && complevel == 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -772,6 +809,14 @@ void validateAppendOnlyRelOptions(bool ao,
 								 "(should be 1)", complevel)));
 			}
 		}
+		if (comptype && (pg_strcasecmp(comptype, "rle_type") == 0) &&
+			(complevel != 1))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("compresslevel=%d is out of range for rle_type "
+							"(should be 1)", complevel)));
+		}		
 	}
 
 	if (blocksize < MIN_APPENDONLY_BLOCK_SIZE || blocksize > MAX_APPENDONLY_BLOCK_SIZE ||

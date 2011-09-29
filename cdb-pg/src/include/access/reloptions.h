@@ -45,6 +45,6 @@ extern TidycatOptions *tidycat_reloptions(Datum reloptions);
 
 extern void validateAppendOnlyRelOptions(bool ao, int blocksize, int writesize,
 										 int complevel, char* comptype, 
-										 bool checksum, char relkind);
+										 bool checksum, char relkind, bool co);
 
 #endif   /* RELOPTIONS_H */

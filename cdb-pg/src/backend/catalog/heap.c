@@ -1329,7 +1329,8 @@ heap_create_with_catalog(const char *relname,
 								 stdRdOptions->compresslevel,
 								 stdRdOptions->compresstype,
 								 stdRdOptions->checksum,
-								 relkind);
+								 relkind,
+								 stdRdOptions->columnstore);
 	if(appendOnlyRel)
 	{
 		if(stdRdOptions->columnstore)
