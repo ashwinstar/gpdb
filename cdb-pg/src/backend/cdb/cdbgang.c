@@ -2336,6 +2336,9 @@ disconnectAndDestroyGang(Gang *gp)
 				char		errbuf[256];
 				PGcancel   *cn = PQgetCancel(segdbDesc->conn);
 
+				if (Debug_cancel_print)
+					elog(LOG, "Calling PQcancel for %s", segdbDesc->whoami);
+
 				if (PQcancel(cn, errbuf, 256) == 0)
 				{
 					elog(LOG, "Unable to cancel %s: %s", segdbDesc->whoami, errbuf);

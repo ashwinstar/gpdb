@@ -2307,7 +2307,7 @@ shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dis
 		{
 			dispatchResult->wasCanceled = true;
 
-			if (DEBUG4 >= log_min_messages)
+			if (Debug_cancel_print || DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
 				write_log("Error cleanup in progress; command not sent to %s", 
@@ -2325,7 +2325,7 @@ shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dis
 		gangResults->cancelOnError)
 	{
 		dispatchResult->wasCanceled = true;
-		if (DEBUG4 >= log_min_messages)
+		if (Debug_cancel_print || DEBUG4 >= log_min_messages)
 			write_log("Cancellation request pending; command not sent to %s",
 					  segdbDesc->whoami);
 		return false;
@@ -2532,7 +2532,7 @@ cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
 	 * clear this for safety */
 	MemSet(errbuf, 0, sizeof(errbuf));
 
-	if (DEBUG4 >= log_min_messages)
+	if (Debug_cancel_print || DEBUG4 >= log_min_messages)
 		write_log("Calling PQcancel for %s", segdbDesc->whoami);
 
 	/*
@@ -2546,7 +2546,7 @@ cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
 				
 	if (PQcancel(cn, errbuf, 256) == 0)
 	{	
-		if (LOG >= log_min_messages)
+		if (Debug_cancel_print || LOG >= log_min_messages)
 			write_log("Unable to cancel: %s", errbuf);
 	}
 	PQfreeCancel(cn);
@@ -3400,7 +3400,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 */
 	if (iSlice < nSlices)
 	{
-		elog(DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices", iSlice, nSlices);
+		elog(Debug_cancel_print ? LOG : DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices", iSlice, nSlices);
 
 		/* Cancel any QEs still running, and wait for them to terminate. */
 		CdbCheckDispatchResult(ds, true);

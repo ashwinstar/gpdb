@@ -299,6 +299,7 @@ int			Debug_persistent_store_print_level = LOG;
 bool		Debug_persistent_bootstrap_print = false;
 bool		Debug_bulk_load_bypass_wal = true;
 bool		Debug_persistent_appendonly_commit_count_print = false;
+bool		Debug_cancel_print = false;
 
 #define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
 int         verify_checkpoint_interval =
@@ -2479,7 +2480,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_appendonly_commit_count_print,
 		true, NULL, NULL
 	},
-
+	
+	{
+		{"debug_cancel_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print cancel detail information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_cancel_print,
+		true, NULL, NULL
+	},
+	
 	{
 		{"debug_database_command_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print database command debugging information."),
