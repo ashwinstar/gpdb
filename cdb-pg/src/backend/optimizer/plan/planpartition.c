@@ -396,6 +396,23 @@ static void MatchNLJoinPredicate(NestLoop *nlj, PartitionJoinMutatorContext *ctx
 	}
 }
 
+/**
+ * Does a plan node have a non-initplan subplan somewhere?
+ */
+static bool ContainsSubplan(Plan *p)
+{
+	List *subplans = extract_nodes_plan(p, T_SubPlan, true);
+	ListCell *lc = NULL;
+	foreach (lc, subplans)
+	{
+		SubPlan *sp = (SubPlan *) lfirst(lc);
+		if (!sp->is_initplan)
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 /**
  * Match join condition.
@@ -405,17 +422,21 @@ static void MatchJoinPattern(Plan *join, PartitionJoinMutatorContext *ctx)
 	Assert(ctx->safeToConvert);
 
 	/**
-	 * If join type is not an inner join, do not apply DPE
+	 * If join type is not an inner join or this contains a non-initplan subplan, do not apply DPE
 	 */
 	Join *joinNode = (Join *) join;
 
 	if (!(joinNode->jointype == JOIN_INNER
-			|| joinNode->jointype == JOIN_IN))
+			|| joinNode->jointype == JOIN_IN)
+			|| ContainsSubplan(join->righttree))
 	{
 		ctx->safeToConvert = false;
 		return;
 	}
 
+	/**
+	 * Look at join predicates to find suitable equality conditions on partition key
+	 */
 	if (IsA(join, HashJoin))
 	{
 		MatchHashJoinPredicate((HashJoin *) join, ctx);
