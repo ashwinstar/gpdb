@@ -375,68 +375,86 @@ raba: reloptions:00000470:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 raba: reloptions:00000471:  errmsg("compresslevel=%d is out of range for quicklz " 
 raba: reloptions:00000472:  "(should be 1)", compresslevel), 
 raba: reloptions:00000473:  errOmitLocation(true))); 
-raba: reloptions:00000488:  ereport(ERROR, 
-raba: reloptions:00000489:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000490:  errmsg("usage of parameter \"checksum\" in a non relation object is not supported"), 
-raba: reloptions:00000491:  errOmitLocation(false))); 
-raba: reloptions:00000494:  ereport(ERROR, 
-raba: reloptions:00000495:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-raba: reloptions:00000496:  errmsg("invalid option \'checksum\' for base relation. " 
-raba: reloptions:00000497:  "Only valid for Append Only relations"), 
-raba: reloptions:00000498:  errOmitLocation(true))); 
-raba: reloptions:00000504:  ereport(ERROR, 
-raba: reloptions:00000505:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000506:  errmsg("invalid parameter value for \"checksum\": \"%s\"", 
-raba: reloptions:00000507:  values[5]), 
-raba: reloptions:00000508:  errOmitLocation(true))); 
+raba: reloptions:00000483:  ereport(ERROR, 
+raba: reloptions:00000484:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000485:  errmsg("compresslevel=%d is out of range for rle_type " 
+raba: reloptions:00000486:  "(should be 1)", compresslevel), 
+raba: reloptions:00000487:  errOmitLocation(true))); 
+raba: reloptions:00000501:  ereport(ERROR, 
+raba: reloptions:00000502:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000503:  errmsg("usage of parameter \"checksum\" in a non relation object is not supported"), 
+raba: reloptions:00000504:  errOmitLocation(false))); 
+raba: reloptions:00000507:  ereport(ERROR, 
+raba: reloptions:00000508:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+raba: reloptions:00000509:  errmsg("invalid option \'checksum\' for base relation. " 
+raba: reloptions:00000510:  "Only valid for Append Only relations"), 
+raba: reloptions:00000511:  errOmitLocation(true))); 
 raba: reloptions:00000517:  ereport(ERROR, 
 raba: reloptions:00000518:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000519:  errmsg("usage of parameter \"orientation\" in a non relation object is not supported"), 
-raba: reloptions:00000520:  errOmitLocation(false))); 
-raba: reloptions:00000523:  ereport(ERROR, 
-raba: reloptions:00000524:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-raba: reloptions:00000525:  errmsg("invalid option \"orientation\" for base relation. " 
-raba: reloptions:00000526:  "Only valid for Append Only relations"), 
-raba: reloptions:00000527:  errOmitLocation(true))); 
-raba: reloptions:00000533:  ereport(ERROR, 
-raba: reloptions:00000534:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000535:  errmsg("invalid parameter value for \"orientation\": \"%s\"", 
-raba: reloptions:00000536:  values[6]), 
-raba: reloptions:00000537:  errOmitLocation(true))); 
-raba: reloptions:00000733:  ereport(ERROR, 
-raba: reloptions:00000734:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-raba: reloptions:00000735:  errmsg("appendonly may only be specified for base relations"))); 
-raba: reloptions:00000738:  ereport(ERROR, 
-raba: reloptions:00000739:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-raba: reloptions:00000740:  errmsg("checksum may only be specified for base relations"))); 
-raba: reloptions:00000743:  ereport(ERROR, 
-raba: reloptions:00000744:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-raba: reloptions:00000745:  errmsg("compresstype may only be specified for base relations"))); 
-raba: reloptions:00000753:  ereport(ERROR, 
-raba: reloptions:00000754:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000755:  errmsg("compresstype cannot be used with compresslevel 0"))); 
-raba: reloptions:00000758:  ereport(ERROR, 
-raba: reloptions:00000759:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000760:  errmsg("compresslevel=%d is out of range (should be between 0 and 9)", 
-raba: reloptions:00000761:  complevel))); 
+raba: reloptions:00000519:  errmsg("invalid parameter value for \"checksum\": \"%s\"", 
+raba: reloptions:00000520:  values[5]), 
+raba: reloptions:00000521:  errOmitLocation(true))); 
+raba: reloptions:00000530:  ereport(ERROR, 
+raba: reloptions:00000531:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000532:  errmsg("usage of parameter \"orientation\" in a non relation object is not supported"), 
+raba: reloptions:00000533:  errOmitLocation(false))); 
+raba: reloptions:00000536:  ereport(ERROR, 
+raba: reloptions:00000537:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+raba: reloptions:00000538:  errmsg("invalid option \"orientation\" for base relation. " 
+raba: reloptions:00000539:  "Only valid for Append Only relations"), 
+raba: reloptions:00000540:  errOmitLocation(true))); 
+raba: reloptions:00000546:  ereport(ERROR, 
+raba: reloptions:00000547:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000548:  errmsg("invalid parameter value for \"orientation\": \"%s\"", 
+raba: reloptions:00000549:  values[6]), 
+raba: reloptions:00000550:  errOmitLocation(true))); 
+raba: reloptions:00000560:  ereport(ERROR, 
+raba: reloptions:00000561:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000562:  errmsg("%s cannot be used with Append Only relations row orientation", 
+raba: reloptions:00000563:  compresstype), 
+raba: reloptions:00000564:  errOmitLocation(true))); 
+raba: reloptions:00000759:  ereport(ERROR, 
+raba: reloptions:00000760:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+raba: reloptions:00000761:  errmsg("appendonly may only be specified for base relations"))); 
+raba: reloptions:00000764:  ereport(ERROR, 
+raba: reloptions:00000765:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+raba: reloptions:00000766:  errmsg("checksum may only be specified for base relations"))); 
 raba: reloptions:00000769:  ereport(ERROR, 
-raba: reloptions:00000770:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000771:  errmsg("compresslevel=%d is out of range for quicklz " 
-raba: reloptions:00000772:  "(should be 1)", complevel))); 
-raba: reloptions:00000779:  ereport(ERROR, 
-raba: reloptions:00000780:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000781:  errmsg("block size must be between 8KB and 2MB and " 
-raba: reloptions:00000782:  "be an 8KB multiple, Got %d", blocksize))); 
-raba: reloptions:00000785:  ereport(ERROR, 
-raba: reloptions:00000786:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000787:  errmsg("safefswrite size must be less than 8MB and " 
-raba: reloptions:00000788:  "be a multiple of 8"))); 
-raba: reloptions:00000791:  ereport(ERROR, 
-raba: reloptions:00000792:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raba: reloptions:00000793:  errmsg("block size (%d) is smaller gp_safefswritesize (%d). " 
-raba: reloptions:00000794:  "increase blocksize or decrease gp_safefswritesize if it " 
-raba: reloptions:00000795:  "is safe to do so on this file system", 
-raba: reloptions:00000796:  blocksize, gp_safefswritesize))); 
+raba: reloptions:00000770:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+raba: reloptions:00000771:  errmsg("compresstype may only be specified for base relations"))); 
+raba: reloptions:00000783:  ereport(ERROR, 
+raba: reloptions:00000784:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000785:  errmsg("%s cannot be used with Append Only relations row orientation", 
+raba: reloptions:00000786:  comptype))); 
+raba: reloptions:00000790:  ereport(ERROR, 
+raba: reloptions:00000791:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000792:  errmsg("compresstype cannot be used with compresslevel 0"))); 
+raba: reloptions:00000795:  ereport(ERROR, 
+raba: reloptions:00000796:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000797:  errmsg("compresslevel=%d is out of range (should be between 0 and 9)", 
+raba: reloptions:00000798:  complevel))); 
+raba: reloptions:00000806:  ereport(ERROR, 
+raba: reloptions:00000807:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000808:  errmsg("compresslevel=%d is out of range for quicklz " 
+raba: reloptions:00000809:  "(should be 1)", complevel))); 
+raba: reloptions:00000815:  ereport(ERROR, 
+raba: reloptions:00000816:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000817:  errmsg("compresslevel=%d is out of range for rle_type " 
+raba: reloptions:00000818:  "(should be 1)", complevel))); 
+raba: reloptions:00000824:  ereport(ERROR, 
+raba: reloptions:00000825:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000826:  errmsg("block size must be between 8KB and 2MB and " 
+raba: reloptions:00000827:  "be an 8KB multiple, Got %d", blocksize))); 
+raba: reloptions:00000830:  ereport(ERROR, 
+raba: reloptions:00000831:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000832:  errmsg("safefswrite size must be less than 8MB and " 
+raba: reloptions:00000833:  "be a multiple of 8"))); 
+raba: reloptions:00000836:  ereport(ERROR, 
+raba: reloptions:00000837:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raba: reloptions:00000838:  errmsg("block size (%d) is smaller gp_safefswritesize (%d). " 
+raba: reloptions:00000839:  "increase blocksize or decrease gp_safefswritesize if it " 
+raba: reloptions:00000840:  "is safe to do so on this file system", 
+raba: reloptions:00000841:  blocksize, gp_safefswritesize))); 
 aaaaa GP_IGNORE: taah: tupdesc - ./backend/access/common/tupdesc.c
 taah: tupdesc:00000490:  elog(ERROR, "cache lookup failed for type %u", oidtypeid); 
 taah: tupdesc:00000551:  ereport(ERROR, 
@@ -2015,10 +2033,10 @@ xaaj: xlogutils:00000500:  elog(ERROR, "Empty primary filespace directory locati
 xaaj: xlogutils:00000540:  elog(ERROR, "could not create database directory \"%s\": %m", 
 xaaj: xlogutils:00000541:  dbPath); 
 aaaaa GP_IGNORE: baaj: bootparse - ./backend/bootstrap/bootparse.c
-baaj: bootparse:00001822:  elog(ERROR, "incorrect number of columns in row (expected %d, got %d)", 
-baaj: bootparse:00001823:  numattr, num_columns_read); 
-baaj: bootparse:00001825:  elog(FATAL, "relation not open"); 
-baaj: bootparse:00001944:  elog(FATAL, "too many columns"); 
+baaj: bootparse:00001823:  elog(ERROR, "incorrect number of columns in row (expected %d, got %d)", 
+baaj: bootparse:00001824:  numattr, num_columns_read); 
+baaj: bootparse:00001826:  elog(FATAL, "relation not open"); 
+baaj: bootparse:00001945:  elog(FATAL, "too many columns"); 
 aaaaa GP_IGNORE: aaag: aclchk - ./backend/catalog/aclchk.c
 aaag: aclchk:00000137:  ereport(ERROR, 
 aaag: aclchk:00000138:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
@@ -2376,111 +2394,111 @@ haae: heap:00000556:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 haae: heap:00000557:  errmsg("column \"%s\" has pseudo-type %s", 
 haae: heap:00000558:  attname, format_type_be(atttypid)), 
 haae: heap:00000559:  errOmitLocation(true))); 
-haae: heap:00001347:  ereport(ERROR, 
-haae: heap:00001348:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haae: heap:00001349:  errmsg( 
-haae: heap:00001350:  "OIDS=TRUE is not allowed on tables that " 
-haae: heap:00001351:  "use column-oriented storage. Use OIDS=FALSE" 
-haae: heap:00001352:  ), 
-haae: heap:00001353:  errOmitLocation(true))); 
-haae: heap:00001355:  ereport(NOTICE, 
-haae: heap:00001356:  (errmsg( 
-haae: heap:00001357:  "OIDS=TRUE is not recommended for user-created " 
-haae: heap:00001358:  "tables. Use OIDS=FALSE to prevent wrap-around " 
-haae: heap:00001359:  "of the OID counter" 
-haae: heap:00001360:  ), 
-haae: heap:00001361:  errOmitLocation(true))); 
-haae: heap:00001367:  ereport(ERROR, 
-haae: heap:00001368:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-haae: heap:00001369:  errmsg("relation \"%s\" already exists", relname), 
-haae: heap:00001370:  errOmitLocation(true))); 
-haae: heap:00001772:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-haae: heap:00001837:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
-haae: heap:00001838:  RelationGetRelid(relation), 
-haae: heap:00001839:  relation->rd_rel->relfilenode, 
-haae: heap:00001840:  segmentFileNum); 
-haae: heap:00001882:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00001883:  attnum, relid); 
-haae: heap:00001991:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
-haae: heap:00001992:  relid, attnum); 
-haae: heap:00002028:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
-haae: heap:00002050:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002051:  myattnum, myrelid); 
-haae: heap:00002361:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002362:  attnum, RelationGetRelid(rel)); 
-haae: heap:00002642:  ereport(ERROR, 
-haae: heap:00002643:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002644:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
-haae: heap:00002645:  ccname, RelationGetRelationName(rel)), 
-haae: heap:00002646:  errOmitLocation(true))); 
-haae: heap:00002653:  ereport(ERROR, 
-haae: heap:00002654:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002655:  errmsg("check constraint \"%s\" already exists", 
-haae: heap:00002656:  ccname), 
-haae: heap:00002657:  errOmitLocation(true))); 
-haae: heap:00002746:  ereport(ERROR, 
-haae: heap:00002747:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002748:  errmsg("only table \"%s\" can be referenced in check constraint", 
-haae: heap:00002749:  relname), errOmitLocation(true))); 
-haae: heap:00002754:  ereport(ERROR, 
-haae: heap:00002755:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002756:  errmsg("cannot use subquery in check constraint"), 
-haae: heap:00002757:  errOmitLocation(true))); 
-haae: heap:00002759:  ereport(ERROR, 
-haae: heap:00002760:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002761:  errmsg("cannot use aggregate function in check constraint"), 
-haae: heap:00002762:  errOmitLocation(true))); 
-haae: heap:00002764:  ereport(ERROR, 
-haae: heap:00002765:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002766:  errmsg("cannot use window function in check constraint"), 
-haae: heap:00002767:  errOmitLocation(true))); 
-haae: heap:00002795:  elog(ERROR, "cache lookup failed for relation %u", 
-haae: heap:00002796:  RelationGetRelid(rel)); 
-haae: heap:00002850:  ereport(ERROR, 
-haae: heap:00002851:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002852:  errmsg("cannot use column references in default expression"))); 
-haae: heap:00002858:  ereport(ERROR, 
-haae: heap:00002859:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002860:  errmsg("default expression must not return a set"), 
-haae: heap:00002861:  errOmitLocation(true))); 
-haae: heap:00002867:  ereport(ERROR, 
-haae: heap:00002868:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002869:  errmsg("cannot use subquery in default expression"), 
-haae: heap:00002870:  errOmitLocation(true))); 
-haae: heap:00002872:  ereport(ERROR, 
-haae: heap:00002873:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002874:  errmsg("cannot use aggregate function in default expression"), 
-haae: heap:00002875:  errOmitLocation(true))); 
-haae: heap:00002877:  ereport(ERROR, 
-haae: heap:00002878:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002879:  errmsg("cannot use window function in default expression"), 
-haae: heap:00002880:  errOmitLocation(true))); 
-haae: heap:00002896:  ereport(ERROR, 
-haae: heap:00002897:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002898:  errmsg("column \"%s\" is of type %s" 
-haae: heap:00002899:  " but default expression is of type %s", 
-haae: heap:00002900:  attname, 
-haae: heap:00002901:  format_type_be(atttypid), 
-haae: heap:00002902:  format_type_be(type_id)), 
-haae: heap:00002903:  errhint("You will need to rewrite or cast the expression."), 
-haae: heap:00002904:  errOmitLocation(true))); 
-haae: heap:00003211:  ereport(ERROR, 
-haae: heap:00003212:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003213:  errmsg("unsupported ON COMMIT and foreign key combination"), 
-haae: heap:00003214:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
-haae: heap:00003215:  relname2, relname), 
-haae: heap:00003216:  errOmitLocation(true))); 
-haae: heap:00003218:  ereport(ERROR, 
-haae: heap:00003219:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003220:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
-haae: heap:00003221:  errdetail("Table \"%s\" references \"%s\".", 
-haae: heap:00003222:  relname2, relname), 
-haae: heap:00003223:  errhint("Truncate table \"%s\" at the same time, " 
-haae: heap:00003224:  "or use TRUNCATE ... CASCADE.", 
-haae: heap:00003225:  relname2), 
-haae: heap:00003226:  errOmitLocation(true))); 
-haae: heap:00003347:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003348:  RelationGetRelid(relation)); 
+haae: heap:00001348:  ereport(ERROR, 
+haae: heap:00001349:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haae: heap:00001350:  errmsg( 
+haae: heap:00001351:  "OIDS=TRUE is not allowed on tables that " 
+haae: heap:00001352:  "use column-oriented storage. Use OIDS=FALSE" 
+haae: heap:00001353:  ), 
+haae: heap:00001354:  errOmitLocation(true))); 
+haae: heap:00001356:  ereport(NOTICE, 
+haae: heap:00001357:  (errmsg( 
+haae: heap:00001358:  "OIDS=TRUE is not recommended for user-created " 
+haae: heap:00001359:  "tables. Use OIDS=FALSE to prevent wrap-around " 
+haae: heap:00001360:  "of the OID counter" 
+haae: heap:00001361:  ), 
+haae: heap:00001362:  errOmitLocation(true))); 
+haae: heap:00001368:  ereport(ERROR, 
+haae: heap:00001369:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+haae: heap:00001370:  errmsg("relation \"%s\" already exists", relname), 
+haae: heap:00001371:  errOmitLocation(true))); 
+haae: heap:00001773:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+haae: heap:00001838:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
+haae: heap:00001839:  RelationGetRelid(relation), 
+haae: heap:00001840:  relation->rd_rel->relfilenode, 
+haae: heap:00001841:  segmentFileNum); 
+haae: heap:00001883:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00001884:  attnum, relid); 
+haae: heap:00001992:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
+haae: heap:00001993:  relid, attnum); 
+haae: heap:00002029:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
+haae: heap:00002051:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002052:  myattnum, myrelid); 
+haae: heap:00002362:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002363:  attnum, RelationGetRelid(rel)); 
+haae: heap:00002643:  ereport(ERROR, 
+haae: heap:00002644:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002645:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
+haae: heap:00002646:  ccname, RelationGetRelationName(rel)), 
+haae: heap:00002647:  errOmitLocation(true))); 
+haae: heap:00002654:  ereport(ERROR, 
+haae: heap:00002655:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002656:  errmsg("check constraint \"%s\" already exists", 
+haae: heap:00002657:  ccname), 
+haae: heap:00002658:  errOmitLocation(true))); 
+haae: heap:00002747:  ereport(ERROR, 
+haae: heap:00002748:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002749:  errmsg("only table \"%s\" can be referenced in check constraint", 
+haae: heap:00002750:  relname), errOmitLocation(true))); 
+haae: heap:00002755:  ereport(ERROR, 
+haae: heap:00002756:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002757:  errmsg("cannot use subquery in check constraint"), 
+haae: heap:00002758:  errOmitLocation(true))); 
+haae: heap:00002760:  ereport(ERROR, 
+haae: heap:00002761:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002762:  errmsg("cannot use aggregate function in check constraint"), 
+haae: heap:00002763:  errOmitLocation(true))); 
+haae: heap:00002765:  ereport(ERROR, 
+haae: heap:00002766:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002767:  errmsg("cannot use window function in check constraint"), 
+haae: heap:00002768:  errOmitLocation(true))); 
+haae: heap:00002796:  elog(ERROR, "cache lookup failed for relation %u", 
+haae: heap:00002797:  RelationGetRelid(rel)); 
+haae: heap:00002851:  ereport(ERROR, 
+haae: heap:00002852:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002853:  errmsg("cannot use column references in default expression"))); 
+haae: heap:00002859:  ereport(ERROR, 
+haae: heap:00002860:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002861:  errmsg("default expression must not return a set"), 
+haae: heap:00002862:  errOmitLocation(true))); 
+haae: heap:00002868:  ereport(ERROR, 
+haae: heap:00002869:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002870:  errmsg("cannot use subquery in default expression"), 
+haae: heap:00002871:  errOmitLocation(true))); 
+haae: heap:00002873:  ereport(ERROR, 
+haae: heap:00002874:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002875:  errmsg("cannot use aggregate function in default expression"), 
+haae: heap:00002876:  errOmitLocation(true))); 
+haae: heap:00002878:  ereport(ERROR, 
+haae: heap:00002879:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002880:  errmsg("cannot use window function in default expression"), 
+haae: heap:00002881:  errOmitLocation(true))); 
+haae: heap:00002897:  ereport(ERROR, 
+haae: heap:00002898:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002899:  errmsg("column \"%s\" is of type %s" 
+haae: heap:00002900:  " but default expression is of type %s", 
+haae: heap:00002901:  attname, 
+haae: heap:00002902:  format_type_be(atttypid), 
+haae: heap:00002903:  format_type_be(type_id)), 
+haae: heap:00002904:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002905:  errOmitLocation(true))); 
+haae: heap:00003212:  ereport(ERROR, 
+haae: heap:00003213:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003214:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+haae: heap:00003215:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
+haae: heap:00003216:  relname2, relname), 
+haae: heap:00003217:  errOmitLocation(true))); 
+haae: heap:00003219:  ereport(ERROR, 
+haae: heap:00003220:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003221:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+haae: heap:00003222:  errdetail("Table \"%s\" references \"%s\".", 
+haae: heap:00003223:  relname2, relname), 
+haae: heap:00003224:  errhint("Truncate table \"%s\" at the same time, " 
+haae: heap:00003225:  "or use TRUNCATE ... CASCADE.", 
+haae: heap:00003226:  relname2), 
+haae: heap:00003227:  errOmitLocation(true))); 
+haae: heap:00003348:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003349:  RelationGetRelid(relation)); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000186:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000217:  elog(ERROR, "too few entries in indexprs list"); 
@@ -13999,8 +14017,8 @@ paah: planner:00003320:  elog(ERROR,"invalid grouping set list");
 paah: planner:00003340:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 paah: planner:00003409:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
-pabd: planpartition:00000754:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
-pabd: planpartition:00000850:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
+pabd: planpartition:00000766:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
+pabd: planpartition:00000862:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
 aaaaa GP_IGNORE: paba: planwindow - ./backend/optimizer/plan/planwindow.c
 paba: planwindow:00000378:  ereport(ERROR, 
 paba: planwindow:00000379:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
