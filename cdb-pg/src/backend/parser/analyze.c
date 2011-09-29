@@ -6160,6 +6160,67 @@ validate_list_partition(partValidationState *vstate)
 	} /* end if spec partvalues */
 } /* end validate_list_partition */
 
+static List *
+transformPartitionStorageEncodingClauses(List *enc)
+{
+	ListCell *lc;
+	List *out = NIL;
+
+	/* 
+	 * Test that directives at different levels of subpartitioning do not
+	 * conflict. A conflict would be the case where a directive appears for the
+	 * same column but different parameters have been supplied.
+	 */
+	foreach(lc, enc)
+	{
+		ListCell *in;
+		ColumnReferenceStorageDirective *a = lfirst(lc);
+		bool add = true;
+
+		Insist(IsA(a, ColumnReferenceStorageDirective));
+
+		foreach(in, out)
+		{
+			ColumnReferenceStorageDirective *b = lfirst(in);
+
+			Insist(IsA(b, ColumnReferenceStorageDirective));
+			
+			if (lc == in)
+				continue;
+
+			if (equal(a->column, b->column))
+			{
+				if (!equal(a->encoding, b->encoding))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("conflicting ENCODING clauses for column "
+									"\"%s\"", strVal(a->column))));
+
+				/*
+				 * We found an identical directive on the same column. You'd
+				 * think we should blow up but this is caused by recursive
+				 * expansion of partitions. Anyway, only add it once.
+				 */
+				add = false;
+			}
+		}
+
+		if (add)
+			out = lappend(out, a);
+	}
+
+	/* validate and transform each encoding clauses */
+	foreach(lc, out)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+
+		c->encoding = transformStorageEncodingClause(c->encoding);
+	}
+
+	return out;
+
+}
+
 int
 validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 						CreateStmt *stmt, PartitionBy *pBy,
@@ -6409,15 +6470,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	} /* end foreach(lc, partElts) */
 
-	pSpec->enc_clauses = enc_cls;
-
-	/* validate the encoding clauses */
-	foreach(lc, pSpec->enc_clauses)
-	{
-		ColumnReferenceStorageDirective *c = lfirst(lc);
-
-		c->encoding = transformStorageEncodingClause(c->encoding);
-	}
+	pSpec->enc_clauses = transformPartitionStorageEncodingClauses(enc_cls);
 
 	/* validate_range_partition might have changed some boundaries */
 	if (pBy->partType == PARTTYP_RANGE)

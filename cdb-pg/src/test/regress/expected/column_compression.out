@@ -947,6 +947,163 @@ select * from pg_partition_encoding;
 -----------+--------------+------------------
 (0 rows)
 
+-- MPP-14407
+-- Multi level partitioning: the expansion of the multi-level partitioning
+-- configuration duplicates the encoding for `month'. Make sure we 
+-- handle this and produce sane results
+CREATE TABLE ccddl (id int, year int, month int, day int, region text) 
+	with (appendonly=true, orientation=column)
+	DISTRIBUTED BY (id)
+	PARTITION BY RANGE (year)
+		SUBPARTITION BY RANGE (month)
+			SUBPARTITION TEMPLATE
+			(
+				START (1) END (13),
+				COLUMN month ENCODING (compresstype=rle_type)
+			)
+		SUBPARTITION BY LIST (region)
+		SUBPARTITION TEMPLATE
+		(
+			SUBPARTITION usa VALUES ('usa'),
+			COLUMN region ENCODING (compresstype=rle_type)
+		)
+	( START (2008) END (2010) );
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1_2_prt_1" for table "ccddl_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1_2_prt_1_3_prt_usa" for table "ccddl_1_prt_1_2_prt_1"
+execute ccddlcheck;
+             relname             | attnum |                       attoptions                        
+---------------------------------+--------+---------------------------------------------------------
+ ccddl                           |      1 | {compresstype=none,blocksize=32768}
+ ccddl                           |      2 | {compresstype=none,blocksize=32768}
+ ccddl                           |      3 | {compresstype=none,blocksize=32768}
+ ccddl                           |      4 | {compresstype=none,blocksize=32768}
+ ccddl                           |      5 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1                   |      1 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1                   |      2 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1                   |      3 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1                   |      4 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1                   |      5 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1           |      1 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1           |      2 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1           |      3 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1           |      4 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1           |      5 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1_3_prt_usa |      1 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1_3_prt_usa |      2 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1_3_prt_usa |      3 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1_3_prt_usa |      4 | {compresstype=none,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1_3_prt_usa |      5 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+(20 rows)
+
+-- Ensure we can read and write
+insert into ccddl select 1, 2008, 1, 2, 'usa' from generate_series(1, 100);
+select * from ccddl;
+ id | year | month | day | region 
+----+------+-------+-----+--------
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+  1 | 2008 |     1 |   2 | usa
+(100 rows)
+
+drop table ccddl;
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure

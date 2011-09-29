@@ -253,6 +253,35 @@ drop table ccddl;
 -- Should be nothing in pg_partition_encoding now
 select * from pg_partition_encoding;
 
+-- MPP-14407
+-- Multi level partitioning: the expansion of the multi-level partitioning
+-- configuration duplicates the encoding for `month'. Make sure we 
+-- handle this and produce sane results
+
+CREATE TABLE ccddl (id int, year int, month int, day int, region text) 
+	with (appendonly=true, orientation=column)
+	DISTRIBUTED BY (id)
+	PARTITION BY RANGE (year)
+		SUBPARTITION BY RANGE (month)
+			SUBPARTITION TEMPLATE
+			(
+				START (1) END (13),
+				COLUMN month ENCODING (compresstype=rle_type)
+			)
+		SUBPARTITION BY LIST (region)
+		SUBPARTITION TEMPLATE
+		(
+			SUBPARTITION usa VALUES ('usa'),
+			COLUMN region ENCODING (compresstype=rle_type)
+		)
+	( START (2008) END (2010) );
+execute ccddlcheck;
+
+-- Ensure we can read and write
+insert into ccddl select 1, 2008, 1, 2, 'usa' from generate_series(1, 100);
+select * from ccddl;
+drop table ccddl;
+
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure
