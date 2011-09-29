@@ -5691,9 +5691,9 @@ caah: cdbgang:00001828:  elog(ERROR, "required segment is unavailable");
 caah: cdbgang:00001832:  elog(ERROR, "required segment IP is unavailable"); 
 caah: cdbgang:00001895:  elog(FATAL, "getCdbProcessesForQD: unsupported request for master mirror process"); 
 caah: cdbgang:00001902:  elog(ERROR, PACKAGE_NAME " schema not populated"); 
-caah: cdbgang:00002423:  elog(ERROR, "could not temporarily connect to one or more segments"); 
-caah: cdbgang:00002719:  elog(WARNING, "Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)", 
-caah: cdbgang:00002720:  gp_session_id); 
+caah: cdbgang:00002426:  elog(ERROR, "could not temporarily connect to one or more segments"); 
+caah: cdbgang:00002722:  elog(WARNING, "Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)", 
+caah: cdbgang:00002723:  gp_session_id); 
 aaaaa GP_IGNORE: cabh: cdbglobalsequence - ./backend/cdb/cdbglobalsequence.c
 cabh: cdbglobalsequence:00000072:  elog(ERROR, "Failed to build global sequence tuple"); 
 cabh: cdbglobalsequence:00000106:  elog(ERROR, "Failed to fetch global sequence tuple at %s", 
@@ -14635,534 +14635,538 @@ aaah: analyze:00006150:  vstate->namBuf,
 aaah: analyze:00006151:  vstate->at_depth), 
 aaah: analyze:00006152:  errOmitLocation(true), 
 aaah: analyze:00006153:  parser_errposition(vstate->pstate, spec->location))); 
-aaah: analyze:00006275:  ereport(ERROR, 
-aaah: analyze:00006276:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006277:  errmsg("multiple default partitions are not " 
-aaah: analyze:00006278:  "allowed"), 
-aaah: analyze:00006279:  errOmitLocation(true), 
-aaah: analyze:00006280:  parser_errposition(pstate, pElem->location))); 
-aaah: analyze:00006288:  ereport(ERROR, 
-aaah: analyze:00006289:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006290:  errmsg("invalid use of DEFAULT partition " 
-aaah: analyze:00006291:  "for partition%s of type HASH%s", 
-aaah: analyze:00006292:  namBuf, 
-aaah: analyze:00006293:  at_depth), 
-aaah: analyze:00006294:  errOmitLocation(true), 
-aaah: analyze:00006295:  parser_errposition(pstate, pElem->location))); 
-aaah: analyze:00006301:  ereport(ERROR, 
-aaah: analyze:00006302:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006303:  errmsg("invalid use of boundary specification " 
-aaah: analyze:00006304:  "for DEFAULT partition%s%s", 
-aaah: analyze:00006305:  namBuf, 
-aaah: analyze:00006306:  at_depth), 
-aaah: analyze:00006307:  errOmitLocation(true), 
-aaah: analyze:00006308:  parser_errposition(pstate, pElem->location))); 
-aaah: analyze:00006329:  ereport(ERROR, 
-aaah: analyze:00006330:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006331:  errmsg("duplicate partition name " 
-aaah: analyze:00006332:  "for partition%s%s", 
-aaah: analyze:00006333:  namBuf, 
-aaah: analyze:00006334:  at_depth), 
-aaah: analyze:00006335:  errOmitLocation(true), 
-aaah: analyze:00006336:  parser_errposition(pstate, pElem->location))); 
-aaah: analyze:00006373:  ereport(ERROR, 
-aaah: analyze:00006374:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006375:  errmsg("invalid use of %s boundary specification " 
-aaah: analyze:00006376:  "in partition%s of type HASH%s", 
-aaah: analyze:00006377:  specTName, 
-aaah: analyze:00006378:  vstate->namBuf, 
-aaah: analyze:00006379:  vstate->at_depth), 
-aaah: analyze:00006380:  errOmitLocation(true), 
-aaah: analyze:00006381:  /* MPP-4249: use value spec location if have one */ 
-aaah: analyze:00006382:  ((IsA(vstate->spec, PartitionValuesSpec)) ? 
-aaah: analyze:00006383:  parser_errposition(pstate, 
-aaah: analyze:00006384:  ((PartitionValuesSpec*)vstate->spec)->location) : 
-aaah: analyze:00006385:  /* else use boundspec */ 
-aaah: analyze:00006386:  parser_errposition(pstate, 
-aaah: analyze:00006387:  ((PartitionBoundSpec*)vstate->spec)->location) 
-aaah: analyze:00006388:  ))); 
-aaah: analyze:00006401:  ereport(ERROR, 
-aaah: analyze:00006402:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006403:  errmsg("unknown partition type %d %s", 
-aaah: analyze:00006404:  pBy->partType, at_depth), 
-aaah: analyze:00006405:  errOmitLocation(true), 
-aaah: analyze:00006406:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00006427:  ereport(ERROR, 
-aaah: analyze:00006428:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006429:  errmsg("PARTITIONS \"%d\" must match \"%d\" elements " 
-aaah: analyze:00006430:  "in specification%s", 
-aaah: analyze:00006431:  partNumber, partno, vstate->at_depth), 
-aaah: analyze:00006432:  errOmitLocation(true), 
-aaah: analyze:00006433:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00006473:  elog(ERROR, "could not coerce partitioning parameter"); 
-aaah: analyze:00006535:  elog(ERROR, "unexpected number of coercion function " 
-aaah: analyze:00006536:  "arguments: %d", list_length(fe->args)); 
-aaah: analyze:00006570:  elog(ERROR, "unexpected number of arguments for operator function: %d", list_length(op->args)); 
-aaah: analyze:00006594:  elog(ERROR, "unknown partitioning argument type: %d", 
-aaah: analyze:00006595:  nodeTag(node)); 
-aaah: analyze:00006632:  elog(ERROR, "cache lookup failed for operator %u", opexpr->opno); 
-aaah: analyze:00006792:  ereport(ERROR, 
-aaah: analyze:00006793:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006794:  errmsg("invalid use of boundary specification " 
-aaah: analyze:00006795:  "for DEFAULT partition%s%s", 
-aaah: analyze:00006796:  namBuf, 
-aaah: analyze:00006797:  at_depth), 
-aaah: analyze:00006798:  errOmitLocation(true), 
-aaah: analyze:00006799:  parser_errposition(pstate, pElem->location))); 
-aaah: analyze:00006805:  ereport(ERROR, 
-aaah: analyze:00006806:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006807:  errmsg("invalid use of LIST boundary specification " 
-aaah: analyze:00006808:  "in partition%s of type RANGE%s", 
-aaah: analyze:00006809:  namBuf, 
-aaah: analyze:00006810:  at_depth), 
-aaah: analyze:00006811:  errOmitLocation(true), 
-aaah: analyze:00006812:  /* MPP-4249: use value spec location if have one */ 
-aaah: analyze:00006813:  ((IsA(pBSpec, PartitionValuesSpec)) ? 
-aaah: analyze:00006814:  parser_errposition(pstate, 
-aaah: analyze:00006815:  ((PartitionValuesSpec*)pBSpec)->location) : 
-aaah: analyze:00006816:  /* else use invalid parsestate/postition */ 
-aaah: analyze:00006817:  parser_errposition(NULL, 0) 
-aaah: analyze:00006818:  ) 
-aaah: analyze:00006819:  )); 
-aaah: analyze:00006835:  ereport(ERROR, 
-aaah: analyze:00006836:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006837:  errmsg("EVERY clause in partition%s " 
-aaah: analyze:00006838:  "requires START and END%s", 
-aaah: analyze:00006839:  namBuf, 
-aaah: analyze:00006840:  at_depth), 
-aaah: analyze:00006841:  errOmitLocation(true), 
-aaah: analyze:00006842:  parser_errposition(pstate, pBSpec->location))); 
-aaah: analyze:00006866:  ereport(ERROR, 
-aaah: analyze:00006867:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00006868:  errmsg("invalid tablename specification"))); 
-aaah: analyze:00006895:  ereport(ERROR, 
-aaah: analyze:00006896:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006897:  errmsg("mismatch between EVERY, START and END " 
-aaah: analyze:00006898:  "in partition%s%s", 
-aaah: analyze:00006899:  namBuf, 
-aaah: analyze:00006900:  at_depth), 
-aaah: analyze:00006901:  errOmitLocation(true), 
-aaah: analyze:00006902:  parser_errposition(pstate, pBSpec->location))); 
-aaah: analyze:00007056:  ereport(ERROR, 
-aaah: analyze:00007057:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007058:  errmsg("EVERY parameter produces ambiguous partition rule"), 
-aaah: analyze:00007059:  errOmitLocation(true), 
-aaah: analyze:00007060:  parser_errposition(pstate, 
-aaah: analyze:00007061:  ((A_Const *)n3)->location))); 
-aaah: analyze:00007090:  ereport(ERROR, 
-aaah: analyze:00007091:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007092:  errmsg("EVERY parameter too small"), 
-aaah: analyze:00007093:  errOmitLocation(true), 
-aaah: analyze:00007094:  parser_errposition(pstate, 
-aaah: analyze:00007095:  ((A_Const *)n3)->location))); 
-aaah: analyze:00007103:  ereport(ERROR, 
-aaah: analyze:00007104:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007105:  errmsg("END parameter not reached before type overflows"), 
-aaah: analyze:00007106:  errOmitLocation(true), 
-aaah: analyze:00007107:  parser_errposition(pstate, 
-aaah: analyze:00007108:  ((A_Const *)n2)->location))); 
-aaah: analyze:00007237:  ereport(NOTICE, 
-aaah: analyze:00007238:  (errmsg("%s will create partition \"%s\" for " 
-aaah: analyze:00007239:  "table \"%s\"", 
-aaah: analyze:00007240:  cxt->stmtType, child_tab_name->relname, 
-aaah: analyze:00007241:  cxt->relation->relname))); 
-aaah: analyze:00007443:  ereport(ERROR, 
-aaah: analyze:00007444:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007445:  errmsg("column \"%s\" specified in multiple " 
-aaah: analyze:00007446:  "partitioning keys", 
-aaah: analyze:00007447:  colname), 
-aaah: analyze:00007448:  errOmitLocation(true), 
-aaah: analyze:00007449:  parser_errposition(cxt->pstate, p->location))); 
-aaah: analyze:00007578:  ereport(ERROR, 
-aaah: analyze:00007579:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007580:  errmsg("%sPARTITIONS clause requires a HASH partition%s", 
-aaah: analyze:00007581:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
-aaah: analyze:00007582:  errOmitLocation(true), 
-aaah: analyze:00007583:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007588:  ereport(ERROR, 
-aaah: analyze:00007589:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007590:  errmsg("%sPARTITIONS cannot be less than one%s", 
-aaah: analyze:00007591:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
-aaah: analyze:00007592:  errOmitLocation(true), 
-aaah: analyze:00007593:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007605:  ereport(ERROR, 
-aaah: analyze:00007606:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007607:  errmsg("too many columns for RANGE partition%s -- " 
-aaah: analyze:00007608:  "only one column is allowed.", 
-aaah: analyze:00007609:  at_depth), 
-aaah: analyze:00007610:  errOmitLocation(true), 
-aaah: analyze:00007611:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007636:  ereport(ERROR, 
-aaah: analyze:00007637:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007638:  errmsg("column \"%s\" specified more than once " 
-aaah: analyze:00007639:  "in partitioning key", 
-aaah: analyze:00007640:  colname), 
-aaah: analyze:00007641:  errOmitLocation(true), 
-aaah: analyze:00007642:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007664:  ereport(ERROR, 
-aaah: analyze:00007665:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00007666:  errmsg("column \"%s\" does not exist in relation \"%s\"", 
-aaah: analyze:00007667:  colname, cxt->relation->relname), 
-aaah: analyze:00007668:  errOmitLocation(true), 
-aaah: analyze:00007669:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007682:  elog(ERROR, "unknown partitioning type %i", 
-aaah: analyze:00007683:  pBy->partType); 
-aaah: analyze:00007690:  ereport(ERROR, 
-aaah: analyze:00007691:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaah: analyze:00007692:  errmsg("data type %s has no default operator class", 
-aaah: analyze:00007693:  format_type_be(typeid)), 
-aaah: analyze:00007694:  errOmitLocation(true))); 
-aaah: analyze:00007710:  ereport(ERROR, 
-aaah: analyze:00007711:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007712:  errmsg("hash partition requires PARTITIONS clause " 
-aaah: analyze:00007713:  "or partition specification"), 
-aaah: analyze:00007714:  errOmitLocation(true), 
-aaah: analyze:00007715:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007738:  ereport(ERROR, 
-aaah: analyze:00007739:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007740:  errmsg("no partitions specified at depth %d", 
-aaah: analyze:00007741:  partDepth), 
-aaah: analyze:00007742:  errOmitLocation(true), 
-aaah: analyze:00007743:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007771:  ereport(ERROR, 
-aaah: analyze:00007772:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007773:  errmsg("missing SUBPARTITION BY clause for " 
-aaah: analyze:00007774:  "subpartition specification%s", 
-aaah: analyze:00007775:  at_depth), 
-aaah: analyze:00007776:  errOmitLocation(true), 
-aaah: analyze:00007777:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007781:  ereport(ERROR, 
-aaah: analyze:00007782:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007783:  errmsg("subpartition specification conflict%s", 
-aaah: analyze:00007784:  at_depth), 
-aaah: analyze:00007785:  errOmitLocation(true), 
-aaah: analyze:00007786:  parser_errposition(pstate, psubBy->location))); 
-aaah: analyze:00007902:  ereport(ERROR, 
-aaah: analyze:00007903:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007904:  errmsg("missing SUBPARTITION BY clause " 
-aaah: analyze:00007905:  "for subpartition specification%s", 
-aaah: analyze:00007906:  at_depth), 
-aaah: analyze:00007907:  errOmitLocation(true), 
-aaah: analyze:00007908:  parser_errposition(pstate, pElem->location))); 
-aaah: analyze:00007915:  ereport(ERROR, 
-aaah: analyze:00007916:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007917:  errmsg("subpartition configuration conflicts " 
-aaah: analyze:00007918:  "with subpartition template"), 
-aaah: analyze:00007919:  errOmitLocation(true), 
-aaah: analyze:00007920:  parser_errposition(pstate, psubBy->location))); 
-aaah: analyze:00007980:  ereport(ERROR, 
-aaah: analyze:00007981:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00007982:  errmsg("invalid tablename specification"))); 
-aaah: analyze:00008256:  ereport(ERROR, 
-aaah: analyze:00008257:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaah: analyze:00008258:  errmsg("relation \"%s.%s\" does not exist", 
-aaah: analyze:00008259:  stmt->relation->schemaname, stmt->relation->relname), 
-aaah: analyze:00008260:  errOmitLocation(true))); 
-aaah: analyze:00008262:  ereport(ERROR, 
-aaah: analyze:00008263:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaah: analyze:00008264:  errmsg("relation \"%s\" does not exist", 
-aaah: analyze:00008265:  stmt->relation->relname), 
-aaah: analyze:00008266:  errOmitLocation(true))); 
-aaah: analyze:00008310:  elog(NOTICE, "building index for child partition \"%s\"", 
-aaah: analyze:00008311:  RelationGetRelationName(crel)); 
-aaah: analyze:00008428:  ereport(ERROR, 
-aaah: analyze:00008429:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaah: analyze:00008430:  errmsg("index expression may not return a set"), 
-aaah: analyze:00008431:  errOmitLocation(true))); 
-aaah: analyze:00008508:  elog(ERROR, "unrecognized event type: %d", 
-aaah: analyze:00008509:  (int) stmt->event); 
-aaah: analyze:00008521:  ereport(ERROR, 
-aaah: analyze:00008522:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008523:  errmsg("rule WHERE condition may not contain references to other relations"), 
-aaah: analyze:00008524:  errOmitLocation(true))); 
-aaah: analyze:00008528:  ereport(ERROR, 
-aaah: analyze:00008529:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00008530:  errmsg("cannot use aggregate function in rule WHERE condition"), 
-aaah: analyze:00008531:  errOmitLocation(true))); 
-aaah: analyze:00008534:  ereport(ERROR, 
-aaah: analyze:00008535:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00008536:  errmsg("cannot use window function in rule WHERE condition"), 
-aaah: analyze:00008537:  errOmitLocation(true))); 
-aaah: analyze:00008605:  ereport(ERROR, 
-aaah: analyze:00008606:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008607:  errmsg("rules with WHERE conditions may only have SELECT, INSERT, UPDATE, or DELETE actions"), 
-aaah: analyze:00008608:  errOmitLocation(true))); 
-aaah: analyze:00008624:  ereport(ERROR, 
-aaah: analyze:00008625:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00008626:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
-aaah: analyze:00008627:  errOmitLocation(true))); 
-aaah: analyze:00008643:  ereport(ERROR, 
-aaah: analyze:00008644:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008645:  errmsg("ON SELECT rule may not use OLD"), 
-aaah: analyze:00008646:  errOmitLocation(true))); 
-aaah: analyze:00008648:  ereport(ERROR, 
-aaah: analyze:00008649:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008650:  errmsg("ON SELECT rule may not use NEW"), 
-aaah: analyze:00008651:  errOmitLocation(true))); 
+aaah: analyze:00006194:  ereport(ERROR, 
+aaah: analyze:00006195:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006196:  errmsg("conflicting ENCODING clauses for column " 
+aaah: analyze:00006197:  "\"%s\"", strVal(a->column)))); 
+aaah: analyze:00006336:  ereport(ERROR, 
+aaah: analyze:00006337:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006338:  errmsg("multiple default partitions are not " 
+aaah: analyze:00006339:  "allowed"), 
+aaah: analyze:00006340:  errOmitLocation(true), 
+aaah: analyze:00006341:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00006349:  ereport(ERROR, 
+aaah: analyze:00006350:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006351:  errmsg("invalid use of DEFAULT partition " 
+aaah: analyze:00006352:  "for partition%s of type HASH%s", 
+aaah: analyze:00006353:  namBuf, 
+aaah: analyze:00006354:  at_depth), 
+aaah: analyze:00006355:  errOmitLocation(true), 
+aaah: analyze:00006356:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00006362:  ereport(ERROR, 
+aaah: analyze:00006363:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006364:  errmsg("invalid use of boundary specification " 
+aaah: analyze:00006365:  "for DEFAULT partition%s%s", 
+aaah: analyze:00006366:  namBuf, 
+aaah: analyze:00006367:  at_depth), 
+aaah: analyze:00006368:  errOmitLocation(true), 
+aaah: analyze:00006369:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00006390:  ereport(ERROR, 
+aaah: analyze:00006391:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006392:  errmsg("duplicate partition name " 
+aaah: analyze:00006393:  "for partition%s%s", 
+aaah: analyze:00006394:  namBuf, 
+aaah: analyze:00006395:  at_depth), 
+aaah: analyze:00006396:  errOmitLocation(true), 
+aaah: analyze:00006397:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00006434:  ereport(ERROR, 
+aaah: analyze:00006435:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006436:  errmsg("invalid use of %s boundary specification " 
+aaah: analyze:00006437:  "in partition%s of type HASH%s", 
+aaah: analyze:00006438:  specTName, 
+aaah: analyze:00006439:  vstate->namBuf, 
+aaah: analyze:00006440:  vstate->at_depth), 
+aaah: analyze:00006441:  errOmitLocation(true), 
+aaah: analyze:00006442:  /* MPP-4249: use value spec location if have one */ 
+aaah: analyze:00006443:  ((IsA(vstate->spec, PartitionValuesSpec)) ? 
+aaah: analyze:00006444:  parser_errposition(pstate, 
+aaah: analyze:00006445:  ((PartitionValuesSpec*)vstate->spec)->location) : 
+aaah: analyze:00006446:  /* else use boundspec */ 
+aaah: analyze:00006447:  parser_errposition(pstate, 
+aaah: analyze:00006448:  ((PartitionBoundSpec*)vstate->spec)->location) 
+aaah: analyze:00006449:  ))); 
+aaah: analyze:00006462:  ereport(ERROR, 
+aaah: analyze:00006463:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006464:  errmsg("unknown partition type %d %s", 
+aaah: analyze:00006465:  pBy->partType, at_depth), 
+aaah: analyze:00006466:  errOmitLocation(true), 
+aaah: analyze:00006467:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00006480:  ereport(ERROR, 
+aaah: analyze:00006481:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006482:  errmsg("PARTITIONS \"%d\" must match \"%d\" elements " 
+aaah: analyze:00006483:  "in specification%s", 
+aaah: analyze:00006484:  partNumber, partno, vstate->at_depth), 
+aaah: analyze:00006485:  errOmitLocation(true), 
+aaah: analyze:00006486:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00006526:  elog(ERROR, "could not coerce partitioning parameter"); 
+aaah: analyze:00006588:  elog(ERROR, "unexpected number of coercion function " 
+aaah: analyze:00006589:  "arguments: %d", list_length(fe->args)); 
+aaah: analyze:00006623:  elog(ERROR, "unexpected number of arguments for operator function: %d", list_length(op->args)); 
+aaah: analyze:00006647:  elog(ERROR, "unknown partitioning argument type: %d", 
+aaah: analyze:00006648:  nodeTag(node)); 
+aaah: analyze:00006685:  elog(ERROR, "cache lookup failed for operator %u", opexpr->opno); 
+aaah: analyze:00006845:  ereport(ERROR, 
+aaah: analyze:00006846:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006847:  errmsg("invalid use of boundary specification " 
+aaah: analyze:00006848:  "for DEFAULT partition%s%s", 
+aaah: analyze:00006849:  namBuf, 
+aaah: analyze:00006850:  at_depth), 
+aaah: analyze:00006851:  errOmitLocation(true), 
+aaah: analyze:00006852:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00006858:  ereport(ERROR, 
+aaah: analyze:00006859:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006860:  errmsg("invalid use of LIST boundary specification " 
+aaah: analyze:00006861:  "in partition%s of type RANGE%s", 
+aaah: analyze:00006862:  namBuf, 
+aaah: analyze:00006863:  at_depth), 
+aaah: analyze:00006864:  errOmitLocation(true), 
+aaah: analyze:00006865:  /* MPP-4249: use value spec location if have one */ 
+aaah: analyze:00006866:  ((IsA(pBSpec, PartitionValuesSpec)) ? 
+aaah: analyze:00006867:  parser_errposition(pstate, 
+aaah: analyze:00006868:  ((PartitionValuesSpec*)pBSpec)->location) : 
+aaah: analyze:00006869:  /* else use invalid parsestate/postition */ 
+aaah: analyze:00006870:  parser_errposition(NULL, 0) 
+aaah: analyze:00006871:  ) 
+aaah: analyze:00006872:  )); 
+aaah: analyze:00006888:  ereport(ERROR, 
+aaah: analyze:00006889:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006890:  errmsg("EVERY clause in partition%s " 
+aaah: analyze:00006891:  "requires START and END%s", 
+aaah: analyze:00006892:  namBuf, 
+aaah: analyze:00006893:  at_depth), 
+aaah: analyze:00006894:  errOmitLocation(true), 
+aaah: analyze:00006895:  parser_errposition(pstate, pBSpec->location))); 
+aaah: analyze:00006919:  ereport(ERROR, 
+aaah: analyze:00006920:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00006921:  errmsg("invalid tablename specification"))); 
+aaah: analyze:00006948:  ereport(ERROR, 
+aaah: analyze:00006949:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006950:  errmsg("mismatch between EVERY, START and END " 
+aaah: analyze:00006951:  "in partition%s%s", 
+aaah: analyze:00006952:  namBuf, 
+aaah: analyze:00006953:  at_depth), 
+aaah: analyze:00006954:  errOmitLocation(true), 
+aaah: analyze:00006955:  parser_errposition(pstate, pBSpec->location))); 
+aaah: analyze:00007109:  ereport(ERROR, 
+aaah: analyze:00007110:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007111:  errmsg("EVERY parameter produces ambiguous partition rule"), 
+aaah: analyze:00007112:  errOmitLocation(true), 
+aaah: analyze:00007113:  parser_errposition(pstate, 
+aaah: analyze:00007114:  ((A_Const *)n3)->location))); 
+aaah: analyze:00007143:  ereport(ERROR, 
+aaah: analyze:00007144:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007145:  errmsg("EVERY parameter too small"), 
+aaah: analyze:00007146:  errOmitLocation(true), 
+aaah: analyze:00007147:  parser_errposition(pstate, 
+aaah: analyze:00007148:  ((A_Const *)n3)->location))); 
+aaah: analyze:00007156:  ereport(ERROR, 
+aaah: analyze:00007157:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007158:  errmsg("END parameter not reached before type overflows"), 
+aaah: analyze:00007159:  errOmitLocation(true), 
+aaah: analyze:00007160:  parser_errposition(pstate, 
+aaah: analyze:00007161:  ((A_Const *)n2)->location))); 
+aaah: analyze:00007290:  ereport(NOTICE, 
+aaah: analyze:00007291:  (errmsg("%s will create partition \"%s\" for " 
+aaah: analyze:00007292:  "table \"%s\"", 
+aaah: analyze:00007293:  cxt->stmtType, child_tab_name->relname, 
+aaah: analyze:00007294:  cxt->relation->relname))); 
+aaah: analyze:00007496:  ereport(ERROR, 
+aaah: analyze:00007497:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007498:  errmsg("column \"%s\" specified in multiple " 
+aaah: analyze:00007499:  "partitioning keys", 
+aaah: analyze:00007500:  colname), 
+aaah: analyze:00007501:  errOmitLocation(true), 
+aaah: analyze:00007502:  parser_errposition(cxt->pstate, p->location))); 
+aaah: analyze:00007631:  ereport(ERROR, 
+aaah: analyze:00007632:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007633:  errmsg("%sPARTITIONS clause requires a HASH partition%s", 
+aaah: analyze:00007634:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
+aaah: analyze:00007635:  errOmitLocation(true), 
+aaah: analyze:00007636:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007641:  ereport(ERROR, 
+aaah: analyze:00007642:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007643:  errmsg("%sPARTITIONS cannot be less than one%s", 
+aaah: analyze:00007644:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
+aaah: analyze:00007645:  errOmitLocation(true), 
+aaah: analyze:00007646:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007658:  ereport(ERROR, 
+aaah: analyze:00007659:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007660:  errmsg("too many columns for RANGE partition%s -- " 
+aaah: analyze:00007661:  "only one column is allowed.", 
+aaah: analyze:00007662:  at_depth), 
+aaah: analyze:00007663:  errOmitLocation(true), 
+aaah: analyze:00007664:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007689:  ereport(ERROR, 
+aaah: analyze:00007690:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007691:  errmsg("column \"%s\" specified more than once " 
+aaah: analyze:00007692:  "in partitioning key", 
+aaah: analyze:00007693:  colname), 
+aaah: analyze:00007694:  errOmitLocation(true), 
+aaah: analyze:00007695:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007717:  ereport(ERROR, 
+aaah: analyze:00007718:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00007719:  errmsg("column \"%s\" does not exist in relation \"%s\"", 
+aaah: analyze:00007720:  colname, cxt->relation->relname), 
+aaah: analyze:00007721:  errOmitLocation(true), 
+aaah: analyze:00007722:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007735:  elog(ERROR, "unknown partitioning type %i", 
+aaah: analyze:00007736:  pBy->partType); 
+aaah: analyze:00007743:  ereport(ERROR, 
+aaah: analyze:00007744:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaah: analyze:00007745:  errmsg("data type %s has no default operator class", 
+aaah: analyze:00007746:  format_type_be(typeid)), 
+aaah: analyze:00007747:  errOmitLocation(true))); 
+aaah: analyze:00007763:  ereport(ERROR, 
+aaah: analyze:00007764:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007765:  errmsg("hash partition requires PARTITIONS clause " 
+aaah: analyze:00007766:  "or partition specification"), 
+aaah: analyze:00007767:  errOmitLocation(true), 
+aaah: analyze:00007768:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007791:  ereport(ERROR, 
+aaah: analyze:00007792:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007793:  errmsg("no partitions specified at depth %d", 
+aaah: analyze:00007794:  partDepth), 
+aaah: analyze:00007795:  errOmitLocation(true), 
+aaah: analyze:00007796:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007824:  ereport(ERROR, 
+aaah: analyze:00007825:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007826:  errmsg("missing SUBPARTITION BY clause for " 
+aaah: analyze:00007827:  "subpartition specification%s", 
+aaah: analyze:00007828:  at_depth), 
+aaah: analyze:00007829:  errOmitLocation(true), 
+aaah: analyze:00007830:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007834:  ereport(ERROR, 
+aaah: analyze:00007835:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007836:  errmsg("subpartition specification conflict%s", 
+aaah: analyze:00007837:  at_depth), 
+aaah: analyze:00007838:  errOmitLocation(true), 
+aaah: analyze:00007839:  parser_errposition(pstate, psubBy->location))); 
+aaah: analyze:00007955:  ereport(ERROR, 
+aaah: analyze:00007956:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007957:  errmsg("missing SUBPARTITION BY clause " 
+aaah: analyze:00007958:  "for subpartition specification%s", 
+aaah: analyze:00007959:  at_depth), 
+aaah: analyze:00007960:  errOmitLocation(true), 
+aaah: analyze:00007961:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00007968:  ereport(ERROR, 
+aaah: analyze:00007969:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007970:  errmsg("subpartition configuration conflicts " 
+aaah: analyze:00007971:  "with subpartition template"), 
+aaah: analyze:00007972:  errOmitLocation(true), 
+aaah: analyze:00007973:  parser_errposition(pstate, psubBy->location))); 
+aaah: analyze:00008033:  ereport(ERROR, 
+aaah: analyze:00008034:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00008035:  errmsg("invalid tablename specification"))); 
+aaah: analyze:00008309:  ereport(ERROR, 
+aaah: analyze:00008310:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaah: analyze:00008311:  errmsg("relation \"%s.%s\" does not exist", 
+aaah: analyze:00008312:  stmt->relation->schemaname, stmt->relation->relname), 
+aaah: analyze:00008313:  errOmitLocation(true))); 
+aaah: analyze:00008315:  ereport(ERROR, 
+aaah: analyze:00008316:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaah: analyze:00008317:  errmsg("relation \"%s\" does not exist", 
+aaah: analyze:00008318:  stmt->relation->relname), 
+aaah: analyze:00008319:  errOmitLocation(true))); 
+aaah: analyze:00008363:  elog(NOTICE, "building index for child partition \"%s\"", 
+aaah: analyze:00008364:  RelationGetRelationName(crel)); 
+aaah: analyze:00008481:  ereport(ERROR, 
+aaah: analyze:00008482:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaah: analyze:00008483:  errmsg("index expression may not return a set"), 
+aaah: analyze:00008484:  errOmitLocation(true))); 
+aaah: analyze:00008561:  elog(ERROR, "unrecognized event type: %d", 
+aaah: analyze:00008562:  (int) stmt->event); 
+aaah: analyze:00008574:  ereport(ERROR, 
+aaah: analyze:00008575:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008576:  errmsg("rule WHERE condition may not contain references to other relations"), 
+aaah: analyze:00008577:  errOmitLocation(true))); 
+aaah: analyze:00008581:  ereport(ERROR, 
+aaah: analyze:00008582:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00008583:  errmsg("cannot use aggregate function in rule WHERE condition"), 
+aaah: analyze:00008584:  errOmitLocation(true))); 
+aaah: analyze:00008587:  ereport(ERROR, 
+aaah: analyze:00008588:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00008589:  errmsg("cannot use window function in rule WHERE condition"), 
+aaah: analyze:00008590:  errOmitLocation(true))); 
 aaah: analyze:00008658:  ereport(ERROR, 
 aaah: analyze:00008659:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008660:  errmsg("ON INSERT rule may not use OLD"), 
+aaah: analyze:00008660:  errmsg("rules with WHERE conditions may only have SELECT, INSERT, UPDATE, or DELETE actions"), 
 aaah: analyze:00008661:  errOmitLocation(true))); 
-aaah: analyze:00008665:  ereport(ERROR, 
-aaah: analyze:00008666:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008667:  errmsg("ON DELETE rule may not use NEW"), 
-aaah: analyze:00008668:  errOmitLocation(true))); 
-aaah: analyze:00008671:  elog(ERROR, "unrecognized event type: %d", 
-aaah: analyze:00008672:  (int) stmt->event); 
-aaah: analyze:00008699:  ereport(ERROR, 
-aaah: analyze:00008700:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00008701:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
-aaah: analyze:00008702:  errOmitLocation(true))); 
-aaah: analyze:00008879:  elog(ERROR, "inconsistency detected in internal grouped windows transformation"); 
-aaah: analyze:00009179:  ereport(ERROR, 
-aaah: analyze:00009180:  (errcode(ERRCODE_WINDOWING_ERROR), 
-aaah: analyze:00009181:  errmsg("unresolved grouping key in window query"), 
-aaah: analyze:00009182:  errhint("You may need to use explicit aliases and/or to refer to grouping " 
-aaah: analyze:00009183:  "keys in the same way throughout the query."), 
-aaah: analyze:00009184:  errOmitLocation(true))); 
-aaah: analyze:00009264:  ereport(ERROR, 
-aaah: analyze:00009265:  (errcode(ERRCODE_INTERNAL_ERROR), 
-aaah: analyze:00009266:  errmsg("can't generate internal attribute name"), 
-aaah: analyze:00009267:  errOmitLocation(true))); 
-aaah: analyze:00009587:  ereport(ERROR, 
-aaah: analyze:00009588:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009589:  errmsg("VALUES lists must all be the same length"), 
-aaah: analyze:00009590:  errOmitLocation(true))); 
-aaah: analyze:00009601:  ereport(ERROR, 
-aaah: analyze:00009602:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009603:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
-aaah: analyze:00009604:  errOmitLocation(true))); 
-aaah: analyze:00009674:  ereport(ERROR, 
-aaah: analyze:00009675:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009676:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
-aaah: analyze:00009677:  errOmitLocation(true))); 
-aaah: analyze:00009698:  ereport(ERROR, 
-aaah: analyze:00009699:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009700:  errmsg("VALUES must not contain table references"), 
-aaah: analyze:00009701:  errOmitLocation(true))); 
-aaah: analyze:00009711:  ereport(ERROR, 
-aaah: analyze:00009712:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009713:  errmsg("VALUES must not contain OLD or NEW references"), 
-aaah: analyze:00009714:  errhint("Use SELECT ... UNION ALL ... instead."), 
-aaah: analyze:00009715:  errOmitLocation(true))); 
-aaah: analyze:00009723:  ereport(ERROR, 
-aaah: analyze:00009724:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00009725:  errmsg("cannot use aggregate function in VALUES"), 
-aaah: analyze:00009726:  errOmitLocation(true))); 
-aaah: analyze:00009729:  ereport(ERROR, 
-aaah: analyze:00009730:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009731:  errmsg("cannot use window function in VALUES"), 
-aaah: analyze:00009732:  errOmitLocation(true))); 
-aaah: analyze:00009822:  ereport(ERROR, 
-aaah: analyze:00009823:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009824:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00009825:  errOmitLocation(true))); 
-aaah: analyze:00009941:  ereport(ERROR, 
-aaah: analyze:00009942:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009943:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
-aaah: analyze:00009944:  errOmitLocation(true))); 
-aaah: analyze:00010001:  ereport(ERROR, 
-aaah: analyze:00010002:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010003:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00010004:  errOmitLocation(true))); 
-aaah: analyze:00010007:  ereport(ERROR, 
-aaah: analyze:00010008:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010009:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00010010:  errOmitLocation(true))); 
-aaah: analyze:00010064:  ereport(ERROR, 
-aaah: analyze:00010065:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-aaah: analyze:00010066:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
-aaah: analyze:00010067:  errOmitLocation(true))); 
-aaah: analyze:00010123:  ereport(ERROR, 
-aaah: analyze:00010124:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010125:  errmsg("each %s query must have the same number of columns", 
-aaah: analyze:00010126:  context), 
-aaah: analyze:00010127:  errOmitLocation(true))); 
-aaah: analyze:00010205:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-aaah: analyze:00010238:  ereport(ERROR, 
-aaah: analyze:00010239:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010240:  errmsg("CREATE TABLE AS specifies too many column names"), 
-aaah: analyze:00010241:  errOmitLocation(true))); 
-aaah: analyze:00010283:  ereport(ERROR, 
-aaah: analyze:00010284:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010285:  errmsg("The RETURNING clause of the UPDATE statement is not " 
-aaah: analyze:00010286:  "supported in this version of Greenplum Database."), 
-aaah: analyze:00010287:  errOmitLocation(true))); 
-aaah: analyze:00010318:  ereport(ERROR, 
-aaah: analyze:00010319:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00010320:  errmsg("cannot use aggregate function in UPDATE"), 
-aaah: analyze:00010321:  errOmitLocation(true))); 
-aaah: analyze:00010324:  ereport(ERROR, 
-aaah: analyze:00010325:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010326:  errmsg("cannot use window function in UPDATE"), 
-aaah: analyze:00010327:  errOmitLocation(true))); 
-aaah: analyze:00010360:  elog(ERROR, "UPDATE target count mismatch --- internal error"); 
-aaah: analyze:00010370:  ereport(ERROR, 
-aaah: analyze:00010371:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00010372:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-aaah: analyze:00010373:  origTarget->name, 
-aaah: analyze:00010374:  RelationGetRelationName(pstate->p_target_relation)), 
-aaah: analyze:00010375:  errOmitLocation(true), 
-aaah: analyze:00010376:  parser_errposition(pstate, origTarget->location))); 
-aaah: analyze:00010386:  elog(ERROR, "UPDATE target count mismatch --- internal error"); 
-aaah: analyze:00010436:  ereport(ERROR, 
-aaah: analyze:00010437:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00010438:  errmsg("cannot use aggregate function in RETURNING"))); 
-aaah: analyze:00010441:  ereport(ERROR, 
-aaah: analyze:00010442:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010443:  errmsg("cannot use window function in RETURNING"))); 
-aaah: analyze:00010448:  ereport(ERROR, 
-aaah: analyze:00010449:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010450:  errmsg("RETURNING may not contain references to other relations"))); 
-aaah: analyze:00010504:  ereport(ERROR, 
-aaah: analyze:00010505:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaah: analyze:00010506:  errmsg("%s is not partitioned", 
-aaah: analyze:00010507:  lrelname))); 
-aaah: analyze:00010698:  elog(ERROR, "Cannot add column with primary " 
-aaah: analyze:00010699:  "key constraint"); 
-aaah: analyze:00010701:  elog(ERROR, "Cannot add column with unique " 
-aaah: analyze:00010702:  "constraint"); 
-aaah: analyze:00010760:  elog(ERROR, "unrecognized node type: %d", 
-aaah: analyze:00010761:  (int) nodeTag(cmd->def)); 
-aaah: analyze:00010889:  ereport(ERROR, 
-aaah: analyze:00010890:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
-aaah: analyze:00010891:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
-aaah: analyze:00010898:  elog(ERROR, "unexpected extra stuff in cursor statement"); 
-aaah: analyze:00010904:  elog(ERROR, "unexpected non-SELECT command in DECLARE CURSOR"); 
-aaah: analyze:00010908:  ereport(ERROR, 
-aaah: analyze:00010909:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
-aaah: analyze:00010910:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
-aaah: analyze:00010952:  ereport(ERROR, 
-aaah: analyze:00010953:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
-aaah: analyze:00010954:  errmsg("type \"%s\" is not a valid parameter for PREPARE", 
-aaah: analyze:00010955:  TypeNameToString(tn)))); 
-aaah: analyze:00010976:  elog(ERROR, "unexpected extra stuff in prepared statement"); 
-aaah: analyze:00010988:  ereport(ERROR, 
-aaah: analyze:00010989:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
-aaah: analyze:00010990:  errmsg("could not determine data type of parameter $%d", 
-aaah: analyze:00010991:  i + 1))); 
-aaah: analyze:00011021:  ereport(ERROR, 
-aaah: analyze:00011022:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011023:  errmsg("wrong number of parameters for prepared statement \"%s\"", 
-aaah: analyze:00011024:  stmt->name), 
-aaah: analyze:00011025:  errdetail("Expected %d parameters but got %d.", 
-aaah: analyze:00011026:  nexpected, nparams), 
-aaah: analyze:00011027:  errOmitLocation(true))); 
-aaah: analyze:00011039:  ereport(ERROR, 
-aaah: analyze:00011040:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011041:  errmsg("cannot use subquery in EXECUTE parameter"))); 
-aaah: analyze:00011043:  ereport(ERROR, 
-aaah: analyze:00011044:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00011045:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
-aaah: analyze:00011047:  ereport(ERROR, 
-aaah: analyze:00011048:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011049:  errmsg("cannot use window function in EXECUTE parameter"))); 
-aaah: analyze:00011061:  ereport(ERROR, 
-aaah: analyze:00011062:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaah: analyze:00011063:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
-aaah: analyze:00011064:  i, 
-aaah: analyze:00011065:  format_type_be(given_type_id), 
-aaah: analyze:00011066:  format_type_be(expected_type_id)), 
-aaah: analyze:00011067:  errhint("You will need to rewrite or cast the expression."), 
-aaah: analyze:00011068:  errOmitLocation(true))); 
-aaah: analyze:00011083:  ereport(ERROR, 
-aaah: analyze:00011084:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011085:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-aaah: analyze:00011087:  ereport(ERROR, 
-aaah: analyze:00011088:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011089:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
-aaah: analyze:00011091:  ereport(ERROR, 
-aaah: analyze:00011092:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011093:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
-aaah: analyze:00011095:  ereport(ERROR, 
-aaah: analyze:00011096:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011097:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
-aaah: analyze:00011099:  ereport(ERROR, 
-aaah: analyze:00011100:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011101:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
-aaah: analyze:00011103:  ereport(ERROR, 
-aaah: analyze:00011104:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011105:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
-aaah: analyze:00011146:  ereport(ERROR, 
-aaah: analyze:00011147:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011148:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
-aaah: analyze:00011186:  ereport(ERROR, 
-aaah: analyze:00011187:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011188:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
-aaah: analyze:00011203:  ereport(ERROR, 
-aaah: analyze:00011204:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011205:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
-aaah: analyze:00011208:  ereport(ERROR, 
-aaah: analyze:00011209:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011210:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
-aaah: analyze:00011213:  ereport(ERROR, 
-aaah: analyze:00011214:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011215:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
-aaah: analyze:00011218:  ereport(ERROR, 
-aaah: analyze:00011219:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011220:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a table function"))); 
-aaah: analyze:00011223:  ereport(ERROR, 
-aaah: analyze:00011224:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011225:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
-aaah: analyze:00011228:  elog(ERROR, "unrecognized RTE type: %d", 
-aaah: analyze:00011229:  (int) rte->rtekind); 
-aaah: analyze:00011236:  ereport(ERROR, 
-aaah: analyze:00011237:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaah: analyze:00011238:  errmsg("relation \"%s\" in FOR UPDATE/SHARE clause not found in FROM clause", 
-aaah: analyze:00011239:  relname))); 
-aaah: analyze:00011316:  ereport(ERROR, 
-aaah: analyze:00011317:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011318:  errmsg("misplaced DEFERRABLE clause"))); 
-aaah: analyze:00011320:  ereport(ERROR, 
-aaah: analyze:00011321:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011322:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
-aaah: analyze:00011329:  ereport(ERROR, 
-aaah: analyze:00011330:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011331:  errmsg("misplaced NOT DEFERRABLE clause"))); 
-aaah: analyze:00011333:  ereport(ERROR, 
-aaah: analyze:00011334:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011335:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
-aaah: analyze:00011340:  ereport(ERROR, 
-aaah: analyze:00011341:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011342:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
-aaah: analyze:00011347:  ereport(ERROR, 
-aaah: analyze:00011348:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011349:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
-aaah: analyze:00011351:  ereport(ERROR, 
-aaah: analyze:00011352:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011353:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
-aaah: analyze:00011363:  ereport(ERROR, 
-aaah: analyze:00011364:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011365:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
-aaah: analyze:00011370:  ereport(ERROR, 
-aaah: analyze:00011371:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011372:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
-aaah: analyze:00011374:  ereport(ERROR, 
-aaah: analyze:00011375:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00011376:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00008677:  ereport(ERROR, 
+aaah: analyze:00008678:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00008679:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
+aaah: analyze:00008680:  errOmitLocation(true))); 
+aaah: analyze:00008696:  ereport(ERROR, 
+aaah: analyze:00008697:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008698:  errmsg("ON SELECT rule may not use OLD"), 
+aaah: analyze:00008699:  errOmitLocation(true))); 
+aaah: analyze:00008701:  ereport(ERROR, 
+aaah: analyze:00008702:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008703:  errmsg("ON SELECT rule may not use NEW"), 
+aaah: analyze:00008704:  errOmitLocation(true))); 
+aaah: analyze:00008711:  ereport(ERROR, 
+aaah: analyze:00008712:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008713:  errmsg("ON INSERT rule may not use OLD"), 
+aaah: analyze:00008714:  errOmitLocation(true))); 
+aaah: analyze:00008718:  ereport(ERROR, 
+aaah: analyze:00008719:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008720:  errmsg("ON DELETE rule may not use NEW"), 
+aaah: analyze:00008721:  errOmitLocation(true))); 
+aaah: analyze:00008724:  elog(ERROR, "unrecognized event type: %d", 
+aaah: analyze:00008725:  (int) stmt->event); 
+aaah: analyze:00008752:  ereport(ERROR, 
+aaah: analyze:00008753:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00008754:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
+aaah: analyze:00008755:  errOmitLocation(true))); 
+aaah: analyze:00008932:  elog(ERROR, "inconsistency detected in internal grouped windows transformation"); 
+aaah: analyze:00009232:  ereport(ERROR, 
+aaah: analyze:00009233:  (errcode(ERRCODE_WINDOWING_ERROR), 
+aaah: analyze:00009234:  errmsg("unresolved grouping key in window query"), 
+aaah: analyze:00009235:  errhint("You may need to use explicit aliases and/or to refer to grouping " 
+aaah: analyze:00009236:  "keys in the same way throughout the query."), 
+aaah: analyze:00009237:  errOmitLocation(true))); 
+aaah: analyze:00009317:  ereport(ERROR, 
+aaah: analyze:00009318:  (errcode(ERRCODE_INTERNAL_ERROR), 
+aaah: analyze:00009319:  errmsg("can't generate internal attribute name"), 
+aaah: analyze:00009320:  errOmitLocation(true))); 
+aaah: analyze:00009640:  ereport(ERROR, 
+aaah: analyze:00009641:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009642:  errmsg("VALUES lists must all be the same length"), 
+aaah: analyze:00009643:  errOmitLocation(true))); 
+aaah: analyze:00009654:  ereport(ERROR, 
+aaah: analyze:00009655:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009656:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
+aaah: analyze:00009657:  errOmitLocation(true))); 
+aaah: analyze:00009727:  ereport(ERROR, 
+aaah: analyze:00009728:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009729:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
+aaah: analyze:00009730:  errOmitLocation(true))); 
+aaah: analyze:00009751:  ereport(ERROR, 
+aaah: analyze:00009752:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009753:  errmsg("VALUES must not contain table references"), 
+aaah: analyze:00009754:  errOmitLocation(true))); 
+aaah: analyze:00009764:  ereport(ERROR, 
+aaah: analyze:00009765:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009766:  errmsg("VALUES must not contain OLD or NEW references"), 
+aaah: analyze:00009767:  errhint("Use SELECT ... UNION ALL ... instead."), 
+aaah: analyze:00009768:  errOmitLocation(true))); 
+aaah: analyze:00009776:  ereport(ERROR, 
+aaah: analyze:00009777:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00009778:  errmsg("cannot use aggregate function in VALUES"), 
+aaah: analyze:00009779:  errOmitLocation(true))); 
+aaah: analyze:00009782:  ereport(ERROR, 
+aaah: analyze:00009783:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009784:  errmsg("cannot use window function in VALUES"), 
+aaah: analyze:00009785:  errOmitLocation(true))); 
+aaah: analyze:00009875:  ereport(ERROR, 
+aaah: analyze:00009876:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009877:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00009878:  errOmitLocation(true))); 
+aaah: analyze:00009994:  ereport(ERROR, 
+aaah: analyze:00009995:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009996:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
+aaah: analyze:00009997:  errOmitLocation(true))); 
+aaah: analyze:00010054:  ereport(ERROR, 
+aaah: analyze:00010055:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010056:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00010057:  errOmitLocation(true))); 
+aaah: analyze:00010060:  ereport(ERROR, 
+aaah: analyze:00010061:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010062:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00010063:  errOmitLocation(true))); 
+aaah: analyze:00010117:  ereport(ERROR, 
+aaah: analyze:00010118:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+aaah: analyze:00010119:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
+aaah: analyze:00010120:  errOmitLocation(true))); 
+aaah: analyze:00010176:  ereport(ERROR, 
+aaah: analyze:00010177:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010178:  errmsg("each %s query must have the same number of columns", 
+aaah: analyze:00010179:  context), 
+aaah: analyze:00010180:  errOmitLocation(true))); 
+aaah: analyze:00010258:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+aaah: analyze:00010291:  ereport(ERROR, 
+aaah: analyze:00010292:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010293:  errmsg("CREATE TABLE AS specifies too many column names"), 
+aaah: analyze:00010294:  errOmitLocation(true))); 
+aaah: analyze:00010336:  ereport(ERROR, 
+aaah: analyze:00010337:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010338:  errmsg("The RETURNING clause of the UPDATE statement is not " 
+aaah: analyze:00010339:  "supported in this version of Greenplum Database."), 
+aaah: analyze:00010340:  errOmitLocation(true))); 
+aaah: analyze:00010371:  ereport(ERROR, 
+aaah: analyze:00010372:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00010373:  errmsg("cannot use aggregate function in UPDATE"), 
+aaah: analyze:00010374:  errOmitLocation(true))); 
+aaah: analyze:00010377:  ereport(ERROR, 
+aaah: analyze:00010378:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010379:  errmsg("cannot use window function in UPDATE"), 
+aaah: analyze:00010380:  errOmitLocation(true))); 
+aaah: analyze:00010413:  elog(ERROR, "UPDATE target count mismatch --- internal error"); 
+aaah: analyze:00010423:  ereport(ERROR, 
+aaah: analyze:00010424:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00010425:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+aaah: analyze:00010426:  origTarget->name, 
+aaah: analyze:00010427:  RelationGetRelationName(pstate->p_target_relation)), 
+aaah: analyze:00010428:  errOmitLocation(true), 
+aaah: analyze:00010429:  parser_errposition(pstate, origTarget->location))); 
+aaah: analyze:00010439:  elog(ERROR, "UPDATE target count mismatch --- internal error"); 
+aaah: analyze:00010489:  ereport(ERROR, 
+aaah: analyze:00010490:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00010491:  errmsg("cannot use aggregate function in RETURNING"))); 
+aaah: analyze:00010494:  ereport(ERROR, 
+aaah: analyze:00010495:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010496:  errmsg("cannot use window function in RETURNING"))); 
+aaah: analyze:00010501:  ereport(ERROR, 
+aaah: analyze:00010502:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010503:  errmsg("RETURNING may not contain references to other relations"))); 
+aaah: analyze:00010557:  ereport(ERROR, 
+aaah: analyze:00010558:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaah: analyze:00010559:  errmsg("%s is not partitioned", 
+aaah: analyze:00010560:  lrelname))); 
+aaah: analyze:00010751:  elog(ERROR, "Cannot add column with primary " 
+aaah: analyze:00010752:  "key constraint"); 
+aaah: analyze:00010754:  elog(ERROR, "Cannot add column with unique " 
+aaah: analyze:00010755:  "constraint"); 
+aaah: analyze:00010813:  elog(ERROR, "unrecognized node type: %d", 
+aaah: analyze:00010814:  (int) nodeTag(cmd->def)); 
+aaah: analyze:00010942:  ereport(ERROR, 
+aaah: analyze:00010943:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+aaah: analyze:00010944:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
+aaah: analyze:00010951:  elog(ERROR, "unexpected extra stuff in cursor statement"); 
+aaah: analyze:00010957:  elog(ERROR, "unexpected non-SELECT command in DECLARE CURSOR"); 
+aaah: analyze:00010961:  ereport(ERROR, 
+aaah: analyze:00010962:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+aaah: analyze:00010963:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
+aaah: analyze:00011005:  ereport(ERROR, 
+aaah: analyze:00011006:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+aaah: analyze:00011007:  errmsg("type \"%s\" is not a valid parameter for PREPARE", 
+aaah: analyze:00011008:  TypeNameToString(tn)))); 
+aaah: analyze:00011029:  elog(ERROR, "unexpected extra stuff in prepared statement"); 
+aaah: analyze:00011041:  ereport(ERROR, 
+aaah: analyze:00011042:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+aaah: analyze:00011043:  errmsg("could not determine data type of parameter $%d", 
+aaah: analyze:00011044:  i + 1))); 
+aaah: analyze:00011074:  ereport(ERROR, 
+aaah: analyze:00011075:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011076:  errmsg("wrong number of parameters for prepared statement \"%s\"", 
+aaah: analyze:00011077:  stmt->name), 
+aaah: analyze:00011078:  errdetail("Expected %d parameters but got %d.", 
+aaah: analyze:00011079:  nexpected, nparams), 
+aaah: analyze:00011080:  errOmitLocation(true))); 
+aaah: analyze:00011092:  ereport(ERROR, 
+aaah: analyze:00011093:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011094:  errmsg("cannot use subquery in EXECUTE parameter"))); 
+aaah: analyze:00011096:  ereport(ERROR, 
+aaah: analyze:00011097:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00011098:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
+aaah: analyze:00011100:  ereport(ERROR, 
+aaah: analyze:00011101:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011102:  errmsg("cannot use window function in EXECUTE parameter"))); 
+aaah: analyze:00011114:  ereport(ERROR, 
+aaah: analyze:00011115:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaah: analyze:00011116:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
+aaah: analyze:00011117:  i, 
+aaah: analyze:00011118:  format_type_be(given_type_id), 
+aaah: analyze:00011119:  format_type_be(expected_type_id)), 
+aaah: analyze:00011120:  errhint("You will need to rewrite or cast the expression."), 
+aaah: analyze:00011121:  errOmitLocation(true))); 
+aaah: analyze:00011136:  ereport(ERROR, 
+aaah: analyze:00011137:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011138:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+aaah: analyze:00011140:  ereport(ERROR, 
+aaah: analyze:00011141:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011142:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
+aaah: analyze:00011144:  ereport(ERROR, 
+aaah: analyze:00011145:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011146:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
+aaah: analyze:00011148:  ereport(ERROR, 
+aaah: analyze:00011149:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011150:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
+aaah: analyze:00011152:  ereport(ERROR, 
+aaah: analyze:00011153:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011154:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
+aaah: analyze:00011156:  ereport(ERROR, 
+aaah: analyze:00011157:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011158:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
+aaah: analyze:00011199:  ereport(ERROR, 
+aaah: analyze:00011200:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011201:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+aaah: analyze:00011239:  ereport(ERROR, 
+aaah: analyze:00011240:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011241:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+aaah: analyze:00011256:  ereport(ERROR, 
+aaah: analyze:00011257:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011258:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
+aaah: analyze:00011261:  ereport(ERROR, 
+aaah: analyze:00011262:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011263:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
+aaah: analyze:00011266:  ereport(ERROR, 
+aaah: analyze:00011267:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011268:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
+aaah: analyze:00011271:  ereport(ERROR, 
+aaah: analyze:00011272:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011273:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a table function"))); 
+aaah: analyze:00011276:  ereport(ERROR, 
+aaah: analyze:00011277:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011278:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
+aaah: analyze:00011281:  elog(ERROR, "unrecognized RTE type: %d", 
+aaah: analyze:00011282:  (int) rte->rtekind); 
+aaah: analyze:00011289:  ereport(ERROR, 
+aaah: analyze:00011290:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaah: analyze:00011291:  errmsg("relation \"%s\" in FOR UPDATE/SHARE clause not found in FROM clause", 
+aaah: analyze:00011292:  relname))); 
+aaah: analyze:00011369:  ereport(ERROR, 
+aaah: analyze:00011370:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011371:  errmsg("misplaced DEFERRABLE clause"))); 
+aaah: analyze:00011373:  ereport(ERROR, 
+aaah: analyze:00011374:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011375:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+aaah: analyze:00011382:  ereport(ERROR, 
+aaah: analyze:00011383:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011384:  errmsg("misplaced NOT DEFERRABLE clause"))); 
+aaah: analyze:00011386:  ereport(ERROR, 
+aaah: analyze:00011387:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011388:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+aaah: analyze:00011393:  ereport(ERROR, 
+aaah: analyze:00011394:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011395:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+aaah: analyze:00011400:  ereport(ERROR, 
+aaah: analyze:00011401:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011402:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
+aaah: analyze:00011404:  ereport(ERROR, 
+aaah: analyze:00011405:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011406:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00011416:  ereport(ERROR, 
+aaah: analyze:00011417:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011418:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
 aaah: analyze:00011423:  ereport(ERROR, 
-aaah: analyze:00011424:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
-aaah: analyze:00011425:  errmsg("CREATE specifies a schema (%s) " 
-aaah: analyze:00011426:  "different from the one being created (%s)", 
-aaah: analyze:00011427:  *stmt_schema_name, context_schema))); 
-aaah: analyze:00011559:  elog(ERROR, "unrecognized node type: %d", 
-aaah: analyze:00011560:  (int) nodeTag(element)); 
-aaah: analyze:00011597:  ereport(ERROR, 
-aaah: analyze:00011598:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
-aaah: analyze:00011599:  errmsg("there is no parameter $%d", paramno))); 
-aaah: analyze:00011602:  ereport(ERROR, 
-aaah: analyze:00011603:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
-aaah: analyze:00011604:  errmsg("could not determine data type of parameter $%d", 
-aaah: analyze:00011605:  paramno))); 
-aaah: analyze:00011677:  ereport(ERROR, 
-aaah: analyze:00011678:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00011679:  errmsg("column \"%s\" named in DISTRIBUTED BY " 
-aaah: analyze:00011680:  "clause does not exist", 
-aaah: analyze:00011681:  key), 
-aaah: analyze:00011682:  errOmitLocation(true))); 
-aaah: analyze:00011783:  ereport(NOTICE, 
-aaah: analyze:00011784:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
-aaah: analyze:00011785:  "error table with the same name", sreh->errtable->relname))); 
+aaah: analyze:00011424:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011425:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
+aaah: analyze:00011427:  ereport(ERROR, 
+aaah: analyze:00011428:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00011429:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00011476:  ereport(ERROR, 
+aaah: analyze:00011477:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
+aaah: analyze:00011478:  errmsg("CREATE specifies a schema (%s) " 
+aaah: analyze:00011479:  "different from the one being created (%s)", 
+aaah: analyze:00011480:  *stmt_schema_name, context_schema))); 
+aaah: analyze:00011612:  elog(ERROR, "unrecognized node type: %d", 
+aaah: analyze:00011613:  (int) nodeTag(element)); 
+aaah: analyze:00011650:  ereport(ERROR, 
+aaah: analyze:00011651:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+aaah: analyze:00011652:  errmsg("there is no parameter $%d", paramno))); 
+aaah: analyze:00011655:  ereport(ERROR, 
+aaah: analyze:00011656:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
+aaah: analyze:00011657:  errmsg("could not determine data type of parameter $%d", 
+aaah: analyze:00011658:  paramno))); 
+aaah: analyze:00011730:  ereport(ERROR, 
+aaah: analyze:00011731:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00011732:  errmsg("column \"%s\" named in DISTRIBUTED BY " 
+aaah: analyze:00011733:  "clause does not exist", 
+aaah: analyze:00011734:  key), 
+aaah: analyze:00011735:  errOmitLocation(true))); 
+aaah: analyze:00011836:  ereport(NOTICE, 
+aaah: analyze:00011837:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
+aaah: analyze:00011838:  "error table with the same name", sreh->errtable->relname))); 
 aaaaa GP_IGNORE: gaae: gram - ./backend/parser/gram.c
 gaae: gram:00019316:  ereport(ERROR, 
 gaae: gram:00019317:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -23156,112 +23160,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006364:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006365:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006378:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006379:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006392:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006393:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006423:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006424:  conf->gen.name, str); 
-gaad: guc:00006681:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006698:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006715:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006746:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007602:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007712:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007713:  " in a future release.", name); 
-gaad: guc:00007721:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007722:  name); 
-gaad: guc:00008196:  ereport(ERROR, 
-gaad: guc:00008197:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008198:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008200:  ereport(ERROR, 
-gaad: guc:00008201:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008202:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008236:  ereport(ERROR, 
-gaad: guc:00008237:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008238:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008240:  ereport(ERROR, 
-gaad: guc:00008241:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008242:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008311:  ereport(ERROR, 
-gaad: guc:00008312:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008313:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008320:  ereport(ERROR, 
-gaad: guc:00008321:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008322:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008335:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008382:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008383:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008440:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008466:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008467:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008493:  ereport(ERROR, 
-gaad: guc:00008494:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008495:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008557:  ereport(ERROR, 
-gaad: guc:00008558:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008559:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008878:  ereport(ERROR, 
-gaad: guc:00008879:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008880:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008882:  ereport(ERROR, 
-gaad: guc:00008883:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008884:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009653:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009686:  ereport(FATAL, 
-gaad: guc:00009687:  (errcode_for_file_access(), 
-gaad: guc:00009688:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009689:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009701:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009703:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009705:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009796:  ereport(WARNING, 
-gaad: guc:00009797:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009798:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009992:  ereport(ERROR, 
-gaad: guc:00009993:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009994:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010015:  ereport(ERROR, 
-gaad: guc:00010016:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010017:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010018:  tok))); 
-gaad: guc:00010044:  ereport(ERROR, 
-gaad: guc:00010045:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010046:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010047:  value))); 
-gaad: guc:00010455:  ereport(ERROR, 
-gaad: guc:00010456:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010457:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010531:  ereport(ERROR, 
-gaad: guc:00010532:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010533:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010542:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010552:  ereport(ERROR, 
-gaad: guc:00010553:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010554:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010565:  ereport(ERROR, 
-gaad: guc:00010566:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010567:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010582:  ereport(ERROR, 
-gaad: guc:00010583:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010584:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010585:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010586:  "\"log_dispatch_stats\", " 
-gaad: guc:00010587:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010602:  ereport(ERROR, 
-gaad: guc:00010603:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010604:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010605:  "\"log_statement_stats\", " 
-gaad: guc:00010606:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010607:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010622:  ereport(ERROR, 
-gaad: guc:00010623:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010624:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011021:  elog(ERROR, 
-gaad: guc:00011022:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011023:  show_allow_system_table_mods()); 
+gaad: guc:00006375:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006376:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006389:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006390:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006403:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006404:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006434:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006435:  conf->gen.name, str); 
+gaad: guc:00006692:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006709:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006726:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006757:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007613:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007723:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007724:  " in a future release.", name); 
+gaad: guc:00007732:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007733:  name); 
+gaad: guc:00008207:  ereport(ERROR, 
+gaad: guc:00008208:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008209:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008211:  ereport(ERROR, 
+gaad: guc:00008212:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008213:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008247:  ereport(ERROR, 
+gaad: guc:00008248:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008249:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008251:  ereport(ERROR, 
+gaad: guc:00008252:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008253:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008322:  ereport(ERROR, 
+gaad: guc:00008323:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008324:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008331:  ereport(ERROR, 
+gaad: guc:00008332:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008333:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008346:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008393:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008394:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008451:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008477:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008478:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008504:  ereport(ERROR, 
+gaad: guc:00008505:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008506:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008568:  ereport(ERROR, 
+gaad: guc:00008569:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008570:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008889:  ereport(ERROR, 
+gaad: guc:00008890:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008891:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008893:  ereport(ERROR, 
+gaad: guc:00008894:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008895:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009664:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009697:  ereport(FATAL, 
+gaad: guc:00009698:  (errcode_for_file_access(), 
+gaad: guc:00009699:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009700:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009712:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009714:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009716:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009807:  ereport(WARNING, 
+gaad: guc:00009808:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009809:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010003:  ereport(ERROR, 
+gaad: guc:00010004:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010005:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010026:  ereport(ERROR, 
+gaad: guc:00010027:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010028:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010029:  tok))); 
+gaad: guc:00010055:  ereport(ERROR, 
+gaad: guc:00010056:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010057:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010058:  value))); 
+gaad: guc:00010466:  ereport(ERROR, 
+gaad: guc:00010467:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010468:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010542:  ereport(ERROR, 
+gaad: guc:00010543:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010544:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010553:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010563:  ereport(ERROR, 
+gaad: guc:00010564:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010565:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010576:  ereport(ERROR, 
+gaad: guc:00010577:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010578:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010593:  ereport(ERROR, 
+gaad: guc:00010594:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010595:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010596:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010597:  "\"log_dispatch_stats\", " 
+gaad: guc:00010598:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010613:  ereport(ERROR, 
+gaad: guc:00010614:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010615:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010616:  "\"log_statement_stats\", " 
+gaad: guc:00010617:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010618:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010633:  ereport(ERROR, 
+gaad: guc:00010634:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010635:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011032:  elog(ERROR, 
+gaad: guc:00011033:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011034:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
