@@ -167,19 +167,6 @@ typedef struct AppendOnlyStorageRead
 			 * Lots of information about the current block that was read.
 			 */
 
-	qlz1_state_decompress *qlz1StateDecompress;
-	qlz3_state_decompress *qlz3StateDecompress;
-			/*
-			 * This scratch buffer is used by the QuickLZ library
-			 * during decompression.
-			 */
-
-	//int32			qlzScratchLen;
-	//int32			qlzScratchGuardLen;
-	/*
-	 * Add these two byte lengths to get the length of the qlzScratch buffer.
-	 */
-
 	/* Storage attributes */
 	CompressionState *compressionState;
 	int               blocksize;             /* For AO or CO uncompresed block size          */

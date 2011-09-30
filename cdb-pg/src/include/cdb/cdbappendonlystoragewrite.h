@@ -126,11 +126,6 @@ typedef struct AppendOnlyStorageWrite
 			  * compression is being done.
 			  */
 
-
-			/*
-			 * Add these two byte lengths to get the length of the qlzScratchCompress buffer.
-			 */
-
 	int32	compressionOverrunLen;
 			/*
 			 * Number of bytes of extra buffer must have beyond the output
@@ -146,15 +141,6 @@ typedef struct AppendOnlyStorageWrite
 			 * is the buffer to decompress the just compressed block
 			 * into so we can memory comprare it with the input.
 			 */
-
-	qlz1_state_decompress *qlz1StateDecompress;
-	qlz3_state_decompress *qlz3StateDecompress;
-			/*
-			 * for the VerifyBlock check.
-			 */
-
-	//int32	qlzScratchDecompressLen;
-	//int32	qlzScratchDecompressGuardLen;
 	/*
 	 * Add these two byte lengths to get the length of the qlzScratchDecompress buffer.
 	 */

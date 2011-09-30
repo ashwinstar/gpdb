@@ -181,12 +181,11 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 			CompressionState *cs;
 			StorageAttributes sa;
 
-			sa.comptype =
-				CompressorTypeToString(scan->storageAttributes.compressType);
+			sa.comptype = scan->storageAttributes.compressType;
 			sa.complevel = scan->storageAttributes.compressLevel;
 			sa.blocksize = scan->usableBlockSize;
 
-			/* 
+			/*
 			 * The relation's tuple descriptor allows the compression
 			 * constructor to make decisions about how to compress or
 			 * decompress the relation given it's structure.
@@ -1450,8 +1449,11 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	 * These attributes describe the AppendOnly format to be scanned.
 	 */
 	attr->compress			= (aoentry->compresslevel > 0 ? true : false);
-	attr->compressType		= CompressorStrToType(aoentry->compresstype, aoentry->compresslevel);
-	attr->compressLevel		= aoentry->compresslevel;
+	if (aoentry->compresstype != NULL)
+		attr->compressType = aoentry->compresstype;
+	else
+		attr->compressType = "none";
+	attr->compressLevel	= aoentry->compresslevel;
 	attr->checksum			= aoentry->checksum;
 	attr->use32BitAlignment	= true;	   // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
@@ -1896,10 +1898,11 @@ appendonly_fetch_init(
 	 * These attributes describe the AppendOnly format to be scanned.
 	 */
 	attr->compress			= (aoentry->compresslevel > 0 ? true : false);
-	attr->compressType		= CompressorStrToType(
-											aoentry->compresstype,
-											aoentry->compresslevel);
-	attr->compressLevel 	= aoentry->compresslevel;
+	if (aoentry->compresstype != NULL)
+		attr->compressType = aoentry->compresstype;
+	else
+		attr->compressType = "none";
+	attr->compressLevel = aoentry->compresslevel;
 	attr->checksum			= aoentry->checksum;
 	attr->use32BitAlignment = true;    // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
@@ -2215,8 +2218,11 @@ appendonly_insert_init(Relation rel, int segno)
 	 * These attributes describe the AppendOnly format to be scanned.
 	 */
 	attr->compress			= (aoentry->compresslevel > 0 ? true : false);
-	attr->compressType		= CompressorStrToType(aoentry->compresstype, aoentry->compresslevel);
-	attr->compressLevel		= aoentry->compresslevel;
+	if (aoentry->compresstype != NULL)
+		attr->compressType	= aoentry->compresstype;
+	else
+		attr->compressType = "none";
+	attr->compressLevel	= aoentry->compresslevel;
 	attr->checksum			= aoentry->checksum;
 	attr->use32BitAlignment	= true;	   // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;

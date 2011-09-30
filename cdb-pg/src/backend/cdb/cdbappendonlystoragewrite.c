@@ -115,17 +115,6 @@ void AppendOnlyStorageWrite_Init(
 	if (storageWrite->storageAttributes.compress)
 	{
 		storageWrite->uncompressedBuffer = (uint8 *) palloc(storageWrite->maxBufferLen * sizeof(uint8));
-
-		if (storageWrite->storageAttributes.compressType == COMPTYPE_QUICKLZ1 ||
-			storageWrite->storageAttributes.compressType == COMPTYPE_QUICKLZ3)
-		{
-			/*
-			  * QuickLZ has compression overrun issues.  It can generate compressed output beyond the
-			  * original source length!
-			  */
-	    	storageWrite->compressionOverrunLen = MAX_OVERRUN_QUICKLZ;
-		}
-
 	}
 	else
 	{
@@ -178,33 +167,6 @@ void AppendOnlyStorageWrite_Init(
 	if (gp_appendonly_verify_write_block && storageWrite->storageAttributes.compress)
 	{
 		storageWrite->verifyWriteBuffer = (uint8 *) palloc(storageWrite->maxBufferLen * sizeof(uint8));
-
-		/*
-		 * If QuickLz compression used, prepare scratch space for decompression.
-		 */
-		//if (Debug_appendonly_guard_end_quicklz_scratch)
-		//	storageWrite->qlzScratchDecompressGuardLen = 1024;
-
-		storageWrite->qlz1StateDecompress = NULL;
-		storageWrite->qlz3StateDecompress = NULL;
-		switch(storageWrite->storageAttributes.compressType)
-		{
-			case COMPTYPE_QUICKLZ1:
-				//storageWrite->qlzScratchDecompressLen = QLZ1_SCRATCH_DECOMPRESS;
-				//storageWrite->qlzScratchDecompress = (char*) palloc0(storageWrite->qlzScratchDecompressLen + storageWrite->qlzScratchDecompressGuardLen);
-				storageWrite->qlz1StateDecompress = (qlz1_state_decompress *)palloc0(sizeof(qlz1_state_decompress));
-				break;
-			case COMPTYPE_QUICKLZ3:
-				//storageWrite->qlzScratchDecompressLen = QLZ3_SCRATCH_DECOMPRESS;
-				//storageWrite->qlzScratchDecompress = (char*) palloc0(storageWrite->qlzScratchDecompressLen + storageWrite->qlzScratchDecompressGuardLen);
-				storageWrite->qlz3StateDecompress = (qlz3_state_decompress *)palloc0(sizeof(qlz3_state_decompress));
-				break;
-			case COMPTYPE_ZLIB:
-			case COMPTYPE_NONE:
-				break; /* nothing to do */
-			default:
-				Insist(false);
-		}
 	}
 	else
 	{
@@ -258,18 +220,6 @@ void AppendOnlyStorageWrite_FinishSession(
 	{
 		pfree(storageWrite->verifyWriteBuffer);
 		storageWrite->verifyWriteBuffer = NULL;
-	}
-
-	if (storageWrite->qlz1StateDecompress != NULL)
-	{
-		pfree(storageWrite->qlz1StateDecompress);
-		storageWrite->qlz1StateDecompress = NULL;
-	}
-
-	if (storageWrite->qlz3StateDecompress != NULL)
-	{
-		pfree(storageWrite->qlz3StateDecompress);
-		storageWrite->qlz3StateDecompress = NULL;
 	}
 
 	if (storageWrite->segmentFileName != NULL)
@@ -1113,13 +1063,10 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 
 			gp_decompress_new(&header[offset], // Compressed data in block.
 							  compressedLen,
-							  storageWrite->verifyWriteBuffer, // Temporary buffer to hold uncompressed data. 
+							  storageWrite->verifyWriteBuffer, // Temporary buffer to hold uncompressed data.
 							  uncompressedLen,
-							  storageWrite->storageAttributes.compressType,
 							  decompressor,
 							  storageWrite->verifyWriteCompressionState,
-							  storageWrite->qlz1StateDecompress,
-							  storageWrite->qlz3StateDecompress,
 							  storageWrite->bufferCount);
 
 			/*
@@ -1268,7 +1215,6 @@ AppendOnlyStorageWrite_CompressAppend(
 					sourceLen,	// Limit compression to be no more than the input size.
 					compressedLen,
 					storageWrite->storageAttributes.compressLevel,
-					storageWrite->storageAttributes.compressType,
 					compressor,
 					storageWrite->compressionState);
 	/*

@@ -23,10 +23,10 @@
 
 typedef enum AOCSBK
 {
-	AOCSBK_None = 0, 
+	AOCSBK_None = 0,
     AOCSBK_BLOCK,
     AOCSBK_BLOB,
-} AOCSBK; 
+} AOCSBK;
 
 
 int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
@@ -39,26 +39,26 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
         *null = true;
         return 0;
     }
-    else 
+    else
         *null = false;
 
-    if (!acc->byval) 
+    if (!acc->byval)
     {
         *datum = PointerGetDatum(acc->datump);
         AssertImply(acc->datumlen < 0, VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTERNAL_D(*datum));
     }
-    else 
+    else
     {
         if(acc->datumlen == 1)
             *datum = *(uint8 *) acc->datump;
         else if(acc->datumlen == 2)
         {
-            Assert(IsAligned(acc->datump, 2)); 
+            Assert(IsAligned(acc->datump, 2));
             *datum = *(uint16 *) acc->datump;
         }
         else if(acc->datumlen == 4)
         {
-            Assert(IsAligned(acc->datump, 4)); 
+            Assert(IsAligned(acc->datump, 4));
             *datum = *(uint32 *) acc->datump;
         }
         else if(acc->datumlen == 8)
@@ -119,12 +119,12 @@ extern int datumstream_advance(DatumStream *acc)
             acc->datump = (char *) att_align(acc->datump, acc->align);
 
 		Assert((acc->has_null && (*acc->nullp & acc->nullbit))
-			   || VARATT_IS_SHORT_D(PointerGetDatum(acc->datump)) 
-			   || !VARATT_IS_EXTERNAL_D(PointerGetDatum(acc->datump)) 
-			); 
+			   || VARATT_IS_SHORT_D(PointerGetDatum(acc->datump))
+			   || !VARATT_IS_EXTERNAL_D(PointerGetDatum(acc->datump))
+			);
    }
     else
-        acc->datump += acc->datumlen; 
+        acc->datump += acc->datumlen;
 
     return 1;
 }
@@ -142,7 +142,7 @@ static inline void incr_acc_n(DatumStream *acc)
     ++acc->nth;
 }
 
-static bool datumstream_has_space(DatumStream *ds, bool null, int32 sz) 
+static bool datumstream_has_space(DatumStream *ds, bool null, int32 sz)
 {
     int32 dssz = (ds->datump - ds->dpbuf);
 
@@ -186,9 +186,9 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
 
         Assert(acc->datumlen == -1);
 
-        /* 
-         * XXX Huh?  Repace d?  Who owns the memory?  
-         * Hate this, but this is what memtuple and lots of other place do 
+        /*
+         * XXX Huh?  Repace d?  Who owns the memory?
+         * Hate this, but this is what memtuple and lots of other place do
          * ...
          */
         if(VARATT_IS_EXTERNAL_D(d))
@@ -223,7 +223,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
             *(acc->datump) = c1;
             acc->datump += 1;
         }
-        
+
         memcpy(acc->datump, p, wsz);
 
         acc->datump += wsz;
@@ -273,7 +273,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
     return acc->datumlen;
 }
 
-DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 maxsz,
+DatumStream *create_datumstream(char *compName, int32 compLevel, int32 maxsz,
 		AORelationVersion version, Form_pg_attribute attr, char *relname, bool isreader)
 {
 	AORelationVersion_CheckValid(version);
@@ -297,8 +297,11 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
     acc->maxsz = maxsz;
     acc->is_reader = isreader;
 
-    acc->ao_attr.compress = (compType != COMPTYPE_NONE);
-    acc->ao_attr.compressType = compType;
+    if (compName == NULL || pg_strcasecmp(compName, "none") == 0)
+    	acc->ao_attr.compress = false;
+    else
+    	acc->ao_attr.compress = true;
+
     acc->ao_attr.compressLevel = compLevel;
     acc->ao_attr.version = version;
 
@@ -391,16 +394,16 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
         Assert(ds->ao_write && !ds->ao_read);
 
 		/*
-		 * Segment file #0 is created when the Append-Only table is created.  
+		 * Segment file #0 is created when the Append-Only table is created.
 		 *
 		 * Other ssegment files are created on-demand under transaction.
 		 */
 		if (segmentFileNum > 0 && eof == 0)
 		{
 			AppendOnlyStorageWrite_TransactionCreateFile(
-				ds->ao_write, 
-				fn, 
-				eof,	
+				ds->ao_write,
+				fn,
+				eof,
 				&relFileNode,
 				segmentFileNum,
 				&persistentTid,
@@ -425,9 +428,9 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
 		 * Open the existing file for write.
 		 */
         AppendOnlyStorageWrite_OpenFile(
-			ds->ao_write, 
-			fn, 
-			eof, 	
+			ds->ao_write,
+			fn,
+			eof,
 			eofUncompressed,
 			&relFileNode,
 			segmentFileNum,
@@ -458,7 +461,7 @@ void datumstream_close_file(DatumStream *ds)
 
     ds->need_close_file = false;
 }
-    
+
 int64 datumstream_write_block(DatumStream *acc)
 {
     int64 wsize = 0;
@@ -496,7 +499,7 @@ int64 datumstream_write_block(DatumStream *acc)
     if(!acc->has_null)
         block.nullsz = 0;
     else
-        block.nullsz = MAXALIGN((acc->nth+7) >> 3); 
+        block.nullsz = MAXALIGN((acc->nth+7) >> 3);
     block.sz = acc->datump - acc->dpbuf;
 
     memcpy(p, &block, sizeof(DatumStreamBlock));
@@ -525,7 +528,7 @@ int64 datumstream_write_block(DatumStream *acc)
     acc->nullbit = 1;
     acc->datump = acc->dpbuf;
 
-    return wsize; 
+    return wsize;
 }
 
 int64 datumstream_write_lob(DatumStream *acc, Datum d)
@@ -550,7 +553,7 @@ int64 datumstream_write_lob(DatumStream *acc, Datum d)
     Assert(acc->nullp == acc->npbuf);
     Assert(acc->datump == acc->dpbuf);
 
-    return VARSIZE_ANY(va); 
+    return VARSIZE_ANY(va);
 }
 
 static bool
@@ -563,7 +566,7 @@ datumstream_read_block_info(DatumStream *acc,
 							bool *isCompressed)
 {
 	bool readOK = false;
-	
+
     Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
 
     readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
@@ -594,8 +597,8 @@ datumstream_read_block_content(DatumStream *acc,
     char *buffer = NULL;
 
     Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
-	
-    if (execBlockKind == AOCSBK_BLOCK) 
+
+    if (execBlockKind == AOCSBK_BLOCK)
     {
         Assert(!isLarge);
 
@@ -629,11 +632,11 @@ datumstream_read_block_content(DatumStream *acc,
         buffer += sizeof(DatumStreamBlock);
 
         /* Set up acc */
-        acc->nth = -1; /* put it before first entry.  Caller will advance */ 
+        acc->nth = -1; /* put it before first entry.  Caller will advance */
         acc->has_null = acc->block->flags & DSB_HAS_NULLBITMAP;
-        acc->nullp = buffer; 
+        acc->nullp = buffer;
         acc->nullbit = 1;
-        acc->datump = buffer + acc->block->nullsz; 
+        acc->datump = buffer + acc->block->nullsz;
 
         /*
          * Pre-4.0 code did not enforce the following assertion.
@@ -656,7 +659,7 @@ datumstream_read_block_content(DatumStream *acc,
     }
     else
     {
-        Assert(execBlockKind == AOCSBK_BLOB); 
+        Assert(execBlockKind == AOCSBK_BLOB);
         Assert(rowCnt == 1);
 
 		// NOTE: Do not assert the content is large.  What appears to be large content
@@ -668,7 +671,7 @@ datumstream_read_block_content(DatumStream *acc,
         {
             MemoryContext oldCtxt;
             oldCtxt = MemoryContextSwitchTo(acc->memctxt);
-            
+
             if (acc->lobbuf)
                 pfree(acc->lobbuf);
 
@@ -700,9 +703,9 @@ int datumstream_read_block(DatumStream *acc)
     bool isCompressed = 0;
 
     bool readOK = false;
-    
+
     Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
-    
+
     acc->blockFirstRowNum += acc->blockRowCount;
 
     readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
@@ -782,7 +785,7 @@ datumstream_find(DatumStream *datumStream,
 	while (rowNumInBlock > datumStream->nth)
 	{
 		int status;
-		
+
 		status = datumstream_advance(datumStream);
 		Assert(status != 0);
 	}
@@ -806,15 +809,15 @@ datumstream_find_block(DatumStream *datumStream,
     bool isCompressed = 0;
 
 	Assert(datumStreamFetchDesc->datumStream == datumStream);
-	
+
 	if (datumStreamFetchDesc->scanNextFileOffset >=
 		datumStreamFetchDesc->scanAfterFileOffset)
 		return false; // No more blocks requested for range
-	
+
 	if (datumStreamFetchDesc->currentSegmentFile.logicalEof ==
 		datumStreamFetchDesc->scanNextFileOffset)
 		return false; // No more blocks requested for range
-	
+
 	if (datumStreamFetchDesc->currentSegmentFile.logicalEof <
 		datumStreamFetchDesc->scanNextFileOffset)
 		return false;	// UNDONE: Why does our next scan position go beyond logical EOF?
@@ -855,7 +858,7 @@ datumstream_find_block(DatumStream *datumStream,
 		datumStreamFetchDesc->currentBlock.isCompressed =
 			isCompressed;
 		datumStreamFetchDesc->currentBlock.isLargeContent = isLarge;
-		
+
 		if (rowNum < datumStreamFetchDesc->currentBlock.firstRowNum)
 		{
 			/*
@@ -868,7 +871,7 @@ datumstream_find_block(DatumStream *datumStream,
 			int64 beginFileOffset = datumStreamFetchDesc->currentBlock.fileOffset;
 			int64 afterFileOffset = datumStreamFetchDesc->currentBlock.fileOffset +
 				datumStreamFetchDesc->currentBlock.overallBlockLen;
-			
+
 			AppendOnlyStorageRead_SetTemporaryRange(
 				datumStream->ao_read,
 				beginFileOffset,
@@ -914,7 +917,7 @@ datumstream_find_block(DatumStream *datumStream,
 			}
 			break;
 		}
-		
+
 		AppendOnlyStorageRead_SkipCurrentBlock(datumStream->ao_read);
 	}
 

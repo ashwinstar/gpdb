@@ -102,32 +102,6 @@ void AppendOnlyStorageRead_Init(
 									storageRead->storageAttributes.checksum);
 
 	/*
-	 * Allocate extra memory needed for decompression.
-	 */
-	if (storageRead->storageAttributes.compress)
-	{
-		/*
-		 * if QuickLZ compression used, prepare scratch space for decompression.
-		 */
-		switch(storageRead->storageAttributes.compressType)
-		{
-		case COMPTYPE_QUICKLZ1:
-			storageRead->qlz1StateDecompress = (qlz1_state_decompress *)palloc0(sizeof(qlz1_state_decompress));
-			break;
-		case COMPTYPE_QUICKLZ3:
-			storageRead->qlz3StateDecompress = (qlz3_state_decompress *)palloc0(sizeof(qlz3_state_decompress));
-			break;
-		case COMPTYPE_ZLIB:
-		case COMPTYPE_RLE_TYPE:
-		case COMPTYPE_NONE:
-			break; /* nothing to do */
-		default:
-			Insist(false);
-		}
-
-	}
-
-	/*
 	 * Initialize BufferedRead.
 	 */
 	storageRead->largeReadLen = 2 * storageRead->maxBufferLen;
@@ -209,18 +183,6 @@ void AppendOnlyStorageRead_FinishSession(
 	{
 		pfree(storageRead->relationName);
 		storageRead->relationName = NULL;
-	}
-
-	if (storageRead->qlz1StateDecompress != NULL)
-	{
-		pfree(storageRead->qlz1StateDecompress);
-		storageRead->qlz1StateDecompress = NULL;
-	}
-
-	if (storageRead->qlz3StateDecompress != NULL)
-	{
-		pfree(storageRead->qlz3StateDecompress);
-		storageRead->qlz3StateDecompress = NULL;
 	}
 
 	if (storageRead->segmentFileName != NULL)
@@ -1382,11 +1344,8 @@ void AppendOnlyStorageRead_Content(
 		  		storageRead->current.compressedLen,
 		  		contentOut,
 		  		storageRead->current.uncompressedLen,
-		  		storageRead->storageAttributes.compressType,
 		  		decompressor,
 		  		storageRead->compressionState,
-		  		storageRead->qlz1StateDecompress,
-		  		storageRead->qlz3StateDecompress,
 		  		storageRead->bufferCount);
 
 			if (Debug_appendonly_print_scan)

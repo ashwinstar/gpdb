@@ -29,6 +29,7 @@
 #include "utils/datumstream.h"
 #include "access/aocssegfiles.h"
 #include "cdb/cdbaocsam.h"
+#include "cdb/cdbappendonlyam.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/procarray.h"
@@ -114,54 +115,44 @@ static void open_all_datumstream_segfiles(Relation rel,
  * means all columns.
  */
 static void
-open_ds(Relation rel, CompressorType compType, int32 compLv, int32 blocksz,
+open_ds(Relation rel,
         DatumStream **ds, TupleDesc relationTupleDesc, bool *proj,
 		AORelationVersion version)
 {
 	int nvp = relationTupleDesc->natts;
 	StdRdOptions **opts = RelationGetAttributeOptions(rel);
 	PGFunction **cfuncs = RelationGetColumnCompressionFuncs(rel);
-	PGFunction *tblcfuncs = NULL;
 
 	/* open datum streams.  It will open segment file underneath */
 	for (int i = 0; i < nvp; ++i)
 	{
 		Form_pg_attribute attr = relationTupleDesc->attrs[i];
-		CompressorType ct;
+		char *ct;
 		int32 clvl;
 		int32 blksz;
 		PGFunction *fns;
 
-		/* 
-		 * If the column has column specific encoding, we use those. Note
-		 * that even if the user specified no encoding for this column,
-		 * we will have represented that as compresstype=none.
-		 */
+    /*
+     * If the column has column specific encoding, we use those. Note
+     * that even if the user specified no encoding for this column,
+     * we will have represented that as compresstype=none.
+     */
 		if (opts[i])
 		{
-			ct = CompressorStrToType(opts[i]->compresstype,
-									 opts[i]->compresslevel);
+			ct = opts[i]->compresstype;
 			clvl = opts[i]->compresslevel;
 			blksz = opts[i]->blocksize;
 		}
 		else
 		{
-			/* Nothing set, so use the defaults passed in. */
-			ct = compType;
-			clvl = compLv;
-			blksz = blocksz;
+			ct = "none";
+			clvl = 0;
+			blksz = DEFAULT_APPENDONLY_BLOCK_SIZE;
 		}
-		
 		if (cfuncs[i])
 			fns = cfuncs[i];
 		else
-		{
-			/* initialise lazily since it will usually be unnecessary */
-			if (tblcfuncs == NULL)
-				tblcfuncs = RelationGetRelationCompressionFuncs(rel);
-
-			fns = tblcfuncs;
-		}
+			fns = NULL;
 
 		if (proj)
 		{
@@ -179,8 +170,7 @@ open_ds(Relation rel, CompressorType compType, int32 compLv, int32 blocksz,
 					TupleDesc td;
 					StorageAttributes sa;
 
-					sa.comptype =
-						CompressorTypeToString(ds[i]->ao_attr.compressType);
+					sa.comptype = ct;
 					sa.complevel = clvl;
 					sa.blocksize = blksz;
 
@@ -215,8 +205,7 @@ open_ds(Relation rel, CompressorType compType, int32 compLv, int32 blocksz,
 				TupleDesc td = CreateTupleDesc(1, false, &attr);
 				StorageAttributes sa;
 
-				sa.comptype =
-					CompressorTypeToString(ds[i]->ao_attr.compressType);
+				sa.comptype = ct;
 				sa.complevel = clvl;
 				sa.blocksize = blksz;
 
@@ -251,8 +240,8 @@ static void aocs_initscan(AOCSScanDesc scan)
     ItemPointerSet(&scan->cdb_fake_ctid, 0, 0);
     scan->cur_seg_row = 0;
 
-    open_ds(scan->aos_rel, scan->compType, scan->compLevel, scan->blocksz,
-            scan->ds, scan->relationTupleDesc, scan->proj, scan->aoEntry->version);
+    open_ds(scan->aos_rel,
+    		scan->ds, scan->relationTupleDesc, scan->proj, scan->aoEntry->version);
 
     pgstat_count_heap_scan(scan->aos_rel);
 }
@@ -387,11 +376,11 @@ aocs_beginscan(Relation relation, Snapshot snapshot, TupleDesc relationTupleDesc
     scan->aos_rel = relation;
 
     aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
-	scan->aoEntry = aoentry;
+    scan->aoEntry = aoentry;
     Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 
     scan->compLevel = aoentry->compresslevel;
-    scan->compType = CompressorStrToType(aoentry->compresstype, aoentry->compresslevel);
+    scan->compType = aoentry->compresstype;
     scan->blocksz = aoentry->blocksize;
 
     scan->seginfo = GetAllAOCSFileSegInfo(relation, aoentry, snapshot, &scan->total_seg);
@@ -588,8 +577,8 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 								AccessExclusiveLock,
 								/* dontWait */ false);
 
-    open_ds(desc->aoi_rel, desc->compType, desc->compLevel, desc->blocksz,
-            desc->ds, tupdesc, NULL, desc->aoEntry->version);
+    open_ds(desc->aoi_rel,
+    		desc->ds, tupdesc, NULL, desc->aoEntry->version);
 
     /* Now open seg info file and get eof mark. */
     seginfo = GetAOCSFileSegInfo(
@@ -640,27 +629,27 @@ SetBlockFirstRowNums(DatumStream **datumStreams,
 
 AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
 {
-    AOCSInsertDesc desc;
-    AppendOnlyEntry *aoentry;
+	AOCSInsertDesc desc;
+	AppendOnlyEntry *aoentry;
 	TupleDesc tupleDesc;
 	int64 firstSequence = 0;
 
-    aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
-    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
+	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 
-    desc = (AOCSInsertDesc) palloc0(sizeof(AOCSInsertDescData));
-    desc->aoi_rel = rel;
-	tupleDesc =RelationGetDescr(desc->aoi_rel);
+	desc = (AOCSInsertDesc) palloc0(sizeof(AOCSInsertDescData));
+	desc->aoi_rel = rel;
+	tupleDesc = RelationGetDescr(desc->aoi_rel);
 
-    Assert(segno >= 0);
-    desc->cur_segno = segno;
+	Assert(segno >= 0);
+	desc->cur_segno = segno;
 	desc->aoEntry = aoentry;
 
-    desc->compLevel = aoentry->compresslevel;
-    desc->compType = CompressorStrToType(aoentry->compresstype, aoentry->compresslevel);
-    desc->blocksz = aoentry->blocksize;
+	desc->compLevel = aoentry->compresslevel;
+	desc->compType = aoentry->compresstype;
+	desc->blocksz = aoentry->blocksize;
 
-    OpenAOCSDatumStreams(desc);
+	OpenAOCSDatumStreams(desc);
 
 	/*
 	 * Obtain the next list of fast sequences for this relation.
@@ -714,7 +703,7 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 			int itemCount = idesc->ds[i]->nth;
 
 			/* write the block up to this one */
-            datumstream_write_block(idesc->ds[i]);
+			datumstream_write_block(idesc->ds[i]);
 			if (itemCount > 0)
 			{
 				/* Insert an entry to the block directory */
@@ -1025,10 +1014,11 @@ aocs_fetch_init(Relation relation,
 	aocsFetchDesc->aoEntry = aoentry;
 
 	attr = &aocsFetchDesc->storageAttributes;
-	attr->compress = (aoentry->compresslevel > 0) ? true : false;
-	attr->compressType =
-		CompressorStrToType(aoentry->compresstype,
-							aoentry->compresslevel);
+	if (aoentry->compresstype == NULL || pg_strcasecmp(aoentry->compresstype, "none") == 0)
+		attr->compress = false;
+	else
+		attr->compress = true;
+	attr->compressType = aoentry->compresstype;
 	attr->compressLevel = aoentry->compresslevel;
 	attr->checksum = aoentry->checksum;
 	attr->use32BitAlignment = true; /* Old-style 32-bit alignment of storage blocks */

@@ -42,7 +42,7 @@
  *    about a writing or reading session.  The best thing is to initially zero out the memory since
  *    we treat that as no active session.  We provide ~Init routines for starting a session.
  *
- *    UNDONE: Session close / file close responsibility.  
+ *    UNDONE: Session close / file close responsibility.
  *    UNDONE: Who is responsible for flushing write files?
  *
  * Memory Alignment
@@ -83,7 +83,7 @@ typedef struct AppendOnlyStorageAttributes
 	bool				compress;
 			/* When true, content compression used. */
 
-	CompressorType  	compressType;
+	char				*compressType;
 			/*
 			 * The bulk-compression used on the contents
 			 * of the Append-Only Storage Blocks.
@@ -97,7 +97,7 @@ typedef struct AppendOnlyStorageAttributes
 			 * decompression since it may specify which
 			 * sub-library to use for decompress
 			 * (e.g. QuickLZ).
-			 */ 
+			 */
 
 	bool				checksum;
 			/*
@@ -115,7 +115,7 @@ typedef struct AppendOnlyStorageAttributes
 
 	int					safeFSWriteSize;
 			/*
-			 * The page round out with zero padding byte length.  
+			 * The page round out with zero padding byte length.
 			 * When 0, do no zero pad.
 			 */
 
@@ -126,7 +126,7 @@ typedef struct AppendOnlyStorageAttributes
 
 } AppendOnlyStorageAttributes;
 
-/* 
+/*
  * Safe initialization of AppendOnlyStorageAttributes struct.
  *
  * Use this define to initialize the attributes structure

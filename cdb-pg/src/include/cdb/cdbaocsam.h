@@ -38,23 +38,23 @@ struct AOCSFileSegInfo;
 
 typedef struct AOCSInsertDescData
 {
-	Relation	aoi_rel;
+	Relation 				 aoi_rel;
 	AOCSFileSegInfo *fsInfo;
 	int64		insertCount;
 	int64		varblockCount;
-	int64       rowCount; /* total row count before insert */
-	int64       numSequences; /* total number of available sequences */
-	int64       lastSequence; /* last used sequence */
+	int64		rowCount; /* total row count before insert */
+	int64		numSequences; /* total number of available sequences */
+	int64		lastSequence; /* last used sequence */
 	int32		cur_segno;
 	AppendOnlyEntry *aoEntry;
 
-    CompressorType  compType;
-	int32 		compLevel;
-    int32       blocksz;
+	char *compType;
+	int32 compLevel;
+	int32 blocksz;
 
-	struct DatumStream     **ds;
+	struct DatumStream **ds;
 
-	AppendOnlyBlockDirectory	blockDirectory;
+	AppendOnlyBlockDirectory blockDirectory;
 } AOCSInsertDescData;
 
 typedef AOCSInsertDescData *AOCSInsertDesc;
@@ -72,23 +72,23 @@ typedef struct AOCSScanDescData
 									 *  See code in aocsam.c's aocs_beginscan for more info
  									 */
 
-	Index       aos_scanrelid;                  /* index */
+	Index aos_scanrelid; /* index */
 
-    int         total_seg;
-    int         cur_seg;
+	int total_seg;
+	int cur_seg;
 
-    CompressorType  compType;
-    int32 		compLevel;
-    int32       blocksz;
+	char *compType;
+	int32 compLevel;
+	int32 blocksz;
 
-    struct AOCSFileSegInfo **seginfo;
-    struct DatumStream     **ds;
-    bool            *proj;
+	struct AOCSFileSegInfo **seginfo;
+	struct DatumStream **ds;
+	bool *proj;
 
-    /* synthetic system attributes */
-    ItemPointerData cdb_fake_ctid;
-    int64 total_row;
-    int64 cur_seg_row;
+	/* synthetic system attributes */
+	ItemPointerData cdb_fake_ctid;
+	int64 total_row;
+	int64 cur_seg_row;
 
 	AppendOnlyEntry *aoEntry;
 
