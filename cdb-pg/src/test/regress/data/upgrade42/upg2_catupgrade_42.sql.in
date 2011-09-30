@@ -25,7 +25,7 @@ CREATE TABLE @gpupgradeschemaname@.pg_type_encoding
   typid     oid not null, 
   typoptions   text[]
 )
-with (relid=3220, oids=true, reltype_oid=3221, toast_oid=3222, toast_index=3223, toast_reltype=3224, CamelCase=TypeEncoding);
+with (relid=3220, oids=false, reltype_oid=3221, toast_oid=3222, toast_index=3223, toast_reltype=3224, CamelCase=TypeEncoding);
 create unique index pg_type_encoding_typid_index on @gpupgradeschemaname@.pg_type_encoding(typid) with (indexid=3207);
 grant select on @gpupgradeschemaname@.pg_type_encoding to public;
 
@@ -50,7 +50,7 @@ CREATE TABLE @gpupgradeschemaname@.pg_attribute_encoding
    attnum		smallint not null, 
    attoptions   text[]
 )
- with (relid=3231, oids=true, reltype_oid=3232, toast_oid=3233, toast_index=3234, toast_reltype=3235, CamelCase=AttributeEncoding);
+ with (relid=3231, oids=false, reltype_oid=3232, toast_oid=3233, toast_index=3234, toast_reltype=3235, CamelCase=AttributeEncoding);
 create index pg_attribute_encoding_attrelid_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid) with (indexid=3236);
 create unique index pg_attribute_encoding_attrelid_attnum_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid, attnum) with (indexid=3237);
 grant select on @gpupgradeschemaname@.pg_attribute_encoding to public;
