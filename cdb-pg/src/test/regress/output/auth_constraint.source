@@ -684,7 +684,7 @@ CREATE ROLE abc;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ALTER ROLE abc DENY DAY 0 DENY DAY 1 DENY DAY 2 DROP DENY FOR DAY 1;
 ERROR:  conflicting or redundant options
-HINT:  Time based rules cannot be added and deleted in the same ALTER ROLE statement.
+HINT:  DENY and DROP DENY cannot be used in the same ALTER ROLE statement.
 DROP ROLE abc;
 ---
 --- DROP ROLE must release associated auth. constraints
@@ -891,5 +891,35 @@ SELECT check_auth_time_constraints('abc', '2011-08-31 00:00:00');
  t
 (1 row)
 
+DROP ROLE abc;
+RESET allow_system_table_mods;
+---
+--- Superuser testing across CREATE ROLE, ALTER ROLE, and trigger
+---
+create role abc superuser deny day 1;
+ERROR:  cannot create superuser with DENY rules (user.c:553)
+create role abc superuser;
+alter role abc deny day 1;
+ERROR:  cannot alter superuser with DENY rules (user.c:1112)
+drop role abc;
+create role abc;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+alter role abc superuser deny day 1;
+ERROR:  cannot alter superuser with DENY rules (user.c:1112)
+drop role abc;
+create role abc deny day 1;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+alter role abc superuser;
+SELECT check_auth_time_constraints('abc', '2011-08-29 12:00:00');
+ check_auth_time_constraints 
+-----------------------------
+ t
+(1 row)
+
+drop role abc;
+create role abc superuser;
+SET allow_system_table_mods = dml;
+insert into pg_auth_time_constraint (select oid, 1, '00:00:00', 1, '24:00:00' from pg_authid where rolname = 'abc');
+WARNING:  time constraints are being added against superuser
 DROP ROLE abc;
 RESET allow_system_table_mods;

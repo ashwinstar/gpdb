@@ -278,3 +278,27 @@ select c.start_day, c.start_time, c.end_day, c.end_time from pg_authid a, pg_aut
 SELECT check_auth_time_constraints('abc', '2011-08-31 00:00:00');
 DROP ROLE abc;
 RESET allow_system_table_mods;
+
+---
+--- Superuser testing across CREATE ROLE, ALTER ROLE, and trigger
+---
+create role abc superuser deny day 1;
+
+create role abc superuser;
+alter role abc deny day 1;
+drop role abc;
+
+create role abc;
+alter role abc superuser deny day 1;
+drop role abc;
+
+create role abc deny day 1;
+alter role abc superuser;
+SELECT check_auth_time_constraints('abc', '2011-08-29 12:00:00');
+drop role abc;
+
+create role abc superuser;
+SET allow_system_table_mods = dml;
+insert into pg_auth_time_constraint (select oid, 1, '00:00:00', 1, '24:00:00' from pg_authid where rolname = 'abc');
+DROP ROLE abc;
+RESET allow_system_table_mods;

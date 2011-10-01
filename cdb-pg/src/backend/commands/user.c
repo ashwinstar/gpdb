@@ -546,8 +546,13 @@ CreateRole(CreateRoleStmt *stmt)
 	 * Populate pg_auth_time_constraint with intervals for which this 
 	 * particular role should be denied access.
 	 */
-	if (addintervals != NIL)
+	if (addintervals)
+	{
+		if (issuper)
+			ereport(ERROR,
+					(errmsg("cannot create superuser with DENY rules")));
 		AddRoleDenials(stmt->role, roleid, addintervals);
+	}
 
 	/*
 	 * Close pg_authid, but keep lock till commit (this is important to
@@ -826,23 +831,6 @@ AlterRole(AlterRoleStmt *stmt)
 		resqueue = strVal(linitial((List *) dresqueue->arg));
 
 	/*
-	 * Disallow the use of DENY and DROP DENY fragments in the same query.
-	 *
-	 * We do this to prevent commands with unusual behavior.
-	 * e.g. consider "ALTER ROLE foo DENY DAY 0 DROP DENY FOR DAY 1 DENY DAY 1 DENY DAY 2"
-	 * In the manner that this is currently coded, because all DENY fragments are interpreted
-	 * first, this actually becomes equivalent to you "ALTER ROLE foo DENY DAY 0 DENY DAY 2".
-	 * 
-	 * Instead, we could honor the order in which the fragments are presented, but still that
-	 * allows users to contradict themselves, as in the example given.
-	 */
-	if (addintervals != NIL && dropintervals != NIL)
-		ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("conflicting or redundant options"),
-					 errhint("Time based rules cannot be added and deleted in the same ALTER ROLE statement.")));
-
-	/*
 	 * Scan the pg_authid relation to be certain the user exists.
 	 */
 	pg_authid_rel = heap_open(AuthIdRelationId, RowExclusiveLock);
@@ -1117,18 +1105,44 @@ AlterRole(AlterRoleStmt *stmt)
 					false);
 	}
 
+	if (bWas_super)
+	{
+		if (addintervals)
+			ereport(ERROR,
+					(errmsg("cannot alter superuser with DENY rules")));
+		else
+			DelRoleDenials(stmt->role, roleid, NIL);	/* drop all preexisting constraints, if any. */
+	}
+
+	/*
+	 * Disallow the use of DENY and DROP DENY fragments in the same query.
+	 *
+	 * We do this to prevent commands with unusual behavior.
+	 * e.g. consider "ALTER ROLE foo DENY DAY 0 DROP DENY FOR DAY 1 DENY DAY 1 DENY DAY 2"
+	 * In the manner that this is currently coded, because all DENY fragments are interpreted
+	 * first, this actually becomes equivalent to you "ALTER ROLE foo DENY DAY 0 DENY DAY 2".
+	 * 
+	 * Instead, we could honor the order in which the fragments are presented, but still that
+	 * allows users to contradict themselves, as in the example given.
+	 */
+	if (addintervals && dropintervals)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("conflicting or redundant options"),
+				 errhint("DENY and DROP DENY cannot be used in the same ALTER ROLE statement.")));
+
 	/*
 	 * Populate pg_auth_time_constraint with the new intervals for which this 
 	 * particular role should be denied access.
 	 */
-	if (addintervals != NIL)
+	if (addintervals)
 		AddRoleDenials(stmt->role, roleid, addintervals);
 
 	/*
 	 * Remove pg_auth_time_constraint entries that overlap with the 
 	 * intervals given by the user.
 	 */
-	if (dropintervals != NIL)
+	if (dropintervals)
 		DelRoleDenials(stmt->role, roleid, dropintervals);
 
 	/* MPP-6929: metadata tracking */

@@ -343,6 +343,7 @@ typedef struct
 {
 	Oid			roleid;
 	bool		rolcanlogin;
+	bool		rolsuper;
 	char	   *rolname;
 	char	   *rolpassword;
 	char	   *rolvaliduntil;
@@ -438,6 +439,7 @@ load_auth_entries(Relation rel_authid, auth_entry **auth_info_out, int *total_ro
 		}
 
 		auth_info[curr_role].roleid = HeapTupleGetOid(tuple);
+		auth_info[curr_role].rolsuper = aform->rolsuper;
 		auth_info[curr_role].rolcanlogin = aform->rolcanlogin;
 		auth_info[curr_role].rolname = pstrdup(NameStr(aform->rolname));
 		auth_info[curr_role].member_of = NIL;
@@ -830,7 +832,16 @@ write_auth_time_file(Relation rel_authid, Relation rel_authtime)
 			found_role = bsearch(&key_auth, auth_info, total_roles,
 								 sizeof(auth_entry), oid_compar);
 			if (found_role)
+			{
+				/*
+				 * All constraints written out will be enforced. 
+				 * Constraints against superusers must not be allowed.
+				 */
+				if (found_role->rolsuper)
+					ereport(WARNING,
+							(errmsg("time constraints are being added against superuser")));
 				authtime_info[curr_constraint].rolname = found_role->rolname;
+			}
 		}
 	}
 
