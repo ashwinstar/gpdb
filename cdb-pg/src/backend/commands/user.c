@@ -2577,7 +2577,7 @@ DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals)
 				{
 					if (Gp_role == GP_ROLE_DISPATCH)
 						ereport(NOTICE,
-								(errmsg("dropping time constraint for \"%s\" between %s %s and %s %s",
+								(errmsg("dropping DENY rule for \"%s\" between %s %s and %s %s",
 										rolename, 
 										daysofweek[existing->start.day],
 										DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))),
