@@ -2544,6 +2544,7 @@ DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals)
 {
 	Relation    pg_auth_time_rel;
 	ListCell	*intervalitem;
+	bool		dropped_matching_interval = false; 
 
 	HeapTuple 	tmp_tuple;
 	ScanKeyData scankey;
@@ -2576,13 +2577,14 @@ DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals)
 				{
 					if (Gp_role == GP_ROLE_DISPATCH)
 						ereport(NOTICE,
-								(errmsg("Dropping time constraint for %s between %s %s and %s %s",
+								(errmsg("dropping time constraint for \"%s\" between %s %s and %s %s",
 										rolename, 
 										daysofweek[existing->start.day],
 										DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))),
 										daysofweek[existing->end.day],
 										DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time))))));
 					simple_heap_delete(pg_auth_time_rel, &tmp_tuple->t_self);
+					dropped_matching_interval = true;
 					break;
 				}
 			}
@@ -2590,6 +2592,11 @@ DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals)
 		else
 			simple_heap_delete(pg_auth_time_rel, &tmp_tuple->t_self);
 	}
+
+	/* if intervals were specified and none was found, raise error */
+	if (dropintervals && !dropped_matching_interval)
+		ereport(ERROR, 
+				(errmsg("cannot find matching DENY rules for \"%s\"", rolename)));
 
 	systable_endscan(sscan);
 

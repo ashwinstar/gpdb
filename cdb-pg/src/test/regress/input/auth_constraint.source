@@ -190,6 +190,11 @@ SELECT check_auth_time_constraints('abc', '2011-08-30 01:30:00');
 SELECT check_auth_time_constraints('abc', '2011-08-31 01:00:00');
 DROP ROLE abc;
 
+CREATE ROLE abc;
+ALTER ROLE abc DENY DAY 0 DENY DAY 1;
+ALTER ROLE abc DROP DENY FOR DAY 2;
+DROP ROLE abc;
+
 ---
 --- ALTER ROLE w/ multiple deny and drop specifications
 --- This should error out, as the expected behavior isn't quite intuitive.

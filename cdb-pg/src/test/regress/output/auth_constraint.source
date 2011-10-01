@@ -619,7 +619,7 @@ SELECT NOT check_auth_time_constraints('abc', '2011-08-30 12:00:00');
 (1 row)
 
 ALTER ROLE abc DROP DENY FOR DAY 2 TIME '13:00';
-NOTICE:  Dropping time constraint for abc between Tuesday 00:00:00 and Tuesday 24:00:00
+NOTICE:  dropping time constraint for "abc" between Tuesday 00:00:00 and Tuesday 24:00:00
 select c.start_day, c.start_time, c.end_day, c.end_time from pg_authid a, pg_auth_time_constraint c where c.authid = a.oid and a.rolname = 'abc';
  start_day | start_time | end_day | end_time 
 -----------+------------+---------+----------
@@ -656,8 +656,8 @@ SELECT NOT check_auth_time_constraints('abc', '2011-08-31 01:00:00');
 (1 row)
 
 ALTER ROLE abc DROP DENY FOR DAY 2;
-NOTICE:  Dropping time constraint for abc between Tuesday 01:00:00 and Tuesday 02:00:00
-NOTICE:  Dropping time constraint for abc between Tuesday 23:00:00 and Wednesday 03:00:00
+NOTICE:  dropping time constraint for "abc" between Tuesday 01:00:00 and Tuesday 02:00:00
+NOTICE:  dropping time constraint for "abc" between Tuesday 23:00:00 and Wednesday 03:00:00
 select c.start_day, c.start_time, c.end_day, c.end_time from pg_authid a, pg_auth_time_constraint c where c.authid = a.oid and a.rolname = 'abc';
  start_day | start_time | end_day | end_time 
 -----------+------------+---------+----------
@@ -675,6 +675,12 @@ SELECT check_auth_time_constraints('abc', '2011-08-31 01:00:00');
  t
 (1 row)
 
+DROP ROLE abc;
+CREATE ROLE abc;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE abc DENY DAY 0 DENY DAY 1;
+ALTER ROLE abc DROP DENY FOR DAY 2;
+ERROR:  cannot find matching DENY rules for "abc" (user.c:2599)
 DROP ROLE abc;
 ---
 --- ALTER ROLE w/ multiple deny and drop specifications
