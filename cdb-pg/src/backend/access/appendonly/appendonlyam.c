@@ -64,6 +64,7 @@
 #include "storage/gp_compress.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "storage/freespace.h"
@@ -171,6 +172,12 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 							NameStr(scan->aos_rd->rd_rel->relname),
 							&scan->storageAttributes);
 
+		/* 
+		 * There is no guarantee that the current memory context will be preserved between calls,
+		 * so switch to a safe memory context for retrieving compression information.             
+		 */
+		MemoryContext oldMemoryContext = MemoryContextSwitchTo(scan->aoScanInitContext);
+
 		/* Get the relation specific compression functions */
 		fns = RelationGetRelationCompressionFuncs(reln);
 		scan->storageRead.compression_functions = fns;
@@ -196,6 +203,9 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 											false /* decompress */);
 			scan->storageRead.compressionState = cs;
 		}
+
+		/* Switch back to caller's memory context. */
+		MemoryContextSwitchTo(oldMemoryContext);
 
 		AppendOnlyExecutorReadBlock_Init(
 							&scan->executorReadBlock,
@@ -2236,7 +2246,6 @@ appendonly_insert_init(Relation rel, int segno)
 						aoInsertDesc->usableBlockSize,
 						NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
 						&aoInsertDesc->storageAttributes);
-
 
 	fns = RelationGetRelationCompressionFuncs(rel);
 	aoInsertDesc->storageWrite.compression_functions = fns;
