@@ -3026,6 +3026,14 @@ timestamptz_to_point(TimestampTz in, authPoint *out)
 bool
 CheckAuthTimeConstraints(char *rolname) 
 {
+	if (gp_auth_time_override_str != NULL && gp_auth_time_override_str[0] != '\0')
+	{
+		TimestampTz timestamptz = DatumGetTimestampTz(DirectFunctionCall3(timestamptz_in,
+																		  CStringGetDatum(gp_auth_time_override_str),
+																		  InvalidOid,
+																		  Int32GetDatum(0)));
+		return check_auth_time_constraints_internal(rolname, timestamptz);
+	}
 	return check_auth_time_constraints_internal(rolname, GetCurrentTimestamp());
 }
 

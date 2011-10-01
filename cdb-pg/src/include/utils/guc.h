@@ -305,6 +305,9 @@ extern char  *gp_hadoop_connector_jardir;  /* relative dir on $GPHOME of the Had
 extern char  *gp_hadoop_connector_version; /* connector version */
 extern char  *gp_hadoop_home;    /* $HADOOP_HOME on all segments */
 
+/* Time based authentication GUC */
+extern char  *gp_auth_time_override_str;
+
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);
 

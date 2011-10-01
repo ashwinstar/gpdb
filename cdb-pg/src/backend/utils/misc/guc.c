@@ -540,6 +540,9 @@ char  *gp_hadoop_connector_jardir;
 char  *gp_hadoop_connector_version;
 char  *gp_hadoop_home;
 
+/* Time based authentication GUC */
+char  *gp_auth_time_override_str = NULL;
+
 /* system cache invalidation mode*/
 int gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
 static char *gp_test_system_cache_flush_force_str;
@@ -5864,6 +5867,16 @@ static struct config_string ConfigureNamesString[] =
 			GUC_GPDB_ADDOPT
 		},
 		&gp_hadoop_home,
+		"", NULL, NULL
+	},
+
+	{
+		{"gp_auth_time_override", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("The timestamp used for enforcing time constraints."),
+			gettext_noop("For testing purposes only."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_auth_time_override_str,
 		"", NULL, NULL
 	},
 
