@@ -1720,6 +1720,16 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 #define UNSUPPORTED_ORIENTATION_ERROR() \
 	elog(ERROR, "ENCODING clause only supported with column oriented tables")
 
+	/*
+	 * The migrator puts lots of confusing things in the WITH() clause. We never
+	 * expect to do AOCO table creation during upgrade so bail out.
+	 */
+	if (gp_upgrade_mode)
+	{
+		Insist(!can_enc);
+		return NIL;
+	}
+
 	/* We only support the attribute encoding clause on AOCS tables */
 	if (stenc && !can_enc)
 		UNSUPPORTED_ORIENTATION_ERROR();

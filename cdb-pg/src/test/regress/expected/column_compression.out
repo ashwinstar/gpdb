@@ -260,10 +260,10 @@ drop table ccddl;
 -----------------------------------------------------------------------
 -- only support CO tables
 create table ccddl (i int encoding (compresstype=quicklz));
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1854)
+ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1864)
 create table ccddl (i int encoding (compresstype=quicklz))
 	with (appendonly = true);
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1854)
+ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1864)
 -- can't add encoding to a non-CO table
 create table ccddl (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
@@ -296,7 +296,7 @@ ERROR:  ENCODING clause conflicts with table WITH clause
 -- conflicting WITH and DEFAULT COLUMN ENCODING clause
 create table t1 (i int, j int, default column encoding (compresstype=quicklz))
 with (compresstype=zlib, appendonly=true, orientation=column);
-ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause (analyze.c:1753)
+ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause (analyze.c:1763)
 -- Invalid encoding clauses
 create table t1 (i int encoding (compresstype=quicklz, compresslevel=9))
 with (appendonly=true, orientation=column);
