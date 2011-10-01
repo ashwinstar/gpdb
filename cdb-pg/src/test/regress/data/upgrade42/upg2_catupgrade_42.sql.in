@@ -112,7 +112,6 @@ CREATE TABLE @gpupgradeschemaname@.pg_partition_encoding
    (
    parencoid     oid, 
    parencattnum	int2,
-   parencdefault bool,
    parencattoptions   text[]
    )
    with (relid=9903, reltype_oid=9904, toast_oid=9905, toast_index=9906, toast_reltype=9907, CamelCase=PartitionEncoding, oid=false);
