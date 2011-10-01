@@ -41,10 +41,10 @@ RPM_INSTALLATION_PATH = GPHOME
 ARCHIVE_PATH = 'share/packages/archive'
 GPPKG_ARCHIVE_PATH = os.path.join(GPHOME, ARCHIVE_PATH)
 
+# TODO: AK: Shouldn't this be "$GPHOME/.tmp"? 
+# i.e. what if remote host has its $GPHOME elsewhere?
 TEMP_EXTRACTION_PATH = GPHOME + '/.tmp'
 DEPS_DIR = 'deps'
-
-REMOTE_COMMAND_PREFIX = 'cd ' + TEMP_EXTRACTION_PATH + ';'
 
 class GpdbVersionError(Exception):
     
@@ -261,9 +261,11 @@ class LocalCommand(Operation):
         return cmd.get_results()
 
 class RemoteCommand(Operation):
-    '''
-        Executes a command on a remote host
-    '''
+    """
+    Executes commands on remote hosts
+
+    TODO: AK: Isn't this the exact same thing as gpssh?! 
+    """
 
     def __init__(self, cmd_str, host_list):
         self.cmd_str = cmd_str
@@ -278,10 +280,7 @@ class RemoteCommand(Operation):
         pool = WorkerPool()
 
         for host in self.host_list:
-            #When we run a command, the command gets executed in the users home directory
-            #But in our case, all the required files will be in $GPHOME/.tmp so we need to 'cd' 
-            #to that directory each time before running any command
-            cmd = Command(name = 'Remote Command', cmdStr = REMOTE_COMMAND_PREFIX + self.cmd_str, ctxt = REMOTE, remoteHost = host)
+            cmd = Command(name = 'Remote Command', cmdStr = self.cmd_str, ctxt = REMOTE, remoteHost = host)
             pool.addCommand(cmd)
         pool.join()
 
@@ -549,16 +548,14 @@ class ValidateInstallRpms(Operation):
     3) A non-zero return code, and stderr indicating that a failed dependency issue will arise
        This scenario must result in a MissingDependencyError. 
 
-    TODO: This is depending on us residing in the correct directory and
-          ExtractPackage having put the dependencies in this same directory.
-    TODO: Use regexes for more reliable string matching. 
-          CR-2865#c20112
+    TODO: This is depending on ExtractPackage having put the dependencies in this same directory.
+    TODO: Use regexes for more reliable string matching. CR-2865#c20112
     """
     def __init__(self, gppkg):
         self.gppkg = gppkg
     def execute(self):
         rpm_set = set([self.gppkg.main_rpm] + self.gppkg.dependencies)
-        rpm_install_string = ' '.join(rpm_set)
+        rpm_install_string = ' '.join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
         rpm_install_command = 'rpm --test -i %s --dbpath %s' % (rpm_install_string, RPM_DATABASE)
         cmd = Command('Validating rpm installation', rpm_install_command)
         logger.info(cmd)        # TODO: AK: This should be debug(), but RMI cannot propagate a log level.
@@ -601,60 +598,6 @@ class ValidateInstallRpms(Operation):
         # Code path 1 (See docstring)
         return rpm_set
             
-
-################################################################################
-# TODO: AK: This class can be replaced completely by using ValidateInstallRpms #
-################################################################################
-class GetRpmInstallString(Operation):
-    '''
-        Return the string containing the list of RPMS to be installed
-    '''
-
-    def __init__(self, gppkg):
-        self.gppkg = gppkg
-
-    def execute(self):
-        
-        gppkg = self.gppkg
-
-        queue = Queue()
-        rpm_list = [] 
-        used = dict() 
-        
-        queue.put(gppkg.main_rpm)
-
-        while not queue.empty():
-            rpm = queue.get()  
-            rpm_list.append(rpm)
-            used[rpm] = True            
-
-            #check dependencies
-            cmd_str = 'rpm -qpR %s' % (os.path.join(TEMP_EXTRACTION_PATH, rpm))
-            results = LocalCommand(cmd_str).run()
-
-            result = results.stdout
-            result = result.split('\n') 
-
-            #If this dependency is not in the gppkg,
-            #notify the user of error and exit
-            for dep in result:
-                if dep is not None:
-                    dep = dep.strip()
-
-                if dep == '(none)' or len(dep) == 0 or 'rpmlib(CompressedFileNames)' in dep or 'rpmlib(PayloadFilesHavePrefix)' in dep or '/bin/sh' in dep:
-                    break 
-
-                if dep in gppkg.dependencies:
-                    if not IsRpmInstalled(dep).run() and dep not in used.keys():
-                        queue.put(dep)
-                else:
-                    raise MissingDependencyError(dep)
-
-        rpm_install_string = ' '.join(rpm_list)
-
-        return rpm_install_string
-
-
 
 class ExtractPackage(Operation):
     '''
@@ -708,12 +651,13 @@ class InstallSegGppkg(Operation):
 
         gppkg = Gppkg.from_package_path(current_package_location)
         ExtractPackage(gppkg).run()
-        os.chdir(TEMP_EXTRACTION_PATH)
 
         rpm_set = ValidateInstallRpms(gppkg).run()
         if rpm_set:
             rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s' % \
-                                  (" ".join(rpm_set), RPM_DATABASE, RPM_INSTALLATION_PATH)
+                                  (" ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set]), 
+                                   RPM_DATABASE, 
+                                   RPM_INSTALLATION_PATH)
             cmd = Command('Installing rpms', rpm_install_command)
             logger.info(cmd)
             cmd.run(validateAfter = True)
@@ -780,10 +724,17 @@ class UnInstallSegGppkg(Operation):
         LocalCommand(cmd_str).run()        
 
 class GetFilteredRpmString(Operation):
-    '''
-        Filters the results and returns those rpms
-        which can be uninstalled safely
-    '''
+    """
+    TODO: AK: This is poorly designed. The caller is responsible for 
+    producing a very specific input as "results". More unfortunately, that 
+    process for producing "results" is duplicated in a couple of places
+    and it's fairly involved. This Operation should be taking care of that. 
+    So, more explicitly, this class should be renamed to ValidateUninstallRpms,
+    and it should follow the same design pattern as ValidateInstallRpms.
+
+    Filters the results and returns those rpms which can be 
+    uninstalled safely
+    """
     def __init__(self, results, gppkg):
         self.results = results
         self.gppkg = gppkg
@@ -885,7 +836,7 @@ class InstallGppkg(Operation):
  
             #check if already installed
             if IsRpmInstalled(gppkg.main_rpm).run():
-                raise AlreadyInstalledError(gppkg.pkg) 
+                raise AlreadyInstalledError(gppkg.pkg)      # TODO: AK: gppkg.pkg is poorly named
 
             #Extract the package contents
             ExtractPackage(gppkg).run()
@@ -898,14 +849,14 @@ class InstallGppkg(Operation):
             self._perform_pre_install(gppkg)
      
             #get the rpms that need to be installed
-            install_string = GetRpmInstallString(gppkg).run()
+            rpm_set = ValidateInstallRpms(gppkg).run()
+            if not rpm_set:
+                raise AlreadyInstalledError(gppkg.pkg)
+            install_string = " ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
 
             #prepare the command string
             cmd_str = rpm_installation_cmd % (install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
    
-            #chdir to the correct directory where files are located
-            os.chdir(TEMP_EXTRACTION_PATH)
- 
             #First install on the segments
             RemoteCommand(cmd_str, self.segment_host_list).run()
  
@@ -933,18 +884,19 @@ class InstallGppkg(Operation):
                 raise IOError
 
     def _perform_pre_install(self, gppkg):
-        '''
-            Perform any pre installation steps 
-            that have been specified in the yml file 
-        '''
+        """
+        Perform any pre installation steps that have been specified in the yml file 
 
+        TODO: AK: A packager may have added commands to their hooks, with the 
+        assumption that the current working directory would be that which contains
+        the spec file, rpms, and other artifacts (external scripts, perhaps.) To support
+        this, these commands should be prefixed with a "cd".
+        """
         logger.debug('_perform_pre_install')
 
         if gppkg.preinstall is None:
             logger.info('No preinstall hooks')
             return 
-
-        os.chdir(TEMP_EXTRACTION_PATH)
 
         for preinst in gppkg.preinstall:
             key = preinst.keys()
@@ -959,18 +911,19 @@ class InstallGppkg(Operation):
                 RemoteCommand(preinst[key_str], self.segment_host_list).run()
 
     def _perform_post_install(self, gppkg):
-        '''
-            Perform post installation steps
-            that have been specified in the yml file
-        '''
+        """
+        Perform post installation steps that have been specified in the yml file
 
+        TODO: AK: A packager may have added commands to their hooks, with the 
+        assumption that the current working directory would be that which contains
+        the spec file, rpms, and other artifacts (external scripts, perhaps.) To support
+        this, these commands should be prefixed with a "cd".
+        """
         logger.debug('_perform_post_install')
 
         if gppkg.postinstall is None:
             logger.info('No postinstall hooks')
             return 
-
-        os.chdir(TEMP_EXTRACTION_PATH)
 
         for postinst in gppkg.postinstall:
             key = postinst.keys()
@@ -998,9 +951,6 @@ class UnInstallGppkg(Operation):
         self.cleanup_gppkg = cleanup_gppkg
 
     def execute(self):
-
-        rpm_remove_cmd = 'rpm -e %s --dbpath %s'
-
         gppkg = self.gppkg
 
         #Test to see if the main rpm has been installed or not
@@ -1054,7 +1004,7 @@ class UnInstallGppkg(Operation):
                     rpm_uninstall_string = GetFilteredRpmString(results).run()            
                     break
 
-        cmd_str = rpm_remove_cmd % (rpm_uninstall_string, RPM_DATABASE)
+        cmd_str = 'rpm -e %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
 
         try:
             #First uninstall on the segment hosts
@@ -1100,18 +1050,19 @@ class UnInstallGppkg(Operation):
         logger.info('%s has been uninstalled.' % (gppkg.pkg))
 
     def _perform_pre_uninstall(self, gppkg):
-        '''
-            Perform pre uninstall steps
-            that have been specified in yml file
-        '''
+        """
+        Perform pre uninstall steps that have been specified in yml file
 
+        TODO: AK: A packager may have added commands to their hooks, with the 
+        assumption that the current working directory would be that which contains
+        the spec file, rpms, and other artifacts (external scripts, perhaps.) To support
+        this, these commands should be prefixed with a "cd".
+        """
         logger.debug('_perform_pre_uninstall')
 
         if gppkg.preuninstall is None:
             logger.info('No preuninstall hooks')
             return 
-
-        os.chdir(TEMP_EXTRACTION_PATH)
 
         for preuninst in gppkg.preuninstall:
             key = preuninst.keys()
@@ -1126,18 +1077,19 @@ class UnInstallGppkg(Operation):
                 RemoteCommand(preuninst[key_str], self.segment_host_list).run()
             
     def _perform_post_uninstall(self, gppkg):
-        '''
-            Perform post uninstall steps
-            that have been specified in yml file
-        '''
-
+        """
+        Perform post uninstall steps that have been specified in yml file
+        
+        TODO: AK: A packager may have added commands to their hooks, with the 
+        assumption that the current working directory would be that which contains
+        the spec file, rpms, and other artifacts. (external scripts, perhaps.) To support
+        this, these commands should be prefixed with a "cd".
+        """
         logger.debug('_perform_post_uninstall')
 
         if gppkg.postuninstall is None:
             logger.info('No postuninstall hooks')
             return 
-
-        os.chdir(TEMP_EXTRACTION_PATH)
 
         for postuninst in gppkg.postuninstall:
             key = postuninst.keys()
@@ -1244,22 +1196,12 @@ class BuildGppkg(Operation):
         if not self._verify_specfile(specfile, directory):
             raise BuildPkgError 
 
-        #cd to the directory 
-        old_dir = os.getcwd()
-        os.chdir(directory)
-
         #tar and gzip the directory
         #rename the file with .gppkg extension
-
         with closing(tarfile.open(pkg, 'w:gz')) as tarinfo:
             for cur_file in filelist:
-                tarinfo.add(cur_file)
-
-        #change back to old directory
-        os.chdir(old_dir)
-
-        #move the gppkg to the new directory
-        shutil.move(directory + '/' + pkg, '.')
+                tarinfo.add(name = os.path.join(directory, cur_file),
+                            arcname = cur_file)
 
         logger.info('Completed building gppkg')
 
@@ -1344,9 +1286,6 @@ class UpdateGppkg(Operation):
         self.segment_host_list = segment_host_list
 
     def execute(self):
-
-        rpm_update_cmd = 'rpm -U %s --dbpath %s --prefix=%s'
-
         gppkg = self.gppkg
 
         #Check version compatibility
@@ -1360,7 +1299,10 @@ class UpdateGppkg(Operation):
         TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run() 
 
         #get the installation string
-        rpm_install_string = GetRpmInstallString(gppkg).run()
+        rpm_set = ValidateInstallRpms(gppkg).run()
+        if not rpm_set:
+            raise AlreadyInstalledError(gppkg.pkg)
+        rpm_install_string = " ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
 
         #perform update using rpm -U 
         #First we test if update is possible. If it fails due to dependencies we abort the update.
@@ -1374,9 +1316,7 @@ class UpdateGppkg(Operation):
                 if 'failed dependency'in result.lower():
                     raise RequiredDependencyError
         
-        cmd_str = rpm_update_cmd % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
-
-        os.chdir(TEMP_EXTRACTION_PATH)
+        cmd_str = 'rpm -U %s --dbpath %s --prefix=%s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
 
         #first the segments
         RemoteCommand(cmd_str, self.segment_host_list).run()
