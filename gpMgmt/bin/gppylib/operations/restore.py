@@ -204,20 +204,21 @@ class RestoreTables(Operation):
                               master_port = self.master_port).run()
 
         if self.ddboost is not None:
-            logger.info("Copying dump %s from DDBoost..." % self.restore_timestamp)            
-            RecoverDDBoostDumps(restore_timestamp = self.restore_timestamp,
-                                master_port = self.master_port,
-                                batch_default = self.batch_default,
-                                user = self.ddboost['user'],
-                                passwd = self.ddboost['passwd'],
-                                host = self.ddboost['host']).run()
+            fake_timestamp = BuildDDBoostTableDumps(restore_timestamp = self.restore_timestamp,
+                                                    compress = compress,
+                                                    restore_tables = self.restore_tables,
+                                                    batch_default = self.batch_default,
+                                                    master_datadir = self.master_datadir,   
+                                                    master_port = self.master_port,
+                                                    ddboost = self.ddboost).run()
+        else:
+            fake_timestamp = BuildAllTableDumps(restore_timestamp = self.restore_timestamp,
+                                                compress = compress,
+                                                restore_tables = self.restore_tables,
+                                                batch_default = self.batch_default,
+                                                master_datadir = self.master_datadir,
+                                                master_port = self.master_port).run()
 
-        fake_timestamp = BuildAllTableDumps(restore_timestamp = self.restore_timestamp,
-                                            compress = compress,
-                                            restore_tables = self.restore_tables,
-                                            batch_default = self.batch_default,
-                                            master_datadir = self.master_datadir,
-                                            master_port = self.master_port).run()
         # Dump files reside on segments now, so there's no need for gp_dump to go out
         # to the DDBoost storage unit. Thus, ddboost = None here.
         RestoreDatabase(restore_timestamp = fake_timestamp,
@@ -294,6 +295,57 @@ class ValidateRestoreTables(Operation):
 
 
 
+class BuildDDBoostTableDumps(Operation):
+    def __init__(self, restore_timestamp, compress, restore_tables, batch_default, master_datadir, master_port, ddboost):
+        self.restore_timestamp = restore_timestamp
+        self.compress = compress
+        self.restore_tables = restore_tables
+        self.batch_default = batch_default
+        self.master_datadir = master_datadir
+        self.master_port = master_port
+        self.ddboost = ddboost
+    def execute(self):
+        fake_timestamp = PickDumpTimestamp(restore_timestamp = self.restore_timestamp,
+                                           compress = self.compress,
+                                           master_datadir = self.master_datadir).run()
+
+        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)  
+        primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
+        pool = WorkerPool(numWorkers = min(primaries, self.batch_default))
+        for seg in primaries:
+            real_filename = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp))
+            fake_filename = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, fake_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), fake_timestamp))
+            table_str = ' '.join(['--table=%s' % table for table in self.restore_tables])
+            # TODO: Escaping. Low priority due to MPP-12880, et al
+            cmd = Command('DDBoost building dump file for dbid %s' % seg.getSegmentDbId(),
+                          'gpddboost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s %s'
+                          % (real_filename, fake_filename, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd'], table_str))
+            pool.addCommand(cmd)
+        pool.join()
+        pool.check_results()
+
+        from_file = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
+        to_file = os.path.join(self.master_datadir, from_file)
+        Command('Copying master dump file from DDBoost',
+                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
+                % (from_file, to_file, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd'])).run(validateAfter = True)
+
+        BuildMasterTableDump(restore_timestamp = self.restore_timestamp,
+                             fake_timestamp = fake_timestamp,
+                             compress = self.compress,
+                             master_datadir = self.master_datadir).run()
+
+        # Build master cdatabase file
+        real_createdb = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.restore_timestamp))
+        fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
+        Command('Copying cdatabase file from DDBoost',
+                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
+                % (real_createdb, fake_createdb, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd'])).run(validateAfter = True)
+
+        return fake_timestamp
+
+
+
 class BuildAllTableDumps(Operation):
     def __init__(self, restore_timestamp, compress, restore_tables, batch_default, master_datadir, master_port): 
         self.restore_timestamp = restore_timestamp
@@ -303,18 +355,11 @@ class BuildAllTableDumps(Operation):
         self.master_datadir = master_datadir
         self.master_port = master_port
     def execute(self): 
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)  
-        # Create a fake timestamp for restore dump files
-        for fake_time in range(0, 1000000):
-            fake_timestamp = "%s%06d" % (self.restore_timestamp[0:8], fake_time)
-            path = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, fake_timestamp))
-            if self.compress:
-                path += '.gz'
-            if not CheckFile(path).run():
-                break
-        else:
-            raise ExceptionNoStackTraceNeeded("Could not construct table dump")
+        fake_timestamp = PickDumpTimestamp(restore_timestamp = self.restore_timestamp,
+                                           compress = self.compress,
+                                           master_datadir = self.master_datadir).run()
 
+        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)  
         primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         operations = []
         for seg in primaries:
@@ -330,9 +375,59 @@ class BuildAllTableDumps(Operation):
                 logger.exception('Parallel table dump file build failed.')
                 raise ExceptionNoStackTraceNeeded('Parallel table dump file build failed, review log file for details')
 
-        # Build master dump file
+        BuildMasterTableDump(restore_timestamp = self.restore_timestamp,
+                             fake_timestamp = fake_timestamp,
+                             compress = self.compress,
+                             master_datadir = self.master_datadir).run()
+
+        # Build master cdatabase file
+        real_createdb = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.restore_timestamp))
+        fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
+        shutil.copy(real_createdb, fake_createdb)
+
+        return fake_timestamp
+
+
+
+class PickDumpTimestamp(Operation):
+    """ 
+    Picks an unused timestamp to be used for a fake dump file. 
+
+    Considerations:
+    1. The timestamp cannot merely be the one provided as an argument, as we'd like
+    the original and fake dumps to be distinguishable by filename alone.
+    2. The timestamp must adhere to gp_dump's expectations, i.e. YYYYMMDDHHMMSS. The
+    reason for this timestamp, and the ensuing fake filename, is to fool gp_restore into
+    believing the given dump file had been generated by gp_dump, when in fact, it is being
+    thrown together on the fly by RestoreTables.
+    """
+    def __init__(self, restore_timestamp, compress, master_datadir):
+        self.restore_timestamp = restore_timestamp
+        self.compress = compress
+        self.master_datadir = master_datadir
+    def execute(self):
+        for fake_time in range(0, 1000000):
+            fake_timestamp = "%s%06d" % (self.restore_timestamp[0:8], fake_time)
+            path = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, fake_timestamp))
+            if self.compress:
+                path += '.gz'
+            if not CheckFile(path).run():
+                break
+        else:   
+            raise ExceptionNoStackTraceNeeded("Could not construct table dump")
+        return fake_timestamp
+
+
+        
+class BuildMasterTableDump(Operation):
+    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
+        self.restore_timestamp = restore_timestamp
+        self.fake_timestamp = fake_timestamp
+        self.compress = compress
+        self.master_datadir = master_datadir
+    def execute(self):
         real_filename = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
-        fake_filename = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, fake_timestamp))
+        fake_filename = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
         real_file, fake_file = None, None
         try:
             if self.compress:
@@ -342,14 +437,33 @@ class BuildAllTableDumps(Operation):
                 real_file = open(real_filename, 'r')
                 fake_file = open(fake_filename, 'w')
 
-            # TODO: copy over data among the first twenty lines that begin with 'SET'. Why?
-            # gpdbrestore.sh : 1025
-            output = False
-            for line_no in range(0, 20):
-                line = real_file.readline()
-                output = line.startswith("SET")
-                if output:
+            # TODO: copy over data among the first 20 lines that begin with 'SET'. Why 20? See gpdbrestore.sh:1025.
+            # e.g.
+            #  1 --
+            #  2 -- Greenplum Database database dump
+            #  3 --
+            #  4 
+            #  5 SET statement_timeout = 0;
+            #  6 SET client_encoding = 'UTF8';
+            #  7 SET standard_conforming_strings = off;
+            #  8 SET check_function_bodies = false;
+            #  9 SET client_min_messages = warning;
+            # 10 SET escape_string_warning = off;
+            # 11 
+            # 12 SET default_with_oids = false;
+            # 13 
+            # 14 --
+            # 15 -- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: ashwin
+            # 16 --
+            # 17 
+            # 18 COMMENT ON SCHEMA public IS 'Standard public schema';
+            # 19 
+            # 20 
+            for lineno, line in enumerate(real_file):
+                if line.startswith("SET"):
                     fake_file.write(line)
+                if lineno > 20:
+                    break
         except Exception, e:
             raise ExceptionNoStackTraceNeeded('Master dump file build failed, review log file for details')
         finally:
@@ -357,14 +471,7 @@ class BuildAllTableDumps(Operation):
                 real_file.close()
             if fake_file is not None:
                 fake_file.close()
-
-        # Build master cdatabase file
-        real_createdb = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.restore_timestamp))
-        fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
-        shutil.copy(real_createdb, fake_createdb)
-
-        return fake_timestamp
-
+   
 
 
 class ClearAllTableDumps(Operation):
@@ -543,52 +650,6 @@ class RecoverRemoteDumps(Operation):
                             srcHost=from_host,
                             srcFile=os.path.join(from_path, global_file),
                             dstFile=os.path.join(to_path, global_file)))
-        pool.join()
-        pool.check_results()
-
-
-
-class RecoverDDBoostDumps(Operation):
-    """
-    This Operation is responsible for bringing all dumps for a particular timestamp back to the 
-    segment hosts from the DDBoost storage unit. It is almost identical to RecoverRemoteDumps
-    except that gpddboost is used to recover dumps, instead of scp.
-    """
-    def __init__(self, restore_timestamp, master_port, batch_default, user, passwd, host):
-        self.restore_timestamp = restore_timestamp
-        self.master_port = master_port
-        self.batch_default = batch_default
-        self.user = user
-        self.passwd = passwd
-        self.host = host
-    def execute(self):
-        logger.info("Commencing ddboost database dump file recovery process, please wait...")
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)
-        segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True) or seg.isSegmentMaster()]
-        pool = WorkerPool(numWorkers = min(len(segs), self.batch_default))
-        for seg in segs:
-            if seg.isSegmentMaster():
-                file = '%s%s' % (MASTER_DBDUMP_PREFIX, self.restore_timestamp)
-            else:
-                file = '%s0_%d_%s' % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp)
-
-            to_host = seg.getSegmentHostName()
-            from_path = os.path.join(DUMP_DIR, self.restore_timestamp[0:8])
-            to_path = os.path.join(seg.getSegmentDataDirectory(), from_path)
-            if not CheckRemoteDir(to_path, to_host).run():
-                logger.info('Creating directory %s on %s' % (to_path, to_host))
-                try:
-                    MakeRemoteDir(to_path, to_host).run()
-                except OSError, e:
-                    raise ExceptionNoStackTraceNeeded("Failed to create directory %s on %s" % (to_path, to_host))
-
-            from_path = os.path.join(from_path, file)
-            to_path = os.path.join(to_path, file)
-
-            logger.info("Commencing remote copy from DDBoost to %s:%s" % (to_host, to_path))
-            pool.addCommand(Command('DDBoost copy for seg %d' % seg.getSegmentDbId(),
-                                    'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s' % (from_path, to_path, self.host, self.user, self.passwd),
-                                    remoteHost = to_host))
         pool.join()
         pool.check_results()
 
