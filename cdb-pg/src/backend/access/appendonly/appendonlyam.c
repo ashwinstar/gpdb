@@ -1869,6 +1869,8 @@ appendonly_fetch_init(
 	AppendOnlyEntry		*aoentry;
 
 	AppendOnlyStorageAttributes *attr;
+	
+	PGFunction *fns = NULL;
 
 	/*
 	 * increment relation ref count while scanning relation
@@ -1939,7 +1941,27 @@ appendonly_fetch_init(
 						aoFetchDesc->usableBlockSize,
 						NameStr(aoFetchDesc->relation->rd_rel->relname),
 						&aoFetchDesc->storageAttributes);
-
+	
+	fns = RelationGetRelationCompressionFuncs(relation);
+	aoFetchDesc->storageRead.compression_functions = fns;
+	
+	if (fns)
+	{
+		PGFunction cons = fns[COMPRESSION_CONSTRUCTOR];
+		CompressionState *cs;
+		StorageAttributes sa;
+		
+		sa.comptype = aoentry->compresstype;
+		sa.complevel = aoentry->compresslevel;
+		sa.blocksize = aoentry->blocksize;
+		
+		
+		cs = callCompressionConstructor(cons, RelationGetDescr(relation),
+										&sa,
+										true /* compress */);
+		aoFetchDesc->storageRead.compressionState = cs;
+	}
+	
 	AppendOnlyExecutorReadBlock_Init(
 						&aoFetchDesc->executorReadBlock,
 						aoFetchDesc->relation,

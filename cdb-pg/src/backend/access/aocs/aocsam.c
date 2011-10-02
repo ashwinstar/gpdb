@@ -985,7 +985,8 @@ aocs_fetch_init(Relation relation,
 	AppendOnlyStorageAttributes *attr;
 	char *basePath = relpath(relation->rd_node);
 	TupleDesc tupleDesc = RelationGetDescr(relation);
-
+	PGFunction **cfuncs = RelationGetColumnCompressionFuncs(relation);
+	PGFunction *fns = NULL;
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -1048,6 +1049,11 @@ aocs_fetch_init(Relation relation,
 
 	for (colno = 0; colno < relation->rd_att->natts; colno++)
 	{
+		if (cfuncs[colno])
+			fns = cfuncs[colno];
+		else
+			fns = NULL;
+		
 		aocsFetchDesc->datumStreamFetchDesc[colno] = NULL;
 		if (proj[colno])
 		{
@@ -1062,6 +1068,34 @@ aocs_fetch_init(Relation relation,
 								   tupleDesc->attrs[colno],
 								   relation->rd_rel->relname.data,
 								   true);
+			
+			aocsFetchDesc->datumStreamFetchDesc[colno]->datumStream->ao_read->compression_functions = fns;
+			
+			if (fns != NULL)
+			{
+				
+				CompressionState *cs;
+				TupleDesc td;
+				StorageAttributes sa;
+				Form_pg_attribute aocsattr = tupleDesc->attrs[colno];
+
+				sa.comptype = aoentry->compresstype;
+				sa.complevel = aoentry->compresslevel;
+				sa.blocksize = aoentry->blocksize;
+				
+				/* Create a tuple descriptor to representing the column
+				 * and it's type. This instructors the compression specific
+				 * constructor on what it is compressing (or decompressing).
+				 */
+				td = CreateTupleDesc(1, false, &aocsattr);
+				
+				cs = callCompressionConstructor(fns[COMPRESSION_CONSTRUCTOR],
+												td,
+												&sa,
+												false /* compress? */);
+				aocsFetchDesc->datumStreamFetchDesc[colno]->datumStream->ao_read->compressionState = cs;
+			}			
+				
 		}
 	}
 
