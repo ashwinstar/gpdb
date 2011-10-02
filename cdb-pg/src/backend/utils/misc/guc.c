@@ -331,8 +331,8 @@ bool		Debug_filerep_verify_performance_print = false;
 bool		Debug_filerep_memory_log_flush = false;
 bool		filerep_inject_listener_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
-bool		gp_crash_recovery_supress_ao_eof = false;
-bool            gp_keep_all_xlog = false;
+bool		gp_crash_recovery_suppress_ao_eof = false;
+bool        gp_keep_all_xlog = false;
 int 		ddboost_buf_size = 512*1024;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
@@ -2916,12 +2916,12 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_crash_recovery_supress_ao_eof", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"gp_crash_recovery_suppress_ao_eof", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Warning about crash recovery append only eof issue"),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&gp_crash_recovery_supress_ao_eof,
+		&gp_crash_recovery_suppress_ao_eof,
 		false, NULL, NULL
 	},
 

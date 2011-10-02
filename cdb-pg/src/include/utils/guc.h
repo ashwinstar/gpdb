@@ -194,7 +194,7 @@ extern bool Debug_filerep_verify_performance_print;
 extern bool Debug_filerep_memory_log_flush;
 extern bool filerep_inject_listener_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
-extern bool gp_crash_recovery_supress_ao_eof;
+extern bool gp_crash_recovery_suppress_ao_eof;
 
 extern bool gp_upgrade_mode;
 extern bool gp_maintenance_mode;

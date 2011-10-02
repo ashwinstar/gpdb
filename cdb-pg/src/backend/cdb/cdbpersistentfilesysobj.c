@@ -3309,8 +3309,19 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 	}
 	else
 	{
+		int level = ERROR;
+		
+		if (gp_crash_recovery_suppress_ao_eof)
+		{
+			level = WARNING;
+		}
+		
 		if (mirrorAppendOnlyNewEof > mirrorNewEof)
-			elog(ERROR, "Persistent %u/%u/%u, segment file #%d, current new EOF is greater than update new EOF for Append-Only mirror resync EOFs recovery (current new EOF " INT64_FORMAT ", update new EOF " INT64_FORMAT "), persistent serial num " INT64_FORMAT " at TID %s",
+		{
+			elog(level, 
+				 "Persistent %u/%u/%u, segment file #%d, "
+				 "current new EOF is greater than update new EOF for Append-Only mirror resync EOFs recovery "
+				 "(current new EOF " INT64_FORMAT ", update new EOF " INT64_FORMAT "), persistent serial num " INT64_FORMAT " at TID %s",
 				 relFileNode->spcNode,
 				 relFileNode->dbNode,
 				 relFileNode->relNode,
@@ -3319,6 +3330,11 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 				 mirrorNewEof,
 				 persistentSerialNum,
 				 ItemPointerToString(persistentTid));
+			
+			WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+
+			return;
+		}
 
 		if (mirrorAppendOnlyNewEof == mirrorNewEof)
 		{
