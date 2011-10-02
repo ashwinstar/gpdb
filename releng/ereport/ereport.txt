@@ -150,21 +150,21 @@ aabc: appendonlyam:00001371:  varBlockCheckError,
 aabc: appendonlyam:00001372:  VarBlockGetCheckErrorStr()), 
 aabc: appendonlyam:00001373:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
 aabc: appendonlyam:00001374:  errcontext_appendonly_insert_block(aoInsertDesc))); 
-aabc: appendonlyam:00002058:  ereport(WARNING, 
-aabc: appendonlyam:00002059:  (errmsg("Append-only fetch requires scan prior segment file: " 
-aabc: appendonlyam:00002060:  "segmentFileNum %d, rowNum " INT64_FORMAT 
-aabc: appendonlyam:00002061:  ", currentSegmentFileNum %d", 
-aabc: appendonlyam:00002062:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
-aabc: appendonlyam:00002470:  ereport(ERROR, 
-aabc: appendonlyam:00002471:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002472:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002473:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002474:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
-aabc: appendonlyam:00002512:  ereport(ERROR, 
-aabc: appendonlyam:00002513:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002514:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002515:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002516:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002080:  ereport(WARNING, 
+aabc: appendonlyam:00002081:  (errmsg("Append-only fetch requires scan prior segment file: " 
+aabc: appendonlyam:00002082:  "segmentFileNum %d, rowNum " INT64_FORMAT 
+aabc: appendonlyam:00002083:  ", currentSegmentFileNum %d", 
+aabc: appendonlyam:00002084:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
+aabc: appendonlyam:00002492:  ereport(ERROR, 
+aabc: appendonlyam:00002493:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002494:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002495:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002496:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002534:  ereport(ERROR, 
+aabc: appendonlyam:00002535:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002536:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002537:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002538:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
 aace: appendonlyblockdirectory:00000408:  ereport(ERROR, 
 aace: appendonlyblockdirectory:00000409:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -6699,139 +6699,130 @@ cacd: cdbpersistentfilesysobj:00003305:  mirrorAppendOnlyNewEof,
 cacd: cdbpersistentfilesysobj:00003306:  mirrorNewEof, 
 cacd: cdbpersistentfilesysobj:00003307:  persistentSerialNum, 
 cacd: cdbpersistentfilesysobj:00003308:  ItemPointerToString(persistentTid)); 
-cacd: cdbpersistentfilesysobj:00003313:  elog(ERROR, "Persistent %u/%u/%u, segment file #%d, current new EOF is greater than update new EOF for Append-Only mirror resync EOFs recovery (current new EOF " INT64_FORMAT ", update new EOF " INT64_FORMAT "), persistent serial num " INT64_FORMAT " at TID %s", 
-cacd: cdbpersistentfilesysobj:00003314:  relFileNode->spcNode, 
-cacd: cdbpersistentfilesysobj:00003315:  relFileNode->dbNode, 
-cacd: cdbpersistentfilesysobj:00003316:  relFileNode->relNode, 
-cacd: cdbpersistentfilesysobj:00003317:  segmentFileNum, 
-cacd: cdbpersistentfilesysobj:00003318:  mirrorAppendOnlyNewEof, 
-cacd: cdbpersistentfilesysobj:00003319:  mirrorNewEof, 
-cacd: cdbpersistentfilesysobj:00003320:  persistentSerialNum, 
-cacd: cdbpersistentfilesysobj:00003321:  ItemPointerToString(persistentTid)); 
-cacd: cdbpersistentfilesysobj:00003435:  elog(ERROR, "Serial number mismatch for update (expected " INT64_FORMAT ", found " INT64_FORMAT "), at TID %s", 
-cacd: cdbpersistentfilesysobj:00003436:  persistentSerialNum, 
-cacd: cdbpersistentfilesysobj:00003437:  serialNum, 
-cacd: cdbpersistentfilesysobj:00003438:  ItemPointerToString(persistentTid)); 
-cacd: cdbpersistentfilesysobj:00003618:  elog(ERROR, "Unexpected persistent end transaction file-system action: %d", 
-cacd: cdbpersistentfilesysobj:00003619:  action); 
-cacd: cdbpersistentfilesysobj:00003709:  elog(ERROR, "Unexpected persistent end transaction file-system action: %d", 
-cacd: cdbpersistentfilesysobj:00003710:  action); 
-cacd: cdbpersistentfilesysobj:00003820:  elog(ERROR, "mirror loss EOF " INT64_FORMAT " doesn't match new EOF " INT64_FORMAT, 
-cacd: cdbpersistentfilesysobj:00003821:  eofs->mirrorLossEof, 
-cacd: cdbpersistentfilesysobj:00003822:  eofs->mirrorNewEof); 
-cacd: cdbpersistentfilesysobj:00003853:  elog(ERROR, 
-cacd: cdbpersistentfilesysobj:00003854:  "Append-Only Mirror Resync EOFs intent count mismatch " 
-cacd: cdbpersistentfilesysobj:00003855:  "(shared-memory count %d, xlog count %d). " 
-cacd: cdbpersistentfilesysobj:00003856:  "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s). " 
-cacd: cdbpersistentfilesysobj:00003857:  "Distributed transaction id %s (local prepared xid %u)", 
-cacd: cdbpersistentfilesysobj:00003858:  prepareAppendOnlyIntentCount, 
-cacd: cdbpersistentfilesysobj:00003859:  persistentObjects->typed.appendOnlyMirrorResyncEofsCount, 
-cacd: cdbpersistentfilesysobj:00003860:  eofsExample->relFileNode.spcNode, 
-cacd: cdbpersistentfilesysobj:00003861:  eofsExample->relFileNode.dbNode, 
-cacd: cdbpersistentfilesysobj:00003862:  eofsExample->relFileNode.relNode, 
-cacd: cdbpersistentfilesysobj:00003863:  eofsExample->segmentFileNum, 
-cacd: cdbpersistentfilesysobj:00003864:  eofsExample->persistentSerialNum, 
-cacd: cdbpersistentfilesysobj:00003865:  ItemPointerToString(&eofsExample->persistentTid), 
-cacd: cdbpersistentfilesysobj:00003866:  gid, 
-cacd: cdbpersistentfilesysobj:00003867:  preparedXid); 
-cacd: cdbpersistentfilesysobj:00003878:  elog(ERROR, 
-cacd: cdbpersistentfilesysobj:00003879:  "Append-Only Mirror Resync EOFs intent count would go negative " 
-cacd: cdbpersistentfilesysobj:00003880:  "(enter system count %d, subtract count %d). " 
-cacd: cdbpersistentfilesysobj:00003881:  "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s). " 
-cacd: cdbpersistentfilesysobj:00003882:  "Distributed transaction id %s (local prepared xid %u)", 
-cacd: cdbpersistentfilesysobj:00003883:  oldSystemAppendOnlyCommitWorkCount, 
-cacd: cdbpersistentfilesysobj:00003884:  persistentObjects->typed.appendOnlyMirrorResyncEofsCount, 
-cacd: cdbpersistentfilesysobj:00003885:  eofsExample->relFileNode.spcNode, 
-cacd: cdbpersistentfilesysobj:00003886:  eofsExample->relFileNode.dbNode, 
-cacd: cdbpersistentfilesysobj:00003887:  eofsExample->relFileNode.relNode, 
-cacd: cdbpersistentfilesysobj:00003888:  eofsExample->segmentFileNum, 
-cacd: cdbpersistentfilesysobj:00003889:  eofsExample->persistentSerialNum, 
-cacd: cdbpersistentfilesysobj:00003890:  ItemPointerToString(&eofsExample->persistentTid), 
-cacd: cdbpersistentfilesysobj:00003891:  gid, 
-cacd: cdbpersistentfilesysobj:00003892:  preparedXid); 
-cacd: cdbpersistentfilesysobj:00003924:  elog(ERROR, 
-cacd: cdbpersistentfilesysobj:00003925:  "Append-Only Mirror Resync EOFs intent count in shared-memory non-zero (%d) and xlog count is zero. " 
-cacd: cdbpersistentfilesysobj:00003926:  "Distributed transaction id %s (local prepared xid %u)", 
-cacd: cdbpersistentfilesysobj:00003927:  prepareAppendOnlyIntentCount, 
-cacd: cdbpersistentfilesysobj:00003928:  gid, 
-cacd: cdbpersistentfilesysobj:00003929:  preparedXid); 
-cacd: cdbpersistentfilesysobj:00004255:  elog(ERROR, "TID for persistent '%s' tuple for update mirror existence state is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00004256:  PersistentFileSysObjName_TypeName(fsObjType)); 
-cacd: cdbpersistentfilesysobj:00004259:  elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00004260:  PersistentFileSysObjName_TypeName(fsObjType)); 
-cacd: cdbpersistentfilesysobj:00004337:  elog(ERROR, "TID for persistent '%s' tuple for mark Buffer Pool relation for 'Scan Incremental' resync is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00004338:  PersistentFileSysObjName_TypeAndObjectName(fsObjName)); 
-cacd: cdbpersistentfilesysobj:00004341:  elog(ERROR, "Persistent '%s' serial number for mark Buffer Pool relation for 'Scan Incremental' resync is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00004342:  PersistentFileSysObjName_TypeAndObjectName(fsObjName)); 
-cacd: cdbpersistentfilesysobj:00004382:  elog(ERROR, "Persistent '%s' serial number mismatch for update physically truncated (expected " INT64_FORMAT ", found " INT64_FORMAT ")", 
-cacd: cdbpersistentfilesysobj:00004383:  PersistentFileSysObjName_TypeAndObjectName(fsObjName), 
-cacd: cdbpersistentfilesysobj:00004384:  persistentSerialNum, 
-cacd: cdbpersistentfilesysobj:00004385:  actualPersistentSerialNum); 
-cacd: cdbpersistentfilesysobj:00004388:  elog(ERROR, "Persistent '%s' relation storage manager mismatch for update physically truncated (expected '%s', found '%s')", 
-cacd: cdbpersistentfilesysobj:00004389:  PersistentFileSysObjName_TypeAndObjectName(fsObjName), 
-cacd: cdbpersistentfilesysobj:00004390:  PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_BufferPool), 
-cacd: cdbpersistentfilesysobj:00004391:  PersistentFileSysRelStorageMgr_Name(relationStorageManager)); 
-cacd: cdbpersistentfilesysobj:00004461:  elog(ERROR, "TID for persistent '%s' tuple for update relation physically truncated is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00004462:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
-cacd: cdbpersistentfilesysobj:00004465:  elog(ERROR, "Persistent '%s' serial number for update relation physically truncated is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00004466:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
-cacd: cdbpersistentfilesysobj:00004511:  elog(ERROR, "Persistent '%s' serial number mismatch for check for Append-Only catch-up (expected " INT64_FORMAT ", found " INT64_FORMAT ")", 
-cacd: cdbpersistentfilesysobj:00004512:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
-cacd: cdbpersistentfilesysobj:00004513:  persistentSerialNum, 
-cacd: cdbpersistentfilesysobj:00004514:  actualPersistentSerialNum); 
-cacd: cdbpersistentfilesysobj:00004517:  elog(ERROR, "Persistent '%s' relation storage manager mismatch for check for Append-Only catch-up (expected '%s', found '%s')", 
-cacd: cdbpersistentfilesysobj:00004518:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
-cacd: cdbpersistentfilesysobj:00004519:  PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_AppendOnly), 
-cacd: cdbpersistentfilesysobj:00004520:  PersistentFileSysRelStorageMgr_Name(relationStorageManager)); 
-cacd: cdbpersistentfilesysobj:00004600:  elog(ERROR, "TID for persistent '%s' tuple for update relation physically truncated is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00004601:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
-cacd: cdbpersistentfilesysobj:00004604:  elog(ERROR, "Persistent '%s' serial number for update relation physically truncated is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00004605:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
-cacd: cdbpersistentfilesysobj:00004650:  elog(ERROR, "Persistent '%s' serial number mismatch for check for Append-Only catch-up (expected " INT64_FORMAT ", found " INT64_FORMAT ")", 
-cacd: cdbpersistentfilesysobj:00004651:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
-cacd: cdbpersistentfilesysobj:00004652:  persistentSerialNum, 
-cacd: cdbpersistentfilesysobj:00004653:  actualPersistentSerialNum); 
-cacd: cdbpersistentfilesysobj:00004656:  elog(ERROR, "Persistent '%s' relation storage manager mismatch for check for Append-Only catch-up (expected '%s', found '%s')", 
-cacd: cdbpersistentfilesysobj:00004657:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
-cacd: cdbpersistentfilesysobj:00004658:  PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_AppendOnly), 
-cacd: cdbpersistentfilesysobj:00004659:  PersistentFileSysRelStorageMgr_Name(relationStorageManager)); 
-cacd: cdbpersistentfilesysobj:00004662:  elog(ERROR, "Persistent '%s' EOF mismatch for check for Append-Only catch-up (loss EOF " INT64_FORMAT ", new EOF " INT64_FORMAT ")", 
-cacd: cdbpersistentfilesysobj:00004663:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
-cacd: cdbpersistentfilesysobj:00004664:  mirrorAppendOnlyLossEof, 
-cacd: cdbpersistentfilesysobj:00004665:  mirrorAppendOnlyNewEof); 
-cacd: cdbpersistentfilesysobj:00004817:  elog(ERROR, "Unexpected persistent file-system object state: %d", 
-cacd: cdbpersistentfilesysobj:00004818:  state); 
-cacd: cdbpersistentfilesysobj:00005022:  elog(ERROR, "Unexpected persistent state: %d", 
-cacd: cdbpersistentfilesysobj:00005023:  state); 
-cacd: cdbpersistentfilesysobj:00005152:  elog(ERROR, "Unexpected state-action: %d", 
-cacd: cdbpersistentfilesysobj:00005153:  stateAction); 
-cacd: cdbpersistentfilesysobj:00005815:  elog(ERROR, "TID for persistent '%s' tuple for marking page incremental is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00005816:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00005819:  elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00005820:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00005978:  elog(WARNING, "TID for persistent '%s' tuple from change log is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00005979:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00005985:  elog(WARNING, "Persistent '%s' serial number from change log is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00005986:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00006231:  elog(ERROR, "TID for persistent '%s' tuple for marking page incremental is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00006232:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00006235:  elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00006236:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00006318:  elog(ERROR, "TID for persistent '%s' tuple for resynchronize Buffer Pool checkpoint is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00006319:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00006322:  elog(ERROR, "Persistent '%s' serial number for resynchronize Buffer Pool checkpoint is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00006323:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00006393:  elog(ERROR, "TID for persistent '%s' tuple for resynchronize relation complete is invalid (0,0)", 
-cacd: cdbpersistentfilesysobj:00006394:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00006397:  elog(ERROR, "Persistent '%s' serial number for resynchronize relation complete is invalid (0)", 
-cacd: cdbpersistentfilesysobj:00006398:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
-cacd: cdbpersistentfilesysobj:00006786:  elog(ERROR, "Invalid RelFileNode (0,0,0)"); 
-cacd: cdbpersistentfilesysobj:00006790:  elog(ERROR, 
-cacd: cdbpersistentfilesysobj:00006791:  "Cannot scan for persistent relation %u/%u/%u, segment file #%d because we are before persistence work", 
-cacd: cdbpersistentfilesysobj:00006792:  relFileNode->spcNode, 
-cacd: cdbpersistentfilesysobj:00006793:  relFileNode->dbNode, 
-cacd: cdbpersistentfilesysobj:00006794:  relFileNode->relNode, 
-cacd: cdbpersistentfilesysobj:00006795:  segmentFileNum); 
+cacd: cdbpersistentfilesysobj:00003451:  elog(ERROR, "Serial number mismatch for update (expected " INT64_FORMAT ", found " INT64_FORMAT "), at TID %s", 
+cacd: cdbpersistentfilesysobj:00003452:  persistentSerialNum, 
+cacd: cdbpersistentfilesysobj:00003453:  serialNum, 
+cacd: cdbpersistentfilesysobj:00003454:  ItemPointerToString(persistentTid)); 
+cacd: cdbpersistentfilesysobj:00003634:  elog(ERROR, "Unexpected persistent end transaction file-system action: %d", 
+cacd: cdbpersistentfilesysobj:00003635:  action); 
+cacd: cdbpersistentfilesysobj:00003725:  elog(ERROR, "Unexpected persistent end transaction file-system action: %d", 
+cacd: cdbpersistentfilesysobj:00003726:  action); 
+cacd: cdbpersistentfilesysobj:00003836:  elog(ERROR, "mirror loss EOF " INT64_FORMAT " doesn't match new EOF " INT64_FORMAT, 
+cacd: cdbpersistentfilesysobj:00003837:  eofs->mirrorLossEof, 
+cacd: cdbpersistentfilesysobj:00003838:  eofs->mirrorNewEof); 
+cacd: cdbpersistentfilesysobj:00003869:  elog(ERROR, 
+cacd: cdbpersistentfilesysobj:00003870:  "Append-Only Mirror Resync EOFs intent count mismatch " 
+cacd: cdbpersistentfilesysobj:00003871:  "(shared-memory count %d, xlog count %d). " 
+cacd: cdbpersistentfilesysobj:00003872:  "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s). " 
+cacd: cdbpersistentfilesysobj:00003873:  "Distributed transaction id %s (local prepared xid %u)", 
+cacd: cdbpersistentfilesysobj:00003874:  prepareAppendOnlyIntentCount, 
+cacd: cdbpersistentfilesysobj:00003875:  persistentObjects->typed.appendOnlyMirrorResyncEofsCount, 
+cacd: cdbpersistentfilesysobj:00003876:  eofsExample->relFileNode.spcNode, 
+cacd: cdbpersistentfilesysobj:00003877:  eofsExample->relFileNode.dbNode, 
+cacd: cdbpersistentfilesysobj:00003878:  eofsExample->relFileNode.relNode, 
+cacd: cdbpersistentfilesysobj:00003879:  eofsExample->segmentFileNum, 
+cacd: cdbpersistentfilesysobj:00003880:  eofsExample->persistentSerialNum, 
+cacd: cdbpersistentfilesysobj:00003881:  ItemPointerToString(&eofsExample->persistentTid), 
+cacd: cdbpersistentfilesysobj:00003882:  gid, 
+cacd: cdbpersistentfilesysobj:00003883:  preparedXid); 
+cacd: cdbpersistentfilesysobj:00003894:  elog(ERROR, 
+cacd: cdbpersistentfilesysobj:00003895:  "Append-Only Mirror Resync EOFs intent count would go negative " 
+cacd: cdbpersistentfilesysobj:00003896:  "(enter system count %d, subtract count %d). " 
+cacd: cdbpersistentfilesysobj:00003897:  "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s). " 
+cacd: cdbpersistentfilesysobj:00003898:  "Distributed transaction id %s (local prepared xid %u)", 
+cacd: cdbpersistentfilesysobj:00003899:  oldSystemAppendOnlyCommitWorkCount, 
+cacd: cdbpersistentfilesysobj:00003900:  persistentObjects->typed.appendOnlyMirrorResyncEofsCount, 
+cacd: cdbpersistentfilesysobj:00003901:  eofsExample->relFileNode.spcNode, 
+cacd: cdbpersistentfilesysobj:00003902:  eofsExample->relFileNode.dbNode, 
+cacd: cdbpersistentfilesysobj:00003903:  eofsExample->relFileNode.relNode, 
+cacd: cdbpersistentfilesysobj:00003904:  eofsExample->segmentFileNum, 
+cacd: cdbpersistentfilesysobj:00003905:  eofsExample->persistentSerialNum, 
+cacd: cdbpersistentfilesysobj:00003906:  ItemPointerToString(&eofsExample->persistentTid), 
+cacd: cdbpersistentfilesysobj:00003907:  gid, 
+cacd: cdbpersistentfilesysobj:00003908:  preparedXid); 
+cacd: cdbpersistentfilesysobj:00003940:  elog(ERROR, 
+cacd: cdbpersistentfilesysobj:00003941:  "Append-Only Mirror Resync EOFs intent count in shared-memory non-zero (%d) and xlog count is zero. " 
+cacd: cdbpersistentfilesysobj:00003942:  "Distributed transaction id %s (local prepared xid %u)", 
+cacd: cdbpersistentfilesysobj:00003943:  prepareAppendOnlyIntentCount, 
+cacd: cdbpersistentfilesysobj:00003944:  gid, 
+cacd: cdbpersistentfilesysobj:00003945:  preparedXid); 
+cacd: cdbpersistentfilesysobj:00004271:  elog(ERROR, "TID for persistent '%s' tuple for update mirror existence state is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00004272:  PersistentFileSysObjName_TypeName(fsObjType)); 
+cacd: cdbpersistentfilesysobj:00004275:  elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00004276:  PersistentFileSysObjName_TypeName(fsObjType)); 
+cacd: cdbpersistentfilesysobj:00004353:  elog(ERROR, "TID for persistent '%s' tuple for mark Buffer Pool relation for 'Scan Incremental' resync is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00004354:  PersistentFileSysObjName_TypeAndObjectName(fsObjName)); 
+cacd: cdbpersistentfilesysobj:00004357:  elog(ERROR, "Persistent '%s' serial number for mark Buffer Pool relation for 'Scan Incremental' resync is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00004358:  PersistentFileSysObjName_TypeAndObjectName(fsObjName)); 
+cacd: cdbpersistentfilesysobj:00004398:  elog(ERROR, "Persistent '%s' serial number mismatch for update physically truncated (expected " INT64_FORMAT ", found " INT64_FORMAT ")", 
+cacd: cdbpersistentfilesysobj:00004399:  PersistentFileSysObjName_TypeAndObjectName(fsObjName), 
+cacd: cdbpersistentfilesysobj:00004400:  persistentSerialNum, 
+cacd: cdbpersistentfilesysobj:00004401:  actualPersistentSerialNum); 
+cacd: cdbpersistentfilesysobj:00004404:  elog(ERROR, "Persistent '%s' relation storage manager mismatch for update physically truncated (expected '%s', found '%s')", 
+cacd: cdbpersistentfilesysobj:00004405:  PersistentFileSysObjName_TypeAndObjectName(fsObjName), 
+cacd: cdbpersistentfilesysobj:00004406:  PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_BufferPool), 
+cacd: cdbpersistentfilesysobj:00004407:  PersistentFileSysRelStorageMgr_Name(relationStorageManager)); 
+cacd: cdbpersistentfilesysobj:00004477:  elog(ERROR, "TID for persistent '%s' tuple for update relation physically truncated is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00004478:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
+cacd: cdbpersistentfilesysobj:00004481:  elog(ERROR, "Persistent '%s' serial number for update relation physically truncated is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00004482:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
+cacd: cdbpersistentfilesysobj:00004527:  elog(ERROR, "Persistent '%s' serial number mismatch for check for Append-Only catch-up (expected " INT64_FORMAT ", found " INT64_FORMAT ")", 
+cacd: cdbpersistentfilesysobj:00004528:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
+cacd: cdbpersistentfilesysobj:00004529:  persistentSerialNum, 
+cacd: cdbpersistentfilesysobj:00004530:  actualPersistentSerialNum); 
+cacd: cdbpersistentfilesysobj:00004533:  elog(ERROR, "Persistent '%s' relation storage manager mismatch for check for Append-Only catch-up (expected '%s', found '%s')", 
+cacd: cdbpersistentfilesysobj:00004534:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
+cacd: cdbpersistentfilesysobj:00004535:  PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_AppendOnly), 
+cacd: cdbpersistentfilesysobj:00004536:  PersistentFileSysRelStorageMgr_Name(relationStorageManager)); 
+cacd: cdbpersistentfilesysobj:00004616:  elog(ERROR, "TID for persistent '%s' tuple for update relation physically truncated is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00004617:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
+cacd: cdbpersistentfilesysobj:00004620:  elog(ERROR, "Persistent '%s' serial number for update relation physically truncated is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00004621:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName)); 
+cacd: cdbpersistentfilesysobj:00004666:  elog(ERROR, "Persistent '%s' serial number mismatch for check for Append-Only catch-up (expected " INT64_FORMAT ", found " INT64_FORMAT ")", 
+cacd: cdbpersistentfilesysobj:00004667:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
+cacd: cdbpersistentfilesysobj:00004668:  persistentSerialNum, 
+cacd: cdbpersistentfilesysobj:00004669:  actualPersistentSerialNum); 
+cacd: cdbpersistentfilesysobj:00004672:  elog(ERROR, "Persistent '%s' relation storage manager mismatch for check for Append-Only catch-up (expected '%s', found '%s')", 
+cacd: cdbpersistentfilesysobj:00004673:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
+cacd: cdbpersistentfilesysobj:00004674:  PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_AppendOnly), 
+cacd: cdbpersistentfilesysobj:00004675:  PersistentFileSysRelStorageMgr_Name(relationStorageManager)); 
+cacd: cdbpersistentfilesysobj:00004678:  elog(ERROR, "Persistent '%s' EOF mismatch for check for Append-Only catch-up (loss EOF " INT64_FORMAT ", new EOF " INT64_FORMAT ")", 
+cacd: cdbpersistentfilesysobj:00004679:  PersistentFileSysObjName_TypeAndObjectName(&fsObjName), 
+cacd: cdbpersistentfilesysobj:00004680:  mirrorAppendOnlyLossEof, 
+cacd: cdbpersistentfilesysobj:00004681:  mirrorAppendOnlyNewEof); 
+cacd: cdbpersistentfilesysobj:00004833:  elog(ERROR, "Unexpected persistent file-system object state: %d", 
+cacd: cdbpersistentfilesysobj:00004834:  state); 
+cacd: cdbpersistentfilesysobj:00005038:  elog(ERROR, "Unexpected persistent state: %d", 
+cacd: cdbpersistentfilesysobj:00005039:  state); 
+cacd: cdbpersistentfilesysobj:00005168:  elog(ERROR, "Unexpected state-action: %d", 
+cacd: cdbpersistentfilesysobj:00005169:  stateAction); 
+cacd: cdbpersistentfilesysobj:00005831:  elog(ERROR, "TID for persistent '%s' tuple for marking page incremental is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00005832:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00005835:  elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00005836:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00005994:  elog(WARNING, "TID for persistent '%s' tuple from change log is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00005995:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006001:  elog(WARNING, "Persistent '%s' serial number from change log is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00006002:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006247:  elog(ERROR, "TID for persistent '%s' tuple for marking page incremental is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00006248:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006251:  elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00006252:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006334:  elog(ERROR, "TID for persistent '%s' tuple for resynchronize Buffer Pool checkpoint is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00006335:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006338:  elog(ERROR, "Persistent '%s' serial number for resynchronize Buffer Pool checkpoint is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00006339:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006409:  elog(ERROR, "TID for persistent '%s' tuple for resynchronize relation complete is invalid (0,0)", 
+cacd: cdbpersistentfilesysobj:00006410:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006413:  elog(ERROR, "Persistent '%s' serial number for resynchronize relation complete is invalid (0)", 
+cacd: cdbpersistentfilesysobj:00006414:  PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile)); 
+cacd: cdbpersistentfilesysobj:00006802:  elog(ERROR, "Invalid RelFileNode (0,0,0)"); 
+cacd: cdbpersistentfilesysobj:00006806:  elog(ERROR, 
+cacd: cdbpersistentfilesysobj:00006807:  "Cannot scan for persistent relation %u/%u/%u, segment file #%d because we are before persistence work", 
+cacd: cdbpersistentfilesysobj:00006808:  relFileNode->spcNode, 
+cacd: cdbpersistentfilesysobj:00006809:  relFileNode->dbNode, 
+cacd: cdbpersistentfilesysobj:00006810:  relFileNode->relNode, 
+cacd: cdbpersistentfilesysobj:00006811:  segmentFileNum); 
 aaaaa GP_IGNORE: cacb: cdbpersistentrecovery - ./backend/cdb/cdbpersistentrecovery.c
 cacb: cdbpersistentrecovery:00000341:  elog(ERROR, "Relation storage manager for persistent '%s' for Crash Recovery is invalid (%d)", 
 cacb: cdbpersistentrecovery:00000342:  PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName), 
