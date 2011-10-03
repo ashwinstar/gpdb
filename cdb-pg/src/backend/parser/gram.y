@@ -10855,6 +10855,7 @@ c_expr:		columnref								{ $$ = $1; }
 				{	
 					TableValueExpr *n = makeNode(TableValueExpr);
 					n->subquery = $3;
+					n->location = @1;
 					$$ = (Node*) n;
 				}
 			| row

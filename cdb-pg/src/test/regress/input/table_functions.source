@@ -487,6 +487,13 @@ SELECT sum(a) over (partition by TABLE(select * from example) order by b) from e
 -- that matches expectations
 SELECT * FROM multiset_4( TABLE( SELECT 1::integer, 'hello'::text) ) as tf(a int);
 
+-- ERROR no support for SELECT INTO in a TableValueExpression
+SELECT * FROM multiset_2( TABLE( SELECT * INTO should_error FROM example ) );
+
+-- MPP-14180  ERROR: We don't support TableValueExpressions with external correlations
+SELECT * from example e1
+WHERE a > (SELECT a FROM multiset_2( TABLE( SELECT * FROM example e2 WHERE e1.a=e2.a))) ;
+
 -- ===========================================
 -- Views and view display
 -- ===========================================

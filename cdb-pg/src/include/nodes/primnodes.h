@@ -534,6 +534,7 @@ typedef struct TableValueExpr
 {
 	NodeTag     type;
 	Node       *subquery;
+	int         location;
 } TableValueExpr;
 
 

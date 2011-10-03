@@ -1625,7 +1625,6 @@ transformTableValueExpr(ParseState *pstate, TableValueExpr *t)
 	List		*parsetrees;
 	Query		*query;
 
-
 	/* If we already transformed this node, do nothing */
 	if (IsA(t->subquery, Query))
 		return (Node*) t;
@@ -1654,22 +1653,21 @@ transformTableValueExpr(ParseState *pstate, TableValueExpr *t)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("subquery in TABLE value expression cannot have SELECT INTO"),
-				 errOmitLocation(true)));
+				 errOmitLocation(true),
+				 parser_errposition(pstate, t->location)));
 	t->subquery = (Node*) query;
 
 	/*
 	 * Insist that the TABLE value expression does not contain references to the outer
 	 * range table, this would be an unsupported correlated TABLE value expression.
 	 */
-	if (pstate->p_relnamespace || pstate->p_varnamespace)
-	{
-		if (contain_vars_of_level((Node *) query, 1))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-					 errmsg("subquery in TABLE value expression may not refer "
-							"to other relations of same query level"),
-							 errOmitLocation(true)));
-	}
+	if (contain_vars_of_level_or_above((Node *) query, 1))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+				 errmsg("subquery in TABLE value expression may not refer "
+						"to relation of another query level"),
+				 errOmitLocation(true),
+				 parser_errposition(pstate, t->location)));
 
 	return (Node*) t;
 }
