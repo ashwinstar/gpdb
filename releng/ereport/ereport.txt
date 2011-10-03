@@ -15400,92 +15400,92 @@ gaae: gram:00030315:  ereport(ERROR,
 gaae: gram:00030316:  (errcode(ERRCODE_SYNTAX_ERROR), 
 gaae: gram:00030317:  errmsg("window OVER clause can only be used " 
 gaae: gram:00030318:  "with an aggregate"))); 
-gaae: gram:00030639:  ereport(ERROR, 
-gaae: gram:00030640:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030641:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
-gaae: gram:00030642:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030645:  ereport(WARNING, 
-gaae: gram:00030646:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030647:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030648:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030692:  ereport(ERROR, 
-gaae: gram:00030693:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030694:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030695:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030698:  ereport(WARNING, 
-gaae: gram:00030699:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030700:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030701:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00030745:  ereport(ERROR, 
-gaae: gram:00030746:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030747:  errmsg("LOCALTIME(%d) precision must not be negative", 
-gaae: gram:00030748:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030751:  ereport(WARNING, 
-gaae: gram:00030752:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030753:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030754:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030799:  ereport(ERROR, 
-gaae: gram:00030800:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030801:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030802:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030805:  ereport(WARNING, 
-gaae: gram:00030806:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030807:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030808:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00031790:  ereport(ERROR, 
-gaae: gram:00031791:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031792:  errmsg("improper qualified name (too many dotted names): %s", 
-gaae: gram:00031793:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
-gaae: gram:00031947:  ereport(ERROR, 
-gaae: gram:00031948:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00031949:  errmsg("INTERVAL(%d) precision must not be negative", 
-gaae: gram:00031950:  (yyvsp[(3) - (6)].ival)))); 
-gaae: gram:00031953:  ereport(WARNING, 
-gaae: gram:00031954:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00031955:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00031956:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
-gaae: gram:00032109:  ereport(ERROR, 
-gaae: gram:00032110:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032111:  errmsg("OLD used in query that is not in a rule"))); 
-gaae: gram:00032121:  ereport(ERROR, 
-gaae: gram:00032122:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032123:  errmsg("NEW used in query that is not in a rule"))); 
-gaae: gram:00032556:  ereport(ERROR, 
-gaae: gram:00032557:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032558:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
-gaae: gram:00032559:  scanner_errposition(location))); 
-gaae: gram:00032563:  ereport(ERROR, 
-gaae: gram:00032564:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032565:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
-gaae: gram:00032566:  scanner_errposition(location))); 
-gaae: gram:00032670:  ereport(ERROR, 
-gaae: gram:00032671:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032672:  errmsg("syntax error at or near \"ORDER BY\""), 
-gaae: gram:00032673:  scanner_errposition(exprLocation((Node *) sortClause)))); 
-gaae: gram:00032681:  ereport(ERROR, 
-gaae: gram:00032682:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032683:  errmsg("syntax error at or near \"OFFSET\""), 
-gaae: gram:00032684:  scanner_errposition(exprLocation(limitOffset)))); 
-gaae: gram:00032690:  ereport(ERROR, 
-gaae: gram:00032691:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032692:  errmsg("syntax error at or near \"LIMIT\""), 
-gaae: gram:00032693:  scanner_errposition(exprLocation(limitCount)))); 
-gaae: gram:00032699:  ereport(ERROR, 
-gaae: gram:00032700:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032701:  errmsg("syntax error at or near \"WITH\""), 
-gaae: gram:00032702:  scanner_errposition(exprLocation((Node *)withClause)))); 
-gaae: gram:00032855:  ereport(ERROR, 
-gaae: gram:00032856:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032857:  errmsg("OUT arguments aren't allowed in TABLE functions"))); 
-gaae: gram:00032860:  ereport(ERROR, 
-gaae: gram:00032861:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032862:  errmsg("INOUT arguments aren't allowed in TABLE functions"))); 
-gaae: gram:00032919:  ereport(ERROR, 
-gaae: gram:00032920:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00032921:  errmsg("window EXCLUDE clause not yet implemented"))); 
-gaae: gram:00032925:  ereport(ERROR, 
-gaae: gram:00032926:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032927:  errmsg("invalid window EXCLUDE clause"))); 
+gaae: gram:00030640:  ereport(ERROR, 
+gaae: gram:00030641:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030642:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+gaae: gram:00030643:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030646:  ereport(WARNING, 
+gaae: gram:00030647:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030648:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030649:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00030693:  ereport(ERROR, 
+gaae: gram:00030694:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030695:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00030696:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030699:  ereport(WARNING, 
+gaae: gram:00030700:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030701:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030702:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00030746:  ereport(ERROR, 
+gaae: gram:00030747:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030748:  errmsg("LOCALTIME(%d) precision must not be negative", 
+gaae: gram:00030749:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030752:  ereport(WARNING, 
+gaae: gram:00030753:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030754:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030755:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00030800:  ereport(ERROR, 
+gaae: gram:00030801:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030802:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00030803:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030806:  ereport(WARNING, 
+gaae: gram:00030807:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030808:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030809:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00031791:  ereport(ERROR, 
+gaae: gram:00031792:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00031793:  errmsg("improper qualified name (too many dotted names): %s", 
+gaae: gram:00031794:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
+gaae: gram:00031948:  ereport(ERROR, 
+gaae: gram:00031949:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031950:  errmsg("INTERVAL(%d) precision must not be negative", 
+gaae: gram:00031951:  (yyvsp[(3) - (6)].ival)))); 
+gaae: gram:00031954:  ereport(WARNING, 
+gaae: gram:00031955:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031956:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00031957:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+gaae: gram:00032110:  ereport(ERROR, 
+gaae: gram:00032111:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032112:  errmsg("OLD used in query that is not in a rule"))); 
+gaae: gram:00032122:  ereport(ERROR, 
+gaae: gram:00032123:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032124:  errmsg("NEW used in query that is not in a rule"))); 
+gaae: gram:00032557:  ereport(ERROR, 
+gaae: gram:00032558:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032559:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
+gaae: gram:00032560:  scanner_errposition(location))); 
+gaae: gram:00032564:  ereport(ERROR, 
+gaae: gram:00032565:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032566:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
+gaae: gram:00032567:  scanner_errposition(location))); 
+gaae: gram:00032671:  ereport(ERROR, 
+gaae: gram:00032672:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032673:  errmsg("syntax error at or near \"ORDER BY\""), 
+gaae: gram:00032674:  scanner_errposition(exprLocation((Node *) sortClause)))); 
+gaae: gram:00032682:  ereport(ERROR, 
+gaae: gram:00032683:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032684:  errmsg("syntax error at or near \"OFFSET\""), 
+gaae: gram:00032685:  scanner_errposition(exprLocation(limitOffset)))); 
+gaae: gram:00032691:  ereport(ERROR, 
+gaae: gram:00032692:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032693:  errmsg("syntax error at or near \"LIMIT\""), 
+gaae: gram:00032694:  scanner_errposition(exprLocation(limitCount)))); 
+gaae: gram:00032700:  ereport(ERROR, 
+gaae: gram:00032701:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032702:  errmsg("syntax error at or near \"WITH\""), 
+gaae: gram:00032703:  scanner_errposition(exprLocation((Node *)withClause)))); 
+gaae: gram:00032856:  ereport(ERROR, 
+gaae: gram:00032857:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032858:  errmsg("OUT arguments aren't allowed in TABLE functions"))); 
+gaae: gram:00032861:  ereport(ERROR, 
+gaae: gram:00032862:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032863:  errmsg("INOUT arguments aren't allowed in TABLE functions"))); 
+gaae: gram:00032920:  ereport(ERROR, 
+gaae: gram:00032921:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00032922:  errmsg("window EXCLUDE clause not yet implemented"))); 
+gaae: gram:00032926:  ereport(ERROR, 
+gaae: gram:00032927:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032928:  errmsg("invalid window EXCLUDE clause"))); 
 aaaaa GP_IGNORE: paaj: parsexagg - ./backend/parser/parse_agg.c
 paaj: parsexagg:00000087:  ereport(ERROR, 
 paaj: parsexagg:00000088:  (errcode(ERRCODE_GROUPING_ERROR), 
@@ -16062,91 +16062,93 @@ paba: parsexexpr:00001594:  ereport(ERROR,
 paba: parsexexpr:00001595:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 paba: parsexexpr:00001596:  errmsg("could not find array type for data type %s", 
 paba: parsexexpr:00001597:  format_type_be(array_type)))); 
-paba: parsexexpr:00001650:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
-paba: parsexexpr:00001652:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
-paba: parsexexpr:00001654:  ereport(ERROR, 
-paba: parsexexpr:00001655:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001656:  errmsg("subquery in TABLE value expression cannot have SELECT INTO"), 
-paba: parsexexpr:00001657:  errOmitLocation(true))); 
-paba: parsexexpr:00001667:  ereport(ERROR, 
-paba: parsexexpr:00001668:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-paba: parsexexpr:00001669:  errmsg("subquery in TABLE value expression may not refer " 
-paba: parsexexpr:00001670:  "to other relations of same query level"), 
-paba: parsexexpr:00001671:  errOmitLocation(true))); 
-paba: parsexexpr:00001778:  elog(ERROR, "unrecognized booltesttype: %d", 
-paba: parsexexpr:00001779:  (int) b->booltesttype); 
-paba: parsexexpr:00001829:  elog(ERROR, "could not find type OID for relation %u", 
-paba: parsexexpr:00001830:  rte->relid); 
-paba: parsexexpr:00001973:  elog(ERROR, "cannot get type for untransformed sublink"); 
-paba: parsexexpr:00001982:  ereport(ERROR, 
-paba: parsexexpr:00001983:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexexpr:00001984:  errmsg("could not find array type for data type %s", 
-paba: parsexexpr:00001985:  format_type_be(exprType((Node *) tent->expr))))); 
-paba: parsexexpr:00002014:  ereport(ERROR, 
-paba: parsexexpr:00002015:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexexpr:00002016:  errmsg("could not find array type for data type %s", 
-paba: parsexexpr:00002017:  format_type_be(itemtype)))); 
-paba: parsexexpr:00002094:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr)); 
-paba: parsexexpr:00002340:  ereport(ERROR, 
-paba: parsexexpr:00002341:  (errcode(ERRCODE_CANNOT_COERCE), 
-paba: parsexexpr:00002342:  errmsg("cannot cast type %s to %s", 
-paba: parsexexpr:00002343:  format_type_be(inputType), 
-paba: parsexexpr:00002344:  format_type_be(targetType)), 
-paba: parsexexpr:00002345:  errOmitLocation(true), 
-paba: parsexexpr:00002346:  parser_errposition(pstate, typname->location))); 
-paba: parsexexpr:00002382:  ereport(ERROR, 
-paba: parsexexpr:00002383:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00002384:  errmsg("unequal number of entries in row expressions"), 
-paba: parsexexpr:00002385:  errOmitLocation(true), 
-paba: parsexexpr:00002386:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002393:  ereport(ERROR, 
-paba: parsexexpr:00002394:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002395:  errmsg("cannot compare rows of zero length"), 
-paba: parsexexpr:00002396:  errOmitLocation(true), 
-paba: parsexexpr:00002397:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002419:  ereport(ERROR, 
-paba: parsexexpr:00002420:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paba: parsexexpr:00002421:  errmsg("row comparison operator must yield type boolean, " 
-paba: parsexexpr:00002422:  "not type %s", 
-paba: parsexexpr:00002423:  format_type_be(cmp->opresulttype)), 
-paba: parsexexpr:00002424:  errOmitLocation(true), 
-paba: parsexexpr:00002425:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002427:  ereport(ERROR, 
-paba: parsexexpr:00002428:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paba: parsexexpr:00002429:  errmsg("row comparison operator must not return a set"), 
-paba: parsexexpr:00002430:  errOmitLocation(true), 
-paba: parsexexpr:00002431:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002481:  ereport(ERROR, 
-paba: parsexexpr:00002482:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002483:  errmsg("could not determine interpretation of row comparison operator %s", 
-paba: parsexexpr:00002484:  strVal(llast(opname))), 
-paba: parsexexpr:00002485:  errhint("Row comparison operators must be associated with btree operator classes."), 
-paba: parsexexpr:00002486:  errOmitLocation(true), 
-paba: parsexexpr:00002487:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002531:  ereport(ERROR, 
-paba: parsexexpr:00002532:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002533:  errmsg("could not determine interpretation of row comparison operator %s", 
-paba: parsexexpr:00002534:  strVal(llast(opname))), 
-paba: parsexexpr:00002535:  errdetail("There are multiple equally-plausible candidates."), 
-paba: parsexexpr:00002536:  errOmitLocation(true), 
-paba: parsexexpr:00002537:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002584:  ereport(ERROR, 
-paba: parsexexpr:00002585:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002586:  errmsg("could not determine interpretation of row comparison operator %s", 
-paba: parsexexpr:00002587:  strVal(llast(opname))), 
-paba: parsexexpr:00002588:  errdetail("There are multiple equally-plausible candidates."), 
-paba: parsexexpr:00002589:  errOmitLocation(true), 
-paba: parsexexpr:00002590:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002638:  ereport(ERROR, 
-paba: parsexexpr:00002639:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00002640:  errmsg("unequal number of entries in row expressions"), 
-paba: parsexexpr:00002641:  errOmitLocation(true), 
-paba: parsexexpr:00002642:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002678:  ereport(ERROR, 
-paba: parsexexpr:00002679:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paba: parsexexpr:00002680:  errmsg("IS DISTINCT FROM requires = operator to yield boolean"), 
-paba: parsexexpr:00002681:  errOmitLocation(true), 
-paba: parsexexpr:00002682:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00001649:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
+paba: parsexexpr:00001651:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
+paba: parsexexpr:00001653:  ereport(ERROR, 
+paba: parsexexpr:00001654:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001655:  errmsg("subquery in TABLE value expression cannot have SELECT INTO"), 
+paba: parsexexpr:00001656:  errOmitLocation(true), 
+paba: parsexexpr:00001657:  parser_errposition(pstate, t->location))); 
+paba: parsexexpr:00001665:  ereport(ERROR, 
+paba: parsexexpr:00001666:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+paba: parsexexpr:00001667:  errmsg("subquery in TABLE value expression may not refer " 
+paba: parsexexpr:00001668:  "to relation of another query level"), 
+paba: parsexexpr:00001669:  errOmitLocation(true), 
+paba: parsexexpr:00001670:  parser_errposition(pstate, t->location))); 
+paba: parsexexpr:00001776:  elog(ERROR, "unrecognized booltesttype: %d", 
+paba: parsexexpr:00001777:  (int) b->booltesttype); 
+paba: parsexexpr:00001827:  elog(ERROR, "could not find type OID for relation %u", 
+paba: parsexexpr:00001828:  rte->relid); 
+paba: parsexexpr:00001971:  elog(ERROR, "cannot get type for untransformed sublink"); 
+paba: parsexexpr:00001980:  ereport(ERROR, 
+paba: parsexexpr:00001981:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexexpr:00001982:  errmsg("could not find array type for data type %s", 
+paba: parsexexpr:00001983:  format_type_be(exprType((Node *) tent->expr))))); 
+paba: parsexexpr:00002012:  ereport(ERROR, 
+paba: parsexexpr:00002013:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexexpr:00002014:  errmsg("could not find array type for data type %s", 
+paba: parsexexpr:00002015:  format_type_be(itemtype)))); 
+paba: parsexexpr:00002092:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr)); 
+paba: parsexexpr:00002338:  ereport(ERROR, 
+paba: parsexexpr:00002339:  (errcode(ERRCODE_CANNOT_COERCE), 
+paba: parsexexpr:00002340:  errmsg("cannot cast type %s to %s", 
+paba: parsexexpr:00002341:  format_type_be(inputType), 
+paba: parsexexpr:00002342:  format_type_be(targetType)), 
+paba: parsexexpr:00002343:  errOmitLocation(true), 
+paba: parsexexpr:00002344:  parser_errposition(pstate, typname->location))); 
+paba: parsexexpr:00002380:  ereport(ERROR, 
+paba: parsexexpr:00002381:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00002382:  errmsg("unequal number of entries in row expressions"), 
+paba: parsexexpr:00002383:  errOmitLocation(true), 
+paba: parsexexpr:00002384:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002391:  ereport(ERROR, 
+paba: parsexexpr:00002392:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002393:  errmsg("cannot compare rows of zero length"), 
+paba: parsexexpr:00002394:  errOmitLocation(true), 
+paba: parsexexpr:00002395:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002417:  ereport(ERROR, 
+paba: parsexexpr:00002418:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paba: parsexexpr:00002419:  errmsg("row comparison operator must yield type boolean, " 
+paba: parsexexpr:00002420:  "not type %s", 
+paba: parsexexpr:00002421:  format_type_be(cmp->opresulttype)), 
+paba: parsexexpr:00002422:  errOmitLocation(true), 
+paba: parsexexpr:00002423:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002425:  ereport(ERROR, 
+paba: parsexexpr:00002426:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paba: parsexexpr:00002427:  errmsg("row comparison operator must not return a set"), 
+paba: parsexexpr:00002428:  errOmitLocation(true), 
+paba: parsexexpr:00002429:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002479:  ereport(ERROR, 
+paba: parsexexpr:00002480:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002481:  errmsg("could not determine interpretation of row comparison operator %s", 
+paba: parsexexpr:00002482:  strVal(llast(opname))), 
+paba: parsexexpr:00002483:  errhint("Row comparison operators must be associated with btree operator classes."), 
+paba: parsexexpr:00002484:  errOmitLocation(true), 
+paba: parsexexpr:00002485:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002529:  ereport(ERROR, 
+paba: parsexexpr:00002530:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002531:  errmsg("could not determine interpretation of row comparison operator %s", 
+paba: parsexexpr:00002532:  strVal(llast(opname))), 
+paba: parsexexpr:00002533:  errdetail("There are multiple equally-plausible candidates."), 
+paba: parsexexpr:00002534:  errOmitLocation(true), 
+paba: parsexexpr:00002535:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002582:  ereport(ERROR, 
+paba: parsexexpr:00002583:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002584:  errmsg("could not determine interpretation of row comparison operator %s", 
+paba: parsexexpr:00002585:  strVal(llast(opname))), 
+paba: parsexexpr:00002586:  errdetail("There are multiple equally-plausible candidates."), 
+paba: parsexexpr:00002587:  errOmitLocation(true), 
+paba: parsexexpr:00002588:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002636:  ereport(ERROR, 
+paba: parsexexpr:00002637:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00002638:  errmsg("unequal number of entries in row expressions"), 
+paba: parsexexpr:00002639:  errOmitLocation(true), 
+paba: parsexexpr:00002640:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002676:  ereport(ERROR, 
+paba: parsexexpr:00002677:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paba: parsexexpr:00002678:  errmsg("IS DISTINCT FROM requires = operator to yield boolean"), 
+paba: parsexexpr:00002679:  errOmitLocation(true), 
+paba: parsexexpr:00002680:  parser_errposition(pstate, location))); 
 aaaaa GP_IGNORE: paba: parsexfunc - ./backend/parser/parse_func.c
 paba: parsexfunc:00000183:  ereport(ERROR, 
 paba: parsexfunc:00000184:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
