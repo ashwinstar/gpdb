@@ -17301,7 +17301,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 		{
 			DefElem    *defel = (DefElem *) lfirst(option);
 			char	   *key = defel->defname;
-			char	   *val = strVal(defel->arg);
+			char	   *val = defGetString(defel);
 			
 			if (strcmp(key, "formatter") == 0)
 			{
