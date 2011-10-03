@@ -61,7 +61,7 @@
 /* Prototypes of internal functions */
 
 static inline float8 normal_cdf(float8 t);
-static inline float8 studentT_cdf_approx(int64 nu, float8 t);
+static inline float8 studentT_cdf_approx(uint64 nu, float8 t);
 
 
 /* 
@@ -107,7 +107,7 @@ static inline float8 studentT_cdf_approx(int64 nu, float8 t);
  */
 
 float8 
-studentT_cdf(int64 nu, float8 t) 
+studentT_cdf(uint64 nu, float8 t) 
 {
 	float8		z,
 				t_by_sqrt_nu;
@@ -116,8 +116,10 @@ studentT_cdf(int64 nu, float8 t)
 				sum = 1.;
 
 	/* Handle extreme cases. See above. */
-	if (nu <= 0)
-		return NAN;	 
+	if (nu == 0)
+		return NAN;
+	else if (isinf(t))
+		return signbit(t) ? 0 : 1;
 	else if (nu >= 1000000)
 		return normal_cdf(t);
 	else if (nu >= 200)
@@ -181,7 +183,7 @@ static inline float8 normal_cdf(float8 t)
 }
 
 
-/* float8 studentT_cdf_approx(int64 nu, float8 t)
+/* float8 studentT_cdf_approx(uint64 nu, float8 t)
  * ------------------------------------------------------
  * 
  * We approximate the the Studen-T distribution using a formula suggested in
@@ -192,7 +194,7 @@ static inline float8 normal_cdf(float8 t)
  * for all nu >= 200. (Tested on Mac OS X 10.6, gcc-4.2.)
  */
 
-static inline float8 studentT_cdf_approx(int64 nu, float8 t)
+static inline float8 studentT_cdf_approx(uint64 nu, float8 t)
 {
 	float8	g = (nu - 1.5) / ((nu - 1) * (nu - 1)),
 			z = sqrt( log(1. + t * t / nu) / g );
@@ -211,7 +213,7 @@ static inline float8 studentT_cdf_approx(int64 nu, float8 t)
 Datum 
 student_t_cdf(PG_FUNCTION_ARGS)
 {
-	int32		nu;
+	int64		nu;
 	float8		t;
 	
 	/* 
@@ -228,7 +230,7 @@ student_t_cdf(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 	
-	nu = PG_GETARG_INT32(0);
+	nu = PG_GETARG_INT64(0);
 	t = PG_GETARG_FLOAT8(1);
 	
 	/* We want to ensure nu > 0 */

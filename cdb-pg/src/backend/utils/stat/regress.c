@@ -5,27 +5,92 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 
+#include "pinv.h"
 #include "student.h"
 #include <math.h>
 #include <string.h>
 
+/* We are using BLAS for vector/matrix multiplication. */
+#include <f2c.h>
 
+/* See notes below */
+/* #include <clapack.h> */
+
+/*
+ * BLAS declarations copied from http://www.netlib.org/clapack/clapack.h
+ * FIXME: The proper way would be to update the CLAPACK we use, including
+ * //cdb2/main/ext/.../include/clapack.h
+ */
+
+/* Subroutine */ int dgemv_(char *trans, integer *m, integer *n, doublereal *
+	alpha, doublereal *a, integer *lda, doublereal *x, integer *incx, 
+	doublereal *beta, doublereal *y, integer *incy);
+
+doublereal ddot_(integer *n, doublereal *dx, integer *incx, doublereal *dy, 
+	integer *incy);
+
+/* End BLAS declarations */
+
+/*
+ * The size of the transition state array (in number of elements, not in
+ * bytes), given the number of independent variables (len).
+ * The number of independent variables is assumed to be less than 2^32 (i.e., of
+ * type uint32 or smaller). Thus,
+ * 
+ *     STATE_LEN(len) <= 4 + (2^32 - 1) + (2^32 - 1)^2
+ *                     = 2^64 - 2^33 + 2^32 + 4 < 2^64,
+ *
+ * i.e., we do not have to worry about integer overflows.
+ * HOWEVER: Caution is required as the size in bytes could still cause an
+ * integer overflow!
+ */
+#define STATE_LEN(len) (4ULL + len + ((uint64) len) * len)
+
+/*
+ * The following condition will not cause an integer overflow and is equivalent
+ * (note: despite the integer division!) to:
+ *
+ *     state_len * sizeof(float8) + ARR_OVERHEAD_NONULLS(1) <= MaxAllocSize
+ *
+ * It is a precondition before palloc'ing the transition state array.
+ */
+#define IS_FEASIBLE_STATE_LEN(state_len) ( \
+	(MaxAllocSize - ARR_OVERHEAD_NONULLS(1)) / sizeof(float8) >= state_len)
+
+
+/* Transition state for multi-linear regression functions and new arguments. */
 typedef struct {
-	int			len;		/* scalar:               len(X[]) */
-	float8		count;		/* scalar:               count(*) */
-	float8		sumy;		/* scalar:               sum(y)   */
-	float8		sumy2;		/* scalar:               sum(y*y) */
-	ArrayType	*Xty;		/* vector[count]:        sum(X'[] * y) */
-	ArrayType	*_Xty_t;	/* redundant: Xty transposed */
-	ArrayType	*XtX;		/* matrix[count][count]: sum(X'[] * X[]) */
-	ArrayType	*_XtX_inv;	/* redundant: pseudo-inverse of XtX */
+	ArrayType   *stateAsArray;
+	float8      *len;
+	float8      *count;
+	float8      *sumy;
+	float8      *sumy2;
+	float8      *Xty;
+	float8      *XtX;
+
+	float8      newY;
+	ArrayType   *newXAsArray;
+	float8      *newX;
+} MRegrAccumArgs;
+
+/* Final state for multi-linear regression functions. */
+typedef struct {
+	uint32              len;		/* scalar:               len(X[]) */
+	unsigned long long  count;		/* scalar:               count(*) */
+	float8              sumy;		/* scalar:               sum(y)   */
+	float8              sumy2;		/* scalar:               sum(y*y) */
+	float8              *Xty;		/* vector[count]:        sum(X'[] * y) */
+	float8              *XtX;		/* matrix[count][count]: sum(X'[] * X[]) */
 } MRegrState;
 
 
 /* Prototypes for static functions */
 
-static bool float8_mregr_get_state(PG_FUNCTION_ARGS,
+static bool float8_mregr_accum_get_args(FunctionCallInfo fcinfo,
+										MRegrAccumArgs *outArgs);
+static bool float8_mregr_get_state(FunctionCallInfo fcinfo,
 								   MRegrState *outState);
 static void float8_mregr_compute(MRegrState	*inState,
 								 ArrayType	**outCoef,
@@ -33,68 +98,112 @@ static void float8_mregr_compute(MRegrState	*inState,
 								 ArrayType	**outTStats,
 								 ArrayType	**outPValues);
 
-Datum
-float8_mregr_accum(PG_FUNCTION_ARGS)
+static inline void symmetricMatrixTimesVector(uint32 inSize, float8 *inMatrix,
+	float8 *inVector, float8 *outResult);
+static inline doublereal dotProduct(uint32 inSize, float8 *inVec1,
+	float8 *inVec2);
+
+static bool
+float8_mregr_accum_get_args(FunctionCallInfo fcinfo,
+							MRegrAccumArgs *outArgs)
 {
-	ArrayType  *state;
-	float8     *stateData, *newData, *matrix;
-	float8      newY;
-	ArrayType  *newX;
-	int         len, statelen;	
-	int         i,j;
+	float8      *stateData;
+	uint32      len, i;
+	uint64      statelen;
 	
 	/* We should be strict, but it doesn't hurt to be paranoid */
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
-	{
-		if (PG_ARGISNULL(0))
-			PG_RETURN_NULL();
-		PG_RETURN_ARRAYTYPE_P(PG_GETARG_ARRAYTYPE_P(0));
-	}
+		return false;
 	
-	state = PG_GETARG_ARRAYTYPE_P(0);	
-	newY  = PG_GETARG_FLOAT8(1);
-    newX  = PG_GETARG_ARRAYTYPE_P(2);
+	outArgs->stateAsArray = PG_GETARG_ARRAYTYPE_P(0);	
+   	outArgs->newY = PG_GETARG_FLOAT8(1);
+	outArgs->newXAsArray = PG_GETARG_ARRAYTYPE_P(2);
+	outArgs->newX  = (float8*) ARR_DATA_PTR(outArgs->newXAsArray);
 	
 	/* Ensure that both arrays are single dimensional float8[] arrays */
-	if (ARR_NULLBITMAP(state) || ARR_NDIM(state) != 1 || 
-		ARR_ELEMTYPE(state) != FLOAT8OID)
+	if (ARR_NULLBITMAP(outArgs->stateAsArray) ||
+		ARR_NDIM(outArgs->stateAsArray) != 1 || 
+		ARR_ELEMTYPE(outArgs->stateAsArray) != FLOAT8OID ||
+		ARR_NDIM(outArgs->newXAsArray) != 1 ||
+		ARR_ELEMTYPE(outArgs->newXAsArray) != FLOAT8OID)
 		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid transition state")));
-	if (ARR_NDIM(newX) != 1 || ARR_ELEMTYPE(newX) != FLOAT8OID)
-		ereport(ERROR, 
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("data array must be a single dimensional float8[]")));
+				 errmsg("transition function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	
 	/* Only callable as a transition function */
 	if (!(fcinfo->context && IsA(fcinfo->context, AggState)))
 		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("float8_mregr_accum called from invalid context")));
+				 errmsg("transition function \"%s\" not called from aggregate",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	
-	/* newX with nulls will be ignored */
-	if (ARR_NULLBITMAP(newX))
-		PG_RETURN_ARRAYTYPE_P(state);
+	/* newXAsArray with nulls will be ignored */
+	if (ARR_NULLBITMAP(outArgs->newXAsArray))
+		return false;
+	
+	/* See MPP-14102. Avoid overflow while initializing len */
+	if (ARR_DIMS(outArgs->newXAsArray)[0] > UINT32_MAX)
+		ereport(ERROR, 
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("number of independent variables cannot exceed %lu",
+				 (unsigned long) UINT32_MAX)));
+	len = ARR_DIMS(outArgs->newXAsArray)[0];
+		
+	/*
+	 * See MPP-13580. At least on certain platforms and with certain versions,
+	 * LAPACK will run into an infinite loop if pinv() is called for non-finite
+	 * matrices. We extend the check also to the dependent variables.
+	 */
+	for (i = 0; i < len; i++)
+		if (!isfinite(outArgs->newX[i]))
+			ereport(ERROR, 
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("design matrix is not finite")));
+	if (!isfinite(outArgs->newY))
+		ereport(ERROR, 
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("dependent variables are not finite")));
 	
 	/*
-	 * If length(state) == 1 then it is an unitialized state, extend as
-	 * needed, we use this instead of NULL so that we can declare the
-	 * function as strict.
+	 * See MPP-14102. We want to avoid (a) integer overflows and (b) making
+	 * oversized allocation requests.
+	 * We could compute the maximum number of variables so that the transition-
+	 * state length still fits into MaxAllocSize, but (assuming MaxAllocSize may
+	 * change in the future) this calculation requires taking the root out of a
+	 * 64-bit integer. Since there is no standard library function for that, and
+	 * displaying this number of merely of theoretical interest (the actual
+	 * limit is a lot lower), we simply report that the number of independent
+	 * variables is too large.
+	 * Precondition:
+	 *     len < 2^32.
 	 */
-	len = ARR_DIMS(newX)[0];
-	statelen = 4 + len + len*len;
-	if (ARR_DIMS(state)[0] == 1)
+	statelen = STATE_LEN(len);
+	if (!IS_FEASIBLE_STATE_LEN(statelen))
+		ereport(ERROR, 
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("number of independent variables is too large")));
+
+	/*
+	 * If length(outArgs->stateAsArray) == 1 then it is an unitialized state.
+	 * We extend as needed.
+	 */
+	if (ARR_DIMS(outArgs->stateAsArray)[0] == 1)
 	{
-		int size = statelen * sizeof(int64) + ARR_OVERHEAD_NONULLS(1);
-		state = (ArrayType *) palloc(size);
-		SET_VARSIZE(state, size);
-		state->ndim = 1;
-		state->dataoffset = 0;
-		state->elemtype = FLOAT8OID;
-		ARR_DIMS(state)[0] = statelen;
-		ARR_LBOUND(state)[0] = 1;
-		stateData = (float8*) ARR_DATA_PTR(state);
-		memset(stateData, 0, statelen * sizeof(int64));
+		/*
+		 * Precondition:
+		 *     IS_FEASIBLE_STATE_LEN(statelen)
+		 */
+		Size size = statelen * sizeof(float8) + ARR_OVERHEAD_NONULLS(1);
+		outArgs->stateAsArray = (ArrayType *) palloc(size);
+		SET_VARSIZE(outArgs->stateAsArray, size);
+		outArgs->stateAsArray->ndim = 1;
+		outArgs->stateAsArray->dataoffset = 0;
+		outArgs->stateAsArray->elemtype = FLOAT8OID;
+		ARR_DIMS(outArgs->stateAsArray)[0] = statelen;
+		ARR_LBOUND(outArgs->stateAsArray)[0] = 1;
+		stateData = (float8*) ARR_DATA_PTR(outArgs->stateAsArray);
+		memset(stateData, 0, statelen * sizeof(float8));
 		stateData[0] = len;
 	}
 	
@@ -109,49 +218,85 @@ float8_mregr_accum(PG_FUNCTION_ARGS)
 	 *   N       = 3 + len(X)
 	 *   M       = N + len(X)*len(X)
 	 */
-	newData   = (float8*) ARR_DATA_PTR(newX);
-	stateData = (float8*) ARR_DATA_PTR(state);
+	outArgs->len = (float8*) ARR_DATA_PTR(outArgs->stateAsArray);
+	outArgs->count = outArgs->len + 1;
+	outArgs->sumy = outArgs->len + 2;
+	outArgs->sumy2 = outArgs->len + 3;
+	outArgs->Xty = outArgs->len + 4;
+	outArgs->XtX = outArgs->len + 4 + len;
 	
 	/* It is an error if the number of indepent variables is not constant */
-	if (stateData[0] != len)
+	if (*outArgs->len != len)
 	{
 		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("independent variable array not constant width")));
+				 errmsg("transition function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid)),
+				 errdetail("The independent-variable array is not of constant width.")));
 	}
 	
 	/* Something is seriously fishy if our state has the wrong length */
-	if (ARR_DIMS(state)[0] != statelen)
+	if ((uint64) ARR_DIMS(outArgs->stateAsArray)[0] != statelen)
 	{
 		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("float8_mregr_accum malformed state value")));
+				 errmsg("transition function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	}
 	
 	/* Okay... All's good now do the work */
-	stateData[1]++;
-	stateData[2] += newY;
-	stateData[3] += newY * newY;
-	for (i = 0; i < len; i++)
-		stateData[4+i] += newY * newData[i];
-	
-	/* Compute the matrix X[] * X'[] and add it in */
-	matrix = stateData + 4 + len;
-	for (i = 0; i < len; i++)
-		for (j = 0; j < len; j++)
-			matrix[i*len + j] += newData[i] * newData[j];
-	
-	PG_RETURN_ARRAYTYPE_P(state);
+	return true;
 }
 
 
+/* Transition function used by multi-linear regression aggregates. */
+Datum
+float8_mregr_accum(PG_FUNCTION_ARGS)
+{
+	bool            goodArguments;
+	MRegrAccumArgs  args;
+	uint32          len, i,j;
+
+	goodArguments = float8_mregr_accum_get_args(fcinfo, &args);
+	if (!goodArguments) {
+		if (PG_ARGISNULL(0))
+			PG_RETURN_NULL();
+		else
+			PG_RETURN_ARRAYTYPE_P(PG_GETARG_ARRAYTYPE_P(0));
+	}
+
+	len = (int) *args.len;
+	(*args.count)++;
+	*args.sumy += args.newY;
+	*args.sumy2 += args.newY * args.newY;
+	for (i = 0; i < len; i++)
+		args.Xty[i] += args.newY * args.newX[i];
+	
+	/* Compute the matrix X[] * X'[] and add it in */
+	for (i = 0; i < len; i++)
+		for (j = 0; j < len; j++)
+			/* Precondition:
+			 *     len^2 - 1 <= STATE_LEN(len)
+			 * and IS_FEASIBLE_STATE_LEN(STATE_LEN(len))
+			 */
+			args.XtX[(uint64) i * len + j] += args.newX[i] * args.newX[j];
+	
+	PG_RETURN_ARRAYTYPE_P(args.stateAsArray);
+}
+
+
+/*
+ * Preliminary segment-level calculation function for multi-linear regression
+ * aggregates.
+ */
 Datum
 float8_mregr_combine(PG_FUNCTION_ARGS)
 {
 	ArrayType  *state1, *state2, *result;
 	float8     *state1Data, *state2Data, *resultData;
-	int         i, size;
-	int         len, statelen;
+	uint32     len;
+	uint64     statelen, i;
+	Size       size;
 	
 	/* We should be strict, but it doesn't hurt to be paranoid */
 	if (PG_ARGISNULL(0))
@@ -173,7 +318,8 @@ float8_mregr_combine(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid transition state")));
+				 errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	}
 	
 	/* 
@@ -193,19 +339,33 @@ float8_mregr_combine(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("independent variable array not constant width")));
+				 errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid)),
+				 errdetail("The independent-variable array is not of constant width.")));
 	}
 	len = state1Data[0];
-	statelen = 4 + len + len*len;
-	if (ARR_DIMS(state1)[0] != statelen)
+	statelen = STATE_LEN(len);
+	
+	/*
+	 * Violation of any of the following conditions indicates bogus inputs.
+	 */
+	if (state1Data[0] > UINT32_MAX ||
+		(uint64) ARR_DIMS(state1)[0] != statelen ||
+		!IS_FEASIBLE_STATE_LEN(statelen))
 	{
 		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("mregr_combine: invalid state")));
+				 errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	}
 	
 	/* Validations pass, allocate memory for result and do work */
-	size = statelen * sizeof(int64) + ARR_OVERHEAD_NONULLS(1);
+
+	/*
+	 * Precondition:
+	 *     IS_FEASIBLE_STATE_LEN(statelen)
+	 */
+	size = statelen * sizeof(float8) + ARR_OVERHEAD_NONULLS(1);
 	result = (ArrayType *) palloc(size);
 	SET_VARSIZE(result, size);
 	result->ndim = 1;
@@ -214,7 +374,7 @@ float8_mregr_combine(PG_FUNCTION_ARGS)
 	ARR_DIMS(result)[0] = statelen;
 	ARR_LBOUND(result)[0] = 1;
 	resultData = (float8*) ARR_DATA_PTR(result);
-	memset(resultData, 0, statelen * sizeof(int64));
+	memset(resultData, 0, statelen * sizeof(float8));
 	
 	/* 
 	 * Contents of 'state' are as follows:
@@ -235,27 +395,22 @@ float8_mregr_combine(PG_FUNCTION_ARGS)
 
 
 /*
- * float8_mregr_get_state()
- *
  * Check that a valid state is passed to the aggregate's final function.
- * PG_FUNCTION_ARGS expands to "FunctionCallInfo fcinfo". If we return
- * false, the calling function should return NULL.
+ * If we return false, the calling function should return NULL.
  */
 static bool
-float8_mregr_get_state(PG_FUNCTION_ARGS,
+float8_mregr_get_state(FunctionCallInfo fcinfo,
 					   MRegrState *outState)
 {
-	Datum		tempDatum;
 	ArrayType	*in;
 	float8		*data;
-	int			dims[2], lbs[2]; /* dimensions, lower bounds for arrays */
 	
 	/* Input should be a single parameter, the aggregate state */
 	if (PG_NARGS() != 1)
-		ereport(ERROR,
+		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("float8_mregr_* called with %d arguments", 
-						PG_NARGS())));
+				 errmsg("final calculation function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	
 	if (PG_ARGISNULL(0))
 		return false;
@@ -263,9 +418,10 @@ float8_mregr_get_state(PG_FUNCTION_ARGS,
 	/* Validate array type */
 	in = PG_GETARG_ARRAYTYPE_P(0);
 	if (ARR_ELEMTYPE(in) != FLOAT8OID || ARR_NDIM(in) != 1 || ARR_NULLBITMAP(in))
-		ereport(ERROR,
+		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("float8_mregr_* called on invalid input array")));
+				 errmsg("final calculation function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	
 	/* Validate the correct size input */
 	if (ARR_DIMS(in)[0] < 2)
@@ -273,55 +429,53 @@ float8_mregr_get_state(PG_FUNCTION_ARGS,
 	
 	data = (float8*) ARR_DATA_PTR(in);
 	outState->len    = (int) data[0];   /* scalar:           len(X[]) */
-	if (ARR_DIMS(in)[0] != 4 + outState->len + outState->len * outState->len) 
-		ereport(ERROR,
+	if ((uint64) ARR_DIMS(in)[0] != 4ULL + outState->len + outState->len * outState->len) 
+		ereport(ERROR, 
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("float8_mregr_* called on invalid input array")));
+				 errmsg("final calculation function \"%s\" called with invalid parameters",
+					format_procedure(fcinfo->flinfo->fn_oid))));
 	
 	outState->count  = data[1];         /* scalar:           count(*) */
 	outState->sumy   = data[2];         /* scalar:           sum(y)   */
 	outState->sumy2  = data[3];         /* scalar:           sum(y*y) */
+	outState->Xty    = &data[4];        /* vector:           X^t * y  */
+	outState->XtX    = &data[4 + outState->len]; /* matrix:  X^t * X  */
 
-	/* 
-	 * The various matrix routines all take ArrayTypes as input, so we need to add the
-	 * various array headers to our vector and matrix 
-	 */
-	lbs[0] = 1;
-	lbs[1] = 1;
-	
-	dims[0] = outState->len;
-	dims[1] = 1;
-	outState->Xty = construct_md_array((Datum *) &data[4], NULL, 2, dims, lbs,
-									   FLOAT8OID, sizeof(float8), true, 'd');
-										/* vector[len]:      sum(X'[] * y) */
-	
-	dims[0] = 1;
-	dims[1] = outState->len;
-	outState->_Xty_t = construct_md_array((Datum *) &data[4], NULL, 2, dims, lbs,
-										  FLOAT8OID, sizeof(float8), true, 'd');
-										/* needed in calling functions */
-	
-	dims[0] = outState->len;
-	dims[1] = outState->len;
-	outState->XtX = construct_md_array((Datum *) &data[4 + outState->len], NULL, 
-									   2, dims, lbs, FLOAT8OID, sizeof(float8), 
-									   true, 'd');
-										/* matrix[len][len]: sum(X[] * X'[]) */
-	
-	tempDatum = DirectFunctionCall1(pseudoinverse, PointerGetDatum(outState->XtX));
-	outState->_XtX_inv = DatumGetArrayTypeP(tempDatum);
-										/* needed in calling functions */
-	
 	return true;
 }
 
-/*
- * float8_mregr_compute()
+/*----------
+ * Do the computations requested from final functions.
  *
  * Compute regression coefficients, coefficient of determination (R^2),
  * t-statistics, and p-values whenever the respective argument is non-NULL.
+ * Since these functions share a lot of computation, they have been distilled
+ * into this function.
+ *
+ * First, we compute the regression coefficients as:
+ *   
+ *   c = (X^T X)^+ * X^T * y = X^+ * y
+ *
+ * where:
+ * 
+ *   X^T = the transpose of X
+ *   X^+ = the pseudo-inverse of X
+ *
+ * The identity X^+ = (X^T X)^+ X^T holds for all matrices X, a proof
+ * can be found here:
+ * http://en.wikipedia.org/wiki/Proofs_involving_the_Moore%2DPenrose_pseudoinverse
+ *
+ * Note that when the system X c = y is satisfiable (because (X|c) has rank at
+ * most inState->len), then setting c = X^+ y means that |c|_2 <= |d|_2 for all
+ * solutions d satisfying X d = y.
+ * (See http://en.wikipedia.org/wiki/Moore%2DPenrose_pseudoinverse)
+ *
+ * Caveat: Explicitly computing (X^T X)^+ can become a significant source of
+ * numerical rounding erros (see, e.g., 
+ * http://en.wikipedia.org/wiki/Moore%2DPenrose_pseudoinverse#Construction
+ * or http://www.mathworks.com/moler/leastsquares.pdf p.16).
+ *----------
  */
-
 static void
 float8_mregr_compute(MRegrState	*inState,
 					 ArrayType	**outCoef,
@@ -329,164 +483,258 @@ float8_mregr_compute(MRegrState	*inState,
 					 ArrayType	**outTStats,
 					 ArrayType	**outPValues)
 {
-	Datum		temp_datum;
-	ArrayType	*coef_array, *temp_array;
-	float8		ssr, tss, ess, r2, variance;
-	float8		*coef, *XtXinv, *tstats = NULL, *pvalues;
-	int			i;
+	ArrayType   *coef_array, *stdErr_array, *tStats_array, *pValues_array;
+	float8      ess = 0., /* explained sum of squares (regression sum of squares) */
+	            tss = 0., /* total sum of squares */
+	            rss, /* residual sum of squares */
+	            r2,
+	            variance;
+	float8      *XtX_inv, *coef, *stdErr, *tStats, *pValues;
+	float8      condNoOfXtX;
+	uint32      i;
 	
-	/* 
-	 * First, we compute the regression coefficients, often called b or beta in
-	 * the literature.
-	 * Vector of coefficients b is found via the formula:  
-	 *      b = (X'X)^-1 * X' * y
+	/*
+	 * Precondition: inState->len * inState->len * sizeof(float8) < STATE_LEN(inState->len)
+	 *           and IS_FEASIBLE_STATE_LEN(STATE_LEN(inState->len))
+	 */
+	XtX_inv = palloc((uint64) inState->len * inState->len * sizeof(float8));
+	condNoOfXtX = pinv(inState->len, inState->len, inState->XtX, XtX_inv);
+	
+	/*
+	 * FIXME: Decide on whether we want to display an info message or rather
+	 * provide a second function that tells how well the data is conditioned.
+	 *
+	 * Check if we should expect multicollineratiy. [MPP-13582]
+	 *
+	 * See:
+	 * Lichtblau, Daniel and Weisstein, Eric W. "Condition Number."
+	 * From MathWorld--A Wolfram Web Resource.
+	 * http://mathworld.wolfram.com/ConditionNumber.html
+	 *
+	if (condNoOfXtX > 1000)
+		ereport(INFO, 
+		        (errmsg("matrix X^T X is ill-conditioned"),
+		         errdetail("condition number = %f", condNoOfXtX),
+		         errhint("This can indicate strong multicollinearity.")));
 	 */
 	
-	temp_datum = DirectFunctionCall2(matrix_multiply, 
-									 PointerGetDatum(inState->_XtX_inv),
-									 PointerGetDatum(inState->Xty));
-	coef_array = DatumGetArrayTypeP(temp_datum);
+	/*
+	 * We want to return a one-dimensional array (as opposed to a
+	 * two-dimensional array).
+	 *
+	 * Note: Calling construct_array with NULL as first arguments is a Greenplum
+	 * extension
+	 */
+	coef_array = construct_array(NULL, inState->len,
+								 FLOAT8OID, sizeof(float8), true, 'd');
+	coef = (float8 *) ARR_DATA_PTR(coef_array);
+	symmetricMatrixTimesVector(inState->len, XtX_inv, inState->Xty, coef);
 
 	if (outCoef)
-		/* Note that coef_array is still a (1 x inState->len) matrix (= a
-		 * two-dimensional array. We want to return a one-dimensional array. */
-		*outCoef = construct_array((Datum *) ARR_DATA_PTR(coef_array),
-								   inState->len, FLOAT8OID,
-								   sizeof(float8), true, 'd');
+		*outCoef = coef_array;
 	
-	/* 
-	 * Next, we compute the total sum of squares (tss) and the explained sumed
-	 * of squares (ssr).
-	 *     ssr = y'X * b - sum(y)^2/c
-	 *     tss = sum(y^2) - sum(y)^2/c
-     *     R^2 = ssr/tss
-	 */
-	temp_datum = DirectFunctionCall2(matrix_multiply, 
-									 PointerGetDatum(inState->_Xty_t),
-									 PointerGetDatum(coef_array));
-	temp_array = DatumGetArrayTypeP(temp_datum);
-	ssr = ((float8 *)ARR_DATA_PTR(temp_array))[0] - 
-		inState->sumy*inState->sumy/inState->count;
-	tss = inState->sumy2 - inState->sumy * inState->sumy / inState->count;
+	if (outR2 || outTStats || outPValues)
+	{	
+		/*----------
+		 * Computing the total sum of squares (tss) and the explained sum of squares (ess)
+		 *
+		 *   ess = y'X * c - sum(y)^2/n
+		 *   tss = sum(y^2) - sum(y)^2/n
+		 *   R^2 = ess/tss
+		 *----------
+		 */
+		ess = dotProduct(inState->len, inState->Xty, coef)
+			  - inState->sumy*inState->sumy/inState->count;
+		tss = inState->sumy2 - inState->sumy * inState->sumy / inState->count;
+		
+		/*
+		 * With infinite precision, the following checks are pointless. But due to
+		 * floating-point arithmetic, this need not hold at this point.
+		 * Without a formal proof convincing us of the contrary, we should
+		 * anticipate that numerical peculiarities might occur.
+		 */
+		if (tss < 0)
+			tss = 0;
+		if (ess < 0)
+			ess = 0;
+		/*
+		 * Since we know tss with greater accuracy than ess, we do the following
+		 * sanity adjustment to ess:
+		 */
+		if (ess > tss)
+			ess = tss;
+	}
 	
 	if (outR2)
 	{
-		r2  = ssr/tss;
+		/*
+		 * coefficient of determination
+		 * If tss == 0, then the regression perfectly fits the data, so the
+		 * coefficient of determination is 1.
+		 */
+		r2 = (tss == 0 ? 1 : ess / tss);
 		*outR2 = r2;
 	}
 	
 	if (outTStats || outPValues)
 	{
+		stdErr_array = construct_array(NULL, inState->len,
+		                               FLOAT8OID, sizeof(float8), true, 'd');
+		stdErr = (float8 *) ARR_DATA_PTR(stdErr_array);
+		tStats_array = construct_array(NULL, inState->len,
+		                               FLOAT8OID, sizeof(float8), true, 'd');
+		tStats = (float8 *) ARR_DATA_PTR(tStats_array);
+		pValues_array = construct_array(NULL, inState->len,
+		                                FLOAT8OID, sizeof(float8), true, 'd');
+		pValues = (float8 *) ARR_DATA_PTR(pValues_array);
+
 		/*
-		 * Total sum of squares (tss) = Residual Sum of sqaures (ess) +
-		 * Explained Sum of Squares (ssr) for linear regression.
+		 * Computing t-statistics and p-values
+		 *
+		 * Total sum of squares (tss) = Residual Sum of sqaures (rss) +
+		 * Explained Sum of Squares (ess) for linear regression.
 		 * Proof: http://en.wikipedia.org/wiki/Sum_of_squares
 		 */
-		ess = tss - ssr;
+		rss = tss - ess;
 		
 		/* Variance is also called the Mean Square Error */
-		variance = ess / (inState->count - inState->len);
+		variance = rss / (inState->count - inState->len);
 		
-		coef = (float8 *) ARR_DATA_PTR(coef_array);
-		XtXinv = (float8 *) ARR_DATA_PTR(inState->_XtX_inv);
-		
-		/* The test statistics for each coef[i] is coef[i] / se(coef[i])
-		 * where se(coef[i]) is the standard error of coef[i], i.e.,
-		 * the square root of the i'th diagonoal element of variance * (X'X)^{-1} */
-		tstats = (float8*) palloc(inState->len * sizeof(float8));
-		for (i = 0; i < inState->len; i++)
-			tstats[i] = coef[i] / sqrt( variance * XtXinv[i * (inState->len + 1)] );
+		/*
+		 * The t-statistic for each coef[i] is coef[i] / stdErr[i]
+		 * where stdErr[i] is the standard error of coef[ii], i.e.,
+		 * the square root of the i'th diagonoal element of
+		 * variance * (X^T X)^{-1}.
+		 */
+		for (i = 0; i < inState->len; i++) {
+			/*
+			 * In an abundance of caution, we see a tiny possibility that numerical
+			 * instabilities in the pinv operation can lead to negative values on
+			 * the main diagonal of even a SPD matrix
+			 */
+			if (XtX_inv[i * (inState->len + 1)] < 0) {
+				stdErr[i] = 0;
+			} else {
+				stdErr[i] = sqrt( variance * XtX_inv[i * (inState->len + 1)] );
+			}
+			
+			if (coef[i] == 0 && stdErr[i] == 0) {
+				/*
+				 * In this special case, 0/0 should be interpreted as 0:
+				 * We know that 0 is the exact value for the coefficient, so
+				 * the t-value should be 0 (corresponding to a p-value of 1)
+				 */
+				tStats[i] = 0;
+			} else {
+				/*
+				 * If stdErr[i] == 0 then abs(tStats[i]) will be infinity, which is
+				 * what we need.
+				 */
+				tStats[i] = coef[i] / stdErr[i];
+			}
+		}
 	}
 	
 	if (outTStats)
-		*outTStats = construct_array((Datum *) tstats, inState->len, FLOAT8OID,
-									 sizeof(float8), true, 'd');
+		*outTStats = tStats_array;
 	
-	if (outPValues)
-	{
-		pvalues = (float8*) palloc(inState->len * sizeof(float8));
+	if (outPValues) {
 		for (i = 0; i < inState->len; i++)
-			pvalues[i] = 2. * (1. - studentT_cdf( inState->count - inState->len, 
-												  fabs( tstats[i] ) ));
+			if (inState->count <= inState->len) {
+				/*
+				 * This test is purely for detecting integer overflows because
+				 * studentT_cdf expects an unsigned integer as first argument.
+				 */
+				pValues[i] = NAN;
+			} else {
+				pValues[i] = 2. * (1. - studentT_cdf(
+						(uint64) (inState->count - inState->len), fabs( tStats[i] )
+					));
+			}
 		
-		*outPValues = construct_array((Datum *) pvalues, inState->len, FLOAT8OID,
-									  sizeof(float8), true, 'd');
-		
-		/* we clean up anything we allocated ourselves */
-		pfree(pvalues);
+		*outPValues = pValues_array;
 	}
-	
-	/* we clean up anything we allocated ourselves */
-	if (outTStats || outPValues)
-		pfree(tstats);
 }
 
 
-Datum 
+/*
+ * PostgreSQL final function for computing regression coefficients.
+ *
+ * This function is essentially a wrapper for float8_mregr_compute().
+ */
+Datum
 float8_mregr_coef(PG_FUNCTION_ARGS)
 {
 	bool goodArguments;
 	MRegrState state;
 	ArrayType *coef;
 	
-	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
 	
 	float8_mregr_compute(&state, &coef /* coefficients */, NULL /* R2 */,
-						 NULL /* t-statistics */, NULL /* p-values */);
+	                     NULL /* t-statistics */, NULL /* p-values */);
 	
 	PG_RETURN_ARRAYTYPE_P(coef);
 }
 
-
-Datum 
+/*
+ * PostgreSQL final function for computing the coefficient of determination, $R^2$.
+ *
+ * This function is essentially a wrapper for float8_mregr_compute().
+ */
+Datum
 float8_mregr_r2(PG_FUNCTION_ARGS)
 {
 	bool goodArguments;
 	MRegrState state;
 	float8 r2 = 0.0;
 	
-	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
 	
 	float8_mregr_compute(&state, NULL /* coefficients */, &r2,
-						 NULL /* t-statistics */, NULL /* p-values */);
+	                     NULL /* t-statistics */, NULL /* p-values */);
 	
 	PG_RETURN_FLOAT8(r2);
 }
 
-
-Datum 
+/*
+ * PostgreSQL final function for computing the vector of t-statistics, for every coefficient.
+ *
+ * This function is essentially a wrapper for float8_mregr_compute().
+ */
+Datum
 float8_mregr_tstats(PG_FUNCTION_ARGS)
 {
 	bool goodArguments;
 	MRegrState state;
 	ArrayType *tstats;
 	
-	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
 	
 	float8_mregr_compute(&state, NULL /* coefficients */, NULL /* R2 */,
-						 &tstats, NULL /* p-values */);
+	                     &tstats, NULL /* p-values */);
 	
 	PG_RETURN_ARRAYTYPE_P(tstats);
 }
 
-
-Datum 
+/*
+ * PostgreSQL final function for computing the vector of p-values, for every coefficient.
+ *
+ * This function is essentially a wrapper for float8_mregr_compute().
+ */
+Datum
 float8_mregr_pvalues(PG_FUNCTION_ARGS)
 {
 	bool goodArguments;
 	MRegrState state;
 	ArrayType *pvalues;
 	
-	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
@@ -497,3 +745,62 @@ float8_mregr_pvalues(PG_FUNCTION_ARGS)
 	PG_RETURN_ARRAYTYPE_P(pvalues);
 }
 
+/*
+ * Multiply symmetric matrix with vector
+ */
+static inline void
+symmetricMatrixTimesVector(uint32 inSize, float8 *inMatrix,
+	float8 *inVector, float8 *outResult)
+{
+	/*
+	 * We use types defined in f2c.h for values that we pass to LAPACK.
+	 * Precondition: sizeof(integer) >= sizeof(inSize)
+	 *          and: types float8 and doublereal must be identical
+	 */
+	char       N_char = 'N';
+	integer    size = inSize;
+	doublereal one_float = 1.0, zero_float = 0.0;
+	integer    one_int = 1;
+	
+	/*
+	 * Using dgemv, we compute
+	 * coef := alpha * inMatrix * Xty + beta * inVector,
+	 * where alpha = 1 and beta = 0
+	 *
+	 * dgemv assumes matrices are stored in colum-major order. Since inMatrix
+	 * is symmetric, we don't have to worry about it though.
+	 */
+	dgemv_(
+		&N_char /* no transpose of matrix */,
+		&size /* number of rows */,
+		&size /* number of columns */,
+		&one_float /* alpha */,
+		inMatrix,
+		&size /* first dimension of matrix */,
+		inVector,
+		&one_int /* delta between elements in vector */,
+		&zero_float /* beta */,
+		outResult,
+		&one_int /* delta between elements in vector */
+	);
+}
+
+/* Dot product */
+static inline doublereal
+dotProduct(uint32 inSize, float8 *inVec1, float8 *inVec2)
+{
+	/*
+	 * Precondition: sizeof(integer) >= sizeof(inSize)
+	 *          and: types float8 and doublereal must be identical
+	 */
+	integer size = inSize;
+	integer one_int = 1;
+
+	return ddot_(
+		&size,
+		inVec1,
+		&one_int /* delta between elements in vector inVec1 */,
+		inVec2,
+		&one_int /* delta between elements in vector inVec2 */
+	);
+}

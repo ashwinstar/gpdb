@@ -1,6 +1,8 @@
 #include "postgres.h"
 #include "funcapi.h"
 
+#include "pinv.h"
+
 #include "catalog/pg_type.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -16,8 +18,6 @@
 #include <clapack.h>
 #endif
 
-
-void pinv(long int rows,long int columns,float8 *A,float8 *Aplus);
 
 Datum 
 pseudoinverse(PG_FUNCTION_ARGS)
@@ -78,32 +78,32 @@ pseudoinverse(PG_FUNCTION_ARGS)
 
 /*
 
-    float8[] *pseudoinverse(float8[])
+	float8[] *pseudoinverse(float8[])
 
-    Compute the pseudo inverse of matrix A
+	Compute the pseudo inverse of matrix A
 
-    Author:  Luke Lonergan
-    Date:    5/31/08
-    License: Use pfreely
+	Author:  Luke Lonergan
+	Date:    5/31/08
+	License: Use pfreely
 
-    We use the approach from here:
-       http://en.wikipedia.org/wiki/Moore-Penrose_pseudoinverse#Finding_the_\
+	We use the approach from here:
+	   http://en.wikipedia.org/wiki/Moore-Penrose_pseudoinverse#Finding_the_\
 pseudoinverse_of_a_matrix
 
-    Synopsis:
-       A computationally simpler and more accurate way to get the pseudoinverse 
+	Synopsis:
+	   A computationally simpler and more accurate way to get the pseudoinverse 
 	   is by using the singular value decomposition.[1][5][6] If A = U Σ V* is 
 	   the singular value decomposition of A, then A+ = V Σ+ U* . For a diagonal
-       matrix such as Σ, we get the pseudoinverse by taking the reciprocal of 
+	   matrix such as Σ, we get the pseudoinverse by taking the reciprocal of 
 	   each non-zero element on the diagonal, and leaving the zeros in place. 
 	   In numerical computation, only elements larger than some small tolerance 
 	   are taken to be nonzero, and the others are replaced by zeros. For 
 	   example, in the Matlab function pinv, the tolerance is taken to be
 	   t = ε•max(rows,columns)•max(Σ), where ε is the machine epsilon.
 
-    Input:  the matrix A with "rows" rows and "columns" columns, in column 
+	Input:  the matrix A with "rows" rows and "columns" columns, in column 
 	        values consecutive order
-    Output: the matrix A+ with "columns" rows and "rows" columns, the 
+	Output: the matrix A+ with "columns" rows and "rows" columns, the 
 	        Moore-Penrose pseudo inverse of A
 
     The approach is summarized:
@@ -111,21 +111,24 @@ pseudoinverse_of_a_matrix
       factors of A
     - Compute the pseudo inverse A+ = U x S+ x Vt
 
-    S+ is the pseudo inverse of the diagonal matrix S, which is gained by 
+	S+ is the pseudo inverse of the diagonal matrix S, which is gained by 
 	inverting the non zero diagonals 
 
-    Vt is the transpose of V
+	Vt is the transpose of V
 
-    Note that there is some fancy index rework in this implementation to deal 
+	Note that there is some fancy index rework in this implementation to deal 
 	with the row values consecutive order used by the FORTRAN dgesdd_ routine.
+	
+	The return value of pinv is the condition number of the matrix A, namely
+	the largest singular value divided by the smallest singular value.
 */
-void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
+float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 {
 	long int    minmn;
 	long int    i, j, k, ii;
 	long int    lwork, *iwork;
 	float8     *work, *Atemp;
-	float8      epsilon, tolerance, maxeigen;
+	float8      epsilon, tolerance, conditionNumber;
 	float8     *S, *U, *Vt;
 	float8     *Splus, *Splus_times_Ut;
 	char        achar='A';   /* ? */
@@ -133,12 +136,11 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	/* 
 	 * Calculate the tolerance for "zero" values in the SVD 
 	 *    t = ε•max(rows,columns)•max(Σ) 
-     *  (Need to multiply tolerance by max of the eigenvalues when they're 
+	 *  (Need to multiply tolerance by max of the eigenvalues when they're 
 	 *   available)
 	 */
 	epsilon = pow(2,1-56); 
 	tolerance = epsilon * max(rows,columns); 
-	maxeigen=-1.;
 
 	/*
 	 * The factors of A: S, U and Vt
@@ -193,7 +195,7 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	}
 
 
-    /*
+	/*
 	 * Allocate the space needed for the work array using the value of lwork 
 	 * obtained in the first call of dgesdd_ 
 	 */
@@ -209,10 +211,19 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 
 	/* Use the max of the eigenvalues to normalize the zero tolerance */
 	minmn = min(rows,columns); // The dimensions of S are min(rows,columns)
-	for ( i = 0; i < minmn; i++ ) {
-		maxeigen = max(maxeigen,S[i]);
-	}
-	tolerance *= maxeigen;
+#ifdef USE_ASSERT_CHECKING
+	/* dgesdd is supposed to return singular values in descending order. */
+	/* We do the check here in case the code is ever compiled against other
+	 * than the reference implementation of LAPACK. */
+	for ( i = 1; i < minmn; i++ )
+		Assert(S[i] <= S[i-1]);
+#endif
+	tolerance *= S[0];
+	/* We will return the condition number of matrix A (w.r.t. the l2-norm).
+	 * That is, largest singular value divided by smallest singular
+	 * value. If S[minmn - 1] == 0, then the conditionNumber will become
+	 * infinity, which is desired here. */
+	conditionNumber = S[0] / S[minmn - 1];
 
 	/*
 	 * Calculate the pseudo inverse of the eigenvalue matrix, Splus
@@ -261,5 +272,5 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	pfree(Vt);
 	pfree(S);
 
-	return;
+	return conditionNumber;
 }

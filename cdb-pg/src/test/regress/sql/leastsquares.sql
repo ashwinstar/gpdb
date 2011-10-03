@@ -13,7 +13,12 @@
 --   * mregr_r2
 --   * mregr_tstats
 --   * mregr_pvalues
---
+
+-- start_matchsubs
+-- m|Failed on request of size \d+ bytes|
+-- s|Failed on request of size \d+ bytes|Failed on request of size BIGALLOC bytes|
+-- end_matchsubs
+
 CREATE TABLE weibull
 (
 	id INTEGER NOT NULL,
@@ -170,6 +175,38 @@ from weibull
 group by id
 order by id;
 */
+
+-- MPP-14102: Crash in mregr_coef() when number of independent variables is too
+-- large.
+-- The following does not immediately violate any hard constraints, but will
+-- only fail during execution with an out-of-memory error
+SELECT mregr_coef(y, x)
+FROM (
+    SELECT 1::FLOAT8 AS y,
+    ARRAY( SELECT no::FLOAT8 FROM generate_series(1,8191) AS no ) AS x
+) AS one_row_subquery;
+
+-- The following tries to allocate a transition-state array with
+-- size > MaxAllocSize, so it immediately fails.
+SELECT mregr_coef(y, x)
+FROM (
+    SELECT 1::FLOAT8 AS y,
+    ARRAY( SELECT no::FLOAT8 FROM generate_series(1,65535) AS no ) AS x
+) AS one_row_subquery;
+
+-- MPP-13580: infinity in design matrix causes infinite loop
+SELECT mregr_coef(y,array[x]) FROM (
+    SELECT 10 AS y, 1 AS x
+    UNION
+    SELECT 20 AS y, 'infinity'::FLOAT8 AS x
+) AS q;
+
+-- MPP-13582: dealing with less observations than variables
+SELECT mregr_r2(y,x) FROM (
+    SELECT array[1,0,0] AS x, 10 AS y
+    UNION
+    SELECT array[1,0,0], 20
+) AS q;
 
 -- Accumulation/combination order shouldn't matter to the result.
 -- start_equiv
