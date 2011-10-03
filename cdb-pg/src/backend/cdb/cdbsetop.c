@@ -479,24 +479,32 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		{
 			Node *x = (Node*)lfirst(c);
 
-			/* MPP-12273 && MPP-12928
-			 * Addressing the issue when the hashexpr's argument is a RELABELTYPE
+			/* MPP-14099
+			 * Addressing the issue when the node is a Const. In such a scenario
+			 * there is no matching targetlist entry. A Const entry need not
+			 * be inserted into the flow
 			 */
-			Assert(x);
-			tle = tlist_member(x, subplan->targetlist);
-
-			if (NULL == tle && IsA(x, RelabelType))
+			if(!IsA(x, Const))
 			{
-				x = (Node*) ((RelabelType*)x)->arg;
+				/* MPP-12273 && MPP-12928
+				 * Addressing the issue when the hashexpr's argument is a RELABELTYPE
+				 */
 				Assert(x);
 				tle = tlist_member(x, subplan->targetlist);
+
+				if (NULL == tle && IsA(x, RelabelType))
+				{
+					x = (Node*) ((RelabelType*)x)->arg;
+					Assert(x);
+					tle = tlist_member(x, subplan->targetlist);
+				}
+
+				Insist(tle && equal(x, tle->expr));
+
+				hash = lappend(hash, makeVar(varno, tle->resno,
+						exprType((Node*)tle->expr),
+						exprTypmod((Node*)tle->expr), 0));
 			}
-
-			Insist(tle && equal(x, tle->expr));
-
-			hash = lappend(hash, makeVar(varno, tle->resno,
-					exprType((Node*)tle->expr),
-					exprTypmod((Node*)tle->expr), 0));
 		}
 		flow->hashExpr = hash;
 	}
