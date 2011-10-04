@@ -15,10 +15,24 @@
 
 
 extern int
-rle_type_comp(int typeLen_bytes, char * inbuf, int inSizeBytes, char * outbuf, int outbufSizeBytes, int * outSizeBytes);
+rle_type_comp(int typeLen_bytes, 
+			  Oid colType, 
+			  char align,
+			  char * inbuf, 
+			  int inSizeBytes, 
+			  char * outbuf, 
+			  int outbufSizeBytes, 
+			  int * outSizeBytes);
 
 extern int
-rle_type_decomp(int typeLen_bytes, char * inbuf, int inSizeBytes, char * outbuf, int outbufSizeBytes, int * outSizeBytes);
+rle_type_decomp(int typeLen_bytes, 
+				Oid colType, 
+				char align,
+				char * inbuf, 
+				int inSizeBytes, 
+				char * outbuf, 
+				int outbufSizeBytes, 
+				int * outSizeBytes);
 
 
 #endif  /* RLE_TYPE_H */

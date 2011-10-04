@@ -10,22 +10,9 @@
  * ---------------------------------------------------------------------
  */
 
+#ifndef USER_LEVEL_TESTING
 
-
-#define USER_LEVEL_TESTING 0
-
-#if USER_LEVEL_TESTING
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-
-#define DEBUG 1
-#define STAT_DEBUG 1
-
-#define Assert(x) assert(x)
-
-#else
+/* includes for running in database backend as normal */
 #include "postgres.h"
 #include "c.h"
 #include "access/reloptions.h"
@@ -33,12 +20,35 @@
 #include "cdb/cdbappendonlystoragelayer.h"
 #include "storage/rle_type.h"
 #include "utils/datumstream.h"
+#include "utils/guc.h"
 
-#define DEBUG 0
-#define STAT_DEBUG 0
 
+#else
+
+/****   THIS SECTION FOR USER_LEVEL_TESTING *************/
+/* Maintaining the ability to run at user level is helpful for performance testing of rle
+ * it allows issues such as round robin among segments and
+ * the granularity at which data is loaded to be factored out
+ * Set Debug_rle_type_compression and rle_type_compresssion_stats as desired and
+ * then compile with g++ -D USER_LEVEL_TESTING rle_type.c
+ * Can also uncomment #define of USER_LEVEL_TESTING above
+ */
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+
+/* a few #defines and declarations to "port" to user level */
+#define Assert(x) assert(x)
+#define Oid int
+/* might as well leave on by default at userlevel */
+bool Debug_rle_type_compression = true;
+bool rle_type_compression_stats = true;
+
+/**********************************************************/
 #endif
 
+#define MAX_REPEAT 256
 #define VARIABLE_LENGTH -1
 
 /*  RLE replaces runs of the same data values aaaaaa
@@ -80,6 +90,8 @@
  *   rle_type_comp
  *
  *         typeLen_bytes:    size of each data element, if -1 then variable size
+ *         colType:          Oid of the colType (e.g. char or timestamp, etc.)
+ *         align:            char to indicate alignment of the datums
  *         inbuf:            buffer of data to be compressed
  *         inSizeBytes:      amount of data to be compressed
  *         outbuf:           buffer into which we should place the decompressed  *                           data
@@ -102,7 +114,9 @@
 
 int
 rle_type_comp(
-	int typeLen_bytes,    
+	int typeLen_bytes,  
+	Oid colType, 
+	char align,
 	char * inbuf,         
 	int inSizeBytes,      
 	char * outbuf,       
@@ -121,11 +135,18 @@ rle_type_comp(
 	int                 headerNullSize = 0;
 	int                 thisDatumLen = 0;
 	int                 lastDatumLen = 0;
-	int                 nDatum = 0;
+	int                 in_nDatum = 0;
+	int                 out_nDatum = 0;
 	bool                endOfData = false;
-		
+	char                * next;
+	char                * adjustedNext;
+	int                 newDatumLen;		
 
-#if USER_LEVEL_TESTING
+	if (typeLen_bytes == 0)
+	{
+		return -1;
+	}
+#ifdef USER_LEVEL_TESTING
 	
 	data = inbuf;
 	dataSizeBytes = inSizeBytes;
@@ -147,22 +168,13 @@ rle_type_comp(
 	/* copy the hedaer and null bit map unchanged over to the output buffer */
 	memcpy(outbuf, inbuf, headerNullSize);
 
-#if 0
-	if (typeLen_bytes != VARIABLE_LENGTH)
-	{
-		/* if data is fixed size then the dataSizeBytes should
-		 * be an even multiple of the typeLen_bytes 
-		 * is there ever extra space after the data?
-		 */
-		Assert(dataSizeBytes % typeLen_bytes ==0);
-	}
-#endif
-
-	if (DEBUG)
+	if (Debug_rle_type_compression)
 	{
 		elog(LOG, 
-			 "rle_type_comp START typeLen_bytes %d inSizeBytes %d outbufSizeBytes %d ndatum %d headerNullSize %d dataSizeBytes %d\n",
+			 "rle_type_comp START typeLen_bytes %d colType %d align %c inSizeBytes %d outbufSizeBytes %d ndatum %d headerNullSize %d dataSizeBytes %d\n",
 			 typeLen_bytes,
+			 colType,
+			 align,
 			 inSizeBytes,
 			 outbufSizeBytes,
 			 block->ndatum,
@@ -176,11 +188,12 @@ rle_type_comp(
 	/* we've copied headerNullSize bytes to the outbuf */
 	outIndex = headerNullSize;
 	/* we've processed headerNullSize bytes of the inbuf */
-	finishedIndex = headerNullSize;
+	finishedIndex= headerNullSize;
 
 	/* point lastDatum to the first data element in the input buffer */
 	lastDatum = data;
-	nDatum = 1;
+	in_nDatum = 1;
+	out_nDatum = 0;
 	repeatDataCount = 1;
 	
 
@@ -189,7 +202,7 @@ rle_type_comp(
 	 */
 	if (typeLen_bytes == VARIABLE_LENGTH) 
 	{
-#if USER_LEVEL_TESTING
+#ifdef USER_LEVEL_TESTING
 		/* for user level testing assume it is one byte
 		 * len followed by data
 		 */
@@ -197,6 +210,7 @@ rle_type_comp(
 		lastDatumLen = len +1;
 #else
 		lastDatumLen = VARSIZE_ANY((struct varlena *) lastDatum);
+		Assert(lastDatumLen != 0);
 #endif
 
 	} 
@@ -204,6 +218,25 @@ rle_type_comp(
 	{
 		lastDatumLen = 	typeLen_bytes;
 	}
+	/* ADJUST lastDatumLen for alignment */
+#ifndef USER_LEVEL_TESTING
+	next = lastDatum + lastDatumLen;
+	adjustedNext = lastDatum+ lastDatumLen;
+	
+	if ((typeLen_bytes == VARIABLE_LENGTH) &&(*next == 0))
+	{
+		
+		adjustedNext = 	(char *) att_align(adjustedNext, align);
+		newDatumLen = adjustedNext - lastDatum;
+		
+		if ((newDatumLen != lastDatumLen) && (newDatumLen < dataSizeBytes))
+		{
+			Assert(newDatumLen > lastDatumLen);
+			lastDatumLen = newDatumLen;
+		}
+	}
+#endif
+
 	dataIndex = lastDatumLen;
 
 	endOfData = false;	
@@ -230,7 +263,7 @@ rle_type_comp(
 			
 			if (typeLen_bytes == VARIABLE_LENGTH) 
 			{
-#if USER_LEVEL_TESTING
+#ifdef USER_LEVEL_TESTING
 				/* for user level testing assume it is one byte
 				 * len followed by data
 				 */
@@ -238,6 +271,7 @@ rle_type_comp(
 				thisDatumLen = len +1;
 #else
 				thisDatumLen = VARSIZE_ANY((struct varlena *) thisDatum);
+				Assert(thisDatumLen != 0);
 #endif
 			} 
 			else 
@@ -245,24 +279,32 @@ rle_type_comp(
 				thisDatumLen = 	typeLen_bytes;
 			}
 
+			/* ADJUST thisDatumLen for alignment */
+#ifndef USER_LEVEL_TESTING
+			next = thisDatum+ thisDatumLen;
+			adjustedNext = thisDatum+ thisDatumLen;
+			
+			if ((typeLen_bytes == VARIABLE_LENGTH) &&(*next == 0))
+			{
+				
+				adjustedNext = 	(char *) att_align(adjustedNext, align);
+				newDatumLen = adjustedNext - thisDatum;
+				
+				if ( (newDatumLen != thisDatumLen) &&
+					 (dataIndex + newDatumLen <=dataSizeBytes))
+				{
+					Assert(newDatumLen > thisDatumLen);
+					thisDatumLen = newDatumLen;
+					
+				}
+			}
+#endif
 
 			if (dataIndex + thisDatumLen > dataSizeBytes) 
 			{
-				/* data not long enough to hold this whole datum
-				 * - must be garbage at end of input
-				 * We used to just assert
-				 * Assert (dataIndex + thisDatumLen <= dataSizeBytes);
-				 * This is a more defensive version that will 
-				 * continue to behave well even if the input is 
-				 * malformed
-				 */
-				endOfData = true;
-				thisDatum = NULL;
-				thisDatumLen = 0;
-				thisDatumMatchesLast = false;
 
-#if !(USER_LEVEL_TESTING)
-				if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+				if (Debug_rle_type_compression)
 				{
 					elog(LOG, 
 						 "rle_type_comp: not enough input left for full datum dataIndex %d thisDatumLen %d dataSizeBytes %d dataSizeBytes- dataIndex %d",
@@ -279,13 +321,27 @@ rle_type_comp(
 						 inSizeBytes - finishedIndex);
 				}
 #endif
+				/* data not long enough to hold this whole datum
+				 * - must be garbage at end of input
+				 * We used to just assert
+				 * Assert (dataIndex + thisDatumLen <= dataSizeBytes);
+				 * This is a more defensive version that will 
+				 * continue to behave well even if the input is 
+				 * malformed
+				 */
+				endOfData = true;
+				thisDatum = NULL;
+				thisDatumLen = 0;
+				thisDatumMatchesLast = false;
+
+
 				/* compress the garbage by just ignoring and 
 				 *   not copying it over to the output buffer */
 				finishedIndex = inSizeBytes;
 
-#if !USER_LEVEL_TESTING
+#ifndef USER_LEVEL_TESTING
 			} 
-			else if (nDatum == block->ndatum) 
+			else if (in_nDatum == block->ndatum) 
 			{
 
 				endOfData = true;
@@ -304,7 +360,7 @@ rle_type_comp(
 			} 
 			else 
 			{
-				nDatum++;
+				in_nDatum++;
 				
 				/* compare thisDatum to lastDatum */
 				if (thisDatumLen == lastDatumLen)
@@ -343,17 +399,18 @@ rle_type_comp(
 		 */
 		if (endOfData || 
 			!thisDatumMatchesLast ||
-			(thisDatumMatchesLast && (repeatDataCount > 256))
+			(thisDatumMatchesLast && (repeatDataCount > MAX_REPEAT))
 			)		
 		{
 
-#if !USER_LEVEL_TESTING
-			if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+			if (Debug_rle_type_compression)
 			{
 				elog(LOG, 
-					 "rle_type_comp nDatum %d repeatDataCount %d\n",
-					 nDatum,
-					 repeatDataCount
+					 "rle_type_comp in_nDatum %d repeatDataCount %d lastDatumLen %d\n",
+					 in_nDatum,
+					 repeatDataCount,
+					 lastDatumLen
 					 );
 			}
 #endif
@@ -376,17 +433,20 @@ rle_type_comp(
 
 				}
 
+				Assert (lastDatumLen != 0);
 				memcpy(&(outbuf[outIndex]), lastDatum, lastDatumLen);
 				outIndex+=lastDatumLen;
+				out_nDatum++;
 
-#if USER_LEVEL_TESTING
-				if (DEBUG && (typeLen_bytes ==1) )
+#ifdef USER_LEVEL_TESTING
+				if (Debug_rle_type_compression && (typeLen_bytes == 1) )
 				{
 					printf("%c", *lastDatum);
 				}
 #endif
 				/* we've handled 1 more item of size lastDatumLen*/
 				finishedIndex+=lastDatumLen;
+				Assert(finishedIndex <= inSizeBytes);
 			}
 			else
 			{
@@ -395,6 +455,7 @@ rle_type_comp(
 				/* check for overflow first - 
 				 *   we need room for  2* lastDatumLen + 1 bytes 
 				 */
+				Assert (lastDatumLen != 0);
 				if (outIndex+ 2*(lastDatumLen) + 1 > outbufSizeBytes)
 				{
 					*outSizeBytes = outIndex;
@@ -416,8 +477,10 @@ rle_type_comp(
 				/* use a single byte to store the repeatDataCount */
 				outbuf[outIndex++] = (unsigned char)(repeatDataCount-2);
 
-#if USER_LEVEL_TESTING
-				if (DEBUG && (typeLen_bytes ==1) )
+				out_nDatum += repeatDataCount;
+
+#ifdef USER_LEVEL_TESTING
+				if (Debug_rle_type_compression && (typeLen_bytes == 1) )
 				{
 					printf("%c%c%d", 
 						   *lastDatum, 
@@ -433,12 +496,14 @@ rle_type_comp(
 			lastDatum = thisDatum;
 			lastDatumLen = thisDatumLen;
 			repeatDataCount = 1;
+			
 		}
 		else
 		{
-			Assert (thisDatum != NULL);
+			Assert(thisDatum != NULL);
+			Assert(thisDatumLen != 0);
 			Assert(thisDatumMatchesLast);
-			Assert(repeatDataCount <= 256);
+			Assert(repeatDataCount <= MAX_REPEAT);
 			Assert(!endOfData);
 			Assert(dataIndex < dataSizeBytes);
 		
@@ -452,11 +517,13 @@ rle_type_comp(
 	}
 	*outSizeBytes = outIndex;
 	
-#if !USER_LEVEL_TESTING
-	if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+	if (rle_type_compression_stats)
 	{
 		elog(LOG, 
-			 "rle_type_comp END inSizeBytes %d outsizeBytes %d dataSizeBytes %d compression ratio TOTAL %0.2f space savings %0.2f WITHOUT_HEADER_OVERHEAD compression ratio %0.2f space savings %0.2f\n",
+			 "rle_type_comp END colType %d align %c inSizeBytes %d outsizeBytes %d dataSizeBytes %d compression ratio TOTAL %0.2f space savings %0.2f WITHOUT_HEADER_OVERHEAD compression ratio %0.2f space savings %0.2f\n",
+			 colType,
+			 align,
 			 inSizeBytes,
 			 outIndex,
 			 dataSizeBytes,
@@ -478,8 +545,9 @@ rle_type_comp(
 	 * would be if there was garbage past the data values */
 	Assert(finishedIndex == inSizeBytes);
 	
-#if !USER_LEVEL_TESTING
-	Assert (nDatum == block->ndatum);
+#ifndef USER_LEVEL_TESTING
+	Assert (in_nDatum == out_nDatum);
+	Assert (in_nDatum == block->ndatum);
 #endif
 
 	return finishedIndex;
@@ -490,6 +558,8 @@ rle_type_comp(
  *   rle_type_decomp:
  *
  *         typeLen_bytes:    size of each data element, if -1 then variable size
+ *         colType:          Oid of the colType (e.g. char or timestamp, etc.)
+ *         align:            char to indicate alignment of the datums
  *         inbuf:            buffer of data to be decompressed
  *         inSizeBytes:      amount of data to be decompressed
  *         outbuf:           buffer into which we should place the
@@ -515,6 +585,8 @@ rle_type_comp(
 int
 rle_type_decomp(
 	int typeLen_bytes,
+	Oid colType,
+	char align,
 	char * inbuf,
 	int inSizeBytes,
 	char * outbuf,
@@ -535,8 +607,16 @@ rle_type_decomp(
 	int                 lastDatumLen = 0;
 	int                 nDatum = 0;
 	bool                endOfData = false;
+	char                * next;
+	char                * adjustedNext;
+	int                 newDatumLen;		
 
-#if USER_LEVEL_TESTING
+	if (typeLen_bytes == 0)
+	{
+		return -1;
+	}
+
+#ifdef USER_LEVEL_TESTING
 	
 	data = inbuf;
 	dataSizeBytes = inSizeBytes;
@@ -558,22 +638,13 @@ rle_type_decomp(
 	/* copy the hedaer and null bit map unchanged over to the output buffer */
 	memcpy(outbuf, inbuf, headerNullSize);
 
-#if 0
-	if (typeLen_bytes != VARIABLE_LENGTH)
-	{
-		/* if data is fixed size then the dataSizeBytes should
-		 * be an even multiple of the typeLen_bytes 
-		 * is there ever extra space after the data?
-		 */
-		Assert(dataSizeBytes % typeLen_bytes ==0);
-	}
-#endif
-
-	if (DEBUG)
+	if (Debug_rle_type_compression)
 	{
 		elog(LOG, 
-			 "rle_type_decomp START typeLen_bytes %d inSizeBytes %d outbufSizeBytes %d ndatum %d headerNullSize %d dataSizeBytes %d\n",
+			 "rle_type_decomp START typeLen_bytes %d colType %d align %c inSizeBytes %d outbufSizeBytes %d ndatum %d headerNullSize %d dataSizeBytes %d\n",
 			 typeLen_bytes,
+			 colType,
+			 align,
 			 inSizeBytes,
 			 outbufSizeBytes,
 			 block->ndatum,
@@ -583,10 +654,6 @@ rle_type_decomp(
 
 #endif
 
-	/* inSizeBytes -> dataSizeBytes
-		inbuf -> data
-		typeLen_bytes => thisDatumLen
-	*/
 	/* we've copied headerNullSize bytes to the outbuf */
 	outIndex = headerNullSize;
 	/* we've processed headerNullSize bytes of the inbuf */
@@ -614,11 +681,11 @@ rle_type_decomp(
 			thisDatum = NULL;
 			thisDatumLen = 0;
 			thisDatumMatchesLast = false;
-#if !(USER_LEVEL_TESTING)
-			if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+			if (Debug_rle_type_compression)
 			{
 				elog(LOG, 
-					 "rle_type_decomp: dataIndex== dataSizeBytes %d ",
+					 "rle_type_decomp: dataIndex == dataSizeBytes %d ",
 					 dataIndex);
 			}
 #endif
@@ -633,7 +700,7 @@ rle_type_decomp(
 			
 			if (typeLen_bytes == VARIABLE_LENGTH) 
 			{
-#if USER_LEVEL_TESTING
+#ifdef USER_LEVEL_TESTING
 				/* for user level testing assume it is one byte
 				 * len followed by data
 				 */
@@ -648,8 +715,30 @@ rle_type_decomp(
 				thisDatumLen = 	typeLen_bytes;
 			}
 
-#if !(USER_LEVEL_TESTING)
-			if (DEBUG)
+			/* ADJUST thisDatumLen for alignment */
+#ifndef USER_LEVEL_TESTING
+
+			next = thisDatum+ thisDatumLen;
+			adjustedNext = thisDatum+ thisDatumLen;
+			
+			if ((typeLen_bytes == VARIABLE_LENGTH) &&(*next == 0))
+			{
+				
+				adjustedNext = 	(char *) att_align(adjustedNext, align);
+				newDatumLen = adjustedNext - thisDatum;
+				
+				if ((newDatumLen != thisDatumLen) &&
+					(dataIndex + newDatumLen <=dataSizeBytes))
+				{
+					Assert(newDatumLen > thisDatumLen);
+					thisDatumLen = newDatumLen;
+				}
+			}
+			
+#endif
+
+#ifndef USER_LEVEL_TESTING
+			if (Debug_rle_type_compression)
 			{
 				elog(LOG, 
 					 "rle_type_decomp: thisDatumLen %d ",
@@ -671,8 +760,8 @@ rle_type_decomp(
 				thisDatumLen = 0;
 				thisDatumMatchesLast = false;
 
-#if !(USER_LEVEL_TESTING)
-				if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+				if (Debug_rle_type_compression)
 				{
 					elog(LOG, 
 						 "rle_type_decomp: not enough input left for full datum dataIndex %d thisDatumLen %d dataSizeBytes %d dataSizeBytes- dataIndex %d",
@@ -693,7 +782,7 @@ rle_type_decomp(
 				 * not copying it over to the output buffer */
 				finishedIndex = inSizeBytes;
 
-#if !USER_LEVEL_TESTING
+#ifndef USER_LEVEL_TESTING
 			} 
 			else if (nDatum == block->ndatum) 
 			{
@@ -703,7 +792,7 @@ rle_type_decomp(
 				thisDatumLen = 0;
 				thisDatumMatchesLast = false;
 
-				if (DEBUG)
+				if (Debug_rle_type_compression)
 				{
 					elog(LOG, 
 						 "rle_type_decomp: we've processed all of block->ndatum %d; garbage past data in input finishedIndex %d inSizeBytes %d inSizeBytes- finishedIndex %d",
@@ -788,8 +877,8 @@ rle_type_decomp(
 				memcpy(&(outbuf[outIndex]), lastDatum, lastDatumLen);
 				outIndex+=lastDatumLen;
 
-#if USER_LEVEL_TESTING
-				if (DEBUG && (typeLen_bytes ==1) )
+#ifdef USER_LEVEL_TESTING
+				if (Debug_rle_type_compression && (typeLen_bytes == 1) )
 				{
 					printf("%c", *lastDatum);
 				}
@@ -811,8 +900,8 @@ rle_type_decomp(
 			 * and we must look for another */
 			lastDatumLen = 0;
 
-#if !USER_LEVEL_TESTING
-			if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+			if (Debug_rle_type_compression)
 			{
 				elog(LOG, 
 					 "rle_type_decomp nDatum %d numOutput %d finishedIndex %d\n",
@@ -852,8 +941,8 @@ rle_type_decomp(
 
 			finishedIndex += thisDatumLen;
 		
-#if !USER_LEVEL_TESTING
-			if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+			if (Debug_rle_type_compression)
 			{
 				elog(LOG, 
 					 "rle_type_decomp nDatum %d first instance (finishedIndex %d)\n",
@@ -863,30 +952,29 @@ rle_type_decomp(
 #endif
 
 			
-#if USER_LEVEL_TESTING
-			if (DEBUG && (typeLen_bytes ==1) )
-			{
-				printf("%c", *lastDatum);
-			}
-#endif
 
 			lastDatum = thisDatum;
 			lastDatumLen = thisDatumLen;
 
-
+#ifdef USER_LEVEL_TESTING
+			if (Debug_rle_type_compression && (typeLen_bytes == 1) )
+			{
+				printf("%c", *lastDatum);
+			}
+#endif
 		}
-		
-		
 	}
 
 
 	*outSizeBytes = outIndex;
 
-#if !USER_LEVEL_TESTING
-	if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+	if (rle_type_compression_stats)
 	{
 		elog(LOG, 
-			 "rle_type_decomp END inSizeBytes %d outsizeBytes %d dataSizeBytes %d compression ratio TOTAL %0.2f space savings %0.2f WITHOUT_HEADER_OVERHEAD compression ratio %0.2f space savings %0.2f\n",
+			 "rle_type_decomp END colType %d align %c inSizeBytes %d outsizeBytes %d dataSizeBytes %d compression ratio TOTAL %0.2f space savings %0.2f WITHOUT_HEADER_OVERHEAD compression ratio %0.2f space savings %0.2f\n",
+			 colType,
+			 align,
 			 inSizeBytes,
 			 outIndex,
 			 dataSizeBytes,
@@ -905,10 +993,11 @@ rle_type_decomp(
 	 * as described in the block header
 	 * only thing that should cause these assertions
 	 * would be if there was garbage past the data values */
-#if !USER_LEVEL_TESTING
-	if (DEBUG)
+#ifndef USER_LEVEL_TESTING
+	if (Debug_rle_type_compression)
 	{
-		if (finishedIndex != inSizeBytes){
+		if (finishedIndex != inSizeBytes)
+		{
 			elog(LOG, 
 				 "rle_type_decomp: finishedIndex %d != inSizeBytes %d\n",
 				 finishedIndex,
@@ -918,7 +1007,7 @@ rle_type_decomp(
 #endif
 	Assert(finishedIndex == inSizeBytes);
 
-#if !USER_LEVEL_TESTING
+#ifndef USER_LEVEL_TESTING
 	if (nDatum != block->ndatum )
 	{
 		elog( LOG, "rle_type_decomp: nDatum %d != block->ndatum %d",
@@ -931,7 +1020,7 @@ rle_type_decomp(
 }
 
 /*** BEGIN DRIVER FOR TESTING ***/
-#if USER_LEVEL_TESTING
+#ifdef USER_LEVEL_TESTING
 void
 printUsage(char * prog)
 {
@@ -976,7 +1065,8 @@ main(int argc, char ** argv)
 	}
 
 	typeLenBytes = atoi(argv[2]);
-	if (typeLenBytes <=0){
+	if (typeLenBytes <=0)
+	{
 		printf("%d is not a valid typelen.\n",
 			   typeLenBytes);
 		printUsage(argv[0]);
@@ -1066,6 +1156,8 @@ main(int argc, char ** argv)
 			{
 				thisBytesProcessed = rle_type_comp(
 					typeLenBytes,
+					0,
+					'x',
 					&(inbuf[totalBytesProcessed]),
 					thisBytesIn-totalBytesProcessed,
 					outbuf,
@@ -1076,17 +1168,18 @@ main(int argc, char ** argv)
 			{
 				thisBytesProcessed = rle_type_decomp(
 					typeLenBytes,
+					0,
+					'x',
 					&(inbuf[totalBytesProcessed]),
 					thisBytesIn-totalBytesProcessed,
 					outbuf,
 					BUFFER_SIZE,
 					&thisBytesOut);
 			}
-			if (DEBUG) printf("\n");
 
-			if (STAT_DEBUG)
+			if (Debug_rle_type_compression)
 			{
-				printf("totalBytesProcessed %d thisBytesIn %d leftToDo %d thisBytesProcessed %d, thisBytesOut %d\n",
+				printf("\ntotalBytesProcessed %d thisBytesIn %d leftToDo %d thisBytesProcessed %d, thisBytesOut %d\n",
 					   totalBytesProcessed,
 					   thisBytesIn,
 					   thisBytesIn-totalBytesProcessed,
@@ -1114,9 +1207,6 @@ main(int argc, char ** argv)
 
 			totalBytesProcessed += thisBytesProcessed;
 		}
-
-
-
 	}
 
 	if (numBlocks > 1)

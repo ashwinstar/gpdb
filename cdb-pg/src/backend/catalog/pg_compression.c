@@ -87,17 +87,23 @@ typedef struct rle_type_state
 {
 	bool compress;		/* compress or decompress? */
 	int  byteLen;		/* byte length of individual data element */
+	Oid  colType;
+	char align;
 
 	/*
 	 * The compression and decompression functions.
 	 */
 	int (*compress_fn) (int typeLen_bytes,
+						Oid colType,
+						char align,
 						char *inbuf, int inSizeBytes,
 						char *outbuf,
 						int outbufSizeBytes,
 						int *outSizeBytes);
 
 	int (*decompress_fn) (int typeLen_bytes,
+						  Oid colType,
+						  char align,
 						  char *inbuf,
 						  int inSizeBytes,
 						  char *outbuf,
@@ -603,6 +609,8 @@ rle_type_constructor(PG_FUNCTION_ARGS)
 	state->decompress_fn = rle_type_decomp;
 
 	state->byteLen = (**td->attrs).attlen;
+	state->colType = (**td->attrs).atttypid;
+	state->align = (**td->attrs).attalign;
 
 	PG_RETURN_POINTER(cs);
 }
@@ -629,8 +637,23 @@ rle_type_compress(PG_FUNCTION_ARGS)
 	CompressionState *cs = (CompressionState *)PG_GETARG_POINTER(5);
 	rle_type_state *state = (rle_type_state *)cs->opaque;
 
-	state->compress_fn(state->byteLen, (char *) src, src_sz,
-								 (char *) dst, dst_sz, dst_used);
+	int res = state->compress_fn(state->byteLen, 
+					   state->colType,
+					   state->align,
+					   (char *) src, src_sz,
+					   (char *) dst, dst_sz, dst_used);
+	if (res <= 0 )
+	{
+		elog(ERROR, 
+			 "RLE compression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+			 state->byteLen,
+			 state->colType,
+			 state->align,
+			 src_sz,
+			 dst_sz,
+			 *dst_used,
+			 res);
+	}
 
 	PG_RETURN_VOID();
 }
@@ -648,10 +671,23 @@ rle_type_decompress(PG_FUNCTION_ARGS)
 
 	Insist(src_sz > 0 && dst_sz > 0);
 
-	int res = state->decompress_fn(state->byteLen, (char *) src, src_sz,
+	int res = state->decompress_fn(state->byteLen, 
+								   state->colType, 
+								   state->align,
+								   (char *) src, src_sz,
 								   (char *) dst, dst_sz, dst_used);
-
-	Insist(res > 0);
+	if (res <= 0 )
+	{
+		elog(ERROR, 
+			 "RLE decompression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+			 state->byteLen,
+			 state->colType,
+			 state->align,
+			 src_sz,
+			 dst_sz,
+			 *dst_used,
+			 res);
+	}
 
 	PG_RETURN_VOID();
 }

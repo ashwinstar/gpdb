@@ -205,6 +205,9 @@ extern bool gp_ignore_window_exclude;
 
 extern int verify_checkpoint_interval;
 
+extern bool Debug_rle_type_compression;
+extern bool rle_type_compression_stats;
+
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;
 extern bool Debug_print_control_checkpoints;

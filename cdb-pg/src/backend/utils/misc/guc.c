@@ -305,6 +305,9 @@ bool		Debug_cancel_print = false;
 int         verify_checkpoint_interval =
 	VERIFY_CHECKPOINT_INTERVAL_DEFAULT;
 
+bool Debug_rle_type_compression = false;
+bool rle_type_compression_stats = false;
+
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
 #define GP_MAX_DATABASES_DEFAULT 16
@@ -2842,6 +2845,25 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_filerep_crc_on,
+		false, NULL, NULL
+	},
+	{
+		{"debug_rle_type_compression", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("enable extensive debugging information for rle_type compression"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_rle_type_compression,
+		false, NULL, NULL
+	},
+
+	{
+		{"rle_type_compression_stats", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("show compression ratio stats for rle_type compression"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&rle_type_compression_stats,
 		false, NULL, NULL
 	},
 
