@@ -2753,22 +2753,40 @@ pacb: pgxattributexencoding:00000251:  elog(ERROR, "column \"%s\" is a system co
 pacb: pgxattributexencoding:00000322:  elog(ERROR, "cannot find pg_attribute_encoding entry for relation \"%s\"", 
 pacb: pgxattributexencoding:00000323:  relname ? relname : "unknown"); 
 aaaaa GP_IGNORE: pabe: pgxcompression - ./backend/catalog/pg_compression.c
-pabe: pgxcompression:00000117:  elog(ERROR, "compression name \"%s\" exceeds maximum name length " 
-pabe: pgxcompression:00000118:  "of %d bytes", comptype, NAMEDATALEN - 1); 
-pabe: pgxcompression:00000168:  ereport(ERROR, 
-pabe: pgxcompression:00000169:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxcompression:00000170:  errmsg("unknown compress type \"%s\"", 
-pabe: pgxcompression:00000171:  comptype))); 
-pabe: pgxcompression:00000498:  elog(ERROR, "out of memory"); 
-pabe: pgxcompression:00000548:  elog(ERROR, "out of memory"); 
-pabe: pgxcompression:00000557:  elog(ERROR, "buffer size %d insufficient for compressed data", 
-pabe: pgxcompression:00000558:  dst_sz); 
-pabe: pgxcompression:00000568:  elog(ERROR, "zlib encountered data in an unexpected format"); 
-pabe: pgxcompression:00000669:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000676:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000683:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000690:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000697:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000123:  elog(ERROR, "compression name \"%s\" exceeds maximum name length " 
+pabe: pgxcompression:00000124:  "of %d bytes", comptype, NAMEDATALEN - 1); 
+pabe: pgxcompression:00000174:  ereport(ERROR, 
+pabe: pgxcompression:00000175:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxcompression:00000176:  errmsg("unknown compress type \"%s\"", 
+pabe: pgxcompression:00000177:  comptype))); 
+pabe: pgxcompression:00000504:  elog(ERROR, "out of memory"); 
+pabe: pgxcompression:00000554:  elog(ERROR, "out of memory"); 
+pabe: pgxcompression:00000563:  elog(ERROR, "buffer size %d insufficient for compressed data", 
+pabe: pgxcompression:00000564:  dst_sz); 
+pabe: pgxcompression:00000574:  elog(ERROR, "zlib encountered data in an unexpected format"); 
+pabe: pgxcompression:00000647:  elog(ERROR, 
+pabe: pgxcompression:00000648:  "RLE compression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+pabe: pgxcompression:00000649:  state->byteLen, 
+pabe: pgxcompression:00000650:  state->colType, 
+pabe: pgxcompression:00000651:  state->align, 
+pabe: pgxcompression:00000652:  src_sz, 
+pabe: pgxcompression:00000653:  dst_sz, 
+pabe: pgxcompression:00000654:  *dst_used, 
+pabe: pgxcompression:00000655:  res); 
+pabe: pgxcompression:00000681:  elog(ERROR, 
+pabe: pgxcompression:00000682:  "RLE decompression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+pabe: pgxcompression:00000683:  state->byteLen, 
+pabe: pgxcompression:00000684:  state->colType, 
+pabe: pgxcompression:00000685:  state->align, 
+pabe: pgxcompression:00000686:  src_sz, 
+pabe: pgxcompression:00000687:  dst_sz, 
+pabe: pgxcompression:00000688:  *dst_used, 
+pabe: pgxcompression:00000689:  res); 
+pabe: pgxcompression:00000705:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000712:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000719:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000726:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000733:  elog(ERROR, "dummy compression called directly"); 
 aaaaa GP_IGNORE: pabd: pgxconstraint - ./backend/catalog/pg_constraint.c
 pabd: pgxconstraint:00000445:  elog(ERROR, "could not find tuple for constraint %u", conId); 
 pabd: pgxconstraint:00000478:  elog(ERROR, "cache lookup failed for relation %u", 
@@ -5721,14 +5739,14 @@ caai: cdbgroup:00003124:  elog(ERROR,"Unexpected use of DISTINCT-qualified aggre
 caai: cdbgroup:00003323:  elog(ERROR,"Unexpected use of DISTINCT-qualified aggregation"); 
 caai: cdbgroup:00003598:  elog(ERROR,"Unexpected failure of multi-phase aggregation planning"); 
 caai: cdbgroup:00003626:  elog(ERROR, "cache lookup failed for aggregate %u", aggref->aggfnoid); 
-caai: cdbgroup:00004174:  ereport(ERROR, 
-caai: cdbgroup:00004175:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004176:  errmsg("unexpected call for two-stage aggregation"))); 
-caai: cdbgroup:00004257:  ereport(ERROR, 
-caai: cdbgroup:00004258:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004259:  errmsg("unexpected call for two-stage aggregation"))); 
-caai: cdbgroup:00004425:  elog(ERROR, "unexpected join strategy during DQA planning"); 
-caai: cdbgroup:00004448:  elog(ERROR, "unexpected join strategy during DQA planning"); 
+caai: cdbgroup:00004172:  ereport(ERROR, 
+caai: cdbgroup:00004173:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004174:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00004255:  ereport(ERROR, 
+caai: cdbgroup:00004256:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004257:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00004423:  elog(ERROR, "unexpected join strategy during DQA planning"); 
+caai: cdbgroup:00004446:  elog(ERROR, "unexpected join strategy during DQA planning"); 
 aaaaa GP_IGNORE: caah: cdbhash - ./backend/cdb/cdbhash.c
 caah: cdbhash:00000588:  ereport(ERROR, 
 caah: cdbhash:00000589:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
@@ -5769,7 +5787,7 @@ caai: cdbllize:00000432:  "function invocation cannot contain "
 caai: cdbllize:00000433:  "a correlated reference."), 
 caai: cdbllize:00000434:  errOmitLocation(true) 
 caai: cdbllize:00000435:  )); 
-caai: cdbllize:00001372:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
+caai: cdbllize:00001392:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
 aaaaa GP_IGNORE: cabj: cdblocaldistribxact - ./backend/cdb/cdblocaldistribxact.c
 cabj: cdblocaldistribxact:00000151:  elog(FATAL, "Distributed to local xact element not valid (eyecatcher)"); 
 cabj: cdblocaldistribxact:00000229:  elog(FATAL, "Distributed to local xact element not valid"); 
@@ -7262,9 +7280,9 @@ caba: cdbsubplan:00000325:  errmsg("Failed to locate datatype for paramid %d",
 caba: cdbsubplan:00000326:  paramid 
 caba: cdbsubplan:00000327:  ))); 
 aaaaa GP_IGNORE: cabc: cdbsubselect - ./backend/cdb/cdbsubselect.c
-cabc: cdbsubselect:00000785:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-cabc: cdbsubselect:00000786:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
-cabc: cdbsubselect:00000787:  )); 
+cabc: cdbsubselect:00000925:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+cabc: cdbsubselect:00000926:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
+cabc: cdbsubselect:00000927:  )); 
 aaaaa GP_IGNORE: cabj: cdbtargeteddispatch - ./backend/cdb/cdbtargeteddispatch.c
 cabj: cdbtargeteddispatch:00000539:  elog(ERROR, "Invalid plan node %d", nodeTag(node)); 
 aaaaa GP_IGNORE: cabd: cdbthreadwork - ./backend/cdb/cdbthreadwork.c
@@ -13951,13 +13969,13 @@ caba: createplan:00001737:  ereport(ERROR,
 caba: createplan:00001738:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 caba: createplan:00001739:  errmsg("Internal error in createplan for external tables"))); 
 caba: createplan:00002338:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
-caba: createplan:00003044:  elog(ERROR, "indexqual clause is not binary opclause"); 
-caba: createplan:00003115:  elog(ERROR, "unsupported indexqual type: %d", 
-caba: createplan:00003116:  (int) nodeTag(clause)); 
-caba: createplan:00003190:  elog(ERROR, "too few entries in indexprs list"); 
-caba: createplan:00003209:  elog(ERROR, "node is not an index attribute"); 
-caba: createplan:00004008:  elog(ERROR, "could not find pathkey item to sort"); 
-caba: createplan:00004480:  elog(ERROR, "Planner committed to impossible hash aggregate."); 
+caba: createplan:00003036:  elog(ERROR, "indexqual clause is not binary opclause"); 
+caba: createplan:00003107:  elog(ERROR, "unsupported indexqual type: %d", 
+caba: createplan:00003108:  (int) nodeTag(clause)); 
+caba: createplan:00003182:  elog(ERROR, "too few entries in indexprs list"); 
+caba: createplan:00003201:  elog(ERROR, "node is not an index attribute"); 
+caba: createplan:00004007:  elog(ERROR, "could not find pathkey item to sort"); 
+caba: createplan:00004479:  elog(ERROR, "Planner committed to impossible hash aggregate."); 
 aaaaa GP_IGNORE: iaaj: initsplan - ./backend/optimizer/plan/initsplan.c
 iaaj: initsplan:00000108:  elog(ERROR, "unrecognized node type: %d", 
 iaaj: initsplan:00000109:  (int) nodeTag(jtnode)); 
@@ -14090,16 +14108,16 @@ saah: setrefs:00001931:  elog(ERROR, "variable not found in subplan target lists
 saah: setrefs:00002031:  elog(ERROR, "variable not found in subplan target list"); 
 saah: setrefs:00002211:  elog(ERROR, "cache lookup failed for function %u", funcid); 
 aaaaa GP_IGNORE: saaj: subselect - ./backend/optimizer/plan/subselect.c
-saaj: subselect:00000399:  elog(ERROR, "correlated subquery with skip-level correlations is not supported"); 
-saaj: subselect:00000550:  elog(ERROR, "could not find array type for datatype %s", 
-saaj: subselect:00000551:  format_type_be(exprType((Node *) te->expr))); 
-saaj: subselect:00000717:  elog(ERROR, "unexpected PARAM_SUBLINK ID: %d", param->paramid); 
-saaj: subselect:00000733:  elog(ERROR, "subquery output %d not found", 
-saaj: subselect:00000734:  param->paramid); 
-saaj: subselect:00000843:  elog(ERROR, "cache lookup failed for operator %u", opid); 
-saaj: subselect:00001330:  elog(ERROR, "unrecognized node type: %d", 
-saaj: subselect:00001331:  (int) nodeTag(plan)); 
-saaj: subselect:00001352:  elog(ERROR, "plan should not reference subplan's variable"); 
+saaj: subselect:00000394:  elog(ERROR, "correlated subquery with skip-level correlations is not supported"); 
+saaj: subselect:00000545:  elog(ERROR, "could not find array type for datatype %s", 
+saaj: subselect:00000546:  format_type_be(exprType((Node *) te->expr))); 
+saaj: subselect:00000712:  elog(ERROR, "unexpected PARAM_SUBLINK ID: %d", param->paramid); 
+saaj: subselect:00000728:  elog(ERROR, "subquery output %d not found", 
+saaj: subselect:00000729:  param->paramid); 
+saaj: subselect:00000838:  elog(ERROR, "cache lookup failed for operator %u", opid); 
+saaj: subselect:00001336:  elog(ERROR, "unrecognized node type: %d", 
+saaj: subselect:00001337:  (int) nodeTag(plan)); 
+saaj: subselect:00001358:  elog(ERROR, "plan should not reference subplan's variable"); 
 aaaaa GP_IGNORE: pabc: prepjointree - ./backend/optimizer/prep/prepjointree.c
 pabc: prepjointree:00000194:  elog(ERROR, "unrecognized join type: %d", 
 pabc: prepjointree:00000195:  (int) j->jointype); 
@@ -23144,112 +23162,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006388:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006389:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006402:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006403:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006416:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006417:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006447:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006448:  conf->gen.name, str); 
-gaad: guc:00006705:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006722:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006739:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006770:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007626:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007736:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007737:  " in a future release.", name); 
-gaad: guc:00007745:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007746:  name); 
-gaad: guc:00008220:  ereport(ERROR, 
-gaad: guc:00008221:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008222:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008224:  ereport(ERROR, 
-gaad: guc:00008225:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008226:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008260:  ereport(ERROR, 
-gaad: guc:00008261:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008262:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008264:  ereport(ERROR, 
-gaad: guc:00008265:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008266:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008335:  ereport(ERROR, 
-gaad: guc:00008336:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008337:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008344:  ereport(ERROR, 
-gaad: guc:00008345:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008346:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008359:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008406:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008407:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008464:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008490:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008491:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008517:  ereport(ERROR, 
-gaad: guc:00008518:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008519:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008581:  ereport(ERROR, 
-gaad: guc:00008582:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008583:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008902:  ereport(ERROR, 
-gaad: guc:00008903:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008904:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008906:  ereport(ERROR, 
-gaad: guc:00008907:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008908:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009677:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009710:  ereport(FATAL, 
-gaad: guc:00009711:  (errcode_for_file_access(), 
-gaad: guc:00009712:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009713:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009725:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009727:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009729:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009820:  ereport(WARNING, 
-gaad: guc:00009821:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009822:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010016:  ereport(ERROR, 
-gaad: guc:00010017:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010018:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010039:  ereport(ERROR, 
-gaad: guc:00010040:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010041:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010042:  tok))); 
-gaad: guc:00010068:  ereport(ERROR, 
-gaad: guc:00010069:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010070:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010071:  value))); 
-gaad: guc:00010479:  ereport(ERROR, 
-gaad: guc:00010480:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010481:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010555:  ereport(ERROR, 
-gaad: guc:00010556:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010557:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010566:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010576:  ereport(ERROR, 
-gaad: guc:00010577:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010578:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010589:  ereport(ERROR, 
-gaad: guc:00010590:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010591:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010606:  ereport(ERROR, 
-gaad: guc:00010607:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010608:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010609:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010610:  "\"log_dispatch_stats\", " 
-gaad: guc:00010611:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010626:  ereport(ERROR, 
-gaad: guc:00010627:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010628:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010629:  "\"log_statement_stats\", " 
-gaad: guc:00010630:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010631:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010646:  ereport(ERROR, 
-gaad: guc:00010647:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010648:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011045:  elog(ERROR, 
-gaad: guc:00011046:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011047:  show_allow_system_table_mods()); 
+gaad: guc:00006410:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006411:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006424:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006425:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006438:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006439:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006469:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006470:  conf->gen.name, str); 
+gaad: guc:00006727:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006744:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006761:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006792:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007648:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007758:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007759:  " in a future release.", name); 
+gaad: guc:00007767:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007768:  name); 
+gaad: guc:00008242:  ereport(ERROR, 
+gaad: guc:00008243:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008244:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008246:  ereport(ERROR, 
+gaad: guc:00008247:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008248:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008282:  ereport(ERROR, 
+gaad: guc:00008283:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008284:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008286:  ereport(ERROR, 
+gaad: guc:00008287:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008288:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008357:  ereport(ERROR, 
+gaad: guc:00008358:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008359:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008366:  ereport(ERROR, 
+gaad: guc:00008367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008368:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008381:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008428:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008429:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008486:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008512:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008513:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008539:  ereport(ERROR, 
+gaad: guc:00008540:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008541:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008603:  ereport(ERROR, 
+gaad: guc:00008604:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008605:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008924:  ereport(ERROR, 
+gaad: guc:00008925:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008926:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008928:  ereport(ERROR, 
+gaad: guc:00008929:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008930:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009699:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009732:  ereport(FATAL, 
+gaad: guc:00009733:  (errcode_for_file_access(), 
+gaad: guc:00009734:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009735:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009747:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009749:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009751:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009842:  ereport(WARNING, 
+gaad: guc:00009843:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009844:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010038:  ereport(ERROR, 
+gaad: guc:00010039:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010040:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010061:  ereport(ERROR, 
+gaad: guc:00010062:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010063:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010064:  tok))); 
+gaad: guc:00010090:  ereport(ERROR, 
+gaad: guc:00010091:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010092:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010093:  value))); 
+gaad: guc:00010501:  ereport(ERROR, 
+gaad: guc:00010502:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010503:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010577:  ereport(ERROR, 
+gaad: guc:00010578:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010579:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010588:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010598:  ereport(ERROR, 
+gaad: guc:00010599:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010600:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010611:  ereport(ERROR, 
+gaad: guc:00010612:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010613:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010628:  ereport(ERROR, 
+gaad: guc:00010629:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010630:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010631:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010632:  "\"log_dispatch_stats\", " 
+gaad: guc:00010633:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010648:  ereport(ERROR, 
+gaad: guc:00010649:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010650:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010651:  "\"log_statement_stats\", " 
+gaad: guc:00010652:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010653:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010668:  ereport(ERROR, 
+gaad: guc:00010669:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010670:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011067:  elog(ERROR, 
+gaad: guc:00011068:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011069:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -23591,61 +23609,61 @@ paae: pinv:00000189:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 paae: pinv:00000190:  errmsg("pseudoinverse: lanpack routine dgesdd returned error")) 
 paae: pinv:00000191:  ); 
 aaaaa GP_IGNORE: raah: regress - ./backend/utils/stat/regress.c
-raah: regress:00000129:  ereport(ERROR, 
-raah: regress:00000130:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000131:  errmsg("transition function \"%s\" called with invalid parameters", 
-raah: regress:00000132:  format_procedure(fcinfo->flinfo->fn_oid)))); 
-raah: regress:00000136:  ereport(ERROR, 
-raah: regress:00000137:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000138:  errmsg("transition function \"%s\" not called from aggregate", 
-raah: regress:00000139:  format_procedure(fcinfo->flinfo->fn_oid)))); 
-raah: regress:00000147:  ereport(ERROR, 
-raah: regress:00000148:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000149:  errmsg("number of independent variables cannot exceed %lu", 
-raah: regress:00000150:  (unsigned long) UINT32_MAX))); 
-raah: regress:00000160:  ereport(ERROR, 
-raah: regress:00000161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000162:  errmsg("design matrix is not finite"))); 
+raah: regress:00000133:  ereport(ERROR, 
+raah: regress:00000134:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000135:  errmsg("transition function \"%s\" called with invalid parameters", 
+raah: regress:00000136:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000140:  ereport(ERROR, 
+raah: regress:00000141:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000142:  errmsg("transition function \"%s\" not called from aggregate", 
+raah: regress:00000143:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000151:  ereport(ERROR, 
+raah: regress:00000152:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000153:  errmsg("number of independent variables cannot exceed %lu", 
+raah: regress:00000154:  (unsigned long) UINT32_MAX))); 
 raah: regress:00000164:  ereport(ERROR, 
 raah: regress:00000165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000166:  errmsg("dependent variables are not finite"))); 
-raah: regress:00000183:  ereport(ERROR, 
-raah: regress:00000184:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000185:  errmsg("number of independent variables is too large"))); 
-raah: regress:00000231:  ereport(ERROR, 
-raah: regress:00000232:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000233:  errmsg("transition function \"%s\" called with invalid parameters", 
-raah: regress:00000234:  format_procedure(fcinfo->flinfo->fn_oid)), 
-raah: regress:00000235:  errdetail("The independent-variable array is not of constant width."))); 
-raah: regress:00000241:  ereport(ERROR, 
-raah: regress:00000242:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000243:  errmsg("transition function \"%s\" called with invalid parameters", 
-raah: regress:00000244:  format_procedure(fcinfo->flinfo->fn_oid)))); 
-raah: regress:00000319:  ereport(ERROR, 
-raah: regress:00000320:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000321:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
-raah: regress:00000322:  format_procedure(fcinfo->flinfo->fn_oid)))); 
-raah: regress:00000340:  ereport(ERROR, 
-raah: regress:00000341:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000342:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
-raah: regress:00000343:  format_procedure(fcinfo->flinfo->fn_oid)), 
-raah: regress:00000344:  errdetail("The independent-variable array is not of constant width."))); 
-raah: regress:00000356:  ereport(ERROR, 
-raah: regress:00000357:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000358:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
-raah: regress:00000359:  format_procedure(fcinfo->flinfo->fn_oid)))); 
-raah: regress:00000410:  ereport(ERROR, 
-raah: regress:00000411:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000412:  errmsg("final calculation function \"%s\" called with invalid parameters", 
-raah: regress:00000413:  format_procedure(fcinfo->flinfo->fn_oid)))); 
-raah: regress:00000421:  ereport(ERROR, 
-raah: regress:00000422:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000423:  errmsg("final calculation function \"%s\" called with invalid parameters", 
-raah: regress:00000424:  format_procedure(fcinfo->flinfo->fn_oid)))); 
-raah: regress:00000433:  ereport(ERROR, 
-raah: regress:00000434:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000435:  errmsg("final calculation function \"%s\" called with invalid parameters", 
-raah: regress:00000436:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000166:  errmsg("design matrix is not finite"))); 
+raah: regress:00000168:  ereport(ERROR, 
+raah: regress:00000169:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000170:  errmsg("dependent variables are not finite"))); 
+raah: regress:00000187:  ereport(ERROR, 
+raah: regress:00000188:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000189:  errmsg("number of independent variables is too large"))); 
+raah: regress:00000235:  ereport(ERROR, 
+raah: regress:00000236:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000237:  errmsg("transition function \"%s\" called with invalid parameters", 
+raah: regress:00000238:  format_procedure(fcinfo->flinfo->fn_oid)), 
+raah: regress:00000239:  errdetail("The independent-variable array is not of constant width."))); 
+raah: regress:00000245:  ereport(ERROR, 
+raah: regress:00000246:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000247:  errmsg("transition function \"%s\" called with invalid parameters", 
+raah: regress:00000248:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000323:  ereport(ERROR, 
+raah: regress:00000324:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000325:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000326:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000344:  ereport(ERROR, 
+raah: regress:00000345:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000346:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000347:  format_procedure(fcinfo->flinfo->fn_oid)), 
+raah: regress:00000348:  errdetail("The independent-variable array is not of constant width."))); 
+raah: regress:00000360:  ereport(ERROR, 
+raah: regress:00000361:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000362:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000363:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000414:  ereport(ERROR, 
+raah: regress:00000415:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000416:  errmsg("final calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000417:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000425:  ereport(ERROR, 
+raah: regress:00000426:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000427:  errmsg("final calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000428:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000437:  ereport(ERROR, 
+raah: regress:00000438:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000439:  errmsg("final calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000440:  format_procedure(fcinfo->flinfo->fn_oid)))); 
 aaaaa GP_IGNORE: saah: student - ./backend/utils/stat/student.c
 saah: student:00000225:  ereport(ERROR, 
 saah: student:00000226:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
