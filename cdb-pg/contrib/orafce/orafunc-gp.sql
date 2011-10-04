@@ -319,13 +319,13 @@ AS 'MODULE_PATHNAME','ora_date_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone, fmt text)
-RETURNS timestamp with time zone
-AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
-LANGUAGE 'C' IMMUTABLE STRICT;
+RETURNS date
+AS $$ SELECT trunc($1::date, $2); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone)
-RETURNS timestamp with time zone
-AS $$ SELECT trunc($1, 'DDD'); $$
+RETURNS date
+AS $$ SELECT trunc($1::date, 'DDD'); $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION trunc(value date)
@@ -340,12 +340,12 @@ AS 'MODULE_PATHNAME','ora_date_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION round(value timestamp with time zone, fmt text)
-RETURNS timestamp with time zone
-AS 'MODULE_PATHNAME','ora_timestamptz_round'
-LANGUAGE 'C' IMMUTABLE STRICT;
+RETURNS date
+AS $$ SELECT round($1::date, $2); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION round(value timestamp with time zone)
-RETURNS timestamp with time zone
+RETURNS date
 AS $$ SELECT round($1, 'DDD'); $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 
