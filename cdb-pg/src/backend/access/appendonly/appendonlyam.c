@@ -172,9 +172,9 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 							NameStr(scan->aos_rd->rd_rel->relname),
 							&scan->storageAttributes);
 
-		/* 
+		/*
 		 * There is no guarantee that the current memory context will be preserved between calls,
-		 * so switch to a safe memory context for retrieving compression information.             
+		 * so switch to a safe memory context for retrieving compression information.
 		 */
 		MemoryContext oldMemoryContext = MemoryContextSwitchTo(scan->aoScanInitContext);
 
@@ -1458,12 +1458,15 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	/*
 	 * These attributes describe the AppendOnly format to be scanned.
 	 */
-	attr->compress			= (aoentry->compresslevel > 0 ? true : false);
+	if (aoentry->compresstype == NULL || pg_strcasecmp(aoentry->compresstype, "none") == 0)
+		attr->compress = false;
+	else
+		attr->compress = true;
 	if (aoentry->compresstype != NULL)
 		attr->compressType = aoentry->compresstype;
 	else
 		attr->compressType = "none";
-	attr->compressLevel	= aoentry->compresslevel;
+  attr->compressLevel     = aoentry->compresslevel;
 	attr->checksum			= aoentry->checksum;
 	attr->use32BitAlignment	= true;	   // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
@@ -1869,7 +1872,6 @@ appendonly_fetch_init(
 	AppendOnlyEntry		*aoentry;
 
 	AppendOnlyStorageAttributes *attr;
-	
 	PGFunction *fns = NULL;
 
 	/*
@@ -1909,7 +1911,10 @@ appendonly_fetch_init(
 	/*
 	 * These attributes describe the AppendOnly format to be scanned.
 	 */
-	attr->compress			= (aoentry->compresslevel > 0 ? true : false);
+	if (aoentry->compresstype == NULL || pg_strcasecmp(aoentry->compresstype, "none") == 0)
+		attr->compress = false;
+	else
+		attr->compress = true;
 	if (aoentry->compresstype != NULL)
 		attr->compressType = aoentry->compresstype;
 	else
@@ -1941,27 +1946,28 @@ appendonly_fetch_init(
 						aoFetchDesc->usableBlockSize,
 						NameStr(aoFetchDesc->relation->rd_rel->relname),
 						&aoFetchDesc->storageAttributes);
-	
+
+
 	fns = RelationGetRelationCompressionFuncs(relation);
 	aoFetchDesc->storageRead.compression_functions = fns;
-	
+
 	if (fns)
 	{
 		PGFunction cons = fns[COMPRESSION_CONSTRUCTOR];
 		CompressionState *cs;
 		StorageAttributes sa;
-		
+
 		sa.comptype = aoentry->compresstype;
 		sa.complevel = aoentry->compresslevel;
 		sa.blocksize = aoentry->blocksize;
-		
-		
+
+
 		cs = callCompressionConstructor(cons, RelationGetDescr(relation),
 										&sa,
 										true /* compress */);
 		aoFetchDesc->storageRead.compressionState = cs;
 	}
-	
+
 	AppendOnlyExecutorReadBlock_Init(
 						&aoFetchDesc->executorReadBlock,
 						aoFetchDesc->relation,
@@ -2249,9 +2255,12 @@ appendonly_insert_init(Relation rel, int segno)
 	/*
 	 * These attributes describe the AppendOnly format to be scanned.
 	 */
-	attr->compress			= (aoentry->compresslevel > 0 ? true : false);
+	if (aoentry->compresstype == NULL || pg_strcasecmp(aoentry->compresstype, "none") == 0)
+		attr->compress = false;
+	else
+		attr->compress = true;
 	if (aoentry->compresstype != NULL)
-		attr->compressType	= aoentry->compresstype;
+		attr->compressType = aoentry->compresstype;
 	else
 		attr->compressType = "none";
 	attr->compressLevel	= aoentry->compresslevel;
