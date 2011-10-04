@@ -1042,8 +1042,10 @@ SS_finalize_plan(PlannerInfo *root, List *rtable, Plan *plan, bool attach_initpl
 		PlannerParamItem *pitem = (PlannerParamItem *) lfirst(l);
 		if (IsA(pitem->item, Param))
 		{
+#ifdef USE_ASSERT_CHECKING
 			Param *p = (Param *) pitem->item;
 			Assert(p->paramid == paramid);
+#endif
 			valid_params = bms_add_member(valid_params, paramid);
 		}
 

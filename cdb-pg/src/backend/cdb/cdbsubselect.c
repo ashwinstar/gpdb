@@ -773,8 +773,6 @@ convert_NOT_EXISTS_to_antijoin(PlannerInfo *root, List** rtrlist_inout, SubLink 
 	Query	       *subselect = (Query *)copyObject(sublink->subselect);
 	Assert(IsA(subselect, Query));
 
-	Query	   *parse = root->parse;
-
 	ConvertSubqueryToJoinContext ctx1;
 	InitConvertSubqueryToJoinContext(&ctx1);
 	ctx1.considerNonEqualQual = true;
@@ -823,7 +821,7 @@ convert_NOT_EXISTS_to_antijoin(PlannerInfo *root, List** rtrlist_inout, SubLink 
 		 * Create a new LASJ between the outer query's join expr and inner subselect's join expr
 		 */
 
-		Assert(list_length(parse->jointree->fromlist) == 1);
+		Assert(list_length(root->parse->jointree->fromlist) == 1);
 		Assert(list_length(subselect->jointree->fromlist) == 1);
 		List *subselectTargetList = (List *) copyObject(ctx1.targetList);
 		subselect->targetList = subselectTargetList;
