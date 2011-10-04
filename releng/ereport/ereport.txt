@@ -18573,101 +18573,103 @@ paai: postgres:00002982:  ereport(ERROR,
 paai: postgres:00002983:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
 paai: postgres:00002984:  errmsg("current transaction is aborted, " 
 paai: postgres:00002985:  "commands ignored until end of transaction block"))); 
-paai: postgres:00003380:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-paai: postgres:00003381:  errFatalReturn(gp_reraise_signal), 
-paai: postgres:00003382:  errOmitLocation(true), 
-paai: postgres:00003383:  errmsg("Unexpected internal error: %s received signal %s", 
-paai: postgres:00003384:  processName, signame) )); 
-paai: postgres:00003415:  ereport(ERROR, 
-paai: postgres:00003416:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
-paai: postgres:00003417:  errmsg("floating-point exception"), 
-paai: postgres:00003418:  errdetail("An invalid floating-point operation was signaled. " 
-paai: postgres:00003419:  "This probably means an out-of-range result or an " 
-paai: postgres:00003420:  "invalid operation, such as division by zero."))); 
-paai: postgres:00003477:  ereport(FATAL, 
-paai: postgres:00003478:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
-paai: postgres:00003479:  errmsg("terminating connection due to administrator command"), 
-paai: postgres:00003480:  errSendAlert(false))); 
-paai: postgres:00003491:  ereport(ERROR, 
-paai: postgres:00003492:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
-paai: postgres:00003493:  errmsg("canceling MPP operation"))); 
+paai: postgres:00003382:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+paai: postgres:00003383:  errFatalReturn(gp_reraise_signal), 
+paai: postgres:00003384:  errOmitLocation(true), 
+paai: postgres:00003385:  errmsg("Unexpected internal error: %s received signal %s", 
+paai: postgres:00003386:  processName, signame), 
+paai: postgres:00003387:  errdetail("(interrupt holdoff count %d, critical section count %d)", 
+paai: postgres:00003388:  InterruptHoldoffCount, CritSectionCount))); 
+paai: postgres:00003419:  ereport(ERROR, 
+paai: postgres:00003420:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+paai: postgres:00003421:  errmsg("floating-point exception"), 
+paai: postgres:00003422:  errdetail("An invalid floating-point operation was signaled. " 
+paai: postgres:00003423:  "This probably means an out-of-range result or an " 
+paai: postgres:00003424:  "invalid operation, such as division by zero."))); 
+paai: postgres:00003481:  ereport(FATAL, 
+paai: postgres:00003482:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
+paai: postgres:00003483:  errmsg("terminating connection due to administrator command"), 
+paai: postgres:00003484:  errSendAlert(false))); 
 paai: postgres:00003495:  ereport(ERROR, 
-paai: postgres:00003496:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003497:  errmsg("canceling statement due to statement timeout"))); 
+paai: postgres:00003496:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+paai: postgres:00003497:  errmsg("canceling MPP operation"))); 
 paai: postgres:00003499:  ereport(ERROR, 
 paai: postgres:00003500:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003501:  errmsg("canceling statement due to user request"))); 
-paai: postgres:00003582:  ereport(ERROR, 
-paai: postgres:00003583:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
-paai: postgres:00003584:  errmsg("stack depth limit exceeded"), 
-paai: postgres:00003585:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
-paai: postgres:00003586:  "after ensuring the platform's stack depth limit is adequate."))); 
-paai: postgres:00003778:  elog(FATAL, "%s: could not locate my own executable path", 
-paai: postgres:00003779:  argv[0]); 
-paai: postgres:00004021:  ereport(ERROR, 
-paai: postgres:00004022:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004023:  errmsg("--%s requires a value", 
-paai: postgres:00004024:  optarg))); 
-paai: postgres:00004026:  ereport(ERROR, 
-paai: postgres:00004027:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004028:  errmsg("-c %s requires a value", 
-paai: postgres:00004029:  optarg))); 
-paai: postgres:00004069:  ereport(FATAL, 
-paai: postgres:00004070:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00004071:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004189:  ereport(FATAL, 
-paai: postgres:00004190:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004191:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004192:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004202:  ereport(FATAL, 
-paai: postgres:00004203:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004204:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004205:  argv[0]), 
-paai: postgres:00004206:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004212:  ereport(FATAL, 
-paai: postgres:00004213:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004214:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004215:  argv[0]))); 
-paai: postgres:00004596:  elog(FATAL, "could not set timer for client wait timeout"); 
-paai: postgres:00005051:  ereport(ERROR, 
-paai: postgres:00005052:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005053:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00005054:  close_type))); 
-paai: postgres:00005088:  ereport(ERROR, 
-paai: postgres:00005089:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005090:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005091:  describe_type))); 
-paai: postgres:00005145:  ereport(FATAL, 
-paai: postgres:00005146:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005147:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005148:  firstchar,firstchar))); 
-paai: postgres:00005443:  elog(FATAL, "%s: could not locate my own executable path", 
-paai: postgres:00005444:  argv[0]); 
-paai: postgres:00005649:  ereport(ERROR, 
-paai: postgres:00005650:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005651:  errmsg("--%s requires a value", 
-paai: postgres:00005652:  optarg))); 
-paai: postgres:00005654:  ereport(ERROR, 
-paai: postgres:00005655:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005656:  errmsg("-c %s requires a value", 
-paai: postgres:00005657:  optarg))); 
-paai: postgres:00005770:  ereport(FATAL, 
-paai: postgres:00005771:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005772:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005773:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005784:  ereport(FATAL, 
-paai: postgres:00005785:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005786:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005787:  argv[0]), 
-paai: postgres:00005788:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005794:  ereport(FATAL, 
-paai: postgres:00005795:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005796:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005797:  argv[0]))); 
-paai: postgres:00006120:  ereport(FATAL, 
-paai: postgres:00006121:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006122:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006123:  firstchar))); 
+paai: postgres:00003501:  errmsg("canceling statement due to statement timeout"))); 
+paai: postgres:00003503:  ereport(ERROR, 
+paai: postgres:00003504:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003505:  errmsg("canceling statement due to user request"))); 
+paai: postgres:00003586:  ereport(ERROR, 
+paai: postgres:00003587:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+paai: postgres:00003588:  errmsg("stack depth limit exceeded"), 
+paai: postgres:00003589:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
+paai: postgres:00003590:  "after ensuring the platform's stack depth limit is adequate."))); 
+paai: postgres:00003782:  elog(FATAL, "%s: could not locate my own executable path", 
+paai: postgres:00003783:  argv[0]); 
+paai: postgres:00004025:  ereport(ERROR, 
+paai: postgres:00004026:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004027:  errmsg("--%s requires a value", 
+paai: postgres:00004028:  optarg))); 
+paai: postgres:00004030:  ereport(ERROR, 
+paai: postgres:00004031:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004032:  errmsg("-c %s requires a value", 
+paai: postgres:00004033:  optarg))); 
+paai: postgres:00004073:  ereport(FATAL, 
+paai: postgres:00004074:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00004075:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+paai: postgres:00004193:  ereport(FATAL, 
+paai: postgres:00004194:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004195:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004196:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004206:  ereport(FATAL, 
+paai: postgres:00004207:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004208:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004209:  argv[0]), 
+paai: postgres:00004210:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004216:  ereport(FATAL, 
+paai: postgres:00004217:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004218:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004219:  argv[0]))); 
+paai: postgres:00004600:  elog(FATAL, "could not set timer for client wait timeout"); 
+paai: postgres:00005055:  ereport(ERROR, 
+paai: postgres:00005056:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005057:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00005058:  close_type))); 
+paai: postgres:00005092:  ereport(ERROR, 
+paai: postgres:00005093:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005094:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005095:  describe_type))); 
+paai: postgres:00005149:  ereport(FATAL, 
+paai: postgres:00005150:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005151:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005152:  firstchar,firstchar))); 
+paai: postgres:00005447:  elog(FATAL, "%s: could not locate my own executable path", 
+paai: postgres:00005448:  argv[0]); 
+paai: postgres:00005653:  ereport(ERROR, 
+paai: postgres:00005654:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005655:  errmsg("--%s requires a value", 
+paai: postgres:00005656:  optarg))); 
+paai: postgres:00005658:  ereport(ERROR, 
+paai: postgres:00005659:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005660:  errmsg("-c %s requires a value", 
+paai: postgres:00005661:  optarg))); 
+paai: postgres:00005774:  ereport(FATAL, 
+paai: postgres:00005775:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005776:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005777:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005788:  ereport(FATAL, 
+paai: postgres:00005789:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005790:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005791:  argv[0]), 
+paai: postgres:00005792:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005798:  ereport(FATAL, 
+paai: postgres:00005799:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005800:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005801:  argv[0]))); 
+paai: postgres:00006124:  ereport(FATAL, 
+paai: postgres:00006125:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006126:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006127:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000948:  ereport(ERROR, 
 paag: pquery:00000949:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
