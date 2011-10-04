@@ -3145,7 +3145,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "this many items.")
 		},
 		&from_collapse_limit,
-		16, 1, INT_MAX, NULL, NULL
+		20, 1, INT_MAX, NULL, NULL
 	},
 	{
 		{"join_collapse_limit", PGC_USERSET, QUERY_TUNING_OTHER,
@@ -3156,7 +3156,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "than this many items would result.")
 		},
 		&join_collapse_limit,
-		16, 1, INT_MAX, NULL, NULL
+		20, 1, INT_MAX, NULL, NULL
 	},
 	{
 		{"geqo_threshold", PGC_USERSET, DEFUNCT_OPTIONS,
