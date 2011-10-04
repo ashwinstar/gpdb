@@ -150,21 +150,21 @@ aabc: appendonlyam:00001371:  varBlockCheckError,
 aabc: appendonlyam:00001372:  VarBlockGetCheckErrorStr()), 
 aabc: appendonlyam:00001373:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
 aabc: appendonlyam:00001374:  errcontext_appendonly_insert_block(aoInsertDesc))); 
-aabc: appendonlyam:00002080:  ereport(WARNING, 
-aabc: appendonlyam:00002081:  (errmsg("Append-only fetch requires scan prior segment file: " 
-aabc: appendonlyam:00002082:  "segmentFileNum %d, rowNum " INT64_FORMAT 
-aabc: appendonlyam:00002083:  ", currentSegmentFileNum %d", 
-aabc: appendonlyam:00002084:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
-aabc: appendonlyam:00002492:  ereport(ERROR, 
-aabc: appendonlyam:00002493:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002494:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002495:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002496:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
-aabc: appendonlyam:00002534:  ereport(ERROR, 
-aabc: appendonlyam:00002535:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002536:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002537:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002538:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002086:  ereport(WARNING, 
+aabc: appendonlyam:00002087:  (errmsg("Append-only fetch requires scan prior segment file: " 
+aabc: appendonlyam:00002088:  "segmentFileNum %d, rowNum " INT64_FORMAT 
+aabc: appendonlyam:00002089:  ", currentSegmentFileNum %d", 
+aabc: appendonlyam:00002090:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
+aabc: appendonlyam:00002501:  ereport(ERROR, 
+aabc: appendonlyam:00002502:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002503:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002504:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002505:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002543:  ereport(ERROR, 
+aabc: appendonlyam:00002544:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002545:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002546:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002547:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
 aace: appendonlyblockdirectory:00000408:  ereport(ERROR, 
 aace: appendonlyblockdirectory:00000409:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -23585,51 +23585,72 @@ paae: pinv:00000054:  );
 paae: pinv:00000056:  ereport(ERROR, 
 paae: pinv:00000057:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
 paae: pinv:00000058:  errmsg("null array element not allowed in this context"))); 
-paae: pinv:00000180:  elog(ERROR,"pseudoinverse: lanpack routine dgesdd not available on WIN32"); 
-paae: pinv:00000186:  ereport(ERROR, 
-paae: pinv:00000187:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paae: pinv:00000188:  errmsg("pseudoinverse: lanpack routine dgesdd returned error")) 
-paae: pinv:00000189:  ); 
+paae: pinv:00000182:  elog(ERROR,"pseudoinverse: lanpack routine dgesdd not available on WIN32"); 
+paae: pinv:00000188:  ereport(ERROR, 
+paae: pinv:00000189:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paae: pinv:00000190:  errmsg("pseudoinverse: lanpack routine dgesdd returned error")) 
+paae: pinv:00000191:  ); 
 aaaaa GP_IGNORE: raah: regress - ./backend/utils/stat/regress.c
-raah: regress:00000061:  ereport(ERROR, 
-raah: regress:00000062:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000063:  errmsg("invalid transition state"))); 
-raah: regress:00000065:  ereport(ERROR, 
-raah: regress:00000066:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000067:  errmsg("data array must be a single dimensional float8[]"))); 
-raah: regress:00000071:  ereport(ERROR, 
-raah: regress:00000072:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000073:  errmsg("float8_mregr_accum called from invalid context"))); 
-raah: regress:00000118:  ereport(ERROR, 
-raah: regress:00000119:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000120:  errmsg("independent variable array not constant width"))); 
-raah: regress:00000126:  ereport(ERROR, 
-raah: regress:00000127:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000128:  errmsg("float8_mregr_accum malformed state value"))); 
-raah: regress:00000174:  ereport(ERROR, 
-raah: regress:00000175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000176:  errmsg("invalid transition state"))); 
-raah: regress:00000194:  ereport(ERROR, 
-raah: regress:00000195:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000196:  errmsg("independent variable array not constant width"))); 
-raah: regress:00000202:  ereport(ERROR, 
-raah: regress:00000203:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000204:  errmsg("mregr_combine: invalid state"))); 
-raah: regress:00000255:  ereport(ERROR, 
-raah: regress:00000256:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000257:  errmsg("float8_mregr_* called with %d arguments", 
-raah: regress:00000258:  PG_NARGS()))); 
-raah: regress:00000266:  ereport(ERROR, 
-raah: regress:00000267:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000268:  errmsg("float8_mregr_* called on invalid input array"))); 
-raah: regress:00000277:  ereport(ERROR, 
-raah: regress:00000278:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-raah: regress:00000279:  errmsg("float8_mregr_* called on invalid input array"))); 
+raah: regress:00000129:  ereport(ERROR, 
+raah: regress:00000130:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000131:  errmsg("transition function \"%s\" called with invalid parameters", 
+raah: regress:00000132:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000136:  ereport(ERROR, 
+raah: regress:00000137:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000138:  errmsg("transition function \"%s\" not called from aggregate", 
+raah: regress:00000139:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000147:  ereport(ERROR, 
+raah: regress:00000148:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000149:  errmsg("number of independent variables cannot exceed %lu", 
+raah: regress:00000150:  (unsigned long) UINT32_MAX))); 
+raah: regress:00000160:  ereport(ERROR, 
+raah: regress:00000161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000162:  errmsg("design matrix is not finite"))); 
+raah: regress:00000164:  ereport(ERROR, 
+raah: regress:00000165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000166:  errmsg("dependent variables are not finite"))); 
+raah: regress:00000183:  ereport(ERROR, 
+raah: regress:00000184:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000185:  errmsg("number of independent variables is too large"))); 
+raah: regress:00000231:  ereport(ERROR, 
+raah: regress:00000232:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000233:  errmsg("transition function \"%s\" called with invalid parameters", 
+raah: regress:00000234:  format_procedure(fcinfo->flinfo->fn_oid)), 
+raah: regress:00000235:  errdetail("The independent-variable array is not of constant width."))); 
+raah: regress:00000241:  ereport(ERROR, 
+raah: regress:00000242:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000243:  errmsg("transition function \"%s\" called with invalid parameters", 
+raah: regress:00000244:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000319:  ereport(ERROR, 
+raah: regress:00000320:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000321:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000322:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000340:  ereport(ERROR, 
+raah: regress:00000341:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000342:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000343:  format_procedure(fcinfo->flinfo->fn_oid)), 
+raah: regress:00000344:  errdetail("The independent-variable array is not of constant width."))); 
+raah: regress:00000356:  ereport(ERROR, 
+raah: regress:00000357:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000358:  errmsg("preliminary segment-level calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000359:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000410:  ereport(ERROR, 
+raah: regress:00000411:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000412:  errmsg("final calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000413:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000421:  ereport(ERROR, 
+raah: regress:00000422:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000423:  errmsg("final calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000424:  format_procedure(fcinfo->flinfo->fn_oid)))); 
+raah: regress:00000433:  ereport(ERROR, 
+raah: regress:00000434:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+raah: regress:00000435:  errmsg("final calculation function \"%s\" called with invalid parameters", 
+raah: regress:00000436:  format_procedure(fcinfo->flinfo->fn_oid)))); 
 aaaaa GP_IGNORE: saah: student - ./backend/utils/stat/student.c
-saah: student:00000223:  ereport(ERROR, 
-saah: student:00000224:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saah: student:00000225:  errmsg("student_t_cdf called with %d arguments", 
-saah: student:00000226:  PG_NARGS()))); 
+saah: student:00000225:  ereport(ERROR, 
+saah: student:00000226:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saah: student:00000227:  errmsg("student_t_cdf called with %d arguments", 
+saah: student:00000228:  PG_NARGS()))); 
 aaaaa GP_IGNORE: caai: combocid - ./backend/utils/time/combocid.c
 caai: combocid:00000244:  elog(ERROR, "EntryReader qExec tried to allocate a Combo Command Id"); 
 caai: combocid:00000246:  elog(ERROR, "Reader qExec tried to allocate a Combo Command Id"); 
