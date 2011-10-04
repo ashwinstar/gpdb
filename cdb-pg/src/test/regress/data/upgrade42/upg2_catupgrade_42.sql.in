@@ -428,19 +428,27 @@ INSERT INTO @gpupgradeschemaname@.pg_attribute_encoding
 -- psql expands this for us
 \set pgcompressiondatafile `echo "'$GPHOME/share/postgresql/upgrade/pg_compression.data'"`
 
+-- Create a special schema for use by the pg_compression_load external table.
+-- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external
+-- table executed on the master only.
+create schema __@gpupgradeschemaname@_gpmigrator;
+
+-- Add entries to the master.
 COPY @gpupgradeschemaname@.pg_compression FROM
 	:pgcompressiondatafile WITH OIDS DELIMITER ',';
 
 create external web table 
-	@gpupgradeschemaname@.pg_compression_load(database text,
+	__@gpupgradeschemaname@_gpmigrator.pg_compression_load(database text,
 											  port text,
 											  status text)
   execute ' PGOPTIONS=''-c gp_session_role=utility'' psql -q --set ON_ERROR_STOP=ON -p $GP_SEG_PORT --command "copy @gpupgradeschemaname@.pg_compression from ''$GPHOME/share/postgresql/upgrade/pg_compression.data'' with oids csv" $GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
   format 'csv';
 
-select * from @gpupgradeschemaname@.pg_compression_load;
+select * from __@gpupgradeschemaname@_gpmigrator.pg_compression_load;
 
-drop external web table @gpupgradeschemaname@.pg_compression_load;
+drop external web table __@gpupgradeschemaname@_gpmigrator.pg_compression_load;
+
+drop schema __@gpupgradeschemaname@_gpmigrator;
 
 ---
 --- Fixes PL/Java template
