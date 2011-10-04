@@ -220,10 +220,7 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 
 		if (!ExecQual(node->baos_bitmapqualorig, econtext, false))
 		{
-			if (!node->ss.ps.delayEagerFree)
-			{
-				ExecEagerFreeBitmapAppendOnlyScan(node);
-			}
+			ExecEagerFreeBitmapAppendOnlyScan(node);
 
 			ExecClearTuple(slot);		/* would not be returned by scan */
 		}
@@ -264,10 +261,7 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 
 	if (tbm == NULL)
 	{
-		if (!node->ss.ps.delayEagerFree)
-		{
-			ExecEagerFreeBitmapAppendOnlyScan(node);
-		}
+		ExecEagerFreeBitmapAppendOnlyScan(node);
 
 		return ExecClearTuple(slot);
 	}
@@ -396,10 +390,7 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 	/*
 	 * if we get here it means we are at the end of the scan..
 	 */
-	if (!node->ss.ps.delayEagerFree)
-	{
-		ExecEagerFreeBitmapAppendOnlyScan(node);
-	}
+	ExecEagerFreeBitmapAppendOnlyScan(node);
 
 	return ExecClearTuple(slot);
 }
@@ -614,13 +605,6 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 	outerPlanState(scanstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	initGpmonPktForBitmapAppendOnlyScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
-
-	/*
-	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
-	 * then this node is not eager free safe.
-	 */
-	scanstate->ss.ps.delayEagerFree =
-		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
 
 	/*
 	 * all done.
