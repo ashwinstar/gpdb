@@ -974,7 +974,6 @@ pvk : gccVersionCheck version GPROOTDEP
 SET_VERSION_SCRIPTS = \
 	bin/gpactivatestandby \
 	bin/gpaddmirrors \
-	bin/gpmovemirrors \
 	bin/gpbitmapreindex \
 	bin/gpcheckos \
 	bin/gpcheckperf \
@@ -989,6 +988,8 @@ SET_VERSION_SCRIPTS = \
 	bin/gplogfilter \
 	bin/gpmigrator \
 	bin/gpmigrator_mirror \
+	bin/gpmovemirrors \
+	bin/gppkg \
 	bin/gprebuildsystem \
 	bin/gprecoverseg \
 	bin/gpscp \
