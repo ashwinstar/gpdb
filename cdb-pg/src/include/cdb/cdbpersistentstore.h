@@ -431,6 +431,7 @@ typedef struct WritePersistentStateLockLocalVars
 		{ \
 			LWLockAcquire(PersistentObjLock , LW_EXCLUSIVE); \
 		} \
+		START_CRIT_SECTION(); \
 	}
 	
 #define WRITE_PERSISTENT_STATE_ORDERED_UNLOCK \
@@ -446,6 +447,7 @@ typedef struct WritePersistentStateLockLocalVars
 		{ \
 			LWLockRelease(PersistentObjLock); \
 		} \
+		END_CRIT_SECTION(); \
 	}
 
 // READ

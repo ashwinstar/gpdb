@@ -3373,15 +3373,19 @@ StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_AR
             break;
     }
 
-    write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
-                 processName, MyProcPid, signame);
+    write_stderr("\nUnexpected internal error: %s %d received signal %s\n"
+				 "(interrupt holdoff count %d, critical section count %d)\n",
+                 processName, MyProcPid, signame,
+				 InterruptHoldoffCount, CritSectionCount);
 
     errno = save_errno;
     ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
                     errFatalReturn(gp_reraise_signal),
                     errOmitLocation(true),
                     errmsg("Unexpected internal error: %s received signal %s",
-                           processName, signame) ));
+                           processName, signame),
+					errdetail("(interrupt holdoff count %d, critical section count %d)",
+			  				  InterruptHoldoffCount, CritSectionCount)));
 
     /**
      * We reach this point only if gp_reraise_signal is on.
