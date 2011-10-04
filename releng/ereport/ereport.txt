@@ -256,11 +256,6 @@ babb: bitmappages:00000435:  ereport(ERROR,
 babb: bitmappages:00000436:  (errcode(ERRCODE_INTERNAL_ERROR), 
 babb: bitmappages:00000437:  errmsg("failed to add LOV item to \"%s\"", 
 babb: bitmappages:00000438:  RelationGetRelationName(rel)))); 
-aaaaa GP_IGNORE: babc: bitmapsearch - ./backend/access/bitmap/bitmapsearch.c
-babc: bitmapsearch:00000412:  ereport(ERROR, 
-babc: bitmapsearch:00000413:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-babc: bitmapsearch:00000414:  errmsg("bitmap index scan key %d is null", 
-babc: bitmapsearch:00000415:  keyNo))); 
 aaaaa GP_IGNORE: baba: bitmaputil - ./backend/access/bitmap/bitmaputil.c
 baba: bitmaputil:00000098:  ereport(ERROR, 
 baba: bitmaputil:00000099:  (0, 
@@ -2412,93 +2407,93 @@ haae: heap:00001368:  ereport(ERROR,
 haae: heap:00001369:  (errcode(ERRCODE_DUPLICATE_TABLE), 
 haae: heap:00001370:  errmsg("relation \"%s\" already exists", relname), 
 haae: heap:00001371:  errOmitLocation(true))); 
-haae: heap:00001773:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-haae: heap:00001838:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
-haae: heap:00001839:  RelationGetRelid(relation), 
-haae: heap:00001840:  relation->rd_rel->relfilenode, 
-haae: heap:00001841:  segmentFileNum); 
-haae: heap:00001883:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00001884:  attnum, relid); 
-haae: heap:00001992:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
-haae: heap:00001993:  relid, attnum); 
-haae: heap:00002029:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
-haae: heap:00002051:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002052:  myattnum, myrelid); 
-haae: heap:00002362:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002363:  attnum, RelationGetRelid(rel)); 
-haae: heap:00002643:  ereport(ERROR, 
-haae: heap:00002644:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002645:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
-haae: heap:00002646:  ccname, RelationGetRelationName(rel)), 
-haae: heap:00002647:  errOmitLocation(true))); 
-haae: heap:00002654:  ereport(ERROR, 
-haae: heap:00002655:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002656:  errmsg("check constraint \"%s\" already exists", 
-haae: heap:00002657:  ccname), 
-haae: heap:00002658:  errOmitLocation(true))); 
-haae: heap:00002747:  ereport(ERROR, 
-haae: heap:00002748:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002749:  errmsg("only table \"%s\" can be referenced in check constraint", 
-haae: heap:00002750:  relname), errOmitLocation(true))); 
-haae: heap:00002755:  ereport(ERROR, 
-haae: heap:00002756:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002757:  errmsg("cannot use subquery in check constraint"), 
-haae: heap:00002758:  errOmitLocation(true))); 
-haae: heap:00002760:  ereport(ERROR, 
-haae: heap:00002761:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002762:  errmsg("cannot use aggregate function in check constraint"), 
-haae: heap:00002763:  errOmitLocation(true))); 
-haae: heap:00002765:  ereport(ERROR, 
-haae: heap:00002766:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002767:  errmsg("cannot use window function in check constraint"), 
-haae: heap:00002768:  errOmitLocation(true))); 
-haae: heap:00002796:  elog(ERROR, "cache lookup failed for relation %u", 
-haae: heap:00002797:  RelationGetRelid(rel)); 
-haae: heap:00002851:  ereport(ERROR, 
-haae: heap:00002852:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002853:  errmsg("cannot use column references in default expression"))); 
-haae: heap:00002859:  ereport(ERROR, 
-haae: heap:00002860:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002861:  errmsg("default expression must not return a set"), 
-haae: heap:00002862:  errOmitLocation(true))); 
-haae: heap:00002868:  ereport(ERROR, 
-haae: heap:00002869:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002870:  errmsg("cannot use subquery in default expression"), 
-haae: heap:00002871:  errOmitLocation(true))); 
-haae: heap:00002873:  ereport(ERROR, 
-haae: heap:00002874:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002875:  errmsg("cannot use aggregate function in default expression"), 
-haae: heap:00002876:  errOmitLocation(true))); 
-haae: heap:00002878:  ereport(ERROR, 
-haae: heap:00002879:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002880:  errmsg("cannot use window function in default expression"), 
-haae: heap:00002881:  errOmitLocation(true))); 
-haae: heap:00002897:  ereport(ERROR, 
-haae: heap:00002898:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002899:  errmsg("column \"%s\" is of type %s" 
-haae: heap:00002900:  " but default expression is of type %s", 
-haae: heap:00002901:  attname, 
-haae: heap:00002902:  format_type_be(atttypid), 
-haae: heap:00002903:  format_type_be(type_id)), 
-haae: heap:00002904:  errhint("You will need to rewrite or cast the expression."), 
-haae: heap:00002905:  errOmitLocation(true))); 
-haae: heap:00003212:  ereport(ERROR, 
-haae: heap:00003213:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003214:  errmsg("unsupported ON COMMIT and foreign key combination"), 
-haae: heap:00003215:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
-haae: heap:00003216:  relname2, relname), 
-haae: heap:00003217:  errOmitLocation(true))); 
-haae: heap:00003219:  ereport(ERROR, 
-haae: heap:00003220:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003221:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
-haae: heap:00003222:  errdetail("Table \"%s\" references \"%s\".", 
-haae: heap:00003223:  relname2, relname), 
-haae: heap:00003224:  errhint("Truncate table \"%s\" at the same time, " 
-haae: heap:00003225:  "or use TRUNCATE ... CASCADE.", 
-haae: heap:00003226:  relname2), 
-haae: heap:00003227:  errOmitLocation(true))); 
-haae: heap:00003348:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003349:  RelationGetRelid(relation)); 
+haae: heap:00001771:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+haae: heap:00001836:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
+haae: heap:00001837:  RelationGetRelid(relation), 
+haae: heap:00001838:  relation->rd_rel->relfilenode, 
+haae: heap:00001839:  segmentFileNum); 
+haae: heap:00001881:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00001882:  attnum, relid); 
+haae: heap:00001990:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
+haae: heap:00001991:  relid, attnum); 
+haae: heap:00002027:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
+haae: heap:00002049:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002050:  myattnum, myrelid); 
+haae: heap:00002360:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002361:  attnum, RelationGetRelid(rel)); 
+haae: heap:00002641:  ereport(ERROR, 
+haae: heap:00002642:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002643:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
+haae: heap:00002644:  ccname, RelationGetRelationName(rel)), 
+haae: heap:00002645:  errOmitLocation(true))); 
+haae: heap:00002652:  ereport(ERROR, 
+haae: heap:00002653:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002654:  errmsg("check constraint \"%s\" already exists", 
+haae: heap:00002655:  ccname), 
+haae: heap:00002656:  errOmitLocation(true))); 
+haae: heap:00002745:  ereport(ERROR, 
+haae: heap:00002746:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002747:  errmsg("only table \"%s\" can be referenced in check constraint", 
+haae: heap:00002748:  relname), errOmitLocation(true))); 
+haae: heap:00002753:  ereport(ERROR, 
+haae: heap:00002754:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002755:  errmsg("cannot use subquery in check constraint"), 
+haae: heap:00002756:  errOmitLocation(true))); 
+haae: heap:00002758:  ereport(ERROR, 
+haae: heap:00002759:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002760:  errmsg("cannot use aggregate function in check constraint"), 
+haae: heap:00002761:  errOmitLocation(true))); 
+haae: heap:00002763:  ereport(ERROR, 
+haae: heap:00002764:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002765:  errmsg("cannot use window function in check constraint"), 
+haae: heap:00002766:  errOmitLocation(true))); 
+haae: heap:00002794:  elog(ERROR, "cache lookup failed for relation %u", 
+haae: heap:00002795:  RelationGetRelid(rel)); 
+haae: heap:00002849:  ereport(ERROR, 
+haae: heap:00002850:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002851:  errmsg("cannot use column references in default expression"))); 
+haae: heap:00002857:  ereport(ERROR, 
+haae: heap:00002858:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002859:  errmsg("default expression must not return a set"), 
+haae: heap:00002860:  errOmitLocation(true))); 
+haae: heap:00002866:  ereport(ERROR, 
+haae: heap:00002867:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002868:  errmsg("cannot use subquery in default expression"), 
+haae: heap:00002869:  errOmitLocation(true))); 
+haae: heap:00002871:  ereport(ERROR, 
+haae: heap:00002872:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002873:  errmsg("cannot use aggregate function in default expression"), 
+haae: heap:00002874:  errOmitLocation(true))); 
+haae: heap:00002876:  ereport(ERROR, 
+haae: heap:00002877:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002878:  errmsg("cannot use window function in default expression"), 
+haae: heap:00002879:  errOmitLocation(true))); 
+haae: heap:00002895:  ereport(ERROR, 
+haae: heap:00002896:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002897:  errmsg("column \"%s\" is of type %s" 
+haae: heap:00002898:  " but default expression is of type %s", 
+haae: heap:00002899:  attname, 
+haae: heap:00002900:  format_type_be(atttypid), 
+haae: heap:00002901:  format_type_be(type_id)), 
+haae: heap:00002902:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002903:  errOmitLocation(true))); 
+haae: heap:00003210:  ereport(ERROR, 
+haae: heap:00003211:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003212:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+haae: heap:00003213:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
+haae: heap:00003214:  relname2, relname), 
+haae: heap:00003215:  errOmitLocation(true))); 
+haae: heap:00003217:  ereport(ERROR, 
+haae: heap:00003218:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003219:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+haae: heap:00003220:  errdetail("Table \"%s\" references \"%s\".", 
+haae: heap:00003221:  relname2, relname), 
+haae: heap:00003222:  errhint("Truncate table \"%s\" at the same time, " 
+haae: heap:00003223:  "or use TRUNCATE ... CASCADE.", 
+haae: heap:00003224:  relname2), 
+haae: heap:00003225:  errOmitLocation(true))); 
+haae: heap:00003346:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003347:  RelationGetRelid(relation)); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000186:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000217:  elog(ERROR, "too few entries in indexprs list"); 
@@ -2748,10 +2743,10 @@ pabd: pgxappendonly:00000745:  ereport(ERROR,
 pabd: pgxappendonly:00000746:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 pabd: pgxappendonly:00000747:  errmsg("got invalid blkdirrelid value: NULL"))); 
 aaaaa GP_IGNORE: pacb: pgxattributexencoding - ./backend/catalog/pg_attribute_encoding.c
-pacb: pgxattributexencoding:00000248:  elog(ERROR, "column \"%s\" does not exist", strVal(c->column)); 
-pacb: pgxattributexencoding:00000251:  elog(ERROR, "column \"%s\" is a system column", strVal(c->column)); 
-pacb: pgxattributexencoding:00000322:  elog(ERROR, "cannot find pg_attribute_encoding entry for relation \"%s\"", 
-pacb: pgxattributexencoding:00000323:  relname ? relname : "unknown"); 
+pacb: pgxattributexencoding:00000261:  elog(ERROR, "column \"%s\" does not exist", strVal(c->column)); 
+pacb: pgxattributexencoding:00000264:  elog(ERROR, "column \"%s\" is a system column", strVal(c->column)); 
+pacb: pgxattributexencoding:00000335:  elog(ERROR, "cannot find pg_attribute_encoding entry for relation \"%s\"", 
+pacb: pgxattributexencoding:00000336:  relname ? relname : "unknown"); 
 aaaaa GP_IGNORE: pabe: pgxcompression - ./backend/catalog/pg_compression.c
 pabe: pgxcompression:00000123:  elog(ERROR, "compression name \"%s\" exceeds maximum name length " 
 pabe: pgxcompression:00000124:  "of %d bytes", comptype, NAMEDATALEN - 1); 
@@ -7280,9 +7275,9 @@ caba: cdbsubplan:00000325:  errmsg("Failed to locate datatype for paramid %d",
 caba: cdbsubplan:00000326:  paramid 
 caba: cdbsubplan:00000327:  ))); 
 aaaaa GP_IGNORE: cabc: cdbsubselect - ./backend/cdb/cdbsubselect.c
-cabc: cdbsubselect:00000925:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-cabc: cdbsubselect:00000926:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
-cabc: cdbsubselect:00000927:  )); 
+cabc: cdbsubselect:00000923:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+cabc: cdbsubselect:00000924:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
+cabc: cdbsubselect:00000925:  )); 
 aaaaa GP_IGNORE: cabj: cdbtargeteddispatch - ./backend/cdb/cdbtargeteddispatch.c
 cabj: cdbtargeteddispatch:00000539:  elog(ERROR, "Invalid plan node %d", nodeTag(node)); 
 aaaaa GP_IGNORE: cabd: cdbthreadwork - ./backend/cdb/cdbthreadwork.c
@@ -13177,9 +13172,9 @@ naah: nodeagg:00002347:  fcinfo->flinfo->fn_oid);
 aaaaa GP_IGNORE: nabd: nodebitmapand - ./backend/executor/nodeBitmapAnd.c
 nabd: nodebitmapand:00000158:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nace: nodebitmapappendonlyscan - ./backend/executor/nodeBitmapAppendOnlyscan.c
-nace: nodebitmapappendonlyscan:00000253:  elog(ERROR, "unrecognized result from subplan"); 
+nace: nodebitmapappendonlyscan:00000250:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabi: nodebitmapheapscan - ./backend/executor/nodeBitmapHeapscan.c
-nabi: nodebitmapheapscan:00000226:  elog(ERROR, "unrecognized result from subplan"); 
+nabi: nodebitmapheapscan:00000220:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabj: nodebitmapindexscan - ./backend/executor/nodeBitmapIndexscan.c
 nabj: nodebitmapindexscan:00000080:  elog(ERROR, "unrecognized result from bitmap index scan"); 
 nabj: nodebitmapindexscan:00000163:  ereport(ERROR, 
@@ -14115,9 +14110,9 @@ saaj: subselect:00000712:  elog(ERROR, "unexpected PARAM_SUBLINK ID: %d", param-
 saaj: subselect:00000728:  elog(ERROR, "subquery output %d not found", 
 saaj: subselect:00000729:  param->paramid); 
 saaj: subselect:00000838:  elog(ERROR, "cache lookup failed for operator %u", opid); 
-saaj: subselect:00001336:  elog(ERROR, "unrecognized node type: %d", 
-saaj: subselect:00001337:  (int) nodeTag(plan)); 
-saaj: subselect:00001358:  elog(ERROR, "plan should not reference subplan's variable"); 
+saaj: subselect:00001338:  elog(ERROR, "unrecognized node type: %d", 
+saaj: subselect:00001339:  (int) nodeTag(plan)); 
+saaj: subselect:00001360:  elog(ERROR, "plan should not reference subplan's variable"); 
 aaaaa GP_IGNORE: pabc: prepjointree - ./backend/optimizer/prep/prepjointree.c
 pabc: prepjointree:00000194:  elog(ERROR, "unrecognized join type: %d", 
 pabc: prepjointree:00000195:  (int) j->jointype); 
