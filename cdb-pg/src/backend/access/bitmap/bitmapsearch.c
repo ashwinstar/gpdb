@@ -409,10 +409,9 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir  __attribute__((unused
 	{
 		if (scan->keyData[keyNo].sk_flags & SK_ISNULL)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("bitmap index scan key %d is null",
-							keyNo)));
+			/* Null key passed to bitmap index scan. Return empty result */
+			Assert(scanPos->nvec == 0);
+			scanPos->done = true;
 			return;
 		}
 	}
