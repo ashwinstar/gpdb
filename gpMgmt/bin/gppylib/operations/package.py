@@ -55,22 +55,12 @@ class GpdbVersionError(Exception):
     pass
 
 class AlreadyInstalledError(Exception):
-    '''
-        Exception to notify that the package
-        was already installed. 
-        This exception is used during install  
-    '''
-    def __init__(self, pkgname):
-        Exception.__init__(self, '%s is Already Installed' % pkgname)
+    def __init__(self, package_name):
+        Exception.__init__(self, '%s is already installed.' % package_name)
 
 class NotInstalledError(Exception):
-    '''
-        Exception to notify that the package
-        was not installed. 
-        This exception is used during uninstall  
-    '''
-    def __init__(self, pkgname):
-        Exception.__init__(self, '%s is Not Installed' % pkgname)
+    def __init__(self, package_name):
+        Exception.__init__(self, '%s is not installed.' % package_name)
 
 class BuildPkgError(Exception):
     '''
@@ -556,7 +546,7 @@ class ValidateInstallRpms(Operation):
     def execute(self):
         rpm_set = set([self.gppkg.main_rpm] + self.gppkg.dependencies)
         rpm_install_string = ' '.join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
-        rpm_install_command = 'rpm --test -i %s --dbpath %s' % (rpm_install_string, RPM_DATABASE)
+        rpm_install_command = 'rpm --test -i %s --dbpath %s --prefix %s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
         cmd = Command('Validating rpm installation', rpm_install_command)
         logger.info(cmd)        # TODO: AK: This should be debug(), but RMI cannot propagate a log level.
 
@@ -579,6 +569,7 @@ class ValidateInstallRpms(Operation):
                 # TODO: AK: Dependencies should be parsed out here and used to initialize
                 # this MissingDependencyError. However, this exception does not support
                 # multiple missing dependencies. Some refactoring work is needed in both places.
+                logger.error(e.cmd.get_results().stderr)
                 raise MissingDependencyError(None)
 
             # Code path 2, possibly (see docstring)
@@ -625,12 +616,8 @@ class ExtractPackage(Operation):
 
 
 
-class InstallSegGppkg(Operation):
+class InstallPackageLocally(Operation):
     """
-    TODO: AK: This needs a better name, InstallPackageLocally, perhaps. More importantly, this must
-    be reused from InstallPackage, because conceptually, InstallPackage := Parallel(Remote(InstallPackageLocally)).
-
-
     Installs a package on the local host
 
     This operation must take a slew of starting conditions and drive the state
@@ -641,32 +628,35 @@ class InstallSegGppkg(Operation):
     the main comprising rpm was uninstalled, dependent rpms were removed, the rpm database was
     corrupted, etc.
     """
-    def __init__(self, pkg_name):
-        self.pkg_name = pkg_name
-
+    def __init__(self, package_path):
+        self.package_path = package_path
     def execute(self): 
-        logger.info('Installing %s locally' % self.pkg_name)
-        current_package_location = os.path.join(GPHOME, self.pkg_name)
-        final_package_location = os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_name)
+        current_package_location = self.package_path
+        package_name = os.path.basename(current_package_location)
+        logger.info('Installing %s locally' % package_name)
+        final_package_location = os.path.join(GPPKG_ARCHIVE_PATH, package_name)
 
         gppkg = Gppkg.from_package_path(current_package_location)
         ExtractPackage(gppkg).run()
 
         rpm_set = ValidateInstallRpms(gppkg).run()
-        if rpm_set:
-            rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s' % \
-                                  (" ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set]), 
-                                   RPM_DATABASE, 
-                                   RPM_INSTALLATION_PATH)
-            cmd = Command('Installing rpms', rpm_install_command)
-            logger.info(cmd)
-            cmd.run(validateAfter = True)
+        if not rpm_set:
+            raise AlreadyInstalledError(gppkg.pkg)
+        rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s' % \
+                              (" ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set]), 
+                               RPM_DATABASE, 
+                               RPM_INSTALLATION_PATH)
+        cmd = Command('Installing rpms', rpm_install_command)
+        logger.info(cmd)
+        cmd.run(validateAfter = True)
 
         # TODO: AK: Here, we are not being resilient to the package archive already
         # residing at final_package_location. This is technically not a bug, because
-        # SyncPackages will not trigger an InstallSegGppkg if the package archive already exists. 
+        # SyncPackages will not trigger an InstallPackageLocally if the package archive already exists. 
         # However, this assumption may not necessarily hold with later design improvements.
-        shutil.move(current_package_location, final_package_location)
+        MakeDir(GPPKG_ARCHIVE_PATH).run()
+        shutil.copy(current_package_location, final_package_location)
+        logger.info("Completed local installation of %s." % package_name)
 
 
 
@@ -788,11 +778,13 @@ class SyncPackages(Operation):
             logger.info('The following packages will be installed on %s: %s' % (self.host, ', '.join(install_package_set)))
             for package in install_package_set:
                 logger.debug('copying %s to %s' % (package, self.host))
+                dstFile = os.path.join(GPHOME, package)
                 Scp(name = 'copying %s to %s' % (package, self.host), 
                     srcFile = os.path.join(GPPKG_ARCHIVE_PATH, package), 
-                    dstFile = os.path.join(GPHOME, package), 
+                    dstFile = dstFile, 
                     dstHost = self.host).run(validateAfter = True)
-                RemoteOperation(InstallSegGppkg(package), self.host).run()
+                RemoteOperation(InstallPackageLocally(dstFile), self.host).run()
+                RemoveRemoteFile(dstFile, self.host).run()
 
         if uninstall_package_set:
             logger.info('The following packages will be uninstalled on %s: %s' % (self.host, ', '.join(uninstall_package_set)))
@@ -1370,3 +1362,40 @@ class CleanGppkg(Operation):
                 raise ExceptionNoStackTraceNeeded('SyncPackages failed' + str(e))      
 
         logger.info('Successfully cleaned the cluster')
+
+
+
+class MigratePackages(Operation):
+    """
+    Migrates packages from another $GPHOME to this one
+
+    This functionality is meant to facilitate minor version upgrade, whereby old packages
+    need to be brought over from the older $GPHOME to the newer $GPHOME.
+
+    Presumably, this could also be used to migrate packages across arbitrary choices
+    of $GPHOMEs. However, the migration will only succeed if the packages being migrated
+    are actually compatible with the target GPDB.
+    """
+    def __init__(self, from_gphome, to_gphome):
+        self.from_gphome, self.to_gphome = from_gphome, to_gphome
+    def execute(self):
+        if not os.path.samefile(self.to_gphome, GPHOME):
+            raise ExceptionNoStackTraceNeeded('Packages cannot be migrated to a <to_gphome> that does not match this $GPHOME.')
+        if os.path.samefile(self.to_gphome, self.from_gphome):
+            raise ExceptionNoStackTraceNeeded('<from_gphome> and <to_gphome> must differ for packages to be migrated.')
+
+        old_archive_path = os.path.join(self.from_gphome, ARCHIVE_PATH)
+        MakeDir(old_archive_path).run()
+        packages = ListFilesByPattern(old_archive_path, '*' + GPPKG_EXTENSION).run()
+        if not packages:
+            logger.info('There are no packages to migrate from %s' % self.from_gphome)
+            return
+
+        for package in packages:
+            package_path = os.path.join(old_archive_path, package)
+            try:
+                InstallPackageLocally(package_path).run()
+            except AlreadyInstalledError:
+                logger.info("%s was already installed." % package)
+            except Exception:
+                logger.exception("Failed to migrate %s from %s" % (old_archive_path, package))

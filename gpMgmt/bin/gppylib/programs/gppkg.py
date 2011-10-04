@@ -16,7 +16,7 @@ try:
     from gppylib.gpversion import GpVersion
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
-    from gppylib.operations.package import InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
+    from gppylib.operations.package import MigratePackages, InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
     from gppylib.operations.unix import ListFilesByPattern
 
     import yaml
@@ -39,13 +39,14 @@ class GpPkgProgram:
         # TODO: AK: There should be no need to hold onto self.__args
         # Whatever's needed from args should be pulled out here to adhere with convention
         self.__args = args
-        if options.masterDataDirectory is None:
-            options.masterDataDirectory  = gp.get_masterdatadir()        
         self.master_datadir = options.masterDataDirectory 
-        self.master_port = self._get_master_port(self.master_datadir)
+
+        # TODO: AK: Program logic should not be dictating master, standby, and segment information
+        # In other words, the fundamental Operations should have APIs that preclude the need for this.
         self.master_host = None
         self.standby_host = None
         self.segment_host_list = None
+
         self.query = options.query
         self.build = options.build
         self.install = options.install
@@ -53,10 +54,16 @@ class GpPkgProgram:
         self.update = options.update
         self.clean = options.clean
 
+        self.migrate = None
+        if options.migrate:
+            if len(args) != 2:
+                raise ExceptionNoStackTraceNeeded('Invalid syntax, expecting "gppkg --migrate <from_gphome> <to_gphome>".')
+            self.migrate = (args[0], args[1])
+
     @staticmethod
     def create_parser():
         parser = OptParser(option_class=OptChecker,
-            description="Install/Update/Remove a gppkg.",
+            description="Greenplum Package Manager",
             version='%prog version $Revision: #1 $')
         parser.setHelp([])
 
@@ -76,6 +83,7 @@ class GpPkgProgram:
         add_to.add_option('-r', '--remove', help='remove the given gppkg', metavar='<name>-<version>')
         add_to.add_option('-b', '--build', help='build a gppkg', metavar='<directory>')
         add_to.add_option('-q', '--query', help='query the given gppkg', metavar='<package>')
+        add_to.add_option('--migrate', help='migrate gppkgs from a separate $GPHOME', metavar='<from_gphome> <to_gphome>', action='store_true', default=False)
 
         add_to = OptionGroup(parser, 'Query Options')
         parser.add_option_group(add_to)
@@ -92,17 +100,18 @@ class GpPkgProgram:
         return GpPkgProgram(options, args)    
 
     def _get_gpdb_host_list(self):
+        """
+        TODO: AK: Get rid of this. Program logic should not be driving host list building .
         
-        ''' 
             This method gets the host names 
             of all hosts in the gpdb array.
             It sets the following variables 
                 GpPkgProgram.master_host to master
                 GpPkgProgram.standby_host to standby
                 GpPkgProgram.segment_host_list to segment hosts
-        '''
+        """
         
-        logger.debug('_get_dpdb_host_list')
+        logger.debug('_get_gpdb_host_list')
         
         #Get host list
         gparr = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility = True)
@@ -146,7 +155,6 @@ class GpPkgProgram:
         return pgconf_dict.int('port')
 
     def run(self):
-
         if self.build:
             BuildGppkg(self.build).run()    
             return 
@@ -169,7 +177,18 @@ class GpPkgProgram:
             if len(results) != 0 and 'not found' in results:
                 raise ExceptionNoStackTraceNeeded('gppkg requires RPM to be available in PATH') 
 
-        #Get the host list first
+        if self.migrate:
+            MigratePackages(from_gphome = self.migrate[0],
+                            to_gphome = self.migrate[1]).run()
+            return
+
+        # MASTER_DATA_DIRECTORY and PGPORT must not need to be set for 
+        # --build and --migrate to function properly
+        if self.master_datadir is None:
+            self.master_datadir = gp.get_masterdatadir()
+        self.master_port = self._get_master_port(self.master_datadir)
+
+        # TODO: AK: Program logic should not drive host decisions.
         self._get_gpdb_host_list()
 
         if self.install:
@@ -184,7 +203,8 @@ class GpPkgProgram:
                         pkg = None
                 else:
                     pkg = Gppkg.from_package_path(self.__args[0])
-            except KeyError, ex:
+            except KeyError, ex:                    
+                # TODO: AK: This is not an appropriate place or approach to catching this exception. 
                 print 'Missing key %s' % str(ex)
 
             if self.query in ['I', 'info', 'R', 'requires', 'l', 'list', '--info', '--list', '--requires', '-I', '-R', '-l', 'all', '--all']:
