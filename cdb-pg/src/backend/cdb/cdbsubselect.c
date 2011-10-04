@@ -271,6 +271,14 @@ safe_to_convert_NOT_EXISTS(SubLink *sublink, ConvertSubqueryToJoinContext *ctx1)
 	}
 
 	/**
+	 * If there is a having clause, then don't bother.
+	 */
+	if (subselect->havingQual)
+	{
+		return false;
+	}
+
+	/**
 	 * If there is a limit offset, then don't bother.
 	 */
 	if (subselect->limitOffset)
