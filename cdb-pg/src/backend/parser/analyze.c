@@ -2010,8 +2010,10 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 
 	/*
 	 * Postprocess foreign-key constraints.
+	 * But don't cascade FK constraints to parts, yet.
 	 */
-	transformFKConstraints(pstate, &cxt, true, false);
+	if ( ! stmt->is_part_child )
+		transformFKConstraints(pstate, &cxt, true, false);
 
 	/*
 	 * Analyze attribute encoding clauses
