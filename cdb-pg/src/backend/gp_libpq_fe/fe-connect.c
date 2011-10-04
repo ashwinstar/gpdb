@@ -2290,8 +2290,6 @@ closePGconn(PGconn *conn)
 		 * Try to send "close connection" message to backend. Ignore any
 		 * error.
 		 */
-		if (Debug_filerep_print)
-			elog(LOG, "LOG(filerep):close connection");
 		pqPutMsgStart('X', false, conn);
 		pqPutMsgEnd(conn);
 		pqFlush(conn);
