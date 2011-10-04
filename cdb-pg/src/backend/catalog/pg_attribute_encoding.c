@@ -24,6 +24,30 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+
+/*
+ * Get the set of functions implementing a compression algorithm.
+ *
+ * Intercept requests for "none", since that is not a real compression
+ * implementation but a fake one to indicate no compression desired.
+ */
+static PGFunction *
+get_funcs_for_compression(char *compresstype)
+{
+	PGFunction *func = NULL;
+
+	if (!compresstype)
+		return func;
+
+	if (pg_strcasecmp("none", compresstype) != 0)
+	{
+		func = GetCompressionImplementation(compresstype);
+
+		Insist(PointerIsValid(func));
+	}
+	return func;
+}
+
 static Datum *
 get_rel_attoptions(Relation rel)
 {
@@ -138,15 +162,7 @@ RelationGetColumnCompressionFuncs(Relation rel)
 	{
 		if (opts[i])
 		{
-			if (strcmp("none", opts[i]->compresstype) != 0)
-			{
-				PGFunction *func =
-					GetCompressionImplementation(opts[i]->compresstype);
-
-				Insist(PointerIsValid(func));
-
-				funcs[i] = func;
-			}
+			funcs[i] = get_funcs_for_compression(opts[i]->compresstype);
 		}
 	}
 	return funcs;
@@ -199,10 +215,7 @@ RelationGetRelationCompressionFuncs(Relation rel)
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
 	comptype = aoentry->compresstype;
 
-	if (comptype != NULL)
-		compFuncs =	GetCompressionImplementation(comptype);
-	else
-		compFuncs = NULL;
+	compFuncs =	get_funcs_for_compression(comptype);
 
 	return compFuncs;
 
