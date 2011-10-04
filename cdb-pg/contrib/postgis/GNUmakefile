@@ -50,12 +50,10 @@ postgis-clean:
 	$(MAKE) -C postgis clean
 
 postgis-install:
-	$(MAKE) -C postgis deps-install
 	$(MAKE) -C postgis install
 
 postgis-uninstall:
 	$(MAKE) -C postgis uninstall
-	$(MAKE) -C postgis deps-uninstall
 
 loaderdumper:
 	$(MAKE) -C loader
@@ -107,11 +105,12 @@ utils:
 
 BLD_TOP=../../..
 include $(BLD_TOP)/Makefile.global     # for BLD_ARCH
-GEOS_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/geos-3.2.2
+include $(BLD_TOP)/releng/tools.mk
+GEOS_DIR=$(RELENG_TOOLS)/geos-3.2.2
 GEOS_CONFIG=$(GEOS_DIR)/bin/geos-config
-PROJ_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/proj-4.7.0
+PROJ_DIR=$(RELENG_TOOLS)/proj-4.7.0
 
-config.status:
+config.status: $(GEOS_DIR) $(PROJ_DIR)
 	GEOS_PREFIX=$(GEOS_DIR) ./configure --with-geosconfig=$(GEOS_CONFIG) --with-projdir=$(PROJ_DIR)
 
 .PHONY: utils liblwgeom

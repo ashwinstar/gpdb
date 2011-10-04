@@ -61,9 +61,10 @@ OBJS=$(PG_OBJS)
 # supplied with newer versions of PostGIS
 BLD_TOP=../../../..
 include $(BLD_TOP)/Makefile.global     # for BLD_ARCH
-GEOS_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/geos-3.2.2
+include $(BLD_TOP)/releng/tools.mk
+GEOS_DIR=$(RELENG_TOOLS)/geos-3.2.2
 GEOS_CONFIG=$(GEOS_DIR)/bin/geos-config
-PROJ_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/proj-4.7.0
+PROJ_DIR=$(RELENG_TOOLS)/proj-4.7.0
 
 PG_CPPFLAGS+= -I$(GEOS_DIR)/include -I$(PROJ_DIR)/include -I../liblwgeom
 SHLIB_LINK+= -L$(GEOS_DIR)/lib -L$(PROJ_DIR)/lib -lgeos_c -lproj ../liblwgeom/liblwgeom.a

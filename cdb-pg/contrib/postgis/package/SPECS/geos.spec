@@ -1,8 +1,8 @@
 %define maindir     %(echo `cd ../../../..;pwd`)
 %define _topdir     %{maindir}/cdb-pg/contrib/postgis/package
 %define name        geos 
-%define release     2
-%define version     3.2 
+%define release     1
+%define version     3.2.2
 %define buildroot   %{_topdir}/geos 
 %define buildarch   %(uname -p)
 %define __os_install_post %{nil}
@@ -25,11 +25,10 @@ The Geos module provides geometric library which is used by PostGIS.
 
 %prep
 rm -rf %{buildroot}
+mkdir -p %{buildroot}/temp/lib
 
 %install
-mkdir -p %{buildroot}/temp/share/packages
-cp -rf %{maindir}/ext/%{arch}/geos-%{version}.%{release}   %{buildroot}/temp/share/packages
-rm -f %{buildroot}/temp/share/packages/geos-%{version}.%{release}/checksums*
+cp -rf %{geos_dir}/lib/libgeos* %{buildroot}/temp/lib/
 
 %files
 /temp

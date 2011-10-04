@@ -1,8 +1,8 @@
 %define maindir     %(echo `cd ../../../..;pwd`)
 %define _topdir     %{maindir}/cdb-pg/contrib/postgis/package 
 %define name        proj 
-%define release     0
-%define version     4.7 
+%define release     1
+%define version     4.7.0
 %define buildroot   %{_topdir}/proj 
 %define buildarch   %(uname -p)
 %define __os_install_post %{nil}
@@ -25,11 +25,10 @@ The Proj module provides cartographic projections library which is used by PostG
 
 %prep
 rm -rf %{buildroot}
+mkdir -p %{buildroot}/temp/lib
 
 %install
-mkdir -p %{buildroot}/temp/share/packages
-cp -rf %{maindir}/ext/%{arch}/proj-%{version}.%{release}   %{buildroot}/temp/share/packages 
-rm -f %{buildroot}/temp/share/packages/checksums*
+cp -rf %{proj_dir}/lib/libproj*   %{buildroot}/temp/lib
 
 %files
 /temp

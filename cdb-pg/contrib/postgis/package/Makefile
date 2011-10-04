@@ -1,40 +1,48 @@
-#Build gppkg
-
-all: gppkg
-
-BLD_TOP=../../../../
-include $(BLD_TOP)/Makefile.global     # for BLD_ARCH
-GEOS_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/geos-3.2.2
-GEOS_CONFIG=$(GEOS_DIR)/bin/geos-config
-PROJ_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/proj-4.7.0
 MACHINE_ARCH=$(shell uname -p)
 OS=$(shell uname -s)
-GPMGMT=../../../../gpMgmt
 
-gppkg:
-ifeq ( , $(wildcard $(BLD_TOP)/ext/$(BLD_ARCH)/proj-4.7.0))
-	echo 'proj-4.7.0 could not be found'
-	echo 'exiting postgis build'
-	exit 1	
-endif
-ifeq ( , $(wildcard $(BLD_TOP)/ext/$(BLD_ARCH)/geos-3.2.2))
-	echo 'geos-3.2.2 could not be found'
-	echo 'exiting postgis build'
-	exit 1
-endif
+GEOS_VER=3.2.2
+GEOS_REL=1
+GEOS_DIR=$(RELENG_TOOLS)/geos-$(GEOS_VER)
+GEOS_CONFIG=$(GEOS_DIR)/bin/geos-config
+GEOS_RPM=geos-$(GEOS_VER)-$(GEOS_REL).$(MACHINE_ARCH).rpm
+
+PROJ_VER=4.7.0
+PROJ_REL=1
+PROJ_DIR=$(RELENG_TOOLS)/proj-$(PROJ_VER)
+PROJ_RPM=proj-$(PROJ_VER)-$(PROJ_REL).$(MACHINE_ARCH).rpm
+
+POSTGIS_VER=1.4.2
+POSTGIS_REL=1
+POSTGIS_RPM=postgis-$(POSTGIS_VER)-$(POSTGIS_REL).$(MACHINE_ARCH).rpm
+POSTGIS_GPPKG=postgis-$(POSTGIS_VER)-$(OS)-$(MACHINE_ARCH).gppkg
+
+all: $(POSTGIS_GPPKG)
+
+BLD_TOP=../../../../
+GPMGMT=$(BLD_TOP)/gpMgmt
+include $(BLD_TOP)/releng/tools.mk
+
+# e.g. 
+# postgis-1.4.2-1-x86_64.rpm
+RPM_ARGS=$(subst -, ,$*)
+RPM_NAME=$(word 1,$(RPM_ARGS))
+%.rpm:
+	mkdir RPMS SOURCES BUILD SRPMS
+	rpmbuild -bb SPECS/$(RPM_NAME).spec --define "geos_dir $(GEOS_DIR)" --define "proj_dir $(PROJ_DIR)" \
+										--define "geos_ver $(GEOS_VER)" --define "proj_ver $(PROJ_VER)"
+	mv RPMS/$(MACHINE_ARCH)/$*.rpm .
+	rm -rf RPMS SOURCES BUILD SRPMS
+	
+$(POSTGIS_GPPKG): $(GEOS_DIR) $(PROJ_DIR) $(POSTGIS_RPM) $(PROJ_RPM) $(GEOS_RPM)
 	sed -i".bk" "s/#arch/$(MACHINE_ARCH)/g" gppkg/gppkg_spec.yml
 	sed -i".bk" "s/#os/$(OS)/g" gppkg/gppkg_spec.yml
 	rm -f gppkg/*.bk
-	rm -rf RPMS SOURCES BUILD SRPMS
-	mkdir RPMS SOURCES BUILD SRPMS
-	rpmbuild -bb SPECS/postgis.spec --define "geosversion 3.2-2"   --define "projversion 4.7-0" 
-	rpmbuild -bb SPECS/geos.spec --define "arch $(BLD_ARCH)" 
-	rpmbuild -bb SPECS/proj.spec --define "arch $(BLD_ARCH)" 
-	cp RPMS/$(MACHINE_ARCH)/postgis* gppkg/ 
+	cp $(POSTGIS_RPM) gppkg/ 
 	rm -rf gppkg/deps 
 	mkdir gppkg/deps 
-	cp RPMS/$(MACHINE_ARCH)/geos*   gppkg/deps 
-	cp RPMS/$(MACHINE_ARCH)/proj*   gppkg/deps 
+	cp $(GEOS_RPM) gppkg/deps 
+	cp $(PROJ_RPM) gppkg/deps 
 	$(GPMGMT)/bin/gppkg -b gppkg 
 
 clean:
@@ -42,6 +50,6 @@ clean:
 	rm -rf gppkg/deps
 	rm -rf geos
 	rm -rf proj
-	rm gppkg/*.rpm
+	rm -f $(POSTGIS_GPPKG) $(POSTGIS_RPM) $(GEOS_RPM) $(PROJ_RPM)
 
-.PHONY: gppkg clean
+.PHONY: clean
