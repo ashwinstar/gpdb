@@ -108,6 +108,12 @@ static inline int32 mke_get_run(MKEntry *e)
 static inline void mke_set_run(MKEntry *e, int32 run)
 {
     Assert(run >= 0 && run <= MKE_MAX_RUN);
+    /* If statement_mem is too small, we might end up generating 
+       too many runs. */ 
+    if (run > MKE_MAX_RUN)
+    {
+    	elog(ERROR, ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY);
+    } 
     i_clear_flag(&e->compflags, MKE_CF_Run);
     i_set_flag(&e->compflags, run << MKE_RunShift);
 }
@@ -118,7 +124,13 @@ static inline int32 mke_get_lv(MKEntry *e)
 }
 static inline void mke_set_lv(MKEntry *e, int32 lv)
 {
-    Assert(lv >= 0 && lv <= MKE_MAX_RUN);
+    Assert(lv >= 0 && lv <= MKE_MAX_LV);
+    /* If statement_mem is too small, we might end up generating 
+       too many runs. */ 
+    if (lv > MKE_MAX_LV) 
+    {
+		elog(ERROR, ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY);
+    }
     i_clear_flag(&e->compflags, MKE_CF_Lv);
     i_set_flag(&e->compflags, (MKE_MAX_LV - lv) << MKE_LvShift);
 }
