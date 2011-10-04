@@ -18,6 +18,10 @@
 /* See notes below */
 /* #include <clapack.h> */
 
+/* Our libblas in //cdb2/main/ext/ uses the prefix 'f2c_' for BLAS symbols  */
+#define ddot_ f2c_ddot
+#define dgemv_ f2c_dgemv
+
 /*
  * BLAS declarations copied from http://www.netlib.org/clapack/clapack.h
  * FIXME: The proper way would be to update the CLAPACK we use, including
