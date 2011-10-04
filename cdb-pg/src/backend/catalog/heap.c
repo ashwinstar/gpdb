@@ -1461,8 +1461,6 @@ heap_create_with_catalog(const char *relname,
 					   false,		/* Type NOT NULL */
 					   *comptypeOid,
 					   0);
-
-			Assert(new_type_oid == *comptypeOid);
 		}
 	}
 
