@@ -342,7 +342,7 @@ static bool ContainsParamWalker(Node *expr, void *ctx)
 	{
 		return false;
 	}
-	else if (IsA(expr, Param))
+	else if (IsA(expr, Param) || IsA(expr, SubPlan))
 	{
 		return true;
 	}
@@ -511,6 +511,12 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		}
 
 		/**
+		 * There should be no subplans in the scan node anymore.
+		 */
+		Assert(!contain_subplans((Node *) scanPlan->targetlist));
+		Assert(!contain_subplans((Node *) scanPlan->qual));
+
+		/**
 		 * Step 5: Construct result node's targetlist and quals
 		 */
 		MapVarsMutatorContext ctx1;
@@ -546,15 +552,29 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		((Plan *) res)->allParam = saveAllParam;
 		((Plan *) res)->extParam = saveExtParam;
 
+		/**
+		 * It is possible that there is an additional level of correlation in the result node.
+		 * we will need to recurse in these structures again.
+		 */
+		if (contain_subplans( (Node *) res->plan.targetlist))
+		{
+			res->plan.targetlist = (List *) ParallelizeCorrelatedSubPlanMutator( (Node *) res->plan.targetlist, ctx);
+		}
+		if (contain_subplans( (Node *) res->plan.qual))
+		{
+			res->plan.qual = (List *) ParallelizeCorrelatedSubPlanMutator( (Node *) res->plan.qual, ctx);
+		}
+
 		return (Node *) res;
 	}
 
 	if (IsA(node, SubPlan))
 	{
-		/**
-		 * Do not recurse into subplans.
-		 */
-		return node;
+		SubPlan *sp = (SubPlan *) node;
+		if (sp->is_initplan)
+		{
+			return node;
+		}
 	}
 
 	/**

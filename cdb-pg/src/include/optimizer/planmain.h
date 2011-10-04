@@ -126,7 +126,7 @@ extern Plan *add_repeat_node(Plan *result_plan, int repeat_count, uint64 groupin
  * prototypes for plan/createplan.c
  */
 extern Plan *create_plan(PlannerInfo *root, Path *path);
-extern SubqueryScan *make_subqueryscan(List *qptlist, List *qpqual,
+extern SubqueryScan *make_subqueryscan(PlannerInfo *root, List *qptlist, List *qpqual,
 				  Index scanrelid, Plan *subplan, List *subrtable);
 extern Append *make_append(List *appendplans, bool isTarget, List *tlist);
 extern Sort *make_sort_from_sortclauses(PlannerInfo *root, List *sortcls,

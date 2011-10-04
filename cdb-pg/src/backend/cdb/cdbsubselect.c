@@ -57,6 +57,28 @@ typedef struct NonNullableVarsContext
 	List *nonNullableVars; /* Known non-nullable vars */
 } NonNullableVarsContext;
 
+
+/**
+ * Walker that performs the following tasks:
+ * - It checks if a given expr is "safe" to be pulled up to be a join
+ * - Extracts out the vars from the outer query in the qual in order
+ * - Extracts out the vars from the inner query in the qual in order
+ */
+typedef struct ConvertSubqueryToJoinContext
+{
+	bool safeToConvert; /* Can correlated expression subquery be pulled up? */
+	bool considerNonEqualQual; /* Should we consider correlated expr of the form o.a OP i.b ?*/
+	Node *joinQual; /* Qual to employ to join subquery */
+	Node *innerQual; /* Qual to leave behind in subquery */
+	List *targetList; /* targetlist for subquery */
+	bool extractGrouping; /* extract grouping information based on join conditions */
+	List *groupClause; /* grouping clause for subquery */
+} ConvertSubqueryToJoinContext;
+
+static void ProcessSubqueryToJoin(Query *subselect, ConvertSubqueryToJoinContext *context);
+static void SubqueryToJoinWalker(Node *node, ConvertSubqueryToJoinContext *context);
+static void RemoveInnerJoinQuals(Query *subselect);
+
 static bool find_nonnullable_vars_walker(Node *node, NonNullableVarsContext *context);
 static bool is_attribute_nonnullable(Oid relationOid, AttrNumber attrNumber);
 static bool is_targetlist_nullable(Query *subq);
@@ -214,7 +236,7 @@ cdbsubselect_add_rte_and_ininfo(PlannerInfo    *root,
  * safe_to_convert_NOT_EXISTS
  */
 static bool
-safe_to_convert_NOT_EXISTS(SubLink *sublink)
+safe_to_convert_NOT_EXISTS(SubLink *sublink, ConvertSubqueryToJoinContext *ctx1)
 {
 	Query	       *subselect = (Query *)sublink->subselect;
 
@@ -229,15 +251,15 @@ safe_to_convert_NOT_EXISTS(SubLink *sublink)
 		return false;
 		
 	/**
-	 * If there are no correlations in the WHERE clause, then don't bother.
+	 * If there are no correlations, then don't bother.
 	 */
-	if (!contain_vars_of_level_or_above(sublink->subselect, 1))
+	if (!IsSubqueryCorrelated(subselect))
 		return false;
 
 	/**
 	 * If deeply correlated, don't bother.
 	 */
-	if (contain_vars_of_level_or_above(sublink->subselect, 2))
+	if (IsSubqueryMultiLevelCorrelated(subselect))
 		return false;
 
 	/**
@@ -249,39 +271,20 @@ safe_to_convert_NOT_EXISTS(SubLink *sublink)
 	}
 
 	/**
-	 * If subquery has more than one relation, then don't bother.
-	 */
-	if (list_length(subselect->rtable) > 1)
-		return false;
-
-	/**
 	 * If there is a limit offset, then don't bother.
 	 */
 	if (subselect->limitOffset)
 		return false;
 
-	return true;
-}
+	ProcessSubqueryToJoin(subselect, ctx1);
 
-/**
- * Walker that performs the following tasks:
- * - It checks if a given expr is "safe" to be pulled up to be a join
- * - Extracts out the vars from the outer query in the qual in order
- * - Extracts out the vars from the inner query in the qual in order
- */
-typedef struct ConvertExprToJoinWalkerContext
-{
-	bool safeToConvert; /* Can correlated expression subquery be pulled up? */
-	Node *joinQual; /* Qual to employ to join subquery */
-	Node *innerQual; /* Qual to leave behind in subquery */
-	List *groupClause; /* grouping clause for subquery */
-	List *targetList; /* targetlist for subquery */
-} ConvertExprToJoinWalkerContext;
+	return ctx1->safeToConvert;
+}
 
 /**
  * Initialize context.
  */
-static void InitConvertExprToJoinWalkerContext(ConvertExprToJoinWalkerContext *ctx)
+static void InitConvertSubqueryToJoinContext(ConvertSubqueryToJoinContext *ctx)
 {
 	Assert(ctx);
 	ctx->safeToConvert = true;
@@ -289,6 +292,60 @@ static void InitConvertExprToJoinWalkerContext(ConvertExprToJoinWalkerContext *c
 	ctx->innerQual = NULL;
 	ctx->groupClause = NIL;
 	ctx->targetList = NIL;
+	ctx->extractGrouping = false;
+	ctx->considerNonEqualQual = false;
+}
+
+/**
+ * Process correlated opexpr of the form outer.var OP inner.expr. Sets outerVar
+ * and innerExpr accordingly.
+ */
+static bool IsCorrelatedOpExpr(OpExpr *opexp, Var **outerVar, Expr **innerExpr)
+{
+	Assert(opexp);
+	Assert(list_length(opexp->args) > 1);
+	Assert(outerVar);
+	Assert(innerExpr);
+
+	if (list_length(opexp->args) != 2)
+	{
+		return false;
+	}
+
+	Expr *v1 = (Expr *) list_nth(opexp->args, 0);
+	Expr *v2 = (Expr *) list_nth(opexp->args, 1);
+
+	/**
+	 * One of the vars must be outer, and other must be inner.
+	 */
+
+	Var *tOuterVar = NULL;
+	Expr *tInnerExpr = NULL;
+
+	if (IsA(v1, Var) && ((Var *) v1)->varlevelsup > 0)
+	{
+		tOuterVar = (Var *) copyObject(v1);
+		tInnerExpr = v2;
+	}
+	else if (IsA(v2, Var) && ((Var *) v2)->varlevelsup > 0)
+	{
+		tOuterVar = (Var *) copyObject(v2);
+		tInnerExpr = v1;
+	}
+
+	/**
+	 * It is correlated only if we found an outer var and inner expr
+	 */
+
+	if (tOuterVar)
+	{
+		*outerVar = tOuterVar;
+		*innerExpr = tInnerExpr;
+		return true;
+	}
+
+	return false;
+
 }
 
 /**
@@ -302,12 +359,12 @@ static void InitConvertExprToJoinWalkerContext(ConvertExprToJoinWalkerContext *c
  * 	*innerVar - points to the inner var in the condition
  * 	*sortOp - postgres special, sort operator to implement the condition as a mergejoin.
  */
-static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Var **innerVar, Oid *sortOp )
+static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Expr **innerExpr, Oid *sortOp )
 {
 	Assert(opexp);
 	Assert(list_length(opexp->args) > 1);
 	Assert(outerVar);
-	Assert(innerVar);
+	Assert(innerExpr);
 	Assert(sortOp);
 
 	Oid lsortOp = InvalidOid;
@@ -319,11 +376,7 @@ static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Var **inn
 
 	bool isEqualityOp = op_mergejoinable(opexp->opno, &lsortOp, &rsortOp);
 
-	if (!isEqualityOp
-			|| list_length(opexp->args) != 2
-			|| !IsA(list_nth(opexp->args, 0), Var)
-			|| !IsA(list_nth(opexp->args, 1), Var)
-		)
+	if (!isEqualityOp)
 	{
 		return false;
 	}
@@ -331,47 +384,78 @@ static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Var **inn
 	Assert(lsortOp == rsortOp);
 	Assert(lsortOp != InvalidOid);
 
-	Var *v1 = (Var *) list_nth(opexp->args, 0);
-	Var *v2 = (Var *) list_nth(opexp->args, 1);
+	*sortOp = lsortOp;
+
+	if (!IsCorrelatedOpExpr(opexp, outerVar, innerExpr))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Process subquery to extract useful information to be able to convert it to a join
+ */
+static void ProcessSubqueryToJoin(Query *subselect, ConvertSubqueryToJoinContext *context)
+{
+	Assert(context);
+	Assert(context->safeToConvert);
+	Assert(subselect);
+	Assert(list_length(subselect->jointree->fromlist) == 1);
+	Node *joinQual = NULL;
 
 	/**
-	 * One of the vars must be outer, and other must be inner.
+	 * If subselect's join tree is not a plain relation or an inner join, we refuse to convert.
 	 */
-
-	Var *tOuterVar = NULL;
-	Var *tInnerVar = NULL;
-
-	if (v1->varlevelsup > 0)
+	Node *jtree = (Node *) list_nth(subselect->jointree->fromlist, 0);
+	if (IsA(jtree, JoinExpr))
 	{
-		tOuterVar = copyObject(v1);
+		JoinExpr *je = (JoinExpr *) jtree;
+		if (je->jointype != JOIN_INNER)
+		{
+			context->safeToConvert = false;
+			return;
+		}
+		joinQual = je->quals;
 	}
-	else
-	{
-		tInnerVar = copyObject(v1);
-	}
 
-	if (v2->varlevelsup > 0)
+	SubqueryToJoinWalker(subselect->jointree->quals, context);
+
+	if (context->safeToConvert)
 	{
-		tOuterVar = copyObject(v2);
-	}
-	else
-	{
-		tInnerVar = copyObject(v2);
+		SubqueryToJoinWalker(joinQual, context);
 	}
 
 	/**
-	 * It is correlated only if we found an inner and outer var.
+	 * If we haven't been able to extract a proper joinQual, then it is not safe to convert
 	 */
-
-	if (tOuterVar && tInnerVar)
+	if (!context->joinQual)
 	{
-		*outerVar = tOuterVar;
-		*innerVar = tInnerVar;
-		*sortOp = lsortOp;
-		return true;
+		context->safeToConvert = false;
 	}
 
-	return false;
+	return;
+}
+
+/**
+ * Wipe out join quals i.e. top-level where clause and any quals in the top-level inner join.
+ */
+static void RemoveInnerJoinQuals(Query *subselect)
+{
+	Assert(subselect);
+	Assert(list_length(subselect->jointree->fromlist) == 1);
+
+	subselect->jointree->quals = NULL;
+
+	Node *jtree = (Node *) list_nth(subselect->jointree->fromlist, 0);
+	if (IsA(jtree, JoinExpr))
+	{
+		JoinExpr *je = (JoinExpr *) jtree;
+		Assert(je->jointype == JOIN_INNER);
+		je->quals = NULL;
+	}
+	return;
 }
 
 /**
@@ -381,11 +465,15 @@ static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Var **inn
  * This extracts interesting pieces of the subquery so as to create SELECT i.y, avg(i.x) from inner i GROUP by i.y
  */
 static void
-ConvertExprToJoinWalker(Node *node, ConvertExprToJoinWalkerContext *context)
+SubqueryToJoinWalker(Node *node, ConvertSubqueryToJoinContext *context)
 {
 	Assert(context);
 	Assert(context->safeToConvert);
-	Assert(node);
+
+	if (node == NULL)
+	{
+		return;
+	}
 
 	if (IsA(node, BoolExpr))
 	{
@@ -418,7 +506,7 @@ ConvertExprToJoinWalker(Node *node, ConvertExprToJoinWalkerContext *context)
 			 */
 			if (contain_vars_of_level_or_above(arg, 1))
 			{
-				ConvertExprToJoinWalker(arg, context);
+				SubqueryToJoinWalker(arg, context);
 
 				if (!context->safeToConvert)
 				{
@@ -447,25 +535,40 @@ ConvertExprToJoinWalker(Node *node, ConvertExprToJoinWalkerContext *context)
 			 */
 			Oid sortOp = InvalidOid;
 			Var *outerVar = NULL;
-			Var *innerVar = NULL;
+			Expr *innerExpr = NULL;
 
-			if (IsCorrelatedEqualityOpExpr(opexp, &outerVar, &innerVar, &sortOp))
+			bool considerOpExpr = false;
+
+			if (context->considerNonEqualQual)
 			{
-				GroupClause *gc = makeNode(GroupClause);
-				gc->sortop = sortOp;
-				gc->tleSortGroupRef = list_length(context->groupClause) + 1;
-				context->groupClause = lappend(context->groupClause, gc);
+				considerOpExpr = IsCorrelatedOpExpr(opexp, &outerVar, &innerExpr);
+			}
+			else
+			{
+				considerOpExpr = IsCorrelatedEqualityOpExpr(opexp, &outerVar, &innerExpr, &sortOp);
+			}
 
-				TargetEntry *tle = makeTargetEntry(copyObject(innerVar),		/* copy needed?? */
+			if (considerOpExpr)
+			{
+
+				TargetEntry *tle = makeTargetEntry(copyObject(innerExpr),
 						list_length(context->targetList) + 1,
 						NULL,
 						false);
-				tle->ressortgroupref = list_length(context->targetList) + 1;
-				context->targetList = lappend(context->targetList, tle);
 
+				if (context->extractGrouping)
+				{
+					GroupClause *gc = makeNode(GroupClause);
+					gc->sortop = sortOp;
+					gc->tleSortGroupRef = list_length(context->groupClause) + 1;
+					context->groupClause = lappend(context->groupClause, gc);
+					tle->ressortgroupref = list_length(context->targetList) + 1;
+				}
+
+				context->targetList = lappend(context->targetList, tle);
 				context->joinQual = make_and_qual(context->joinQual, (Node *) opexp);
 
-				Assert(list_length(context->groupClause) == list_length(context->targetList));
+				AssertImply(context->extractGrouping, list_length(context->groupClause) == list_length(context->targetList));
 
 				return;
 			}
@@ -486,7 +589,7 @@ ConvertExprToJoinWalker(Node *node, ConvertExprToJoinWalkerContext *context)
  * Safe to convert expr sublink to a join
  */
 static bool
-safe_to_convert_EXPR(SubLink *sublink, ConvertExprToJoinWalkerContext * ctx1)
+safe_to_convert_EXPR(SubLink *sublink, ConvertSubqueryToJoinContext * ctx1)
 {
 	Assert(ctx1);
 
@@ -505,13 +608,13 @@ safe_to_convert_EXPR(SubLink *sublink, ConvertExprToJoinWalkerContext * ctx1)
 	/**
 	 * If there are no correlations in the WHERE clause, then don't bother.
 	 */
-	if (!contain_vars_of_level_or_above(sublink->subselect, 1))
+	if (!IsSubqueryCorrelated(subselect))
 		return false;
 
 	/**
 	 * If deeply correlated, don't bother.
 	 */
-	if (contain_vars_of_level_or_above(sublink->subselect, 2))
+	if (IsSubqueryMultiLevelCorrelated(subselect))
 		return false;
 
 	/**
@@ -551,7 +654,7 @@ safe_to_convert_EXPR(SubLink *sublink, ConvertExprToJoinWalkerContext * ctx1)
 	 * Walk the quals of the subquery to do a more fine grained check as to whether this subquery
 	 * may be pulled up. Identify useful fragments to construct join condition if possible to pullup.
 	 */
-	ConvertExprToJoinWalker(subselect->jointree->quals, ctx1);
+	ProcessSubqueryToJoin(subselect, ctx1);
 
 	/**
 	 * There should be no outer vars in innerQual
@@ -577,8 +680,9 @@ convert_EXPR_to_join(PlannerInfo *root, List** rtrlist_inout, OpExpr *opexp)
 	Assert(IsA(rarg, SubLink));
 	SubLink *sublink = (SubLink *) rarg;
 
-	ConvertExprToJoinWalkerContext ctx1;
-	InitConvertExprToJoinWalkerContext(&ctx1);
+	ConvertSubqueryToJoinContext ctx1;
+	InitConvertSubqueryToJoinContext(&ctx1);
+	ctx1.extractGrouping = true;
 
 	if (safe_to_convert_EXPR(sublink, &ctx1))
 	{
@@ -606,6 +710,9 @@ convert_EXPR_to_join(PlannerInfo *root, List** rtrlist_inout, OpExpr *opexp)
 		subselectTargetList = add_to_flat_tlist(subselectTargetList, list_make1(origSubqueryTLE->expr), false);
 		subselect->targetList = subselectTargetList;
 		subselect->groupClause = ctx1.groupClause;
+
+		RemoveInnerJoinQuals(subselect);
+
 		subselect->jointree->quals = ctx1.innerQual;
 
 		/**
@@ -663,12 +770,16 @@ convert_NOT_EXISTS_to_antijoin(PlannerInfo *root, List** rtrlist_inout, SubLink 
 	Assert(root);
 	Assert(sublink);
 
-	Query	       *subselect = (Query *)sublink->subselect;
+	Query	       *subselect = (Query *)copyObject(sublink->subselect);
 	Assert(IsA(subselect, Query));
 
 	Query	   *parse = root->parse;
 
-	if (safe_to_convert_NOT_EXISTS(sublink))
+	ConvertSubqueryToJoinContext ctx1;
+	InitConvertSubqueryToJoinContext(&ctx1);
+	ctx1.considerNonEqualQual = true;
+
+	if (safe_to_convert_NOT_EXISTS(sublink, &ctx1))
 	{
 
 		/* Delete ORDER BY and DISTINCT. */
@@ -708,30 +819,49 @@ convert_NOT_EXISTS_to_antijoin(PlannerInfo *root, List** rtrlist_inout, SubLink 
 		if (!subselect->hasAggs)
 			subselect->groupClause = NIL;
 
+		/**
+		 * Create a new LASJ between the outer query's join expr and inner subselect's join expr
+		 */
 
 		Assert(list_length(parse->jointree->fromlist) == 1);
+		Assert(list_length(subselect->jointree->fromlist) == 1);
+		List *subselectTargetList = (List *) copyObject(ctx1.targetList);
+		subselect->targetList = subselectTargetList;
 
-		Node		*larg = lfirst(list_head(parse->jointree->fromlist)); /* represents the top-level join tree entry */
+		RemoveInnerJoinQuals(subselect);
 
+		subselect->jointree->quals = ctx1.innerQual;
+
+		/**
+		 * Construct a new range table entry for the new pulled up subquery.
+		 */
+		int rteIndex = add_expr_subquery_rte(root->parse, subselect);
+		Assert(rteIndex > 0);
+
+		/**
+		 * Construct the join expression involving the new pulled up subselect.
+		 */
+		Assert(list_length(root->parse->jointree->fromlist) == 1);
+		Node		*larg = lfirst(list_head(root->parse->jointree->fromlist)); /* represents the top-level join tree entry */
 		Assert(larg != NULL);
 
-		int varnoOffset = list_length(parse->rtable);
-		parse->rtable = list_concat(parse->rtable, subselect->rtable);
+		JoinExpr   *join_expr = make_join_expr(larg, rteIndex, JOIN_LASJ);
 
-		JoinExpr   *join_expr = make_join_expr(larg, varnoOffset + 1, JOIN_LASJ);
+		Node *joinQual = ctx1.joinQual;
 
-		Node *whereClause = subselect->jointree->quals;
+		/**
+		 * Make outer ones regular and regular ones correspond to rteIndex
+		 */
+		joinQual = (Node *) cdbpullup_expr( (Expr *) joinQual, subselect->targetList, NULL, rteIndex);
 
-		OffsetVarNodes(whereClause, varnoOffset, 0);
+		Node *innerCorrelatedVarsNotNull = not_null_inner_vars(joinQual);
 
-		Node *innerCorrelatedVarsNotNull = not_null_inner_vars(whereClause);
+		IncrementVarSublevelsUp(joinQual, -1, 1);
+		IncrementVarSublevelsUp(innerCorrelatedVarsNotNull, -1, 1);
 
-		IncrementVarSublevelsUp(whereClause, -1, 1);
+		join_expr->quals = make_and_qual(joinQual, innerCorrelatedVarsNotNull);
 
-		join_expr->quals = (Node *) make_andclause(list_make2(whereClause, innerCorrelatedVarsNotNull));
-
-		parse->jointree->fromlist = list_make1(join_expr); /* Replace the join-tree with the new one */
-
+		root->parse->jointree->fromlist = list_make1(join_expr); /* Replace the join-tree with the new one */
 		return NULL;
 	}
 
@@ -757,13 +887,23 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
     Assert(IsA(subselect, Query));
 
     if (subselect->jointree->fromlist == NULL)
+    {
     	return (Node *) sublink;
+    }
 
     if (has_correlation_in_funcexpr_rte(subselect->rtable))
     {
     	return (Node *) sublink;
     }
     
+	/**
+	 * If deeply correlated, don't bother.
+	 */
+	if (IsSubqueryMultiLevelCorrelated(subselect))
+	{
+    	return (Node *) sublink;
+	}
+
     /*
      * 'LIMIT n' makes EXISTS false when n <= 0, and doesn't affect the outcome
      * when n > 0.  Delete subquery's LIMIT and build (0 < n) expr to be ANDed
@@ -900,7 +1040,7 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	/**
 	 * If deeply correlated, then don't pull it up
 	 */
-	if (contain_vars_of_level_or_above(sublink->subselect, 2))
+	if (IsSubqueryMultiLevelCorrelated(subselect))
 		return (Node *) sublink;
 
     /*
@@ -1323,7 +1463,14 @@ static Node* not_null_inner_vars(Node *clause)
 		}
 	}
 
-	return (Node *) make_andclause(notNullClauses);
+	if (notNullClauses)
+	{
+		return (Node *) make_andclause(notNullClauses);
+	}
+	else
+	{
+		return NULL;
+	}
 }
 
 

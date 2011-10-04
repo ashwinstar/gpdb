@@ -301,11 +301,6 @@ static bool CorrelatedVarWalker(Node *node, CorrelatedVarWalkerContext *ctx)
 	return expression_tree_walker(node, CorrelatedVarWalker, ctx);
 }
 
-
-
-static bool IsSubqueryCorrelated(Query *sq);
-static bool IsSubqueryMultiLevelCorrelated(Query *sq);
-
 /**
  * Returns true if subquery is correlated
  */
@@ -1017,14 +1012,15 @@ process_sublinks_mutator(Node *node, process_sublinks_context *context)
 
 /*
  * SS_finalize_plan - do final sublink processing for a completed Plan.
- *
- * This recursively computes the extParam and allParam sets for every Plan
- * node in the given plan tree.  It also attaches any generated InitPlans
- * to the top plan node.  (Any InitPlans should already have been put through 
- * SS_finalize_plan.)
+ * Input:
+ * 	root - PlannerInfo structure that is necessary for walking the tree
+ * 	rtable - list of rangetable entries to look at for relids
+ * 	attach_initplans - attach all initplans to the top plan node from root
+ * Output:
+ * 	plan->extParam and plan->allParam - attach params to top of the plan
  */
 void
-SS_finalize_plan(PlannerInfo *root, Plan *plan, bool attach_initplans)
+SS_finalize_plan(PlannerInfo *root, List *rtable, Plan *plan, bool attach_initplans)
 {
 	Bitmapset  *outer_params,
 			   *valid_params,
@@ -1044,17 +1040,17 @@ SS_finalize_plan(PlannerInfo *root, Plan *plan, bool attach_initplans)
 	foreach(l, root->glob->paramlist)
 	{
 		PlannerParamItem *pitem = (PlannerParamItem *) lfirst(l);
+		if (IsA(pitem->item, Param))
+		{
+			Param *p = (Param *) pitem->item;
+			Assert(p->paramid == paramid);
+			valid_params = bms_add_member(valid_params, paramid);
+		}
 
 		if (pitem->abslevel < root->query_level)
 		{
 			/* valid outer-level parameter */
 			outer_params = bms_add_member(outer_params, paramid);
-			valid_params = bms_add_member(valid_params, paramid);
-		}
-		else if (pitem->abslevel == root->query_level &&
-				 IsA(pitem->item, Param))
-		{
-			/* valid local parameter (i.e., a setParam of my child) */
 			valid_params = bms_add_member(valid_params, paramid);
 		}
 
@@ -1064,7 +1060,7 @@ SS_finalize_plan(PlannerInfo *root, Plan *plan, bool attach_initplans)
 	/*
 	 * Now recurse through plan tree.
 	 */
-	(void) finalize_plan(root, plan, root->parse->rtable, 
+	(void) finalize_plan(root, plan, rtable,
 						 outer_params, valid_params);
 
 	bms_free(outer_params);
@@ -1202,6 +1198,17 @@ finalize_plan(PlannerInfo *root, Plan *plan, List *rtable,
 								 ((SubqueryScan *) plan)->subplan->extParam);
 			break;
 
+		case T_TableFunctionScan:
+			{
+				RangeTblEntry *rte;
+
+				rte = rt_fetch(((TableFunctionScan *) plan)->scan.scanrelid,
+							   rtable);
+				Assert(rte->rtekind == RTE_TABLEFUNCTION);
+				finalize_primnode(rte->funcexpr, &context);
+			}
+			break;
+
 		case T_FunctionScan:
 			{
 				RangeTblEntry *rte;
@@ -1311,7 +1318,6 @@ finalize_plan(PlannerInfo *root, Plan *plan, List *rtable,
 
 		case T_Hash:
 		case T_Agg:
-		case T_TableFunctionScan:
 		case T_Window:
 		case T_SeqScan:
 		case T_AppendOnlyScan:
@@ -1437,7 +1443,7 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	/*
 	 * Build extParam/allParam sets for plan nodes.
 	 */
-	SS_finalize_plan(root, plan, false);
+	SS_finalize_plan(root, root->parse->rtable, plan, false);
 	
 	/*
 	 * Add the subplan and its rtable to the global lists.

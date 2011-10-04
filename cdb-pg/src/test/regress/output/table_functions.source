@@ -1005,6 +1005,21 @@ SELECT * FROM multiset_5( TABLE( SELECT * from example_v) )  order by a, b;
  4 |  value4.1/1
 (10 rows)
 
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example WHERE a >= (SELECT min(a) FROM example))) order by a,b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
 WITH cte AS (SELECT * FROM example) SELECT * FROM multiset_5( TABLE ( SELECT * FROM cte ) )  order by a, b;
  a |      b      
 ---+-------------
@@ -1878,6 +1893,21 @@ explain SELECT * FROM multiset_5( TABLE( SELECT * from example_v) );
          ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
  Settings:  gp_segments_for_planner=8
 (4 rows)
+
+explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example WHERE a >= (SELECT min(a) FROM example)));
+                                              QUERY PLAN                                              
+------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=2.25..4.42 rows=2 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.25..4.42 rows=2 width=36)
+         ->  Seq Scan on example  (cost=2.25..4.38 rows=2 width=16)
+               Filter: a >= $0
+               InitPlan  (slice3)
+                 ->  Aggregate  (cost=2.24..2.25 rows=1 width=4)
+                       ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.13..2.23 rows=1 width=4)
+                             ->  Aggregate  (cost=2.13..2.14 rows=1 width=4)
+                                   ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=4)
+ Settings:  gp_segments_for_planner=8
+(10 rows)
 
 explain WITH cte AS (SELECT * FROM example) SELECT * FROM multiset_5( TABLE ( SELECT * FROM cte ) )  order by a, b;
                                     QUERY PLAN                                    

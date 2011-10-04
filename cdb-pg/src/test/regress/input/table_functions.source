@@ -295,6 +295,7 @@ SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by a||b) )  ord
 SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by b, a, a||b) )  order by a, b;
 SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER RANDOMLY) )  order by a, b;
 SELECT * FROM multiset_5( TABLE( SELECT * from example_v) )  order by a, b;
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example WHERE a >= (SELECT min(a) FROM example))) order by a,b;
 WITH cte AS (SELECT * FROM example) SELECT * FROM multiset_5( TABLE ( SELECT * FROM cte ) )  order by a, b;
 WITH cte AS (SELECT * FROM example) SELECT x.* FROM multiset_5( TABLE ( SELECT * FROM cte ) ) x, (SELECT count(*) FROM cte) y order by x.a, x.b;
 SELECT x.* FROM multiset_5( TABLE ( SELECT * FROM example ) ) x right join (SELECT 1) y on (true) order by x.a, x.b;
@@ -445,6 +446,7 @@ explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER RANDOML
 explain SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r ) );
 explain SELECT * FROM example_r WHERE (10, 'hello') in (SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r )));
 explain SELECT * FROM multiset_5( TABLE( SELECT * from example_v) );
+explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example WHERE a >= (SELECT min(a) FROM example)));
 explain WITH cte AS (SELECT * FROM example) SELECT * FROM multiset_5( TABLE ( SELECT * FROM cte ) )  order by a, b;
 explain WITH cte AS (SELECT * FROM example) SELECT x.* FROM multiset_5( TABLE ( SELECT * FROM cte ) ) x, (SELECT count(*) FROM cte) y order by x.a, x.b;
 explain select * from multiset_2( TABLE( SELECT distinct a.a, b.b from example a, example b where a.a = b.a) ) order by 1,2;

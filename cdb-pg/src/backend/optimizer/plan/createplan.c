@@ -2406,7 +2406,7 @@ create_subqueryscan_plan(CreatePlanContext *ctx, Path *best_path,
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
 
-	scan_plan = make_subqueryscan(tlist,
+	scan_plan = make_subqueryscan(ctx->root, tlist,
 								  scan_clauses,
 								  scan_relid,
 								  best_path->parent->subplan,
@@ -2438,21 +2438,13 @@ create_ctescan_plan(CreatePlanContext *ctx, Path *best_path,
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
 
-	SubqueryScan *scan_plan = make_subqueryscan(tlist,
+	SubqueryScan *scan_plan = make_subqueryscan(ctx->root, tlist,
 												scan_clauses,
 												scan_relid,
 												best_path->parent->subplan,
 												best_path->parent->subrtable);
 
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
-
-	/*
-	 * The finalize_plan() assumes that a SubqueryScan node has
-	 * already called SS_finalize_plan(). We need to make sure that
-	 * we satisfy this assumption, so we call SS_finalize_plan
-	 * explicitly here.
-	 */
-	SS_finalize_plan(ctx->root, (Plan *)scan_plan, false);
 
 	return scan_plan;
 	
@@ -3586,7 +3578,8 @@ make_tidscan(List *qptlist,
 }
 
 SubqueryScan *
-make_subqueryscan(List *qptlist,
+make_subqueryscan(PlannerInfo *root,
+				  List *qptlist,
 				  List *qpqual,
 				  Index scanrelid,
 				  Plan *subplan,
@@ -3594,6 +3587,12 @@ make_subqueryscan(List *qptlist,
 {
 	SubqueryScan *node = makeNode(SubqueryScan);
 	Plan	   *plan = &node->scan.plan;
+
+	/**
+	 * Ensure that the plan we're going to attach to the subquery scan has all the
+	 * parameter fields figured out.
+	 */
+	SS_finalize_plan(root, subrtable, subplan, false);
 
 	/*
 	 * Cost is figured here for the convenience of prepunion.c.  Note this is

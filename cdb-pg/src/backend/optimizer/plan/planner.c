@@ -814,7 +814,7 @@ subquery_planner(PlannerGlobal *glob,
 		
 	{
 		Assert(root->parse == parse); /* GPDP isn't always careful about this. */
-		SS_finalize_plan(root, plan, true);
+		SS_finalize_plan(root, root->parse->rtable, plan, true);
 	}
 
 	/* Return internal info if caller wants it */

@@ -387,11 +387,11 @@ select f1, ss1 as relabel from
      from int4_tbl a) ss;
      f1      |  relabel   
 -------------+------------
-      123456 | 2147607103
- -2147483647 |          0
            0 | 2147607103
      -123456 | 2147483647
   2147483647 | 2147483647
+      123456 | 2147607103
+ -2147483647 |          0
 (5 rows)
 
 --
@@ -504,7 +504,7 @@ explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 wh
                                                             QUERY PLAN                                                             
 -----------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice17; segments: 2)  (cost=20329.25..20331.40 rows=432 width=8)
-   Merge Key: public.csq_t1.x
+   Merge Key: x
    ->  Sort  (cost=20329.25..20331.40 rows=432 width=8)
          Sort Key: public.csq_t1.x
          ->  Append  (cost=0.00..20287.16 rows=432 width=8)
@@ -850,9 +850,9 @@ select * from csq_m1;
 select * from csq_d1;
  x 
 ---
+ 1
  2
  4
- 1
 (3 rows)
 
 --
@@ -894,6 +894,25 @@ select * from csq_d1 where x not in (select x from csq_m1) or x < -100; -- (4)
  x 
 ---
  4
+(1 row)
+
+--
+-- MPP-14441 Don't lose track of initplans
+--
+drop table if exists csq_t1;
+NOTICE:  table "csq_t1" does not exist, skipping
+CREATE TABLE csq_t1 (a int, b int, c int, d int, e text) DISTRIBUTED BY (a);
+INSERT INTO csq_t1 SELECT i, i/3, i%2, 100-i, 'text'||i  FROM generate_series(1,100) i;
+select count(*) from csq_t1 t1 where a > (SELECT x.b FROM ( select avg(a)::int as b,'haha'::text from csq_t1 t2 where t2.a=t1.d) x ) ;
+ count 
+-------
+    49
+(1 row)
+
+select count(*) from csq_t1 t1 where a > ( select avg(a)::int from csq_t1 t2 where t2.a=t1.d) ;
+ count 
+-------
+    49
 (1 row)
 
 --

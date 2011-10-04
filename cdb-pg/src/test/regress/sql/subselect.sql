@@ -449,6 +449,17 @@ explain select * from csq_d1 where x not in (select x from csq_m1) or x < -100; 
 select * from csq_d1 where x not in (select x from csq_m1) or x < -100; -- (4)
 
 --
+-- MPP-14441 Don't lose track of initplans
+--
+drop table if exists csq_t1;
+CREATE TABLE csq_t1 (a int, b int, c int, d int, e text) DISTRIBUTED BY (a);
+INSERT INTO csq_t1 SELECT i, i/3, i%2, 100-i, 'text'||i  FROM generate_series(1,100) i;
+
+select count(*) from csq_t1 t1 where a > (SELECT x.b FROM ( select avg(a)::int as b,'haha'::text from csq_t1 t2 where t2.a=t1.d) x ) ;
+
+select count(*) from csq_t1 t1 where a > ( select avg(a)::int from csq_t1 t2 where t2.a=t1.d) ;
+
+--
 -- correlation in a func expr
 --
 CREATE FUNCTION csq_f(a int) RETURNS int AS $$ select $1 $$ LANGUAGE SQL;

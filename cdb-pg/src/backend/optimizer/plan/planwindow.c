@@ -280,7 +280,7 @@ static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrn
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
 static Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query, List **p_pathkeys, 
        const char *alias_name, List *col_names, Query **query_p);
-static Plan *add_join_to_wrapper(Plan *plan, Query *query, List *join_tlist,
+static Plan *add_join_to_wrapper(PlannerInfo *root, Plan *plan, Query *query, List *join_tlist,
 								 unsigned partkey_len, 
 								 const char *alias_name, List *col_names, 
 								 Query *wrapper_query);
@@ -2674,7 +2674,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	{
 		Plan *join_plan = NULL;	
 		
-		agg_plan = add_join_to_wrapper(agg_plan, agg_subquery, join_tlist,
+		agg_plan = add_join_to_wrapper(root, agg_plan, agg_subquery, join_tlist,
 									   winfo->partkey_len,
 									   "coplan", agg_names,
 									   context->subquery);
@@ -4033,7 +4033,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	
 	/* Make the plan. 
 	 */
-	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, query->rtable);
+	plan = (Plan*)make_subqueryscan(root, subq_tlist, NIL, varno, plan, query->rtable);
 	mark_passthru_locus(plan, true, true);
 	
 	/* Make the corresponding Query.
@@ -4101,6 +4101,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
  * subquery scan node to the top of the aggregation plan.
  */
 Plan *add_join_to_wrapper(
+				PlannerInfo *root,
 				Plan *plan, Query *query, /* the auxiliary aggregate to join */
 				List *join_tlist,
 				unsigned partkey_len, /* count of leading key columns of auxiliary */
@@ -4135,7 +4136,7 @@ Plan *add_join_to_wrapper(
 	
 	/* Make the plan. 
 	 */
-	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, query->rtable);
+	plan = (Plan*)make_subqueryscan(root, subq_tlist, NIL, varno, plan, query->rtable);
 	mark_passthru_locus(plan, true, true);
 
 	
