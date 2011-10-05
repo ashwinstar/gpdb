@@ -1914,7 +1914,8 @@ describeOneTableDetails(const char *schemaname,
 		/* print append only table information */
 		if (tableinfo.relstorage == 'a' || tableinfo.relstorage == 'c')
 		{
-			if (tableinfo.relstorage == 'a')
+		  /* KAS: The following getenv is to be removed before shipping. It is here just to facilitate QA. */
+		  if (tableinfo.relstorage == 'a' || (tableinfo.relstorage == 'c' && getenv("PRE42_FOOTER") != NULL))
 			{
 				printfPQExpBuffer(&buf, _("Compression Type: %s"), tableinfo.compressionType);
 				printTableAddFooter(&cont, buf.data);
