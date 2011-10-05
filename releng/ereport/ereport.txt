@@ -3392,108 +3392,108 @@ caaj: cdbbackup:00000720:  errmsg("out of memory")));
 caaj: cdbbackup:00000770:  ereport(ERROR, 
 caaj: cdbbackup:00000771:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 caaj: cdbbackup:00000772:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000799:  ereport(ERROR, 
-caaj: cdbbackup:00000800:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000801:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000824:  ereport(ERROR, 
-caaj: cdbbackup:00000825:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000826:  errmsg("Error in gp_restore_launch - execl of %s with Command Line %s failed", 
-caaj: cdbbackup:00000827:  "/bin/sh", pszCmdLine))); 
-caaj: cdbbackup:00000887:  ereport(ERROR, 
-caaj: cdbbackup:00000888:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000889:  errmsg("Only status files are currently supported in gp_read_backup_file"))); 
-caaj: cdbbackup:00000896:  ereport(ERROR, 
-caaj: cdbbackup:00000897:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000898:  errmsg("Invalid filetype %d passed to gp_read_backup_file", fileType))); 
-caaj: cdbbackup:00000905:  ereport(ERROR, 
-caaj: cdbbackup:00000906:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000907:  errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType))); 
-caaj: cdbbackup:00000913:  ereport(ERROR, 
-caaj: cdbbackup:00000914:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000915:  errmsg("Backup File %s Type %d too large to read", pszFileName, fileType))); 
-caaj: cdbbackup:00000922:  ereport(ERROR, 
-caaj: cdbbackup:00000923:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000924:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000930:  ereport(ERROR, 
-caaj: cdbbackup:00000931:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000932:  errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType))); 
-caaj: cdbbackup:00000938:  ereport(ERROR, 
-caaj: cdbbackup:00000939:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000940:  errmsg("Error reading Backup File %s Type %d", pszFileName, fileType))); 
-caaj: cdbbackup:00001013:  ereport(ERROR, 
-caaj: cdbbackup:00001014:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001015:  errmsg("Backup File %s cannot be opened", pszFileName))); 
-caaj: cdbbackup:00001022:  ereport(ERROR, 
-caaj: cdbbackup:00001023:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001024:  errmsg("Error writing Backup File %s", pszFileName))); 
-caaj: cdbbackup:00001178:  ereport(ERROR, 
-caaj: cdbbackup:00001179:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001180:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001192:  ereport(ERROR, 
-caaj: cdbbackup:00001193:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001194:  errmsg("Could not compile regular expression for backup filename matching"))); 
-caaj: cdbbackup:00001202:  ereport(ERROR, 
-caaj: cdbbackup:00001203:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001204:  errmsg("Backup Directory %s does not exist.", pszBackupDirectory))); 
-caaj: cdbbackup:00001209:  ereport(ERROR, 
-caaj: cdbbackup:00001210:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001211:  errmsg("Backup Location %s is not a directory.", pszBackupDirectory))); 
-caaj: cdbbackup:00001217:  ereport(ERROR, 
-caaj: cdbbackup:00001218:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001219:  errmsg("Backup Directory %s cannot be opened for enumerating files.", pszBackupDirectory))); 
-caaj: cdbbackup:00001299:  ereport(ERROR, 
-caaj: cdbbackup:00001300:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001301:  errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
-caaj: cdbbackup:00001307:  ereport(ERROR, 
-caaj: cdbbackup:00001308:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001309:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001363:  ereport(ERROR, 
-caaj: cdbbackup:00001364:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001365:  errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
-caaj: cdbbackup:00001371:  ereport(ERROR, 
-caaj: cdbbackup:00001372:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001373:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001405:  ereport(ERROR, 
-caaj: cdbbackup:00001406:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001407:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001428:  ereport(ERROR, 
-caaj: cdbbackup:00001429:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001430:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
-caaj: cdbbackup:00001431:  pszBackupProgram, getenv("PGPATH"), getenv("PATH")), 
-caaj: cdbbackup:00001432:  errhint("Restart the server and try again"))); 
-caaj: cdbbackup:00001440:  ereport(ERROR, 
-caaj: cdbbackup:00001441:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001442:  errmsg("%s (compression utility) not found in in PGPATH or " 
-caaj: cdbbackup:00001443:  "PATH (PGPATH: %s *PIPE* PATH: %s)", 
-caaj: cdbbackup:00001444:  pszCompressionProgram, getenv("PGPATH"), getenv("PATH")))); 
-caaj: cdbbackup:00001478:  ereport(ERROR, 
-caaj: cdbbackup:00001479:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001480:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001502:  ereport(ERROR, 
-caaj: cdbbackup:00001503:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001504:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001517:  ereport(ERROR, 
-caaj: cdbbackup:00001518:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001519:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001543:  ereport(ERROR, 
-caaj: cdbbackup:00001544:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001545:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001562:  ereport(ERROR, 
-caaj: cdbbackup:00001563:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001564:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001604:  ereport(ERROR, 
-caaj: cdbbackup:00001605:  (errcode_for_file_access(), 
-caaj: cdbbackup:00001606:  errmsg("could not create backup directory \"%s\": %m", 
-caaj: cdbbackup:00001607:  pszBackupDirectory))); 
-caaj: cdbbackup:00001618:  ereport(ERROR, 
-caaj: cdbbackup:00001619:  (errcode_for_file_access(), 
-caaj: cdbbackup:00001620:  errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory))); 
-caaj: cdbbackup:00001717:  ereport(ERROR, 
-caaj: cdbbackup:00001718:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001719:  errmsg("Backup FileName based on key %s too long", pszBackupKey))); 
-caaj: cdbbackup:00001725:  ereport(ERROR, 
-caaj: cdbbackup:00001726:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001727:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000809:  ereport(ERROR, 
+caaj: cdbbackup:00000810:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000811:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000844:  ereport(ERROR, 
+caaj: cdbbackup:00000845:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000846:  errmsg("Error in gp_restore_launch - execl of %s with Command Line %s failed", 
+caaj: cdbbackup:00000847:  "/bin/sh", pszCmdLine))); 
+caaj: cdbbackup:00000907:  ereport(ERROR, 
+caaj: cdbbackup:00000908:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000909:  errmsg("Only status files are currently supported in gp_read_backup_file"))); 
+caaj: cdbbackup:00000916:  ereport(ERROR, 
+caaj: cdbbackup:00000917:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000918:  errmsg("Invalid filetype %d passed to gp_read_backup_file", fileType))); 
+caaj: cdbbackup:00000925:  ereport(ERROR, 
+caaj: cdbbackup:00000926:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000927:  errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType))); 
+caaj: cdbbackup:00000933:  ereport(ERROR, 
+caaj: cdbbackup:00000934:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000935:  errmsg("Backup File %s Type %d too large to read", pszFileName, fileType))); 
+caaj: cdbbackup:00000942:  ereport(ERROR, 
+caaj: cdbbackup:00000943:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000944:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000950:  ereport(ERROR, 
+caaj: cdbbackup:00000951:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000952:  errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType))); 
+caaj: cdbbackup:00000958:  ereport(ERROR, 
+caaj: cdbbackup:00000959:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000960:  errmsg("Error reading Backup File %s Type %d", pszFileName, fileType))); 
+caaj: cdbbackup:00001033:  ereport(ERROR, 
+caaj: cdbbackup:00001034:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001035:  errmsg("Backup File %s cannot be opened", pszFileName))); 
+caaj: cdbbackup:00001042:  ereport(ERROR, 
+caaj: cdbbackup:00001043:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001044:  errmsg("Error writing Backup File %s", pszFileName))); 
+caaj: cdbbackup:00001198:  ereport(ERROR, 
+caaj: cdbbackup:00001199:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001200:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001212:  ereport(ERROR, 
+caaj: cdbbackup:00001213:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001214:  errmsg("Could not compile regular expression for backup filename matching"))); 
+caaj: cdbbackup:00001222:  ereport(ERROR, 
+caaj: cdbbackup:00001223:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001224:  errmsg("Backup Directory %s does not exist.", pszBackupDirectory))); 
+caaj: cdbbackup:00001229:  ereport(ERROR, 
+caaj: cdbbackup:00001230:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001231:  errmsg("Backup Location %s is not a directory.", pszBackupDirectory))); 
+caaj: cdbbackup:00001237:  ereport(ERROR, 
+caaj: cdbbackup:00001238:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001239:  errmsg("Backup Directory %s cannot be opened for enumerating files.", pszBackupDirectory))); 
+caaj: cdbbackup:00001319:  ereport(ERROR, 
+caaj: cdbbackup:00001320:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001321:  errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
+caaj: cdbbackup:00001327:  ereport(ERROR, 
+caaj: cdbbackup:00001328:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001329:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001383:  ereport(ERROR, 
+caaj: cdbbackup:00001384:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001385:  errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
+caaj: cdbbackup:00001391:  ereport(ERROR, 
+caaj: cdbbackup:00001392:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001393:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001425:  ereport(ERROR, 
+caaj: cdbbackup:00001426:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001427:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001448:  ereport(ERROR, 
+caaj: cdbbackup:00001449:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001450:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00001451:  pszBackupProgram, getenv("PGPATH"), getenv("PATH")), 
+caaj: cdbbackup:00001452:  errhint("Restart the server and try again"))); 
+caaj: cdbbackup:00001460:  ereport(ERROR, 
+caaj: cdbbackup:00001461:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001462:  errmsg("%s (compression utility) not found in in PGPATH or " 
+caaj: cdbbackup:00001463:  "PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00001464:  pszCompressionProgram, getenv("PGPATH"), getenv("PATH")))); 
+caaj: cdbbackup:00001498:  ereport(ERROR, 
+caaj: cdbbackup:00001499:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001500:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001522:  ereport(ERROR, 
+caaj: cdbbackup:00001523:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001524:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001537:  ereport(ERROR, 
+caaj: cdbbackup:00001538:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001539:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001563:  ereport(ERROR, 
+caaj: cdbbackup:00001564:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001565:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001582:  ereport(ERROR, 
+caaj: cdbbackup:00001583:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001584:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001624:  ereport(ERROR, 
+caaj: cdbbackup:00001625:  (errcode_for_file_access(), 
+caaj: cdbbackup:00001626:  errmsg("could not create backup directory \"%s\": %m", 
+caaj: cdbbackup:00001627:  pszBackupDirectory))); 
+caaj: cdbbackup:00001638:  ereport(ERROR, 
+caaj: cdbbackup:00001639:  (errcode_for_file_access(), 
+caaj: cdbbackup:00001640:  errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory))); 
+caaj: cdbbackup:00001737:  ereport(ERROR, 
+caaj: cdbbackup:00001738:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001739:  errmsg("Backup FileName based on key %s too long", pszBackupKey))); 
+caaj: cdbbackup:00001745:  ereport(ERROR, 
+caaj: cdbbackup:00001746:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001747:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: cabh: cdbbufferedappend - ./backend/cdb/cdbbufferedappend.c
 cabh: cdbbufferedappend:00000151:  ereport(ERROR, (errcode_for_file_access(), 
 cabh: cdbbufferedappend:00000152:  errmsg("unable to get current position in table \"%s\" for file \"%s\" (errcode %d)", 
@@ -5727,21 +5727,21 @@ caai: cdbgroup:00001190:  errmsg("unexpected call for two-stage aggregation")));
 caai: cdbgroup:00001355:  ereport(ERROR, 
 caai: cdbgroup:00001356:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
 caai: cdbgroup:00001357:  errmsg("unexpected use of 2-stage aggregation"))); 
-caai: cdbgroup:00001960:  ereport(ERROR, 
-caai: cdbgroup:00001961:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00001962:  errmsg("unexpected use of DQA pruned 2-phase aggregation"))); 
-caai: cdbgroup:00003124:  elog(ERROR,"Unexpected use of DISTINCT-qualified aggregate pruning"); 
-caai: cdbgroup:00003323:  elog(ERROR,"Unexpected use of DISTINCT-qualified aggregation"); 
-caai: cdbgroup:00003598:  elog(ERROR,"Unexpected failure of multi-phase aggregation planning"); 
-caai: cdbgroup:00003626:  elog(ERROR, "cache lookup failed for aggregate %u", aggref->aggfnoid); 
-caai: cdbgroup:00004172:  ereport(ERROR, 
-caai: cdbgroup:00004173:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004174:  errmsg("unexpected call for two-stage aggregation"))); 
-caai: cdbgroup:00004255:  ereport(ERROR, 
-caai: cdbgroup:00004256:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004257:  errmsg("unexpected call for two-stage aggregation"))); 
-caai: cdbgroup:00004423:  elog(ERROR, "unexpected join strategy during DQA planning"); 
-caai: cdbgroup:00004446:  elog(ERROR, "unexpected join strategy during DQA planning"); 
+caai: cdbgroup:00001961:  ereport(ERROR, 
+caai: cdbgroup:00001962:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00001963:  errmsg("unexpected use of DQA pruned 2-phase aggregation"))); 
+caai: cdbgroup:00003127:  elog(ERROR,"Unexpected use of DISTINCT-qualified aggregate pruning"); 
+caai: cdbgroup:00003326:  elog(ERROR,"Unexpected use of DISTINCT-qualified aggregation"); 
+caai: cdbgroup:00003601:  elog(ERROR,"Unexpected failure of multi-phase aggregation planning"); 
+caai: cdbgroup:00003629:  elog(ERROR, "cache lookup failed for aggregate %u", aggref->aggfnoid); 
+caai: cdbgroup:00004212:  ereport(ERROR, 
+caai: cdbgroup:00004213:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004214:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00004295:  ereport(ERROR, 
+caai: cdbgroup:00004296:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004297:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00004463:  elog(ERROR, "unexpected join strategy during DQA planning"); 
+caai: cdbgroup:00004486:  elog(ERROR, "unexpected join strategy during DQA planning"); 
 aaaaa GP_IGNORE: caah: cdbhash - ./backend/cdb/cdbhash.c
 caah: cdbhash:00000588:  ereport(ERROR, 
 caah: cdbhash:00000589:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
@@ -13240,39 +13240,43 @@ nabb: nodesubplan:00001189:  ereport(ERROR,
 nabb: nodesubplan:00001190:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
 nabb: nodesubplan:00001191:  errmsg("more than one row returned by a subquery used as an expression"))); 
 aaaaa GP_IGNORE: nabh: nodetablefunction - ./backend/executor/nodeTableFunction.c
-nabh: nodetablefunction:00000093:  ereport(ERROR, 
-nabh: nodetablefunction:00000094:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-nabh: nodetablefunction:00000095:  errmsg("table functions must use SFRM_ValuePerCall protocol"))); 
-nabh: nodetablefunction:00000107:  ereport(ERROR, 
-nabh: nodetablefunction:00000108:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-nabh: nodetablefunction:00000109:  errmsg("function returning set of rows cannot return null value"))); 
-nabh: nodetablefunction:00000152:  ereport(ERROR, 
-nabh: nodetablefunction:00000153:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-nabh: nodetablefunction:00000154:  errmsg("invalid tuple returned from table function"), 
-nabh: nodetablefunction:00000155:  errdetail("Returned tuple does not match output " 
-nabh: nodetablefunction:00000156:  "tuple descriptor."))); 
-nabh: nodetablefunction:00000272:  elog(ERROR, "table function expression is not a function expression"); 
-nabh: nodetablefunction:00000317:  elog(ERROR, "table function has unsupported return type"); 
-nabh: nodetablefunction:00000367:  ereport(ERROR, 
-nabh: nodetablefunction:00000368:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-nabh: nodetablefunction:00000369:  errmsg("set-valued function called in context that cannot " 
-nabh: nodetablefunction:00000370:  "accept a set"))); 
-nabh: nodetablefunction:00000416:  elog(ERROR, 
-nabh: nodetablefunction:00000417:  "table functions over multiple TABLE value expressions " 
-nabh: nodetablefunction:00000418:  "not yet supported"); /* not feasible */ 
-nabh: nodetablefunction:00000419:  } 
-nabh: nodetablefunction:00000420:  
-nabh: nodetablefunction:00000421:  } 
-nabh: nodetablefunction:00000422:  
-nabh: nodetablefunction:00000423:  /* Initialize result tuple type and projection info */ 
-nabh: nodetablefunction:00000424:  ExecAssignResultTypeFromTL(&scanstate->ss.ps); 
-nabh: nodetablefunction:00000458:  elog(ERROR, "invalid rescan of TableFunctionScan"); 
-nabh: nodetablefunction:00000488:  ereport(ERROR, 
-nabh: nodetablefunction:00000489:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-nabh: nodetablefunction:00000490:  errmsg("invalid null value for anytable type"))); 
-nabh: nodetablefunction:00000505:  ereport(ERROR, 
-nabh: nodetablefunction:00000506:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-nabh: nodetablefunction:00000507:  errmsg("invalid null value for anytable type"))); 
+nabh: nodetablefunction:00000083:  ereport(ERROR, 
+nabh: nodetablefunction:00000084:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+nabh: nodetablefunction:00000085:  errmsg("set-valued function called in context that cannot " 
+nabh: nodetablefunction:00000086:  "accept a set"))); 
+nabh: nodetablefunction:00000115:  elog(ERROR, 
+nabh: nodetablefunction:00000116:  "table functions over multiple TABLE value expressions " 
+nabh: nodetablefunction:00000117:  "not yet supported"); /* not feasible */ 
+nabh: nodetablefunction:00000118:  } 
+nabh: nodetablefunction:00000119: } 
+nabh: nodetablefunction:00000120:  
+nabh: nodetablefunction:00000121: /* 
+nabh: nodetablefunction:00000122:  * TableFunctionNext - ExecScan callback function for table funciton scans 
+nabh: nodetablefunction:00000123:  */ 
+nabh: nodetablefunction:00000124: static TupleTableSlot * 
+nabh: nodetablefunction:00000125: TableFunctionNext(TableFunctionState *node) 
+nabh: nodetablefunction:00000126: { 
+nabh: nodetablefunction:00000127:  MemoryContext oldcontext = NULL; 
+nabh: nodetablefunction:00000154:  ereport(ERROR, 
+nabh: nodetablefunction:00000155:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+nabh: nodetablefunction:00000156:  errmsg("table functions must use SFRM_ValuePerCall protocol"))); 
+nabh: nodetablefunction:00000168:  ereport(ERROR, 
+nabh: nodetablefunction:00000169:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+nabh: nodetablefunction:00000170:  errmsg("function returning set of rows cannot return null value"))); 
+nabh: nodetablefunction:00000213:  ereport(ERROR, 
+nabh: nodetablefunction:00000214:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+nabh: nodetablefunction:00000215:  errmsg("invalid tuple returned from table function"), 
+nabh: nodetablefunction:00000216:  errdetail("Returned tuple does not match output " 
+nabh: nodetablefunction:00000217:  "tuple descriptor."))); 
+nabh: nodetablefunction:00000340:  elog(ERROR, "table function expression is not a function expression"); 
+nabh: nodetablefunction:00000385:  elog(ERROR, "table function has unsupported return type"); 
+nabh: nodetablefunction:00000471:  elog(ERROR, "invalid rescan of TableFunctionScan"); 
+nabh: nodetablefunction:00000501:  ereport(ERROR, 
+nabh: nodetablefunction:00000502:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+nabh: nodetablefunction:00000503:  errmsg("invalid null value for anytable type"))); 
+nabh: nodetablefunction:00000518:  ereport(ERROR, 
+nabh: nodetablefunction:00000519:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+nabh: nodetablefunction:00000520:  errmsg("invalid null value for anytable type"))); 
 aaaaa GP_IGNORE: nabb: nodetidscan - ./backend/executor/nodeTidscan.c
 nabb: nodetidscan:00000094:  elog(ERROR, "could not identify CTID variable"); 
 nabb: nodetidscan:00000154:  elog(ERROR, "could not identify CTID expression"); 
@@ -18886,50 +18890,50 @@ aaad: acl:00001375:  errmsg("unrecognized privilege type: \"%s\"", priv_type)));
 aaad: acl:00001426:  ereport(ERROR, 
 aaad: acl:00001427:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 aaad: acl:00001428:  errmsg("unrecognized privilege type: \"%s\"", chunk))); 
-aaad: acl:00001654:  ereport(ERROR, 
-aaad: acl:00001655:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaad: acl:00001656:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
-aaad: acl:00001829:  ereport(ERROR, 
-aaad: acl:00001830:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-aaad: acl:00001831:  errmsg("database \"%s\" does not exist", dbname))); 
-aaad: acl:00001871:  ereport(ERROR, 
-aaad: acl:00001872:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaad: acl:00001873:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
-aaad: acl:00002228:  ereport(ERROR, 
-aaad: acl:00002229:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-aaad: acl:00002230:  errmsg("function \"%s\" does not exist", funcname), 
-aaad: acl:00002231:  errOmitLocation(true))); 
-aaad: acl:00002256:  ereport(ERROR, 
-aaad: acl:00002257:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaad: acl:00002258:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
-aaad: acl:00002433:  ereport(ERROR, 
-aaad: acl:00002434:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaad: acl:00002435:  errmsg("language \"%s\" does not exist", langname), 
-aaad: acl:00002436:  errOmitLocation(true))); 
-aaad: acl:00002461:  ereport(ERROR, 
-aaad: acl:00002462:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaad: acl:00002463:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
-aaad: acl:00002638:  ereport(ERROR, 
-aaad: acl:00002639:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-aaad: acl:00002640:  errmsg("schema \"%s\" does not exist", nspname), 
-aaad: acl:00002641:  errOmitLocation(true))); 
-aaad: acl:00002671:  ereport(ERROR, 
-aaad: acl:00002672:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaad: acl:00002673:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
-aaad: acl:00003027:  ereport(ERROR, 
-aaad: acl:00003028:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaad: acl:00003029:  errmsg("tablespace \"%s\" does not exist", spcname))); 
-aaad: acl:00003054:  ereport(ERROR, 
-aaad: acl:00003055:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaad: acl:00003056:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
-aaad: acl:00003245:  ereport(ERROR, 
-aaad: acl:00003246:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaad: acl:00003247:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
-aaad: acl:00003553:  ereport(ERROR, 
-aaad: acl:00003554:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-aaad: acl:00003555:  errmsg("must be member of role \"%s\"", 
-aaad: acl:00003556:  GetUserNameFromId(role)), 
-aaad: acl:00003557:  errOmitLocation(true))); 
+aaad: acl:00001671:  ereport(ERROR, 
+aaad: acl:00001672:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaad: acl:00001673:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
+aaad: acl:00001861:  ereport(ERROR, 
+aaad: acl:00001862:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+aaad: acl:00001863:  errmsg("database \"%s\" does not exist", dbname))); 
+aaad: acl:00001903:  ereport(ERROR, 
+aaad: acl:00001904:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaad: acl:00001905:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
+aaad: acl:00002275:  ereport(ERROR, 
+aaad: acl:00002276:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+aaad: acl:00002277:  errmsg("function \"%s\" does not exist", funcname), 
+aaad: acl:00002278:  errOmitLocation(true))); 
+aaad: acl:00002303:  ereport(ERROR, 
+aaad: acl:00002304:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaad: acl:00002305:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
+aaad: acl:00002495:  ereport(ERROR, 
+aaad: acl:00002496:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaad: acl:00002497:  errmsg("language \"%s\" does not exist", langname), 
+aaad: acl:00002498:  errOmitLocation(true))); 
+aaad: acl:00002523:  ereport(ERROR, 
+aaad: acl:00002524:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaad: acl:00002525:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
+aaad: acl:00002715:  ereport(ERROR, 
+aaad: acl:00002716:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+aaad: acl:00002717:  errmsg("schema \"%s\" does not exist", nspname), 
+aaad: acl:00002718:  errOmitLocation(true))); 
+aaad: acl:00002748:  ereport(ERROR, 
+aaad: acl:00002749:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaad: acl:00002750:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
+aaad: acl:00003104:  ereport(ERROR, 
+aaad: acl:00003105:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaad: acl:00003106:  errmsg("tablespace \"%s\" does not exist", spcname))); 
+aaad: acl:00003131:  ereport(ERROR, 
+aaad: acl:00003132:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaad: acl:00003133:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
+aaad: acl:00003322:  ereport(ERROR, 
+aaad: acl:00003323:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaad: acl:00003324:  errmsg("unrecognized privilege type: \"%s\"", priv_type))); 
+aaad: acl:00003630:  ereport(ERROR, 
+aaad: acl:00003631:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+aaad: acl:00003632:  errmsg("must be member of role \"%s\"", 
+aaad: acl:00003633:  GetUserNameFromId(role)), 
+aaad: acl:00003634:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: aabf: arrayxuserfuncs - ./backend/utils/adt/array_userfuncs.c
 aabf: arrayxuserfuncs:00000047:  ereport(ERROR, 
 aabf: arrayxuserfuncs:00000048:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
