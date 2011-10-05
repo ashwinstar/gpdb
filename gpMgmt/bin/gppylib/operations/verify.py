@@ -7,6 +7,7 @@ from gppylib.commands.unix import Scp
 from gppylib.db import dbconn
 from gppylib.db.dbconn import UnexpectedRowsError
 from gppylib.gparray import GpArray, FAULT_STRATEGY_LABELS, FAULT_STRATEGY_FILE_REPLICATION
+from gppylib.mainUtils import ExceptionNoStackTraceNeeded
 from gppylib.operations import Operation
 from gppylib.operations.utils import ParallelOperation, RemoteOperation
 from gppylib.operations.unix import CheckDir, MakeDir, RemoveTree
@@ -28,6 +29,11 @@ class VerifyFilerep(Operation):
         self.results_level = results_level
         self.batch_default = batch_default
     def execute(self):
+        try:
+            ValidateVerificationEntry(token = self.token).run()
+            raise ExceptionNoStackTraceNeeded('Token "%s" has already been used. Use "gpverify --clean --token %s" to reclaim this token.' % (self.token, self.token))
+        except TokenNotFound:
+            pass
         TriggerFilerepVerifyMessages(content = self.content,
                                      token = self.token,
                                      full = self.full,
