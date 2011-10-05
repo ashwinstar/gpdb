@@ -1996,7 +1996,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	/*
 	 * Postprocess constraints that give rise to index definitions.
 	 */
-	transformIndexConstraints(pstate, &cxt, stmt->is_add_part);
+	transformIndexConstraints(pstate, &cxt, stmt->is_add_part || stmt->is_split_part);
 
 	/*
 	 * Carry any deferred analysis statements forward.  Added for MPP-13750

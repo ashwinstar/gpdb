@@ -4330,9 +4330,13 @@ create index s_j on s(units)
   where (id <= 1)
   ;
 
-alter table s add partition s_test 
-    start(date '2008-01-03') end (date '2008-01-04');
+create index s_i_expr on s(log(units));
 
+alter table s add partition s_test 
+    start(date '2008-01-03') end (date '2008-01-05');
+
+alter table s split partition for (date '2008-01-03') at (date '2008-01-04')
+  into (partition s_test, partition s_test2);
 
 select 
     relname, 
@@ -4346,7 +4350,7 @@ from (
 where relname ~ '^s_' 
 group by relname; 
 
-drop table cascade;
+drop table s cascade;
 
 --   MPP-13750 )
 

@@ -1047,6 +1047,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	/* deferredStmts omitted */
 	COMPARE_SCALAR_FIELD(is_part_child);
 	COMPARE_SCALAR_FIELD(is_add_part);
+	COMPARE_SCALAR_FIELD(is_split_part);
 	COMPARE_SCALAR_FIELD(ownerid);
 	COMPARE_SCALAR_FIELD(buildAoBlkdir);
 	COMPARE_NODE_FIELD(attr_encodings);

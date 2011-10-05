@@ -8374,9 +8374,17 @@ create index s_j on s(units)
   where (id <= 1)
   ;
 NOTICE:  building index for child partition "s_1_prt_1"
+create index s_i_expr on s(log(units));
+NOTICE:  building index for child partition "s_1_prt_1"
 alter table s add partition s_test 
-    start(date '2008-01-03') end (date '2008-01-04');
+    start(date '2008-01-03') end (date '2008-01-05');
 NOTICE:  CREATE TABLE will create partition "s_1_prt_s_test" for table "s"
+alter table s split partition for (date '2008-01-03') at (date '2008-01-04')
+  into (partition s_test, partition s_test2);
+NOTICE:  exchanged partition "s_test" of relation "s" with relation "pg_temp_186407"
+NOTICE:  dropped partition "s_test" for relation "s"
+NOTICE:  CREATE TABLE will create partition "s_1_prt_s_test" for table "s"
+NOTICE:  CREATE TABLE will create partition "s_1_prt_s_test2" for table "s"
 select 
     relname, 
     (select count(distinct content) - 1 
@@ -8388,20 +8396,26 @@ from (
     ) seg_class(segid, relid, relname) 
 where relname ~ '^s_' 
 group by relname; 
-         relname          | missing | oid_count 
---------------------------+---------+-----------
- s_1_prt_s_test           |       0 |         1
- s_1_prt_s_test_units_key |       0 |         1
- s_i                      |       0 |         1
- s_j_1_prt_1              |       0 |         1
- s_1_prt_1                |       0 |         1
- s_1_prt_s_test_amt_key   |       0 |         1
- s_i_1_prt_1              |       0 |         1
- s_j                      |       0 |         1
-(8 rows)
+          relname          | missing | oid_count 
+---------------------------+---------+-----------
+ s_1_prt_s_test            |       0 |         1
+ s_1_prt_s_test2           |       0 |         1
+ s_1_prt_s_test2_key       |       0 |         1
+ s_1_prt_s_test2_units_key |       0 |         1
+ s_1_prt_s_test_amt_key1   |       0 |         1
+ s_i                       |       0 |         1
+ s_i_expr                  |       0 |         1
+ s_j_1_prt_1               |       0 |         1
+ s_1_prt_1                 |       0 |         1
+ s_1_prt_s_test2_amt_key   |       0 |         1
+ s_1_prt_s_test_key1       |       0 |         1
+ s_1_prt_s_test_units_key1 |       0 |         1
+ s_i_1_prt_1               |       0 |         1
+ s_i_expr_1_prt_1          |       0 |         1
+ s_j                       |       0 |         1
+(15 rows)
 
-drop table cascade;
-ERROR:  table "cascade" does not exist
+drop table s cascade;
 --   MPP-13750 )
 -- MPP-13806 start
 drop table if exists mpp13806;

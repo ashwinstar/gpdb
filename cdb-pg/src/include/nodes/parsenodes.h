@@ -1399,6 +1399,7 @@ typedef struct CreateStmt
 								 * a partition root or ordinary table.
 								 */
 	bool		is_add_part;	/* CDB: is create adding a part to a partition? */
+	bool		is_split_part;	/* CDB: is create spliting a part? */
 	Oid			ownerid;		/* OID of the role to own this. if InvalidOid, GetUserId() */
 	bool		buildAoBlkdir; /* whether to build the block directory for an AO table */
 	List	   *attr_encodings; /* attribute storage directives */

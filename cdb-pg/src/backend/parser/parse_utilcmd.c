@@ -738,6 +738,7 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt, bool mayDe
 	foreach(lc, indexlist)
 	{
 		bool		keep = true;
+		bool		defer = false;
 		ListCell   *k;
 
 		index = lfirst(lc);
@@ -768,15 +769,32 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt, bool mayDe
 				break;
 			}
 		}
+		
+		defer = index->whereClause != NULL;
+		if ( !defer )
+		{
+			ListCell *j;
+			foreach(j, index->indexParams)
+			{
+				IndexElem *elt = (IndexElem*)lfirst(j);
+				Assert(IsA(elt, IndexElem));
+				
+				if (elt->expr != NULL)
+				{
+					defer = true;
+					break;
+				}
+			}
+		}
 
 		if (keep)
 		{
-			if (index->whereClause && mayDefer)
+			if (defer && mayDefer)
 			{
-				/* An index with a WHERE clause for an inheritance child will
-				 * cause a trip through parse_analyze.  If we do that before
-				 * creating the table, it will fail, so we put it on a list
-				 * for later.
+				/* An index on an expression with a WHERE clause or for an 
+				 * inheritance child will cause a trip through parse_analyze.  
+				 * If we do that before creating the table, it will fail, so 
+				 * we put it on a list for later.
 				 */
 			
 				ereport(DEBUG1,

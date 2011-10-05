@@ -15438,6 +15438,7 @@ ATPExecPartSplit(Relation rel,
 		ct->relation = tmprv;
 		ct->relKind = RELKIND_RELATION;
 		ct->ownerid = rel->rd_rel->relowner;
+		ct->is_split_part = true;
 		parsetrees = parse_analyze((Node *)ct, NULL, NULL, 0);
 
 		q = (Query *)linitial(parsetrees);
