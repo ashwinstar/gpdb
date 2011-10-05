@@ -1818,13 +1818,17 @@ static void http_setup(void)
 
 			/* listen with a big queue */
 			if (listen(f, opt.z))
-				gfatal(FLINE, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
+			{
+				int saved_errno = errno;
+				close(f);
+				gwarning(FLINE, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
 							  opt.z,
 							  (int)f,
 							  opt.p,
-							  errno,
-							  strerror(errno));
-
+							  saved_errno,
+							  strerror(saved_errno));
+				continue;
+			}
 			gcb.listen_socks[gcb.listen_sock_count++] = f;
 
 		}
