@@ -795,6 +795,9 @@ main(int argc, char **argv)
 	}
 
 	/* MPP additions start */
+	AH = (ArchiveHandle *) g_fout;
+	AH->dieFuncPtr = makeSureMonitorThreadEnds; /* set a function to call upon die */
+
 	/* set the connection parameters for this segdb */
 	g_SegDB.dbid = g_dbID;
 	g_SegDB.role = g_role;
@@ -842,7 +845,6 @@ main(int argc, char **argv)
 	}
 
 	/* check for version mismatch */
-	AH = (ArchiveHandle *) g_fout;
 	AH->connection = g_conn;
 	_check_database_version(AH);
 
@@ -7049,7 +7051,7 @@ monitorThreadProc(void *arg __attribute__((unused)))
 					pszMsg = pOp->pszMsg;
 
 				/* write out our success or failure message */
-				mpp_err_msg(logInfo, progname, pszMsg);
+				mpp_err_msg(pOp->TaskRC == TASK_RC_SUCCESS ? logInfo : logError, progname, pszMsg);
 			}
 
 			if (pOp->TaskID == TASK_SET_SERIALIZABLE)

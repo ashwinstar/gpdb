@@ -129,6 +129,8 @@ typedef void (*PrintTocDataPtr) (struct _archiveHandle * AH, struct _tocEntry * 
 
 typedef size_t (*CustomOutPtr) (struct _archiveHandle * AH, const void *buf, size_t len);
 
+typedef void (*DieFuncPtr) (int taskRC, char * pszErrorMsg);
+
 typedef struct _outputContext
 {
 	void	   *OF;
@@ -288,6 +290,8 @@ typedef struct _archiveHandle
 	ArchiverStage lastErrorStage;
 	struct _tocEntry *currentTE;
 	struct _tocEntry *lastErrorTE;
+
+	DieFuncPtr dieFuncPtr;      /* Called upon die to report the status */
 } ArchiveHandle;
 
 typedef struct _tocEntry

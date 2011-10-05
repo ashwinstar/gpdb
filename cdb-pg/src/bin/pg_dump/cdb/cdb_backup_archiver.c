@@ -1276,12 +1276,21 @@ dd_write(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 static void
 _die_horribly(ArchiveHandle *AH, const char *modulename, const char *fmt, va_list ap)
 {
-	_write_msg(modulename, fmt, ap);
+	char errbuf[512]={0};
+	vsnprintf(errbuf, sizeof(errbuf)-1, fmt, ap);
 
-	if (AH)
+	/* write a msg - unless there is a dieFunc which will take care of that */
+	if(!AH || (AH && !AH->dieFuncPtr))
+		write_msg(modulename, "%s\n", errbuf);
+
+	if(AH)
 	{
 		if (AH->public.verbose)
 			write_msg(NULL, "*** aborted because of error\n");
+
+		if (AH->dieFuncPtr)
+			(AH->dieFuncPtr)(1,errbuf);
+
 		if (AH->connection)
 			PQfinish(AH->connection);
 	}
