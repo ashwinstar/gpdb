@@ -1391,7 +1391,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									   "partial_aggregation",
 									   &current_pathkeys,
 									   result_plan,
-									   !ctx->is_grpext);
+									   !ctx->is_grpext,
+									   true);
 	
 	if (ctx->is_grpext)
 	{
@@ -2030,7 +2031,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 										   "partial_aggregation",
 										   &current_pathkeys,
 										   result_plan, 
-										   true);
+										   true, false);
 	}
 	
 	/* Final Aggregation: Group by the grouping key, aggregate the now
@@ -2103,7 +2104,9 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 									   ctx->agg_counts->transitionSpace,
 									   "partial_aggregation",
 									   &current_pathkeys,
-									   result_plan, true);
+									   result_plan,
+									   true,
+									   false);
 	
 	/* Final sort */
 	switch (coplan_type)
@@ -3660,6 +3663,39 @@ void adapt_flow_to_targetlist(Plan *plan)
 	}
 }
 
+/**
+ * Update the scatter clause before a query tree's targetlist is about to
+ * be modified. The scatter clause of a query tree will correspond to
+ * old targetlist entries. If the query tree is modified and the targetlist
+ * is to be modified, we must call this method to ensure that the scatter clause
+ * is kept in sync with the new targetlist.
+ */
+static void UpdateScatterClause(Query *query, List *newtlist)
+{
+	Assert(query);
+	Assert(query->targetList);
+	Assert(newtlist);
+
+	if (query->scatterClause
+			&& list_nth(query->scatterClause, 0) != NULL /* scattered randomly */
+			)
+	{
+		Assert(list_length(query->targetList) == list_length(newtlist));
+		List *scatterClause = NIL;
+		ListCell *lc = NULL;
+		foreach (lc, query->scatterClause)
+		{
+			Expr *o = (Expr *) lfirst(lc);
+			Assert(o);
+			TargetEntry *tle = tlist_member((Node *) o, query->targetList);
+			Assert(tle);
+			TargetEntry *ntle = list_nth(newtlist, tle->resno - 1);
+			scatterClause = lappend(scatterClause, copyObject(ntle->expr));
+		}
+		query->scatterClause = scatterClause;
+	}
+}
+
 /*
  * Function: add_second_stage_agg
  *
@@ -3691,7 +3727,8 @@ add_second_stage_agg(PlannerInfo *root,
 					 const char *alias,
 					 List **p_current_pathkeys,
 					 Plan *result_plan,
-					 bool use_root)
+					 bool use_root,
+					 bool adjust_scatter)
 {
 	Query	   *parse = root->parse;
 	Query	   *subquery;
@@ -3725,8 +3762,7 @@ add_second_stage_agg(PlannerInfo *root,
 	 * its target list and having qual to match the lower (existing) Agg
 	 * plan we're about to make into a SubqueryScan.
 	 */
-	subquery = makeNode(Query);
-	memcpy(subquery, parse, sizeof(Query));
+	subquery = copyObject(parse);
 	
 	subquery->targetList = copyObject(lower_tlist);
 	subquery->havingQual = NULL;
@@ -3783,6 +3819,10 @@ add_second_stage_agg(PlannerInfo *root,
 	 */
 	if ( use_root )
 	{
+		if (adjust_scatter)
+		{
+			UpdateScatterClause(parse, upper_tlist);
+		}
 		parse->targetList = copyObject(upper_tlist); /* Match range. */
 	}
 
