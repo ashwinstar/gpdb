@@ -795,6 +795,19 @@ FROM sessionize_dynamic(
     '1 minute' ) as sessionize
 ORDER BY id, time; -- SUCCESS, qualified in describe
 
+-- Also test subqueries in non TABLE() parameters
+SELECT * 
+FROM sessionize_dynamic(
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    (select '1 minute'::interval) ) as sessionize
+ORDER BY id, time;
+
 -- end_equiv
 
 -- ===================================

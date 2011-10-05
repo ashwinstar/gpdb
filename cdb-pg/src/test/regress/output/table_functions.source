@@ -2648,6 +2648,40 @@ ORDER BY id, time; -- SUCCESS, qualified in describe
   3 | Sat Aug 20 10:17:42 2011 |          5
 (18 rows)
 
+-- Also test subqueries in non TABLE() parameters
+SELECT * 
+FROM sessionize_dynamic(
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    (select '1 minute'::interval) ) as sessionize
+ORDER BY id, time;
+ id |           time           | sessionnum 
+----+--------------------------+------------
+  1 | Sun Aug 21 10:15:02 2011 |          1
+  1 | Sun Aug 21 10:15:30 2011 |          1
+  1 | Mon Aug 22 10:15:04 2011 |          2
+  1 | Mon Aug 22 10:16:10 2011 |          3
+  2 | Sun Aug 21 10:15:02 2011 |          1
+  2 | Sun Aug 21 10:16:02 2011 |          1
+  2 | Sun Aug 21 22:15:02 2011 |          2
+  2 | Sun Aug 21 22:16:02 2011 |          2
+  3 | Fri Aug 19 19:05:13 2011 |          1
+  3 | Fri Aug 19 19:06:50 2011 |          2
+  3 | Fri Aug 19 19:07:35 2011 |          2
+  3 | Fri Aug 19 19:08:18 2011 |          2
+  3 | Fri Aug 19 19:09:07 2011 |          2
+  3 | Sat Aug 20 10:07:10 2011 |          3
+  3 | Sat Aug 20 10:07:35 2011 |          3
+  3 | Sat Aug 20 10:11:29 2011 |          4
+  3 | Sat Aug 20 10:17:10 2011 |          5
+  3 | Sat Aug 20 10:17:42 2011 |          5
+(18 rows)
+
 -- end_equiv
 -- ===================================
 -- Dynamic type interaction with VIEWS

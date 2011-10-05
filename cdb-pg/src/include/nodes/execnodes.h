@@ -1387,13 +1387,14 @@ typedef struct FunctionScanState
 typedef struct TableFunctionState
 {
 	ScanState					 ss;			/* Table Function is a Scan */
-	struct AnyTableData         *inputscan;     /* subquery scan data */
+	struct AnyTableData         *inputscan;		/* subquery scan data */
 	TupleDesc					 resultdesc;	/* Function Result descriptor */
 	HeapTupleData                tuple;			/* Returned tuple */
 	FuncExprState				*fcache;		/* Function Call Cache */
 	FunctionCallInfoData		 fcinfo;		/* Function Call Context */
 	ReturnSetInfo				 rsinfo;		/* Resultset Context */
-	bool                         is_rowtype;    /* Function returns records */
+	bool						 is_rowtype;	/* Function returns records */
+	bool						 is_firstcall;
 } TableFunctionState;
 
 
