@@ -3390,7 +3390,7 @@ def checkTableMissingEntry(cat):
             print "    " + " | ".join(fields)
             for row in curs.getresult():
                 print "    " + " | ".join(map(str, row))
-            processMissingEntryResult(catname, fields, curs.getresult())
+            processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "missing")
            
 
     except Exception, e:
@@ -3584,6 +3584,104 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns):
         return qry
 
 
+#-------------------------------------------------------------------------------
+def checkDuplicateEntry():
+    logger.info('-----------------------------------')
+    logger.info('Performing test: checking for duplicate entries')
+
+    # looks up information in the catalog:
+    tables = GV.catalog.getCatalogTables()
+
+    for cat in sorted(tables):
+        checkTableDuplicateEntry(cat)
+
+
+#-------------------------------------------------------------------------------
+def checkTableDuplicateEntry(cat):
+
+    catname  = cat.getTableName()
+    pkey     = cat.getPrimaryKey()
+    master   = cat.isMasterOnly()
+    isShared = cat.isShared()
+    columns  = cat.getTableColumns(with_acl=False)
+    coltypes = cat.getTableColtypes()
+
+    # Skip master only tables
+    if master:
+        return
+
+    # skip shared/non-shared tables
+    if GV.opt['-S']:
+        if re.match("none", GV.opt['-S'], re.I) and isShared:
+            return
+        if re.match("only", GV.opt['-S'], re.I) and not isShared:
+            return
+
+    # Skip catalogs without primary key
+    if pkey == []:
+        logger.warn("[WARN] Skipped duplicate check for %s" %
+                    catname)
+        return
+
+    pkey = [ c+autoCast.get(coltypes[c],'') for c in pkey ]
+    if cat.tableHasConsistentOids():
+        qry = duplicateEntryQuery(catname, ['oid'])
+    else:
+        qry = duplicateEntryQuery(catname, pkey)
+
+    # Execute the query
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+        curs  = db.query(qry)
+        nrows = curs.ntuples()
+
+        if nrows == 0:
+            logger.info('[OK] Checking for duplicate entries for ' + catname)
+        else:
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] Checking for duplicate entries for ' + catname)
+            logger.error('  %s has %d issue(s)' % (catname, nrows))
+
+            fields = curs.listfields()
+            print "    " + " | ".join(fields)
+            for row in curs.getresult():
+                print "    " + " | ".join(map(str, row))
+            processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] Checking for duplicate entries for ' + catname)
+        logger.error('  Execution error: ' + str(e))
+        logger.error(qry)
+
+
+#-------------------------------------------------------------------------------
+def duplicateEntryQuery(catname, pkey):
+
+    #-- ===========
+    #--  Duplicate
+    #-- ===========
+    #--   Return any rows having count > 1 for a given segid, {unique_key} pair
+    #--
+
+    qry = """
+          SELECT {pkey}, total, array_agg(segid order by segid) as segids
+          FROM (
+               SELECT segid, {pkey}, count(*) as total
+               FROM (
+                    select gp_segment_id as segid, {pkey} FROM {catalog}
+                    union all
+                    select gp_segment_id as segid, {pkey} FROM gp_dist_random('{catalog}')
+               ) all_segments
+               GROUP BY segid, {pkey}
+               HAVING count(*) > 1
+          ) rowresult
+          GROUP BY {pkey}, total
+          """.format(catalog = catname,
+                     pkey    = ','.join(pkey))
+
+    return qry
+
 
 
 ############################################################################
@@ -3728,6 +3826,14 @@ name_test = {
          "fn": lambda: checkIndexes(),
          "version": 'main',
          "order": 17,
+         "online": True
+    },
+    "duplicate":
+    {
+         "description": "Check for duplicate entries",
+         "fn": lambda: checkDuplicateEntry(),
+         "version": 'main',
+         "order": 18,
          "online": True
     }
 }
@@ -4160,13 +4266,18 @@ def getResourceTypeOid(oid):
 #   - Categorize entry into GPObject
 #   - Instantiate GPObject if needed
 #-------------------------------------------------------------------------------
-def processMissingEntryResult(catname, colname, allValues):
+def processMissingDuplicateEntryResult(catname, colname, allValues, type):
 
+    # type = {"missing" | "duplicate"}
     '''
-    colname:       proname | pronamespace | proargtypes | exists | segment_ids
+    colname:       proname | pronamespace | proargtypes | exists | segids
     allValues:         add | 2200 | 23 23 | extra | {2,3}
                      scube | 2200 | 1700 | missing | {2}
                scube_accum | 2200 | 1700 1700 | missing | {2}
+
+    colname:        oid | total | segids
+    allValues:    18853 | 2 | {-1,1}
+                  18853 | 3 | {0}
     '''
     gpObjName = catname
     gpColName = None
@@ -4191,7 +4302,6 @@ def processMissingEntryResult(catname, colname, allValues):
         else:
             oid = getOidFromPK(catname, pkeys)    
             pkeys = {'oid': oid}
-        issue = CatMissingIssue(catname, pkeys, segids, row[-2])
 
         # Special case: constraint for domain, report pg_type.contypid
         if catname == 'pg_constraint' and oid == 0:
@@ -4205,7 +4315,16 @@ def processMissingEntryResult(catname, colname, allValues):
                 rowObjName = 'pg_class'
 
         gpObj = getGPObject(oid, rowObjName)
-        gpObj.setMissingIssue(issue)
+
+        if type == "missing":
+            issue = CatMissingIssue(catname, pkeys, segids, row[-2])
+            gpObj.setMissingIssue(issue)
+        else:
+            assert (type == "duplicate")
+            issue = CatDuplicateIssue(catname, pkeys, segids, row[-2])
+            gpObj.setDuplicateIssue(issue)
+
+
 
 #-------------------------------------------------------------------------------
 def processInconsistentEntryResult(catname, pknames, colname, allValues):
@@ -4357,13 +4476,31 @@ class CatMissingIssue:
         
 
 #-------------------------------------------------------------------------------
+class CatDuplicateIssue:
+
+    def __init__(self, catname, pkeys, segids, enum ):
+
+        self.catname = catname
+        self.pkeys   = pkeys     # string of pkey=xxxx or oid=xxxx 
+        self.segids  = segids    # list of affected segids
+        self.enum    = enum      # number of entries
+
+    def report(self):
+        """ Found # catname entries of "oid=XXXXX" on segment {Y,Z} """
+        output = '     Found %d %s entries of %s on segment %s' \
+                 % (self.enum, self.catname, str(self.pkeys), str(self.segids))
+        print output
+
+
+#-------------------------------------------------------------------------------
 class GPObject:
 
     def __init__(self, oid, catname):
         self.oid          = oid
         self.catname      = catname
         self.missingIssues      = [] 	# list of catMissingIssue
-        self.inconsistentIssues = [] 	# list of catInconsistentIssue
+        self.inconsistentIssues = []	# list of catInconsistentIssue
+        self.duplicateIssues    = []	# list of catDuplicateIssue
    
     def setMissingIssue(self, issue):
         if issue not in self.missingIssues:
@@ -4371,6 +4508,9 @@ class GPObject:
 
     def setInconsistentIssue(self, issue):
         self.inconsistentIssues.append(issue)
+
+    def setDuplicateIssue(self, issue):
+        self.duplicateIssues.append(issue)
 
     def isTopLevel(self):
         return True
@@ -4394,6 +4534,14 @@ class GPObject:
             print '  Issues found by missing/extraneous or foreign key check'
             for issue in self.missingIssues:
                 issue.report()
+            print '\n'
+
+        if len(self.duplicateIssues):
+            print '  Issues found by duplicate entries check'
+            for issue in self.duplicateIssues:
+                issue.report()
+
+         
 
 #-------------------------------------------------------------------------------
 class RelationObject(GPObject):
