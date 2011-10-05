@@ -3473,6 +3473,10 @@ def checkTableInconsistentEntry(cat):
     columns  = cat.getTableColumns(with_acl=False)
     coltypes = cat.getTableColtypes()
    
+    # Skip pg_constraint due to MPP-14531:
+    if catname == 'pg_constraint':
+        return
+
     # Skip master only tables
     if master:
         return
