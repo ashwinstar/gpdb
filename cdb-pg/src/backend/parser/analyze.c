@@ -7592,6 +7592,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	Node	   *prevEvery;
 	ListCell   *lc_anp = NULL;
 	List	   *key_attnums = NIL;
+	List	   *key_attnames = NIL;
 	part_col_cxt pcolcxt;
 	List	   *stenc = NIL;
 
@@ -7708,6 +7709,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 
 				key_attnums = lappend_int(key_attnums, i);
+				Insist(IsA(colval, String));
+				key_attnames = lappend(key_attnames, colval);
 
 				if (lookup_opclass)
 				{
@@ -7760,6 +7763,53 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			pBy->keyopclass = lappend_oid(pBy->keyopclass, opclass);
 		}
 	}
+	
+	/* Have partitioning keys; check for violating unique constraints */
+	foreach (lc, cxt->ixconstraints)
+	{
+		ListCell *ilc = NULL;
+		
+		Constraint *ucon = (Constraint*)lfirst(lc);
+		Insist (ucon->keys != NIL);
+		
+		foreach (ilc, key_attnames)
+		{
+			Value *partkeyname = (Value *)lfirst(ilc);
+			
+			if (!list_member(ucon->keys,  partkeyname))
+			{
+				char *what = NULL;
+				switch (ucon->contype)
+				{
+					case CONSTR_PRIMARY:
+						what = "PRIMARY KEY";
+						break;
+					case CONSTR_UNIQUE:
+						what = "UNIQUE";
+						break;
+					default:
+						elog(ERROR, "unexpected constraint type in internal transformation");
+						break;
+				}
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("%s constraint must contain all columns in the "
+								"partition key", 
+								what),
+						 errhint("Include column \"%s\" in the %s constraint or create "
+								 "a part-wise UNIQUE index after creating the table instead.",
+								 strVal(partkeyname), what)));
+			}
+		}
+		
+	}
+	
+	/* No further use for key_attnames, so clean up. */
+	if (key_attnames)
+	{
+		list_free(key_attnames);
+	}
+	key_attnames = NIL;
 
 	/* see if there are any duplicate column references */
 	if (0) /* MPP-3988: allow same column in multiple partitioning

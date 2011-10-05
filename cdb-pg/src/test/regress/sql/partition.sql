@@ -1374,10 +1374,9 @@ drop table if exists a;
 
 -- Check multi level partition COPY
 CREATE TABLE REGION (
-                    R_REGIONKEY INTEGER,
+                    R_REGIONKEY INTEGER not null,
                     R_NAME CHAR(25),
-                    R_COMMENT VARCHAR(152),
-                    primary key (r_regionkey)
+                    R_COMMENT VARCHAR(152)
                     )
 partition by hash (r_regionkey) partitions 1
 subpartition by hash (r_name) subpartitions 3
@@ -1385,6 +1384,8 @@ subpartition by hash (r_name) subpartitions 3
 (
 partition p1(subpartition sp1,subpartition sp2,subpartition sp3)
 );
+create unique index region_pkey on region(r_regionkey);
+
 copy region from stdin with delimiter '|';
 0|AFRICA|lar deposits. blithely final packages cajole. regular waters are 
 1|AMERICA|hs use ironic, even requests. s
@@ -3418,9 +3419,11 @@ drop table basictest1;
 drop domain domainvarchar, domainnumeric, domainint4, domaintext;
 
 -- Test index inheritance with partitions
-create table ti (i int primary key, j int)
+create table ti (i int not null, j int)
 partition by range (j) 
 (start(1) end(3) every(1));
+create unique index ti_pkey on ti(i);
+
 select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
 create index ti_j_idx on ti using bitmap(j);
 select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
@@ -4378,4 +4381,38 @@ alter table mpp13806 add partition test end (date '2008-01-01') inclusive;
 drop table mpp13806;
 -- MPP-13806 end
 
+-- MPP-14471 start
+-- No unenforceable PK/UK constraints!  (UNIQUE INDEXes still allowed; tested above)
+drop table if exists tc cascade;
+drop table if exists cc cascade;
+drop table if exists at cascade;
+
+create table tc
+    (a int, b int, c int, primary key(a) )
+    partition by range (b)
+    ( 
+        default partition d,
+        start (0) inclusive end(100) inclusive every (50)
+    );
+
+create table cc
+    (a int primary key, b int, c int)
+    partition by range (b)
+    ( 
+        default partition d,
+        start (0) inclusive end(100) inclusive every (50)
+    );
+
+create table at
+    (a int, b int, c int)
+    partition by range (b)
+    ( 
+        default partition d,
+        start (0) inclusive end(100) inclusive every (50)
+    );
+
+alter table at
+    add primary key (a);
+
+-- MPP-14471 end
 

@@ -25,7 +25,7 @@ create table direct_test_bitmap  as select '2008-02-01'::DATE AS DT,
         end as ind,
         (i*1017-j)::bigint as s from generate_series(1,10) i, generate_series(1,10) j distributed by (dt);
 create index direct_test_bitmap_idx on direct_test_bitmap using bitmap (ind, dt);
-CREATE TABLE direct_test_partition (trans_id int, date date, amount decimal(9,2), region text, primary key(trans_id)) DISTRIBUTED BY (trans_id) PARTITION BY RANGE (date) (START (date '2008-01-01') INCLUSIVE END (date '2009-01-01') EXCLUSIVE EVERY (INTERVAL '1month') );
+CREATE TABLE direct_test_partition (trans_id int, date date, amount decimal(9,2), region text) DISTRIBUTED BY (trans_id) PARTITION BY RANGE (date) (START (date '2008-01-01') INCLUSIVE END (date '2009-01-01') EXCLUSIVE EVERY (INTERVAL '1month') );
 NOTICE:  CREATE TABLE will create partition "direct_test_partition_1_prt_1" for table "direct_test_partition"
 NOTICE:  CREATE TABLE will create partition "direct_test_partition_1_prt_2" for table "direct_test_partition"
 NOTICE:  CREATE TABLE will create partition "direct_test_partition_1_prt_3" for table "direct_test_partition"
@@ -38,19 +38,19 @@ NOTICE:  CREATE TABLE will create partition "direct_test_partition_1_prt_9" for 
 NOTICE:  CREATE TABLE will create partition "direct_test_partition_1_prt_10" for table "direct_test_partition"
 NOTICE:  CREATE TABLE will create partition "direct_test_partition_1_prt_11" for table "direct_test_partition"
 NOTICE:  CREATE TABLE will create partition "direct_test_partition_1_prt_12" for table "direct_test_partition"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_pkey" for table "direct_test_partition"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_1_pkey" for table "direct_test_partition_1_prt_1"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_2_pkey" for table "direct_test_partition_1_prt_2"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_3_pkey" for table "direct_test_partition_1_prt_3"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_4_pkey" for table "direct_test_partition_1_prt_4"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_5_pkey" for table "direct_test_partition_1_prt_5"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_6_pkey" for table "direct_test_partition_1_prt_6"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_7_pkey" for table "direct_test_partition_1_prt_7"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_8_pkey" for table "direct_test_partition_1_prt_8"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_9_pkey" for table "direct_test_partition_1_prt_9"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_10_pkey" for table "direct_test_partition_1_prt_10"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_11_pkey" for table "direct_test_partition_1_prt_11"
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "direct_test_partition_1_prt_12_pkey" for table "direct_test_partition_1_prt_12"
+create unique index direct_test_uk on direct_test_partition(trans_id);
+NOTICE:  building index for child partition "direct_test_partition_1_prt_1"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_2"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_3"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_4"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_5"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_6"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_7"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_8"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_9"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_10"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_11"
+NOTICE:  building index for child partition "direct_test_partition_1_prt_12"
 create table direct_test_range_partition (a int, b int, c int, d int) partition by range(d) (start(1) end(10) every(1));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.

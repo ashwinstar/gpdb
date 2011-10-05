@@ -29,7 +29,9 @@ create table direct_test_bitmap  as select '2008-02-01'::DATE AS DT,
         (i*1017-j)::bigint as s from generate_series(1,10) i, generate_series(1,10) j distributed by (dt);
 create index direct_test_bitmap_idx on direct_test_bitmap using bitmap (ind, dt);
 
-CREATE TABLE direct_test_partition (trans_id int, date date, amount decimal(9,2), region text, primary key(trans_id)) DISTRIBUTED BY (trans_id) PARTITION BY RANGE (date) (START (date '2008-01-01') INCLUSIVE END (date '2009-01-01') EXCLUSIVE EVERY (INTERVAL '1month') );
+CREATE TABLE direct_test_partition (trans_id int, date date, amount decimal(9,2), region text) DISTRIBUTED BY (trans_id) PARTITION BY RANGE (date) (START (date '2008-01-01') INCLUSIVE END (date '2009-01-01') EXCLUSIVE EVERY (INTERVAL '1month') );
+
+create unique index direct_test_uk on direct_test_partition(trans_id);
 
 create table direct_test_range_partition (a int, b int, c int, d int) partition by range(d) (start(1) end(10) every(1));
 insert into direct_test_range_partition select i, i+1, i+2, i+3 from generate_series(1, 2) i;
