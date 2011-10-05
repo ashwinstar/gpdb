@@ -190,9 +190,6 @@ def getversion():
     version = row[0]
 
     logger.debug('got version %s' % version)
-    if not (version in versions):
-        usage('Error: only Greenplum database versions 3.2 - 4.1 are supported')
-
     return version
 
 ###############################
@@ -418,23 +415,16 @@ def formatErr(c, col, row):
 def getGPConfiguration():
     cfg = {}
     db = connect()
-    if GV.version < "4.0":
-        qry = '''
-           SELECT content, definedprimary, dbid, isprimary, hostname, port, 
-                  datadir
-           FROM gp_configuration
-        '''
-    else:
-        # note that in 4.0, sql commands cannot be run against the segment mirrors directly
-        # so we filter out non-primary segment databases in the query
-        qry = '''
-            SELECT content, preferred_role = 'p' as definedprimary,
-                   dbid, role = 'p' as isprimary, hostname, port, 
-                   fselocation as datadir
+    # note that in 4.0, sql commands cannot be run against the segment mirrors directly
+    # so we filter out non-primary segment databases in the query
+    qry = '''
+          SELECT content, preferred_role = 'p' as definedprimary,
+                 dbid, role = 'p' as isprimary, hostname, port, 
+                 fselocation as datadir
             FROM gp_segment_configuration JOIN pg_filespace_entry on (dbid = fsedbid)
-            WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system')
-              AND (role = 'p' or content < 0 )
-        '''
+           WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system')
+             AND (role = 'p' or content < 0 )
+          '''
     curs = db.query(qry)
     for row in curs.dictresult():
         if row['content'] == -1 and row['isprimary'] != 't':
@@ -1815,156 +1805,6 @@ def checkPGClass():
 
 
 #############
-def checkPGAttribute():
-    logger.info('-----------------------------------')
-    logger.info('Checking pg_attribute ...')
-    qry = '''
-    SELECT ta.attrelid, ta.attname 
-    FROM   pg_attribute ta left outer join
-           pg_class tc on (tc.oid = ta.attrelid)
-    WHERE  tc.relname is NULL
-    '''
-    err = connect2run(qry, ('attrelid', 'attname'))
-    if not err:
-        logger.info('[OK] pg_attribute')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] pg_attribute')
-        logger.error('pg_attribute has %d issue(s)' % len(err))
-        logger.error(qry)
-        for e in err[0:100]: 
-            logger.error(formatErr(e[0], e[1], e[2]))
-        if len(err) > 100:
-            logger.error("...")
-
-        relids = {}
-        for e in err:
-            seg = e[0]['dbid'] 
-            if not relids.has_key(seg):
-                relids[seg] = []
-            
-            relids[seg].append(e[2]['attrelid'])    
-        for seg in relids:
-            # unique
-            rels = set(relids[seg])
-            for relid in rels:
-                c = GV.cfg[seg]
-                removeTable(seg, connect2(c), relid)
-
-
-
-#############
-def checkPGType():
-    logger.info('-----------------------------------')
-    logger.info('Checking pg_type ...')
-    qry = '''
-    SELECT typname, typtype, typrelid
-    FROM   pg_type tt left outer join 
-           pg_class tc on (tt.typname = tc.relname) 
-    WHERE tt.typtype = 'c' and tc.relname is NULL
-    '''
-    err = connect2run(qry, ('typname', 'typtype'))
-    if not err:
-        logger.info('[OK] pg_type')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] pg_type')
-        logger.error('pg_type has %d issue(s)' % len(err))
-        logger.error(qry)
-        for e in err[0:100]: 
-            logger.error(formatErr(e[0], e[1], e[2]))
-        if len(err) > 100:
-            logger.error("...")
-
-        relids = {}
-        for e in err:
-            seg = e[0]['dbid'] 
-            if not relids.has_key(seg):
-                relids[seg] = []
-            
-            relids[seg].append(e[2]['typrelid'])    
-        # unique
-        for seg in relids:
-            rels = set(relids[seg])
-            for relid in rels:
-                c = GV.cfg[seg]
-                removeTable(seg, connect2(c), relid)
-
-
-#############
-def checkPGExtTable():
-    logger.info('-----------------------------------')
-    logger.info('Checking pg_exttable ...')
-
-    if GV.version < "4.0":
-        qry = '''
-    SELECT reloid
-    FROM   pg_exttable te left outer join 
-           pg_class tc on (te.reloid = tc.oid and tc.relkind = 'x')
-    WHERE tc.oid is NULL
-    '''
-    else:
-        qry = '''
-    SELECT reloid
-    FROM   pg_exttable te left outer join 
-           pg_class tc on (te.reloid = tc.oid and tc.relstorage = 'x')
-    WHERE tc.oid is NULL
-    '''
-
-    err = connect2run(qry, ('reloid',))
-    if not err:
-        logger.info('[OK] pg_exttable')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] pg_exttable')
-        logger.error('pg_exttable has %d issue(s)' % len(err))
-        logger.error(qry)
-        for e in err[0:100]: 
-            logger.error(formatErr(e[0], e[1], e[2]))
-        if len(err) > 100:
-            logger.error("...")
-
-        relids = {}
-        for e in err:
-            seg = e[0]['dbid'] 
-            if not relids.has_key(seg):
-                relids[seg] = []
-            
-            relids[seg].append(e[2]['reloid'])    
-        for seg in relids:
-            # unique
-            rels = set(relids[seg])
-            for relid in rels:
-                c = GV.cfg[seg]
-                removeExtTable(seg, connect2(c), relid, str(relid))
-
-
-
-#############
-def checkPGClassToast():
-    logger.info('-----------------------------------')
-    logger.info('Checking pg_class.reltoastrelid')
-    qry = '''
-    SELECT c1.reltoastrelid 
-    FROM   pg_class c1 left outer join 
-           pg_class c2 on (c1.reltoastrelid = c2.oid)
-    WHERE c1.reltoastrelid <> 0 AND c2.oid is NULL
-    '''
-    err = connect2run(qry, ('reltoastrelid',))
-    if not err:
-        logger.info('[OK] pg_class.reltoastrelid')
-    else:
-        setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] pg_class.reltoastrelid')
-        logger.error('pg_class.reltoastrelid has %d issue(s)' % len(err))
-        logger.error(qry)
-        for e in err[0:100]: 
-            logger.error(formatErr(e[0], e[1], e[2]))
-        if len(err) > 100:
-            logger.error("...")
-
-
-#############
 def checkPGNamespace():
     logger.info('-----------------------------------')
     logger.info('Checking for leaked temporary schemas')
@@ -2044,72 +1884,7 @@ def checkPGNamespace():
                 c = GV.cfg[seg]
                 removeSchema(seg, connect2(c), schemaid)
 
-#############
-def BuildTableResync(db, dtab, tables, max_content, tname, fktname, fklist):
 
-    fkeydef = {}
-    # look thru all foreign key defs and find the one with tname as pkey table
-    for fkd in fklist:
-        if fkd['fk'].getPkeyTableName() == tname:
-            fkeydef = fkd
-            break
-    #
-    pkey = tables[dtab[tname]].getPrimaryKey()
-    print "%s: %s\nfkt %s: %s"%(tname, pkey, fktname, fklist)
-
-    keyd = {}
-    for row in fkd['rows']:
-        foo = []
-        for c1 in row:
-            foo.append(str(c1))
-        #
-        seg_id = foo.pop(0)
-        kkey = ",".join(foo)
-        if kkey not in keyd:
-            keyd[kkey] = []
-        #
-        vval = {}
-        vval['keys'] = foo
-        vval['segid'] = seg_id
-        keyd[kkey].append(vval)
-    #
-    print keyd
-    print "cols: %s\n"%fkeydef['fk'].getColumns()
-    print "pkey: %s\n"%fkeydef['fk'].getPKey()
-    
-    qtmpl = '''
-    SELECT * FROM {tname} WHERE {keycols_expr}
-'''
-
-    for kkey in keyd:
-        vval = keyd[kkey]
-        for rw in vval:
-            kklist = []
-            kkoff  = len(rw['keys']) - len(fkeydef['fk'].getPKey())
-            for colname in fkeydef['fk'].getPKey():
-                kklist.append('''{kk} = '{vv}' '''.format(
-                        kk=colname, 
-                        vv=rw['keys'][kkoff]))
-                kkoff += 1
-
-            qry = qtmpl.format(tname=tname,
-                               keycols_expr=" AND ".join(kklist))
-    
-            print qry                 
-
-    #
-
-                      
-        
-
-
-#############
-def BuildFKResync(db, dtab, tables, badfktables, badpktables, max_content):
-
-    for tname in badpktables:
-        for fktname in badpktables[tname]:
-            BuildTableResync(db, dtab, tables, max_content,
-                             tname, fktname, badfktables[fktname])
 
 #############
 # remove all remnants of a schema
@@ -2304,48 +2079,7 @@ def addDemoteConstraint(seg, repair_sequence):
     GV.DemoteConstraint[seg].append(repair_sequence)    
 
 
-class sysCatThread(Thread):
-    # Override Thread.__init__ to supply extra info
-
-    def __init__(self, dbid, table, catalog):
-        self.dbid = dbid
-        self.table = table
-        self.catalog = catalog
-        Thread.__init__(self)
-
-    def run(self):
-        dbid     = self.dbid
-        table    = self.table
-        catalog  = self.catalog
-        host    = GV.cfg[dbid]['hostname']
-        port    = GV.cfg[dbid]['port']
-        datadir = GV.cfg[dbid]['datadir']
-        logger.debug('fetching %s from %s:%s:%s' % (catalog, host, port, datadir))
-    
-        if dbid == 1:
-            outfile = "%s/gpcheckcat_m" % GV.tmpdir
-        else:
-            outfile = "%s/gpcheckcat.%s.%s_s" % (GV.tmpdir, dbid, table)
-    
-        cmd  = 'PGOPTIONS="-c gp_session_role=utility"'
-        cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" "%s"' % \
-            (outfile, host, port, GV.opt['-U'], catalog, GV.dbname)
-    
-        logger.debug('outfile = %s' % outfile)
-        subprocess.call(cmd, shell=True, close_fds=True)
-    
-
-def row2str(row):
-    keys = row.keys()
-    keys.sort()
-
-    l = [ "%s: '%s'" % (key, str(row[key])) for key in keys ]
-    strout = ', '.join(l)
-    return strout
 #############
-
-
-
 def checkDepend():
     # Check for dependencies on non-existent objects
     logger.info('-----------------------------------')
@@ -2448,9 +2182,6 @@ def fixupowners(nspname, relname, oldrole, newrole):
 def checkOwners():
     logger.info('-----------------------------------')
     logger.info('Checking table ownership')
-    if GV.version < "3.3":
-        logger.info('Skipping...')
-        return
 
     # Check owners in pg_class
     #
@@ -2468,8 +2199,7 @@ def checkOwners():
     #  - Between 3.3 and 4.0 the ao segment columns migrated from pg_class
     #    to pg_appendonly.
     db = connect2(GV.cfg[1], utilityMode=False)
-    if GV.version >= "4.0":
-        qry = '''
+    qry = '''
     select distinct n.nspname, coalesce(o.relname, c.relname) as relname,
                     a.rolname, m.rolname as master_rolname
     from gp_dist_random('pg_class') r
@@ -2486,23 +2216,6 @@ def checkOwners():
       join pg_authid m on (m.oid = coalesce(o.relowner, c.relowner))
       join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
     where c.relowner <> r.relowner
-    '''
-    else:
-        qry = '''
-    select distinct n.nspname, coalesce(o.relname, c.relname) as relname,
-                    a.rolname, m.rolname as master_rolname
-    from gp_dist_random('pg_class') r
-      join pg_class c on (c.oid = r.oid)
-      left join pg_class t on (t.reltoastidxid = c.oid or
-                               t.relaosegidxid = c.oid)
-      left join pg_class o on (o.reltoastrelid = t.oid or
-                               o.reltoastrelid = c.oid or
-                               o.relaosegrelid = t.oid or
-                               o.relaosegrelid = c.oid)
-      join pg_authid a on (a.oid = r.relowner)
-      join pg_authid m on (m.oid = coalesce(o.relowner, c.relowner))
-      join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
-    where c.relowner != r.relowner
     '''
     curs = db.query(qry)
 
@@ -2650,10 +2363,6 @@ def checkPersistentTables():
     logger.info('-----------------------------------')
     logger.info('Checking persistent tables')
 
-    # Persistent tables only exist in 4.0+
-    if GV.version < "4.0":
-        logger.info("Skipping...")
-        return
 
     # Some of the persistency checks modified depending on if we are in
     # change tracking or not.  For instance when we are in-sync we 
@@ -3764,38 +3473,6 @@ name_test = {
          "order": 9,
          "online": False
     },
-    "toasttable":
-    {
-         "description": "Check toast table: report orphaned toast tables, no correspond pg_class entry",
-         "fn": lambda: checkPGClassToast(),
-         "version": 'main',
-         "order": 10,
-         "online": False
-    },
-    "pgattribute":
-    {
-         "description": "Check pg_attribute: report entry that does not have correspond pg_class entry",
-         "fn": lambda: checkPGAttribute(),
-         "version": '4.1',
-         "order": 11,
-         "online": False
-    },
-    "pgtype":
-    {
-         "description": "Check pg_type: report entry that does not have correspond pg_class entry",
-         "fn": lambda: checkPGType(),
-         "version": '4.1',
-         "order": 12,
-         "online": False
-    },
-    "exttable":
-    {
-         "description": "Check pg_exttable: report entry that does not have correspond pg_class entry",
-         "fn": lambda: checkPGExtTable(),
-         "version": '4.1',
-         "order": 13,
-         "online": False
-    },
     "distribution":
     {
          "description": "Check constraints on randomly distributed tables",
@@ -3843,9 +3520,9 @@ name_test = {
 def listAllTests():
 
     logger.info("Gpcheckcat current tests:\n")
-    for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
+    for i,name in enumerate(sorted(name_test, key=lambda x: name_test[x]["order"])):
         print "%2d. %15s: %s" % \
-              (name_test[name]["order"], name, name_test[name]["description"])
+              (i+1, name, name_test[name]["description"])
     print ''
 
 #-------------------------------------------------------------------------------
@@ -4756,14 +4433,14 @@ if __name__ == '__main__':
         sys.exit(GV.retcode)
 
     GV.version = getversion()
+    if GV.version < "4.0":
+        logger.error("Error: only Greenplum database versions >= 4.0 are supported")
+        sys.exit(GV.retcode)
+
     GV.cfg = getGPConfiguration()
     GV.max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
     GV.catalog = getCatalog()
     
-    # turn on toast table check for 3.2
-    if GV.opt['-o'] == False and not GV.version == "8.2.6":
-        GV.opt['-o'] = True
-
     for dbname in GV.alldb:
         logger.info('-----------------------------------')
         logger.info('-----------------------------------')
