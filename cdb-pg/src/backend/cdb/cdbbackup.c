@@ -777,10 +777,20 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		 * options. Redirect both stdout and stderr into the status file.
 		 */
 #ifdef USE_DDBOOST
-		sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
+		if (dd_boost_enabled)
+		{
+			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, compPg, pszKeyParm, dd_boost_buffer_size, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
 				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
 				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
+		}
+		else
+		{
+			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
+				bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
+				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
+				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
+		}
 #else
 		sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
@@ -802,11 +812,21 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		}
 
 		/* Format gp_restore_agent with options, and Redirect both stdout and stderr into the status file */
-#ifdef USE_DDBOOST	
-		sprintf(pszCmdLine, "%s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
+#ifdef USE_DDBOOST
+		if (dd_boost_enabled)
+		{	
+			sprintf(pszCmdLine, "%s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, pszKeyParm, dd_boost_buffer_size, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
 				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
 				postDataSchemaOnly ? "2>" : "2", pszStatusFileName);
+		}
+		else
+		{
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
+				bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
+				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
+				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
+		}
 #else
 		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
