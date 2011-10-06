@@ -3,6 +3,7 @@ import gzip
 import getpass
 import shutil
 import socket
+from contextlib import closing
 
 # TODO: trim down the wildcard imports to only what's necessary
 from gppylib import gplog
@@ -527,6 +528,33 @@ def BuildRemoteTableDump(restore_tables, real_filename, fake_filename, compress,
 
 
 class BuildTableDump(Operation):
+    """
+    Builds "fake" dump file for segment from a given, original dump file where
+    the newly created dump file contains data pertaining only to the desired tables
+
+    Sample of expected dump file:
+# --
+# -- Greenplum Database database dump
+# --
+#
+# SET client_encoding = 'UTF8';
+# SET standard_conforming_strings = off;
+# SET check_function_bodies = false;
+# SET client_min_messages = warning;
+# SET escape_string_warning = off;
+#
+# SET search_path = public, pg_catalog;
+#
+# --
+# -- Data for Name: a1; Type: TABLE DATA; Schema: public; Owner: kumara64
+# --
+# 
+# COPY a1 (x) FROM stdin;
+# 1
+# 2
+# 3
+# \.
+    """
     def __init__(self, restore_tables, real_filename, fake_filename, compress):
         self.restore_tables = restore_tables
         self.real_filename = real_filename
@@ -534,46 +562,53 @@ class BuildTableDump(Operation):
         self.compress = compress
     def execute(self):
         logger.info('Building dump file header')
-        real_file, fake_file = None, None
-        try:
-            if self.compress:
-                real_file = gzip.open(self.real_filename + '.gz', 'r')
-                fake_file = gzip.open(self.fake_filename + '.gz', 'w')
-            else:
-                real_file = open(self.real_filename, 'r')
-                fake_file = open(self.fake_filename, 'w')
-             
-            for restore_table in self.restore_tables:
-                schema, table = restore_table.split('.')
-                logger.info('Commencing data extract for %s' % table)
-                real_file.seek(0, os.SEEK_SET)
-                output, in_schema, found = False, False, False
-                while True:
-                    line = real_file.readline()
-                    if not line:
-                        break                
+        dump_schemas = set()
+        dump_tables = set()
+        for restore_table in self.restore_tables:
+            schema, table = restore_table.split('.')
+            dump_schemas.add(schema)
+            dump_tables.add((schema, table))
 
-                    if line.startswith("SET search_path = %s," % schema):
-                        fake_file.write(line)
-                        schema = True
-                    elif schema and line.startswith('COPY %s ' % table):
-                        found = True
-                        output = True
-                    elif output and line.endswith('\\.'):
-                        fake_file.write(line)
+        search_path_expr = "SET search_path = "
+        len_search_path_expr = len(search_path_expr)
+        copy_expr = "COPY " 
+        len_copy_expr = len(copy_expr)
+        copy_end_expr = "\\."
+
+        real_file, fake_file = None, None
+        schema, table = None, None
+        output = False
+        myopen = open
+        if self.compress:
+            self.real_filename += '.gz'
+            self.fake_filename += '.gz'
+            myopen = lambda filename, mode: closing(gzip.open(filename, mode))
+
+        with myopen(self.fake_filename, 'w') as fake_file:
+            with myopen(self.real_filename, 'r') as real_file:
+                for line in real_file:
+                    if line.startswith(search_path_expr):
+                        temp = line[len_search_path_expr:]
+                        idx = temp.find(",")
+                        if idx == -1:
+                            continue
+                        schema = temp[:idx]
+                        if schema in dump_schemas:
+                            fake_file.write(line)
+                    elif line.startswith(copy_expr):
+                        temp = line[len_copy_expr:]
+                        idx = temp.index(" ")
+                        table = temp[:idx]
+                        if (schema, table) in dump_tables:
+                            output = True
+                    elif output and line.startswith(copy_end_expr):
+                        dump_tables.remove((schema, table))
+                        table = None
                         output = False
-                        schema = False
-                    if output and schema: 
                         fake_file.write(line)
-        except Exception, e:
-            # TODO: Don't catch all. Throw custom exception to parent Operation.
-            logger.exception('Parallel table dump file build failed.')
-            raise Exception('Parallel table dump file build failed, review log file for details')
-        finally:
-            if real_file is not None:
-                real_file.close()
-            if fake_file is not None:
-                fake_file.close()
+
+                    if output:
+                        fake_file.write(line)
 
 
 
