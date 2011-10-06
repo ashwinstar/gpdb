@@ -6420,7 +6420,7 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 		{
 			TableInfo  *owning_tab = findTableByOid(tbinfo->owning_tab);
 
-			if (owning_tab)
+			if (owning_tab && owning_tab->dobj.dump)
 			{
 				resetPQExpBuffer(query);
 				appendPQExpBuffer(query, "ALTER SEQUENCE %s",
