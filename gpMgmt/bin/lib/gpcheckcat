@@ -23,11 +23,13 @@ import sys, os, subprocess, tempfile, stat, re
 from threading import Thread
 from datetime import datetime
 from time import localtime, strftime
+import time
 import getopt
 
 try:
     from gppylib.gplog import *
     from gppylib.gpcatalog import *
+    from gppylib.commands.unix import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
 except ImportError, e:
@@ -38,24 +40,11 @@ parallelism = 8
 oidmap = {}
 
 #-------------------------------------------------------------------------------
-class CheckcatLogger:
-
-    def __init__(self):
-        self.logger = None
-
-    def get(self):
-        if self.logger == None:
-            form = logging.Formatter("gpcheckcat:-[%(levelname)-s]:-%(message)s")
-            handler = gplog.EncodingStreamHandler()
-            handler.setFormatter(form)
-            self.logger = logging.getLogger('gpcheckcat')
-            self.logger.addHandler(handler)
-            self.logger.setLevel(logging.INFO)
-        return self.logger
-
+EXECNAME = os.path.split(__file__)[-1]
+setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+very_quiet_stdout_logging()
+logger = get_default_logger()
 #-------------------------------------------------------------------------------
-logger = CheckcatLogger().get()
-
 
 ################
 def parse_int(val):
@@ -89,6 +78,7 @@ def setError(level):
 
 ###############################
 class Global():
+
     def __init__(self):
         self.retcode   = SUCCESS
         self.opt       = {}
@@ -131,8 +121,10 @@ class Global():
     
         self.catalog = None
         self.max_content = 0
+        self.report_cfg = {}
         
     def reset_stmt_queues(self):
+
         # dictionary of SQL statements. Key is dbid
         self.Remove = {}
     
@@ -164,7 +156,14 @@ class Global():
         self.inconsistentEntryStatus = None
         self.foreignKeyStatus = None
         self.aclStatus = None
-        
+
+        self.retcode = SUCCESS
+
+        # the following variables used for reporting purposes
+        self.elapsedTime = 0
+        self.totalTestRun = 0
+        self.testStatus = True
+        self.failedTest = []
 
 GV = Global()
 
@@ -446,25 +445,31 @@ def checkDistribPolicy():
     '''
 
     db = connect2(GV.cfg[1])
-    curs = db.query(qry)
+    try:
+        curs = db.query(qry)
+        err = []
+        for row in curs.dictresult():
+            err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
 
-    err = []
-    for row in curs.dictresult():
-        err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
-
-    if not err:
-        logger.info('[OK] randomly distributed tables')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] randomly distributed tables')
-        logger.error('pg_constraint has %d issue(s)' % len(err))
-        logger.error(qry)
-        for e in err: 
-            logger.error(formatErr(e[0], e[1], e[2]))
-        for e in err:
-            cons = e[2]
-            removeIndexConstraint(cons['nspname'], cons['relname'],
+        if not err:
+            logger.info('[OK] randomly distributed tables')
+        else:
+            GV.testStatus = False
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL] randomly distributed tables')
+            logger.error('pg_constraint has %d issue(s)' % len(err))
+            logger.error(qry)
+            for e in err: 
+                logger.error(formatErr(e[0], e[1], e[2]))
+            for e in err:
+                cons = e[2]
+                removeIndexConstraint(cons['nspname'], cons['relname'],
                                   cons['constraint'])
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('Error in executing test: checkDistribPolicy')
+        logger.error('  Execution error: ' + str(e))
+
 
     logger.info('-----------------------------------')
     logger.info('Checking that unique constraints are only on distribution columns')
@@ -482,24 +487,30 @@ def checkDistribPolicy():
           (d.attrnums is null or not 
            d.attrnums operator(pg_catalog.<@) pk.conkey)
     '''
-    curs = db.query(qry)
+    try:
+        curs = db.query(qry)
 
-    err = []
-    for row in curs.dictresult():
-        err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
+        err = []
+        for row in curs.dictresult():
+            err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
 
-    if not err:
-        logger.info('[OK] unique constraints')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] unique constraints')
-        logger.error('pg_constraint has %d issue(s)' % len(err))
-        logger.error(qry)
-        for e in err: logger.error(formatErr(e[0], e[1], e[2]))
-        for e in err:
-            cons = e[2]
-            removeIndexConstraint(cons['nspname'], cons['relname'],
+        if not err:
+            logger.info('[OK] unique constraints')
+        else:
+            GV.testStatus = False
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL] unique constraints')
+            logger.error('pg_constraint has %d issue(s)' % len(err))
+            logger.error(qry)
+            for e in err: logger.error(formatErr(e[0], e[1], e[2]))
+            for e in err:
+                cons = e[2]
+                removeIndexConstraint(cons['nspname'], cons['relname'],
                                   cons['constraint'])
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('Error in executing test: checkDistribPolicy')
+        logger.error('  Execution error: ' + str(e))
 
 
 #############
@@ -520,27 +531,34 @@ def checkPartitionIntegrity():
       join pg_namespace n on (c.relnamespace = n.oid)
     where  r1.parchildrelid <> 0 and r2.parchildrelid <> 0
     '''
-    curs = db.query(qry)
-    for row in curs.dictresult():
-        qy2 = ('select count(*) as cc from (select 1 from only %s limit(2)) q'
-               % (row['parname']))
+    try:
+        curs = db.query(qry)
+        for row in curs.dictresult():
+            qy2 = ('select count(*) as cc from (select 1 from only %s limit(2)) q'
+                   % (row['parname']))
 
-        # logger.info(qy2)
-        curs2 = db.query(qy2)
-        for row2 in curs2.dictresult():
-            if row2['cc'] == 0 :
-                continue
-            err.append([row['parname']])
+            # logger.info(qy2)
+            curs2 = db.query(qy2)
+            for row2 in curs2.dictresult():
+                if row2['cc'] == 0 :
+                    continue
+                err.append([row['parname']])
 
-    if not err:
-        logger.info('[OK] pg_partition branch integrity')
-    else:
+        if not err:
+            logger.info('[OK] pg_partition branch integrity')
+        else:
+            GV.testStatus = False
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] pg_partition branch integrity')
+            logger.error('pg_partition has %d issue(s)' % len(err))
+            logger.error('Discovered row data in branch partitions')
+            for e in err: 
+               logger.error('  partition table name:  %s' % (e[0]))
+
+    except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] pg_partition branch integrity')
-        logger.error('pg_partition has %d issue(s)' % len(err))
-        logger.error('Discovered row data in branch partitions')
-        for e in err: 
-            logger.error('  partition table name:  %s' % (e[0]))
+        logger.error('Error in executing test: checkPartitionInterity')
+        logger.error('  Execution error: ' + str(e))
 
     # MPP-9283: look for partitions create "with oids".
     qry = '''
@@ -552,25 +570,31 @@ def checkPartitionIntegrity():
     from   pg_class pc, pg_partition pp, pg_namespace n1
     where  pp.parrelid = pc.oid and pc.relnamespace = n1.oid and pc.relhasoids
     '''
-    curs = db.query(qry)
+    try:
+        curs = db.query(qry)
+        err = []
+        for row in curs.dictresult():
+            err.append([GV.cfg[1], ('nspname', 'relname', 'oid'), row])
 
-    err = []
-    for row in curs.dictresult():
-        err.append([GV.cfg[1], ('nspname', 'relname', 'oid'), row])
-
-    if not err:
-        logger.info('[OK] partition with oids check')
-    else:
-        setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] partition with oids check')
-        logger.error('partition with oids check found %d issue(s)' % len(err))
-        logger.error(qry)
-        for e in err[0:100]: 
-            row = e[2]
-            logger.error(" table %s.%s oid %s" % 
+        if not err:
+            logger.info('[OK] partition with oids check')
+        else:
+            GV.testStatus = False
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] partition with oids check')
+            logger.error('partition with oids check found %d issue(s)' % len(err))
+            logger.error(qry)
+            for e in err[0:100]: 
+                row = e[2]
+                logger.error(" table %s.%s oid %s" % 
                          (row['nspname'], row['relname'], row['oid']))
-        if len(err) > 100:
-            logger.error("...")
+            if len(err) > 100:
+                logger.error("...")
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('Error in executing test: checkPartitionInterity')
+        logger.error('  Execution error: ' + str(e))
+
         # TODO: add repair script
 
 
@@ -638,46 +662,54 @@ def checkPartitionIntegrity():
     join gp_distribution_policy d2 on (d2.localoid = p.parchildrelid)
     where d2.attrnums is not null
     '''
-    curs = db.query(qry)
-    cols = ('parrelid', 'parchildrelid', 'parpolicy', 'parchildpolicy')
+    try:
+        curs = db.query(qry)
+        cols = ('parrelid', 'parchildrelid', 'parpolicy', 'parchildpolicy')
 
-    err = []
-    for row in curs.dictresult():
-        err.append([GV.cfg[1], cols, row])
+        err = []
+        for row in curs.dictresult():
+            err.append([GV.cfg[1], cols, row])
 
-    if not err:
-        logger.info('[OK] partition distribution policy check')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] partition distribution policy check')
-        logger.error('partition distribution policy check found %d issue(s)' % len(err))
-        if len(err) > 100:
-            logger.error(qry)
+        if not err:
+            logger.info('[OK] partition distribution policy check')
+        else:
+            GV.testStatus = False
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL] partition distribution policy check')
+            logger.error('partition distribution policy check found %d issue(s)' % len(err))
+            if len(err) > 100:
+                logger.error(qry)
 
-        count = 0
-        for e in err:
-            cfg = e[0]
-            col = e[1]
-            row = e[2]
+            count = 0
+            for e in err:
+                cfg = e[0]
+                col = e[1]
+                row = e[2]
 
-            # generate repair script for this row
-            distributeRandomly(row['parchildrelid'])
+                # generate repair script for this row
+                distributeRandomly(row['parchildrelid'])
 
-            # report at most 100 rows, for brevity
-            if count == 100:
-                logger.error("...")
-                count += 1
-            if count > 100:
-                continue
+                # report at most 100 rows, for brevity
+                if count == 100:
+                    logger.error("...")
+                    count += 1
+                if count > 100:
+                    continue
 
-            if count == 0:
-                logger.error("--------")
-                logger.error("  " + " | ".join(map(str, col)))
-                logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
+                if count == 0:
+                    logger.error("--------")
+                    logger.error("  " + " | ".join(map(str, col)))
+                    logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
 
             
-            logger.error("  " + " | ".join([str(row[x]) for x in col]))
-            count += 1
+                logger.error("  " + " | ".join([str(row[x]) for x in col]))
+                count += 1
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('Error in executing test: checkPartitionInterity')
+        logger.error('  Execution error: ' + str(e))
+
 
     db.close()
 
@@ -1647,48 +1679,61 @@ def checkPartitionRegularity():
     
     qry = partitionRegularityChecks['irreg_user_constraint']    
     err = []
-    curs = db.query(qry)
-    
-    for row in curs.dictresult():
-        err.append( (row['tableconname'], row['tableid'], row['numactual'], row['numexpected']) )
 
-    if not err:
-        logger.info('[OK]  %s' % testname)
-    else:
-        irregular = True
+    try:
+        curs = db.query(qry)
+    
+        for row in curs.dictresult():
+            err.append( (row['tableconname'], row['tableid'], row['numactual'], row['numexpected']) )
+
+        if not err:
+            logger.info('[OK]  %s' % testname)
+        else:
+            irregular = True
+            GV.testStatus = False
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL]  %s' % testname)
+            logger.error(' %s test has %d issue(s)' % (testname, len(err)) )
+            efmt = '  Constraint "%s" of partitioned table "%s" occurs %d times, %d expected.'
+            for e in err: 
+                logger.error(efmt % e)
+
+    except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info('[FAIL]  %s' % testname)
-        logger.error(' %s test has %d issue(s)' % (testname, len(err)) )
-        efmt = '  Constraint "%s" of partitioned table "%s" occurs %d times, %d expected.'
-        for e in err: 
-            logger.error(efmt % e)
+        logger.error('Error in executing test: %s' % testname)
+        logger.error('  Execution error: ' + str(e))
 
     testname = 'system-defined partition constraint regularity on partitioned tables'
     
     # Determine maximum number of partitioning levels in this database
-    qry = """select max(parlevel)+1 as maxdepth from pg_partition;"""
-    curs = db.query(qry)
-    assert len(curs.dictresult()) == 1 # scalar aggregation!
-    maxdepth = curs.dictresult()[0]['maxdepth']
-        
-    err = []
-    
-    if isinstance(maxdepth, int):
-        qry = make_irregular_sys_con_query(maxdepth)
+    try:
+        qry = """select max(parlevel)+1 as maxdepth from pg_partition;"""
         curs = db.query(qry)
-        for row in curs.dictresult():
-            err.append( (row['partid'], row['tableid'], row['actual'], row['expected']) ) 
+        assert len(curs.dictresult()) == 1 # scalar aggregation!
+        maxdepth = curs.dictresult()[0]['maxdepth']
+        
+        err = []
+        if isinstance(maxdepth, int):
+            qry = make_irregular_sys_con_query(maxdepth)
+            curs = db.query(qry)
+            for row in curs.dictresult():
+                err.append( (row['partid'], row['tableid'], row['actual'], row['expected']) )
 
-    if not err:
-        logger.info('[OK]  %s' % testname)
-    else:
-        irregular = True
+        if not err:
+            logger.info('[OK]  %s' % testname)
+        else:
+            irregular = True
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL]  %s' % testname)
+            logger.error(' %s test has %d issue(s)' % ( testname, len(err)) )
+            efmt = '  Part table "%s" of partitioned table "%s" has %d system-defined constraints, %d expected.'
+            for e in err:
+                logger.error(efmt % e)
+
+    except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info('[FAIL]  %s' % testname)
-        logger.error(' %s test has %d issue(s)' % ( testname, len(err)) )
-        efmt = '  Part table "%s" of partitioned table "%s" has %d system-defined constraints, %d expected.'
-        for e in err: 
-            logger.error(efmt % e)
+        logger.error('Error in executing test: %s' % testname)
+        logger.error('  Execution error: ' + str(e))
 
     testname = 'unenforced unique constraints on partitioned tables'
     
@@ -1699,32 +1744,40 @@ def checkPartitionRegularity():
     else:
         # logger.info('Checking %s ...' % testname)
 
-        qry = partitionRegularityChecks['unenforced_constraint_info']    
+        qry = partitionRegularityChecks['unenforced_constraint_info']
         err = []
-        curs = db.query(qry)
-        for row in curs.dictresult():
-            row['con_type_phrase'] = 'primary key' if row['contype'] == 'p' else 'unique'
-            row['quoted_conname'] = quote_value(row['conname'])
-            err.append(row) 
-    
-        if not err:
-            logger.info('[OK]  %s' % testname)
-        else:
-            setError(ERROR_REMOVE)
-            logger.info('[FAIL]  %s' % testname)
-            logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
-            efmt = '  partitioned table "{tableid}" has unenforced {con_type_phrase} constraint: "{partid}"'
-            repair_fmt = partitionRegularityChecks['unenforced_constraint_repairs']
-            n = 0
-            for e in err:
-                n = n+1
-                if n <= 100:
-                    logger.error(efmt.format(**e))
-                repair_sequence = repair_fmt.format(**e)
-                for dbid in GV.cfg:
-                    addDemoteConstraint(dbid, repair_sequence)
-                if len(err) > 100:
-                    logger.error("...")
+        try:
+            curs = db.query(qry)
+            for row in curs.dictresult():
+                row['con_type_phrase'] = 'primary key' if row['contype'] == 'p' else 'unique'
+                row['quoted_conname'] = quote_value(row['conname'])
+                err.append(row)
+   
+            if not err:
+                logger.info('[OK]  %s' % testname)
+            else:
+                GV.testStatus = False
+                setError(ERROR_REMOVE)
+                logger.info('[FAIL]  %s' % testname)
+                logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
+                efmt = '  partitioned table "{tableid}" has unenforced {con_type_phrase} constraint: "{partid}"'
+                repair_fmt = partitionRegularityChecks['unenforced_constraint_repairs']
+                n = 0
+                for e in err:
+                    n = n+1
+                    if n <= 100:
+                        logger.error(efmt.format(**e))
+                    repair_sequence = repair_fmt.format(**e)
+                    for dbid in GV.cfg:
+                        addDemoteConstraint(dbid, repair_sequence)
+                    if len(err) > 100:
+                        logger.error("...")
+
+        except Exception, e:
+            setError(ERROR_NOREPAIR)
+            logger.error('Error in executing test: %s' % testname)
+            logger.error('  Execution error: ' + str(e))
+          
 
     testname = 'inconsistently named constraint in partitioned table'
     
@@ -1739,30 +1792,37 @@ def checkPartitionRegularity():
         
         qry = partitionRegularityChecks['fix_ill_named_constraint']    
         err = []
-        curs = db.query(qry)
-        for row in curs.dictresult():
-            err.append( row ) 
+        try:
+            curs = db.query(qry)
+            for row in curs.dictresult():
+                err.append( row ) 
     
-        if not err:
-            logger.info('[OK]  %s' % testname)
-        else:
-            setError(ERROR_REMOVE)
-            logger.info('[FAIL]  %s' % testname)
-            logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
-            efmt = '  part table "%s" has constraint named "%s"; should be "%s"'
-            n = 0
-            for e in err:
-                n = n+1
-                if n <= 100:
-                    # part name, wrong constraint name, right constraint name
-                    logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
-                for dbid in GV.cfg:
-                    buildAdjustConname(
-						dbid, e['tableid'], int(e['partrelid']), 
-						quote_value(e['partconname']), 
-						quote_value(e['tableconname']) )
-            if len(err) > 100:
-                logger.error("...")
+            if not err:
+                logger.info('[OK]  %s' % testname)
+            else:
+                GV.testStatus = False
+                setError(ERROR_REMOVE)
+                logger.info('[FAIL]  %s' % testname)
+                logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
+                efmt = '  part table "%s" has constraint named "%s"; should be "%s"'
+                n = 0
+                for e in err:
+                    n = n+1
+                    if n <= 100:
+                        # part name, wrong constraint name, right constraint name
+                       logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
+                    for dbid in GV.cfg:
+                        buildAdjustConname(
+					     	dbid, e['tableid'], int(e['partrelid']), 
+		    				quote_value(e['partconname']), 
+			    			quote_value(e['tableconname']) )
+                if len(err) > 100:
+                    logger.error("...")
+
+        except Exception, e:
+            setError(ERROR_NOREPAIR)
+            logger.error('Error in executing test: %s' % testname)
+            logger.error('  Execution error: ' + str(e))
 
     db.close()
 
@@ -1781,6 +1841,7 @@ def checkPGClass():
     if not err:
         logger.info('[OK] pg_class')
     else:
+        GV.testStatus = False
         setError(ERROR_REMOVE)
         logger.info('[FAIL] pg_class')
         logger.error('pg_class has %d issue(s)' % len(err))
@@ -1829,16 +1890,22 @@ def checkPGNamespace():
     ) n LEFT OUTER JOIN pg_stat_activity x using (sess_id)
     WHERE x.sess_id is null
     '''
-    curs = db.query(qry)
-    if curs.ntuples() == 0:
-        logger.info('[OK] temporary schemas')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] temporary schemas')
-        logger.error('found %d unbound temporary schemas' % curs.ntuples())
-        for row in curs.getresult():
-            logger.error("  ... %s" % row[0])
-            GV.Schemas.append(row[0])
+    try:
+        curs = db.query(qry)
+        if curs.ntuples() == 0:
+            logger.info('[OK] temporary schemas')
+        else: 
+            GV.testStatus = False
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL] temporary schemas')
+            logger.error('found %d unbound temporary schemas' % curs.ntuples())
+            for row in curs.getresult():
+                logger.error("  ... %s" % row[0])
+                GV.Schemas.append(row[0])
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.error('Error in executing test: checkPGNamespace')
+        logger.error('  Execution error: ' + str(e))
 
     # Check for objects in various catalogs that are in a schema that has
     # been dropped.
@@ -1860,6 +1927,7 @@ def checkPGNamespace():
     if not err:
         logger.info('[OK] missing schema definitions')
     else:
+        GV.testStatus = False
         setError(ERROR_REMOVE)
         logger.info('[FAIL] missing schema definitons')
         logger.error('found %d references to non-existent schemas' % len(err))
@@ -2135,7 +2203,8 @@ def checkDepend():
         err = connect2run(qry)
         if not err:
             logger.info('[OK] basic object dependencies')
-        else:
+        else:   
+            GV.testStatus = False
             setError(ERROR_REMOVE)
             logger.info('[FAIL] basic object dependencies')
             logger.error('  found %d dependencies on dropped objects' % len(err))
@@ -2155,7 +2224,6 @@ def checkDepend():
                 for (objid, cat) in todrop[seg]:
                     name = "dropped oid %s in %s" % (objid, cat)
                     removeDepend(seg, segdb, objid, name)
-            
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -2217,28 +2285,35 @@ def checkOwners():
       join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
     where c.relowner <> r.relowner
     '''
-    curs = db.query(qry)
+    try:
+        curs = db.query(qry)
 
-    rows = []
-    for row in curs.dictresult():
-        rows.append(row)
+        rows = []
+        for row in curs.dictresult():
+            rows.append(row)
 
-    if len(rows) == 0:
-        logger.info('[OK] table ownership')
-    else:
-        setError(ERROR_REMOVE)
-        logger.info('[FAIL] table ownership')
-        logger.error('found %d table ownership issue(s)' % len(rows))
-        logger.error('%s' % qry)
-        for row in rows[0:100]:
-            logger.error('  %s.%s relowner %s != %s'
-                % (row['nspname'], row['relname'], row['rolname'],
-                   row['master_rolname']))
-        if len(rows) > 100:
-            logger.error("...")
-        for row in rows:
-            fixupowners(row['nspname'], row['relname'], row['rolname'],
-                        row['master_rolname'])
+        if len(rows) == 0:
+            logger.info('[OK] table ownership')
+        else: 
+            GV.testStatus = False
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL] table ownership')
+            logger.error('found %d table ownership issue(s)' % len(rows))
+            logger.error('%s' % qry)
+            for row in rows[0:100]:
+                logger.error('  %s.%s relowner %s != %s'
+                    % (row['nspname'], row['relname'], row['rolname'],
+                       row['master_rolname']))
+            if len(rows) > 100:
+                logger.error("...")
+            for row in rows:
+                fixupowners(row['nspname'], row['relname'], row['rolname'],
+                            row['master_rolname'])
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.info("Error in executing: check table ownership")
+        logger.error("  Execution error: " + str(e))
+        logger.error(qry)
 
     # TODO: add a check that subobject owners agree with the main object owner.
     # (The above checks only compare master vs segment)
@@ -2258,25 +2333,34 @@ def checkOwners():
       join pg_authid m on (m.oid = t.typowner)
     where r.typowner <> t.typowner and r.typrelid = 0
     '''
-    curs = db.query(qry)
+    try:
+        curs = db.query(qry)
 
-    rows = []
-    for row in curs.dictresult():
-        rows.append(row)
+        rows = []
+        for row in curs.dictresult():
+            rows.append(row)
 
-    if len(rows) == 0:
-        logger.info('[OK] type ownership')
-    else:
+        if len(rows) == 0:
+            logger.info('[OK] type ownership')
+        else:
+            GV.testStatus = False
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] type ownership')
+            logger.error('found %d type ownership issue(s)' % len(rows))
+            logger.error('%s' % qry)
+            for row in rows[0:100]:
+                logger.error('  %s.%s typeowner %s != %s'
+                    % (row['nspname'], row['typname'], row['rolname'],
+                       row['master_rolname']))
+            if len(rows) > 100:
+                logger.error("...")
+
+    except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] type ownership')
-        logger.error('found %d type ownership issue(s)' % len(rows))
-        logger.error('%s' % qry)
-        for row in rows[0:100]:
-            logger.error('  %s.%s typeowner %s != %s'
-                % (row['nspname'], row['typname'], row['rolname'],
-                   row['master_rolname']))
-        if len(rows) > 100:
-            logger.error("...")
+        logger.info("Error in executing: check type ownership")
+        logger.error("  Execution error: " + str(e))
+        logger.error(qry)
+
         # FIXME: add repair script
         # NOTE: types with typrelid probably will be repaired by the
         # script generated by the table ownership test above.
@@ -2291,73 +2375,6 @@ def checkOwners():
     # Check owners in pg_opclass
     # ...
 
-
-def checkIndexes():
-    logger.info('-----------------------------------')
-    logger.info('Checking indexes')
-
-    # Check for relhasindex variations amongst the segments
-    db = connect2(GV.cfg[1], utilityMode=False)
-    qry = '''
-    select distinct n.nspname, c.relname
-    from gp_dist_random('pg_class') r, pg_class c, pg_namespace n
-    where r.oid = c.oid and r.relhasindex <> c.relhasindex 
-      and c.relnamespace = n.oid
-    '''
-    curs = db.query(qry)
-
-    rows = []
-    for row in curs.dictresult():
-        rows.append(row)
-
-    if len(rows) == 0:
-        logger.info('[OK] relhasindex')
-    else:
-        #
-        # Because this is a known issue with minimal impact we issue a 
-        # non-fatal warning instead of an error.
-        #
-        # relhasindex inconsistency results from the fact that relhasindex
-        # is not updated through regular DDL operations (DROP INDEX), but
-        # instead is updated while vacuuming or analyzing the table which
-        # does not run in a regular transaction.
-        #
-        # The main result of this is that old mirroring would only update
-        # the relhasindex on primaries, not on mirrors, and a cancelled
-        # vacuum may have updated some segments but not others (the master
-        # in particular).
-        #
-        # setError(ERROR_NOREPAIR)
-        logger.info('[WARN] relhasindex')
-        logger.warn('there are %d non-fatal relhasindex issue(s)' % len(rows))
-
-    # Check for deprecated indexes (gin, hash)
-    db = connect2(GV.cfg[1], utilityMode=False)
-    qry = '''    
-    SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) as index, 
-           m.amname as kind
-    FROM   pg_class c join pg_namespace n on (c.relnamespace = n.oid) 
-      join pg_am m on (c.relam = m.oid) 
-    WHERE  c.relkind = 'i' and m.amname in ('gin', 'hash')
-    '''
-    curs = db.query(qry)
-
-    rows = []
-    for row in curs.dictresult():
-        rows.append(row)
-    if len(rows) == 0:
-        logger.info('[OK] deprecated indexes')
-    
-    else:
-        setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] deprecated indexes')
-        logger.error('there are %d deprecated indexes' % len(rows))
-        logger.error(qry)
-        for row in rows[0:100]:
-            logger.error('%s [%s]' % (row['index'], row['kind']))
-        if len(rows) > 100:
-            logger.error("...")
-    
 
 def checkPersistentTables():
     logger.info('-----------------------------------')
@@ -2765,6 +2782,7 @@ def checkPersistentTables():
         if not err:
             logger.info('[OK] ' + qname)
         else:
+            GV.testStatus = False
             setError(ERROR_NOREPAIR)
             logger.info('[FAIL] ' + qname)
             logger.error('%s found %d issue(s)' % (qname, len(err)))
@@ -2861,9 +2879,13 @@ def checkTableACL(cat):
     # Comparing ACLs cannot be done with a simple equality comparison
     # since it is valid for the ACLs to have different order.  Instead
     # we compare that both acls are subsets of each other => equality.
-    pkey = ', '.join(pkey)
+
+    mPkey = ['m.'+i for i in pkey]
+    if cat.tableHasConsistentOids():
+        mPkey = ['m.oid']
+
     qry = """
-    SELECT s.gp_segment_id, {primary_key},
+    SELECT s.gp_segment_id as segid, {mPkey},
            m.{acl} as master_acl, s.{acl} as segment_acl
     FROM {catalog} m
     JOIN gp_dist_random('{catalog}') s using ({primary_key})
@@ -2872,7 +2894,8 @@ def checkTableACL(cat):
            (s.{acl} is null and m.{acl} is not null)
     ORDER BY {primary_key}, s.gp_segment_id
     """.format(catalog     = catname,
-               primary_key = pkey,
+               primary_key = ', '.join(pkey),
+               mPkey       = ', '.join(mPkey),
                acl         = acl)
 
     # Execute the query
@@ -2884,6 +2907,7 @@ def checkTableACL(cat):
         if nrows == 0:
             logger.info('[OK] Cross consistency acl check for ' + catname)
         else:
+            GV.testStatus = False
             setError(ERROR_NOREPAIR)
             GV.aclStatus = False
             logger.info('[FAIL] Cross consistency acl check for ' + catname)
@@ -2891,9 +2915,10 @@ def checkTableACL(cat):
             # logger.error(qry)
 
             fields = curs.listfields()
-            print "    " + " | ".join(fields)
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                print "    " + " | ".join(map(str, row))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+            processACLResult(catname, fields, curs.getresult())
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -2972,6 +2997,7 @@ def checkTableForeignKey(cat):
                 logger.info('[OK] Foreign key check for %s(%s) referencing %s(%s)'%
                             (catname, fkeystr, pkcatname, pkeystr))
             else:
+                GV.testStatus = False
                 setError(ERROR_NOREPAIR)
                 GV.foreignKeyStatus = False
                 logger.info('[FAIL] Foreign key check for %s(%s) referencing %s(%s)'%
@@ -2980,9 +3006,9 @@ def checkTableForeignKey(cat):
                             (catname, nrows, pkcatname, pkeystr))
 
                 fields = curs.listfields()
-                print "    " + " | ".join(fields)
+                log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
                 for row in curs.getresult():
-                    print "    " + " | ".join(map(str, row))
+                    log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
                 processForeignKeyResult(catname, pkcatname, fields, curs.getresult())
 
         except Exception, e:
@@ -3035,7 +3061,7 @@ def fkQuery(catname, pkcatname, fkeystr, pkeystr, pkeys, cat1pkeys):
 #-------------------------------------------------------------------------------
 def checkMissingEntry():
     logger.info('-----------------------------------')
-    logger.info('Performing cross consistency tests: checking for missing or extraneous entries')
+    logger.info('Performing cross consistency tests: check for missing or extraneous entries')
     
     if GV.missingEntryStatus == None:
         GV.missingEntryStatus = True
@@ -3090,15 +3116,16 @@ def checkTableMissingEntry(cat):
         if nrows == 0:
             logger.info('[OK] Checking for missing or extraneous entries for ' + catname)
         else:
+            GV.testStatus = False
             setError(ERROR_NOREPAIR)
             GV.missingEntryStatus = False
             logger.info('[FAIL] Checking for missing or extraneous entries for ' + catname)
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            print "    " + " | ".join(fields)
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                print "    " + " | ".join(map(str, row))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
             processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "missing")
            
 
@@ -3160,7 +3187,7 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
 #-------------------------------------------------------------------------------
 def checkInconsistentEntry():
     logger.info('-----------------------------------')
-    logger.info('Performing cross consistency test: checking for inconsistent entries')
+    logger.info('Performing cross consistency test: check for inconsistent entries')
     
     if GV.inconsistentEntryStatus == None:
         GV.inconsistentEntryStatus = True
@@ -3221,15 +3248,16 @@ def checkTableInconsistentEntry(cat):
         if nrows == 0:
             logger.info('[OK] Checking for inconsistent entries for ' + catname)
         else:
+            GV.testStatus = False
             setError(ERROR_NOREPAIR)
             GV.inconsistentEntryStatus = False
             logger.info('[FAIL] Checking for inconsistent entries for ' + catname)
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            print "    " + " | ".join(fields)
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                print "    " + " | ".join(map(str, row))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
             processInconsistentEntryResult(catname, pkey, fields, curs.getresult())
 
 
@@ -3347,14 +3375,15 @@ def checkTableDuplicateEntry(cat):
         if nrows == 0:
             logger.info('[OK] Checking for duplicate entries for ' + catname)
         else:
+            GV.testStatus = False
             setError(ERROR_NOREPAIR)
-            logger.info('[FAIL] Checking for duplicate entries for ' + catname)
+            logger.error('[FAIL] Checking for duplicate entries for ' + catname)
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            print "    " + " | ".join(fields)
+            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                print "    " + " | ".join(map(str, row))
+                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
             processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
 
     except Exception, e:
@@ -3401,33 +3430,33 @@ def duplicateEntryQuery(catname, pkey):
 ############################################################################
 
 name_test = {
-    "namespace":
+    "duplicate":
     {
-         "description": "Check for leaked temporary schema and missing schema definition",
-         "fn": lambda: checkPGNamespace(),
+         "description": "Check for duplicate entries",
+         "fn": lambda: checkDuplicateEntry(),
          "version": 'main',
          "order": 1,
-         "online": False
+         "online": True
     },
-    "cc1":
+    "missing_extraneous":
     {
-         "description": "Cross consistency check: checking for missing or extraneous entries",
+         "description": "Cross consistency check for missing or extraneous entries",
          "fn": lambda: checkMissingEntry(),
          "version": 'main',
          "order": 2,
          "online": True
     },
-    "cc2":
+    "inconsistent":
     {
-         "description": "Cross consistency check: checking for inconsistent entries",
+         "description": "Cross consistency check for master segment inconsistency",
          "fn": lambda: checkInconsistentEntry(),
          "version": 'main',
          "order": 3,
          "online": True
     },
-    "fk":
+    "foreign_key":
     {
-         "description": "Foreign key check",
+         "description": "Check foreign keys",
          "fn": lambda: checkForeignKey(),
          "version": 'main',
          "order": 4,
@@ -3435,7 +3464,7 @@ name_test = {
     },
     "acl":
     {
-         "description": "Check ACL",
+         "description": "Cross consistency check for access control privileges",
          "fn": lambda: checkACL(),
          "version": 'main',
          "order": 5,
@@ -3443,74 +3472,66 @@ name_test = {
     },
     "persistent":
     {
-         "description": "Check persistent table: various checks",
+         "description": "Check persistent tables",
          "fn": lambda: checkPersistentTables(),
          "version": 'main',
          "order": 6,
          "online": False
     },
-    "partition":
-    {
-         "description": "Check pg_partition branch integrity, partition with oids check, partition distribution policy",
-         "fn": lambda: checkPartitionIntegrity(),
-         "version": 'main',
-         "order": 7,
-         "online": True
-    },
-    "partregularity":
-    {
-         "description": "Check regularity and enforceability of constraints on partitioned tables",
-         "fn": lambda: checkPartitionRegularity(),
-         "version": 'main',
-         "order": 8,
-         "online": True
-    },
     "pgclass":
     {
-         "description": "Check pg_class: report entry that does not have any correspond pg_attribute entry",
+         "description": "Check pg_class entry that does not have any correspond pg_attribute entry",
          "fn": lambda: checkPGClass(),
          "version": 'main',
-         "order": 9,
+         "order": 7,
          "online": False
     },
-    "distribution":
+    "namespace":
+    {
+         "description": "Check for leaked temporary schema and missing schema definition",
+         "fn": lambda: checkPGNamespace(),
+         "version": 'main',
+         "order": 8,
+         "online": False
+    },
+    "distribution_policy":
     {
          "description": "Check constraints on randomly distributed tables",
          "fn": lambda: checkDistribPolicy(),
          "version": 'main',
-         "order": 14,
+         "order": 9,
          "online": False
     },
-    "dependencies":
+    "dependency":
     {
-         "description": "Check for dependencies on non-existent objects",
+         "description": "Check for dependency on non-existent objects",
          "fn": lambda: checkDepend(),
          "version": 'main',
-         "order": 15,
+         "order": 10,
          "online": False
     },
-    "owners":
+    "owner":
     {
-         "description": "Check table ownership: report each table that has an inconsistency with the master database",
+         "description": "Check table ownership that is inconsistent with the master database",
          "fn": lambda: checkOwners(),
          "version": 'main',
-         "order": 16,
+         "order": 11,
          "online": True
     },
-    "indexes":
+    "part_integrity":
     {
-         "description": "Check for relhasindex variations amongst the segments",
-         "fn": lambda: checkIndexes(),
+         "description": "Check pg_partition branch integrity, partition with oids, partition distribution policy",
+         "fn": lambda: checkPartitionIntegrity(),
          "version": 'main',
-         "order": 17,
+         "order": 13,
          "online": True
     },
-    "duplicate":
+    "part_constraint":
     {
-         "description": "Check for duplicate entries",
-         "fn": lambda: checkDuplicateEntry(),
+         "description": "Check constraints on partitioned tables",
+         "fn": lambda: checkPartitionRegularity(),
          "version": 'main',
-         "order": 18,
+         "order": 14,
          "online": True
     }
 }
@@ -3519,11 +3540,11 @@ name_test = {
 #-------------------------------------------------------------------------------
 def listAllTests():
 
-    logger.info("Gpcheckcat current tests:\n")
-    for i,name in enumerate(sorted(name_test, key=lambda x: name_test[x]["order"])):
-        print "%2d. %15s: %s" % \
-              (i+1, name, name_test[name]["description"])
-    print ''
+    myprint('\nList of gpcheckcat tests:\n')
+    for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
+        myprint(" %24s: %s" % \
+              (name, name_test[name]["description"]))
+    myprint('')
 
 #-------------------------------------------------------------------------------
 def runOneTest(name):
@@ -3535,7 +3556,14 @@ def runOneTest(name):
         logger.info("%s: Skip this test in online mode" % (name))
         return
     else:
+        stime = time.time()
         name_test[name]["fn"]()
+        etime = time.time()
+        elapsed = etime - stime
+        GV.elapsedTime += elapsed
+        elapsed = str(datetime.timedelta(seconds=elapsed))[:-4]
+        myprint('Total runtime for this test: %s' % (elapsed))
+
 
 
 #-------------------------------------------------------------------------------
@@ -3562,13 +3590,14 @@ def runAllTests():
         logger.fatal('Unable to create temporary directory')
         sys.exit(1)
 
-    logger.info('----------------------------------------------')
-    logger.info('Performing segment specific consistency checks')
-    logger.info('----------------------------------------------')
-
     for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
         if name_test[name]["version"] >= GV.version:
+            GV.totalTestRun += 1
+            GV.testStatus = True
+            myprint("Performing test '%s'" % name)
             runOneTest(name)
+            if GV.testStatus == False:
+                GV.failedTest.append(name)
 
     closeDbs()
 
@@ -3768,11 +3797,12 @@ def runAllTests():
             logger.fatal('Could not write script: %s' % str(e))
             sys.exit(1)
 
-        logger.info('repair scripts generated in directory %s' % GV.opt['-g'])
+        myprint('')
+        myprint('[INFO]: repair scripts generated in directory %s' % GV.opt['-g'])
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True, close_fds=True)
 
     if GV.retcode >= ERROR_NOREPAIR:
-        logger.warn('unable to generate repairs for some issues')
+        myprint('[WARN]: unable to generate repairs for some issues')
     logger.info("Check complete")
 
 
@@ -3783,6 +3813,18 @@ def getCatalog():
     return GPCatalog(db)
 
 
+#-------------------------------------------------------------------------------
+def getReportConfiguration():
+    cfg = {}
+    for dbid, each in GV.cfg.iteritems():
+        if each['content'] == -1: 
+            segname = 'master'
+        else: 
+            segname = 'seg'+str(each['content']+1)
+        cfg[each['content']] = {'segname': segname, 
+                                'hostname': each['hostname'], 
+                                'port': each['port']}
+    return cfg
 
 #===============================================================================
 # GPCHECKCAT REPORT
@@ -4009,7 +4051,25 @@ def processInconsistentEntryResult(catname, pknames, colname, allValues):
     '''
     17365 | test10 | 2200 | 17366 | 0 | 0 | 17366 | 0 | 0 | 0 | f | r | h | 3 | 0 | 0 | 0 | 0 | 0 | f | f | f | f | None | {0}     -- row1
     17365 | test10 | 2200 | 17366 | 0 | 0 | 0     | 0 | 0 | 0 | f | r | h | 2 | 0 | 0 | 0 | 0 | 0 | f | f | f | f | None | {NULL}  -- row2
+
+    176954 | test1 | 2200 | 176955 | 0 | 0 | 176956 | 0 | 0 | 0 | f | r | h | 4 | 0 | 0 | 0 | 0 | 0 | f | f | f | f | None | {-1}
+    176954 | test1 | 2200 | 176955 | 0 | 0 | 176956 | 0 | 0 | 0 | f | r | h | 2 | 0 | 0 | 0 | 0 | 0 | f | f | f | f | None | {0,1}
+    176954 | test1 | 2200 | 176955 | 0 | 0 | 176956 | 0 | 0 | 0 | f | r | h | 3 | 0 | 0 | 0 | 0 | 0 | f | f | f | f | None | {2,3}
     '''
+
+    # Group allValues rows by its key (oid or primary key) into a dictionary:
+    groupedValues = {}
+    for row in allValues:
+        if 'oid' in colname:
+            keys = row[colname.index('oid')]
+        else:
+            keys = tuple((row[colname.index(n)]) for n in pknames)
+        if keys in groupedValues:
+            groupedValues[keys].append(row)
+        else:
+            groupedValues[keys] = [row]
+
+    
     gpObjName = catname
     gpColName = None
 
@@ -4020,26 +4080,25 @@ def processInconsistentEntryResult(catname, pknames, colname, allValues):
         gpObjName = TableMainColumn[catname][1]
     elif 'oid' in colname:
          gpColName = 'oid'
-        
-    values = iter(allValues)
-    for row1, row2 in zip (values, values):
+
+    for keys,values in groupedValues.iteritems():
         rowObjName = gpObjName
-        pkeys = dict((n,row2[colname.index(n)]) for n in pknames)
+        pkeys = dict((n,values[0][colname.index(n)]) for n in pknames)
 
         if gpColName != None:
-            oid = row2[colname.index(gpColName)]
+            oid = values[0][colname.index(gpColName)]
         else:
-            oid = getOidFromPK(catname, pkeys)    
-        issue = CatInconsistentIssue(catname, colname, [row1, row2])
+            oid = getOidFromPK(catname, pkeys)
+        issue = CatInconsistentIssue(catname, colname, list(values))
 
         # Special case: constraint for domain, report pg_type.contypid
         if catname == 'pg_constraint' and oid == 0:
-            oid = row2[colname.index('contypid')]
+            oid = values[0][colname.index('contypid')]
             rowObjName = 'pg_type'
         # Special case: if composite type, report as part of RelationObject
         if rowObjName == 'pg_type':
             typrelid = getClassOidForType(oid)
-            if typrelid != 0: 
+            if typrelid != 0:
                 oid = typrelid
                 rowObjName = 'pg_class'
 
@@ -4075,7 +4134,7 @@ def processForeignKeyResult(catname, pkcatname, colname, allValues):
         oid = row[len(colname)-2]
         # Build fkeys dict: used to find oid of pg_class
         fkeys = dict((n,row[colname.index(fkeytab+'_'+n)]) for n in fkeylist)
-        issue = CatMissingIssue(pkcatname, {gpColName: oid}, segids, 'missing')
+        issue = CatForeignKeyIssue(pkcatname, {gpColName: oid}, segids, catname, fkeys)
 
         # Special cases:
         #    1. pg_class(oid) referencing pg_type(oid) - relation & composite type
@@ -4086,7 +4145,48 @@ def processForeignKeyResult(catname, pkcatname, colname, allValues):
         elif pkcatname == 'pg_resourcetype' and gpColName == 'restypid':
             oid = getResourceTypeOid(oid)
         gpObj = getGPObject(oid, rowObjName)
-        gpObj.setMissingIssue(issue)
+        gpObj.setForeignKeyIssue(issue)
+
+
+#-------------------------------------------------------------------------------
+def processACLResult(catname, colname, allValues):
+
+    '''
+    colname:	segid | datname | master_acl | segment_acl
+    allValues:		2 | acldb | {=Tc/nmiller,nmiller=CTc/nmiller,person1=C/nmiller} | {=Tc/nmiller,nmiller=CTc/nmiller}
+    				1 | gptest | None | {=Tc/nmiller,nmiller=CTc/nmiller,person2=CTc/nmiller}
+    '''
+ 
+    gpObjName = catname
+    gpColName = None
+    pknames = [i for i in colname[1:-2]]
+
+    # We have to look up key to report (pg_pltemplate)
+    if catname in TableMainColumn:
+        gpColName = TableMainColumn[catname][0]
+        gpObjName = TableMainColumn[catname][1]
+    elif 'oid' in pknames:
+        gpColName = 'oid'
+
+    # Process entries
+    for row in allValues:
+        segid = row[0]                    
+        pkeys = dict((pk, row[colname.index(pk)]) for pk in pknames)
+
+        if gpColName != None:
+            oid = row[colname.index(gpColName)]
+        else:
+            oid = getOidFromPK(catname, pkeys)    
+            pkeys = {'oid': oid}
+
+        macl = row[-2][1:-1].split(',') if row[-2] != None else []
+        sacl = row[-1][1:-1].split(',') if row[-1] != None else []
+        macl_only = list(set(macl).difference(sacl))
+        sacl_only = list(set(sacl).difference(macl))
+        
+        issue = CatACLIssue(catname, pkeys, segid, macl_only, sacl_only)
+        gpObj = getGPObject(oid, gpObjName)
+        gpObj.setACLIssue(issue)
 
 
 #-------------------------------------------------------------------------------
@@ -4099,18 +4199,56 @@ class CatInconsistentIssue:
         self.rows = rows
    
     def report(self):
-        '''
-        pg_namespace: has inconsistent entries
-                 oid | nspname | nspowner | segids
-               25654 | testschema2 | 10 | {3}
-               25654 | testschema | 10 | {NULL}
-        '''
-        print "  - %s has inconsistent entries:" % self.catname
-        print "      " + " | ".join(self.columns)
-        for row in self.rows:
-            print "      " + " | ".join(map(str,row))
-        
-        
+
+        def format_segids(segids):
+            if segids == '{NULL}':
+                idstr = 'all other segments'
+            else:
+                ids = [int(i) for i in segids[1:-1].split(',')]
+                idstr = ''
+                for i in ids:
+                    idstr += '%s (%s:%d) ' % \
+                       (GV.report_cfg[i]['segname'], GV.report_cfg[i]['hostname'],
+                        GV.report_cfg[i]['port'])
+            return idstr
+            
+        for i in range(0,len(self.columns)-1):
+            colset = set(j[i] for j in self.rows)
+            if len(colset) > 1:
+                for row in self.rows:
+                    myprint("%20s is '%s' on %s" % (self.columns[i],row[i],format_segids(row[-1])))
+
+
+#-------------------------------------------------------------------------------
+class CatForeignKeyIssue:
+
+    def __init__(self, catname, pkeys, segids, fcatname, fkeys):
+
+        self.catname  = catname
+        self.pkeys    = pkeys     # string of pkey=xxxx or oid=xxxx 
+        self.segids   = segids    # list of affected segids
+        self.fcatname = fcatname  # checked object catname
+        self.fkeys    = fkeys     # string of fkeys=xxxx
+
+    def report(self):
+
+        ids = [int(i) for i in self.segids[1:-1].split(',')]
+        idstr = ''
+        if len(ids) == len(GV.report_cfg):
+            idstr = 'all segments'
+        else:
+            for i in ids:
+                idstr += '%s (%s:%d) ' % \
+                         (GV.report_cfg[i]['segname'], GV.report_cfg[i]['hostname'],
+                          GV.report_cfg[i]['port'])
+
+        if self.fcatname == 'pg_attribute':
+            myprint("        No %s entry for %s column '%s' on %s" \
+                     % (self.catname, self.fcatname,self.fkeys['attname'],idstr))
+        else:
+            myprint("        No %s entry for %s %s on %s" \
+                     % (self.catname, self.fcatname,self.fkeys,idstr))
+
 #-------------------------------------------------------------------------------
 class CatMissingIssue:
 
@@ -4120,37 +4258,30 @@ class CatMissingIssue:
         self.pkeys   = pkeys     # string of pkey=xxxx or oid=xxxx 
         self.segids  = segids    # list of affected segids
         self.type    = type      # missing or extra
-
         assert(self.type in ['missing','extra'])
-        self._resetVar()
        
-
     def report(self):
 
-        # Missing entry pg_type oid=xxxx on segment {-1,0,1,2,3}
-        # Extra entry pg_class oid=xxxx on segment {2}
-        output = '     %s %s entry of %s on segment %s' \
-             % (self.type.capitalize(), self.catname, str(self.pkeys), str(self.segids))
-        print output
+        ids = [int(i) for i in self.segids[1:-1].split(',')]
+        idstr = ''
+        if len(ids) == len(GV.report_cfg):
+            idstr = 'all segments'
+        else:
+            for i in ids:
+                idstr += '%s (%s:%d) ' % \
+                         (GV.report_cfg[i]['segname'], GV.report_cfg[i]['hostname'],
+                          GV.report_cfg[i]['port'])
 
+        if self.catname == 'pg_attribute':
+            myprint("        %s column '%s' on %s" \
+                     % (self.type.capitalize(), self.pkeys['attname'],idstr))
+        elif self.catname == 'pg_class':
+            myprint('        %s relation metadata for %s on %s' \
+                   % (self.type.capitalize(), str(self.pkeys), idstr))
+        else:
+            myprint('        %s %s metadata of %s on %s' \
+                   % (self.type.capitalize(), self.catname[3:], str(self.pkeys), idstr))
 
-    #-------------------------------------------------------------------------
-    def _resetVar(self):
-        # For FK check: convert missing entry to extra entry if needed
-
-        # '{1,2}' => ['1','2'] => [1,2]
-        segids = self.segids[1:-1].split(',')  
-        segids = [int(i) for i in segids]
-
-        allsegids = [x for x in range(-1,GV.max_content+1)]
-        if sorted(segids) != sorted(allsegids) and len(segids) > len(allsegids)/2.0:
-            assert (self.type == 'missing')
-            self.segids = '{%s}' % ','.join([str(i) for i in allsegids if i not in segids])
-            self.type = 'extra'
-
-    def __eq__(self, other):
-        return self.__dict__ == other.__dict__ 
-        
 
 #-------------------------------------------------------------------------------
 class CatDuplicateIssue:
@@ -4164,10 +4295,37 @@ class CatDuplicateIssue:
 
     def report(self):
         """ Found # catname entries of "oid=XXXXX" on segment {Y,Z} """
-        output = '     Found %d %s entries of %s on segment %s' \
-                 % (self.enum, self.catname, str(self.pkeys), str(self.segids))
-        print output
+        myprint('       Found %d %s entries of %s on segment %s' \
+                 % (self.enum, self.catname, str(self.pkeys), str(self.segids)))
 
+
+#-------------------------------------------------------------------------------
+class CatACLIssue:
+
+    def __init__(self, catname, pkeys, segid, macl_only, sacl_only ):
+
+        self.catname    = catname
+        self.pkeys      = pkeys       # string of pkey=xxxx or oid=xxxx 
+        self.segid      = segid       # the affected segid
+        self.macl_only  = macl_only   # acl appears only on master
+        self.sacl_only  = sacl_only   # acl appears only on segment
+
+    def report(self):
+        """ Master (host:port) and seg# (host:port) have different ACL:
+                Exist(s) on master only: [...........]
+                Exist(s) on   seg# only: [...........]
+        """
+        mstr = 'Master (%s:%s)' % (GV.report_cfg[-1]['hostname'],GV.report_cfg[-1]['port'])
+        sstr = '%s (%s:%s)' % (GV.report_cfg[self.segid]['segname'],
+                               GV.report_cfg[self.segid]['hostname'],
+                               GV.report_cfg[self.segid]['port'])
+        myprint('        %s and %s have different ACLs:' % (mstr, sstr))
+        if len(self.macl_only) > 0:
+            myprint('            Exist(s) on master only: %s' % (self.macl_only))
+        if len(self.sacl_only) > 0:
+            myprint('            Exist(s) on %s only: %s ' % \
+                      (GV.report_cfg[self.segid]['segname'], self.sacl_only))
+   
 
 #-------------------------------------------------------------------------------
 class GPObject:
@@ -4175,50 +4333,106 @@ class GPObject:
     def __init__(self, oid, catname):
         self.oid          = oid
         self.catname      = catname
-        self.missingIssues      = [] 	# list of catMissingIssue
-        self.inconsistentIssues = []	# list of catInconsistentIssue
-        self.duplicateIssues    = []	# list of catDuplicateIssue
+        self.missingIssues      = {} # key=issue.catname, value=list of catMissingIssue
+        self.inconsistentIssues = {} # key=issue.catname, value=list of catInconsistentIssue
+        self.duplicateIssues    = {} # key=issue.catname, value=list of catDuplicateIssue
+        self.aclIssues          = {} # key=issue.catname, value=list of catACLIssue
+        self.foreignkeyIssues   = {} # key=issue.catname, value=list of catForeignKeyIssue
    
     def setMissingIssue(self, issue):
-        if issue not in self.missingIssues:
-            self.missingIssues.append(issue)
+        if issue.catname in self.missingIssues:
+            self.missingIssues[issue.catname].append(issue)
+        else:
+            self.missingIssues[issue.catname] = [issue]
 
     def setInconsistentIssue(self, issue):
-        self.inconsistentIssues.append(issue)
+        if issue.catname in self.inconsistentIssues:
+            self.inconsistentIssues[issue.catname].append(issue)
+        else:
+            self.inconsistentIssues[issue.catname] = [issue]
 
     def setDuplicateIssue(self, issue):
-        self.duplicateIssues.append(issue)
+        if issue.catname in self.duplicateIssues:
+            self.duplicateIssues[issue.catname].append(issue)
+        else:
+            self.duplicateIssues[issue.catname] = [issue]
+
+    def setACLIssue(self, issue):
+        if issue.catname in self.aclIssues:
+            self.aclIssues[issue.catname].append(issue)
+        else:
+            self.aclIssues[issue.catname] = [issue]
+
+    def setForeignKeyIssue(self, issue):
+        if issue.catname in self.foreignkeyIssues:
+            self.foreignkeyIssues[issue.catname].append(issue)
+        else:
+            self.foreignkeyIssues[issue.catname] = [issue]
 
     def isTopLevel(self):
         return True
 
     def reportAllIssues(self):
         if self.__class__ == GPObject:
-            print '\n'
-            print '----------------------------------------------------'
-            print 'Reporting a top level object '
-            print '----------------------------------------------------'
-            print 'Object oid: %s' % (self.oid)
-            print 'Table name: %s' % (self.catname)
+            myprint('')
+            myprint('----------------------------------------------------')
+            myprint('Object oid: %s' % (self.oid))
+            myprint('Table name: %s' % (self.catname))
+            myprint('')
 
+        # Report inconsistent issues 
         if len(self.inconsistentIssues):
-            print '  Issues found by inconsistent entries check'
-            for issue in self.inconsistentIssues:
-                issue.report()
-            print '\n'
+            for catname,issues in self.inconsistentIssues.iteritems():
+                myprint('    Name of test which found this issue: inconsistent_%s' % catname)
+                for each in issues:
+                    each.report()
+            myprint('')
 
+        # Report missing issues
         if len(self.missingIssues):
-            print '  Issues found by missing/extraneous or foreign key check'
-            for issue in self.missingIssues:
-                issue.report()
-            print '\n'
+            omitlist = ['pg_attribute','pg_attribute_encoding','pg_type','pg_appendonly','pg_index']
+            if 'pg_class' in self.missingIssues:
+                myprint('    Name of test which found this issue: missing_extraneous_pg_class')
+                for name in omitlist:
+                    if name in self.missingIssues:
+                        myprint('    Name of test which found this issue: missing_extraneous_%s' % name)
+                for each in self.missingIssues['pg_class']:
+                    each.report()
+                        
+                for catname, issues in self.missingIssues.iteritems():
+                    if catname != 'pg_class' and catname not in omitlist:
+                        myprint('    Name of test which found this issue: missing_extraneous_%s' % catname)
+                        for each in issues:
+                            each.report()
+            else:
+                for catname,issues in self.missingIssues.iteritems():
+                    myprint('    Name of test which found this issue: missing_extraneous_%s' % catname)
+                    for each in issues:
+                        each.report()
+            myprint('') 
+
+        # Report foreign key issues
+        if len(self.foreignkeyIssues):
+            for catname,issues in self.foreignkeyIssues.iteritems():
+                myprint('    Name of test which found this issue: foreign_key_%s' % catname)
+                for each in issues:
+                    each.report()
+            myprint('') 
 
         if len(self.duplicateIssues):
-            print '  Issues found by duplicate entries check'
-            for issue in self.duplicateIssues:
-                issue.report()
+            for catname,issues in self.duplicateIssues.iteritems():
+                myprint('    Name of test which found this issue: duplicate_%' % catname)
+                for each in issues:
+                    each.report()
+            myprint('') 
 
-         
+        # Report ACL issues
+        if len(self.aclIssues):
+            for catname,issues in self.aclIssues.iteritems():
+                myprint('    Name of test which found this issue: acl_%s' % catname)
+                for each in issues:
+                    each.report()
+            myprint('') 
 
 #-------------------------------------------------------------------------------
 class RelationObject(GPObject):
@@ -4232,23 +4446,20 @@ class RelationObject(GPObject):
 
     def reportAllIssues(self):
         if self.isTopLevel():
-            print '\n'
-            print '----------------------------------------------------'
-            print 'Reporting a top level object '
-            print '----------------------------------------------------'
+            myprint('')
+            myprint('----------------------------------------------------')
             if self.relkind == 'c':
-                print 'Type oid: %d' % (self.oid)
-                print 'Type name: %s.%s' % (self.nspname, self.relname)
+                myprint('Type oid: %d' % (self.oid))
+                myprint('Type name: %s.%s' % (self.nspname, self.relname))
             else:
-                print 'Relation oid: %d' % (self.oid)
-                print 'Relation name: %s.%s' % (self.nspname, self.relname)
+                myprint('Relation oid: %d' % (self.oid))
+                myprint('Relation name: %s.%s' % (self.nspname, self.relname))
         else:
-            print '  ----------------------------------------------------'
-            print '  Affected child object: '
-            print '  ----------------------------------------------------'
-            print '  Relation oid: %d' % (self.oid)
-            print '  Relation name: %s.%s' % (self.nspname, self.relname)
-        print ''
+            myprint('    Sub-object: ')
+            myprint('    ----------------------------------------------------')
+            myprint('    Relation oid: %d' % (self.oid))
+            myprint('    Relation name: %s.%s' % (self.nspname, self.relname))
+        myprint('')
         GPObject.reportAllIssues(self)
 
     def setRelInfo(self, relname, nspname, relkind, paroid):
@@ -4403,13 +4614,6 @@ def buildGraph():
 #-------------------------------------------------------------------------------
 def checkcatReport():
 
-    buildGraph()
-
-    if len(GPObjectGraph) > 0:
-        print '======================== SUMMARY REPORT ============================'
-        print 'Connected as user \'%s\' to database \'%s\', version %s' \
-               % (GV.opt['-U'], GV.dbname, GV.version)
-
     def reportAllIssuesRecursive(par, graph):
         par.reportAllIssues()
         if par not in graph: 
@@ -4417,11 +4621,35 @@ def checkcatReport():
         for child in graph[par]:
             reportAllIssuesRecursive(child, graph)
 
+    buildGraph()
+    reportedTest = ['duplicate','missing_extraneous','inconsistent','foreign_key','acl'] 
+    myprint('')
+    myprint('SUMMARY REPORT')
+    myprint('===================================================================')
+    elapsed = str(datetime.timedelta(seconds=GV.elapsedTime))[:-4]
+    myprint('Total runtime for %d tests: %s' % (GV.totalTestRun, elapsed))
+
+    if len(GPObjectGraph) <= 0:
+        myprint('Found no catalog issue')
+    else:
+        total = 0
+        for par in GPObjectGraph:
+            if par.isTopLevel(): total += 1
+        myprint('Found a total of %d issue(s)' % total)
+    
     for par in GPObjectGraph:
         if par.isTopLevel():
             reportAllIssuesRecursive(par, GPObjectGraph)
-    print '\n'
+    myprint('')
 
+    notReported = set(GV.failedTest).difference(reportedTest)
+    if len(notReported) > 0:
+        myprint('Failed test(s) that are not reported here: %s' % (', '.join(notReported)))
+        myprint('See %s for detail\n' % get_logfile())
+
+
+def myprint(str):
+    log_literal(logger,logging.CRITICAL,str)
 
 
 #############
@@ -4438,23 +4666,22 @@ if __name__ == '__main__':
         sys.exit(GV.retcode)
 
     GV.cfg = getGPConfiguration()
+    GV.report_cfg = getReportConfiguration()
     GV.max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
     GV.catalog = getCatalog()
     
     for dbname in GV.alldb:
-        logger.info('-----------------------------------')
-        logger.info('-----------------------------------')
-        logger.info("Master at host %s, port %s, user %s" % (GV.opt['-h'], GV.opt['-p'], GV.opt['-U']))
-        logger.info("Performing check for database \'%s\', version %s" % (dbname, GV.version ))
-        logger.info('-----------------------------------')
-           
+
         # Reset global variables
         GPObjects = {}
         GPObjectGraph = {} 
-
         GV.dbname  = dbname
-        GV.retcode = SUCCESS
 
+        myprint('')
+        myprint("Connected as user \'%s\' to database '%s', port '%d', gpdb version '%s'" \
+                   % (GV.opt['-U'], GV.dbname, GV.report_cfg[-1]['port'], GV.version))
+        myprint('-------------------------------------------------------------------')
+           
         if GV.opt['-R']:
             runOneTest(GV.opt['-R'])
         elif GV.opt['-C']:
@@ -4471,13 +4698,11 @@ if __name__ == '__main__':
         else:
             runAllTests()
 
+        checkcatReport()
         GV.reset_stmt_queues()
 
         # skip shared tables on subsequent passes
         if not GV.opt['-S']:
             GV.opt['-S'] = "none"
-
-        logger.info('-----------------------------------------------\n\n')
-        checkcatReport()
 
     sys.exit(GV.retcode)

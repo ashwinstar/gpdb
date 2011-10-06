@@ -128,6 +128,12 @@ def quiet_stdout_logging():
     global _SOUT_HANDLER
     _SOUT_HANDLER.setLevel(logging.WARN)
 
+def very_quiet_stdout_logging():
+    """ 
+    Reduce log level to critical for stdout logging 
+    """
+    global _SOUT_HANDLER
+    _SOUT_HANDLER.setLevel(logging.CRITICAL)
 
 def logging_is_verbose():
     """
