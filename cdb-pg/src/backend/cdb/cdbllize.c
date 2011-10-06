@@ -356,13 +356,14 @@ static bool ContainsParamWalker(Node *expr, void *ctx)
  */
 static Node* MapVarsMutator(Node *expr, MapVarsMutatorContext *ctx)
 {
-	Assert(ctx && ctx->outerTL);
+	Assert(ctx);
 
 	if (expr == NULL)
 		return NULL;
 
 	if (IsA(expr, Var))
 	{
+		Assert(ctx->outerTL);
 		TargetEntry *tle = tlist_member(expr, ctx->outerTL);
 		Assert(tle && "unable to find var in outer TL");
 
