@@ -8060,7 +8060,7 @@ selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
 					}
 					else
 					{
-						levelOutput = PartitionChildren(candidatePartNode);
+						levelOutput = list_concat(levelOutput, PartitionChildren(candidatePartNode));
 					}
 				}
 			}
