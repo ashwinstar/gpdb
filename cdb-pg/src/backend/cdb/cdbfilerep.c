@@ -3502,11 +3502,11 @@ void FileRep_Main(void)
 		goto shutdown;
 	}
 
+
+shutdown:
 	//go ahead and init even if not sending? if(gp_enable_gpperfmon)
 	//Milena mentioned we may want to keep stats anyway even if not sending
 	FileRepStats_GpmonInit();
-
-shutdown:
 
 	while (FileRep_ProcessSignals() == false) {
 
