@@ -167,7 +167,7 @@ def lighty_version():
 def lighty_start(instance):
     res = 0
     cfg = ConfigParser.SafeConfigParser()
-    
+
     pgpass = dbconn.Pgpass()
     if not pgpass.pgpass_valid():
         print 'Error: .pgpass file not valid.  Unable to start instance'
@@ -594,7 +594,7 @@ def generate_lighty_conf(instance_info, port, lighty_access_log,
                          lighty_err_log, webpybin, usessl, certpath):
     # TODO: by instance
     fcgisocket = os.path.join(instance_info['root_dir'], 'perfmon.fastcgi.socket')
-    return '''server.modules = (
+    fileString = '''server.modules = (
     "mod_rewrite",
     "mod_fastcgi",
     "mod_compress",
@@ -688,15 +688,21 @@ fastcgi.server = ( "/gpmonws.py" =>
    "^/static/(.*)$" => "/static/$1",
    "^/(.*)$" => "/gpmonws.py/$1",
  )
-
-#### SSL engine
-ssl.engine = "%s"
-ssl.pemfile = "%s"
 ''' % (instance_info['web_root_dir'], 
        instance_info['lighttpd_pid_file'], 
        lighty_err_log, lighty_access_log, 
        port, instance_info['temp_dir'], 
-       fcgisocket, webpybin, usessl, certpath)
+       fcgisocket, webpybin)
+
+    if usessl == 'enable':
+
+        fileString += '''
+#### SSL engine
+ssl.engine = "%s"
+ssl.pemfile = "%s"
+''' % (usessl, certpath)
+
+    return fileString
 
 
 #################
