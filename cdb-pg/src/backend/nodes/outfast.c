@@ -2522,6 +2522,7 @@ _outRemoveOpClassStmt(StringInfo str, RemoveOpClassStmt *node)
 	WRITE_NODE_FIELD(opclassname);
 	WRITE_STRING_FIELD(amname);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
+	WRITE_BOOL_FIELD(missing_ok);
 }
 
 static void
