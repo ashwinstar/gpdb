@@ -128,9 +128,14 @@ static inline void
 initBitmapState(BitmapAppendOnlyScanState *scanstate)
 {
 	if (scanstate->baos_tbmres == NULL)
+	{
 		scanstate->baos_tbmres =
-			palloc0(sizeof(TBMIterateResult) +
+			palloc(sizeof(TBMIterateResult) +
 					MAX_TUPLES_PER_PAGE * sizeof(OffsetNumber));
+
+		/* initialize result header */
+		MemSetAligned(scanstate->baos_tbmres, 0, sizeof(TBMIterateResult));
+	}
 }
 
 /*
@@ -330,7 +335,10 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 		if (node->baos_lossy)
 			psuedoHeapOffset = node->baos_cindex;	// We are iterating through all items.
 		else
+		{
+			Assert(node->baos_cindex <= tbmres->ntuples);
 			psuedoHeapOffset = tbmres->offsets[node->baos_cindex];
+		}
 
 		/*
 		 * Okay to fetch the tuple
