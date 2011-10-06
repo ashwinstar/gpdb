@@ -779,7 +779,7 @@ class GPUpgrade(GPUpgradeBase):
         elif self.cmd == 'CHKDOWN':
             self.CheckDown()
         elif self.cmd == 'SETCATVERSION':
-            self.SetCatVersion(self.option)
+            self.SetCatVersion((str(self.option)==str(True)))
         else:
             raise Exception('Unknown cmd: ' + str(self.cmd))
     
