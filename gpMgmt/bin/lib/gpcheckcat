@@ -3673,7 +3673,7 @@ def runAllTests():
 
             script += '%secho "Repairing segment %i"\n' % (maybeRemove, seg)
             script += '''
-{maybe}env PGOPTIONS="-c gp_session_role=utility" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
+{maybe}env PGOPTIONS="-c gp_session_role=utility -c allow_system_table_mods=dml" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
 '''.format(
                 maybe = maybeRemove,
                 hostname = c['hostname'], 
@@ -3802,7 +3802,7 @@ def runAllTests():
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True, close_fds=True)
 
     if GV.retcode >= ERROR_NOREPAIR:
-        myprint('[WARN]: unable to generate repairs for some issues')
+        logger.warn('[WARN]: unable to generate repairs for some issues')
     logger.info("Check complete")
 
 
