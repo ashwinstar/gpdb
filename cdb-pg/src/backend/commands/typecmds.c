@@ -2617,6 +2617,15 @@ AlterType(AlterTypeStmt *stmt)
 		if (typname->typmod != VARHDRSZ + 1)
 			typmod_set = true;
 	}
+	else if (typid == BITOID)
+	{
+		/*
+		 * For bit, we assume bit(1) in the parser. So only reject cases where
+		 * the typmod is not 1.
+		 */
+		if (typname->typmod != 1)
+			typmod_set = true;
+	}
 	else if (typname->typmods || typname->typmod != -1)
 		typmod_set = true;
 
