@@ -394,21 +394,6 @@ generate_gpdb_installer_header() {
 		sed "s,^GPHOME.*,GPHOME=\${installPath}," \${installPath}/greenplum_path.sh > \${installPath}/greenplum_path.sh.tmp
 		mv \${installPath}/greenplum_path.sh.tmp \${installPath}/greenplum_path.sh
 
-		migratePath=
-		cat << EOF
-
-		********************************************************************************
-		[Optional] Provide the path to a previous installation of Greenplum Database,
-		or press ENTER to skip this step. e.g. /usr/local/greenplum-db-4.1.1.3
-
-		This installation step will migrate any Greenplum Database extensions from the
-		provided path to the version currently being installed. This step is optional 
-		and can be run later with: 
-		gppkg --migrate <path_to_old_gphome> \${installPath}
-		********************************************************************************
-
-		EOF
-		read migratePath leftover
 		if [ -z "\${migratePath}" ] ; then
 			echo ""
 			echo "Skipping migration of Greenplum Database extensions..."
