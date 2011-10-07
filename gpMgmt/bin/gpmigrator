@@ -328,7 +328,7 @@ class GPUpgrade(GPUpgradeBase):
                 sys.exit(0)
 
             if options.help:
-                usage()
+                usage(EXECNAME)
                 sys.exit(0)
 
             if len(args) != 2:
@@ -1118,7 +1118,7 @@ class GPUpgrade(GPUpgradeBase):
         # We don't support mirror any more in this script.
         if (self.mirrors):
             raise UpgradeError(
-                "Please use gpmigrator_with_mirror to upgrade a cluster with mirroring")
+                "Please use gpmigrator_mirror to upgrade a cluster with mirroring")
 
         # Internal sanity checking
         if len(self.segments) == 0:
@@ -1387,12 +1387,23 @@ class GPUpgrade(GPUpgradeBase):
             else:
                 cmd = 'ifconfig'        
             ifconf = self.RunCmd(cmd)
-            ip_re = re.compile('inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)')
+            ipv4_re = re.compile('inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)')
             ip = []
             for line in ifconf.split('\n'):
-                m = ip_re.search(line)
+                m = ipv4_re.search(line)
                 if m:
                     ip.append(m.group(1))
+
+            ipv6_p1 = subprocess.Popen(cmd.split(' '), stdout=subprocess.PIPE)
+            ipv6_p2 = subprocess.Popen(["grep", "inet6"], stdin=ipv6_p1.stdout, stdout=subprocess.PIPE)
+            ipv6_p3 = subprocess.Popen(["awk", "{print $2}"], stdin=ipv6_p2.stdout, stdout=subprocess.PIPE)
+            ipv6_p4 = subprocess.Popen(["cut", "-d","/", '-f1'], stdin=ipv6_p3.stdout, stdout=subprocess.PIPE)
+            ipv6_p1.stdout.close()
+            ipv6_p2.stdout.close()
+            ipv6_p3.stdout.close()
+            ipv6_list = ipv6_p4.communicate()[0].rstrip()
+            for line in ipv6_list.split('\n'):
+                ip.append(line)
 
             # Currently we only lock the MASTER node
             #
@@ -1540,11 +1551,7 @@ class GPUpgrade(GPUpgradeBase):
 
         # Re-source the conf files if the database is up.
         if self.dbup:
-            try:
-                env['PGUSER'] = MIGRATIONUSER
-                self.RunCmd('gpstop -u -l %s' % self.logdir, env=env)
-            finally:
-                del env['PGUSER']
+            self.RunCmd('gpstop -u -l %s' % self.logdir, env=env)
 
             # MPP-10107 - The server is still running with PGUSER set in its
             # environment, which is wrong since that user doesn't exist.
@@ -2970,7 +2977,6 @@ class GPUpgrade(GPUpgradeBase):
                 raise UpgradeError("faultinjection=%d" % self.faultinjection)
     
             # Everything upgraded and validated
-            # + Release the lockdown
             # + Mark install valid
             self.Startup(self.newenv)
 
@@ -2984,7 +2990,6 @@ class GPUpgrade(GPUpgradeBase):
             # VACUUM FREEZE template1, since we haven't already
             self.Update('VACUUM FREEZE;', db='template1')
 
-            self.ReleaseLockdown(self.newenv)
 
             # Finally, drop the upgrade user:
             #  - The migrator user shouldn't own anything, but if the
@@ -2992,18 +2997,18 @@ class GPUpgrade(GPUpgradeBase):
             #    then it might.
             logger.info("Removing upgrade user");
             try:
-                self.Update('DROP USER ' + MIGRATIONUSER)
+                self.Update('DROP USER ' + MIGRATIONUSER, forceUseEnvUser=True)
             except:
                 logger.warn('Objects owned by gpmigrator reassigned to dba')
                 admin = self.Select('''select rolname from pg_authid 
-                                    where oid = 10''')[0];
+                                    where oid = 10''', forceUseEnvUser=True)[0];
                 oids = sorted(self.dbs.keys())
                 for dboid in oids:
                     db = self.dbs[dboid]
 
                     if db == 'template0':
                         continue
-                    self.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db)
+                    self.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db, forceUseEnvUser=True)
                 self.Update('DROP USER ' + MIGRATIONUSER)
 
             # Test failure after installing the newdb
@@ -3017,6 +3022,9 @@ class GPUpgrade(GPUpgradeBase):
                 logger.warn('Warnings encountered during upgrade.')
                 logger.warn('***************************************')
     
+            # Release the lockdown
+            self.ReleaseLockdown(self.newenv)
+
         except Exception, e:
             logger.fatal(str(e))
             self.Revert()

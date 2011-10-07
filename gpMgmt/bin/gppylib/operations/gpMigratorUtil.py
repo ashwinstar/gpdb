@@ -62,8 +62,8 @@ def cli_help(execname):
         if f: f.close()
 
 #============================================================
-def usage():
-    print cli_help() or __doc__
+def usage(execname):
+    print cli_help(execname) or __doc__
 
 #============================================================
 class ConnectionError(StandardError): pass
@@ -228,7 +228,10 @@ class GPUpgradeBase(object):
 
 
     #------------------------------------------------------------
-    def Select(self, qry, db='template1', port=None, forceutility=False):
+    def Select(self, qry, db='template1', port=None, forceutility=False, forceUseEnvUser=False):
+        # forceUseEnvUser: user will be GPMIGRATOR if we're in lockdown mode(gpmigrator); otherwise
+        #                  it'll be the env user. Setting forceuseEnvUser will always use env user,
+        #                  even though we're in gpmigrator and in lockdown.
         '''
         Execute a SQL query and return an array of result rows
            + Single columns will be returned as an array of values
@@ -250,7 +253,7 @@ class GPUpgradeBase(object):
 
             locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
                                   'pg_hba.conf'+LOCKEXT)
-            if os.path.exists(locked):
+            if os.path.exists(locked) and not forceUseEnvUser:
                 user = MIGRATIONUSER
             else:
                 user = env['USER']
@@ -298,7 +301,11 @@ class GPUpgradeBase(object):
         return rows
     
     #------------------------------------------------------------
-    def Update(self, qry, db='template1', port=None, forceutility=False, upgradeMode=False, modSysTbl=False):
+    def Update(self, qry, db='template1', port=None, forceutility=False, upgradeMode=False, modSysTbl=False, forceUseEnvUser=False):
+        # forceUseEnvUser: user will be GPMIGRATOR if we're in lockdown mode(gpmigrator); otherwise
+        #                  it'll be the env user. Setting forceuseEnvUser will always use env user,
+        #                  even though we're in gpmigrator and in lockdown.
+
         '''
         Execute a SQL query expecting no output
         '''
@@ -321,7 +328,7 @@ class GPUpgradeBase(object):
 
             locked = os.path.join(env['MASTER_DATA_DIRECTORY'], 
                                   'pg_hba.conf'+LOCKEXT)
-            if os.path.exists(locked):
+            if os.path.exists(locked) and not forceUseEnvUser:
                 user = MIGRATIONUSER
             else:
                 user = env['USER']
@@ -711,15 +718,15 @@ class GPUpgradeBase(object):
     #------------------------------------------------------------
     def Checkgpperfmon(self):
         '''
-        Need to make sure that gpperfmon table is in the public schema
+        gpperfmon validation check
+        1. move outstanding flat file data to data.<time> dir
+        2. dry run the upgrade script and then rollback
         '''
         try:
             logger.info("Checking gpperfmon")
             perfdatadir  = os.path.join(self.masterdir, "gpperfmon", "data")
             if (os.path.isdir(perfdatadir)):
                 perfdatabkup = os.path.join(self.masterdir, "gpperfmon", "data.%s" % time())
-                if (os.path.isdir(perfdatabkup)):
-                    shutil.rmtree(perfdatabkup)
                 os.rename(perfdatadir, perfdatabkup)
             
             # test run gpperfmon upgrade script

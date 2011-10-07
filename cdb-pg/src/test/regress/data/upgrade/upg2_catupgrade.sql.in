@@ -48,6 +48,19 @@ begin
 end;
 $$ language 'plpgsql';
 
+-- Use this pl/pgsql function to remove the default table privilege
+create or replace function @gpupgradeschemaname@.removeDefaultPrivilege(tablenm text) returns int as $$
+declare
+  username name;
+  stmt text;
+begin
+  select rolname into username from pg_authid where oid = 10;
+  stmt := 'revoke all on table @gpupgradeschemaname@.' || tablenm || ' from ' || quote_ident(username);
+  execute stmt;
+  return 1;
+end;
+$$ language 'plpgsql';
+
 -------------------------------------
 -- Execute the main upgrade script
 -------------------------------------

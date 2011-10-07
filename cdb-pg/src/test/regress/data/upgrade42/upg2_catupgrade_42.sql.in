@@ -28,6 +28,7 @@ CREATE TABLE @gpupgradeschemaname@.pg_type_encoding
 with (relid=3220, oids=false, reltype_oid=3221, toast_oid=3222, toast_index=3223, toast_reltype=3224, CamelCase=TypeEncoding);
 create unique index pg_type_encoding_typid_index on @gpupgradeschemaname@.pg_type_encoding(typid) with (indexid=3207);
 grant select on @gpupgradeschemaname@.pg_type_encoding to public;
+select @gpupgradeschemaname@.removeDefaultPrivilege('pg_type_encoding');
 
 CREATE TABLE @gpupgradeschemaname@.pg_extprotocol
 (
@@ -43,6 +44,7 @@ with (shared=false, oids=true, relid=7175, reltype_oid=7176);
 create unique index pg_extprotocol_oid_index on @gpupgradeschemaname@.pg_extprotocol(oid) with (indexid=7156);
 create unique index pg_extprotocol_ptcname_index on @gpupgradeschemaname@.pg_extprotocol(ptcname) with (indexid=7177);
 grant select on @gpupgradeschemaname@.pg_extprotocol to public;
+select @gpupgradeschemaname@.removeDefaultPrivilege('pg_extprotocol');
 
 CREATE TABLE @gpupgradeschemaname@.pg_attribute_encoding
 (
@@ -54,6 +56,7 @@ CREATE TABLE @gpupgradeschemaname@.pg_attribute_encoding
 create index pg_attribute_encoding_attrelid_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid) with (indexid=3236);
 create unique index pg_attribute_encoding_attrelid_attnum_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid, attnum) with (indexid=3237);
 grant select on @gpupgradeschemaname@.pg_attribute_encoding to public;
+select @gpupgradeschemaname@.removeDefaultPrivilege('pg_attribute_encoding');
 
 CREATE TABLE @gpupgradeschemaname@.gp_verification_history
 (
@@ -70,6 +73,7 @@ with (camelcase=GpVerificationHistory, shared=true, oids=false, relid=6429, relt
 tablespace pg_global;
 create unique index gp_verification_history_vertoken_index on @gpupgradeschemaname@.gp_verification_history(vertoken) with (indexid=6431);
 grant select on @gpupgradeschemaname@.gp_verification_history to public;
+select @gpupgradeschemaname@.removeDefaultPrivilege('gp_verification_history');
 
 CREATE TABLE @gpupgradeschemaname@.pg_auth_time_constraint
 (
@@ -82,7 +86,8 @@ CREATE TABLE @gpupgradeschemaname@.pg_auth_time_constraint
 with (CamelCase=AuthTimeConstraint, shared=true, oids=false, relid=2914, reltype_oid=2915)
 tablespace pg_global;
 grant select on @gpupgradeschemaname@.pg_auth_time_constraint to public;
-   
+select @gpupgradeschemaname@.removeDefaultPrivilege('pg_auth_time_constraint');
+
 CREATE TABLE @gpupgradeschemaname@.pg_proc_callback
 (
    profnoid     regproc not null,   -- oid of the main function
@@ -92,6 +97,7 @@ CREATE TABLE @gpupgradeschemaname@.pg_proc_callback
 with (relid=3124, reltype_oid=3125, oids=false, CamelCase=ProcCallback);
 create unique index pg_proc_callback_profnoid_promethod_index on @gpupgradeschemaname@.pg_proc_callback(profnoid, promethod) with (indexid=3126);
 grant select on @gpupgradeschemaname@.pg_proc_callback to public;
+select @gpupgradeschemaname@.removeDefaultPrivilege('pg_proc_callback');
 
 CREATE TABLE @gpupgradeschemaname@.pg_compression
    (
@@ -105,6 +111,7 @@ CREATE TABLE @gpupgradeschemaname@.pg_compression
    )
 with (shared=false, oids=true, relid=3056, reltype_oid=3057, CamelCase=Compression);
 grant select on @gpupgradeschemaname@.pg_compression to public;
+select @gpupgradeschemaname@.removeDefaultPrivilege('pg_compression');
 
 create unique index pg_compression_oid_index on @gpupgradeschemaname@.pg_compression(oid) with (indexid=3058);
 create unique index pg_compression_compname_index on @gpupgradeschemaname@.pg_compression(compname) with (indexid=3059);
@@ -118,8 +125,10 @@ CREATE TABLE @gpupgradeschemaname@.pg_partition_encoding
    with (relid=9903, reltype_oid=9904, toast_oid=9905, toast_index=9906, toast_reltype=9907, CamelCase=PartitionEncoding, oid=false);
 
 grant select on @gpupgradeschemaname@.pg_partition_encoding to public;
-   create unique index pg_partition_encoding_parencoid_parencattnum_index on @gpupgradeschemaname@.pg_partition_encoding(parencoid, parencattnum) with (indexid=9908, CamelCase=PartitionEncodingParencoidAttnum);
-   create index  pg_partition_encoding_parencoid_index on @gpupgradeschemaname@.pg_partition_encoding(parencoid) with (indexid=9909, CamelCase=PartitionEncodingParendoid);
+select @gpupgradeschemaname@.removeDefaultPrivilege('pg_partition_encoding');
+
+create unique index pg_partition_encoding_parencoid_parencattnum_index on @gpupgradeschemaname@.pg_partition_encoding(parencoid, parencattnum) with (indexid=9908, CamelCase=PartitionEncodingParencoidAttnum);
+create index  pg_partition_encoding_parencoid_index on @gpupgradeschemaname@.pg_partition_encoding(parencoid) with (indexid=9909, CamelCase=PartitionEncodingParendoid);
 
 --
 --  End of New Tables

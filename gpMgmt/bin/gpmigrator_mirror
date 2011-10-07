@@ -217,7 +217,7 @@ class GPUpgrade(GPUpgradeBase):
                 sys.exit(0)
 
             if options.help:
-                usage()
+                usage(EXECNAME)
                 sys.exit(0)
 
             if len(args) != 2:
@@ -323,7 +323,7 @@ class GPUpgrade(GPUpgradeBase):
             datadirs = []
             for seg in host.dbs:
                 datadirs.append(seg.getSegmentDataDirectory())
-
+            
             # Skip any hosts that have no applicable data directories
             if len(datadirs) == 0:
                continue
@@ -333,7 +333,7 @@ class GPUpgrade(GPUpgradeBase):
                              command=cmd,
                              dataDirectories=datadirs,
                              option1=option)
-            
+
             c = GpUpgradeCmd("gpmigrator_mirror remote call",
                              cmdList,
                              ctxt=base.REMOTE,
@@ -683,7 +683,7 @@ class GPUpgrade(GPUpgradeBase):
 
         logger.info('Modifying catalog version')
         
-        if tonewver:
+        if (tonewver==True):
             curenv     = self.newenv
             curhome    = self.newhome
         else:
