@@ -293,6 +293,12 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		 */
 		top_plan = apply_shareinput_xslice(top_plan, &glob->share);
 
+		foreach (lp, glob->subplans)
+		{
+			Plan	   *subplan = (Plan *) lfirst(lp);
+			lfirst(lp) = apply_shareinput_xslice(subplan, &glob->share);
+		}
+
 		/*
 		 * Walk the plan tree to set hasXslice field in each Append node to true
 		 * if the subnodes of the Append node contain cross-slice shared node, and
