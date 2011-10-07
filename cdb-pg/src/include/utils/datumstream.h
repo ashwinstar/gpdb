@@ -8,7 +8,7 @@
 
 #include "catalog/pg_attribute.h"
 
-/* 
+/*
  * Datum Stream Block.
  * 16 bytes header.  Followed by data.
  */
@@ -27,7 +27,7 @@ enum {
     DSB_HAS_NULLBITMAP = 1,
 };
 
-/* 
+/*
  * Magic number.  Max number of datum in on block.
  * MUST fit in 15 bit, or we overflow ndatum(int16), defined
  * in DatumStreamBlock.
@@ -47,16 +47,16 @@ typedef struct DatumStream
     int32 datumlen;		    /* Datum length */
     int32 typid;            /* type id */
     char  align;		    /* Align */
-    bool  byval;            /* if it is a by value type */ 
+    bool  byval;            /* if it is a by value type */
 
     int32 compress_option; /* Data type specific compression */
 
     /* Acc max limit */
     int32 maxsz;		    /* max size */
-    int32 maxdatasz;        /* max usable data size */ 
+    int32 maxdatasz;        /* max usable data size */
 
     /* reader or writer ? */
-    bool is_reader;	
+    bool is_reader;
 
     /* AO Storage */
     bool need_close_file;
@@ -68,13 +68,13 @@ typedef struct DatumStream
 	int64 blockFirstRowNum;
 	int64 blockFileOffset;
 	int blockRowCount;
-   
-	
+
+
     /* current pointer and nullbit */
     int32 nth;		    /* Nth datum in the block */
     bool  has_null;		/* if we have null at all */
     char* nullp;		/* pointer to current null bitmap char */
-    char  nullbit;		/* current null bit */ 
+    char  nullbit;		/* current null bit */
     char* datump;		/* poitner to datum */
 
     DatumStreamBlock *block;    /* Current read block */
@@ -102,15 +102,15 @@ typedef struct DatumStreamFetchDescData
 	DatumStream *datumStream;
 
 	CurrentSegmentFile currentSegmentFile;
-	
+
 	int64 scanNextFileOffset;
 	int64 scanNextRowNum;
 
 	int64 scanAfterFileOffset;
 	int64 scanLastRowNum;
-	
+
 	CurrentBlock currentBlock;
-	
+
 } DatumStreamFetchDescData;
 
 typedef DatumStreamFetchDescData *DatumStreamFetchDesc;
@@ -121,16 +121,16 @@ extern int datumstream_advance(DatumStream *ds);
 extern int datumstream_put(DatumStream *ds, Datum d, bool n);
 
 /* ctor and dtor */
-extern DatumStream *create_datumstream(char *compName, int32 compLv, int32 maxsz, 
+extern DatumStream *create_datumstream(char *compName, int32 compLv, int32 maxsz, size_t (*desiredCompSizeFunc)(size_t input),
 		AORelationVersion version, Form_pg_attribute attr, char *relname, bool isreader);
 extern void datumstream_open_file(
-		DatumStream *ds, 
-		char *fn, 
-		int64 eof, 
+		DatumStream *ds,
+		char *fn,
+		int64 eof,
 		int64 eofUncompressed,
 		RelFileNode relFileNode,
 		int32	segmentFileNum);
-extern void datumstream_close_file(DatumStream *ds); 
+extern void datumstream_close_file(DatumStream *ds);
 extern void destroy_datumstream(DatumStream *ds);
 
 /* Read and Write op */

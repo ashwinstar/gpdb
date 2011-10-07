@@ -119,9 +119,10 @@ open_ds(Relation rel,
         DatumStream **ds, TupleDesc relationTupleDesc, bool *proj,
 		AORelationVersion version)
 {
-	int nvp = relationTupleDesc->natts;
-	StdRdOptions **opts = RelationGetAttributeOptions(rel);
-	PGFunction **cfuncs = RelationGetColumnCompressionFuncs(rel);
+	int		nvp = relationTupleDesc->natts;
+	StdRdOptions 	**opts = RelationGetAttributeOptions(rel);
+	PGFunction 	**cfuncs = RelationGetColumnCompressionFuncs(rel);
+	size_t 		(*desiredCompressionSize)(size_t input) = NULL;
 
 	/* open datum streams.  It will open segment file underneath */
 	for (int i = 0; i < nvp; ++i)
@@ -132,11 +133,11 @@ open_ds(Relation rel,
 		int32 blksz;
 		PGFunction *fns;
 
-    /*
-     * If the column has column specific encoding, we use those. Note
-     * that even if the user specified no encoding for this column,
-     * we will have represented that as compresstype=none.
-     */
+		/*
+		 * If the column has column specific encoding, we use those. Note
+		 * that even if the user specified no encoding for this column,
+		 * we will have represented that as compresstype=none.
+		 */
 		if (opts[i])
 		{
 			ct = opts[i]->compresstype;
@@ -156,17 +157,17 @@ open_ds(Relation rel,
 
 		if (proj)
 		{
+			/* This is a reader. */
 			if (proj[i])
 			{
-				ds[i] = create_datumstream(ct, clvl, blksz, version, attr,
-										   RelationGetRelationName(rel), true);
+				ds[i] = create_datumstream(ct, clvl, blksz, desiredCompressionSize, version, attr,
+								RelationGetRelationName(rel), true);
 
-				/* This is a reader */
 				ds[i]->ao_read->compression_functions = fns;
 
 				if (ds[i]->ao_read->compression_functions != NULL)
 				{
-					CompressionState *cs;
+					CompressionState *cs = NULL;
 					TupleDesc td;
 					StorageAttributes sa;
 
@@ -180,10 +181,11 @@ open_ds(Relation rel,
 					 */
 					td = CreateTupleDesc(1, false, &attr);
 
-					cs = callCompressionConstructor(fns[COMPRESSION_CONSTRUCTOR],
-													td,
-													&sa,
-													false /* compress? */);
+					cs = callCompressionConstructor( fns[COMPRESSION_CONSTRUCTOR]
+					                               , td
+					                               , &sa
+					                               , false /* compress? */
+					                               );
 					ds[i]->ao_read->compressionState = cs;
 				}
 			}
@@ -193,15 +195,10 @@ open_ds(Relation rel,
 		}
 		else
 		{
-			ds[i] = create_datumstream(ct, clvl, blksz, version, attr,
-									   RelationGetRelationName(rel), false);
-
-			/* This is a writer */
-			ds[i]->ao_write->compression_functions = fns;
-
-			if (ds[i]->ao_write->compression_functions != NULL)
+			/* This is a writer. */
+			CompressionState *cs = NULL;
+			if (fns != NULL)
 			{
-				CompressionState *cs;
 				TupleDesc td = CreateTupleDesc(1, false, &attr);
 				StorageAttributes sa;
 
@@ -209,13 +206,14 @@ open_ds(Relation rel,
 				sa.complevel = clvl;
 				sa.blocksize = blksz;
 
-				cs = callCompressionConstructor(fns[COMPRESSION_CONSTRUCTOR],
-												td,
-												&sa,
-												true /* compress */);
-
-				ds[i]->ao_write->compressionState = cs;
+				cs = callCompressionConstructor(fns[COMPRESSION_CONSTRUCTOR], td, &sa, true /* compress */);
+				desiredCompressionSize = cs->desired_sz;
 			}
+
+			ds[i] = create_datumstream(ct, clvl, blksz, desiredCompressionSize, version, attr,
+									RelationGetRelationName(rel), false);
+			ds[i]->ao_write->compressionState = cs;
+			ds[i]->ao_write->compression_functions = fns;
 		}
 	}
 }
@@ -1053,7 +1051,7 @@ aocs_fetch_init(Relation relation,
 			fns = cfuncs[colno];
 		else
 			fns = NULL;
-		
+
 		aocsFetchDesc->datumStreamFetchDesc[colno] = NULL;
 		if (proj[colno])
 		{
@@ -1064,16 +1062,17 @@ aocs_fetch_init(Relation relation,
 				create_datumstream(attr->compressType,
 								   attr->compressLevel,
 								   aocsFetchDesc->blockSize,
+								   NULL,
 								   attr->version,
 								   tupleDesc->attrs[colno],
 								   relation->rd_rel->relname.data,
 								   true);
-			
+
 			aocsFetchDesc->datumStreamFetchDesc[colno]->datumStream->ao_read->compression_functions = fns;
-			
+
 			if (fns != NULL)
 			{
-				
+
 				CompressionState *cs;
 				TupleDesc td;
 				StorageAttributes sa;
@@ -1082,20 +1081,20 @@ aocs_fetch_init(Relation relation,
 				sa.comptype = aoentry->compresstype;
 				sa.complevel = aoentry->compresslevel;
 				sa.blocksize = aoentry->blocksize;
-				
+
 				/* Create a tuple descriptor to representing the column
 				 * and it's type. This instructors the compression specific
 				 * constructor on what it is compressing (or decompressing).
 				 */
 				td = CreateTupleDesc(1, false, &aocsattr);
-				
+
 				cs = callCompressionConstructor(fns[COMPRESSION_CONSTRUCTOR],
 												td,
 												&sa,
 												false /* compress? */);
 				aocsFetchDesc->datumStreamFetchDesc[colno]->datumStream->ao_read->compressionState = cs;
-			}			
-				
+			}
+
 		}
 	}
 

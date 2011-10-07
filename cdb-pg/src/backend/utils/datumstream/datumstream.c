@@ -273,47 +273,61 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
     return acc->datumlen;
 }
 
-DatumStream *create_datumstream(char *compName, int32 compLevel, int32 maxsz,
+DatumStream *create_datumstream(char *compName, int32 compLevel, int32 maxsz, 	size_t (*desiredCompSizeFunc)(size_t input),
 		AORelationVersion version, Form_pg_attribute attr, char *relname, bool isreader)
 {
+	int          desiredOverflowBytes = 0;
+
 	AORelationVersion_CheckValid(version);
 
-    DatumStream *acc = palloc0(sizeof(DatumStream));
+	DatumStream *acc = palloc0(sizeof(DatumStream));
 
 	/*
 	 * Adjust maxsz for Append-Only Storage.
 	 */
 	maxsz = AppendOnlyStorage_GetUsableBlockSize(maxsz);
 
-    /* datumlen and align not set */
-    acc->datumlen = attr->attlen;
-    acc->typid = attr->atttypid;
-    acc->align = attr->attalign;
-    acc->byval = attr->attbyval;
+	if (desiredCompSizeFunc != NULL)
+	{
+		/*
+		 * Call the compression's desired size function to find out what additional
+		 * space it requires for our block size.
+		 */
+		desiredOverflowBytes =
+			(int)(desiredCompSizeFunc)(maxsz) - maxsz;
+		Insist(desiredOverflowBytes >= 0);
+	}
+	acc->ao_attr.overflowSize = desiredOverflowBytes;
 
-    /* Data type sepcific compression NYI */
-    acc->compress_option = 0;
+	/* datumlen and align not set */
+	acc->datumlen = attr->attlen;
+	acc->typid = attr->atttypid;
+	acc->align = attr->attalign;
+	acc->byval = attr->attbyval;
 
-    acc->maxsz = maxsz;
-    acc->is_reader = isreader;
+	/* Data type sepcific compression NYI */
+	acc->compress_option = 0;
 
-    if (compName == NULL || pg_strcasecmp(compName, "none") == 0)
-    	acc->ao_attr.compress = false;
-    else
-    	acc->ao_attr.compress = true;
+	acc->maxsz = maxsz;
+	acc->is_reader = isreader;
 
-    acc->ao_attr.compressLevel = compLevel;
-    acc->ao_attr.version = version;
+	if (compName == NULL || pg_strcasecmp(compName, "none") == 0)
+		acc->ao_attr.compress = false;
+	else
+		acc->ao_attr.compress = true;
 
-    if (acc->is_reader)
-    {
-        acc->ao_read = palloc0(sizeof(AppendOnlyStorageRead));
-        AppendOnlyStorageRead_Init(acc->ao_read, NULL, maxsz, relname, &acc->ao_attr);
-    }
-    else
-    {
-        acc->ao_write = palloc0(sizeof(AppendOnlyStorageWrite));
-        AppendOnlyStorageWrite_Init(acc->ao_write, NULL, maxsz, relname, &acc->ao_attr);
+	acc->ao_attr.compressLevel = compLevel;
+	acc->ao_attr.version = version;
+
+	if (acc->is_reader)
+	{
+		acc->ao_read = palloc0(sizeof(AppendOnlyStorageRead));
+		AppendOnlyStorageRead_Init(acc->ao_read, NULL, maxsz, relname, &acc->ao_attr);
+	}
+	else
+	{
+		acc->ao_write = palloc0(sizeof(AppendOnlyStorageWrite));
+		AppendOnlyStorageWrite_Init(acc->ao_write, NULL, maxsz, relname, &acc->ao_attr);
 
 		/*
 		 * Temporarily set the firstRowNum for the block so that we can
@@ -321,28 +335,28 @@ DatumStream *create_datumstream(char *compName, int32 compLevel, int32 maxsz,
 		 */
 		AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write, 1);
 
-        acc->npbufsz = (MAXDATUM_PER_AOCS_BLOCK + 1) / 8;
-        acc->npbuf = palloc0(acc->npbufsz);
+		acc->npbufsz = (MAXDATUM_PER_AOCS_BLOCK + 1) / 8;
+		acc->npbuf = palloc0(acc->npbufsz);
 
-        acc->dpbufsz = acc->maxsz;
-        acc->dpbuf = palloc0(acc->dpbufsz);
+		acc->dpbufsz = acc->maxsz;
+		acc->dpbuf = palloc0(acc->dpbufsz);
 
-        acc->lobbufsz = 0;
-        acc->lobbuf = NULL;
-    }
+		acc->lobbufsz = 0;
+		acc->lobbuf = NULL;
+	}
 
-    acc->blockFirstRowNum = 1;
+	acc->blockFirstRowNum = 1;
 
-    acc->memctxt = CurrentMemoryContext;
+	acc->memctxt = CurrentMemoryContext;
 
-    /* Set up current position */
-    acc->nth = 0;
-    acc->has_null = false;
-    acc->nullp = acc->npbuf;
-    acc->nullbit = 1;
-    acc->datump = acc->dpbuf;
+	/* Set up current position */
+	acc->nth = 0;
+	acc->has_null = false;
+	acc->nullp = acc->npbuf;
+	acc->nullbit = 1;
+	acc->datump = acc->dpbuf;
 
-    return acc;
+	return acc;
 }
 
 void destroy_datumstream(DatumStream *ds)

@@ -443,11 +443,12 @@ zlib_constructor(PG_FUNCTION_ARGS)
 {
 	TupleDesc		 td	   = PG_GETARG_POINTER(0);
 	StorageAttributes *sa = PG_GETARG_POINTER(1);
-	CompressionState *cs	   = palloc(sizeof(CompressionState));
+	CompressionState *cs	   = palloc0(sizeof(CompressionState));
 	zlib_state	   *state	= palloc0(sizeof(zlib_state));
 	bool			  compress = PG_GETARG_BOOL(2);
 
 	cs->opaque = (void *) state;
+	cs->desired_sz = NULL;
 
 	Insist(PointerIsValid(td));
 	Insist(PointerIsValid(sa->comptype));
@@ -594,11 +595,12 @@ rle_type_constructor(PG_FUNCTION_ARGS)
 {
 	TupleDesc			td = PG_GETARG_POINTER(0);
 	StorageAttributes *sa	= PG_GETARG_POINTER(1);
-	CompressionState   *cs = palloc(sizeof(CompressionState));
+	CompressionState   *cs = palloc0(sizeof(CompressionState));
 	rle_type_state	   *state = palloc0(sizeof(rle_type_state));
 	bool				compress = PG_GETARG_BOOL(2);
 
 	cs->opaque = (void *) state;
+	cs->desired_sz = NULL;
 
 	Insist(PointerIsValid(td));
 	Insist(PointerIsValid(sa->comptype));

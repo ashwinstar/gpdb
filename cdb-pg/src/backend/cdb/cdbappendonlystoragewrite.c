@@ -111,7 +111,10 @@ void AppendOnlyStorageWrite_Init(
 	/*
 	 * Set up extra buffers for compression.
 	 */
-	storageWrite->compressionOverrunLen = 0;		// Assume none.
+	storageWrite->compressionOverrunLen = storageAttributes->overflowSize;
+
+	elog(DEBUG2, "Requested compression overflow bytes = %d.", storageAttributes->overflowSize);
+
 	if (storageWrite->storageAttributes.compress)
 	{
 		storageWrite->uncompressedBuffer = (uint8 *) palloc(storageWrite->maxBufferLen * sizeof(uint8));
@@ -120,14 +123,6 @@ void AppendOnlyStorageWrite_Init(
 	{
 		Assert(storageWrite->uncompressedBuffer == NULL);
 	}
-
-	/*
-	 * KAS The following is a kludge. In 4.2 we changed the way compression type is determined,
-	 * but that information is not available at this point. Currently, only QUICKLZ requires
-	 * extra space (400 bytes), so I'll just make the compression OverrunLen the MAX_OVERRUN_QUICKLZ
-	 * for now.
-	 */
-	storageWrite->compressionOverrunLen = MAX_OVERRUN_QUICKLZ;
 
 	/*
 	 * Now that we have determined the compression overrun, we can now

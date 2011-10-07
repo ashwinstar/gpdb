@@ -98,6 +98,11 @@ typedef struct AppendOnlyStorageAttributes
 			 * sub-library to use for decompress
 			 * (e.g. QuickLZ).
 			 */
+	int					overflowSize;
+			/*
+			 * The additional size (in bytes) required by the bulk-compression
+			 * algorithm.
+			 */
 
 	bool				checksum;
 			/*
