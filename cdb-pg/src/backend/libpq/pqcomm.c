@@ -94,6 +94,7 @@
 #include "storage/ipc.h"
 #include "utils/guc.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbfilerepservice.h"
 
 /*
  * Configuration options
@@ -786,8 +787,17 @@ pq_recvbuf(void)
 
 		if (r < 0)
 		{
-			if (errno == EINTR)
-				continue;		/* Ok if interrupted */
+			if (errno == EINTR || errno == EAGAIN)
+			{
+				/* change tracking */
+				if (FileRepSubProcess_IsStateTransitionRequested())
+				{
+					elog(WARNING, "segment state transition requested while waiting to read data from socket");
+					return EOF;
+				}
+				else
+					continue;		/* Ok if interrupted or timeout expired */
+			}
 
 			/*
 			 * Careful: an ereport() that tries to write to the client would

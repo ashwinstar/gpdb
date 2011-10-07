@@ -96,6 +96,16 @@ FileRepConnServer_CreateConnection()
 		}	
 		ConnFree();
 	} else {
+		/* MPP-14225:
+		 * On NIC failure, filerep receiver process's recv() system call
+		 * will take hours to timeout, depending on the TCP timeout.
+		 * Add SO_RCVTIMEO timeout to filerep receiver process's socket
+		 * to avoid this.
+		 */
+		struct timeval tv;
+		tv.tv_sec = file_rep_socket_timeout;
+		tv.tv_usec = 0;	/* Not initializing this can cause strange errors */
+		setsockopt(port->sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
 		MyProcPort = port;
 	}
 
