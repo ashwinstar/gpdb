@@ -236,15 +236,11 @@ gphdfsprotocol_import(PG_FUNCTION_ARGS)
 	myData = (URL_FILE *) EXTPROTOCOL_GET_USER_CTX(fcinfo);
 
 	/* =======================================================================
-	 *                            DO CLOSE
+	 *                            DO LAST CALL
+	 *                            Nothing to be done
 	 * ======================================================================= */
 	if (EXTPROTOCOL_IS_LAST_CALL(fcinfo))
-	{
-		int ret = 0;
-		if (myData)
-			ret = url_fclose(myData, true, "gphdfs protocol");
-		PG_RETURN_INT32(ret);
-	}
+		PG_RETURN_INT32(0);
 
 	/* =======================================================================
 	 *                            DO OPEN
@@ -264,6 +260,13 @@ gphdfsprotocol_import(PG_FUNCTION_ARGS)
 	if (datlen > 0)
 		nread = piperead(myData->u.exec.pipes[EXEC_DATA_P], data, datlen);
 
+	/* =======================================================================
+	 *                            DO CLOSE
+	 *                            close early to raise error early
+	 * ======================================================================= */
+	if (nread == 0)
+		url_fclose(myData, true, "gphdfs protocol");
+
 	PG_RETURN_INT32((int)nread);
 }
 
@@ -277,6 +280,8 @@ gphdfsprotocol_export(PG_FUNCTION_ARGS)
 	char     *data;
 	int       datlen;
 	size_t    wrote = 0;
+	static char	ebuf[512] = {0};
+	int	    	ebuflen = 512;
 
 	/* Must be called via the external table format manager */
 	if (!CALLED_AS_EXTPROTOCOL(fcinfo))
@@ -314,6 +319,14 @@ gphdfsprotocol_export(PG_FUNCTION_ARGS)
 
 	if (datlen > 0)
 		wrote = pipewrite(myData->u.exec.pipes[EXEC_DATA_P], data, datlen);
+
+	if (url_ferror(myData, wrote, ebuf, ebuflen))
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) :
+				 errmsg("could not write to external resource: %m")));
+	}
 
 	PG_RETURN_INT32((int)wrote);
 }
