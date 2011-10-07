@@ -1762,7 +1762,11 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
                     {
                     	/* For log level of DEBUG4, gpmon is sent information about SPI internal queries as well */
                     	Assert(plan->query);
-                    	gpmon_qlog_query_text(qdesc->gpmon_pkt, plan->query);
+            			gpmon_qlog_query_text(qdesc->gpmon_pkt,
+            					plan->query,
+            					application_name,
+            					NULL /* resqueue name*/,
+            					NULL /* priority */);
                     }
                     else
                     {

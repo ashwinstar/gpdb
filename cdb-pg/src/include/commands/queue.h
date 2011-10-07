@@ -20,5 +20,7 @@ GetResqueueCapabilityEntry(Oid  queueid);
 extern void CreateQueue(CreateQueueStmt *stmt);
 extern void AlterQueue(AlterQueueStmt *stmt);
 extern void DropQueue(DropQueueStmt *stmt);
+extern char *GetResqueueName(Oid resqueueOid);
+extern char *GetResqueuePriority(Oid queueId);
 
 #endif   /* QUEUE_H */

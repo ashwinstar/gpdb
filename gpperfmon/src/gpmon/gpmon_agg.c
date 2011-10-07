@@ -1375,6 +1375,85 @@ static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr, a
 	}
 }
 
+static int get_and_print_next_query_file_kvp(FILE* outfd, FILE* queryfd, char* qfname, apr_uint32_t* bytes_written)
+{
+    const int line_size = 1024;
+    char line[line_size];
+    line[0] = 0;
+    char *p = NULL;
+    int field_len = 0;
+    int retCode = 0;
+
+    p = fgets(line, line_size, queryfd);
+    line[line_size-1] = 0; // in case libc is buggy
+
+    if (!p) {
+	    gpmon_warning(FLINE, "Error parsing file: %s", qfname);
+        return APR_NOTFOUND;
+    }
+
+    retCode = sscanf(p, "%d", &field_len);
+
+    if (1 != retCode){
+	    gpmon_warning(FLINE, "bad format on file: %s", qfname);
+        return APR_NOTFOUND;
+    }
+
+    if (field_len < 0) {
+	    gpmon_warning(FLINE, "bad field length on file: %s", qfname);
+        return APR_NOTFOUND;
+	}
+
+    if (!field_len) {
+        // empty field, read through the newline
+        p = fgets(line, line_size, queryfd);
+        if (p)
+            return APR_SUCCESS;
+        else
+            return APR_NOTFOUND;
+    }
+
+    fprintf(outfd, "\"");
+    (*bytes_written)++;
+
+    while (field_len > 0) {
+	    int max, n;
+        char* q;
+        max = field_len > sizeof(line) ? sizeof(line) : field_len;
+        n = fread(line, 1, max, queryfd);
+        for (p = line, q = line + n; p < q; p++) 
+        {
+            if (*p == '"')
+            {
+                fputc('\"', outfd);
+                (*bytes_written)++;
+            }
+
+            if ((*p == '\n') || (*p == '\r')) 
+                fputc(' ', outfd);
+            else 
+                fputc(*p, outfd);
+
+            (*bytes_written)++;
+
+        }
+        field_len -= n;
+        if (n < max) break;
+    }
+
+	fprintf(outfd, "\"");
+	(*bytes_written)++;
+
+    int n = fread(line, 1, 1, queryfd);
+    if (n != 1)
+    {
+	    gpmon_warning(FLINE, "missing expeceted newline in file: %s", qfname);
+        return APR_NOTFOUND;
+    }
+
+    return APR_SUCCESS;
+}
+
 static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nowstr)
 {
 	const int line_size = 1024;
@@ -1382,8 +1461,6 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
     char line[line_size];
     char qfname[qfname_size];
     FILE* qfptr = 0;
-    int qtextlen = 0;
-    char* p;
     apr_uint32_t bytes_written = 0;
 
     fmt_qlog(line, line_size, qdnode, nowstr, 1);
@@ -1394,74 +1471,47 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 		return 0;
 	}
 
-	fprintf(fp, "%s|", line);
-	bytes_written++;
+	fprintf(fp, "%s", line);
 
 	snprintf(qfname, qfname_size, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid,
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
 
 	qfptr = fopen(qfname, "r");
+    if (!qfptr)
+    {
+	    fprintf(fp, "|||||\n");
+	    bytes_written += 6;
+	    return bytes_written;
+    }
 
-	if (qfptr) 
-	{
-        line[line_size-1] = 0;
-        p = fgets(line, line_size, qfptr);
+    // 0 add query text
+    // 1 add query plan
+    // 2 add application name
+    // 3 add rsqname 
+    // 4 add priority
 
-        if (p && line[line_size-1]) 
-		{
-			line[line_size-1] = 0;
-			gpmon_warning(FLINE, "line too long (ignored): %s\n", line);
-			p = 0;
-		}
-		if (p && 1 != sscanf(p, "%d", &qtextlen)) 
-		{
-			gpmon_warning(FLINE, "illegal line in query text file: %s\n", line);
-			p = 0;
-			qtextlen = 0;
-		}
+    int total_iterations = 5;
+    int all_good = 1;
+    int iter;
+    int retCode = APR_SUCCESS;
+    for (iter = 0; iter < total_iterations; ++iter)
+    {
+	    fprintf(fp, "|");
+        bytes_written++;
 
-		if (qtextlen > 0) 
-		{
-	    	fprintf(fp, "\"");
-            bytes_written++;
+        if (!all_good || iter == 1){
+            // we have no data for query plan
+            // if we failed once already don't bother trying to parse query file
+            continue;
+        }
 
-			while (qtextlen > 0) 
-			{
-				int max, n;
-				char* q;
-				max = qtextlen > sizeof(line) ? sizeof(line) : qtextlen;
-				n = fread(line, 1, max, qfptr);
-				for (p = line, q = line + n; p < q; p++) 
-				{
-					if (*p == '"')
-					{
-						fputc('\"', fp);
-						bytes_written++;
-					}
+        retCode = get_and_print_next_query_file_kvp(fp, qfptr, qfname, &bytes_written);
+        if (retCode != APR_SUCCESS)
+            all_good = 0;
+    }
 
-					if ((*p == '\n') || (*p == '\r')) {
-					  fputc(' ', fp);
-					} else {
-					  fputc(*p, fp);
-					}
-					bytes_written++;
-				}
-				qtextlen -= n;
-				if (n < max) break;
-			}
-
-			fprintf(fp, "\"");
-			bytes_written++;
-		}
-		fclose(qfptr);
-	}
-	else 
-	{
-		TR1(("Failed to open query text file: %s\n", qfname));
-	}
-
-	fprintf(fp, "||||\n");
-	bytes_written += 2;
+    fprintf(fp, "\n");
+    fclose(qfptr);
 	return bytes_written;
 }
 

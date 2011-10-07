@@ -24,12 +24,13 @@
 extern const char * show_session_authorization(void);
 extern char *get_database_name(Oid dbid);
 
-static void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
-						 const char* type, /* "qtext", "qplan" */
-						 const char* content /* the query text or plan */
-						 );
+static void gpmon_record_kv(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
+						 const char* key,
+						 const char* value,
+						 bool extraNewLine);
 static void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid,
 								apr_int32_t ccnt, apr_int32_t status);
+static const char* gpmon_null_subst(const char* input);
 
 
 struct  {
@@ -102,13 +103,21 @@ void gpmon_init(void)
 	gpmon.pid = pid;
 }
 
-static void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
-				  const char* type,
-				  const char* content)
+/**
+ * This method adds a key-value entry to the gpmon text file. The format it uses is:
+ * <VALUE_LENGTH> <KEY>\n
+ * <VALUE>\n
+ * Boolean value extraByte indicates whether an additional newline is desired. This is
+ * necessary because gpmon overwrites the last byte to indicate status.
+ */
+static void gpmon_record_kv(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
+				  const char* key,
+				  const char* value,
+				  bool extraNewLine)
 {
 	char fname[GPMON_DIR_MAX_PATH];
 	FILE* fp;
-	int len = strlen(content);
+	int len = strlen(value);
 
 	snprintf(fname, GPMON_DIR_MAX_PATH, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
 
@@ -116,9 +125,14 @@ static void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 	if (!fp)
 		return;
 
-	fprintf(fp, "%d %s\n", len, type);
-	fwrite(content, 1, len, fp);
-	fprintf(fp, "\n%d", GPMON_QLOG_STATUS_SUBMIT);
+	fprintf(fp, "%d %s\n", len, key);
+	fwrite(value, 1, len, fp);
+	fprintf(fp, "\n");
+
+	if (extraNewLine)
+	{
+		fprintf(fp, "\n");
+	}
 
 	fclose(fp);
 }
@@ -241,16 +255,63 @@ void gpmon_qlog_query_submit(gpmon_packet_t *gpmonPacket)
 }
 
 /**
- * Call this method to let gpmon know the query text.
+ * Wrapper function that returns string if not null. Returns GPMON_UNKNOWN if it is null.
  */
-void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket, const char *queryText)
+static const char* gpmon_null_subst(const char* input)
+{
+	return input ? input : GPMON_UNKNOWN;
+}
+
+
+/**
+ * Call this method to let gpmon know the query text, application name, resource queue name and priority
+ * at submit time. It writes 4 key value pairs using keys: qtext, appname, resqname and priority using
+ * the format as described in gpmon_record_kv().
+ */
+
+void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket,
+		const char *queryText,
+		const char *appName,
+		const char *resqName,
+		const char *resqPriority)
 {
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
 
-	gpmon_record(gpmonPacket->u.qlog.key.tmid,
+	queryText = gpmon_null_subst(queryText);
+	appName = gpmon_null_subst(appName);
+	resqName = gpmon_null_subst(resqName);
+	resqPriority = gpmon_null_subst(resqPriority);
+
+	Assert(queryText);
+	Assert(appName);
+	Assert(resqName);
+	Assert(resqPriority);
+
+	gpmon_record_kv(gpmonPacket->u.qlog.key.tmid,
 			gpmonPacket->u.qlog.key.ssid,
 			gpmonPacket->u.qlog.key.ccnt,
-			"qtext", queryText);
+			"qtext", queryText, false);
+
+	gpmon_record_kv(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			"appname", appName, false);
+
+	gpmon_record_kv(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			"resqname", resqName, false);
+
+	gpmon_record_kv(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			"priority", resqPriority, true);
+
+	gpmon_record_update(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			GPMON_QLOG_STATUS_SUBMIT);
+
 }
 
 /**

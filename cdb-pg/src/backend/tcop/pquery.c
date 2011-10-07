@@ -29,6 +29,7 @@
 #include "utils/resscheduler.h"
 #include "commands/vacuum.h"
 #include "commands/tablecmds.h"
+#include "commands/queue.h"
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
 #include "utils/acl.h"
@@ -222,7 +223,11 @@ ProcessQuery(Portal portal,
 	{			
 		Assert(portal->sourceText);
 		gpmon_qlog_query_submit(queryDesc->gpmon_pkt);
-		gpmon_qlog_query_text(queryDesc->gpmon_pkt, portal->sourceText);
+		gpmon_qlog_query_text(queryDesc->gpmon_pkt,
+				portal->sourceText,
+				application_name,
+				GetResqueueName(portal->queueId),
+				GetResqueuePriority(portal->queueId));
 	}
 
 	/*
@@ -749,7 +754,11 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				{			
 					Assert(portal->sourceText);
 					gpmon_qlog_query_submit(queryDesc->gpmon_pkt);
-					gpmon_qlog_query_text(queryDesc->gpmon_pkt, portal->sourceText);
+					gpmon_qlog_query_text(queryDesc->gpmon_pkt,
+							portal->sourceText,
+							application_name,
+							GetResqueueName(portal->queueId),
+							GetResqueuePriority(portal->queueId));
 				}
 
 				/* 

@@ -30,6 +30,7 @@ typedef struct gpmon_filerepinfo_t gpmon_filerepinfo_t;
 #define GPMON_DIR   "./gpperfmon/data/"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
+#define GPMON_UNKNOWN "Unknown"
 
 /*
 this is enough space for 2 names plus a . between the names plus a null char at the end of the string
@@ -44,7 +45,11 @@ for example SCHEMA.RELATION\0
 
 extern void gpmon_qlog_packet_init(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_submit(gpmon_packet_t *gpmonPacket);
-extern void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket, const char *queryText);
+extern void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket,
+		const char *queryText,
+		const char *appName,
+		const char *resqName,
+		const char *resqPriority);
 extern void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket);

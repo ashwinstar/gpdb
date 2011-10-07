@@ -48,6 +48,8 @@
  */
 #define MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB (10 * 1024L)
 
+static char *GetResqueueCapability(Oid queueOid, int capabilityIndex);
+
 /* MPP-6923: 
  * GetResourceTypeByName: find the named resource in pg_resourcetype
  *
@@ -1679,4 +1681,80 @@ DropQueue(DropQueueStmt *stmt)
 		heap_close(xrel, RowExclusiveLock);
 	}
 
+}
+
+/**
+ * Given a queue id, return its name
+ */
+char *GetResqueueName(Oid resqueueOid)
+{
+	Relation rel = heap_open(ResQueueRelationId, AccessShareLock);
+
+	ScanKeyData	 key[1];
+	ScanKeyInit(&key[0],
+			ObjectIdAttributeNumber,
+			BTEqualStrategyNumber, F_OIDEQ,
+			ObjectIdGetDatum(resqueueOid));
+
+	SysScanDesc scan = systable_beginscan(rel, ResQueueOidIndexId, true, SnapshotNow, 1, key);
+
+	HeapTuple tuple = systable_getnext(scan);
+	char *result = pstrdup("Unknown"); 	/* If we cannot find a resource queue id for any reason */
+
+	if (HeapTupleIsValid(tuple))
+	{
+		Form_pg_resqueue resqueue = (Form_pg_resqueue) GETSTRUCT(tuple);
+		Assert(NameStr(resqueue->rsqname));
+		result = pstrdup(NameStr(resqueue->rsqname));
+	}
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	return result;
+}
+
+/**
+ * Given a resource queue id, get its priority in text form
+ */
+char *GetResqueuePriority(Oid queueId)
+{
+	return GetResqueueCapability(queueId, PG_RESRCTYPE_PRIORITY);
+}
+
+/**
+ * Given a queueid and a capability index, return the capability value as a string.
+ * Returns NULL if entry is not found.
+ * Input:
+ * 	queueOid - oid of resource queue
+ * 	capabilityIndex - see pg_resqueue.h for values (e.g. PG_RESRCTYPE_PRIORITY)
+ */
+static char *GetResqueueCapability(Oid queueOid, int capabilityIndex)
+{
+	/* Update this assert if we add more capabilities */
+	Assert(capabilityIndex <= PG_RESRCTYPE_MEMORY_LIMIT);
+	Assert(queueOid != InvalidOid);
+
+	ListCell *le = NULL;
+	char *result = NULL;
+
+	List *capabilitiesList = GetResqueueCapabilityEntry(queueOid); /* This is a list of lists */
+
+	foreach(le, capabilitiesList)
+	{
+		Value *key = NULL;
+		List *entry = (List *) lfirst(le);
+		Assert(entry);
+		key = (Value *) linitial(entry);
+		Assert(IsA(key,Integer)); /* This is resource type id */
+		if (intVal(key) == capabilityIndex)
+		{
+			Value *val = lsecond(entry);
+			Assert(IsA(val,String));
+			result = pstrdup(strVal(val));
+		}
+	}
+
+	list_free(capabilitiesList);
+	return result;
 }
