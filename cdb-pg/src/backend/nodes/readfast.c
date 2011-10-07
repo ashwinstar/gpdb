@@ -1882,6 +1882,7 @@ _readPartitionSpec(const char **str)
 	READ_NODE_FIELD(subSpec);
 	READ_BOOL_FIELD(istemplate);
 	READ_INT_FIELD(location);
+	READ_NODE_FIELD(enc_clauses);
 
 	READ_DONE();
 }

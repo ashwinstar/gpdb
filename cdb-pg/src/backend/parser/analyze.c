@@ -1564,6 +1564,13 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 		}
 	}
 
+	/* 
+	 * If the table has no columns -- usually in the partitioning case -- then
+	 * we can short circuit.
+	 */
+	if (!ht)
+		return;
+
 	/*
 	 * All column reference storage directives without the DEFAULT
 	 * clause should refer to real columns.
@@ -1788,7 +1795,16 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 	{
 		Node *n = lfirst(lc);
 
-		if (IsA(n, ColumnDef))
+		if (IsA(n, InhRelation))
+		{
+			/* 
+			 * This is the partitioning case. That code generates a new table
+			 * `LIKE' the other one, so there are no explicit ColumnDef entries.
+			 * So, just set newenc to stenc.
+			 */
+			newenc = stenc;
+		}
+		else if (IsA(n, ColumnDef))
 		{
 			/*
 			 * Convert inline storage directives to column reference directives.

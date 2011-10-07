@@ -260,10 +260,10 @@ drop table ccddl;
 -----------------------------------------------------------------------
 -- only support CO tables
 create table ccddl (i int encoding (compresstype=quicklz));
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1864)
+ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1880)
 create table ccddl (i int encoding (compresstype=quicklz))
 	with (appendonly = true);
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1864)
+ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1880)
 -- can't add encoding to a non-CO table
 create table ccddl (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
@@ -296,7 +296,7 @@ ERROR:  ENCODING clause conflicts with table WITH clause
 -- conflicting WITH and DEFAULT COLUMN ENCODING clause
 create table t1 (i int, j int, default column encoding (compresstype=quicklz))
 with (compresstype=zlib, appendonly=true, orientation=column);
-ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause (analyze.c:1763)
+ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause (analyze.c:1770)
 -- Invalid encoding clauses
 create table t1 (i int encoding (compresstype=quicklz, compresslevel=9))
 with (appendonly=true, orientation=column);
@@ -903,10 +903,10 @@ execute ccddlcheck;
  ccddl_1_prt_p2_2_prt_sp1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p3           |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p3           |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p3           |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p3           |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3_2_prt_sp1 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3_2_prt_sp1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3_2_prt_sp1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3_2_prt_sp1 |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (24 rows)
 
 drop table ccddl;
@@ -1126,7 +1126,8 @@ ERROR:  unknown compresstype "sdf2sdf"
 -----------------------------------------------------------------------
 -- The basics
 drop type if exists int42 cascade;
-NOTICE:  type "int42" does not exist, skipping
+NOTICE:  drop cascades to function int42_out(int42)
+NOTICE:  drop cascades to function int42_in(cstring)
 create type int42;
 CREATE FUNCTION int42_in(cstring)
 RETURNS int42

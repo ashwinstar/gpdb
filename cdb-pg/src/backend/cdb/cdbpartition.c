@@ -4179,7 +4179,8 @@ apply_template_storage_encodings(CreateStmt *ct, Oid relid, Oid paroid,
 		 * we need to force the new partitions to be AO/CO.
 		 */
 		fixup_table_storage_options(ct);
-		ct->attr_encodings = encs;
+		tmpl->partElem = list_concat(tmpl->partElem,
+									 encs);
 	}
 }
 
