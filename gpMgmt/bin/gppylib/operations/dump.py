@@ -24,6 +24,8 @@ SEG_DBDUMP_PREFIX = 'gp_dump_0_'
 SEG_STATUS_PREFIX = 'gp_dump_status_0_'
 COMPRESSION_FACTOR = 12                 # TODO: Where did 12 come from?
 
+INJECT_GP_DUMP_FAILURE = None
+
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
     # to automatically take in all arguments and perhaps do some data type validation.
@@ -105,6 +107,8 @@ class DumpDatabase(Operation):
         cmd = Command('Invoking gp_dump', dump_line)
         cmd.run()   
         rc = cmd.get_results().rc
+        if INJECT_GP_DUMP_FAILURE is not None:
+            rc = INJECT_GP_DUMP_FAILURE
         if rc != 0:
             logger.warn("Dump process returned exit code %d" % rc)
         else:

@@ -114,7 +114,10 @@ class GpCronDump(Operation):
 
         self._validate_dump_target()
 
-        exit_status = 0
+        # final_exit_status := numeric outcome of this python program
+        # current_exit_status := numeric outcome of one particular dump,
+        #                        in this loop over the -x arguments
+        final_exit_status = current_exit_status = 0
         for dump_database in self.dump_databases:
             if self.interactive:
                 self._prompt_continue(dump_database)
@@ -148,10 +151,23 @@ class GpCronDump(Operation):
                                                  master_datadir = self.master_datadir,
                                                  master_port = self.master_port,
                                                  ddboost = self.ddboost).run()
-            exit_status = max(exit_status, post_dump_outcome['exit_status'])
+            
+            current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
+            final_exit_status = max(final_exit_status, current_exit_status)
+
+            if self.history:
+                # This certainly does not belong under DumpDatabase, due to CLI assumptions. Note the use of options_list.
+                UpdateHistoryTable(dump_database = dump_database,
+                                   options_list = self.options_list,
+                                   time_start = dump_outcome['time_start'],
+                                   time_end = dump_outcome['time_end'],
+                                   dump_exit_status = dump_outcome['exit_status'],
+                                   timestamp = post_dump_outcome['timestamp'],
+                                   pseudo_exit_status = current_exit_status,
+                                   master_port = self.master_port).run()
 
             if self.dump_global:
-                if post_dump_outcome['exit_status'] == 0:
+                if current_exit_status == 0:
                     DumpGlobal(timestamp = post_dump_outcome['timestamp'],
                                master_datadir = self.master_datadir,
                                ddboost = self.ddboost).run()
@@ -159,24 +175,16 @@ class GpCronDump(Operation):
                     logger.info("Skipping global dump due to issues during post-dump checks.")
             
     
-            if self.history:
-                # This certainly does not belong under DumpDatabase, due to CLI assumptions. Note the use of options_list.
-                UpdateHistoryTable(dump_database = dump_database, 
-                                   options_list = self.options_list,
-                                   time_start = dump_outcome['time_start'],
-                                   time_end = dump_outcome['time_end'],
-                                   dump_exit_status = dump_outcome['exit_status'],
-                                   timestamp = post_dump_outcome['timestamp'],
-                                   pseudo_exit_status = post_dump_outcome['exit_status'],  
-                                   master_port = self.master_port).run()
-
             deleted_dump_set = None
-            if post_dump_outcome['exit_status'] > 0 or INJECT_ROLLBACK:
-                if post_dump_outcome['exit_status'] == 2 and self.rollback:
+            if current_exit_status > 0 or INJECT_ROLLBACK:
+                if current_exit_status >= 2 and self.rollback:
+                    # A current_exit_status of 2 or higher likely indicates either a serious issue in gp_dump
+                    # or that the PostDumpDatabase could not determine a timestamp. Thus, do not attempt rollback.
                     logger.warn("Dump request was incomplete, however cannot rollback since no timestamp was found.")
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
                                   "Failed for database %s with return code %d, dump files not rolled back, because no new timestamp was found. [Start=%s End=%s] Options passed [%s]" 
-                                    % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                                    % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                    raise ExceptionNoStackTraceNeeded("Dump incomplete, rollback not processed")
                 elif self.rollback:
                     logger.warn("Dump request was incomplete, rolling back dump")
                     DeleteCurrentDump(timestamp = post_dump_outcome['timestamp'],
@@ -185,13 +193,13 @@ class GpCronDump(Operation):
                                       ddboost = self.ddboost).run()
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
                                   "Failed for database %s with return code %d dump files rolled back. [Start=%s End=%s] Options passed [%s]" 
-                                    % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                                    % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
                     raise ExceptionNoStackTraceNeeded("Dump incomplete, completed rollback")
                 else:
                     logger.warn("Dump request was incomplete, not rolling back because -r option was not supplied")
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host, 
                                   "Failed for database %s with return code %s dump files not rolled back. [Start=%s End=%s] Options passed [%s]" 
-                                    % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                                    % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
                     raise ExceptionNoStackTraceNeeded("Dump incomplete, rollback not processed")
             else:
                 if self.clear_dumps:
@@ -204,10 +212,15 @@ class GpCronDump(Operation):
                 VacuumDatabase(database = dump_database,
                                master_port = self.master_port).run()
 
-            self._status_report(dump_database, dump_outcome, post_dump_outcome, deleted_dump_set)
+            self._status_report(dump_database,
+                                post_dump_outcome['timestamp'], 
+                                dump_outcome, 
+                                current_exit_status, 
+                                deleted_dump_set)
             
             MailDumpEvent("Report from gpcrondump on host %s [COMPLETED]" % self.cur_host,
-                          "Completed for database %s with return code %d [Start=%s End=%s] Options passed [%s]" % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                          "Completed for database %s with return code %d [Start=%s End=%s] Options passed [%s]" 
+                          % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
 
         if self.dump_config:
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -220,7 +233,7 @@ class GpCronDump(Operation):
         if self.post_script is not None:
             self._run_program()
 
-        return exit_status
+        return final_exit_status
 
     def _prompt_continue(self, dump_database):
         logger.info("---------------------------------------------------")
@@ -296,11 +309,11 @@ class GpCronDump(Operation):
         if not userinput.ask_yesno(None, "\nContinue with Greenplum dump", 'N'):
             raise UserAbortedException()
 
-    def _status_report(self, dump_database, dump_outcome, post_dump_outcome, deleted_dump_set):
+    def _status_report(self, dump_database, timestamp, dump_outcome, exit_status, deleted_dump_set):
         logger.info("Dump status report")
         logger.info("---------------------------------------------------")
         logger.info("Target database                          = %s" % dump_database)
-        logger.info("Dump subdirectory                        = %s" % post_dump_outcome['timestamp'][0:8])
+        logger.info("Dump subdirectory                        = %s" % timestamp[0:8])
         if self.clear_dumps:
             logger.info("Clear old dump directories               = On")
             logger.info("Backup set deleted                       = %s" % deleted_dump_set)
@@ -309,7 +322,7 @@ class GpCronDump(Operation):
         logger.info("Dump start time                          = %s" % dump_outcome['time_start'])
         logger.info("Dump end time                            = %s" % dump_outcome['time_end'])
         # TODO: logger.info("Number of segments dumped...
-        if post_dump_outcome['exit_status'] == 1:
+        if exit_status != 0:
             if self.rollback:
                 logger.warn("Status                                   = FAILED, Rollback Called")
             else:
@@ -318,7 +331,7 @@ class GpCronDump(Operation):
             logger.warn("Dump key                                 = Not Applicable")
         else:
             logger.info("Status                                   = COMPLETED")
-            logger.info("Dump key                                 = %s" % post_dump_outcome['timestamp'])
+            logger.info("Dump key                                 = %s" % timestamp)
         if self.compress:
             logger.info("Dump file compression                    = On")
         else:
@@ -331,7 +344,7 @@ class GpCronDump(Operation):
             logger.info("Vacuum mode type                         = post-dump")
         else:
             logger.info("Vacuum mode type                         = Off")
-        if post_dump_outcome['exit_status'] != 0:
+        if exit_status != 0:
             logger.warn("Exit code not zero, check log file")
         else:
             logger.info("Exit code zero, no warnings generated")
