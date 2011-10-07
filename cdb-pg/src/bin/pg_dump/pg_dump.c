@@ -7825,11 +7825,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, "%s",
 								  tbinfo->atttypnames[j]);
 
-				/* Column Storage attributes */
-				if (tbinfo->attencoding[j] != NULL)
-					appendPQExpBuffer(q, " ENCODING (%s)",
-										tbinfo->attencoding[j]);
-
 				/*
 				 * Default value --- suppress if inherited
 				 * and not to be printed separately.
@@ -7845,6 +7840,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				 */
 				if (tbinfo->notnull[j] && !tbinfo->inhNotNull[j])
 					appendPQExpBuffer(q, " NOT NULL");
+
+				/* Column Storage attributes */
+				if (tbinfo->attencoding[j] != NULL)
+					appendPQExpBuffer(q, " ENCODING (%s)",
+										tbinfo->attencoding[j]);
 
 				actual_atts++;
 			}
