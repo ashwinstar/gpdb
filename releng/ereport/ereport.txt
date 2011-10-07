@@ -3924,43 +3924,43 @@ caca: cdbfilerepconnserver:00000089:  ereport(WARNING,
 caca: cdbfilerepconnserver:00000090:  (errcode_for_socket_access(), 
 caca: cdbfilerepconnserver:00000091:  errmsg("could not accept connection: %m"), 
 caca: cdbfilerepconnserver:00000092:  FileRep_errcontext())); 
-caca: cdbfilerepconnserver:00000137:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000138:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnserver:00000139:  errmsg("receive failure on connection: %m"), 
-caca: cdbfilerepconnserver:00000140:  FileRep_errcontext())); 
-caca: cdbfilerepconnserver:00000195:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000196:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-caca: cdbfilerepconnserver:00000197:  errmsg("invalid length of startup packet"), 
-caca: cdbfilerepconnserver:00000198:  FileRep_errcontext())); 
-caca: cdbfilerepconnserver:00000204:  ereport(ERROR, 
-caca: cdbfilerepconnserver:00000205:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caca: cdbfilerepconnserver:00000206:  errmsg("not enough memory to allocate buffer for startup packet"), 
-caca: cdbfilerepconnserver:00000207:  FileRep_errcontext())); 
-caca: cdbfilerepconnserver:00000214:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000215:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnserver:00000216:  errmsg("receive EOF on connection: %m"), 
+caca: cdbfilerepconnserver:00000147:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000148:  (errcode_for_socket_access(), 
+caca: cdbfilerepconnserver:00000149:  errmsg("receive failure on connection: %m"), 
+caca: cdbfilerepconnserver:00000150:  FileRep_errcontext())); 
+caca: cdbfilerepconnserver:00000205:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000206:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+caca: cdbfilerepconnserver:00000207:  errmsg("invalid length of startup packet"), 
+caca: cdbfilerepconnserver:00000208:  FileRep_errcontext())); 
+caca: cdbfilerepconnserver:00000214:  ereport(ERROR, 
+caca: cdbfilerepconnserver:00000215:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caca: cdbfilerepconnserver:00000216:  errmsg("not enough memory to allocate buffer for startup packet"), 
 caca: cdbfilerepconnserver:00000217:  FileRep_errcontext())); 
-caca: cdbfilerepconnserver:00000242:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000243:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caca: cdbfilerepconnserver:00000244:  errmsg("not supported version"), 
-caca: cdbfilerepconnserver:00000245:  FileRep_errcontext())); 
-caca: cdbfilerepconnserver:00000306:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000307:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnserver:00000308:  errmsg("receive EOF on connection: %m"))); 
+caca: cdbfilerepconnserver:00000224:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000225:  (errcode_for_socket_access(), 
+caca: cdbfilerepconnserver:00000226:  errmsg("receive EOF on connection: %m"), 
+caca: cdbfilerepconnserver:00000227:  FileRep_errcontext())); 
+caca: cdbfilerepconnserver:00000252:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000253:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caca: cdbfilerepconnserver:00000254:  errmsg("not supported version"), 
+caca: cdbfilerepconnserver:00000255:  FileRep_errcontext())); 
 caca: cdbfilerepconnserver:00000316:  ereport(WARNING, 
 caca: cdbfilerepconnserver:00000317:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnserver:00000318:  errmsg("receive close on connection: %m"))); 
-caca: cdbfilerepconnserver:00000322:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000323:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnserver:00000324:  errmsg("receive unexpected message type on connection: %m"))); 
-caca: cdbfilerepconnserver:00000342:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000343:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnserver:00000344:  errmsg("receive EOF on connection: %m"))); 
+caca: cdbfilerepconnserver:00000318:  errmsg("receive EOF on connection: %m"))); 
+caca: cdbfilerepconnserver:00000326:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000327:  (errcode_for_socket_access(), 
+caca: cdbfilerepconnserver:00000328:  errmsg("receive close on connection: %m"))); 
+caca: cdbfilerepconnserver:00000332:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000333:  (errcode_for_socket_access(), 
+caca: cdbfilerepconnserver:00000334:  errmsg("receive unexpected message type on connection: %m"))); 
 caca: cdbfilerepconnserver:00000352:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000353:  (errmsg("receive unexpected message length on connection"))); 
-caca: cdbfilerepconnserver:00000376:  ereport(WARNING, 
-caca: cdbfilerepconnserver:00000377:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnserver:00000378:  errmsg("receive EOF on connection: %m"))); 
+caca: cdbfilerepconnserver:00000353:  (errcode_for_socket_access(), 
+caca: cdbfilerepconnserver:00000354:  errmsg("receive EOF on connection: %m"))); 
+caca: cdbfilerepconnserver:00000362:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000363:  (errmsg("receive unexpected message length on connection"))); 
+caca: cdbfilerepconnserver:00000386:  ereport(WARNING, 
+caca: cdbfilerepconnserver:00000387:  (errcode_for_socket_access(), 
+caca: cdbfilerepconnserver:00000388:  errmsg("receive EOF on connection: %m"))); 
 aaaaa GP_IGNORE: cabg: cdbfilerepmirror - ./backend/cdb/cdbfilerepmirror.c
 cabg: cdbfilerepmirror:00000156:  ereport(WARNING, 
 cabg: cdbfilerepmirror:00000157:  (errmsg("mirror failure, " 
@@ -5775,14 +5775,14 @@ caai: cdbllize:00000230:  "statement is not yet supported in "
 caai: cdbllize:00000231:  "this version of " PACKAGE_NAME ".", 
 caai: cdbllize:00000232:  cmd) 
 caai: cdbllize:00000233:  )); 
-caai: cdbllize:00000429:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caai: cdbllize:00000430:  errmsg("Cannot parallelize that query yet."), 
-caai: cdbllize:00000431:  errdetail("In a subquery FROM clause, a " 
-caai: cdbllize:00000432:  "function invocation cannot contain " 
-caai: cdbllize:00000433:  "a correlated reference."), 
-caai: cdbllize:00000434:  errOmitLocation(true) 
-caai: cdbllize:00000435:  )); 
-caai: cdbllize:00001392:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
+caai: cdbllize:00000430:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caai: cdbllize:00000431:  errmsg("Cannot parallelize that query yet."), 
+caai: cdbllize:00000432:  errdetail("In a subquery FROM clause, a " 
+caai: cdbllize:00000433:  "function invocation cannot contain " 
+caai: cdbllize:00000434:  "a correlated reference."), 
+caai: cdbllize:00000435:  errOmitLocation(true) 
+caai: cdbllize:00000436:  )); 
+caai: cdbllize:00001393:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
 aaaaa GP_IGNORE: cabj: cdblocaldistribxact - ./backend/cdb/cdblocaldistribxact.c
 cabj: cdblocaldistribxact:00000151:  elog(FATAL, "Distributed to local xact element not valid (eyecatcher)"); 
 cabj: cdblocaldistribxact:00000229:  elog(FATAL, "Distributed to local xact element not valid"); 
@@ -12215,14 +12215,14 @@ taai: typecmds:00002606:  errmsg("type \"%s\" is not a base type",
 taai: typecmds:00002607:  TypeNameToString(typname)), 
 taai: typecmds:00002608:  errhint("The ENCODING clause cannot be used with row or " 
 taai: typecmds:00002609:  "composite types."))); 
-taai: typecmds:00002624:  ereport(ERROR, 
-taai: typecmds:00002625:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-taai: typecmds:00002626:  errmsg("type precision cannot be specified when setting " 
-taai: typecmds:00002627:  "DEFAULT ENCODING"))); 
-taai: typecmds:00002630:  ereport(ERROR, 
-taai: typecmds:00002631:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-taai: typecmds:00002632:  errmsg("type array bounds cannot be specified when setting " 
-taai: typecmds:00002633:  "DEFAULT ENCODING"))); 
+taai: typecmds:00002633:  ereport(ERROR, 
+taai: typecmds:00002634:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+taai: typecmds:00002635:  errmsg("type precision cannot be specified when setting " 
+taai: typecmds:00002636:  "DEFAULT ENCODING"))); 
+taai: typecmds:00002639:  ereport(ERROR, 
+taai: typecmds:00002640:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+taai: typecmds:00002641:  errmsg("type array bounds cannot be specified when setting " 
+taai: typecmds:00002642:  "DEFAULT ENCODING"))); 
 aaaaa GP_IGNORE: uaae: user - ./backend/commands/user.c
 uaae: user:00000185:  ereport(ERROR, 
 uaae: user:00000186:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -13172,7 +13172,7 @@ naah: nodeagg:00002347:  fcinfo->flinfo->fn_oid);
 aaaaa GP_IGNORE: nabd: nodebitmapand - ./backend/executor/nodeBitmapAnd.c
 nabd: nodebitmapand:00000158:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nace: nodebitmapappendonlyscan - ./backend/executor/nodeBitmapAppendOnlyscan.c
-nace: nodebitmapappendonlyscan:00000250:  elog(ERROR, "unrecognized result from subplan"); 
+nace: nodebitmapappendonlyscan:00000255:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabi: nodebitmapheapscan - ./backend/executor/nodeBitmapHeapscan.c
 nabi: nodebitmapheapscan:00000220:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabj: nodebitmapindexscan - ./backend/executor/nodeBitmapIndexscan.c
@@ -13702,15 +13702,16 @@ haad: hba:00001837:  elog(FATAL, "bad data in flat pg_database file");
 haad: hba:00001841:  elog(FATAL, "bad data in flat pg_database file"); 
 haad: hba:00001845:  elog(FATAL, "bad data in flat pg_database file"); 
 aaaaa GP_IGNORE: paag: pqcomm - ./backend/libpq/pqcomm.c
-paag: pqcomm:00000543:  elog(WARNING, "configuration item unix_socket_group is not supported on this platform"); 
-paag: pqcomm:00000837:  elog(ERROR, "SSL connection cannot be used with pq_waitForDataUsingSelect"); 
-paag: pqcomm:00000864:  elog(FATAL, "select failed: %m"); 
-paag: pqcomm:00000932:  ereport(ERROR, 
-paag: pqcomm:00000933:  (errmsg("could not set socket to non-blocking mode: %m"))); 
-paag: pqcomm:00000978:  ereport(FATAL, 
-paag: pqcomm:00000979:  (errmsg("could not set socket to blocking mode: %m"))); 
-paag: pqcomm:00000989:  ereport(FATAL, 
-paag: pqcomm:00000990:  (errmsg("could not set socket to blocking mode: %m"))); 
+paag: pqcomm:00000544:  elog(WARNING, "configuration item unix_socket_group is not supported on this platform"); 
+paag: pqcomm:00000795:  elog(WARNING, "segment state transition requested while waiting to read data from socket"); 
+paag: pqcomm:00000847:  elog(ERROR, "SSL connection cannot be used with pq_waitForDataUsingSelect"); 
+paag: pqcomm:00000874:  elog(FATAL, "select failed: %m"); 
+paag: pqcomm:00000942:  ereport(ERROR, 
+paag: pqcomm:00000943:  (errmsg("could not set socket to non-blocking mode: %m"))); 
+paag: pqcomm:00000988:  ereport(FATAL, 
+paag: pqcomm:00000989:  (errmsg("could not set socket to blocking mode: %m"))); 
+paag: pqcomm:00000999:  ereport(FATAL, 
+paag: pqcomm:00001000:  (errmsg("could not set socket to blocking mode: %m"))); 
 aaaaa GP_IGNORE: paai: pqformat - ./backend/libpq/pqformat.c
 paai: pqformat:00000256:  elog(ERROR, "unsupported integer size %d", b); 
 paai: pqformat:00000434:  ereport(ERROR, 
@@ -13755,11 +13756,11 @@ eaba: equalfuncs:00002995:  (int) nodeTag(a));
 aaaaa GP_IGNORE: laae: list - ./backend/nodes/list.c
 laae: list:00000328:  elog(ERROR, "cannot list_concat() a list to itself"); 
 aaaaa GP_IGNORE: oaah: outfast - ./backend/nodes/outfast.c
-oaah: outfast:00002969:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
-oaah: outfast:00003063:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
-oaah: outfast:00003160:  elog(WARNING,"serialization doesn't know what to do with this constraint"); 
-oaah: outfast:00004149:  elog(ERROR, "could not serialize unrecognized node type: %d", 
-oaah: outfast:00004150:  (int) nodeTag(obj)); 
+oaah: outfast:00002970:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
+oaah: outfast:00003064:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
+oaah: outfast:00003161:  elog(WARNING,"serialization doesn't know what to do with this constraint"); 
+oaah: outfast:00004150:  elog(ERROR, "could not serialize unrecognized node type: %d", 
+oaah: outfast:00004151:  (int) nodeTag(obj)); 
 aaaaa GP_IGNORE: oaai: outfuncs - ./backend/nodes/outfuncs.c
 oaai: outfuncs:00000196:  elog(ERROR, "unrecognized list node type: %d", 
 oaai: outfuncs:00000197:  (int) node->type); 
@@ -14003,33 +14004,33 @@ pabc: plangroupext:00000279:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YE
 pabc: plangroupext:00000280:  errmsg("GROUPING SETS / ROLLUP / CUBE columns ambiguous.") 
 pabc: plangroupext:00000281:  )); 
 aaaaa GP_IGNORE: paah: planner - ./backend/optimizer/plan/planner.c
-paah: planner:00000803:  elog(ERROR, "failure repartitioning plan"); 
-paah: planner:00000966:  elog(ERROR, "unrecognized node type: %d", 
-paah: planner:00000967:  (int) nodeTag(jtnode)); 
-paah: planner:00001081:  ereport(ERROR, ( 
-paah: planner:00001082:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001083:  errmsg("incompatible loci in target inheritance set") )); 
-paah: planner:00001159:  ereport(ERROR, ( 
-paah: planner:00001160:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001161:  errmsg("unexpected locus assigned to target inheritance set") )); 
-paah: planner:00001301:  ereport(ERROR, 
-paah: planner:00001302:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001303:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001941:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001942:  errmsg("unexpected input locus to distinct"))); 
-paah: planner:00002967:  elog(ERROR, "failed to locate grouping columns"); 
-paah: planner:00003006:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003011:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003084:  elog(ERROR, "invalid grouping set"); 
-paah: planner:00003222:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003231:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003241:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003285:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003300:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003314:  elog(ERROR,"invalid grouping set"); 
-paah: planner:00003320:  elog(ERROR,"invalid grouping set list"); 
-paah: planner:00003340:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
-paah: planner:00003409:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00000809:  elog(ERROR, "failure repartitioning plan"); 
+paah: planner:00000972:  elog(ERROR, "unrecognized node type: %d", 
+paah: planner:00000973:  (int) nodeTag(jtnode)); 
+paah: planner:00001087:  ereport(ERROR, ( 
+paah: planner:00001088:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001089:  errmsg("incompatible loci in target inheritance set") )); 
+paah: planner:00001165:  ereport(ERROR, ( 
+paah: planner:00001166:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001167:  errmsg("unexpected locus assigned to target inheritance set") )); 
+paah: planner:00001307:  ereport(ERROR, 
+paah: planner:00001308:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001309:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+paah: planner:00001947:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001948:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00002973:  elog(ERROR, "failed to locate grouping columns"); 
+paah: planner:00003012:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003017:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003090:  elog(ERROR, "invalid grouping set"); 
+paah: planner:00003228:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003237:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003247:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003291:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003306:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003320:  elog(ERROR,"invalid grouping set"); 
+paah: planner:00003326:  elog(ERROR,"invalid grouping set list"); 
+paah: planner:00003346:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00003415:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000787:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000883:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
