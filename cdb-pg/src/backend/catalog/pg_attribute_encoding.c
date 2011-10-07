@@ -24,6 +24,37 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+/*
+ * Add a single attribute encoding entry.
+ */
+static void
+add_attribute_encoding_entry(Oid relid, AttrNumber attnum, Datum attoptions)
+{
+	Relation pgaerel;
+	Datum values[Natts_pg_attribute_encoding];
+	bool nulls[Natts_pg_attribute_encoding];
+	HeapTuple tuple;
+	
+	Insist(!gp_upgrade_mode);
+	Insist(attnum != InvalidAttrNumber);
+	
+	pgaerel = heap_open(AttributeEncodingRelationId, RowExclusiveLock);
+
+	MemSet(nulls, 0, sizeof(nulls));
+	values[Anum_pg_attribute_encoding_attrelid - 1] = ObjectIdGetDatum(relid);
+	values[Anum_pg_attribute_encoding_attnum - 1] = Int16GetDatum(attnum);
+	values[Anum_pg_attribute_encoding_attoptions - 1] = attoptions;
+
+	tuple = heap_form_tuple(RelationGetDescr(pgaerel), values, nulls);
+
+	simple_heap_insert(pgaerel, tuple);
+
+	CatalogUpdateIndexes(pgaerel, tuple);
+
+	heap_freetuple(tuple);
+
+	heap_close(pgaerel, RowExclusiveLock);
+}
 
 /*
  * Get the set of functions implementing a compression algorithm.
@@ -49,7 +80,7 @@ get_funcs_for_compression(char *compresstype)
 }
 
 static Datum *
-get_rel_attoptions(Relation rel)
+get_rel_attoptions(Oid relid, AttrNumber max_attno)
 {
 	Form_pg_attribute attform;
 	HeapTuple		tuple;
@@ -62,13 +93,13 @@ get_rel_attoptions(Relation rel)
 	/* used for attbyval and len below */
 	attform = pgae->rd_att->attrs[Anum_pg_attribute_encoding_attoptions - 1];
 
-	dats = palloc0(RelationGetNumberOfAttributes(rel) * sizeof(Datum));
+	dats = palloc0(max_attno * sizeof(Datum));
 
 	ScanKeyInit(&key,
 				Anum_pg_attribute_encoding_attrelid,
 				BTEqualStrategyNumber,
 				F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(rel)));
+				ObjectIdGetDatum(relid));
 
 	scan = systable_beginscan(pgae,
 							  AttributeEncodingAttrelidIndexId,
@@ -85,7 +116,7 @@ get_rel_attoptions(Relation rel)
 		Datum attoptions;
 		bool isnull;
 
-		Insist(attnum > 0 && attnum <= RelationGetNumberOfAttributes(rel));
+		Insist(attnum > 0 && attnum <= max_attno);
 
 		attoptions = heap_getattr(tuple, Anum_pg_attribute_encoding_attoptions,
 								  RelationGetDescr(pgae), &isnull);
@@ -104,12 +135,32 @@ get_rel_attoptions(Relation rel)
 
 }
 
+/*
+ * Add pg_attribute_encoding entries for newrelid. Make them identical to those
+ * stored for oldrelid.
+ */
+void
+cloneAttributeEncoding(Oid oldrelid, Oid newrelid, AttrNumber max_attno)
+{
+	Datum *attoptions = get_rel_attoptions(oldrelid, max_attno);
+	AttrNumber n;
+
+	for (n = 0; n < max_attno; n++)
+	{
+		if (DatumGetPointer(attoptions[n]) != NULL)
+			add_attribute_encoding_entry(newrelid,
+										 n + 1,
+										 attoptions[n]);
+	}
+}
+
 List **
 RelationGetUntransformedAttributeOptions(Relation rel)
 {
 	List **l;
 	int i;
-	Datum *dats = get_rel_attoptions(rel);
+	Datum *dats = get_rel_attoptions(RelationGetRelid(rel),
+									 RelationGetNumberOfAttributes(rel));
 
 	l = palloc0(RelationGetNumberOfAttributes(rel) * sizeof(List *));
 
@@ -133,7 +184,8 @@ RelationGetAttributeOptions(Relation rel)
 
 	opts = palloc0(RelationGetNumberOfAttributes(rel) * sizeof(StdRdOptions *));
 
-	dats = get_rel_attoptions(rel);
+	dats = get_rel_attoptions(RelationGetRelid(rel),
+							  RelationGetNumberOfAttributes(rel));
 
 	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
 	{
@@ -232,7 +284,6 @@ AddRelationAttributeEncodings(Relation rel, List *attr_encodings)
 {
 	Oid relid = RelationGetRelid(rel);
 	ListCell *lc;
-	Relation pgaerel;
 
 	/* If we're in upgrade mode, shouldn't be anything to do here */
 	if (gp_upgrade_mode)
@@ -241,15 +292,10 @@ AddRelationAttributeEncodings(Relation rel, List *attr_encodings)
 		return;
 	}
 
-	pgaerel = heap_open(AttributeEncodingRelationId, RowExclusiveLock);
-
 	foreach(lc, attr_encodings)
 	{
 		Datum attoptions;
 		ColumnReferenceStorageDirective *c = lfirst(lc);
-		Datum values[Natts_pg_attribute_encoding];
-		bool nulls[Natts_pg_attribute_encoding];
-		HeapTuple tuple;
 		List *encoding;
 		AttrNumber attnum;
 
@@ -273,21 +319,8 @@ AddRelationAttributeEncodings(Relation rel, List *attr_encodings)
 										 true,
 										 false);
 
-		MemSet(nulls, 0, sizeof(nulls));
-		values[Anum_pg_attribute_encoding_attrelid - 1] = ObjectIdGetDatum(relid);
-		values[Anum_pg_attribute_encoding_attnum - 1] = Int16GetDatum(attnum);
-		values[Anum_pg_attribute_encoding_attoptions - 1] = attoptions;
-
-		tuple = heap_form_tuple(RelationGetDescr(pgaerel), values, nulls);
-
-		simple_heap_insert(pgaerel, tuple);
-
-		CatalogUpdateIndexes(pgaerel, tuple);
-
-		heap_freetuple(tuple);
+		add_attribute_encoding_entry(relid, attnum, attoptions);
 	}
-
-	heap_close(pgaerel, RowExclusiveLock);
 }
 
 static void

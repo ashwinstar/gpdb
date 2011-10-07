@@ -27,6 +27,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
 #include "catalog/aoseg.h"
@@ -791,6 +792,11 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	    AlterTableCreateAoBlkdirTableWithOid(OIDNewHeap, blkdirOid, blkdirIdxOid,
 										 aoblkdirComptypeOid, is_part);
     }
+
+	cloneAttributeEncoding(OIDOldHeap,
+						   OIDNewHeap,
+						   RelationGetNumberOfAttributes(OldHeap));
+
 	heap_close(OldHeap, NoLock);
 
 	return OIDNewHeap;

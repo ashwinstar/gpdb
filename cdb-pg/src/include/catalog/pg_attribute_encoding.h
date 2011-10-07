@@ -90,5 +90,6 @@ extern List **RelationGetUntransformedAttributeOptions(Relation rel);
 extern void AddRelationAttributeEncodings(Relation rel, List *attr_encodings);
 extern void RemoveRelationAttributeEncoding(Oid relid, AttrNumber attnum);
 extern void RemoveAttributeEncodingsByRelid(Oid relid);
+extern void cloneAttributeEncoding(Oid oldrelid, Oid newrelid, AttrNumber max_attno);
 
 #endif   /* PG_ATTRIBUTE_ENCODING_H */
