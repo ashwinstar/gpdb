@@ -7,22 +7,38 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
-#ifndef WIN32
 /* Includes from the clapack library */
 #include <f2c.h>
 #include <clapack.h>
-#endif
 
+
+/*
+ * Evaluating the following condition will not cause an integer overflow and is
+ * equivalent to:
+ *
+ *     sizeof(float8) * Max(m,n)^2 <= MaxAllocSize
+ * and sizeof(integer) * 8 * m * n <= MaxAllocSize
+ *
+ * It is a precondition before palloc'ing the arrays that LAPACK's dgesdd needs.
+ */
+#define IS_FEASIBLE_MATRIX_SIZE(m,n) ( \
+	(MaxAllocSize / sizeof(float8) / Max(m,n) / Max(m,n) >= 1) && \
+	(MaxAllocSize / sizeof(integer) / 8 / m / n >= 1) )
 
 Datum 
 pseudoinverse(PG_FUNCTION_ARGS)
 {
-	long int    rows, columns;
+	/*
+	 * A note on types: PostgreSQL array dimensions are of type int. See, e.g.,
+	 * the macro definition ARR_DIMS
+	 */
+	int         rows, columns;
 	float8     *A, *Aplus;
 	ArrayType  *A_PG, *Aplus_PG;
 	int lbs[2], dims[2];
@@ -126,12 +142,17 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 {
 	long int    minmn;
 	long int    i, j, k, ii;
-	long int    lwork, *iwork;
+	integer	    lwork, *iwork;
 	float8     *work, *Atemp;
 	float8      epsilon, tolerance, conditionNumber;
 	float8     *S, *U, *Vt;
 	float8     *Splus, *Splus_times_Ut;
 	char        achar='A';   /* ? */
+
+	if (!IS_FEASIBLE_MATRIX_SIZE(rows,columns))
+		ereport(ERROR, 
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("pseudoinverse: matrix dimensions too large")));
 
 	/* 
 	 * Calculate the tolerance for "zero" values in the SVD 
@@ -143,6 +164,8 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	tolerance = epsilon * max(rows,columns); 
 
 	/*
+	 * Precondition: IS_FEASIBLE_MATRIX_SIZE(rows,columns)
+	 *
 	 * The factors of A: S, U and Vt
 	 * U, Sdiag and Vt are the factors of the pseudo inverse of A, the 
 	 * components of the singular value decomposition of A
@@ -170,16 +193,18 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	}
 
 	/* 
+	 * Precondition: IS_FEASIBLE_MATRIX_SIZE(rows,columns)
+	 * 
 	 * First call of dgesdd is with lwork=-1 to calculate an optimal value of 
 	 * lwork 
 	 */
-	iwork = (long int *) palloc(sizeof(long int)*8*min(rows,columns));
+	iwork = (integer *) palloc(sizeof(integer)*8*min(rows,columns));
 	lwork=-1;
 	
 	/* Need a single location in work to store the recommended value of lwork */
 	work = (float8 *)palloc(sizeof(float8)*1);
 #ifdef WIN32
-	elog(ERROR,"pseudoinverse: lanpack routine dgesdd not available on WIN32");
+	elog(ERROR,"pseudoinverse: lapack routine dgesdd not available on WIN32");
 #else
 	dgesdd_( &achar, &rows, &columns, Atemp, &rows, S, U, &rows, Vt, &columns, 
 			 work, &lwork, iwork, &i );
@@ -187,10 +212,28 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	if (i != 0) {
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("pseudoinverse: lanpack routine dgesdd returned error"))
+				 errmsg("pseudoinverse: lapack routine dgesdd returned error"))
+			);
+	} else if (MaxAllocSize / sizeof(float8) < work[0]) {
+		/* No need to deal with this extreme case. We simply bail out. */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("pseudoinverse: matrix dimensions too large"))
 			);
 	} else {
-		lwork = (int) work[0];
+#ifdef USE_ASSERT_CHECKING
+		Assert(MaxAllocSize / sizeof(float8) <= ULONG_MAX &&
+			sizeof(long) <= sizeof(integer));
+#endif
+
+		/* 
+		 * Precondition:
+		 *     work[0] <= MaxAllocSize / sizeof(float8)
+		 *             <= maximum number that fits into integer
+		 * Postcondition:
+		 *     lwork <= MaxAllocSize / sizeof(float8)
+		 */
+		lwork = (integer) work[0];
 		pfree(work);
 	}
 

@@ -178,6 +178,9 @@ order by id;
 
 -- MPP-14102: Crash in mregr_coef() when number of independent variables is too
 -- large.
+
+/* This test should be moved to CDBfast
+
 -- The following does not immediately violate any hard constraints, but will
 -- only fail during execution with an out-of-memory error
 SELECT mregr_coef(y, x)
@@ -185,6 +188,8 @@ FROM (
     SELECT 1::FLOAT8 AS y,
     ARRAY( SELECT no::FLOAT8 FROM generate_series(1,8191) AS no ) AS x
 ) AS one_row_subquery;
+
+*/
 
 -- The following tries to allocate a transition-state array with
 -- size > MaxAllocSize, so it immediately fails.
