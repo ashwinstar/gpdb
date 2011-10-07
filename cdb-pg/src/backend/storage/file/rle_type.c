@@ -26,7 +26,8 @@
 #else
 
 /****   THIS SECTION FOR USER_LEVEL_TESTING *************/
-/* Maintaining the ability to run at user level is helpful for performance testing of rle
+/* 
+ * Maintaining the ability to run at user level is helpful for performance testing of rle
  * it allows issues such as round robin among segments and
  * the granularity at which data is loaded to be factored out
  * Set Debug_rle_type_compression and rle_type_compresssion_stats as desired and
@@ -48,7 +49,7 @@ bool rle_type_compression_stats = true;
 /**********************************************************/
 #endif
 
-#define MAX_REPEAT 256
+#define MAX_REPEAT 255
 #define VARIABLE_LENGTH -1
 
 /*  RLE replaces runs of the same data values aaaaaa
@@ -58,21 +59,22 @@ bool rle_type_compression_stats = true;
  *  a -> a
  * 
  *  If a data value occurs more than once it will be replaced with two copies 
- *  of the data followed by the total number of copies-2, so:
- *  aa -> aa0
- *  aaa -> aa1 
- *  aaaa -> aa2  
+ *  of the data followed by the total number of copies-1, so:
+ *  aa -> aa1
+ *  aaa -> aa2 
+ *  aaaa -> aa3  
  *  etc.
  *  
  *  We use a single byte to hold the count so the largest count value is 255
- *  and the largest run we can represent is a run of 257 like so:
- *  257 a's -> aa255 
+ *  and the largest run we can represent is a run of 256 like so:
+ *  256 a's -> aa255 
  * 
- * Runs longer than 257 will be divided into multiple runs of 257 or less 
+ * Runs longer than 256 will be divided into multiple runs of 256 or less 
  * and handled seperately so:
- * 258 a's -> aa255a
- * 259 a's -> aa255aa
- * 260 a's -> aa255aa1
+ * 257 a's -> aa255a
+ * 258 a's -> aa255aa1
+ * 259 a's -> aa255aa2
+ * 260 a's -> aa255aa3
  *
  *
  * One additional complication is that in the Greenplum database data blocks 
@@ -84,6 +86,9 @@ bool rle_type_compression_stats = true;
  * functions and while this may be cleaner, it would mean that 
  * these compression algorithms need more information than others which would 
  * complicate the caller
+ * 
+ * Note: we can't have aa -> aa0 and aa255 -> a257 because a 0 following datum can
+ * be misinterpreted as padding 
  */
 
 /*   
@@ -157,7 +162,8 @@ rle_type_comp(
 	block = (DatumStreamBlock*) inbuf;
 	
 
-	/* move past the block header and Null Bit map at the beginning
+	/* 
+	 * move past the block header and Null Bit map at the beginning
 	 * of the block 
 	 * we just want to compress the actual data elements
 	 */
@@ -197,13 +203,15 @@ rle_type_comp(
 	repeatDataCount = 1;
 	
 
-	/* set dataIndex to the second data element   
+	/* 
+	 * set dataIndex to the second data element   
 	 * based on how long the first data element is
 	 */
 	if (typeLen_bytes == VARIABLE_LENGTH) 
 	{
 #ifdef USER_LEVEL_TESTING
-		/* for user level testing assume it is one byte
+		/* 
+		 * for user level testing assume it is one byte
 		 * len followed by data
 		 */
 		unsigned char len = *((unsigned char*) lastDatum);
@@ -246,9 +254,11 @@ rle_type_comp(
 
 		if (dataIndex == dataSizeBytes)
 		{
-			/* we have completely processed all
+			/* 
+			 * we have completely processed all
 			 * the input data and should write
-			 * out the last compressed run */
+			 * out the last compressed run 
+			 */
 			endOfData = true;
 			thisDatum = NULL;
 			thisDatumLen = 0;
@@ -257,14 +267,17 @@ rle_type_comp(
 		else 
 		{
 			endOfData = false;
-			/* set the thisDatum to the next
-			 * element in the data buffer */
+			/* 
+			 * set the thisDatum to the next
+			 * element in the data buffer 
+			 */
 			thisDatum = &(data[dataIndex]);
 			
 			if (typeLen_bytes == VARIABLE_LENGTH) 
 			{
 #ifdef USER_LEVEL_TESTING
-				/* for user level testing assume it is one byte
+				/* 
+				 * for user level testing assume it is one byte
 				 * len followed by data
 				 */
 				unsigned char len = *((unsigned char*) thisDatum);
@@ -321,7 +334,8 @@ rle_type_comp(
 						 inSizeBytes - finishedIndex);
 				}
 #endif
-				/* data not long enough to hold this whole datum
+				/* 
+				 * data not long enough to hold this whole datum
 				 * - must be garbage at end of input
 				 * We used to just assert
 				 * Assert (dataIndex + thisDatumLen <= dataSizeBytes);
@@ -335,8 +349,10 @@ rle_type_comp(
 				thisDatumMatchesLast = false;
 
 
-				/* compress the garbage by just ignoring and 
-				 *   not copying it over to the output buffer */
+				/* 
+				 * compress the garbage by just ignoring and 
+				 * not copying it over to the output buffer 
+				 */
 				finishedIndex = inSizeBytes;
 
 #ifndef USER_LEVEL_TESTING
@@ -349,7 +365,8 @@ rle_type_comp(
 				thisDatumLen = 0;
 				thisDatumMatchesLast = false;
 
-				/* we've already processed all the datum in this block
+				/* 
+				 * we've already processed all the datum in this block
 				 * but there is still garbage data passed it
 				 * can we safely skip the garbage data and *not* copy it over
 				 * to the output buffer - compress it by removing it completely
@@ -382,7 +399,8 @@ rle_type_comp(
 			}
 		}
 
-		/* if we are at the end of the buffer OR if this datum does 
+		/* 
+		 * if we are at the end of the buffer OR if this datum does 
 		 * not match the last datum so we must write out the next 
 		 * compressed run of lastDatum values
 		 
@@ -418,13 +436,15 @@ rle_type_comp(
 			{
 				/* just one of these in a row this time*/
 
-				/* check for overflow first - 
+				/* 
+				 * check for overflow first - 
 				 * we need room for lastDatumLen 
 				 */
 				if (outIndex+ lastDatumLen > outbufSizeBytes)
 				{
 					*outSizeBytes = outIndex;
-					/* can't be recalled unless we pass a parameter into 
+					/* 
+					 * can't be recalled unless we pass a parameter into 
 					 * subsequent calls that says not to expect a
 					 * block header - so for now just return -1
 					 */
@@ -459,7 +479,8 @@ rle_type_comp(
 				if (outIndex+ 2*(lastDatumLen) + 1 > outbufSizeBytes)
 				{
 					*outSizeBytes = outIndex;
-					/* can't be recalled unless we pass a parameter into 
+					/* 
+					 * can't be recalled unless we pass a parameter into 
 					 * subsequent calls that says not to expect a
 					 * block header - so for now just return -1
 					 */
@@ -475,7 +496,7 @@ rle_type_comp(
 				outIndex+=lastDatumLen;
 
 				/* use a single byte to store the repeatDataCount */
-				outbuf[outIndex++] = (unsigned char)(repeatDataCount-2);
+				outbuf[outIndex++] = (unsigned char)(repeatDataCount-1);
 
 				out_nDatum += repeatDataCount;
 
@@ -538,7 +559,8 @@ rle_type_comp(
 #endif
 
 
-	/* we should have finished all the input
+	/* 
+	 * we should have finished all the input
 	 * and processed exactly the number of datum
 	 * as described in the block header
 	 * only thing that should cause these assertions
@@ -607,9 +629,14 @@ rle_type_decomp(
 	int                 lastDatumLen = 0;
 	int                 nDatum = 0;
 	bool                endOfData = false;
-	char                * next;
-	char                * adjustedNext;
-	int                 newDatumLen;		
+	char                * nextInput = NULL;
+	char                * nextOutput = NULL;
+	char                * adjustedNextOutput = NULL;
+	char                *thisDatumOutput = NULL;
+	int                 newDatumLen = 0;
+	unsigned char       repeatDataCount = 0;
+	int                 bytesPadding = 0;
+
 
 	if (typeLen_bytes == 0)
 	{
@@ -627,7 +654,8 @@ rle_type_decomp(
 	block = (DatumStreamBlock*) inbuf;
 	
 
-	/* move past the block header and Null Bit map at the beginning
+	/* 
+	 * move past the block header and Null Bit map at the beginning
 	 * of the block 
 	 * we just want to compress the actual data elements
 	 */
@@ -656,11 +684,13 @@ rle_type_decomp(
 
 	/* we've copied headerNullSize bytes to the outbuf */
 	outIndex = headerNullSize;
+	*outSizeBytes = outIndex;
 	/* we've processed headerNullSize bytes of the inbuf */
 	finishedIndex = headerNullSize;
 
-	/* point lastDatum to the first data element in the input buffer 
-	 *  assumes this starts with an item and not a repeatDataCount or 
+	/* 
+	 * point lastDatum to the first data element in the input buffer 
+	 * assumes this starts with an item and not a repeatDataCount or 
 	 * a second item 
 	 */
 	lastDatum = NULL;
@@ -674,9 +704,11 @@ rle_type_decomp(
 		
 		if (dataIndex == dataSizeBytes)
 		{
-			/* we have completely processed all
+			/* 
+			 * we have completely processed all
 			 * the input data and should write
-			 * out the last compressed run */
+			 * out the last compressed run 
+			 */
 			endOfData = true;
 			thisDatum = NULL;
 			thisDatumLen = 0;
@@ -694,14 +726,17 @@ rle_type_decomp(
 		{
 			/* there are more bytes in the input */
 
-			/* set the thisDatum to the next
-			 * element in the data buffer */
+			/* 
+			 * set the thisDatum to the next
+			 * element in the data buffer 
+			 */
 			thisDatum = &(data[dataIndex]);
 			
 			if (typeLen_bytes == VARIABLE_LENGTH) 
 			{
 #ifdef USER_LEVEL_TESTING
-				/* for user level testing assume it is one byte
+				/* 
+				 * for user level testing assume it is one byte
 				 * len followed by data
 				 */
 				unsigned char len = *((unsigned char*) thisDatum);
@@ -718,23 +753,37 @@ rle_type_decomp(
 			/* ADJUST thisDatumLen for alignment */
 #ifndef USER_LEVEL_TESTING
 
-			next = thisDatum+ thisDatumLen;
-			adjustedNext = thisDatum+ thisDatumLen;
+			thisDatumOutput  = &(outbuf[outIndex]);
 			
-			if ((typeLen_bytes == VARIABLE_LENGTH) &&(*next == 0))
+			nextInput = thisDatum + thisDatumLen;
+			nextOutput = thisDatumOutput + thisDatumLen;
+			adjustedNextOutput = thisDatumOutput + thisDatumLen;
+			
+			if ((typeLen_bytes == VARIABLE_LENGTH) &&(*nextInput == 0))
 			{
 				
-				adjustedNext = 	(char *) att_align(adjustedNext, align);
-				newDatumLen = adjustedNext - thisDatum;
+				adjustedNextOutput = 	(char *) att_align(adjustedNextOutput, align);
+
+				newDatumLen = adjustedNextOutput - thisDatumOutput;
 				
 				if ((newDatumLen != thisDatumLen) &&
 					(dataIndex + newDatumLen <=dataSizeBytes))
 				{
 					Assert(newDatumLen > thisDatumLen);
+					/* bytesPadding calculated to aid in debugging */
+					bytesPadding = newDatumLen - thisDatumLen;
+					if (Debug_rle_type_compression)
+					{
+						elog(LOG, 
+							 "rle_type_decomp: thisDatumLen %d bytesPadding %d newDatumLen %d",
+							 thisDatumLen,
+							 bytesPadding,
+							 newDatumLen);
+					}
 					thisDatumLen = newDatumLen;
+					
 				}
-			}
-			
+			}			
 #endif
 
 #ifndef USER_LEVEL_TESTING
@@ -747,7 +796,8 @@ rle_type_decomp(
 #endif
 			if (dataIndex + thisDatumLen > dataSizeBytes)
 			{
-				/* data not long enough to include this whole datum
+				/* 
+				 * data not long enough to include this whole datum
 				 * - must be garbage at end of input
 				 * We used to just assert
 				 * Assert (dataIndex + thisDatumLen <= dataSizeBytes);
@@ -778,8 +828,10 @@ rle_type_decomp(
 						 inSizeBytes - finishedIndex);
 				}
 #endif
-				/* compress the garbage by just ignoring and 
-				 * not copying it over to the output buffer */
+				/* 
+				 * compress the garbage by just ignoring and 
+				 * not copying it over to the output buffer 
+				 */
 				finishedIndex = inSizeBytes;
 
 #ifndef USER_LEVEL_TESTING
@@ -803,7 +855,8 @@ rle_type_decomp(
 
 				}
 
-				/* we've already processed all the datum in this block
+				/* 
+				 * we've already processed all the datum in this block
 				 * but there is still garbage data passed it
 				 * can we safely skip the garbage data and *not* copy it over
 				 * to the output buffer - compress it by removing it completely
@@ -841,28 +894,31 @@ rle_type_decomp(
 
 		if (thisDatumMatchesLast)
 		{
-			unsigned char repeatDataCount = 0;
 			int i;
 		
-			/* two of the same in a row, expect to 
+			/* 
+			 * two of the same in a row, expect to 
 			 * read repeatDataCount next and then expand
 			 */
 			repeatDataCount = (unsigned char) data[dataIndex];
 
-			/* check for overflow - 
-			 * we need room for repeatDataCount+1 items of size
+			/* 
+			 * check for overflow - 
+			 * we need room for repeatDataCount items of size
 			 * thisDatumLen - the first one in this run will
 			 * be written out seperately 
 			 */
-			if (outIndex+(repeatDataCount+1)*thisDatumLen > outbufSizeBytes)
+			if (outIndex+(repeatDataCount)*thisDatumLen > outbufSizeBytes)
 			{
-				/* if we have to return without making
+				/* 
+				 * if we have to return without making
 				 * forward progress we could return -X where X is number of
 				 * additional bytes we would need 
 				 */
 		
 				*outSizeBytes = outIndex;
-				/* can't be recalled unless we pass a parameter into 
+				/* 
+				 * can't be recalled unless we pass a parameter into 
 				 * subsequent calls that says not to expect a
 				 * block header - so for now just return -1
 				 */
@@ -871,7 +927,7 @@ rle_type_decomp(
 					
 			}
 
-			for (i = 0; i< (int)repeatDataCount+1; i++)
+			for (i = 0; i< (int)repeatDataCount; i++)
 			{
 				nDatum++;
 				memcpy(&(outbuf[outIndex]), lastDatum, lastDatumLen);
@@ -885,49 +941,59 @@ rle_type_decomp(
 #endif
 			}
 
-
-			/* move past the 1 bytes of len in the input
-			* that we just consumed
-			*/
+			/* 
+			 * move past the 1 bytes of len in the input
+			 * that we just consumed
+			 */
 			dataIndex+=1;
 
-			/* add both this lastDaumLen and the 1 byte for len
-			 * to the finishedIndex */
+			/* 
+			 * add both this lastDaumLen and the 1 byte for len
+			 * to the finishedIndex 
+			 */
 			finishedIndex += (lastDatumLen +1);
 
-			/* we don't want the next datum to match this one
-			 * this <datum,datum, count> sequence is over
-			 * and we must look for another */
-			lastDatumLen = 0;
+
 
 #ifndef USER_LEVEL_TESTING
 			if (Debug_rle_type_compression)
 			{
 				elog(LOG, 
-					 "rle_type_decomp nDatum %d numOutput %d finishedIndex %d\n",
+					 "rle_type_decomp nDatum %d numOutput %d finishedIndex %d dataIndex %d lastDatumLen %d\n",
 					 nDatum,
-					 repeatDataCount+1,
-					 finishedIndex
+					 repeatDataCount,
+					 finishedIndex,
+					 dataIndex,
+					 lastDatumLen
 					 );
 			}
 #endif
 
+			/*
+			 * we don't want the next datum to match this one
+			 * this <datum,datum, count> sequence is over
+			 * and we must look for another 
+			 */
+			lastDatumLen = 0;
 			
 
 		}
 		else if (!endOfData)
 		{
-			/* thisDatum does not match the last one so 
+			/* 
+			 *  thisDatum does not match the last one so 
 			 *  write out the last one as is to outbuf 
 			 */
 			
-			/* first check for overflow 
-			*  we need to write lastDatumLen bytes of space
-			*/
+			/* 
+			 *first check for overflow 
+			 *  we need to write lastDatumLen bytes of space
+			 */
 			if (outIndex+thisDatumLen > outbufSizeBytes)
 			{
 				*outSizeBytes = outIndex;
-				/* can't be recalled unless we pass a parameter into 
+				/* 
+				 * can't be recalled unless we pass a parameter into 
 				 * subsequent calls that says not to expect a
 				 * block header - so for now just return -1
 				 */
@@ -938,6 +1004,7 @@ rle_type_decomp(
 			nDatum++;
 			memcpy(&(outbuf[outIndex]), thisDatum, thisDatumLen);
 			outIndex+=thisDatumLen;
+			*outSizeBytes = outIndex;
 
 			finishedIndex += thisDatumLen;
 		
@@ -988,11 +1055,13 @@ rle_type_decomp(
 	}
 #endif
 	
-	/* we should have finished all the input
+	/* 
+	 * we should have finished all the input
 	 * and processed exactly the number of datum
 	 * as described in the block header
 	 * only thing that should cause these assertions
-	 * would be if there was garbage past the data values */
+	 * would be if there was garbage past the data values 
+	 */
 #ifndef USER_LEVEL_TESTING
 	if (Debug_rle_type_compression)
 	{
