@@ -1465,6 +1465,7 @@ AlterRoleSetStmt:
 				}
 		;
 
+/* OptAlterRoleList is effectively OptRoleList with additional support for DROP DENY FOR. */
 OptAlterRoleList:
             OptAlterRoleList OptAlterRoleElem       { $$ = lappend($1, $2); }
             | /*EMPTY*/                             { $$ = NIL; }
@@ -1482,7 +1483,7 @@ OptAlterRoleElem:
  *****************************************************************************/
 
 AlterUserStmt:
-			ALTER USER RoleId opt_with OptRoleList
+			ALTER USER RoleId opt_with OptAlterRoleList
 				 {
 					AlterRoleStmt *n = makeNode(AlterRoleStmt);
 					n->role = $3;

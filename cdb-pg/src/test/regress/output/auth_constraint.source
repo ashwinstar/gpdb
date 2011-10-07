@@ -428,6 +428,40 @@ SELECT check_auth_time_constraints('abc', '2011-08-31 11:34:54');
 
 DROP ROLE abc;
 ---
+--- very minimal coverage of CREATE USER and ALTER USER
+---
+CREATE USER abc DENY DAY 2;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+select c.start_day, c.start_time, c.end_day, c.end_time from pg_authid a, pg_auth_time_constraint c where c.authid = a.oid and a.rolname = 'abc';
+ start_day | start_time | end_day | end_time 
+-----------+------------+---------+----------
+         2 | 00:00:00   |       2 | 24:00:00
+(1 row)
+
+select NOT check_auth_time_constraints('abc', '2011-08-30 12:00:00');
+ ?column? 
+----------
+ t
+(1 row)
+
+ALTER USER abc DENY DAY 3 TIME '12:00:00';
+select c.start_day, c.start_time, c.end_day, c.end_time from pg_authid a, pg_auth_time_constraint c where c.authid = a.oid and a.rolname = 'abc';
+ start_day | start_time | end_day | end_time 
+-----------+------------+---------+----------
+         3 | 12:00:00   |       3 | 12:00:00
+         2 | 00:00:00   |       2 | 24:00:00
+(2 rows)
+
+select NOT check_auth_time_constraints('abc', '2011-08-31 12:00:00');
+ ?column? 
+----------
+ t
+(1 row)
+
+ALTER USER abc DROP DENY FOR DAY 2 TIME '12:00:00';
+NOTICE:  dropping DENY rule for "abc" between Tuesday 00:00:00 and Tuesday 24:00:00
+DROP USER abc;
+---
 --- CREATE ROLE w/ multiple deny specifications
 ---
 CREATE ROLE abc DENY DAY 0 DENY DAY 2 DENY BETWEEN DAY 4 AND DAY 5 TIME '13:00:00';
