@@ -1380,22 +1380,25 @@ class MigratePackages(Operation):
         self.from_gphome, self.to_gphome = from_gphome, to_gphome
     def execute(self):
         if not os.path.samefile(self.to_gphome, GPHOME):
-            raise ExceptionNoStackTraceNeeded('Packages cannot be migrated to a <to_gphome> that does not match this $GPHOME.')
+            raise ExceptionNoStackTraceNeeded('The target GPHOME, %s, must match the current $GPHOME used to launch gppkg.' % self.to_gphome)
         if os.path.samefile(self.to_gphome, self.from_gphome):
-            raise ExceptionNoStackTraceNeeded('<from_gphome> and <to_gphome> must differ for packages to be migrated.')
+            raise ExceptionNoStackTraceNeeded('The source and target GPHOMEs, %s => %s, must differ for packages to be migrated.' % (self.from_gphome, self.to_gphome))
 
+        # TODO: AK: Given an invalid from_gphome, we'll end up creating a 'share/packages' subdirectory within it.
         old_archive_path = os.path.join(self.from_gphome, ARCHIVE_PATH)
         MakeDir(old_archive_path).run()
         packages = ListFilesByPattern(old_archive_path, '*' + GPPKG_EXTENSION).run()
         if not packages:
-            logger.info('There are no packages to migrate from %s' % self.from_gphome)
+            logger.info('There are no packages to migrate from %s.' % self.from_gphome)
             return
 
+        logger.info('The following packages will be migrated: %s' % ', '.join(packages))
         for package in packages:
             package_path = os.path.join(old_archive_path, package)
             try:
                 InstallPackageLocally(package_path).run()
             except AlreadyInstalledError:
-                logger.info("%s was already installed." % package)
+                logger.info("%s is already installed." % package)
             except Exception:
                 logger.exception("Failed to migrate %s from %s" % (old_archive_path, package))
+        logger.info('The package migration has completed.')

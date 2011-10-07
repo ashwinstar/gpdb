@@ -324,6 +324,34 @@ generate_gpdb_installer_header() {
 		    fi
 		fi 
 
+		validMigrateDecision=
+		migratePath=
+		while [ -z "\${validMigrateDecision}" ] ; do
+			cat << EOF
+
+			********************************************************************************
+			[Optional] Provide the path to a previous installation of Greenplum Database,
+			or press ENTER to skip this step. e.g. /usr/local/greenplum-db-4.1.1.3
+
+			This installation step will migrate any Greenplum Database extensions from the
+			provided path to the version currently being installed. This step is optional 
+			and can be run later with: 
+			gppkg --migrate <path_to_old_gphome> \${installPath}
+			********************************************************************************
+
+			EOF
+			read migratePath leftover
+			if [ -z "\${migratePath}" ] ; then
+				validMigrateDecision=1
+			elif [ -d "\${migratePath}" ] ; then
+				validMigrateDecision=1
+			else
+				echo ""
+				echo "\${migratePath} is not a valid directory."
+				echo ""
+			fi
+		done
+
 		echo ""
 		echo "Extracting product to \${installPath}"
 		echo ""
@@ -564,28 +592,49 @@ generate_applicance_installer_header(){
 		EOF
 
 		##
-		## Setup symlink
-		##
-
-		symlinkPath="\`dirname \${installPath}\`/greenplum-db"
-		rm -f \${symlinkPath}
-        ln -s "\${installPath}" "\${symlinkPath}"
-
-		##
 		## Update greenplum_path.sh
 		##
 
+		symlinkPath="\`dirname \${installPath}\`/greenplum-db"
 		sed "s,^GPHOME.*,GPHOME=\${installPath}," \${installPath}/greenplum_path.sh > \${installPath}/greenplum_path.sh.tmp
 		mv \${installPath}/greenplum_path.sh.tmp \${installPath}/greenplum_path.sh
 		
-		##
-		## Setup segments
-		##
-
 		echo "Executing: source \${installPath}/greenplum_path.sh" | tee -a \${install_log}
 		source \${installPath}/greenplum_path.sh
 
 		echo "" | tee -a \${install_log}
+
+		##
+		## Migrate packages
+		##
+
+		# If the symlink exists, we consider that this may be a new, separate GPDB version.
+		if [ -d \${symlinkPath} ]; then
+			# If the symlink points to the current installPath, this is likely a reinstall.
+			# TODO: In the case of reinstall, gppkg --migrate will error out because \${symlinkPath} == \${installPath}.
+			echo "Executing: gppkg --migrate \${symlinkPath} \${installPath} --verbose" | tee -a \${install_log}
+			gppkg --migrate \${symlinkPath} \${installPath} --verbose > \${install_log} 2>&1 
+			if [ \$? -ne 0 ] ; then
+				cat <<-EOF
+
+					ERROR: gppkg failed. Continuing...
+
+				EOF
+			fi
+		fi
+
+		echo "" | tee -a \${install_log}
+
+		##
+		## Setup new symlink
+		##
+
+		rm -f \${symlinkPath}
+		ln -s "\${installPath}" "\${symlinkPath}"
+
+		##
+		## Setup segments
+		##
 
 		echo "Executing: gpseginstall --file hostfile -c csv 2>&1 | tee -a \${install_log}" | tee -a \${install_log}
 		gpseginstall --file hostfile -c csv 2>&1 | tee -a \${install_log}
