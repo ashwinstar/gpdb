@@ -1015,30 +1015,41 @@ EXECUTE E'python -c "from gppylib.commands import unix; df=unix.DiskFree.get_dis
 CREATE VIEW %%JETPACK_PREFIX%%bloat_expected_pages
 AS
 	SELECT
-		oid as btdrelid,
-		pgc.relpages as btdrelpages,
-		CEIL((pgc.reltuples * (25 + width))::numeric / current_setting('block_size')::numeric) AS btdexppages
-	FROM 
-		(
-			SELECT pgc.oid, pgc.reltuples, pgc.relpages
-			FROM pg_class pgc
-			WHERE NOT EXISTS 
+		btdrelid,
+		btdrelpages,
+		CASE WHEN btdexppages < numsegments
+			THEN numsegments
+			ELSE btdexppages
+		END as btdexppages
+	FROM
+	(
+		SELECT
+			oid as btdrelid,
+			pgc.relpages as btdrelpages,
+			CEIL((pgc.reltuples * (25 + width))::numeric / current_setting('block_size')::numeric) AS btdexppages,
+			(select numsegments from %%JETPACK_PREFIX_AUX%%number_of_segments) as numsegments
+		FROM 
 			(
-				SELECT iaooid 
-				FROM %%JETPACK_PREFIX_AUX%%is_append_only 
-				WHERE iaooid = pgc.oid AND iaotype = 't'
+				SELECT pgc.oid, pgc.reltuples, pgc.relpages
+				FROM pg_class pgc
+				WHERE NOT EXISTS 
+				(
+					SELECT iaooid 
+					FROM %%JETPACK_PREFIX_AUX%%is_append_only 
+					WHERE iaooid = pgc.oid AND iaotype = 't'
+				)
 			)
-		)
-		AS pgc
-	LEFT OUTER JOIN
-		(
-			SELECT  starelid, SUM(stawidth * (1.0 - stanullfrac)) AS width
-			FROM pg_statistic pgs
-			GROUP BY 1
-		) 
-		AS btwcols
-	ON pgc.oid = btwcols.starelid
-	WHERE starelid IS NOT NULL;
+			AS pgc
+		LEFT OUTER JOIN
+			(
+				SELECT  starelid, SUM(stawidth * (1.0 - stanullfrac)) AS width
+				FROM pg_statistic pgs
+				GROUP BY 1
+			) 
+			AS btwcols
+		ON pgc.oid = btwcols.starelid
+		WHERE starelid IS NOT NULL
+	) AS subq;
 
 GRANT SELECT ON TABLE %%JETPACK_PREFIX%%bloat_expected_pages TO public;	
 
@@ -1081,6 +1092,7 @@ $$
 				WHEN $3 = 't' THEN 0 
 				WHEN $1 < 10 AND $2 = 0 THEN -1
 				WHEN $2 = 0 THEN 2
+				WHEN $1 < $2 THEN 0
 				WHEN ($1/$2)::numeric > 10 THEN 2
 				WHEN ($1/$2)::numeric > 3 THEN 1
 				ELSE -1
