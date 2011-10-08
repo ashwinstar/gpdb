@@ -726,6 +726,15 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
             if (err < 0)
             {
                 Assert(!null[i]);
+				/*
+				 * rle_type is running on a block stream, if an object spans multiple 
+				 * blocks than data will not be compressed (if rle_type is set). 
+				 */
+				if ((idesc->compType != NULL) && (pg_strcasecmp(idesc->compType, "rle_type") == 0))
+				{
+					idesc->ds[i]->ao_write->storageAttributes.compress = FALSE;
+				}
+				
                 err = datumstream_write_lob(idesc->ds[i], d[i]);
                 Assert(err >= 0);
 
