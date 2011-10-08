@@ -1032,6 +1032,7 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 
 		if (fcinfo->flinfo->fn_retset)
 		{
+			/* First Call setup */
 			if (SRF_IS_FIRSTCALL()) 
 			{
 				funcctx = SRF_FIRSTCALL_INIT();
@@ -1044,12 +1045,10 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				PyErr_Clear(); 
 				pyelog(INFO, "The funcctx pointer returned by SRF_FIRSTCALL_INIT() is: %p", funcctx); 
 			}
-			else
-			{
-				funcctx = SRF_PERCALL_SETUP();
 
-				pyelog(INFO, "The funcctx pointer returned by SRF_PERCALL_SETUP() is: %p", funcctx); 
-			}
+			/* Every call setup */
+			funcctx = SRF_PERCALL_SETUP();
+			pyelog(INFO, "The funcctx pointer returned by SRF_PERCALL_SETUP() is: %p", funcctx); 
 			
 			Assert(funcctx != NULL);
 		}
@@ -1175,8 +1174,7 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				if (SPI_finish() != SPI_OK_FINISH)
 					elog(ERROR, "SPI_finish failed");
 
-				fcinfo->isnull = true;
-				return (Datum) 0; 
+				SRF_RETURN_DONE(funcctx);
 			}
 		}
 
@@ -1279,7 +1277,10 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 	Py_XDECREF(plargs);
 	Py_DECREF(plrv);
 
-	return rv;
+	if (fcinfo->flinfo->fn_retset)
+		SRF_RETURN_NEXT(funcctx, rv);
+	else
+		return rv;
 }
 
 /*
