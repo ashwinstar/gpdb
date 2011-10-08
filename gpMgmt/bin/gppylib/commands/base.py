@@ -191,7 +191,11 @@ class Worker(Thread):
                     self.logger.debug('[%s] stopping' % self.name)
                     return
                     
-                self.cmd = self.pool.getNextWorkItem(timeout=self.timeout)
+                try:
+                    self.cmd = self.pool.getNextWorkItem(timeout=self.timeout)
+                except TypeError:
+                    # misleading exception raised during interpreter shutdown
+                    return
                 
                 if self.cmd is not None and not self.shouldStop:
                     self.logger.debug("[%s] got cmd: %s" % (self.name,self.cmd.cmdStr))

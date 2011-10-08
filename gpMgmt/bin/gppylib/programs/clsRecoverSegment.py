@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# Line too long            - pylint: disable=C0301
+# Invalid name             - pylint: disable=C0103
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
@@ -32,8 +34,10 @@ from gppylib.programs.clsAddMirrors import validateFlexibleHeadersListAllFilespa
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.testold.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
-                                PathNormalizationException, normalizeAndValidateInputPath, TableLogger
+from gppylib.parseutils import line_reader, parse_filespace_order, parse_gprecoverseg_line, \
+        canonicalize_address
+from gppylib.utils import ParsedConfigFile, ParsedConfigFileRow, writeLinesToFile, \
+        normalizeAndValidateInputPath, TableLogger
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 from gppylib.operations.utils import ParallelOperation
 from gppylib.operations.package import SyncPackages 
@@ -118,8 +122,9 @@ class GpRecoverSegmentProgram:
         # now one for each failure
         for mirror in mirrorBuilder.getMirrorsToBuild():
             str = ""
-            seg = mirror.getFailedSegment()
-            str += ('%s:%d:%s' % (seg.getSegmentAddress(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
+            seg  = mirror.getFailedSegment()
+            addr = canonicalize_address( seg.getSegmentAddress() )
+            str += ('%s:%d:%s' % ( addr, seg.getSegmentPort(), seg.getSegmentDataDirectory()))
 
             seg = mirror.getFailoverSegment()
             if seg is not None:
@@ -135,8 +140,8 @@ class GpRecoverSegmentProgram:
                     filespaceValues.append(":" + path)
 
                 str += ' '
-                str += ('%s:%d:%d:%s%s' % (seg.getSegmentAddress(),
-                    seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory(),
+                addr = canonicalize_address( seg.getSegmentAddress() )
+                str += ('%s:%d:%d:%s%s' % (addr, seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory(),
                         "".join(filespaceValues)))
 
             lines.append(str)
@@ -149,15 +154,22 @@ class GpRecoverSegmentProgram:
         returns a GpMirrorListToBuild object
         """
 
-        fileData = utils.parseMirroringConfigFile( readAllLinesFromFile(self.__options.recoveryConfigFile),
-                             "Segment recovery config",
-                             [
-                                    "failedAddress", "failedPort", "failedDataDirectory",
-                                    "newAddress", "newPort", "newReplicationPort", "newDataDirectory"
-                             ],
-                             "filespaceOrder",
-                             False, 3)
-
+        # create fileData object from config file
+        #
+        filename = self.__options.recoveryConfigFile
+        fslist   = None
+        rows     = []
+        with open(filename) as f:
+            for lineno, line in line_reader(f):
+                if fslist is None:
+                    fslist = parse_filespace_order(filename, lineno, line)
+                else:
+                    fixed, flexible = parse_gprecoverseg_line(filename, lineno, line, fslist)
+                    rows.append( ParsedConfigFileRow(fixed, flexible, line) )
+        fileData = ParsedConfigFile(fslist, rows)
+        
+        # validate fileData
+        #
         validateFlexibleHeadersListAllFilespaces("Segment recovery config", gpArray, fileData)
         filespaceNameToFilespace = dict([ (fs.getName(), fs) for fs in gpArray.getFilespaces(False)])
 
@@ -753,7 +765,8 @@ class GpRecoverSegmentProgram:
         self.logger.info('---------------------------------------------------------')
 
     def __getSimpleSegmentLabel(self, seg):
-        return "%s:%s" % (seg.getSegmentAddress(), seg.getSegmentDataDirectory())
+        addr = canonicalize_address( seg.getSegmentAddress() )
+        return "%s:%s" % ( addr, seg.getSegmentDataDirectory())
 
     def __displayRecoveryWarnings(self, mirrorBuilder):
         for warning in self._getRecoveryWarnings(mirrorBuilder):

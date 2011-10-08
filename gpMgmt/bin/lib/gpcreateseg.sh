@@ -26,11 +26,12 @@ WORKDIR=`dirname $0`
 # as required.
 FUNCTIONS=$WORKDIR/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
-		. $FUNCTIONS
+    . $FUNCTIONS
 else
-		echo "[FATAL]:-Cannot source $FUNCTIONS file Script Exits!"
-		exit 2
+    echo "[FATAL]:-Cannot source $FUNCTIONS file Script Exits!"
+    exit 2
 fi
+
 #******************************************************************************
 # Script Specific Variables
 #******************************************************************************
@@ -53,16 +54,17 @@ LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
+
 #******************************************************************************
 # Functions
 #******************************************************************************
 USAGE () {
-		$ECHO
-		$ECHO "      `basename $0`"
-		$ECHO
-		$ECHO "      Script called by gpinitsystem, this should not"
-		$ECHO "      be run directly"
-		exit $EXIT_STATUS
+    $ECHO
+    $ECHO "      `basename $0`"
+    $ECHO
+    $ECHO "      Script called by gpinitsystem, this should not"
+    $ECHO "      be run directly"
+    exit $EXIT_STATUS
 }
 
 CHK_CALL () {
@@ -74,12 +76,25 @@ CHK_CALL () {
 }
 
 SET_VAR () {
-                I=$1
-                GP_HOSTADDRESS=`$ECHO $I|$CUT -d: -f1`
-                GP_PORT=`$ECHO $I|$CUT -d: -f2`
-                GP_DIR=`$ECHO $I|$CUT -d: -f3`
-                GP_DBID=`$ECHO $I|$CUT -d: -f4`
-                GP_CONTENT=`$ECHO $I|$CUT -d: -f5`
+    # 
+    # MPP-13617: If segment contains a ~, we assume ~ is the field delimiter.
+    # Otherwise we assume : is the delimiter.  This allows us to easily 
+    # handle IPv6 addresses which may contain a : by using a ~ as a delimiter. 
+    # 
+    I=$1
+    case $I in
+        *~*)
+	    S="~"
+            ;;
+        *)
+	    S=":"
+            ;;
+    esac
+    GP_HOSTADDRESS=`$ECHO $I|$CUT -d$S -f1`
+    GP_PORT=`$ECHO $I|$CUT -d$S -f2`
+    GP_DIR=`$ECHO $I|$CUT -d$S -f3`
+    GP_DBID=`$ECHO $I|$CUT -d$S -f4`
+    GP_CONTENT=`$ECHO $I|$CUT -d$S -f5`
 }
 
 PARA_EXIT () {
@@ -94,8 +109,8 @@ PARA_EXIT () {
 
 PROCESS_QE () {
 
-	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTADDRESS"
+    LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
+    LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTADDRESS"
 
 	MIRROR_ONLY_INITDB_OPTION=
 	if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
@@ -111,7 +126,7 @@ PROCESS_QE () {
 	# on mirror, copy data from primary
     if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
         LOG_MSG "[INFO]:-Copying data for mirror on ${GP_HOSTADDRESS} using remote copy from primary ${COPY_FROM_PRIMARY_HOSTADDRESS} ..." 1
-        RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTADDRESS} "${EXPORT_GPHOME}; . ${GPHOME}/greenplum_path.sh; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} ${GP_HOSTADDRESS}:${GP_DIR}"
+        RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTADDRESS} "${EXPORT_GPHOME}; . ${GPHOME}/greenplum_path.sh; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} \[${GP_HOSTADDRESS}\]:${GP_DIR}"
         RETVAL=$?
         PARA_EXIT $RETVAL "remote copy of segment data directory from ${COPY_FROM_PRIMARY_HOSTADDRESS} to ${GP_HOSTADDRESS}"
 	fi
@@ -174,7 +189,7 @@ PROCESS_QE () {
 		$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
 	done
 		
-        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
+    if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
  		# Primary: start the segment to fill in configuration
 		START_QE
 		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTADDRESS $GP_DIR
@@ -185,12 +200,12 @@ PROCESS_QE () {
 }
 
 STOP_QE() {
-        # we don't add backout commands here.  We could get double-stop calls since the same QE is sometimes started, stopped, and restarted.  But hopefully that's okay
+    # we don't add backout commands here.  We could get double-stop calls since the same QE is sometimes started, stopped, and restarted.  But hopefully that's okay
 
-        LOG_MSG "[INFO]:-Start Function $FUNCNAME" 1
-        LOG_MSG "[INFO]:-Stopping instance on segment ${GP_HOSTADDRESS}:${GP_PORT}" 1
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" stop" >> $LOG_FILE 2>&1
-        LOG_MSG "[INFO]:-End Function $FUNCNAME"
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME" 1
+    LOG_MSG "[INFO]:-Stopping instance on segment ${GP_HOSTADDRESS}:${GP_PORT}" 1
+    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" stop" >> $LOG_FILE 2>&1
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 START_QE() {
@@ -213,7 +228,7 @@ START_QE() {
 #******************************************************************************
 trap '$ECHO "KILLED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-[$INST_COUNT]-Recieved INT or TERM signal" 2' INT TERM
 while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
-	do
+do
 	case $opt in
 		v ) VERSION_INFO ;;
 		'?' ) USAGE ;;
@@ -224,9 +239,11 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 		* ) USAGE 
 	esac
 done
+
 #Now process supplied call parameters
 PARENT_PID=$1;shift		#PID of calling gpinitsystem program
 CHK_CALL
+
 TYPE=$1;shift
 case $TYPE in
 	1 )
@@ -261,5 +278,6 @@ case $TYPE in
 		$ECHO "COMPLETED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
 		;;
 esac
+
 LOG_MSG "[INFO][$INST_COUNT]:-End Main"
 exit $EXIT_STATUS

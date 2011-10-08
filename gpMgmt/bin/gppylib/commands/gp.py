@@ -61,6 +61,11 @@ def get_max_dbid(name,conn):
 class PySync(Command):
     def __init__(self,name,srcDir,dstHost,dstDir,ctxt=LOCAL,remoteHost=None, options=None):
         psync_executable=GPHOME + "/bin/lib/pysync.py"
+
+        # MPP-13617
+        if ':' in dstHost and not ']' in dstHost:
+            dstHost = '[' + dstHost + ']'
+
         self.cmdStr="%s %s %s %s:%s" % (psync_executable,
                                         options if options else "",
                                         srcDir,

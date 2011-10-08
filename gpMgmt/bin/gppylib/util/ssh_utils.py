@@ -14,6 +14,8 @@ from gppylib.commands.unix import Hostname, Echo
 sys.path.append(sys.path[0] + '/lib')
 import pxssh
 import pexpect
+import socket
+
 
 class HostNameError(Exception):
     def __init__(self, msg, lineno = 0):
@@ -35,7 +37,6 @@ def ssh_prefix(host):
 
 
 
-
 class HostList():
     
     def __init__(self): 
@@ -44,24 +45,40 @@ class HostList():
     def get(self): 
         return self.list
 
-    def add(self, host):
+    def add(self, host, lineno=0):
         '''Add a host to the hostlist.'''
-        if host.find(':') >= 0 or host.find('@') >= 0:
-            raise HostNameError(host)
+
+        # we don't allow the user@ syntax here
+        if host.find('@') >= 0:
+            raise HostNameError(host, lineno)
+
+        # MPP-13617 - check for ipv6
+        if host.find(':') >= 0:
+            try:
+                socket.inet_pton(socket.AF_INET6, host)
+            except socket.error, e:
+                raise HostNameError(str(e), lineno)
+
+        # MPP-13617 - check for ipv4
+        if host.find('.') >= 0:
+            octs = host.split('.')
+            if len(octs) == 4 and False not in [o.isdigit() for o in octs]:
+                try:
+                    socket.inet_pton(socket.AF_INET, host)
+                except socket.error, e:
+                    raise HostNameError(str(e), lineno)
+
         self.list.append(host)
         return self.list
 
     def parseFile(self, path):
         '''Add lines in a file to the hostlist.'''
         with open(path) as fp:
-            lineno = 0
-            for line in fp:
-                lineno = lineno + 1
+            for i, line in enumerate(fp):
                 line = line.strip()
-                if not line: continue;
-                if line[0] == '#': continue
-                if not self.add(line): 
-                    raise HostNameError(line, lineno)
+                if not line or line[0] == '#': 
+                    continue
+                self.add(line, i+1)
         return self.list
 
     def checkSSH(self):

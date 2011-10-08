@@ -302,7 +302,6 @@ VERSION_INFO () {
 		exit 0
 }
 
-
 LOG_MSG () {
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
@@ -838,15 +837,15 @@ CREATE_SPREAD_MIRROR_ARRAY () {
 		# Calculate the index based on host and subnet number
 		((PRIM_SEG_INDEX=($DEST_HOST*$NUM_DATADIR)+($DEST_SUBNET*$DIRS_PER_SUBNET)))
 
-		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$PRIM_SEG_INDEX]}|$AWK -F":" '{print $1}'`
+		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$PRIM_SEG_INDEX]}|$AWK -F"~" '{print $1}'`
 		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$SEGS_PROCESSED%$NUM_DATADIR]}
-		P_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`
-		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $6}'`
+		P_PORT=`$ECHO $QE_LINE|$AWK -F"~" '{print $2}'`
+		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F"~" '{print $6}'`
 		((GP_M_PORT=$P_PORT+$MIRROR_OFFSET))
 		((M_REPL_PORT=$P_REPL_PORT+$MIRROR_REPLICATION_PORT_OFFSET))
-		M_CONTENT=`$ECHO $QE_LINE|$AWK -F":" '{print $5}'`
-		M_SEG=`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
-		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}/${M_SEG}:${DBID_COUNT}:${M_CONTENT}:${M_REPL_PORT})
+		M_CONTENT=`$ECHO $QE_LINE|$AWK -F"~" '{print $5}'`
+		M_SEG=`$ECHO $QE_LINE|$AWK -F"~" '{print $3}'|$AWK -F"/" '{print $NF}'`
+		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}~${GP_M_PORT}~${GP_M_DIR}/${M_SEG}~${DBID_COUNT}~${M_CONTENT}~${M_REPL_PORT})
 		POSTGRES_PORT_CHK $GP_M_PORT $QE_M_NAME
 		((DBID_COUNT=$DBID_COUNT+1))
 		((SEGS_PROCESSED=$SEGS_PROCESSED+1))
@@ -866,7 +865,7 @@ GET_MAX_LEN () {
 CREATE_GROUP_MIRROR_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Building group mirror array type $MULTI_TXT, please wait..." 1
-	PRI_HOST_COUNT=`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$AWK -F":" '{print $1}'|$SORT -u|$WC -l`
+	PRI_HOST_COUNT=`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$AWK -F"~" '{print $1}'|$SORT -u|$WC -l`
 	if [ $MULTI_HOME -eq 1 ] && [ $REMOTE_HOST_COUNT -eq 1 ];then
 		PRI_HOST_COUNT=1
 	fi
@@ -909,16 +908,16 @@ CREATE_GROUP_MIRROR_ARRAY () {
 
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 
-		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$MIRROR_INDEX]}|$AWK -F":" '{print $1}'`
-		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$PRIMARY_INDEX%$NUM_DATADIR]}/`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
+		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$MIRROR_INDEX]}|$AWK -F"~" '{print $1}'`
+		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$PRIMARY_INDEX%$NUM_DATADIR]}/`$ECHO $QE_LINE|$AWK -F"~" '{print $3}'|$AWK -F"/" '{print $NF}'`
 
-		M_CONTENT=`$ECHO $QE_LINE|$AWK -F":" '{print $5}'`
-		P_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`
-		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $6}'`
+		M_CONTENT=`$ECHO $QE_LINE|$AWK -F"~" '{print $5}'`
+		P_PORT=`$ECHO $QE_LINE|$AWK -F"~" '{print $2}'`
+		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F"~" '{print $6}'`
 		GP_M_PORT=$(($P_PORT+$MIRROR_OFFSET))
 		M_REPL_PORT=$(($P_REPL_PORT+$MIRROR_REPLICATION_PORT_OFFSET))
 		
-		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}:${DBID_COUNT}:${M_CONTENT}:${M_REPL_PORT})
+		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}~${GP_M_PORT}~${GP_M_DIR}~${DBID_COUNT}~${M_CONTENT}~${M_REPL_PORT})
 		POSTGRES_PORT_CHK $GP_M_PORT $QE_M_NAME
 
 		DBID_COUNT=$(($DBID_COUNT+1))
@@ -965,8 +964,8 @@ CHK_MULTI_HOME () {
 			MULTI_ARRAY=(${MULTI_ARRAY[@]} ${QE_HOST}:$REMOTE_HOSTNAME)
 		done
 	fi
-	SEG_HOST_COUNT=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$AWK -F":" '{print $1}'|$SORT -u|wc -l`
-	REMOTE_HOST_COUNT=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$AWK -F":" '{print $2}'|$SORT -u|wc -l`
+	SEG_HOST_COUNT=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$AWK -F"~" '{print $1}'|$SORT -u|wc -l`
+	REMOTE_HOST_COUNT=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$AWK -F"~" '{print $2}'|$SORT -u|wc -l`
 	if [ $SEG_HOST_COUNT -eq $REMOTE_HOST_COUNT ];then
 		LOG_MSG "[INFO]:-Non multi-home configuration"
 		MULTI_HOME=0
@@ -1386,7 +1385,7 @@ GET_MIRROR_TYPE () {
 			do
 				MIR_HOST=`$ECHO ${FIRST_PRI_MIR_ARRAY[@]}|$TR ' ' '\n'|$GREP "|${J}$"|$AWK -F"|" '{print $1}'|$TAIL -1`
 				PRI_HOST=`$ECHO ${FIRST_PRI_MIR_ARRAY[@]}|$TR ' ' '\n'|$GREP "|${J}$"|$AWK -F"|" '{print $1}'|$HEAD -1`
-				#MIR_H_HOST=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$GREP "${MIR_HOST}:"|$SORT -u|$AWK -F":" '{print $2}'`
+				#MIR_H_HOST=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$GREP "${MIR_HOST}~"|$SORT -u|$AWK -F"~" '{print $2}'`
 				MIR_H_CONFIG_HOST=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE a where hostname<>'${PRI_HOST}' and content=${J};"`
 				MIR_H_HOST=`$TRUSTED_SHELL $MIR_H_CONFIG_HOST "$HOSTNAME"|$AWK '{print $1}'`
 				#MIR_HOST_VAL=`$TRUSTED_SHELL $MIR_HOST "$HOSTNAME"`

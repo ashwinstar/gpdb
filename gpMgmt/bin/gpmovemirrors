@@ -1,7 +1,11 @@
 #!/usr/bin/env python
+# Line too long            - pylint: disable=C0301
+# Invalid name             - pylint: disable=C0103
 #
 # Copyright (c) EMC Inc 2010. All Rights Reserved.
 #
+from gppylib.mainUtils import SimpleMainLock, ExceptionNoStackTraceNeeded
+
 import copy
 import datetime
 import os
@@ -9,9 +13,6 @@ import sys
 import socket
 import signal
 from time import strftime, sleep
-
-from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
-from subprocess import Popen, PIPE
 
 try:
     from gppylib.commands.unix import *
@@ -28,9 +29,8 @@ try:
     from pygresql import pg
     from gppylib.gpcoverage import GpCoverage
     from gppylib import gparray, gplog, pgconf, userinput, utils 
-    from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
-                                PathNormalizationException, normalizeAndValidateInputPath, TableLogger
-    from gppylib.mainUtils import SimpleMainLock
+    from gppylib.parseutils import line_reader, parse_filespace_order, parse_gpmovemirrors_line, \
+        canonicalize_address
 
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -56,7 +56,7 @@ _help = ["""
 The input file should be be a plain text file with the format:
 
   filespaceOrder=[<filespace1_fsname>[:<filespace2_fsname>:...]
-  <old_address>:<port>:<system_filespace_location> [<new_address:port>:<replication_port>:<system_filespace_location>[:<fselocation>:...]]
+  <old_address>:<port>:<system_filespace_location> <new_address:port>:<replication_port>:<system_filespace_location>[:<fselocation>:...]
 
 """,
 """
@@ -141,6 +141,8 @@ def logOptionValues(options):
     logger.info("")
 
 #-------------------------------------------------------------------------
+pool = None
+
 def shutdown():
     """used if the script is closed abrubtly"""
     logger.info('Shutting down gpmovemirrors...')
@@ -236,56 +238,49 @@ class Configuration:
         
     def read_input_file(self, inputFile):
         self.inputFile = inputFile
-        """
-        Input file format is:
-           filespaceOrder=[filespace1_fsname[:filespace2_fsname:...]
-           old_address:port:system_filespace_location [new_address:port:replication_port:system_filespace_location[:fselocation:...]]
-        """
-        self.fileData = utils.parseMirroringConfigFile( readAllLinesFromFile(self.inputFile),
-                             "Move mirrors config",
-                             [
-                                    "oldAddress", "oldPort", "oldDataDirectory",
-                                    "newAddress", "newPort", "newReplicationPort", "newDataDirectory"
-                             ],
-                             "filespaceOrder",
-                             False, 3)
-        self.filespaceNames = self.fileData.getFlexibleHeaders()
-        rowList = self.fileData.getRows()
-        for i in range(0,len(rowList)):
-            row    = rowList[i]
-            rowMap = row.getFixedValuesMap()
-            oldAddress         = rowMap['oldAddress']
-            oldPort            = rowMap['oldPort']
-            oldDataDirectory   = rowMap['oldDataDirectory']
-            oldGpdb            = lookupGpdb(oldAddress, oldPort, oldDataDirectory)
-            if oldGpdb == None or oldGpdb.getSegmentRole() != ROLE_MIRROR:
-               if oldGpdb == None:
-                  raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
-                                   % (oldAddress, str(oldPort), oldDataDirectory))
-               else:
-                  raise Exception("Old mirror segment is not currently in a mirror role: address = %s, port = %s, segment data directory = %s"
-                                   % (oldAddress, str(oldPort), oldDataDirectory))
-            oldReplicationPort = lookupReplicatonPort(oldGpdb)
-            oldFilespaces      = lookupFilespaces(oldGpdb)
-            oldMirror = Mirror( address = oldAddress
-                              , port = oldPort
-                              , replicationPort = oldReplicationPort
-                              , dataDirectory = oldDataDirectory
-                              , filespaces = oldFilespaces
-                              )
-            self.oldMirrorList.append(oldMirror)
-            newAddress         = rowMap['newAddress']
-            newPort            = rowMap['newPort']
-            newDataDirectory   = rowMap['newDataDirectory']
-            newReplicationPort = rowMap['newReplicationPort']
-            newFilespaces      = row.getFlexibleValuesMap()
-            newMirror = Mirror( address = newAddress
-                              , port = newPort
-                              , replicationPort = newReplicationPort
-                              , dataDirectory = newDataDirectory
-                              , filespaces = newFilespaces
-                              )
-            self.newMirrorList.append(newMirror)
+
+        fslist = None
+        with open(inputFile) as f:
+
+            for lineno, line in line_reader(f):
+                if fslist is None:
+                    fslist = parse_filespace_order(inputFile, lineno, line)
+                    self.filespaceNames = fslist
+                    continue
+
+                rowMap, newFilespaces = parse_gpmovemirrors_line(inputFile, lineno, line, fslist)
+
+                oldAddress         = rowMap['oldAddress']
+                oldPort            = rowMap['oldPort']
+                oldDataDirectory   = rowMap['oldDataDirectory']
+                oldGpdb            = lookupGpdb(oldAddress, oldPort, oldDataDirectory)
+                if oldGpdb == None or oldGpdb.getSegmentRole() != ROLE_MIRROR:
+                   if oldGpdb == None:
+                      raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
+                                       % (oldAddress, str(oldPort), oldDataDirectory))
+                   else:
+                      raise Exception("Old mirror segment is not currently in a mirror role: address = %s, port = %s, segment data directory = %s"
+                                       % (oldAddress, str(oldPort), oldDataDirectory))
+                oldReplicationPort = lookupReplicatonPort(oldGpdb)
+                oldFilespaces      = lookupFilespaces(oldGpdb)
+                oldMirror = Mirror( address = oldAddress
+                                  , port = oldPort
+                                  , replicationPort = oldReplicationPort
+                                  , dataDirectory = oldDataDirectory
+                                  , filespaces = oldFilespaces
+                                  )
+                self.oldMirrorList.append(oldMirror)
+                newAddress         = rowMap['newAddress']
+                newPort            = rowMap['newPort']
+                newDataDirectory   = rowMap['newDataDirectory']
+                newReplicationPort = rowMap['newReplicationPort']
+                newMirror = Mirror( address = newAddress
+                                  , port = newPort
+                                  , replicationPort = newReplicationPort
+                                  , dataDirectory = newDataDirectory
+                                  , filespaces = newFilespaces
+                                  )
+                self.newMirrorList.append(newMirror)
 
     def write_output_file(self, filename, oldToNew = True):
         """ Write out the configuration in a format appropriate for use with the -i option. """
@@ -306,9 +301,11 @@ class Configuration:
         for i in range(0, len(firstList)):
             oldEntry = firstList[i]
             newEntry = secondList[i]
-            line = oldEntry.address + ":" + oldEntry.port + ":" + oldEntry.dataDirectory 
+            line = canonicalize_address( oldEntry.address ) + \
+                ":" + str(oldEntry.port) + ":" + oldEntry.dataDirectory 
             line = line + " "
-            line = line + str(newEntry.address) + ":" + str(newEntry.port) + ":" + str(newEntry.replicationPort) + ":" + newEntry.dataDirectory
+            line = line + canonicalize_address( newEntry.address ) + \
+                ":" + str(newEntry.port) + ":" + str(newEntry.replicationPort) + ":" + newEntry.dataDirectory
             for fsName in self.filespaceNames:
                 line = line + ":" + newEntry.filespaces[fsName]
             line = line + '\n'

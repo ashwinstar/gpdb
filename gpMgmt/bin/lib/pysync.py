@@ -22,6 +22,10 @@ from pysync_remote import ProgressUpdate, ProgressCounters
 from pysync_remote import statToTuple
 from gppylib.commands.gp import PySync
 
+# MPP-13617
+import re
+RE1=re.compile('\\[([^]]+)\\]:(.+)')
+
 bootstrapSource="""
 import os,sys
 exec(sys.stdin.read(int(sys.stdin.readline())))
@@ -374,16 +378,26 @@ class LocalPysync:
             raise ValueError("Source path) \"%s\" is not accessible" % self.sourceDir)
         
         dest = a[1]
-        i = dest.find(':')
-        if i==-1:
-            self.usage(argv)
-        
-        self.userAndHost = dest[:i]
-        self.destDir = dest[i+1:]
+
+        # MPP-13617
+        m = re.match(RE1, dest)
+        if m:
+            self.userAndHost, self.destDir = m.groups()
+        else:
+            i = dest.find(':')
+            if i == -1:
+                self.usage(argv)
+            self.userAndHost, self.destDir = dest[:i], dest[i+1:]
+
         self.connectAddress = None
         self.sendData = None
         
-        addrinfo = socket.getaddrinfo(self.userAndHost[self.userAndHost.find('@')+1:], None)
+        hostname = self.userAndHost[self.userAndHost.find('@')+1:]
+        try:
+            addrinfo = socket.getaddrinfo(hostname, None)
+        except:
+            print 'dest>>%s<<' % dest, ' hostname>>%s<<' % hostname
+            raise
         
         if addrinfo:
             self.options.addrinfo = addrinfo[0]

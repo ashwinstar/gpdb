@@ -203,11 +203,15 @@ class Host:
 
             # Create .ssh directory and ensure content meets permission requirements 
             # for password-less SSH
+            #
+            # note: we touch .ssh/iddummy.pub just before the chmod operations to
+            # ensure the wildcard matches at least one file.
             cmd = ('mkdir -p .ssh; ' +
                    'chmod 0700 .ssh; ' +
                    'touch .ssh/authorized_keys; ' +
                    'touch .ssh/known_hosts; ' +
                    'touch .ssh/config; ' +
+                   'touch .ssh/iddummy.pub; ' +
                    'chmod 0600 .ssh/auth* .ssh/id*; ' +
                    'chmod 0644 .ssh/id*.pub .ssh/config')
             if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_host, cmd)
@@ -645,11 +649,15 @@ try:
     authorizeLocalID(localID)
     
     # Ensure the local host's .ssh directory is prepared for password-less SSH login
+    #
+    # note: we touch .ssh/iddummy.pub just before the chmod operations to
+    # ensure the wildcard matches at least one file.
     cmd = ('cd ' + GV.homeDir + '; ' +
            'chmod 0700 .ssh; ' +
            'touch .ssh/authorized_keys; ' +
            'touch .ssh/known_hosts; ' +
            'touch .ssh/config; ' +
+           'touch .ssh/iddummy.pub; ' +
            'chmod 0600 .ssh/auth* .ssh/id*; ' +
            'chmod 0644 .ssh/id*.pub .ssh/config')
     if GV.opt['-v']: print '[INFO]: %s' % cmd
@@ -837,14 +845,21 @@ try:
     errmsg = None
     
     try:
+
+        # MPP-13617
+        def canonicalize(s):
+            if ':' not in s: return s
+            return '\[' + s + '\]'
+
         for h in GV.newHosts:
+
             cmd = ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' + 
                    '%s %s %s %s %s:.ssh/ 2>&1' 
                    % (GV.authorized_keys_fname, 
                       GV.known_hosts_fname, 
                       GV.id_rsa_fname, 
                       GV.id_rsa_pub_fname, 
-                      h.host()))
+                      canonicalize( h.host() )))
             h.popen(cmd)
     
         if len(GV.existingHosts):
@@ -885,7 +900,7 @@ try:
                           remoteKnownHostsFile, 
                           remoteIdentity, 
                           remoteIdentityPub, 
-                          h.host()))
+                          canonicalize( h.host() )))
                 h.popen(cmd)
                 
     except:

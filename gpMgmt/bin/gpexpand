@@ -1,20 +1,21 @@
 #!/usr/bin/env python
+# Line too long            - pylint: disable=C0301
+# Invalid name             - pylint: disable=C0103
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved.
 #
+from gppylib.mainUtils import getProgramName
+
 import copy
 import datetime
 import os
 import sys
 import socket
 import signal
+import traceback
 from time import strftime, sleep
 
-from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
-from subprocess import Popen, PIPE
-
 try:
-    from gppylib.mainUtils import *
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
@@ -24,7 +25,7 @@ try:
     from gppylib.db import catalog
     from gppylib.db import dbconn
     from gppylib.userinput import *
-    from gppylib.operations.startSegments import *
+    from gppylib.operations.startSegments import MIRROR_MODE_MIRRORLESS
     from gppylib.system import configurationInterface, configurationImplGpdb
     from gppylib.system.environment import GpMasterEnvironment
     from pygresql.pgdb import DatabaseError
@@ -33,6 +34,8 @@ try:
     from gppylib.gpcatalog import MASTER_ONLY_TABLES
     from gppylib.operations.package import SyncPackages
     from gppylib.operations.utils import ParallelOperation
+    from gppylib.parseutils import line_reader, parse_gpexpand_segment_line, \
+        canonicalize_address
 
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -1213,8 +1216,8 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         logger.info("Generating input file...")
 
         for db in gparray.getExpansionSegDbList():
-            tempStr = "%s:%s:%d:%s:%d:%d:%s" % ( db.getSegmentHostName()
-                                               , db.getSegmentAddress()
+            tempStr = "%s:%s:%d:%s:%d:%d:%s" % ( canonicalize_address( db.getSegmentHostName() )
+                                               , canonicalize_address( db.getSegmentAddress() )
                                                , db.getSegmentPort()
                                                , db.getSegmentDataDirectory()
                                                , db.getSegmentDbId()
@@ -1315,10 +1318,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
               raise ExpansionError("Expecting filespaces input file: " + fsInputFilename)
            if exists == True:
               f = open(fsInputFilename, 'r')              
-              lineNumber = 1
-              for l in f:
-                  if l.strip().startswith('#') or l.strip() == '':
-                     continue
+              for lineNumber, l in line_reader(f):
                   if lineNumber == 1:
                      fsNameString = l.strip().split("=")
                      fsNameList = fsNameString[1].strip().split(":")
@@ -1344,7 +1344,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                      except Exception, e:
                         raise ExpansionError("Problem with inputfile %s, line number %s, exceptin %s." % \
                                              (fsInputFilename, str(lineNumber), str(e)))
-                  lineNumber = lineNumber + 1
+
         except IOError, ioe:
            raise ExpansionError('Problem with filespace input file: %s. Eexception:' % (fsInputFilename, str(ioe)))
         finally:
@@ -1353,22 +1353,12 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         try:
             f = open(inputFilename, 'r')
-            line = 1
             try:
-                for l in f:
-                    if l.strip().startswith('#') or l.strip() == '':
-                        continue
+                for line, l in line_reader(f):
 
-                    ''' Form of file is hostname:address:port:dtadir:dbid:contentId:role [:replicationPort] '''
-                    replicationPort = None
-                    if len(l.strip().split(':')) == 7:
-                       hostname,address,port,datadir,dbid,contentId,role = l.strip().split(':')
-                    elif len(l.strip().split(':')) == 8:
-                       hostname,address,port,datadir,dbid,contentId,role,replicationPort = l.strip().split(':')
-                    else:
-                       raise ExpansionError('Incorrect line format. Either 7 or 8 entries expected. %d entries detected.' % \
-                                           (int(len(l.strip().split(':')))))
-                    # content, role, dbid, preferred_role, hostname, port, datadir
+                    hostname, address, port, datadir, dbid, contentId, role, replicationPort \
+                        = parse_gpexpand_segment_line(inputFilename, line, l)
+
                     filespaces = {}
                     if len(fsDictionary) > 0:
                        fileSpacesPathList = fsDictionary[dbid]
@@ -1407,7 +1397,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                                                    , replicationPort = replicationPort
                                                    , fileSpaces = filespaces
                                                    ) )
-                    line += 1
             except ValueError:
                 raise ExpansionError('Missing or invalid value on line %d.' % line)
             except Exception, e:
@@ -2022,7 +2011,7 @@ SELECT
     c2.oid as tableoid,
     d.attrnums as distributed_policy,
     now() as last_updated,
-    pg_relation_size(p.partitionschemaname || '.' || p.partitiontablename),
+    pg_relation_size(quote_ident(p.partitionschemaname) || '.' || quote_ident(p.partitiontablename)),
     partitiontype,partitionlevel,partitionrank,partitionposition,
     partitionrangestart
 FROM
@@ -2486,6 +2475,7 @@ class ExecuteSQLStatementsCommand(SQLCommand):
                 dbconn.execSQL(self.conn, statement)
             self.conn.commit()
         except Exception, e:
+            # traceback.print_exc()
             logger.error("Exception in ExecuteSQLStatements. URL = %s" % str(self.url))
             logger.error("  Statement = %s" % str(statement))
             logger.error("  Exception = %s" % str(e))

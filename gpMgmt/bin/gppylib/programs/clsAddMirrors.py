@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# Line too long            - pylint: disable=C0301
+# Invalid name             - pylint: disable=C0103
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
@@ -19,8 +22,11 @@ from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.testold.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile, \
-                    parseMirroringConfigFile, PathNormalizationException, normalizeAndValidateInputPath, TableLogger
+from gppylib.parseutils import line_reader, parse_filespace_order, parse_gpaddmirrors_line, \
+        canonicalize_address
+from gppylib.utils import ParsedConfigFile, ParsedConfigFileRow, \
+        writeLinesToFile, readAllLinesFromFile, TableLogger, \
+        PathNormalizationException, normalizeAndValidateInputPath
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 from gppylib.userinput import *
 
@@ -289,15 +295,23 @@ class GpAddMirrorsProgram:
         self.__pool = None
 
     def __getMirrorsToBuildFromConfigFile(self, gpArray):
-        fileData = parseMirroringConfigFile( readAllLinesFromFile(self.__options.mirrorConfigFile),
-                             "Mirror config",
-                             [
-                                    "contentId", "address", "port", "replicationPort",
-                                    "primarySegmentReplicationPort", "dataDirectory"
-                             ],
-                             "filespaceOrder",
-                             True, None)
 
+        # create fileData object from config file
+        #
+        filename = self.__options.mirrorConfigFile
+        fslist   = None
+        rows     = []
+        with open(filename) as f:
+            for lineno, line in line_reader(f):
+                if fslist is None:
+                    fslist = parse_filespace_order(filename, lineno, line)
+                else:
+                    fixed, flexible = parse_gpaddmirrors_line(filename, lineno, line, fslist)
+                    rows.append( ParsedConfigFileRow(fixed, flexible, line) )
+        fileData = ParsedConfigFile(fslist, rows)
+
+        # validate fileData
+        #
         validateFlexibleHeadersListAllFilespaces("Mirror config", gpArray, fileData)
         filespaceNameToFilespace = dict([ (fs.getName(), fs) for fs in gpArray.getFilespaces(False)])
 
@@ -382,7 +396,7 @@ class GpAddMirrorsProgram:
             line = 'mirror%d=%d:%s:%d:%d:%d:%s%s' % \
                     (i, \
                     mirror.getSegmentContentId(), \
-                    mirror.getSegmentAddress(), \
+                    canonicalize_address( mirror.getSegmentAddress() ), \
                     mirror.getSegmentPort(), \
                     mirror.getSegmentReplicationPort(), \
                     primary.getSegmentReplicationPort(), \

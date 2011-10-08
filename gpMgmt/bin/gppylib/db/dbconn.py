@@ -12,6 +12,7 @@ import stat
 try: 
     from pygresql import pgdb
     from gppylib.commands.unix import UserId
+
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -131,10 +132,14 @@ class DbURL:
         
     
     def __str__(self):
+
+        # MPP-13617
+        def canonicalize(s):
+            if ':' not in s: return s
+            return '[' + s + ']'
+
         return "%s:%d:%s:%s:%s" % \
-            (self.pghost,self.pgport,self.pgdb,self.pguser,self.pgpass)    
-
-
+            (canonicalize(self.pghost),self.pgport,self.pgdb,self.pguser,self.pgpass)    
 
 
 def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTableMods=None, upgrade=False):
@@ -154,8 +159,18 @@ def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTable
     if upgrade:
         options += ' -c gp_maintenance_conn=true'
     
-    dsn_str = "" + str(dburl) + ": " + options + ":1"
-    conn = pgdb.connect(dsn=dsn_str)
+    # bypass pgdb.connect() and instead call pgdb._connect_
+    # to avoid silly issues with : in ipv6 address names and the url string
+    #
+    dbbase   = dburl.pgdb
+    dbhost   = dburl.pghost
+    dbport   = int(dburl.pgport)
+    dbopt    = options
+    dbtty    = "1"
+    dbuser   = dburl.pguser
+    dbpasswd = dburl.pgpass
+    cnx      = pgdb._connect_(dbbase, dbhost, dbport, dbopt, dbtty, dbuser, dbpasswd)
+    conn     = pgdb.pgdbCnx(cnx)
     
     #by default, libpq will print WARNINGS to stdout
     if not verbose:

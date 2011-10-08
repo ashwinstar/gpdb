@@ -26,6 +26,8 @@ import popen2
 from gppylib.util import ssh_utils
 from gppylib.gpparseopts import OptParser
 from gppylib.gpcoverage import GpCoverage
+from gppylib.parseutils import canonicalize_address
+
 
 progname = os.path.split(sys.argv[0])[-1]
 
@@ -127,6 +129,7 @@ try:
     
     proc = []
     for peer in GV.opt['-h']:
+        peer = canonicalize_address(peer) # MPP-13617
         cmd = scp + ' ' 
         for f in GV.filePath:
             cmd += f.replace(GV.opt['-J'], '%s:' % peer) + ' '
