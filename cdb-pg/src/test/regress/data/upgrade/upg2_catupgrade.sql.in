@@ -115,5 +115,5 @@ from gp_dist_random('gp_id');
 
 drop function @gpupgradeschemaname@.catDML(stmt text);
 drop function @gpupgradeschemaname@.addProcPIN(classoid oid, procid oid);
-
+drop function @gpupgradeschemaname@.removeDefaultPrivilege(tablenm text);
 \unset ON_ERROR_STOP
