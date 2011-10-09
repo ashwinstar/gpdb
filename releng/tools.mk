@@ -1,4 +1,4 @@
-RELENG_TOOLS=$(HOME)/.releng-tools
+RELENG_TOOLS=$(HOME)/releng-tools
 
 include $(BLD_TOP)/Makefile.global
 
@@ -24,5 +24,11 @@ $(RELENG_TOOLS)/%:
 	fi
 	mkdir -p $(RELENG_TOOLS)
 	cd $(RELENG_TOOLS); p4 -c releng-tools sync -f //tools/$(TOOL_NAME)/$(TOOL_VER)/dist/$(BLD_ARCH)/...
-	mv $(RELENG_TOOLS)/tmp/$(TOOL_NAME)/$(TOOL_VER)/dist/$(BLD_ARCH)/ $(RELENG_TOOLS)/$*
+	mv $(RELENG_TOOLS)/tmp/$(TOOL_NAME)/$(TOOL_VER)/dist/$(BLD_ARCH)/ $@
 	rm -rf $(RELENG_TOOLS)/tmp
+	# hack for R-2.13.0, and possibly other tools
+	if [ -f $@/$(TOOL_NAME)-$(BLD_ARCH)-$(TOOL_VER).targz ]; then \
+		cd $@; tar xvf $(TOOL_NAME)-$(BLD_ARCH)-$(TOOL_VER).targz; \
+		mv $@/$(BLD_ARCH)/* $@; \
+		rm -rf $@/$(BLD_ARCH) $@/$(TOOL_NAME)-$(BLD_ARCH)-$(TOOL_VER).targz; \
+	fi
