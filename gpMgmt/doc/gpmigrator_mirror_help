@@ -1,9 +1,9 @@
 COMMAND NAME: gpmigrator_mirror
 
-Upgrades an existing Greenplum Database 4.0.x system 
-with mirrors to 4.1.x.
+Upgrades an existing Greenplum Database 4.1.x system 
+with mirrors to 4.2.x.
 
-Use gpmigrator to upgrade a 4.0.x system that does not
+Use gpmigrator to upgrade a 4.2.x system that does not
 have mirrors.
 
 Note: Using gpmigrator_mirror on a system without mirrors
@@ -30,7 +30,7 @@ The following tasks should be performed prior to executing an upgrade:
 
 * Make sure you are logged in to the master host as the Greenplum Database 
   superuser (gpadmin).
-* Install the Greenplum Database 4.1 binaries on all Greenplum hosts.
+* Install the Greenplum Database 4.2 binaries on all Greenplum hosts.
 * Copy any custom modules from your existing installation to your 4.1 
   installation on all Greenplum hosts. For example, shared library files 
   for user-defined functions in $GPHOME/lib or PostgreSQL add-on modules 
@@ -49,7 +49,7 @@ The following tasks should be performed prior to executing an upgrade:
    you can restore this backup.
 * Remove the standby master from your system configuration (gpinitstandby -r).
 * Do a clean shutdown of your current system (gpstop).
-* Update your environment to source the 4.1 installation.
+* Update your environment to source the 4.2 installation.
 * Inform all database users of the upgrade and lockout time frame. Once the 
   upgrade is in process, users will not be allowed on the system until the 
   upgrade is complete.
@@ -59,8 +59,8 @@ The following tasks should be performed prior to executing an upgrade:
 DESCRIPTION
 *****************************************************
 
-The gpmigrator utility upgrades an existing Greenplum Database 4.0.x.x 
-system with mirrors to 4.1. This utility updates the system catalog 
+The gpmigrator utility upgrades an existing Greenplum Database 4.1.1.3
+system with mirrors to 4.2. This utility updates the system catalog 
 and internal version number, but not the actual software binaries. 
 During the migration process, all client connections to Greenplum 
 Database will be locked out.
@@ -116,12 +116,12 @@ Displays the version of this utility.
 EXAMPLE
 *****************************************************
 
-Upgrade to version 4.1 from version 4.0.4.0 with mirrors 
-(make sure you are using the 4.1 version of gpmigrator_mirror):
+Upgrade to version 4.2 from version 4.1.1.3 with mirrors 
+(make sure you are using the 4.2 version of gpmigrator_mirror):
 
-/usr/local/greenplum-db-4.1.x.x/bin/gpmigrator_mirror \
-  /usr/local/greenplum-db-4.0.4.0 \
-  /usr/local/greenplum-db-4.1.x.x
+/usr/local/greenplum-db-4.2.x.x/bin/gpmigrator_mirror \
+  /usr/local/greenplum-db-4.1.1.3 \
+  /usr/local/greenplum-db-4.2.x.x
 
 
 *****************************************************
