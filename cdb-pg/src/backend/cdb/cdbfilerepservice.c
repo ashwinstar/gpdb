@@ -298,7 +298,7 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 	bool isStateTransitionRequested = FALSE;
 	
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-	
+		
 	switch (fileRepProcessType)
 	{
 		case FileRepProcessTypeMain:
@@ -316,9 +316,6 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 				fileRepShmemArray[0]->state == FileRepStateFault)
 			{
 				FileRep_InsertConfigLogEntry("failure is detected in segment mirroring during backend shutdown, abort requested");
-
-				LWLockReleaseAll();
-				proc_exit(0);
 			}
 			/* no break */
 		default:
