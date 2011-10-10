@@ -13992,11 +13992,16 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 	Oid					 newrelid 	= InvalidOid;
 	PgPartRule   	    *orig_prule = NULL;
 	AlterPartitionCmd	*pc2 = NULL;
+	bool is_split = false;
 	List				*pcols = NIL; /* partitioned attributes of rel */
 	AlterPartitionIdType orig_pid_type = AT_AP_IDNone;	/* save for NOTICE msg at end... */
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
+	
+	/* Exchange for SPLIT is different from user-requested EXCHANGE.  The special
+	 * coding to indicate SPLIT is obscure. */
+	is_split = ((AlterPartitionCmd *)pc->arg2)->arg2 != NULL;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -14127,7 +14132,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		ok = map_part_attrs(rel, oldrel, &oldmap, FALSE);
 		Assert(ok);
 
-		newcons = cdb_exchange_part_constraints(rel, oldrel, newrel, validate);
+		newcons = cdb_exchange_part_constraints(rel, oldrel, newrel, validate, is_split);
 		tab->constraints = list_concat(tab->constraints, newcons);
 		CommandCounterIncrement();
 

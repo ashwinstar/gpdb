@@ -83,7 +83,8 @@ extern bool rel_is_leaf_partition(Oid relid);
 extern PartStatus rel_part_status(Oid relid);
 
 extern List *
-cdb_exchange_part_constraints(Relation table, Relation part, Relation cand, bool validate);
+cdb_exchange_part_constraints(Relation table, Relation part, Relation cand, 
+							  bool validate, bool is_split);
 
 extern void
 add_reg_part_dependency(Oid tableconid, Oid partconid);

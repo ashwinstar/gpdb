@@ -165,7 +165,7 @@ relation_has_supers(Oid relid);
 
 static NewConstraint * 
 constraint_apply_mapped(HeapTuple tuple, AttrMap *map, Relation cand, 
-						bool validate, Relation pgcon);
+						bool validate, bool is_split, Relation pgcon);
 
 static char *
 ChooseConstraintNameForPartitionCreate(const char *rname, 
@@ -508,7 +508,8 @@ List *
 cdb_exchange_part_constraints(Relation table, 
 						  Relation part, 
 						  Relation cand, 
-						  bool validate)
+						  bool validate,
+						  bool is_split)
 {
 	HTAB *hash_tbl;
 	HASHCTL hash_ctl;
@@ -772,7 +773,7 @@ cdb_exchange_part_constraints(Relation table,
 			
 			map_part_attrs(part, cand, &map, TRUE);
 			nc = constraint_apply_mapped(missing_part_constraint, map, cand,
-										 validate, pgcon);
+										 validate, is_split, pgcon);
 			if ( nc ) 
 				validation_list = lappend(validation_list, nc);
 			
@@ -795,7 +796,7 @@ cdb_exchange_part_constraints(Relation table,
 			HeapTuple tuple = (HeapTuple)lfirst(lc);
 			Form_pg_constraint mcon = (Form_pg_constraint)GETSTRUCT(tuple);
 			nc = constraint_apply_mapped(tuple, map, cand, 
-										 validate, pgcon);
+										 validate, is_split, pgcon);
 			if ( nc )
 				validation_list = lappend(validation_list, nc);
 			
@@ -7348,7 +7349,7 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
  */
 static NewConstraint * 
 constraint_apply_mapped(HeapTuple tuple, AttrMap *map, Relation cand, 
-						bool validate, Relation pgcon)
+						bool validate, bool is_split, Relation pgcon)
 {
 	Datum val;
 	bool isnull;
@@ -7488,11 +7489,36 @@ constraint_apply_mapped(HeapTuple tuple, AttrMap *map, Relation cand,
 		case CONSTRAINT_PRIMARY:
 		case CONSTRAINT_UNIQUE:
 		{
-			/* Index-backed constraints are handled as indexes.  No action here.
-			 
-			elog(WARNING,"Constraint type %c needs an index; not supported yet!!", con->contype);
-			 */
+			/* Index-backed constraints are handled as indexes.  No action here. */
+			char *what = (con->contype == CONSTRAINT_PRIMARY)? "PRIMARY KEY" :"UNIQUE";
+			char *who = NameStr(con->conname);
 			
+			if (is_split)
+			{
+				; /* nothing */
+			}
+			else if (validate)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("%s constraint \"%s\" missing", what, who),
+						 errhint("Add %s constraint \"%s\" to the candidate table"
+								 " or drop it from the partitioned table."
+								 , what, who),
+						 errOmitLocation(true)));
+			}
+			else 
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("WITHOUT VALIDATION incompatible with missing %s constraint \"%s\"", 
+								what, who),
+						 errhint("Add %s constraint %s to the candidate table"
+								 " or drop it from the partitioned table."
+								 , what, who),
+						 errOmitLocation(true)));
+					
+			}
 			break;
 		}
 		default:
