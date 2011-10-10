@@ -115,21 +115,30 @@ class TriggerGpPrimaryMirrorFailure(Exception): pass
 
 
 class ValidateVerification(Operation):
-    def __init__(self, content):
+    def __init__(self, content, primaries_only = True):
+        """
+        content and primaries_only dictate which portions of the gparray should
+        be returned. Their effects are cumulative, meaning:
+            content = None  and primaries_only = False  =>  all QEs
+            content = None  and primaries_only = True   =>  all primary segments
+            content = x     and primaries_only = False  =>  all segments with content x
+            content = x     and primaries_only = True   =>  the primary with content x
+        """ 
         self.content = content if content >= 0 else None
+        self.primaries_only = primaries_only
     def execute(self):
         dburl = dbconn.DbURL()
         gparray = GpArray.initFromCatalog(dburl)
-        logger.info('Validating fault strategy...')
         my_fault_strategy = gparray.getFaultStrategy()
         if my_fault_strategy != FAULT_STRATEGY_FILE_REPLICATION:
             raise NoMirroringError('Fault strategy %s does not support mirror verification.' % FAULT_STRATEGY_LABELS[my_fault_strategy])
+
         logger.info('Validating target contents...')
-        segs = gparray.getDbList()
+        to_verify = [x for x in gparray.getDbList() if x.isSegmentQE()]
         if self.content is not None:
-            to_verify = [x for x in gparray.getDbList() if x.getSegmentContentId() == self.content and x.isSegmentPrimary(current_role=True)]
-        else:
-            to_verify = [x for x in gparray.getDbList() if x.isSegmentPrimary(current_role=True)]
+            to_verify = [x for x in to_verify if x.getSegmentContentId() == self.content]
+        if self.primaries_only:
+            to_verify = [x for x in to_verify if x.isSegmentPrimary(current_role=True)]
         return to_verify
 class NoMirroringError(Exception): pass
 
@@ -221,11 +230,12 @@ class CleanVerification(Operation):
         Command('cleanup', 'rm -rf %s' % path).run(validateAfter=True)
         #RemoveTree(path).run()
 
-        to_clean = ValidateVerification(content = entry['vercontent']).run()
+        to_clean = ValidateVerification(content = entry['vercontent'],
+                                        primaries_only = False).run()
         pool = WorkerPool(min(len(to_clean), self.batch_default))
-        for pseg in to_clean:
-            host = pseg.getSegmentHostName()
-            path = os.path.join(pseg.getSegmentDataDirectory(), 'pg_verify', "*%s*" % self.token)
+        for seg in to_clean:
+            host = seg.getSegmentHostName()
+            path = os.path.join(seg.getSegmentDataDirectory(), 'pg_verify', "*%s*" % self.token)
             cmd = Command('cleanup', 'rm -f %s' % path, remoteHost=host)
             pool.addCommand(cmd)
 
@@ -276,7 +286,7 @@ class FinalizeVerification(Operation):
             return entry
 
         GatherResults(master_datadir = get_masterdatadir(),
-                      to_gather = to_inspect,
+                      content = entry['vercontent'],
                       token = self.token,
                       batch_default = self.batch_default).run()
 
@@ -306,13 +316,16 @@ class FinalizeVerification(Operation):
 
 
 class GatherResults(Operation):
-    def __init__(self, master_datadir, token, to_gather, batch_default):
+    def __init__(self, master_datadir, token, content, batch_default):
         self.master_datadir = master_datadir
         self.token = token
-        self.to_gather = to_gather
+        self.content = content
         self.batch_default = batch_default
     def execute(self):
         logger.info('Gathering results of verification %s...' % self.token)
+        to_gather = ValidateVerification(content = self.content,
+                                         primaries_only = False).run()
+
         dest_base = os.path.join(self.master_datadir, 'pg_verify', self.token)
         if CheckDir(dest_base).run():
             # TODO: if end user has mucked around with artifacts on master, a regathering may
@@ -320,31 +333,28 @@ class GatherResults(Operation):
             return
         MakeDir(dest_base).run()
 
-        pool = WorkerPool(min(len(self.to_gather), self.batch_default))
-        for pseg in self.to_gather:
-            host = pseg.getSegmentHostName()
-            content = pseg.getSegmentContentId()
-            src = os.path.join(pseg.getSegmentDataDirectory(), "pg_verify", "*%s*" % self.token)
+        pool = WorkerPool(min(len(to_gather), self.batch_default))
+        for seg in to_gather:
+            host = seg.getSegmentHostName()
+            content = seg.getSegmentContentId()
+            role = seg.getSegmentRole()
+            src = os.path.join(seg.getSegmentDataDirectory(), "pg_verify", "*%s*" % self.token)
 
-            dest = os.path.join(dest_base, str(content))
+            dest = os.path.join(dest_base, str(content), str(role))
             MakeDir(dest).run()
             cmd = Scp('consolidate', srcFile=src, srcHost=host, dstFile=dest)
             pool.addCommand(cmd)
 
         logger.info('Waiting for scp commands to complete...')
-        pool.wait_and_printdots(len(self.to_gather))
-
-        for cmd in pool.getCompletedItems():
-            res = cmd.get_results()
-            if not res.wasSuccessful():
-                logger.error('Failed to copy over on %s' % cmd.host)
-                logger.error('Error: %s' % res.stderr)
+        pool.wait_and_printdots(len(to_gather))
+        pool.check_results()
 
         dest = os.path.join(dest_base, 'verification_%s.fix' % self.token)
         with open(dest, 'w') as output:
-            for pseg in self.to_gather:
-                content = pseg.getSegmentContentId()
-                src = os.path.join(dest_base, str(content), 'verification_%s.fix' % self.token)
+            for seg in to_gather:
+                content = seg.getSegmentContentId()
+                role = seg.getSegmentRole()
+                src = os.path.join(dest_base, str(content), str(role), 'verification_%s.fix' % self.token)
                 with open(src, 'r') as input:
                     output.writelines(input.readlines())
         

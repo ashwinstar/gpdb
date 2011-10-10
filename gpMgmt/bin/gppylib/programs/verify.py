@@ -13,6 +13,7 @@ from gppylib import gplog
 from gppylib import userinput
 from gppylib.commands.gp import get_masterdatadir
 from gppylib.gpparseopts import OptParser, OptChecker
+from gppylib.mainUtils import UserAbortedException
 from gppylib.operations import Operation
 from gppylib.operations.verify import AbortVerification, CleanVerification, CleanDoneVerifications, FinalizeVerification, FinalizeAllVerifications, ResumeVerification, SuspendVerification, VerificationType, VerifyFilerep, VerificationState
 
