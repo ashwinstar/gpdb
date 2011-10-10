@@ -994,12 +994,12 @@ To add this filespace to the database please run the command:
         #   hostname:dbid:path
         #   ...
         fspacename = None
-	    for lineno, line in line_reader(config):
+        for lineno, line in line_reader(config):
 
-	        if fspacename is None:
-	            fspacename = parse_fspacename(self.options.config, lineno, line)
+            if fspacename is None:
+                fspacename = parse_fspacename(self.options.config, lineno, line)
                 if not isValidIdentifier(fspacename): 
-		            raise GPError('Invalid filespace name: %s' % fspacename)
+                    raise GPError('Invalid filespace name: %s' % fspacename)
                 continue
 
             host, dbid, path = parse_gpfilespace_line(self.options.config, lineno, line)
