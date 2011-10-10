@@ -10393,6 +10393,27 @@ SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
  ddd        | twod | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
 (4 rows)
 
+-- 20. MPP-14467 import data from file - field names with spaces
+DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
+CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
+("s 1" char(10), "s  2" varchar(10), s3 text, "dd ttt t t" timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
+LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+FORMAT 'CUSTOM' (formatter='fxwd_in', "s 1"='10', "s  2"='10', s3='10', "dd ttt t t"='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
+SELECT * FROM tbl_ext_fixedwidth ORDER BY "s 1";
+    s 1     | s  2 |   s3   |        dd ttt t t        | n1 | n2  |   n3   |  n4   |   n5    |   n6    |     n7     
+------------+------+--------+--------------------------+----+-----+--------+-------+---------+---------+------------
+ aaa        | twoa | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ bbb        | twob | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ ccc        | twoc | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ ddd        | twod | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ eee        | twoe | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ fff        | twof | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ ggg        | twog | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ hhh        | twoh | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ iii        | twoi | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+ jjj        | twoj | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
+(10 rows)
+
 -- --------------------------------------
 -- stop 'gpfdist'
 -- --------------------------------------

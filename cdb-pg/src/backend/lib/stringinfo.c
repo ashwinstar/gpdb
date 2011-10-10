@@ -333,3 +333,23 @@ truncateStringInfo(StringInfo str, int nchars)
     }
 }                               /* truncateStringInfo */
 
+/*
+ * Replace all occurances of a string in a StringInfo with a different string.
+ */
+void
+replaceStringInfoString(StringInfo str, char *replace, char *replacement)
+{
+	char	   *ptr;
+
+	while ((ptr = strstr(str->data, replace)) != NULL)
+	{
+		char	   *dup = pstrdup(str->data);
+
+		resetStringInfo(str);
+		appendBinaryStringInfo(str, dup, ptr - str->data);
+		appendStringInfoString(str, replacement);
+		appendStringInfoString(str, dup + (ptr - str->data) + strlen(replace));		
+		pfree(dup);
+	}
+}
+

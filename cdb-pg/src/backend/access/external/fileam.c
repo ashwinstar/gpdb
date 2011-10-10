@@ -2477,10 +2477,18 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 		{
 			char	*key = token;
 			char	*val = NULL;
-
+			StringInfoData key_modified;
+			
+			initStringInfo(&key_modified);
 
 			while (key)
 			{
+				
+				/* MPP-14467 - replace meta chars back to original */
+				resetStringInfo(&key_modified);
+				appendStringInfoString(&key_modified, key);
+				replaceStringInfoString(&key_modified, "<gpx20>", " ");
+				
 				val = strtokx2(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, true, encoding);
 				if (val)
@@ -2493,7 +2501,8 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 					}
 					else
 
-					l = lappend(l, makeDefElem(pstrdup(key), (Node *)makeString(pstrdup(val))));
+					l = lappend(l, makeDefElem(pstrdup(key_modified.data), 
+									(Node *)makeString(pstrdup(val))));
 				}
 				else
 					goto error;

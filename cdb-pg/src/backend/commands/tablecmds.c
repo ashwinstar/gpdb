@@ -17295,6 +17295,9 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 		
 		int 		len = 0;
 		const int	maxlen = 8 * 1024 - 1;
+		StringInfoData key_modified;
+		
+		initStringInfo(&key_modified);
 		
 		format_str = (char *) palloc0(maxlen + 1);
 		
@@ -17315,8 +17318,13 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 				formatter = strVal(defel->arg);
 			}
 			
-			sprintf((char *) format_str + len, "%s '%s' ", key, val);
-			len += strlen(key) + strlen(val) + 4;
+			/* MPP-14467 - replace any space chars with meta char */
+			resetStringInfo(&key_modified);
+			appendStringInfoString(&key_modified, key);
+			replaceStringInfoString(&key_modified, " ", "<gpx20>");
+			
+			sprintf((char *) format_str + len, "%s '%s' ", key_modified.data, val);
+			len += strlen(key_modified.data) + strlen(val) + 4;
 			
 			if (len > maxlen)
 				ereport(ERROR,

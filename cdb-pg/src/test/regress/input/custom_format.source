@@ -240,6 +240,14 @@ LOCATION ('gpfdist://@hostname@:7070/fixedwidth_3chars_line_delimiter.tbl')
 FORMAT 'CUSTOM' (formatter='fxwd_in', s1='10', s2='10', s3='10', dt='20', n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15', line_delim='@#$');
 SELECT * FROM tbl_ext_fixedwidth ORDER BY s1;
 
+-- 20. MPP-14467 import data from file - field names with spaces
+DROP EXTERNAL TABLE IF EXISTS tbl_ext_fixedwidth;
+CREATE READABLE EXTERNAL TABLE tbl_ext_fixedwidth 
+("s 1" char(10), "s  2" varchar(10), s3 text, "dd ttt t t" timestamp, n1 smallint, n2 integer, n3 bigint, n4 decimal, n5 numeric, n6 real, n7 double precision)                                                              
+LOCATION ('gpfdist://@hostname@:7070/fixedwidth_small_correct.tbl')       
+FORMAT 'CUSTOM' (formatter='fxwd_in', "s 1"='10', "s  2"='10', s3='10', "dd ttt t t"='20',n1='5', n2='10', n3='10', n4='10', n5='10', n6='10', n7='15');
+SELECT * FROM tbl_ext_fixedwidth ORDER BY "s 1";
+
 -- --------------------------------------
 -- stop 'gpfdist'
 -- --------------------------------------
