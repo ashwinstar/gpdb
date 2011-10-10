@@ -188,7 +188,7 @@ generate-pulse-installer-header(){
 		
 	EOF_HEADER
 
-	cat ${BLDWRAP_TOP}/../../../licenses/GPDB-LICENSE.txt
+	cat ${BLDWRAP_TOP}/../../licenses/GPDB-LICENSE.txt
 
 	cat <<-EOF_HEADER
 	
