@@ -493,3 +493,8 @@ select catDML('insert into @gpupgradeschemaname@.pg_pltemplate
   select ''pljavau'', false, ''pljavau_call_handler'', null, ''$libdir/pljava'', null
   where (select count(*) from @gpupgradeschemaname@.pg_pltemplate where tmplname=''pljavau'')=0') from gp_dist_random('gp_id');
 
+
+---
+--- Misc catalog cleanup
+---
+comment on type @gpupgradeschemaname@.line is 'geometric line (not implemented)';
