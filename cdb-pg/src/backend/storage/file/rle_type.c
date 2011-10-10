@@ -188,6 +188,16 @@ rle_type_comp(
 			 dataSizeBytes);
 	}
 
+	if (headerNullSize == inSizeBytes)
+	{
+		/* 
+		 * all that is in this buffer is the DatumStreamBlock header 
+		 * and the null bit map - no more work to do 
+		 * oddly I have seen block->ndatum be 1 in this case?
+		 */
+		return inSizeBytes;
+
+	}
 
 #endif
 
@@ -678,6 +688,17 @@ rle_type_decomp(
 			 block->ndatum,
 			 headerNullSize,
 			 dataSizeBytes);
+	}
+
+	if (headerNullSize == inSizeBytes)
+	{
+		/* 
+		 * all that is in this buffer is the DatumStreamBlock header 
+		 * and the null bit map - no more work to do 
+		 * oddly I have seen block->ndatum be 1 in this case?
+		 */
+		return inSizeBytes;
+
 	}
 
 #endif
