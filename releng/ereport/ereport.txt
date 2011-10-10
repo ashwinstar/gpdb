@@ -1,7 +1,7 @@
 aaaaa GP_IGNORE: aaag: aocsam - ./backend/access/aocs/aocsam.c
-aaag: aocsam:00000693:  ereport(ERROR, 
-aaag: aocsam:00000694:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-aaag: aocsam:00000695:  errmsg("append-only column-oriented tables do not support rows with OIDs"))); 
+aaag: aocsam:00000691:  ereport(ERROR, 
+aaag: aocsam:00000692:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+aaag: aocsam:00000693:  errmsg("append-only column-oriented tables do not support rows with OIDs"))); 
 aaaaa GP_IGNORE: aabc: aocssegfiles - ./backend/access/aocs/aocssegfiles.c
 aabc: aocssegfiles:00000403:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
 aabc: aocssegfiles:00000404:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
@@ -155,16 +155,16 @@ aabc: appendonlyam:00002087:  (errmsg("Append-only fetch requires scan prior seg
 aabc: appendonlyam:00002088:  "segmentFileNum %d, rowNum " INT64_FORMAT 
 aabc: appendonlyam:00002089:  ", currentSegmentFileNum %d", 
 aabc: appendonlyam:00002090:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
-aabc: appendonlyam:00002501:  ereport(ERROR, 
-aabc: appendonlyam:00002502:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002503:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002504:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002505:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
-aabc: appendonlyam:00002543:  ereport(ERROR, 
-aabc: appendonlyam:00002544:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002545:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002546:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002547:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002518:  ereport(ERROR, 
+aabc: appendonlyam:00002519:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002520:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002521:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002522:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002560:  ereport(ERROR, 
+aabc: appendonlyam:00002561:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002562:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002563:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002564:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
 aace: appendonlyblockdirectory:00000408:  ereport(ERROR, 
 aace: appendonlyblockdirectory:00000409:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -534,24 +534,24 @@ faag: fileam:00001784:  ereport(ERROR,
 faag: fileam:00001785:  (errcode_for_file_access(), 
 faag: fileam:00001786:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
 faag: fileam:00001787:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001902:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001904:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001910:  elog(NOTICE,"%s",a); 
-faag: fileam:00002500:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002501:  errmsg("external table internal parse error: " 
-faag: fileam:00002502:  "no formatter function name found"))); 
-faag: fileam:00002508:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002509:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002510:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00001910:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001912:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001918:  elog(NOTICE,"%s",a); 
 faag: fileam:00002517:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002518:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002519:  token))); 
-faag: fileam:00002521:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002522:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002523:  "line"))); 
-faag: fileam:00002574:  ereport(ERROR, 
-faag: fileam:00002575:  (errcode_for_file_access(), 
-faag: fileam:00002576:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00002518:  errmsg("external table internal parse error: " 
+faag: fileam:00002519:  "no formatter function name found"))); 
+faag: fileam:00002525:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002526:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002527:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002534:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002535:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002536:  token))); 
+faag: fileam:00002538:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002539:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002540:  "line"))); 
+faag: fileam:00002591:  ereport(ERROR, 
+faag: fileam:00002592:  (errcode_for_file_access(), 
+faag: fileam:00002593:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000159:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000188:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -2743,10 +2743,10 @@ pabd: pgxappendonly:00000745:  ereport(ERROR,
 pabd: pgxappendonly:00000746:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 pabd: pgxappendonly:00000747:  errmsg("got invalid blkdirrelid value: NULL"))); 
 aaaaa GP_IGNORE: pacb: pgxattributexencoding - ./backend/catalog/pg_attribute_encoding.c
-pacb: pgxattributexencoding:00000307:  elog(ERROR, "column \"%s\" does not exist", strVal(c->column)); 
-pacb: pgxattributexencoding:00000310:  elog(ERROR, "column \"%s\" is a system column", strVal(c->column)); 
-pacb: pgxattributexencoding:00000368:  elog(ERROR, "cannot find pg_attribute_encoding entry for relation \"%s\"", 
-pacb: pgxattributexencoding:00000369:  relname ? relname : "unknown"); 
+pacb: pgxattributexencoding:00000308:  elog(ERROR, "column \"%s\" does not exist", strVal(c->column)); 
+pacb: pgxattributexencoding:00000311:  elog(ERROR, "column \"%s\" is a system column", strVal(c->column)); 
+pacb: pgxattributexencoding:00000369:  elog(ERROR, "cannot find pg_attribute_encoding entry for relation \"%s\"", 
+pacb: pgxattributexencoding:00000370:  relname ? relname : "unknown"); 
 aaaaa GP_IGNORE: pabe: pgxcompression - ./backend/catalog/pg_compression.c
 pabe: pgxcompression:00000123:  elog(ERROR, "compression name \"%s\" exceeds maximum name length " 
 pabe: pgxcompression:00000124:  "of %d bytes", comptype, NAMEDATALEN - 1); 
@@ -2754,34 +2754,34 @@ pabe: pgxcompression:00000174:  ereport(ERROR,
 pabe: pgxcompression:00000175:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 pabe: pgxcompression:00000176:  errmsg("unknown compress type \"%s\"", 
 pabe: pgxcompression:00000177:  comptype))); 
-pabe: pgxcompression:00000504:  elog(ERROR, "out of memory"); 
-pabe: pgxcompression:00000554:  elog(ERROR, "out of memory"); 
-pabe: pgxcompression:00000563:  elog(ERROR, "buffer size %d insufficient for compressed data", 
-pabe: pgxcompression:00000564:  dst_sz); 
-pabe: pgxcompression:00000574:  elog(ERROR, "zlib encountered data in an unexpected format"); 
-pabe: pgxcompression:00000647:  elog(ERROR, 
-pabe: pgxcompression:00000648:  "RLE compression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
-pabe: pgxcompression:00000649:  state->byteLen, 
-pabe: pgxcompression:00000650:  state->colType, 
-pabe: pgxcompression:00000651:  state->align, 
-pabe: pgxcompression:00000652:  src_sz, 
-pabe: pgxcompression:00000653:  dst_sz, 
-pabe: pgxcompression:00000654:  *dst_used, 
-pabe: pgxcompression:00000655:  res); 
-pabe: pgxcompression:00000681:  elog(ERROR, 
-pabe: pgxcompression:00000682:  "RLE decompression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
-pabe: pgxcompression:00000683:  state->byteLen, 
-pabe: pgxcompression:00000684:  state->colType, 
-pabe: pgxcompression:00000685:  state->align, 
-pabe: pgxcompression:00000686:  src_sz, 
-pabe: pgxcompression:00000687:  dst_sz, 
-pabe: pgxcompression:00000688:  *dst_used, 
-pabe: pgxcompression:00000689:  res); 
-pabe: pgxcompression:00000705:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000712:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000719:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000726:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000733:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000505:  elog(ERROR, "out of memory"); 
+pabe: pgxcompression:00000555:  elog(ERROR, "out of memory"); 
+pabe: pgxcompression:00000564:  elog(ERROR, "buffer size %d insufficient for compressed data", 
+pabe: pgxcompression:00000565:  dst_sz); 
+pabe: pgxcompression:00000575:  elog(ERROR, "zlib encountered data in an unexpected format"); 
+pabe: pgxcompression:00000649:  elog(ERROR, 
+pabe: pgxcompression:00000650:  "RLE compression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+pabe: pgxcompression:00000651:  state->byteLen, 
+pabe: pgxcompression:00000652:  state->colType, 
+pabe: pgxcompression:00000653:  state->align, 
+pabe: pgxcompression:00000654:  src_sz, 
+pabe: pgxcompression:00000655:  dst_sz, 
+pabe: pgxcompression:00000656:  *dst_used, 
+pabe: pgxcompression:00000657:  res); 
+pabe: pgxcompression:00000683:  elog(ERROR, 
+pabe: pgxcompression:00000684:  "RLE decompression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+pabe: pgxcompression:00000685:  state->byteLen, 
+pabe: pgxcompression:00000686:  state->colType, 
+pabe: pgxcompression:00000687:  state->align, 
+pabe: pgxcompression:00000688:  src_sz, 
+pabe: pgxcompression:00000689:  dst_sz, 
+pabe: pgxcompression:00000690:  *dst_used, 
+pabe: pgxcompression:00000691:  res); 
+pabe: pgxcompression:00000707:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000714:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000721:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000728:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000735:  elog(ERROR, "dummy compression called directly"); 
 aaaaa GP_IGNORE: pabd: pgxconstraint - ./backend/catalog/pg_constraint.c
 pabd: pgxconstraint:00000445:  elog(ERROR, "could not find tuple for constraint %u", conId); 
 pabd: pgxconstraint:00000478:  elog(ERROR, "cache lookup failed for relation %u", 
@@ -3234,114 +3234,114 @@ cace: cdbappendonlystorageread:00001475:  largeContentPosition,
 cace: cdbappendonlystorageread:00001476:  largeContentLen, 
 cace: cdbappendonlystorageread:00001477:  -remainingLargeContentLen))); 
 aaaaa GP_IGNORE: cacf: cdbappendonlystoragewrite - ./backend/cdb/cdbappendonlystoragewrite.c
-cacf: cdbappendonlystoragewrite:00000362:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000363:  (errcode_for_file_access(), 
-cacf: cdbappendonlystoragewrite:00000364:  errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s': %s", 
-cacf: cdbappendonlystoragewrite:00000365:  filePathName, 
-cacf: cdbappendonlystoragewrite:00000366:  storageWrite->relationName, 
-cacf: cdbappendonlystoragewrite:00000367:  strerror(primaryError)))); 
-cacf: cdbappendonlystoragewrite:00000383:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000384:  (errcode(ERRCODE_IO_ERROR), 
-cacf: cdbappendonlystoragewrite:00000385:  errmsg("Append-only Storage Write error on segment file '%s' for relation '%s'. FileSeek offset = " INT64_FORMAT ". Error code = %d (%s)", 
-cacf: cdbappendonlystoragewrite:00000386:  filePathName, 
-cacf: cdbappendonlystoragewrite:00000387:  storageWrite->relationName, 
-cacf: cdbappendonlystoragewrite:00000388:  logicalEof, 
-cacf: cdbappendonlystoragewrite:00000389:  (int)seekResult, 
-cacf: cdbappendonlystoragewrite:00000390:  strerror((int)seekResult)))); 
-cacf: cdbappendonlystoragewrite:00000479:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000480:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacf: cdbappendonlystoragewrite:00000481:  errmsg("We do not expect files to be have a maximum length"))); 
-cacf: cdbappendonlystoragewrite:00000561:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000562:  (errcode_for_file_access(), 
-cacf: cdbappendonlystoragewrite:00000563:  errmsg("Could not flush (fsync) Append-Only segment file '%s' to disk for relation '%s': %s", 
-cacf: cdbappendonlystoragewrite:00000564:  storageWrite->segmentFileName, 
-cacf: cdbappendonlystoragewrite:00000565:  storageWrite->relationName, 
-cacf: cdbappendonlystoragewrite:00000566:  strerror(primaryError)))); 
-cacf: cdbappendonlystoragewrite:00000921:  elog(WARNING, "The GUC gp_appendonly_verify_write_block is false. Compressed write not checked."); 
-cacf: cdbappendonlystoragewrite:00000942:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000943:  (errmsg("Verify block during write found header checksum does not match. Expected 0x%X and found 0x%X", 
-cacf: cdbappendonlystoragewrite:00000944:  storedChecksum, 
-cacf: cdbappendonlystoragewrite:00000945:  computedChecksum), 
-cacf: cdbappendonlystoragewrite:00000946:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00000947:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00000959:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000960:  (errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00000961:  (int)checkError, 
-cacf: cdbappendonlystoragewrite:00000962:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00000963:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00000964:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00000989:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000990:  (errmsg("Verify block during write found bad append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00000991:  "Header check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00000992:  (int)checkError, 
-cacf: cdbappendonlystoragewrite:00000993:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00000994:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00000995:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00000998:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000999:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001000:  "DataLen %d does not equal expected length %d, ", 
-cacf: cdbappendonlystoragewrite:00001001:  uncompressedLen, 
-cacf: cdbappendonlystoragewrite:00001002:  expectedUncompressedLen), 
-cacf: cdbappendonlystoragewrite:00001003:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001004:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001008:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001009:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001010:  "CompressedLen %d does not equal expected length %d", 
-cacf: cdbappendonlystoragewrite:00001011:  compressedLen, 
-cacf: cdbappendonlystoragewrite:00001012:  expectedCompressedLen), 
-cacf: cdbappendonlystoragewrite:00001013:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001014:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001021:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001022:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001023:  "ExecutorBlockKind %d does not equal expected value %d.", 
-cacf: cdbappendonlystoragewrite:00001024:  executorBlockKind, 
-cacf: cdbappendonlystoragewrite:00001025:  expectedExecutorBlockKind), 
-cacf: cdbappendonlystoragewrite:00001026:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001027:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001032:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001033:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001034:  "RowCount %d does not equal expected value %d", 
-cacf: cdbappendonlystoragewrite:00001035:  rowCount, 
-cacf: cdbappendonlystoragewrite:00001036:  expectedRowCount), 
-cacf: cdbappendonlystoragewrite:00001037:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001038:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001080:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001081:  (errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! " 
-cacf: cdbappendonlystoragewrite:00001082:  "Memcmp result %d", 
-cacf: cdbappendonlystoragewrite:00001083:  test), 
-cacf: cdbappendonlystoragewrite:00001084:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001085:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001110:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001111:  (errmsg("Bad append-only storage header of type LargeContent. Header check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00001112:  (int)checkError, 
-cacf: cdbappendonlystoragewrite:00001113:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00001114:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001115:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001137:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001138:  (errmsg("Verify block during write found VarBlock is not valid " 
-cacf: cdbappendonlystoragewrite:00001139:  "Valid block check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00001140:  varBlockCheckError, 
-cacf: cdbappendonlystoragewrite:00001141:  VarBlockGetCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00001142:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001143:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001156:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001157:  (errmsg("Verify block during write found row count %d in append-only storage header does not match VarBlock item count %d", 
-cacf: cdbappendonlystoragewrite:00001158:  rowCount, 
-cacf: cdbappendonlystoragewrite:00001159:  readerItemCount), 
-cacf: cdbappendonlystoragewrite:00001160:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001161:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001196:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001197:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacf: cdbappendonlystoragewrite:00001198:  errmsg("We do not expect files to be have a maximum length"), 
-cacf: cdbappendonlystoragewrite:00001199:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001378:  elog(ERROR, 
-cacf: cdbappendonlystoragewrite:00001379:  "Append-only content too large AO storage block (table '%s', " 
-cacf: cdbappendonlystoragewrite:00001380:  "content length = %d, maximum buffer length %d, complete header length %d, first row number is set %s)", 
-cacf: cdbappendonlystoragewrite:00001381:  storageWrite->relationName, 
-cacf: cdbappendonlystoragewrite:00001382:  contentLen, 
-cacf: cdbappendonlystoragewrite:00001383:  storageWrite->maxBufferLen, 
-cacf: cdbappendonlystoragewrite:00001384:  storageWrite->currentCompleteHeaderLen, 
-cacf: cdbappendonlystoragewrite:00001385:  (storageWrite->isFirstRowNumSet ? "true" : "false")); 
+cacf: cdbappendonlystoragewrite:00000357:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000358:  (errcode_for_file_access(), 
+cacf: cdbappendonlystoragewrite:00000359:  errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s': %s", 
+cacf: cdbappendonlystoragewrite:00000360:  filePathName, 
+cacf: cdbappendonlystoragewrite:00000361:  storageWrite->relationName, 
+cacf: cdbappendonlystoragewrite:00000362:  strerror(primaryError)))); 
+cacf: cdbappendonlystoragewrite:00000378:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000379:  (errcode(ERRCODE_IO_ERROR), 
+cacf: cdbappendonlystoragewrite:00000380:  errmsg("Append-only Storage Write error on segment file '%s' for relation '%s'. FileSeek offset = " INT64_FORMAT ". Error code = %d (%s)", 
+cacf: cdbappendonlystoragewrite:00000381:  filePathName, 
+cacf: cdbappendonlystoragewrite:00000382:  storageWrite->relationName, 
+cacf: cdbappendonlystoragewrite:00000383:  logicalEof, 
+cacf: cdbappendonlystoragewrite:00000384:  (int)seekResult, 
+cacf: cdbappendonlystoragewrite:00000385:  strerror((int)seekResult)))); 
+cacf: cdbappendonlystoragewrite:00000474:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000475:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cacf: cdbappendonlystoragewrite:00000476:  errmsg("We do not expect files to be have a maximum length"))); 
+cacf: cdbappendonlystoragewrite:00000556:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000557:  (errcode_for_file_access(), 
+cacf: cdbappendonlystoragewrite:00000558:  errmsg("Could not flush (fsync) Append-Only segment file '%s' to disk for relation '%s': %s", 
+cacf: cdbappendonlystoragewrite:00000559:  storageWrite->segmentFileName, 
+cacf: cdbappendonlystoragewrite:00000560:  storageWrite->relationName, 
+cacf: cdbappendonlystoragewrite:00000561:  strerror(primaryError)))); 
+cacf: cdbappendonlystoragewrite:00000916:  elog(WARNING, "The GUC gp_appendonly_verify_write_block is false. Compressed write not checked."); 
+cacf: cdbappendonlystoragewrite:00000937:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000938:  (errmsg("Verify block during write found header checksum does not match. Expected 0x%X and found 0x%X", 
+cacf: cdbappendonlystoragewrite:00000939:  storedChecksum, 
+cacf: cdbappendonlystoragewrite:00000940:  computedChecksum), 
+cacf: cdbappendonlystoragewrite:00000941:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00000942:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00000954:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000955:  (errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00000956:  (int)checkError, 
+cacf: cdbappendonlystoragewrite:00000957:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00000958:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00000959:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00000984:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000985:  (errmsg("Verify block during write found bad append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00000986:  "Header check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00000987:  (int)checkError, 
+cacf: cdbappendonlystoragewrite:00000988:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00000989:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00000990:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00000993:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000994:  (errmsg("Verify block during write found append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00000995:  "DataLen %d does not equal expected length %d, ", 
+cacf: cdbappendonlystoragewrite:00000996:  uncompressedLen, 
+cacf: cdbappendonlystoragewrite:00000997:  expectedUncompressedLen), 
+cacf: cdbappendonlystoragewrite:00000998:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00000999:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001003:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001004:  (errmsg("Verify block during write found append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00001005:  "CompressedLen %d does not equal expected length %d", 
+cacf: cdbappendonlystoragewrite:00001006:  compressedLen, 
+cacf: cdbappendonlystoragewrite:00001007:  expectedCompressedLen), 
+cacf: cdbappendonlystoragewrite:00001008:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001009:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001016:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001017:  (errmsg("Verify block during write found append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00001018:  "ExecutorBlockKind %d does not equal expected value %d.", 
+cacf: cdbappendonlystoragewrite:00001019:  executorBlockKind, 
+cacf: cdbappendonlystoragewrite:00001020:  expectedExecutorBlockKind), 
+cacf: cdbappendonlystoragewrite:00001021:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001022:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001027:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001028:  (errmsg("Verify block during write found append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00001029:  "RowCount %d does not equal expected value %d", 
+cacf: cdbappendonlystoragewrite:00001030:  rowCount, 
+cacf: cdbappendonlystoragewrite:00001031:  expectedRowCount), 
+cacf: cdbappendonlystoragewrite:00001032:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001033:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001075:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001076:  (errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! " 
+cacf: cdbappendonlystoragewrite:00001077:  "Memcmp result %d", 
+cacf: cdbappendonlystoragewrite:00001078:  test), 
+cacf: cdbappendonlystoragewrite:00001079:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001080:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001105:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001106:  (errmsg("Bad append-only storage header of type LargeContent. Header check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00001107:  (int)checkError, 
+cacf: cdbappendonlystoragewrite:00001108:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00001109:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001110:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001132:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001133:  (errmsg("Verify block during write found VarBlock is not valid " 
+cacf: cdbappendonlystoragewrite:00001134:  "Valid block check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00001135:  varBlockCheckError, 
+cacf: cdbappendonlystoragewrite:00001136:  VarBlockGetCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00001137:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001138:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001151:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001152:  (errmsg("Verify block during write found row count %d in append-only storage header does not match VarBlock item count %d", 
+cacf: cdbappendonlystoragewrite:00001153:  rowCount, 
+cacf: cdbappendonlystoragewrite:00001154:  readerItemCount), 
+cacf: cdbappendonlystoragewrite:00001155:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001156:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001191:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001192:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cacf: cdbappendonlystoragewrite:00001193:  errmsg("We do not expect files to be have a maximum length"), 
+cacf: cdbappendonlystoragewrite:00001194:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001373:  elog(ERROR, 
+cacf: cdbappendonlystoragewrite:00001374:  "Append-only content too large AO storage block (table '%s', " 
+cacf: cdbappendonlystoragewrite:00001375:  "content length = %d, maximum buffer length %d, complete header length %d, first row number is set %s)", 
+cacf: cdbappendonlystoragewrite:00001376:  storageWrite->relationName, 
+cacf: cdbappendonlystoragewrite:00001377:  contentLen, 
+cacf: cdbappendonlystoragewrite:00001378:  storageWrite->maxBufferLen, 
+cacf: cdbappendonlystoragewrite:00001379:  storageWrite->currentCompleteHeaderLen, 
+cacf: cdbappendonlystoragewrite:00001380:  (storageWrite->isFirstRowNumSet ? "true" : "false")); 
 aaaaa GP_IGNORE: caaj: cdbbackup - ./backend/cdb/cdbbackup.c
 caaj: cdbbackup:00000245:  ereport(ERROR, 
 caaj: cdbbackup:00000246:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -4790,37 +4790,37 @@ cacc: cdbfilerepresyncworker:00000731:  errhint("run gprecoverseg -F (full copy)
 cacc: cdbfilerepresyncworker:00000732:  errSendAlert(true), 
 cacc: cdbfilerepresyncworker:00000733:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cabh: cdbfilerepservice - ./backend/cdb/cdbfilerepservice.c
-cabh: cdbfilerepservice:00000407:  ereport(WARNING, 
-cabh: cdbfilerepservice:00000408:  (errmsg("mirror failure, " 
-cabh: cdbfilerepservice:00000409:  "unexpected filerep state transition from '%s' to '%s' " 
-cabh: cdbfilerepservice:00000410:  "failover requested", 
-cabh: cdbfilerepservice:00000411:  FileRepStateToString[fileRepState], 
-cabh: cdbfilerepservice:00000412:  FileRepStateToString[fileRepStateLocal]), 
-cabh: cdbfilerepservice:00000413:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
-cabh: cdbfilerepservice:00000432:  ereport(WARNING, 
-cabh: cdbfilerepservice:00000433:  (errmsg("mirror failure, " 
-cabh: cdbfilerepservice:00000434:  "unexpected filerep state transition from '%s' to '%s' " 
-cabh: cdbfilerepservice:00000435:  "failover requested", 
-cabh: cdbfilerepservice:00000436:  FileRepStateToString[fileRepState], 
-cabh: cdbfilerepservice:00000437:  FileRepStateToString[fileRepStateLocal]), 
-cabh: cdbfilerepservice:00000438:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
-cabh: cdbfilerepservice:00000463:  ereport(WARNING, 
-cabh: cdbfilerepservice:00000464:  (errmsg("mirror failure, " 
-cabh: cdbfilerepservice:00000465:  "unexpected filerep state transition from '%s' to '%s' " 
-cabh: cdbfilerepservice:00000466:  "failover requested", 
-cabh: cdbfilerepservice:00000467:  FileRepStateToString[fileRepState], 
-cabh: cdbfilerepservice:00000468:  FileRepStateToString[fileRepStateLocal]), 
-cabh: cdbfilerepservice:00000469:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
-cabh: cdbfilerepservice:00000492:  ereport(WARNING, 
-cabh: cdbfilerepservice:00000493:  (errmsg("mirror failure, " 
-cabh: cdbfilerepservice:00000494:  "unexpected filerep state transition from '%s' to '%s' " 
-cabh: cdbfilerepservice:00000495:  "failover requested", 
-cabh: cdbfilerepservice:00000496:  FileRepStateToString[fileRepState], 
-cabh: cdbfilerepservice:00000497:  FileRepStateToString[fileRepStateLocal]), 
-cabh: cdbfilerepservice:00000498:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
-cabh: cdbfilerepservice:00000588:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-cabh: cdbfilerepservice:00000589:  errmsg("database 'postgres' does not exist"))); 
-cabh: cdbfilerepservice:00000616:  elog(FATAL, "bad backend id: %d", MyBackendId); 
+cabh: cdbfilerepservice:00000404:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000405:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000406:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000407:  "failover requested", 
+cabh: cdbfilerepservice:00000408:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000409:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000410:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000429:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000430:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000431:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000432:  "failover requested", 
+cabh: cdbfilerepservice:00000433:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000434:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000435:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000460:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000461:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000462:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000463:  "failover requested", 
+cabh: cdbfilerepservice:00000464:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000465:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000466:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000489:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000490:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000491:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000492:  "failover requested", 
+cabh: cdbfilerepservice:00000493:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000494:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000495:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000585:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+cabh: cdbfilerepservice:00000586:  errmsg("database 'postgres' does not exist"))); 
+cabh: cdbfilerepservice:00000613:  elog(FATAL, "bad backend id: %d", MyBackendId); 
 aaaaa GP_IGNORE: cabg: cdbfilerepverify - ./backend/cdb/cdbfilerepverify.c
 cabg: cdbfilerepverify:00000618:  ereport(WARNING, 
 cabg: cdbfilerepverify:00000619:  (errcode_for_file_access(), 
@@ -6127,319 +6127,333 @@ caba: cdboidsync:00000061:  ereport(ERROR, (errmsg("pg_highest_oid error (gather
 caba: cdboidsync:00000062:  errdetail("%s", errbuf.data))); 
 caba: cdboidsync:00000068:  elog(ERROR,"dboid: resultStatus not tuples_Ok"); 
 aaaaa GP_IGNORE: cabc: cdbpartition - ./backend/cdb/cdbpartition.c
-cabc: cdbpartition:00000607:  ereport(WARNING, 
-cabc: cdbpartition:00000608:  (errcode(ERRCODE_WARNING), 
-cabc: cdbpartition:00000609:  errmsg("ignoring inconsistency: \"%s\" " 
-cabc: cdbpartition:00000610:  "has no constraint corresponding to \"%s\" " 
-cabc: cdbpartition:00000611:  "on \"%s\"", 
-cabc: cdbpartition:00000612:  RelationGetRelationName(part), 
-cabc: cdbpartition:00000613:  NameStr(con->conname), 
-cabc: cdbpartition:00000614:  RelationGetRelationName(table)), 
-cabc: cdbpartition:00000615:  errOmitLocation(true))); 
-cabc: cdbpartition:00000651:  elog(ERROR, 
-cabc: cdbpartition:00000652:  "multiple partition constraints (same key) on \"%s\"", 
-cabc: cdbpartition:00000653:  RelationGetRelationName(part)); 
-cabc: cdbpartition:00000667:  elog(ERROR, 
-cabc: cdbpartition:00000668:  "invalid partition constraint on \"%s\"", 
-cabc: cdbpartition:00000669:  RelationGetRelationName(part)); 
-cabc: cdbpartition:00000735:  elog(ERROR, "constraint hash table inconsistent"); 
-cabc: cdbpartition:00000746:  ereport(ERROR, 
-cabc: cdbpartition:00000747:  (errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION), 
-cabc: cdbpartition:00000748:  errmsg("invalid constraint(s) found on \"%s\": %s", 
-cabc: cdbpartition:00000749:  RelationGetRelationName(cand), 
-cabc: cdbpartition:00000750:  constraint_names(excess_constraints)), 
-cabc: cdbpartition:00000751:  errhint("drop the invalid constraints and retry"), 
-cabc: cdbpartition:00000752:  errOmitLocation(true))); 
-cabc: cdbpartition:00000771:  elog(ERROR,"Invalid partition constration, not CHECK type"); 
-cabc: cdbpartition:00001014:  elog(ERROR, "unknown partitioning type %i", type); 
-cabc: cdbpartition:00001041:  elog(ERROR, "unrecognized partitioning kind '%c'", 
-cabc: cdbpartition:00001042:  c); 
-cabc: cdbpartition:00001507:  elog(ERROR, "unknown partitioning type %i", pby->partType); 
-cabc: cdbpartition:00002466:  elog(ERROR, "could not find pg_partition entry with oid %d for " 
-cabc: cdbpartition:00002467:  "pg_partition_rule with child table %d", paroid, relid); 
-cabc: cdbpartition:00002849:  ereport(ERROR, 
-cabc: cdbpartition:00002850:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-cabc: cdbpartition:00002851:  errmsg("too many columns in boundary specification (%d > %d)", 
-cabc: cdbpartition:00002852:  jj, ii))); 
-cabc: cdbpartition:00002855:  ereport(ERROR, 
-cabc: cdbpartition:00002856:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-cabc: cdbpartition:00002857:  errmsg("too many columns in boundary specification (%d > %d)", 
-cabc: cdbpartition:00002858:  jj, part->parnatts))); 
-cabc: cdbpartition:00002873:  ereport(ERROR, 
-cabc: cdbpartition:00002874:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-cabc: cdbpartition:00002875:  errmsg("Not a constant expression"))); 
-cabc: cdbpartition:00002887:  ereport(ERROR, 
-cabc: cdbpartition:00002888:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-cabc: cdbpartition:00002889:  errmsg("cannot coerce column type (%s versus %s)", 
-cabc: cdbpartition:00002890:  format_type_be(c1->consttype), 
-cabc: cdbpartition:00002891:  format_type_be(lhsid)))); 
-cabc: cdbpartition:00003591:  elog(ERROR, "unrecognized partitioning kind '%c'", 
-cabc: cdbpartition:00003592:  part->parkind); 
-cabc: cdbpartition:00003684:  ereport(ERROR, 
-cabc: cdbpartition:00003685:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-cabc: cdbpartition:00003686:  errmsg("No partition id specified for %s", 
-cabc: cdbpartition:00003687:  relname), 
-cabc: cdbpartition:00003688:  errOmitLocation(true))); 
-cabc: cdbpartition:00003756:  ereport(ERROR, 
-cabc: cdbpartition:00003757:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00003758:  errmsg("%s is not partitioned", 
-cabc: cdbpartition:00003759:  relname), 
-cabc: cdbpartition:00003760:  errOmitLocation(true))); 
-cabc: cdbpartition:00003826:  ereport(ERROR, 
-cabc: cdbpartition:00003827:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-cabc: cdbpartition:00003828:  errmsg("cannot find partition by RANK -- " 
-cabc: cdbpartition:00003829:  "%s is %s partitioned", 
-cabc: cdbpartition:00003830:  relname, 
-cabc: cdbpartition:00003831:  parTypName), 
-cabc: cdbpartition:00003832:  errOmitLocation(true))); 
-cabc: cdbpartition:00003954:  ereport(ERROR, 
-cabc: cdbpartition:00003955:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-cabc: cdbpartition:00003956:  errmsg("FOR expression matches " 
-cabc: cdbpartition:00003957:  "DEFAULT partition%s of %s", 
-cabc: cdbpartition:00003958:  prule->isName ? 
-cabc: cdbpartition:00003959:  partIdStr : "", 
-cabc: cdbpartition:00003960:  relname), 
-cabc: cdbpartition:00003961:  errhint("FOR expression may only specify " 
-cabc: cdbpartition:00003962:  "a non-default partition in this context."), 
-cabc: cdbpartition:00003963:  errOmitLocation(true))); 
-cabc: cdbpartition:00003979:  ereport(ERROR, 
-cabc: cdbpartition:00003980:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00003981:  errmsg("partition%s of %s does not exist", 
-cabc: cdbpartition:00003982:  partIdStr, 
-cabc: cdbpartition:00003983:  relname), 
-cabc: cdbpartition:00003984:  errOmitLocation(true))); 
-cabc: cdbpartition:00003987:  ereport(ERROR, 
-cabc: cdbpartition:00003988:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00003989:  errmsg("DEFAULT partition of %s does not exist", 
-cabc: cdbpartition:00003990:  relname), 
-cabc: cdbpartition:00003991:  errOmitLocation(true))); 
-cabc: cdbpartition:00004010:  ereport(ERROR, 
-cabc: cdbpartition:00004011:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-cabc: cdbpartition:00004012:  errmsg("partition%s of %s already exists", 
-cabc: cdbpartition:00004013:  partIdStr, 
-cabc: cdbpartition:00004014:  relname), 
-cabc: cdbpartition:00004015:  errOmitLocation(true))); 
-cabc: cdbpartition:00004018:  ereport(ERROR, 
-cabc: cdbpartition:00004019:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-cabc: cdbpartition:00004020:  errmsg("DEFAULT partition%s of %s already exists", 
-cabc: cdbpartition:00004021:  prule->isName ? 
-cabc: cdbpartition:00004022:  partIdStr : "", 
-cabc: cdbpartition:00004023:  relname), 
-cabc: cdbpartition:00004024:  errOmitLocation(true))); 
-cabc: cdbpartition:00004642:  ereport(ERROR, 
-cabc: cdbpartition:00004643:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00004644:  errmsg("cannot specify EVERY when adding " 
-cabc: cdbpartition:00004645:  "RANGE partition to %s", 
-cabc: cdbpartition:00004646:  lrelname), 
-cabc: cdbpartition:00004647:  errOmitLocation(true))); 
-cabc: cdbpartition:00004650:  ereport(ERROR, 
-cabc: cdbpartition:00004651:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00004652:  errmsg("Need START or END when adding " 
-cabc: cdbpartition:00004653:  "RANGE partition to %s", 
-cabc: cdbpartition:00004654:  lrelname), 
-cabc: cdbpartition:00004655:  errOmitLocation(true))); 
-cabc: cdbpartition:00004752:  ereport(ERROR, 
-cabc: cdbpartition:00004753:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004754:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004755:  "partition"), 
-cabc: cdbpartition:00004756:  errOmitLocation(true))); 
-cabc: cdbpartition:00004810:  ereport(ERROR, 
-cabc: cdbpartition:00004811:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004812:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004813:  "partition"), 
-cabc: cdbpartition:00004814:  errOmitLocation(true))); 
-cabc: cdbpartition:00004925:  ereport(ERROR, 
-cabc: cdbpartition:00004926:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004927:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004928:  "partition"), 
-cabc: cdbpartition:00004929:  errOmitLocation(true))); 
-cabc: cdbpartition:00004967:  ereport(ERROR, 
-cabc: cdbpartition:00004968:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004969:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004970:  "partition"), 
-cabc: cdbpartition:00004971:  errOmitLocation(true))); 
-cabc: cdbpartition:00005632:  ereport(ERROR, 
-cabc: cdbpartition:00005633:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00005634:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00005635:  "partition%s", 
-cabc: cdbpartition:00005636:  (prule && prule->isName) ? 
-cabc: cdbpartition:00005637:  prule->partIdStr : ""), 
-cabc: cdbpartition:00005638:  errOmitLocation(true))); 
-cabc: cdbpartition:00005691:  ereport(ERROR, 
-cabc: cdbpartition:00005692:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00005693:  errmsg("new partition definition overlaps " 
-cabc: cdbpartition:00005694:  "existing partition%s of %s", 
-cabc: cdbpartition:00005695:  prule->partIdStr, 
-cabc: cdbpartition:00005696:  lrelname), 
-cabc: cdbpartition:00005697:  errOmitLocation(true))); 
-cabc: cdbpartition:00005813:  elog(ERROR, "cache lookup failed for relation %u", 
-cabc: cdbpartition:00005814:  RelationGetRelid(rel)); 
-cabc: cdbpartition:00006195:  elog(ERROR, "cache lookup failed for relation %u", oldrelid); 
-cabc: cdbpartition:00006203:  elog(ERROR, "cache lookup failed for relation %u", newrelid); 
-cabc: cdbpartition:00006262:  ereport(ERROR, 
-cabc: cdbpartition:00006263:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006264:  errmsg("cannot MODIFY %s partition%s for " 
-cabc: cdbpartition:00006265:  "relation \"%s\" to ADD values -- would " 
-cabc: cdbpartition:00006266:  "overlap DEFAULT partition \"%s\"", 
-cabc: cdbpartition:00006267:  "LIST", 
-cabc: cdbpartition:00006268:  prule->partIdStr, 
-cabc: cdbpartition:00006269:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006270:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006271:  errhint("need to SPLIT partition \"%s\"", 
-cabc: cdbpartition:00006272:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006273:  errOmitLocation(true))); 
-cabc: cdbpartition:00006323:  ereport(ERROR, 
-cabc: cdbpartition:00006324:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006325:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006326:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006327:  "would overlap " 
-cabc: cdbpartition:00006328:  "existing partition%s", 
-cabc: cdbpartition:00006329:  prule->partIdStr, 
-cabc: cdbpartition:00006330:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006331:  prule2->isName ? 
-cabc: cdbpartition:00006332:  prule2->partIdStr : ""), 
-cabc: cdbpartition:00006333:  errOmitLocation(true))); 
-cabc: cdbpartition:00006335:  ereport(ERROR, 
-cabc: cdbpartition:00006336:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006337:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006338:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006339:  "ADD value has duplicate in " 
-cabc: cdbpartition:00006340:  "existing partition", 
-cabc: cdbpartition:00006341:  prule->partIdStr, 
-cabc: cdbpartition:00006342:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00006343:  errOmitLocation(true))); 
-cabc: cdbpartition:00006354:  ereport(ERROR, 
-cabc: cdbpartition:00006355:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006356:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006357:  "relation \"%s\" -- DROP value not found", 
-cabc: cdbpartition:00006358:  prule->partIdStr, 
-cabc: cdbpartition:00006359:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00006360:  errOmitLocation(true))); 
-cabc: cdbpartition:00006365:  ereport(ERROR, 
-cabc: cdbpartition:00006366:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006367:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006368:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006369:  "found DROP value in%s partition%s", 
-cabc: cdbpartition:00006370:  prule->partIdStr, 
-cabc: cdbpartition:00006371:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006372:  prule2->isName ? "" : "other", 
-cabc: cdbpartition:00006373:  prule2->isName ? prule2->partIdStr : ""), 
-cabc: cdbpartition:00006374:  errOmitLocation(true))); 
-cabc: cdbpartition:00006486:  ereport(ERROR, 
-cabc: cdbpartition:00006487:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006488:  errmsg("cannot MODIFY %s partition%s for " 
-cabc: cdbpartition:00006489:  "relation \"%s\" to extend range -- would " 
-cabc: cdbpartition:00006490:  "overlap DEFAULT partition \"%s\"", 
-cabc: cdbpartition:00006491:  "RANGE", 
-cabc: cdbpartition:00006492:  prule->partIdStr, 
-cabc: cdbpartition:00006493:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006494:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006495:  errhint("need to SPLIT partition \"%s\"", 
-cabc: cdbpartition:00006496:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006497:  errOmitLocation(true))); 
-cabc: cdbpartition:00006641:  ereport(ERROR, 
-cabc: cdbpartition:00006642:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006643:  errmsg("cannot MODIFY %s partition%s for " 
-cabc: cdbpartition:00006644:  "relation \"%s\" to extend range -- would " 
-cabc: cdbpartition:00006645:  "overlap DEFAULT partition \"%s\"", 
-cabc: cdbpartition:00006646:  "RANGE", 
-cabc: cdbpartition:00006647:  prule->partIdStr, 
-cabc: cdbpartition:00006648:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006649:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006650:  errhint("need to SPLIT partition \"%s\"", 
-cabc: cdbpartition:00006651:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006652:  errOmitLocation(true))); 
-cabc: cdbpartition:00006781:  ereport(ERROR, 
-cabc: cdbpartition:00006782:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006783:  errmsg("cannot MODIFY RANGE partition%s for " 
-cabc: cdbpartition:00006784:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006785:  "would overlap " 
-cabc: cdbpartition:00006786:  "existing partition%s", 
-cabc: cdbpartition:00006787:  prule->partIdStr, 
-cabc: cdbpartition:00006788:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006789:  (prule2 && prule2->isName) ? 
-cabc: cdbpartition:00006790:  prule2->partIdStr : ""), 
-cabc: cdbpartition:00006791:  errOmitLocation(true))); 
-cabc: cdbpartition:00006897:  ereport(ERROR, 
-cabc: cdbpartition:00006898:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006899:  errmsg("relation name \"%s\" for child partition " 
-cabc: cdbpartition:00006900:  "is too long", 
-cabc: cdbpartition:00006901:  newRelNameBuf))); 
-cabc: cdbpartition:00006968:  elog(ERROR, "could not find operator"); 
-cabc: cdbpartition:00007116:  ereport(ERROR, 
-cabc: cdbpartition:00007117:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-cabc: cdbpartition:00007118:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-cabc: cdbpartition:00007119:  cname, 
-cabc: cdbpartition:00007120:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007121:  errOmitLocation(true))); 
-cabc: cdbpartition:00007156:  ereport(ERROR, 
-cabc: cdbpartition:00007157:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007158:  errmsg("cannot exchange relation " 
-cabc: cdbpartition:00007159:  "which is not a table"))); 
-cabc: cdbpartition:00007171:  elog(ERROR, "existing part \"%s\" not congruent with" 
-cabc: cdbpartition:00007172:  "partitioned table \"%s\"", 
-cabc: cdbpartition:00007173:  RelationGetRelationName(oldrel), 
-cabc: cdbpartition:00007174:  RelationGetRelationName(rel)); 
-cabc: cdbpartition:00007190:  ereport(ERROR, 
-cabc: cdbpartition:00007191:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007192:  errmsg("owner of \"%s\" must be the same as that " 
-cabc: cdbpartition:00007193:  "of \"%s\"", 
-cabc: cdbpartition:00007194:  RelationGetRelationName(newrel), 
-cabc: cdbpartition:00007195:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007196:  errOmitLocation(true))); 
-cabc: cdbpartition:00007204:  ereport(ERROR, 
-cabc: cdbpartition:00007205:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007206:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
-cabc: cdbpartition:00007207:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00007208:  RelationGetRelationName(newrel)), 
-cabc: cdbpartition:00007209:  errOmitLocation(true))); 
-cabc: cdbpartition:00007217:  ereport(ERROR, 
-cabc: cdbpartition:00007218:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007219:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
-cabc: cdbpartition:00007220:  "child table(s)", 
-cabc: cdbpartition:00007221:  RelationGetRelationName(newrel)), 
-cabc: cdbpartition:00007222:  errOmitLocation(true))); 
-cabc: cdbpartition:00007229:  ereport(ERROR, 
-cabc: cdbpartition:00007230:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007231:  errmsg("cannot exchange table \"%s\" as it " 
-cabc: cdbpartition:00007232:  "inherits other table(s)", 
-cabc: cdbpartition:00007233:  RelationGetRelationName(newrel)), 
-cabc: cdbpartition:00007234:  errOmitLocation(true))); 
-cabc: cdbpartition:00007242:  ereport(ERROR, 
-cabc: cdbpartition:00007243:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007244:  errmsg("cannot exchange table which has rules " 
-cabc: cdbpartition:00007245:  "defined on it"), 
-cabc: cdbpartition:00007246:  errOmitLocation(true))); 
-cabc: cdbpartition:00007275:  elog(ERROR, 
-cabc: cdbpartition:00007276:  "discrepancy in partitioning policy of \"%s\"", 
-cabc: cdbpartition:00007277:  RelationGetRelationName(rel)); 
-cabc: cdbpartition:00007283:  elog(ERROR, 
-cabc: cdbpartition:00007284:  "discrepancy in partitioning policy of \"%s\"", 
-cabc: cdbpartition:00007285:  RelationGetRelationName(rel)); 
-cabc: cdbpartition:00007308:  ereport(ERROR, 
-cabc: cdbpartition:00007309:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007310:  errmsg("distribution policy for \"%s\" " 
-cabc: cdbpartition:00007311:  "must be the same as that for \"%s\"", 
-cabc: cdbpartition:00007312:  RelationGetRelationName(newrel), 
-cabc: cdbpartition:00007313:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007314:  errOmitLocation(true))); 
-cabc: cdbpartition:00007321:  ereport(ERROR, 
-cabc: cdbpartition:00007322:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007323:  errmsg("distribution policy matches but implementation lags"), 
-cabc: cdbpartition:00007324:  errOmitLocation(true))); 
-cabc: cdbpartition:00007493:  elog(WARNING,"Constraint type %c needs an index; not supported yet!!", con->contype); 
-cabc: cdbpartition:00007500:  elog(ERROR,"invalid constraint type: %c", con->contype); 
-cabc: cdbpartition:00007521:  elog(WARNING, "Won't enforce FK constraint."); 
-cabc: cdbpartition:00007526:  elog(WARNING, "Won't enforce PK constraint."); 
-cabc: cdbpartition:00007531:  elog(WARNING, "Won't enforce ND constraint."); 
-cabc: cdbpartition:00007536:  elog(WARNING, "!! NOT READY FOR TYPE %c CONSTRAINT !!", con->contype); 
-cabc: cdbpartition:00007644:  elog(ERROR, "name request for constraint of inappropriate type"); 
-cabc: cdbpartition:00007933:  ereport(ERROR, 
-cabc: cdbpartition:00007934:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-cabc: cdbpartition:00007935:  errmsg("%s constraint must contain all columns in the " 
-cabc: cdbpartition:00007936:  "partition key of relation \"%s\".", 
-cabc: cdbpartition:00007937:  what, RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007938:  errhint("Include the partition key or create a part-wise UNIQUE index instead."))); 
+cabc: cdbpartition:00000608:  ereport(WARNING, 
+cabc: cdbpartition:00000609:  (errcode(ERRCODE_WARNING), 
+cabc: cdbpartition:00000610:  errmsg("ignoring inconsistency: \"%s\" " 
+cabc: cdbpartition:00000611:  "has no constraint corresponding to \"%s\" " 
+cabc: cdbpartition:00000612:  "on \"%s\"", 
+cabc: cdbpartition:00000613:  RelationGetRelationName(part), 
+cabc: cdbpartition:00000614:  NameStr(con->conname), 
+cabc: cdbpartition:00000615:  RelationGetRelationName(table)), 
+cabc: cdbpartition:00000616:  errOmitLocation(true))); 
+cabc: cdbpartition:00000652:  elog(ERROR, 
+cabc: cdbpartition:00000653:  "multiple partition constraints (same key) on \"%s\"", 
+cabc: cdbpartition:00000654:  RelationGetRelationName(part)); 
+cabc: cdbpartition:00000668:  elog(ERROR, 
+cabc: cdbpartition:00000669:  "invalid partition constraint on \"%s\"", 
+cabc: cdbpartition:00000670:  RelationGetRelationName(part)); 
+cabc: cdbpartition:00000736:  elog(ERROR, "constraint hash table inconsistent"); 
+cabc: cdbpartition:00000747:  ereport(ERROR, 
+cabc: cdbpartition:00000748:  (errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION), 
+cabc: cdbpartition:00000749:  errmsg("invalid constraint(s) found on \"%s\": %s", 
+cabc: cdbpartition:00000750:  RelationGetRelationName(cand), 
+cabc: cdbpartition:00000751:  constraint_names(excess_constraints)), 
+cabc: cdbpartition:00000752:  errhint("drop the invalid constraints and retry"), 
+cabc: cdbpartition:00000753:  errOmitLocation(true))); 
+cabc: cdbpartition:00000772:  elog(ERROR,"Invalid partition constration, not CHECK type"); 
+cabc: cdbpartition:00001015:  elog(ERROR, "unknown partitioning type %i", type); 
+cabc: cdbpartition:00001042:  elog(ERROR, "unrecognized partitioning kind '%c'", 
+cabc: cdbpartition:00001043:  c); 
+cabc: cdbpartition:00001508:  elog(ERROR, "unknown partitioning type %i", pby->partType); 
+cabc: cdbpartition:00002467:  elog(ERROR, "could not find pg_partition entry with oid %d for " 
+cabc: cdbpartition:00002468:  "pg_partition_rule with child table %d", paroid, relid); 
+cabc: cdbpartition:00002850:  ereport(ERROR, 
+cabc: cdbpartition:00002851:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+cabc: cdbpartition:00002852:  errmsg("too many columns in boundary specification (%d > %d)", 
+cabc: cdbpartition:00002853:  jj, ii))); 
+cabc: cdbpartition:00002856:  ereport(ERROR, 
+cabc: cdbpartition:00002857:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+cabc: cdbpartition:00002858:  errmsg("too many columns in boundary specification (%d > %d)", 
+cabc: cdbpartition:00002859:  jj, part->parnatts))); 
+cabc: cdbpartition:00002874:  ereport(ERROR, 
+cabc: cdbpartition:00002875:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+cabc: cdbpartition:00002876:  errmsg("Not a constant expression"))); 
+cabc: cdbpartition:00002888:  ereport(ERROR, 
+cabc: cdbpartition:00002889:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+cabc: cdbpartition:00002890:  errmsg("cannot coerce column type (%s versus %s)", 
+cabc: cdbpartition:00002891:  format_type_be(c1->consttype), 
+cabc: cdbpartition:00002892:  format_type_be(lhsid)))); 
+cabc: cdbpartition:00003592:  elog(ERROR, "unrecognized partitioning kind '%c'", 
+cabc: cdbpartition:00003593:  part->parkind); 
+cabc: cdbpartition:00003685:  ereport(ERROR, 
+cabc: cdbpartition:00003686:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+cabc: cdbpartition:00003687:  errmsg("No partition id specified for %s", 
+cabc: cdbpartition:00003688:  relname), 
+cabc: cdbpartition:00003689:  errOmitLocation(true))); 
+cabc: cdbpartition:00003757:  ereport(ERROR, 
+cabc: cdbpartition:00003758:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00003759:  errmsg("%s is not partitioned", 
+cabc: cdbpartition:00003760:  relname), 
+cabc: cdbpartition:00003761:  errOmitLocation(true))); 
+cabc: cdbpartition:00003827:  ereport(ERROR, 
+cabc: cdbpartition:00003828:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+cabc: cdbpartition:00003829:  errmsg("cannot find partition by RANK -- " 
+cabc: cdbpartition:00003830:  "%s is %s partitioned", 
+cabc: cdbpartition:00003831:  relname, 
+cabc: cdbpartition:00003832:  parTypName), 
+cabc: cdbpartition:00003833:  errOmitLocation(true))); 
+cabc: cdbpartition:00003955:  ereport(ERROR, 
+cabc: cdbpartition:00003956:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+cabc: cdbpartition:00003957:  errmsg("FOR expression matches " 
+cabc: cdbpartition:00003958:  "DEFAULT partition%s of %s", 
+cabc: cdbpartition:00003959:  prule->isName ? 
+cabc: cdbpartition:00003960:  partIdStr : "", 
+cabc: cdbpartition:00003961:  relname), 
+cabc: cdbpartition:00003962:  errhint("FOR expression may only specify " 
+cabc: cdbpartition:00003963:  "a non-default partition in this context."), 
+cabc: cdbpartition:00003964:  errOmitLocation(true))); 
+cabc: cdbpartition:00003980:  ereport(ERROR, 
+cabc: cdbpartition:00003981:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00003982:  errmsg("partition%s of %s does not exist", 
+cabc: cdbpartition:00003983:  partIdStr, 
+cabc: cdbpartition:00003984:  relname), 
+cabc: cdbpartition:00003985:  errOmitLocation(true))); 
+cabc: cdbpartition:00003988:  ereport(ERROR, 
+cabc: cdbpartition:00003989:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00003990:  errmsg("DEFAULT partition of %s does not exist", 
+cabc: cdbpartition:00003991:  relname), 
+cabc: cdbpartition:00003992:  errOmitLocation(true))); 
+cabc: cdbpartition:00004011:  ereport(ERROR, 
+cabc: cdbpartition:00004012:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+cabc: cdbpartition:00004013:  errmsg("partition%s of %s already exists", 
+cabc: cdbpartition:00004014:  partIdStr, 
+cabc: cdbpartition:00004015:  relname), 
+cabc: cdbpartition:00004016:  errOmitLocation(true))); 
+cabc: cdbpartition:00004019:  ereport(ERROR, 
+cabc: cdbpartition:00004020:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+cabc: cdbpartition:00004021:  errmsg("DEFAULT partition%s of %s already exists", 
+cabc: cdbpartition:00004022:  prule->isName ? 
+cabc: cdbpartition:00004023:  partIdStr : "", 
+cabc: cdbpartition:00004024:  relname), 
+cabc: cdbpartition:00004025:  errOmitLocation(true))); 
+cabc: cdbpartition:00004643:  ereport(ERROR, 
+cabc: cdbpartition:00004644:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00004645:  errmsg("cannot specify EVERY when adding " 
+cabc: cdbpartition:00004646:  "RANGE partition to %s", 
+cabc: cdbpartition:00004647:  lrelname), 
+cabc: cdbpartition:00004648:  errOmitLocation(true))); 
+cabc: cdbpartition:00004651:  ereport(ERROR, 
+cabc: cdbpartition:00004652:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00004653:  errmsg("Need START or END when adding " 
+cabc: cdbpartition:00004654:  "RANGE partition to %s", 
+cabc: cdbpartition:00004655:  lrelname), 
+cabc: cdbpartition:00004656:  errOmitLocation(true))); 
+cabc: cdbpartition:00004753:  ereport(ERROR, 
+cabc: cdbpartition:00004754:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004755:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004756:  "partition"), 
+cabc: cdbpartition:00004757:  errOmitLocation(true))); 
+cabc: cdbpartition:00004811:  ereport(ERROR, 
+cabc: cdbpartition:00004812:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004813:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004814:  "partition"), 
+cabc: cdbpartition:00004815:  errOmitLocation(true))); 
+cabc: cdbpartition:00004926:  ereport(ERROR, 
+cabc: cdbpartition:00004927:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004928:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004929:  "partition"), 
+cabc: cdbpartition:00004930:  errOmitLocation(true))); 
+cabc: cdbpartition:00004968:  ereport(ERROR, 
+cabc: cdbpartition:00004969:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004970:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004971:  "partition"), 
+cabc: cdbpartition:00004972:  errOmitLocation(true))); 
+cabc: cdbpartition:00005633:  ereport(ERROR, 
+cabc: cdbpartition:00005634:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00005635:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00005636:  "partition%s", 
+cabc: cdbpartition:00005637:  (prule && prule->isName) ? 
+cabc: cdbpartition:00005638:  prule->partIdStr : ""), 
+cabc: cdbpartition:00005639:  errOmitLocation(true))); 
+cabc: cdbpartition:00005692:  ereport(ERROR, 
+cabc: cdbpartition:00005693:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00005694:  errmsg("new partition definition overlaps " 
+cabc: cdbpartition:00005695:  "existing partition%s of %s", 
+cabc: cdbpartition:00005696:  prule->partIdStr, 
+cabc: cdbpartition:00005697:  lrelname), 
+cabc: cdbpartition:00005698:  errOmitLocation(true))); 
+cabc: cdbpartition:00005814:  elog(ERROR, "cache lookup failed for relation %u", 
+cabc: cdbpartition:00005815:  RelationGetRelid(rel)); 
+cabc: cdbpartition:00006196:  elog(ERROR, "cache lookup failed for relation %u", oldrelid); 
+cabc: cdbpartition:00006204:  elog(ERROR, "cache lookup failed for relation %u", newrelid); 
+cabc: cdbpartition:00006263:  ereport(ERROR, 
+cabc: cdbpartition:00006264:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006265:  errmsg("cannot MODIFY %s partition%s for " 
+cabc: cdbpartition:00006266:  "relation \"%s\" to ADD values -- would " 
+cabc: cdbpartition:00006267:  "overlap DEFAULT partition \"%s\"", 
+cabc: cdbpartition:00006268:  "LIST", 
+cabc: cdbpartition:00006269:  prule->partIdStr, 
+cabc: cdbpartition:00006270:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006271:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006272:  errhint("need to SPLIT partition \"%s\"", 
+cabc: cdbpartition:00006273:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006274:  errOmitLocation(true))); 
+cabc: cdbpartition:00006324:  ereport(ERROR, 
+cabc: cdbpartition:00006325:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006326:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006327:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006328:  "would overlap " 
+cabc: cdbpartition:00006329:  "existing partition%s", 
+cabc: cdbpartition:00006330:  prule->partIdStr, 
+cabc: cdbpartition:00006331:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006332:  prule2->isName ? 
+cabc: cdbpartition:00006333:  prule2->partIdStr : ""), 
+cabc: cdbpartition:00006334:  errOmitLocation(true))); 
+cabc: cdbpartition:00006336:  ereport(ERROR, 
+cabc: cdbpartition:00006337:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006338:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006339:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006340:  "ADD value has duplicate in " 
+cabc: cdbpartition:00006341:  "existing partition", 
+cabc: cdbpartition:00006342:  prule->partIdStr, 
+cabc: cdbpartition:00006343:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00006344:  errOmitLocation(true))); 
+cabc: cdbpartition:00006355:  ereport(ERROR, 
+cabc: cdbpartition:00006356:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006357:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006358:  "relation \"%s\" -- DROP value not found", 
+cabc: cdbpartition:00006359:  prule->partIdStr, 
+cabc: cdbpartition:00006360:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00006361:  errOmitLocation(true))); 
+cabc: cdbpartition:00006366:  ereport(ERROR, 
+cabc: cdbpartition:00006367:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006368:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006369:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006370:  "found DROP value in%s partition%s", 
+cabc: cdbpartition:00006371:  prule->partIdStr, 
+cabc: cdbpartition:00006372:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006373:  prule2->isName ? "" : "other", 
+cabc: cdbpartition:00006374:  prule2->isName ? prule2->partIdStr : ""), 
+cabc: cdbpartition:00006375:  errOmitLocation(true))); 
+cabc: cdbpartition:00006487:  ereport(ERROR, 
+cabc: cdbpartition:00006488:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006489:  errmsg("cannot MODIFY %s partition%s for " 
+cabc: cdbpartition:00006490:  "relation \"%s\" to extend range -- would " 
+cabc: cdbpartition:00006491:  "overlap DEFAULT partition \"%s\"", 
+cabc: cdbpartition:00006492:  "RANGE", 
+cabc: cdbpartition:00006493:  prule->partIdStr, 
+cabc: cdbpartition:00006494:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006495:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006496:  errhint("need to SPLIT partition \"%s\"", 
+cabc: cdbpartition:00006497:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006498:  errOmitLocation(true))); 
+cabc: cdbpartition:00006642:  ereport(ERROR, 
+cabc: cdbpartition:00006643:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006644:  errmsg("cannot MODIFY %s partition%s for " 
+cabc: cdbpartition:00006645:  "relation \"%s\" to extend range -- would " 
+cabc: cdbpartition:00006646:  "overlap DEFAULT partition \"%s\"", 
+cabc: cdbpartition:00006647:  "RANGE", 
+cabc: cdbpartition:00006648:  prule->partIdStr, 
+cabc: cdbpartition:00006649:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006650:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006651:  errhint("need to SPLIT partition \"%s\"", 
+cabc: cdbpartition:00006652:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006653:  errOmitLocation(true))); 
+cabc: cdbpartition:00006782:  ereport(ERROR, 
+cabc: cdbpartition:00006783:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006784:  errmsg("cannot MODIFY RANGE partition%s for " 
+cabc: cdbpartition:00006785:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006786:  "would overlap " 
+cabc: cdbpartition:00006787:  "existing partition%s", 
+cabc: cdbpartition:00006788:  prule->partIdStr, 
+cabc: cdbpartition:00006789:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006790:  (prule2 && prule2->isName) ? 
+cabc: cdbpartition:00006791:  prule2->partIdStr : ""), 
+cabc: cdbpartition:00006792:  errOmitLocation(true))); 
+cabc: cdbpartition:00006898:  ereport(ERROR, 
+cabc: cdbpartition:00006899:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006900:  errmsg("relation name \"%s\" for child partition " 
+cabc: cdbpartition:00006901:  "is too long", 
+cabc: cdbpartition:00006902:  newRelNameBuf))); 
+cabc: cdbpartition:00006969:  elog(ERROR, "could not find operator"); 
+cabc: cdbpartition:00007117:  ereport(ERROR, 
+cabc: cdbpartition:00007118:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+cabc: cdbpartition:00007119:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+cabc: cdbpartition:00007120:  cname, 
+cabc: cdbpartition:00007121:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00007122:  errOmitLocation(true))); 
+cabc: cdbpartition:00007157:  ereport(ERROR, 
+cabc: cdbpartition:00007158:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007159:  errmsg("cannot exchange relation " 
+cabc: cdbpartition:00007160:  "which is not a table"))); 
+cabc: cdbpartition:00007172:  elog(ERROR, "existing part \"%s\" not congruent with" 
+cabc: cdbpartition:00007173:  "partitioned table \"%s\"", 
+cabc: cdbpartition:00007174:  RelationGetRelationName(oldrel), 
+cabc: cdbpartition:00007175:  RelationGetRelationName(rel)); 
+cabc: cdbpartition:00007191:  ereport(ERROR, 
+cabc: cdbpartition:00007192:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007193:  errmsg("owner of \"%s\" must be the same as that " 
+cabc: cdbpartition:00007194:  "of \"%s\"", 
+cabc: cdbpartition:00007195:  RelationGetRelationName(newrel), 
+cabc: cdbpartition:00007196:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00007197:  errOmitLocation(true))); 
+cabc: cdbpartition:00007205:  ereport(ERROR, 
+cabc: cdbpartition:00007206:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007207:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
+cabc: cdbpartition:00007208:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00007209:  RelationGetRelationName(newrel)), 
+cabc: cdbpartition:00007210:  errOmitLocation(true))); 
+cabc: cdbpartition:00007218:  ereport(ERROR, 
+cabc: cdbpartition:00007219:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007220:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
+cabc: cdbpartition:00007221:  "child table(s)", 
+cabc: cdbpartition:00007222:  RelationGetRelationName(newrel)), 
+cabc: cdbpartition:00007223:  errOmitLocation(true))); 
+cabc: cdbpartition:00007230:  ereport(ERROR, 
+cabc: cdbpartition:00007231:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007232:  errmsg("cannot exchange table \"%s\" as it " 
+cabc: cdbpartition:00007233:  "inherits other table(s)", 
+cabc: cdbpartition:00007234:  RelationGetRelationName(newrel)), 
+cabc: cdbpartition:00007235:  errOmitLocation(true))); 
+cabc: cdbpartition:00007243:  ereport(ERROR, 
+cabc: cdbpartition:00007244:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007245:  errmsg("cannot exchange table which has rules " 
+cabc: cdbpartition:00007246:  "defined on it"), 
+cabc: cdbpartition:00007247:  errOmitLocation(true))); 
+cabc: cdbpartition:00007276:  elog(ERROR, 
+cabc: cdbpartition:00007277:  "discrepancy in partitioning policy of \"%s\"", 
+cabc: cdbpartition:00007278:  RelationGetRelationName(rel)); 
+cabc: cdbpartition:00007284:  elog(ERROR, 
+cabc: cdbpartition:00007285:  "discrepancy in partitioning policy of \"%s\"", 
+cabc: cdbpartition:00007286:  RelationGetRelationName(rel)); 
+cabc: cdbpartition:00007309:  ereport(ERROR, 
+cabc: cdbpartition:00007310:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007311:  errmsg("distribution policy for \"%s\" " 
+cabc: cdbpartition:00007312:  "must be the same as that for \"%s\"", 
+cabc: cdbpartition:00007313:  RelationGetRelationName(newrel), 
+cabc: cdbpartition:00007314:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00007315:  errOmitLocation(true))); 
+cabc: cdbpartition:00007322:  ereport(ERROR, 
+cabc: cdbpartition:00007323:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007324:  errmsg("distribution policy matches but implementation lags"), 
+cabc: cdbpartition:00007325:  errOmitLocation(true))); 
+cabc: cdbpartition:00007502:  ereport(ERROR, 
+cabc: cdbpartition:00007503:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+cabc: cdbpartition:00007504:  errmsg("%s constraint \"%s\" missing", what, who), 
+cabc: cdbpartition:00007505:  errhint("Add %s constraint \"%s\" to the candidate table" 
+cabc: cdbpartition:00007506:  " or drop it from the partitioned table." 
+cabc: cdbpartition:00007507:  , what, who), 
+cabc: cdbpartition:00007508:  errOmitLocation(true))); 
+cabc: cdbpartition:00007512:  ereport(ERROR, 
+cabc: cdbpartition:00007513:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+cabc: cdbpartition:00007514:  errmsg("WITHOUT VALIDATION incompatible with missing %s constraint \"%s\"", 
+cabc: cdbpartition:00007515:  what, who), 
+cabc: cdbpartition:00007516:  errhint("Add %s constraint %s to the candidate table" 
+cabc: cdbpartition:00007517:  " or drop it from the partitioned table." 
+cabc: cdbpartition:00007518:  , what, who), 
+cabc: cdbpartition:00007519:  errOmitLocation(true))); 
+cabc: cdbpartition:00007526:  elog(ERROR,"invalid constraint type: %c", con->contype); 
+cabc: cdbpartition:00007547:  elog(WARNING, "Won't enforce FK constraint."); 
+cabc: cdbpartition:00007552:  elog(WARNING, "Won't enforce PK constraint."); 
+cabc: cdbpartition:00007557:  elog(WARNING, "Won't enforce ND constraint."); 
+cabc: cdbpartition:00007562:  elog(WARNING, "!! NOT READY FOR TYPE %c CONSTRAINT !!", con->contype); 
+cabc: cdbpartition:00007670:  elog(ERROR, "name request for constraint of inappropriate type"); 
+cabc: cdbpartition:00007959:  ereport(ERROR, 
+cabc: cdbpartition:00007960:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+cabc: cdbpartition:00007961:  errmsg("%s constraint must contain all columns in the " 
+cabc: cdbpartition:00007962:  "partition key of relation \"%s\".", 
+cabc: cdbpartition:00007963:  what, RelationGetRelationName(rel)), 
+cabc: cdbpartition:00007964:  errhint("Include the partition key or create a part-wise UNIQUE index instead."))); 
 aaaaa GP_IGNORE: caah: cdbpath - ./backend/cdb/cdbpath.c
 caah: cdbpath:00001327:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
 caah: cdbpath:00001328:  errmsg("The query is not yet supported in " 
@@ -9768,185 +9782,185 @@ paai: proclang:00000544:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 paai: proclang:00000545:  errmsg("must be superuser to rename procedural language"), 
 paai: proclang:00000546:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: qaaf: queue - ./backend/commands/queue.c
-qaaf: queue:00000133:  ereport(ERROR, 
-qaaf: queue:00000134:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000135:  errmsg("Invalid parameter value \"%s\" for " 
-qaaf: queue:00000136:  "resource type \"%s\". " 
-qaaf: queue:00000137:  "Value must be in kB, MB or GB.", 
-qaaf: queue:00000138:  pResSetting, restyp))); 
-qaaf: queue:00000143:  ereport(ERROR, 
-qaaf: queue:00000144:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000145:  errmsg("Invalid parameter value \"%s\" for " 
-qaaf: queue:00000146:  "resource type \"%s\". " 
-qaaf: queue:00000147:  "Value must be at least %dkB", 
-qaaf: queue:00000148:  pResSetting, restyp, (int) MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB))); 
-qaaf: queue:00000191:  ereport(ERROR, 
-qaaf: queue:00000192:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000193:  errmsg("unknown resource type \"%d\"", 
-qaaf: queue:00000194:  resTypeInt))); 
-qaaf: queue:00000200:  ereport(ERROR, 
-qaaf: queue:00000201:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000202:  errmsg("Invalid parameter value \"%s\" for " 
-qaaf: queue:00000203:  "resource type \"%s\"", 
-qaaf: queue:00000204:  pResSetting, restyp))); 
-qaaf: queue:00000349:  ereport(ERROR, 
-qaaf: queue:00000350:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000351:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00000352:  defel->defname))); 
-qaaf: queue:00000387:  ereport(ERROR, 
-qaaf: queue:00000388:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000389:  errmsg("option \"%s\" cannot be disabled", 
-qaaf: queue:00000390:  defel->defname))); 
-qaaf: queue:00000408:  ereport(ERROR, 
-qaaf: queue:00000409:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000410:  errmsg("required option \"%s\" cannot be disabled", 
-qaaf: queue:00000411:  defel->defname))); 
-qaaf: queue:00000438:  ereport(ERROR, 
-qaaf: queue:00000439:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000440:  errmsg("conflicting or redundant option for \"%s\"", 
-qaaf: queue:00000441:  defel->defname))); 
-qaaf: queue:00000781:  ereport(ERROR, 
-qaaf: queue:00000782:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00000783:  errmsg("must be superuser to create resource queues"))); 
-qaaf: queue:00000804:  ereport(ERROR, 
-qaaf: queue:00000805:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000806:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000812:  ereport(ERROR, 
-qaaf: queue:00000813:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000814:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000820:  ereport(ERROR, 
-qaaf: queue:00000821:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000822:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000828:  ereport(ERROR, 
-qaaf: queue:00000829:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000830:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000837:  ereport(ERROR, 
-qaaf: queue:00000838:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000839:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00000840:  defel->defname))); 
-qaaf: queue:00000852:  elog(ERROR, "option \"%s\" not recognized", 
-qaaf: queue:00000853:  defel->defname); 
-qaaf: queue:00000862:  ereport(ERROR, 
-qaaf: queue:00000863:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000864:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000865:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000872:  ereport(ERROR, 
-qaaf: queue:00000873:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000874:  errmsg("cost threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000875:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000887:  ereport(ERROR, 
-qaaf: queue:00000888:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000889:  errmsg("min_cost threshold cannot be negative"))); 
-qaaf: queue:00000897:  ereport(ERROR, 
-qaaf: queue:00000898:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000899:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
-qaaf: queue:00000900:  errOmitLocation(true))); 
-qaaf: queue:00000905:  ereport(ERROR, 
-qaaf: queue:00000906:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000907:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00000908:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00000909:  errOmitLocation(true))); 
-qaaf: queue:00000916:  ereport(ERROR, 
-qaaf: queue:00000917:  (errcode(ERRCODE_RESERVED_NAME), 
-qaaf: queue:00000918:  errmsg("resource queue name \"%s\" is reserved", 
-qaaf: queue:00000919:  stmt->queue), 
-qaaf: queue:00000920:  errOmitLocation(true))); 
-qaaf: queue:00000950:  ereport(ERROR, 
-qaaf: queue:00000951:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-qaaf: queue:00000952:  errmsg("resource queue \"%s\" already exists", 
-qaaf: queue:00000953:  stmt->queue))); 
-qaaf: queue:00001025:  ereport(ERROR, 
-qaaf: queue:00001026:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00001027:  errmsg("insufficient resource queues available"), 
-qaaf: queue:00001028:  errhint("Increase max_resource_queues"))); 
-qaaf: queue:00001032:  ereport(WARNING, 
-qaaf: queue:00001033:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001034:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001103:  ereport(ERROR, 
-qaaf: queue:00001104:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001105:  errmsg("must be superuser to alter resource queues"))); 
-qaaf: queue:00001126:  ereport(ERROR, 
-qaaf: queue:00001127:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001128:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001142:  ereport(ERROR, 
-qaaf: queue:00001143:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001144:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001158:  ereport(ERROR, 
-qaaf: queue:00001159:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001160:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001174:  ereport(ERROR, 
-qaaf: queue:00001175:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001176:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001192:  ereport(ERROR, 
-qaaf: queue:00001193:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001194:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001195:  defel->defname))); 
-qaaf: queue:00001205:  ereport(ERROR, 
-qaaf: queue:00001206:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001207:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001208:  defel->defname))); 
-qaaf: queue:00001219:  elog(ERROR, "option \"%s\" not recognized", 
-qaaf: queue:00001220:  defel->defname); 
-qaaf: queue:00001250:  ereport(ERROR, 
-qaaf: queue:00001251:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001252:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00001253:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001254:  errOmitLocation(true))); 
-qaaf: queue:00001261:  ereport(ERROR, 
-qaaf: queue:00001262:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001263:  errmsg("cost threshold must be equal to %d or greater than 0", 
-qaaf: queue:00001264:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001265:  errOmitLocation(true))); 
-qaaf: queue:00001278:  ereport(ERROR, 
-qaaf: queue:00001279:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001280:  errmsg("min_cost threshold cannot be negative"), 
-qaaf: queue:00001281:  errOmitLocation(true))); 
-qaaf: queue:00001298:  ereport(ERROR, 
-qaaf: queue:00001299:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001300:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
-qaaf: queue:00001301:  errOmitLocation(true))); 
-qaaf: queue:00001330:  ereport(ERROR, 
-qaaf: queue:00001331:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001332:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001333:  stmt->queue), 
-qaaf: queue:00001334:  errOmitLocation(true))); 
-qaaf: queue:00001404:  ereport(ERROR, 
-qaaf: queue:00001405:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001406:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00001407:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00001459:  ereport(ERROR, 
-qaaf: queue:00001460:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001461:  errmsg("thresholds cannot be less than current values"))); 
-qaaf: queue:00001463:  ereport(ERROR, 
-qaaf: queue:00001464:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001465:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
-qaaf: queue:00001467:  ereport(ERROR, 
-qaaf: queue:00001468:  (errcode(ERRCODE_INTERNAL_ERROR), 
-qaaf: queue:00001469:  errmsg("queue hash table corrupted"))); 
-qaaf: queue:00001476:  ereport(WARNING, 
-qaaf: queue:00001477:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001478:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001518:  ereport(ERROR, 
-qaaf: queue:00001519:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001520:  errmsg("must be superuser to drop resource queues"))); 
-qaaf: queue:00001548:  ereport(ERROR, 
-qaaf: queue:00001549:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001550:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001551:  stmt->queue))); 
-qaaf: queue:00001576:  ereport(ERROR, 
-qaaf: queue:00001577:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-qaaf: queue:00001578:  errmsg("resource queue \"%s\" is used by at least one role", 
-qaaf: queue:00001579:  stmt->queue))); 
-qaaf: queue:00001587:  ereport(ERROR, 
-qaaf: queue:00001588:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-qaaf: queue:00001589:  errmsg("cannot drop default resource queue \"%s\"", 
-qaaf: queue:00001590:  stmt->queue))); 
-qaaf: queue:00001620:  ereport(ERROR, 
-qaaf: queue:00001621:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00001622:  errmsg("resource queue cannot be dropped as is in use"))); 
-qaaf: queue:00001626:  ereport(WARNING, 
-qaaf: queue:00001627:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001628:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00000135:  ereport(ERROR, 
+qaaf: queue:00000136:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000137:  errmsg("Invalid parameter value \"%s\" for " 
+qaaf: queue:00000138:  "resource type \"%s\". " 
+qaaf: queue:00000139:  "Value must be in kB, MB or GB.", 
+qaaf: queue:00000140:  pResSetting, restyp))); 
+qaaf: queue:00000145:  ereport(ERROR, 
+qaaf: queue:00000146:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000147:  errmsg("Invalid parameter value \"%s\" for " 
+qaaf: queue:00000148:  "resource type \"%s\". " 
+qaaf: queue:00000149:  "Value must be at least %dkB", 
+qaaf: queue:00000150:  pResSetting, restyp, (int) MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB))); 
+qaaf: queue:00000193:  ereport(ERROR, 
+qaaf: queue:00000194:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000195:  errmsg("unknown resource type \"%d\"", 
+qaaf: queue:00000196:  resTypeInt))); 
+qaaf: queue:00000202:  ereport(ERROR, 
+qaaf: queue:00000203:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000204:  errmsg("Invalid parameter value \"%s\" for " 
+qaaf: queue:00000205:  "resource type \"%s\"", 
+qaaf: queue:00000206:  pResSetting, restyp))); 
+qaaf: queue:00000351:  ereport(ERROR, 
+qaaf: queue:00000352:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000353:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00000354:  defel->defname))); 
+qaaf: queue:00000389:  ereport(ERROR, 
+qaaf: queue:00000390:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000391:  errmsg("option \"%s\" cannot be disabled", 
+qaaf: queue:00000392:  defel->defname))); 
+qaaf: queue:00000410:  ereport(ERROR, 
+qaaf: queue:00000411:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000412:  errmsg("required option \"%s\" cannot be disabled", 
+qaaf: queue:00000413:  defel->defname))); 
+qaaf: queue:00000440:  ereport(ERROR, 
+qaaf: queue:00000441:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000442:  errmsg("conflicting or redundant option for \"%s\"", 
+qaaf: queue:00000443:  defel->defname))); 
+qaaf: queue:00000783:  ereport(ERROR, 
+qaaf: queue:00000784:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00000785:  errmsg("must be superuser to create resource queues"))); 
+qaaf: queue:00000806:  ereport(ERROR, 
+qaaf: queue:00000807:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000808:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000814:  ereport(ERROR, 
+qaaf: queue:00000815:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000816:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000822:  ereport(ERROR, 
+qaaf: queue:00000823:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000824:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000830:  ereport(ERROR, 
+qaaf: queue:00000831:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000832:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000839:  ereport(ERROR, 
+qaaf: queue:00000840:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000841:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00000842:  defel->defname))); 
+qaaf: queue:00000854:  elog(ERROR, "option \"%s\" not recognized", 
+qaaf: queue:00000855:  defel->defname); 
+qaaf: queue:00000864:  ereport(ERROR, 
+qaaf: queue:00000865:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000866:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000867:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000874:  ereport(ERROR, 
+qaaf: queue:00000875:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000876:  errmsg("cost threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000877:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000889:  ereport(ERROR, 
+qaaf: queue:00000890:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000891:  errmsg("min_cost threshold cannot be negative"))); 
+qaaf: queue:00000899:  ereport(ERROR, 
+qaaf: queue:00000900:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000901:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
+qaaf: queue:00000902:  errOmitLocation(true))); 
+qaaf: queue:00000907:  ereport(ERROR, 
+qaaf: queue:00000908:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000909:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00000910:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00000911:  errOmitLocation(true))); 
+qaaf: queue:00000918:  ereport(ERROR, 
+qaaf: queue:00000919:  (errcode(ERRCODE_RESERVED_NAME), 
+qaaf: queue:00000920:  errmsg("resource queue name \"%s\" is reserved", 
+qaaf: queue:00000921:  stmt->queue), 
+qaaf: queue:00000922:  errOmitLocation(true))); 
+qaaf: queue:00000952:  ereport(ERROR, 
+qaaf: queue:00000953:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+qaaf: queue:00000954:  errmsg("resource queue \"%s\" already exists", 
+qaaf: queue:00000955:  stmt->queue))); 
+qaaf: queue:00001027:  ereport(ERROR, 
+qaaf: queue:00001028:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001029:  errmsg("insufficient resource queues available"), 
+qaaf: queue:00001030:  errhint("Increase max_resource_queues"))); 
+qaaf: queue:00001034:  ereport(WARNING, 
+qaaf: queue:00001035:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001036:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001105:  ereport(ERROR, 
+qaaf: queue:00001106:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001107:  errmsg("must be superuser to alter resource queues"))); 
+qaaf: queue:00001128:  ereport(ERROR, 
+qaaf: queue:00001129:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001130:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001144:  ereport(ERROR, 
+qaaf: queue:00001145:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001146:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001160:  ereport(ERROR, 
+qaaf: queue:00001161:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001162:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001176:  ereport(ERROR, 
+qaaf: queue:00001177:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001178:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001194:  ereport(ERROR, 
+qaaf: queue:00001195:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001196:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001197:  defel->defname))); 
+qaaf: queue:00001207:  ereport(ERROR, 
+qaaf: queue:00001208:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001209:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001210:  defel->defname))); 
+qaaf: queue:00001221:  elog(ERROR, "option \"%s\" not recognized", 
+qaaf: queue:00001222:  defel->defname); 
+qaaf: queue:00001252:  ereport(ERROR, 
+qaaf: queue:00001253:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001254:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00001255:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001256:  errOmitLocation(true))); 
+qaaf: queue:00001263:  ereport(ERROR, 
+qaaf: queue:00001264:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001265:  errmsg("cost threshold must be equal to %d or greater than 0", 
+qaaf: queue:00001266:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001267:  errOmitLocation(true))); 
+qaaf: queue:00001280:  ereport(ERROR, 
+qaaf: queue:00001281:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001282:  errmsg("min_cost threshold cannot be negative"), 
+qaaf: queue:00001283:  errOmitLocation(true))); 
+qaaf: queue:00001300:  ereport(ERROR, 
+qaaf: queue:00001301:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001302:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+qaaf: queue:00001303:  errOmitLocation(true))); 
+qaaf: queue:00001332:  ereport(ERROR, 
+qaaf: queue:00001333:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001334:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001335:  stmt->queue), 
+qaaf: queue:00001336:  errOmitLocation(true))); 
+qaaf: queue:00001406:  ereport(ERROR, 
+qaaf: queue:00001407:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001408:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00001409:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00001461:  ereport(ERROR, 
+qaaf: queue:00001462:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001463:  errmsg("thresholds cannot be less than current values"))); 
+qaaf: queue:00001465:  ereport(ERROR, 
+qaaf: queue:00001466:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001467:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
+qaaf: queue:00001469:  ereport(ERROR, 
+qaaf: queue:00001470:  (errcode(ERRCODE_INTERNAL_ERROR), 
+qaaf: queue:00001471:  errmsg("queue hash table corrupted"))); 
+qaaf: queue:00001478:  ereport(WARNING, 
+qaaf: queue:00001479:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001480:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001520:  ereport(ERROR, 
+qaaf: queue:00001521:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001522:  errmsg("must be superuser to drop resource queues"))); 
+qaaf: queue:00001550:  ereport(ERROR, 
+qaaf: queue:00001551:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001552:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001553:  stmt->queue))); 
+qaaf: queue:00001578:  ereport(ERROR, 
+qaaf: queue:00001579:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+qaaf: queue:00001580:  errmsg("resource queue \"%s\" is used by at least one role", 
+qaaf: queue:00001581:  stmt->queue))); 
+qaaf: queue:00001589:  ereport(ERROR, 
+qaaf: queue:00001590:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+qaaf: queue:00001591:  errmsg("cannot drop default resource queue \"%s\"", 
+qaaf: queue:00001592:  stmt->queue))); 
+qaaf: queue:00001622:  ereport(ERROR, 
+qaaf: queue:00001623:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001624:  errmsg("resource queue cannot be dropped as is in use"))); 
+qaaf: queue:00001628:  ereport(WARNING, 
+qaaf: queue:00001629:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001630:  errhint("To enable set resource_scheduler=on"))); 
 aaaaa GP_IGNORE: saba: schemacmds - ./backend/commands/schemacmds.c
 saba: schemacmds:00000114:  ereport(ERROR, 
 saba: schemacmds:00000115:  (errcode(ERRCODE_RESERVED_NAME), 
@@ -11387,304 +11401,304 @@ taaj: tablecmds:00013924:  ereport(NOTICE,
 taaj: tablecmds:00013925:  (errmsg("dropped partition%s for %s", 
 taaj: tablecmds:00013926:  prule->partIdStr, 
 taaj: tablecmds:00013927:  prule->relname))); 
-taaj: tablecmds:00014020:  ereport(ERROR, 
-taaj: tablecmds:00014021:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00014022:  errmsg("cannot EXCHANGE PARTITION for " 
-taaj: tablecmds:00014023:  "%s -- partition has children", 
-taaj: tablecmds:00014024:  prule->relname 
-taaj: tablecmds:00014025:  ), 
-taaj: tablecmds:00014026:  errOmitLocation(true))); 
-taaj: tablecmds:00014206:  ereport(NOTICE, 
-taaj: tablecmds:00014207:  (errmsg("exchanged partition%s of " 
-taaj: tablecmds:00014208:  "%s with relation \"%s\"", 
-taaj: tablecmds:00014209:  orig_prule->partIdStr, 
-taaj: tablecmds:00014210:  orig_prule->relname, 
-taaj: tablecmds:00014211:  newname), 
-taaj: tablecmds:00014212:  errOmitLocation(true))); 
-taaj: tablecmds:00014287:  ereport(ERROR, 
-taaj: tablecmds:00014288:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00014289:  errmsg("target of MERGE must be either \"%s\" or " 
-taaj: tablecmds:00014290:  "\"%s\"", 
-taaj: tablecmds:00014291:  get_rel_name(prule1->topRule->parchildrelid), 
-taaj: tablecmds:00014292:  get_rel_name(prule2->topRule->parchildrelid)), 
-taaj: tablecmds:00014293:  errOmitLocation(true))); 
-taaj: tablecmds:00014326:  elog(NOTICE, "merging"); 
-taaj: tablecmds:00014327:  elog(NOTICE, "%s", RelationGetRelationName(source)); 
-taaj: tablecmds:00014329:  elog(NOTICE, "with %s", RelationGetRelationName(target)); 
-taaj: tablecmds:00014331:  ereport(ERROR, 
-taaj: tablecmds:00014332:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00014333:  errmsg("cannot MERGE PARTITION for relation \"%s\"", 
-taaj: tablecmds:00014334:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00014335:  errOmitLocation(true))); 
-taaj: tablecmds:00014387:  elog(ERROR, "unrecognized partitioning kind '%c'", 
-taaj: tablecmds:00014388:  prule->pNode->part->parkind); 
-taaj: tablecmds:00014395:  ereport(ERROR, 
-taaj: tablecmds:00014396:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00014397:  errmsg("cannot MODIFY DEFAULT %s partition%s " 
-taaj: tablecmds:00014398:  "for relation \"%s\"", 
-taaj: tablecmds:00014399:  parTypName, 
-taaj: tablecmds:00014400:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00014401:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00014402:  errOmitLocation(true))); 
-taaj: tablecmds:00014405:  ereport(ERROR, 
-taaj: tablecmds:00014406:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00014407:  errmsg("invalid use of %s boundary specification " 
-taaj: tablecmds:00014408:  "in partition%s of type %s", 
-taaj: tablecmds:00014409:  "RANGE", 
-taaj: tablecmds:00014410:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00014411:  parTypName 
-taaj: tablecmds:00014412:  ), 
-taaj: tablecmds:00014413:  errOmitLocation(true))); 
-taaj: tablecmds:00014416:  ereport(ERROR, 
-taaj: tablecmds:00014417:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00014418:  errmsg("invalid use of %s boundary specification " 
-taaj: tablecmds:00014419:  "in partition%s of type %s", 
-taaj: tablecmds:00014420:  "LIST", 
-taaj: tablecmds:00014421:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00014422:  parTypName 
-taaj: tablecmds:00014423:  ), 
-taaj: tablecmds:00014424:  errOmitLocation(true))); 
-taaj: tablecmds:00014458:  ereport(ERROR, 
-taaj: tablecmds:00014459:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00014460:  errmsg("cannot MODIFY PARTITION for relation \"%s\"", 
-taaj: tablecmds:00014461:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00014462:  errOmitLocation(true))); 
-taaj: tablecmds:00014562:  ereport(ERROR, 
-taaj: tablecmds:00014563:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00014564:  errmsg("name \"%s\" for child partition " 
-taaj: tablecmds:00014565:  "is too long", 
-taaj: tablecmds:00014566:  newpartname))); 
-taaj: tablecmds:00014658:  ereport(NOTICE, 
-taaj: tablecmds:00014659:  (errmsg("renamed partition%s to \"%s\" for %s", 
-taaj: tablecmds:00014660:  prule->partIdStr, 
-taaj: tablecmds:00014661:  newpartname, 
-taaj: tablecmds:00014662:  prule->relname))); 
-taaj: tablecmds:00014667:  ereport(WARNING, 
-taaj: tablecmds:00014668:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00014669:  errmsg("renamed %d partitions, skipped %d child partitions due to name truncation", 
-taaj: tablecmds:00014670:  renamed, skipped), 
-taaj: tablecmds:00014671:  errOmitLocation(true))); 
-taaj: tablecmds:00014721:  ereport(NOTICE, 
-taaj: tablecmds:00014722:  (errmsg("%s level %d " 
-taaj: tablecmds:00014723:  "subpartition template specification " 
-taaj: tablecmds:00014724:  "for relation \"%s\"", 
-taaj: tablecmds:00014725:  "adding", 
-taaj: tablecmds:00014726:  lvl, 
-taaj: tablecmds:00014727:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00014732:  ereport(ERROR, 
-taaj: tablecmds:00014733:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00014734:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00014735:  "level %d " 
-taaj: tablecmds:00014736:  "subpartition template specification", 
-taaj: tablecmds:00014737:  RelationGetRelationName(rel), 
-taaj: tablecmds:00014738:  lvl), 
-taaj: tablecmds:00014739:  errOmitLocation(true))); 
-taaj: tablecmds:00014747:  ereport(NOTICE, 
-taaj: tablecmds:00014748:  (errmsg("%s level %d " 
-taaj: tablecmds:00014749:  "subpartition template specification " 
-taaj: tablecmds:00014750:  "for relation \"%s\"", 
-taaj: tablecmds:00014751:  (pc->arg1) ? "replacing" : "dropped", 
-taaj: tablecmds:00014752:  lvl, 
-taaj: tablecmds:00014753:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00014756:  elog(ERROR, 
-taaj: tablecmds:00014757:  "could not drop " 
-taaj: tablecmds:00014758:  "level %d " 
-taaj: tablecmds:00014759:  "subpartition template specification " 
-taaj: tablecmds:00014760:  "for relation \"%s\"", 
-taaj: tablecmds:00014761:  lvl, 
-taaj: tablecmds:00014762:  RelationGetRelationName(rel)); 
-taaj: tablecmds:00015261:  ereport(ERROR, 
-taaj: tablecmds:00015262:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00015263:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00015264:  "default partition", 
-taaj: tablecmds:00015265:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00015266:  errOmitLocation(true))); 
-taaj: tablecmds:00015348:  ereport(ERROR, 
-taaj: tablecmds:00015349:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00015350:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00015351:  "default partition", 
-taaj: tablecmds:00015352:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00015353:  errOmitLocation(true))); 
-taaj: tablecmds:00015399:  ereport(ERROR, 
-taaj: tablecmds:00015400:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00015401:  errmsg("both INTO partitions " 
-taaj: tablecmds:00015402:  "already exist"), 
-taaj: tablecmds:00015403:  errOmitLocation(true))); 
-taaj: tablecmds:00016190:  ereport(NOTICE, 
-taaj: tablecmds:00016191:  (errmsg("truncated partition%s for %s and its children", 
-taaj: tablecmds:00016192:  prule->partIdStr, 
-taaj: tablecmds:00016193:  prule->relname), 
-taaj: tablecmds:00016194:  errOmitLocation(true))); 
-taaj: tablecmds:00016198:  ereport(NOTICE, 
-taaj: tablecmds:00016199:  (errmsg("truncated partition%s for %s", 
-taaj: tablecmds:00016200:  prule->partIdStr, 
-taaj: tablecmds:00016201:  prule->relname), 
-taaj: tablecmds:00016202:  errOmitLocation(true))); 
-taaj: tablecmds:00016227:  ereport(ERROR, 
-taaj: tablecmds:00016228:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00016229:  errmsg("\"%s\" is a TOAST relation", 
-taaj: tablecmds:00016230:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00016231:  errOmitLocation(true))); 
-taaj: tablecmds:00016234:  ereport(ERROR, 
-taaj: tablecmds:00016235:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00016236:  errmsg("\"%s\" is an Append Only segment listing relation", 
-taaj: tablecmds:00016237:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00016238:  errOmitLocation(true))); 
-taaj: tablecmds:00016241:  ereport(ERROR, 
-taaj: tablecmds:00016242:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00016243:  errmsg("\"%s\" is an Append Only block directory relation", 
-taaj: tablecmds:00016244:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00016245:  errOmitLocation(true))); 
-taaj: tablecmds:00016254:  ereport(ERROR, 
-taaj: tablecmds:00016255:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016256:  errmsg("cannot move an owned sequence into another schema"), 
-taaj: tablecmds:00016257:  errdetail("Sequence \"%s\" is linked to table \"%s\".", 
-taaj: tablecmds:00016258:  RelationGetRelationName(rel), 
-taaj: tablecmds:00016259:  get_rel_name(tableId)), 
-taaj: tablecmds:00016260:  errOmitLocation(true))); 
-taaj: tablecmds:00016267:  ereport(ERROR, 
-taaj: tablecmds:00016268:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-taaj: tablecmds:00016269:  errmsg("relation \"%s\" is already in schema \"%s\"", 
-taaj: tablecmds:00016270:  RelationGetRelationName(rel), 
-taaj: tablecmds:00016271:  newschema), 
-taaj: tablecmds:00016272:  errOmitLocation(true))); 
-taaj: tablecmds:00016276:  ereport(ERROR, 
-taaj: tablecmds:00016277:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016278:  errmsg("cannot move objects into or out of temporary schemas"), 
-taaj: tablecmds:00016279:  errOmitLocation(true))); 
-taaj: tablecmds:00016283:  ereport(ERROR, 
-taaj: tablecmds:00016284:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016285:  errmsg("cannot move objects into or out of TOAST schema"), 
-taaj: tablecmds:00016286:  errOmitLocation(true))); 
-taaj: tablecmds:00016290:  ereport(ERROR, 
-taaj: tablecmds:00016291:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016292:  errmsg("cannot move objects into or out of AO SEGMENT schema"), 
-taaj: tablecmds:00016293:  errOmitLocation(true))); 
-taaj: tablecmds:00016359:  elog(ERROR, "cache lookup failed for relation %u", relOid); 
-taaj: tablecmds:00016367:  ereport(ERROR, 
-taaj: tablecmds:00016368:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-taaj: tablecmds:00016369:  errmsg("relation \"%s\" already exists in schema \"%s\"", 
-taaj: tablecmds:00016370:  NameStr(classForm->relname), 
-taaj: tablecmds:00016371:  get_namespace_name(newNspOid)), 
-taaj: tablecmds:00016372:  errOmitLocation(true))); 
-taaj: tablecmds:00016384:  elog(ERROR, "failed to change schema dependency for relation \"%s\"", 
-taaj: tablecmds:00016385:  NameStr(classForm->relname)); 
-taaj: tablecmds:00016743:  ereport(ERROR, 
-taaj: tablecmds:00016744:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00016745:  errmsg("location uri \"%s\" appears more than once", 
-taaj: tablecmds:00016746:  uri1), 
-taaj: tablecmds:00016747:  errOmitLocation(true))); 
-taaj: tablecmds:00016804:  ereport(ERROR, 
-taaj: tablecmds:00016805:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016806:  errmsg("GPHDFS can only have one location list"), 
-taaj: tablecmds:00016807:  errhint("Combine multiple HDFS files into a single file"), 
-taaj: tablecmds:00016808:  errOmitLocation(true))); 
-taaj: tablecmds:00016840:  ereport(ERROR, 
-taaj: tablecmds:00016841:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016842:  errmsg("URI protocols must be the same for all data sources"), 
-taaj: tablecmds:00016843:  errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"), 
-taaj: tablecmds:00016844:  errOmitLocation(true))); 
-taaj: tablecmds:00016849:  ereport(ERROR, 
-taaj: tablecmds:00016850:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016851:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
-taaj: tablecmds:00016852:  errhint("Use CREATE EXTERNAL TABLE instead."), 
-taaj: tablecmds:00016853:  errOmitLocation(true))); 
-taaj: tablecmds:00016856:  ereport(ERROR, 
-taaj: tablecmds:00016857:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016858:  errmsg("http URI\'s can only be used in an external web table"), 
-taaj: tablecmds:00016859:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
-taaj: tablecmds:00016860:  errOmitLocation(true))); 
-taaj: tablecmds:00016863:  ereport(ERROR, 
-taaj: tablecmds:00016864:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016865:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
-taaj: tablecmds:00016866:  (uri->protocol == URI_HTTP ? "http" : "file")), 
-taaj: tablecmds:00016867:  errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."), 
-taaj: tablecmds:00016868:  errOmitLocation(true))); 
-taaj: tablecmds:00016871:  ereport(ERROR, 
-taaj: tablecmds:00016872:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016873:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
-taaj: tablecmds:00016874:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00016875:  errhint("Specify the explicit path and file name to write into."))); 
-taaj: tablecmds:00016878:  ereport(ERROR, 
-taaj: tablecmds:00016879:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016880:  errmsg("Unsupported use of a directory name in a writable gpfdist external table : " 
-taaj: tablecmds:00016881:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00016882:  errhint("Specify the explicit path and file name to write into."), 
-taaj: tablecmds:00016883:  errOmitLocation(true))); 
-taaj: tablecmds:00016934:  ereport(ERROR, 
-taaj: tablecmds:00016935:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016936:  errmsg("ON clause must not have more than one element."), 
-taaj: tablecmds:00016937:  errOmitLocation(true))); 
-taaj: tablecmds:00016980:  ereport(ERROR, 
-taaj: tablecmds:00016981:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-taaj: tablecmds:00016982:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
-taaj: tablecmds:00016983:  errOmitLocation(true))); 
-taaj: tablecmds:00017023:  ereport(ERROR, 
-taaj: tablecmds:00017024:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017025:  errmsg("unsupported format '%s'", formatname), 
-taaj: tablecmds:00017026:  errhint("available formats are \"text\", \"csv\", or \"custom\""), 
-taaj: tablecmds:00017027:  errOmitLocation(true))); 
-taaj: tablecmds:00017071:  ereport(ERROR, 
-taaj: tablecmds:00017072:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017073:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017074:  errOmitLocation(true))); 
-taaj: tablecmds:00017080:  ereport(ERROR, 
-taaj: tablecmds:00017081:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017082:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017083:  errOmitLocation(true))); 
-taaj: tablecmds:00017089:  ereport(ERROR, 
-taaj: tablecmds:00017090:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017091:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017092:  errOmitLocation(true))); 
-taaj: tablecmds:00017098:  ereport(ERROR, 
-taaj: tablecmds:00017099:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017100:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017101:  errOmitLocation(true))); 
-taaj: tablecmds:00017107:  ereport(ERROR, 
-taaj: tablecmds:00017108:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017109:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017110:  errOmitLocation(true))); 
-taaj: tablecmds:00017116:  ereport(ERROR, 
-taaj: tablecmds:00017117:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017118:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017119:  errOmitLocation(true))); 
-taaj: tablecmds:00017126:  ereport(ERROR, 
-taaj: tablecmds:00017127:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017128:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017129:  errOmitLocation(true))); 
-taaj: tablecmds:00017136:  ereport(ERROR, 
-taaj: tablecmds:00017137:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017138:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017139:  errOmitLocation(true))); 
-taaj: tablecmds:00017145:  ereport(ERROR, 
-taaj: tablecmds:00017146:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017147:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017148:  errOmitLocation(true))); 
-taaj: tablecmds:00017153:  ereport(ERROR, 
-taaj: tablecmds:00017154:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017155:  errmsg("formatter option only valid for custom formatters"), 
-taaj: tablecmds:00017156:  errOmitLocation(true))); 
-taaj: tablecmds:00017159:  elog(ERROR, "option \"%s\" not recognized", 
-taaj: tablecmds:00017160:  defel->defname); 
-taaj: tablecmds:00017310:  ereport(ERROR, 
-taaj: tablecmds:00017311:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017312:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017313:  errOmitLocation(true))); 
-taaj: tablecmds:00017322:  ereport(ERROR, 
-taaj: tablecmds:00017323:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017324:  errmsg("format options must be less than %d bytes in size", maxlen), 
-taaj: tablecmds:00017325:  errOmitLocation(true))); 
-taaj: tablecmds:00017329:  ereport(ERROR, 
-taaj: tablecmds:00017330:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017331:  errmsg("no formatter function specified"), 
-taaj: tablecmds:00017332:  errOmitLocation(true))); 
-taaj: tablecmds:00017376:  ereport(ERROR, 
-taaj: tablecmds:00017377:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00017378:  errmsg("cannot exchange HASH partition%s " 
-taaj: tablecmds:00017379:  "of relation \"%s\"", prule->partIdStr, 
-taaj: tablecmds:00017380:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00017565:  elog(ERROR, "validator function %u returned NULL", 
-taaj: tablecmds:00017566:  fcinfo.flinfo->fn_oid); 
+taaj: tablecmds:00014025:  ereport(ERROR, 
+taaj: tablecmds:00014026:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00014027:  errmsg("cannot EXCHANGE PARTITION for " 
+taaj: tablecmds:00014028:  "%s -- partition has children", 
+taaj: tablecmds:00014029:  prule->relname 
+taaj: tablecmds:00014030:  ), 
+taaj: tablecmds:00014031:  errOmitLocation(true))); 
+taaj: tablecmds:00014211:  ereport(NOTICE, 
+taaj: tablecmds:00014212:  (errmsg("exchanged partition%s of " 
+taaj: tablecmds:00014213:  "%s with relation \"%s\"", 
+taaj: tablecmds:00014214:  orig_prule->partIdStr, 
+taaj: tablecmds:00014215:  orig_prule->relname, 
+taaj: tablecmds:00014216:  newname), 
+taaj: tablecmds:00014217:  errOmitLocation(true))); 
+taaj: tablecmds:00014292:  ereport(ERROR, 
+taaj: tablecmds:00014293:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00014294:  errmsg("target of MERGE must be either \"%s\" or " 
+taaj: tablecmds:00014295:  "\"%s\"", 
+taaj: tablecmds:00014296:  get_rel_name(prule1->topRule->parchildrelid), 
+taaj: tablecmds:00014297:  get_rel_name(prule2->topRule->parchildrelid)), 
+taaj: tablecmds:00014298:  errOmitLocation(true))); 
+taaj: tablecmds:00014331:  elog(NOTICE, "merging"); 
+taaj: tablecmds:00014332:  elog(NOTICE, "%s", RelationGetRelationName(source)); 
+taaj: tablecmds:00014334:  elog(NOTICE, "with %s", RelationGetRelationName(target)); 
+taaj: tablecmds:00014336:  ereport(ERROR, 
+taaj: tablecmds:00014337:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00014338:  errmsg("cannot MERGE PARTITION for relation \"%s\"", 
+taaj: tablecmds:00014339:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00014340:  errOmitLocation(true))); 
+taaj: tablecmds:00014392:  elog(ERROR, "unrecognized partitioning kind '%c'", 
+taaj: tablecmds:00014393:  prule->pNode->part->parkind); 
+taaj: tablecmds:00014400:  ereport(ERROR, 
+taaj: tablecmds:00014401:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00014402:  errmsg("cannot MODIFY DEFAULT %s partition%s " 
+taaj: tablecmds:00014403:  "for relation \"%s\"", 
+taaj: tablecmds:00014404:  parTypName, 
+taaj: tablecmds:00014405:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00014406:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00014407:  errOmitLocation(true))); 
+taaj: tablecmds:00014410:  ereport(ERROR, 
+taaj: tablecmds:00014411:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00014412:  errmsg("invalid use of %s boundary specification " 
+taaj: tablecmds:00014413:  "in partition%s of type %s", 
+taaj: tablecmds:00014414:  "RANGE", 
+taaj: tablecmds:00014415:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00014416:  parTypName 
+taaj: tablecmds:00014417:  ), 
+taaj: tablecmds:00014418:  errOmitLocation(true))); 
+taaj: tablecmds:00014421:  ereport(ERROR, 
+taaj: tablecmds:00014422:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00014423:  errmsg("invalid use of %s boundary specification " 
+taaj: tablecmds:00014424:  "in partition%s of type %s", 
+taaj: tablecmds:00014425:  "LIST", 
+taaj: tablecmds:00014426:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00014427:  parTypName 
+taaj: tablecmds:00014428:  ), 
+taaj: tablecmds:00014429:  errOmitLocation(true))); 
+taaj: tablecmds:00014463:  ereport(ERROR, 
+taaj: tablecmds:00014464:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00014465:  errmsg("cannot MODIFY PARTITION for relation \"%s\"", 
+taaj: tablecmds:00014466:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00014467:  errOmitLocation(true))); 
+taaj: tablecmds:00014567:  ereport(ERROR, 
+taaj: tablecmds:00014568:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00014569:  errmsg("name \"%s\" for child partition " 
+taaj: tablecmds:00014570:  "is too long", 
+taaj: tablecmds:00014571:  newpartname))); 
+taaj: tablecmds:00014663:  ereport(NOTICE, 
+taaj: tablecmds:00014664:  (errmsg("renamed partition%s to \"%s\" for %s", 
+taaj: tablecmds:00014665:  prule->partIdStr, 
+taaj: tablecmds:00014666:  newpartname, 
+taaj: tablecmds:00014667:  prule->relname))); 
+taaj: tablecmds:00014672:  ereport(WARNING, 
+taaj: tablecmds:00014673:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taaj: tablecmds:00014674:  errmsg("renamed %d partitions, skipped %d child partitions due to name truncation", 
+taaj: tablecmds:00014675:  renamed, skipped), 
+taaj: tablecmds:00014676:  errOmitLocation(true))); 
+taaj: tablecmds:00014726:  ereport(NOTICE, 
+taaj: tablecmds:00014727:  (errmsg("%s level %d " 
+taaj: tablecmds:00014728:  "subpartition template specification " 
+taaj: tablecmds:00014729:  "for relation \"%s\"", 
+taaj: tablecmds:00014730:  "adding", 
+taaj: tablecmds:00014731:  lvl, 
+taaj: tablecmds:00014732:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00014737:  ereport(ERROR, 
+taaj: tablecmds:00014738:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00014739:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00014740:  "level %d " 
+taaj: tablecmds:00014741:  "subpartition template specification", 
+taaj: tablecmds:00014742:  RelationGetRelationName(rel), 
+taaj: tablecmds:00014743:  lvl), 
+taaj: tablecmds:00014744:  errOmitLocation(true))); 
+taaj: tablecmds:00014752:  ereport(NOTICE, 
+taaj: tablecmds:00014753:  (errmsg("%s level %d " 
+taaj: tablecmds:00014754:  "subpartition template specification " 
+taaj: tablecmds:00014755:  "for relation \"%s\"", 
+taaj: tablecmds:00014756:  (pc->arg1) ? "replacing" : "dropped", 
+taaj: tablecmds:00014757:  lvl, 
+taaj: tablecmds:00014758:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00014761:  elog(ERROR, 
+taaj: tablecmds:00014762:  "could not drop " 
+taaj: tablecmds:00014763:  "level %d " 
+taaj: tablecmds:00014764:  "subpartition template specification " 
+taaj: tablecmds:00014765:  "for relation \"%s\"", 
+taaj: tablecmds:00014766:  lvl, 
+taaj: tablecmds:00014767:  RelationGetRelationName(rel)); 
+taaj: tablecmds:00015266:  ereport(ERROR, 
+taaj: tablecmds:00015267:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00015268:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00015269:  "default partition", 
+taaj: tablecmds:00015270:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00015271:  errOmitLocation(true))); 
+taaj: tablecmds:00015353:  ereport(ERROR, 
+taaj: tablecmds:00015354:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00015355:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00015356:  "default partition", 
+taaj: tablecmds:00015357:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00015358:  errOmitLocation(true))); 
+taaj: tablecmds:00015404:  ereport(ERROR, 
+taaj: tablecmds:00015405:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00015406:  errmsg("both INTO partitions " 
+taaj: tablecmds:00015407:  "already exist"), 
+taaj: tablecmds:00015408:  errOmitLocation(true))); 
+taaj: tablecmds:00016195:  ereport(NOTICE, 
+taaj: tablecmds:00016196:  (errmsg("truncated partition%s for %s and its children", 
+taaj: tablecmds:00016197:  prule->partIdStr, 
+taaj: tablecmds:00016198:  prule->relname), 
+taaj: tablecmds:00016199:  errOmitLocation(true))); 
+taaj: tablecmds:00016203:  ereport(NOTICE, 
+taaj: tablecmds:00016204:  (errmsg("truncated partition%s for %s", 
+taaj: tablecmds:00016205:  prule->partIdStr, 
+taaj: tablecmds:00016206:  prule->relname), 
+taaj: tablecmds:00016207:  errOmitLocation(true))); 
+taaj: tablecmds:00016232:  ereport(ERROR, 
+taaj: tablecmds:00016233:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00016234:  errmsg("\"%s\" is a TOAST relation", 
+taaj: tablecmds:00016235:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00016236:  errOmitLocation(true))); 
+taaj: tablecmds:00016239:  ereport(ERROR, 
+taaj: tablecmds:00016240:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00016241:  errmsg("\"%s\" is an Append Only segment listing relation", 
+taaj: tablecmds:00016242:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00016243:  errOmitLocation(true))); 
+taaj: tablecmds:00016246:  ereport(ERROR, 
+taaj: tablecmds:00016247:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00016248:  errmsg("\"%s\" is an Append Only block directory relation", 
+taaj: tablecmds:00016249:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00016250:  errOmitLocation(true))); 
+taaj: tablecmds:00016259:  ereport(ERROR, 
+taaj: tablecmds:00016260:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016261:  errmsg("cannot move an owned sequence into another schema"), 
+taaj: tablecmds:00016262:  errdetail("Sequence \"%s\" is linked to table \"%s\".", 
+taaj: tablecmds:00016263:  RelationGetRelationName(rel), 
+taaj: tablecmds:00016264:  get_rel_name(tableId)), 
+taaj: tablecmds:00016265:  errOmitLocation(true))); 
+taaj: tablecmds:00016272:  ereport(ERROR, 
+taaj: tablecmds:00016273:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+taaj: tablecmds:00016274:  errmsg("relation \"%s\" is already in schema \"%s\"", 
+taaj: tablecmds:00016275:  RelationGetRelationName(rel), 
+taaj: tablecmds:00016276:  newschema), 
+taaj: tablecmds:00016277:  errOmitLocation(true))); 
+taaj: tablecmds:00016281:  ereport(ERROR, 
+taaj: tablecmds:00016282:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016283:  errmsg("cannot move objects into or out of temporary schemas"), 
+taaj: tablecmds:00016284:  errOmitLocation(true))); 
+taaj: tablecmds:00016288:  ereport(ERROR, 
+taaj: tablecmds:00016289:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016290:  errmsg("cannot move objects into or out of TOAST schema"), 
+taaj: tablecmds:00016291:  errOmitLocation(true))); 
+taaj: tablecmds:00016295:  ereport(ERROR, 
+taaj: tablecmds:00016296:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016297:  errmsg("cannot move objects into or out of AO SEGMENT schema"), 
+taaj: tablecmds:00016298:  errOmitLocation(true))); 
+taaj: tablecmds:00016364:  elog(ERROR, "cache lookup failed for relation %u", relOid); 
+taaj: tablecmds:00016372:  ereport(ERROR, 
+taaj: tablecmds:00016373:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+taaj: tablecmds:00016374:  errmsg("relation \"%s\" already exists in schema \"%s\"", 
+taaj: tablecmds:00016375:  NameStr(classForm->relname), 
+taaj: tablecmds:00016376:  get_namespace_name(newNspOid)), 
+taaj: tablecmds:00016377:  errOmitLocation(true))); 
+taaj: tablecmds:00016389:  elog(ERROR, "failed to change schema dependency for relation \"%s\"", 
+taaj: tablecmds:00016390:  NameStr(classForm->relname)); 
+taaj: tablecmds:00016748:  ereport(ERROR, 
+taaj: tablecmds:00016749:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00016750:  errmsg("location uri \"%s\" appears more than once", 
+taaj: tablecmds:00016751:  uri1), 
+taaj: tablecmds:00016752:  errOmitLocation(true))); 
+taaj: tablecmds:00016809:  ereport(ERROR, 
+taaj: tablecmds:00016810:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016811:  errmsg("GPHDFS can only have one location list"), 
+taaj: tablecmds:00016812:  errhint("Combine multiple HDFS files into a single file"), 
+taaj: tablecmds:00016813:  errOmitLocation(true))); 
+taaj: tablecmds:00016845:  ereport(ERROR, 
+taaj: tablecmds:00016846:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016847:  errmsg("URI protocols must be the same for all data sources"), 
+taaj: tablecmds:00016848:  errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"), 
+taaj: tablecmds:00016849:  errOmitLocation(true))); 
+taaj: tablecmds:00016854:  ereport(ERROR, 
+taaj: tablecmds:00016855:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016856:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
+taaj: tablecmds:00016857:  errhint("Use CREATE EXTERNAL TABLE instead."), 
+taaj: tablecmds:00016858:  errOmitLocation(true))); 
+taaj: tablecmds:00016861:  ereport(ERROR, 
+taaj: tablecmds:00016862:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016863:  errmsg("http URI\'s can only be used in an external web table"), 
+taaj: tablecmds:00016864:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
+taaj: tablecmds:00016865:  errOmitLocation(true))); 
+taaj: tablecmds:00016868:  ereport(ERROR, 
+taaj: tablecmds:00016869:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016870:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
+taaj: tablecmds:00016871:  (uri->protocol == URI_HTTP ? "http" : "file")), 
+taaj: tablecmds:00016872:  errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."), 
+taaj: tablecmds:00016873:  errOmitLocation(true))); 
+taaj: tablecmds:00016876:  ereport(ERROR, 
+taaj: tablecmds:00016877:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016878:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
+taaj: tablecmds:00016879:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00016880:  errhint("Specify the explicit path and file name to write into."))); 
+taaj: tablecmds:00016883:  ereport(ERROR, 
+taaj: tablecmds:00016884:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016885:  errmsg("Unsupported use of a directory name in a writable gpfdist external table : " 
+taaj: tablecmds:00016886:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00016887:  errhint("Specify the explicit path and file name to write into."), 
+taaj: tablecmds:00016888:  errOmitLocation(true))); 
+taaj: tablecmds:00016939:  ereport(ERROR, 
+taaj: tablecmds:00016940:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016941:  errmsg("ON clause must not have more than one element."), 
+taaj: tablecmds:00016942:  errOmitLocation(true))); 
+taaj: tablecmds:00016985:  ereport(ERROR, 
+taaj: tablecmds:00016986:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+taaj: tablecmds:00016987:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
+taaj: tablecmds:00016988:  errOmitLocation(true))); 
+taaj: tablecmds:00017028:  ereport(ERROR, 
+taaj: tablecmds:00017029:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017030:  errmsg("unsupported format '%s'", formatname), 
+taaj: tablecmds:00017031:  errhint("available formats are \"text\", \"csv\", or \"custom\""), 
+taaj: tablecmds:00017032:  errOmitLocation(true))); 
+taaj: tablecmds:00017076:  ereport(ERROR, 
+taaj: tablecmds:00017077:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017078:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017079:  errOmitLocation(true))); 
+taaj: tablecmds:00017085:  ereport(ERROR, 
+taaj: tablecmds:00017086:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017087:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017088:  errOmitLocation(true))); 
+taaj: tablecmds:00017094:  ereport(ERROR, 
+taaj: tablecmds:00017095:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017096:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017097:  errOmitLocation(true))); 
+taaj: tablecmds:00017103:  ereport(ERROR, 
+taaj: tablecmds:00017104:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017105:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017106:  errOmitLocation(true))); 
+taaj: tablecmds:00017112:  ereport(ERROR, 
+taaj: tablecmds:00017113:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017114:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017115:  errOmitLocation(true))); 
+taaj: tablecmds:00017121:  ereport(ERROR, 
+taaj: tablecmds:00017122:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017123:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017124:  errOmitLocation(true))); 
+taaj: tablecmds:00017131:  ereport(ERROR, 
+taaj: tablecmds:00017132:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017133:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017134:  errOmitLocation(true))); 
+taaj: tablecmds:00017141:  ereport(ERROR, 
+taaj: tablecmds:00017142:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017143:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017144:  errOmitLocation(true))); 
+taaj: tablecmds:00017150:  ereport(ERROR, 
+taaj: tablecmds:00017151:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017152:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017153:  errOmitLocation(true))); 
+taaj: tablecmds:00017158:  ereport(ERROR, 
+taaj: tablecmds:00017159:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017160:  errmsg("formatter option only valid for custom formatters"), 
+taaj: tablecmds:00017161:  errOmitLocation(true))); 
+taaj: tablecmds:00017164:  elog(ERROR, "option \"%s\" not recognized", 
+taaj: tablecmds:00017165:  defel->defname); 
+taaj: tablecmds:00017318:  ereport(ERROR, 
+taaj: tablecmds:00017319:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017320:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017321:  errOmitLocation(true))); 
+taaj: tablecmds:00017335:  ereport(ERROR, 
+taaj: tablecmds:00017336:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017337:  errmsg("format options must be less than %d bytes in size", maxlen), 
+taaj: tablecmds:00017338:  errOmitLocation(true))); 
+taaj: tablecmds:00017342:  ereport(ERROR, 
+taaj: tablecmds:00017343:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017344:  errmsg("no formatter function specified"), 
+taaj: tablecmds:00017345:  errOmitLocation(true))); 
+taaj: tablecmds:00017389:  ereport(ERROR, 
+taaj: tablecmds:00017390:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00017391:  errmsg("cannot exchange HASH partition%s " 
+taaj: tablecmds:00017392:  "of relation \"%s\"", prule->partIdStr, 
+taaj: tablecmds:00017393:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00017578:  elog(ERROR, "validator function %u returned NULL", 
+taaj: tablecmds:00017579:  fcinfo.flinfo->fn_oid); 
 aaaaa GP_IGNORE: taba: tablespace - ./backend/commands/tablespace.c
 taba: tablespace:00000117:  ereport(ERROR, 
 taba: tablespace:00000118:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -13089,71 +13103,71 @@ faaj: functions:00000327:  elog(ERROR, "null prosrc for function %u", foid);
 faaj: functions:00000367:  elog(ERROR,"Volatile SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname)); 
 faaj: functions:00000369:  elog(ERROR,"Stable SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname)); 
 faaj: functions:00000371:  elog(ERROR,"SQL function %s cannot be executed from the segment databases",NameStr(procedureStruct->proname)); 
-faaj: functions:00000859:  ereport(ERROR, 
-faaj: functions:00000860:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-faaj: functions:00000861:  errmsg("set-valued function called in context that cannot accept a set"), 
-faaj: functions:00000862:  errOmitLocation(true))); 
-faaj: functions:00000899:  ereport(ERROR, 
-faaj: functions:00000900:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-faaj: functions:00000901:  errmsg("set-valued function called in context that cannot accept a set"), 
-faaj: functions:00000902:  errOmitLocation(true))); 
-faaj: functions:00000960:  elog(ERROR, "null prosrc"); 
-faaj: functions:00001077:  ereport(ERROR, 
-faaj: functions:00001078:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001079:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001080:  format_type_be(rettype)), 
-faaj: functions:00001081:  errdetail("Function's final statement must be a SELECT."), 
-faaj: functions:00001082:  errOmitLocation(true))); 
-faaj: functions:00001100:  ereport(ERROR, 
-faaj: functions:00001101:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001102:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001103:  format_type_be(rettype)), 
-faaj: functions:00001104:  errdetail("Function's final statement must be a SELECT."), 
-faaj: functions:00001105:  errOmitLocation(true))); 
-faaj: functions:00001135:  ereport(ERROR, 
-faaj: functions:00001136:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001137:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001138:  format_type_be(rettype)), 
-faaj: functions:00001139:  errdetail("Final SELECT must return exactly one column."), 
-faaj: functions:00001140:  errOmitLocation(true))); 
-faaj: functions:00001144:  ereport(ERROR, 
-faaj: functions:00001145:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001146:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001147:  format_type_be(rettype)), 
-faaj: functions:00001148:  errdetail("Actual return type is %s.", 
-faaj: functions:00001149:  format_type_be(restype)), 
-faaj: functions:00001150:  errOmitLocation(true))); 
-faaj: functions:00001210:  ereport(ERROR, 
-faaj: functions:00001211:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001212:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001213:  format_type_be(rettype)), 
-faaj: functions:00001214:  errdetail("Final SELECT returns too many columns."), 
-faaj: functions:00001215:  errOmitLocation(true))); 
-faaj: functions:00001223:  ereport(ERROR, 
-faaj: functions:00001224:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001225:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001226:  format_type_be(rettype)), 
-faaj: functions:00001227:  errdetail("Final SELECT returns %s instead of %s at column %d.", 
-faaj: functions:00001228:  format_type_be(tletype), 
-faaj: functions:00001229:  format_type_be(atttype), 
-faaj: functions:00001230:  tuplogcols), 
-faaj: functions:00001231:  errOmitLocation(true))); 
-faaj: functions:00001244:  ereport(ERROR, 
-faaj: functions:00001245:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001246:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001247:  format_type_be(rettype)), 
-faaj: functions:00001248:  errdetail("Final SELECT returns too few columns."), 
-faaj: functions:00001249:  errOmitLocation(true))); 
-faaj: functions:00001263:  ereport(ERROR, 
-faaj: functions:00001264:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001265:  errmsg("cannot determine result data type"), 
-faaj: functions:00001266:  errdetail("A function returning \"anyarray\" or \"anyelement\" must have at least one argument of either type."), 
-faaj: functions:00001267:  errOmitLocation(true))); 
-faaj: functions:00001270:  ereport(ERROR, 
-faaj: functions:00001271:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001272:  errmsg("return type %s is not supported for SQL functions", 
-faaj: functions:00001273:  format_type_be(rettype)), 
-faaj: functions:00001274:  errOmitLocation(true))); 
+faaj: functions:00000864:  ereport(ERROR, 
+faaj: functions:00000865:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+faaj: functions:00000866:  errmsg("set-valued function called in context that cannot accept a set"), 
+faaj: functions:00000867:  errOmitLocation(true))); 
+faaj: functions:00000904:  ereport(ERROR, 
+faaj: functions:00000905:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+faaj: functions:00000906:  errmsg("set-valued function called in context that cannot accept a set"), 
+faaj: functions:00000907:  errOmitLocation(true))); 
+faaj: functions:00000965:  elog(ERROR, "null prosrc"); 
+faaj: functions:00001082:  ereport(ERROR, 
+faaj: functions:00001083:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001084:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001085:  format_type_be(rettype)), 
+faaj: functions:00001086:  errdetail("Function's final statement must be a SELECT."), 
+faaj: functions:00001087:  errOmitLocation(true))); 
+faaj: functions:00001105:  ereport(ERROR, 
+faaj: functions:00001106:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001107:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001108:  format_type_be(rettype)), 
+faaj: functions:00001109:  errdetail("Function's final statement must be a SELECT."), 
+faaj: functions:00001110:  errOmitLocation(true))); 
+faaj: functions:00001140:  ereport(ERROR, 
+faaj: functions:00001141:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001142:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001143:  format_type_be(rettype)), 
+faaj: functions:00001144:  errdetail("Final SELECT must return exactly one column."), 
+faaj: functions:00001145:  errOmitLocation(true))); 
+faaj: functions:00001149:  ereport(ERROR, 
+faaj: functions:00001150:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001151:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001152:  format_type_be(rettype)), 
+faaj: functions:00001153:  errdetail("Actual return type is %s.", 
+faaj: functions:00001154:  format_type_be(restype)), 
+faaj: functions:00001155:  errOmitLocation(true))); 
+faaj: functions:00001215:  ereport(ERROR, 
+faaj: functions:00001216:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001217:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001218:  format_type_be(rettype)), 
+faaj: functions:00001219:  errdetail("Final SELECT returns too many columns."), 
+faaj: functions:00001220:  errOmitLocation(true))); 
+faaj: functions:00001228:  ereport(ERROR, 
+faaj: functions:00001229:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001230:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001231:  format_type_be(rettype)), 
+faaj: functions:00001232:  errdetail("Final SELECT returns %s instead of %s at column %d.", 
+faaj: functions:00001233:  format_type_be(tletype), 
+faaj: functions:00001234:  format_type_be(atttype), 
+faaj: functions:00001235:  tuplogcols), 
+faaj: functions:00001236:  errOmitLocation(true))); 
+faaj: functions:00001249:  ereport(ERROR, 
+faaj: functions:00001250:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001251:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001252:  format_type_be(rettype)), 
+faaj: functions:00001253:  errdetail("Final SELECT returns too few columns."), 
+faaj: functions:00001254:  errOmitLocation(true))); 
+faaj: functions:00001268:  ereport(ERROR, 
+faaj: functions:00001269:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001270:  errmsg("cannot determine result data type"), 
+faaj: functions:00001271:  errdetail("A function returning \"anyarray\" or \"anyelement\" must have at least one argument of either type."), 
+faaj: functions:00001272:  errOmitLocation(true))); 
+faaj: functions:00001275:  ereport(ERROR, 
+faaj: functions:00001276:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001277:  errmsg("return type %s is not supported for SQL functions", 
+faaj: functions:00001278:  format_type_be(rettype)), 
+faaj: functions:00001279:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: naah: nodeagg - ./backend/executor/nodeAgg.c
 naah: nodeagg:00001036:  elog(ERROR,"hybrid hash aggregation sequencing error"); 
 naah: nodeagg:00001883:  elog(ERROR, "cache lookup failed for aggregate %u", 
@@ -13398,10 +13412,10 @@ saad: spi:00001696:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 saad: spi:00001697:  /* translator: %s is a SQL statement name */ 
 saad: spi:00001698:  errmsg("%s is not allowed in a non-volatile function", 
 saad: spi:00001699:  CreateCommandTag((Node*)queryTree)))); 
-saad: spi:00001902:  ereport(WARNING, 
-saad: spi:00001903:  (errcode(ERRCODE_WARNING), 
-saad: spi:00001904:  errmsg("A stable or volatile function is used as if it is immutable"), 
-saad: spi:00001905:  errhint("The function should be declared as stable or volatile in create function statement."))); 
+saad: spi:00001906:  ereport(WARNING, 
+saad: spi:00001907:  (errcode(ERRCODE_WARNING), 
+saad: spi:00001908:  errmsg("A stable or volatile function is used as if it is immutable"), 
+saad: spi:00001909:  errhint("The function should be declared as stable or volatile in create function statement."))); 
 aaaaa GP_IGNORE: faah: foreign - ./backend/foreign/foreign.c
 faah: foreign:00000055:  elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwid); 
 faah: foreign:00000092:  ereport(ERROR, 
@@ -18680,56 +18694,56 @@ paai: postgres:00006125:  (errcode(ERRCODE_PROTOCOL_VIOLATION),
 paai: postgres:00006126:  errmsg("invalid frontend message type %d", 
 paai: postgres:00006127:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
-paag: pquery:00000948:  ereport(ERROR, 
-paag: pquery:00000949:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paag: pquery:00000950:  errmsg("bind message has %d result formats but query has %d columns", 
-paag: pquery:00000951:  nFormats, natts), 
-paag: pquery:00000952:  errOmitLocation(true))); 
-paag: pquery:00001024:  ereport(ERROR, 
-paag: pquery:00001025:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001026:  errmsg("portal \"%s\" cannot be run", portal->name), 
-paag: pquery:00001027:  errOmitLocation(true))); 
-paag: pquery:00001120:  elog(ERROR, "unrecognized portal strategy: %d", 
-paag: pquery:00001121:  (int) portal->strategy); 
-paag: pquery:00001267:  ereport(ERROR, 
-paag: pquery:00001268:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001269:  errmsg("cursor can only scan forward"), 
-paag: pquery:00001270:  errhint("Declare it with SCROLL option to enable backward scan."), 
-paag: pquery:00001271:  errOmitLocation(true))); 
-paag: pquery:00001359:  elog(ERROR, "unsupported portal strategy: %d", 
-paag: pquery:00001360:  (int) portal->strategy); 
-paag: pquery:00001660:  ereport(ERROR, 
-paag: pquery:00001661:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001662:  errmsg("portal \"%s\" cannot be run", portal->name))); 
-paag: pquery:00001709:  elog(ERROR, "unsupported portal strategy"); 
-paag: pquery:00001770:  ereport(ERROR, 
-paag: pquery:00001771:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001772:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001773:  errOmitLocation(true))); 
-paag: pquery:00001786:  ereport(ERROR, 
-paag: pquery:00001787:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001788:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001789:  errOmitLocation(true))); 
-paag: pquery:00001809:  ereport(ERROR, 
-paag: pquery:00001810:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001811:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001812:  errOmitLocation(true))); 
-paag: pquery:00001845:  ereport(ERROR, 
-paag: pquery:00001846:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001847:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001848:  errOmitLocation(true))); 
-paag: pquery:00001860:  ereport(ERROR, 
-paag: pquery:00001861:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001862:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001863:  errOmitLocation(true))); 
-paag: pquery:00001888:  ereport(ERROR, 
-paag: pquery:00001889:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001890:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
-paag: pquery:00001904:  elog(ERROR, "bogus direction"); 
-paag: pquery:00001956:  ereport(ERROR, 
-paag: pquery:00001957:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001958:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001959:  errOmitLocation(true))); 
+paag: pquery:00000957:  ereport(ERROR, 
+paag: pquery:00000958:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paag: pquery:00000959:  errmsg("bind message has %d result formats but query has %d columns", 
+paag: pquery:00000960:  nFormats, natts), 
+paag: pquery:00000961:  errOmitLocation(true))); 
+paag: pquery:00001033:  ereport(ERROR, 
+paag: pquery:00001034:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001035:  errmsg("portal \"%s\" cannot be run", portal->name), 
+paag: pquery:00001036:  errOmitLocation(true))); 
+paag: pquery:00001129:  elog(ERROR, "unrecognized portal strategy: %d", 
+paag: pquery:00001130:  (int) portal->strategy); 
+paag: pquery:00001276:  ereport(ERROR, 
+paag: pquery:00001277:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001278:  errmsg("cursor can only scan forward"), 
+paag: pquery:00001279:  errhint("Declare it with SCROLL option to enable backward scan."), 
+paag: pquery:00001280:  errOmitLocation(true))); 
+paag: pquery:00001368:  elog(ERROR, "unsupported portal strategy: %d", 
+paag: pquery:00001369:  (int) portal->strategy); 
+paag: pquery:00001669:  ereport(ERROR, 
+paag: pquery:00001670:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001671:  errmsg("portal \"%s\" cannot be run", portal->name))); 
+paag: pquery:00001718:  elog(ERROR, "unsupported portal strategy"); 
+paag: pquery:00001779:  ereport(ERROR, 
+paag: pquery:00001780:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001781:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001782:  errOmitLocation(true))); 
+paag: pquery:00001795:  ereport(ERROR, 
+paag: pquery:00001796:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001797:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001798:  errOmitLocation(true))); 
+paag: pquery:00001818:  ereport(ERROR, 
+paag: pquery:00001819:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001820:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001821:  errOmitLocation(true))); 
+paag: pquery:00001854:  ereport(ERROR, 
+paag: pquery:00001855:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001856:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001857:  errOmitLocation(true))); 
+paag: pquery:00001869:  ereport(ERROR, 
+paag: pquery:00001870:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001871:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001872:  errOmitLocation(true))); 
+paag: pquery:00001897:  ereport(ERROR, 
+paag: pquery:00001898:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001899:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
+paag: pquery:00001913:  elog(ERROR, "bogus direction"); 
+paag: pquery:00001965:  ereport(ERROR, 
+paag: pquery:00001966:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001967:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001968:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: uaah: utility - ./backend/tcop/utility.c
 uaah: utility:00000138:  ereport(ERROR, 
 uaah: utility:00000139:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
@@ -22466,10 +22480,10 @@ taai: typcache:00000320:  (errcode(ERRCODE_WRONG_OBJECT_TYPE),
 taai: typcache:00000321:  errmsg("record type has not been registered"), 
 taai: typcache:00000322:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: dabb: datumstream - ./backend/utils/datumstream/datumstream.c
-dabb: datumstream:00000420:  elog(ERROR, "Did not find gp_relation_node entry for relfilenode %u, segment file #%d, logical eof " INT64_FORMAT, 
-dabb: datumstream:00000421:  relFileNode.relNode, 
-dabb: datumstream:00000422:  segmentFileNum, 
-dabb: datumstream:00000423:  eof); 
+dabb: datumstream:00000434:  elog(ERROR, "Did not find gp_relation_node entry for relfilenode %u, segment file #%d, logical eof " INT64_FORMAT, 
+dabb: datumstream:00000435:  relFileNode.relNode, 
+dabb: datumstream:00000436:  segmentFileNum, 
+dabb: datumstream:00000437:  eof); 
 aaaaa GP_IGNORE: eaae: elog - ./backend/utils/error/elog.c
 eaae: elog:00000189:  ereport(ERROR, (errmsg_internal("errstart was not called"))); \ 
 eaae: elog:00000190:  } \ 
@@ -22760,13 +22774,13 @@ saai: segadmin:00001327:  elog(ERROR, "filespace_map cannot be NULL");
 saai: segadmin:00001365:  elog(ERROR, "dbid cannot be NULL"); 
 saai: segadmin:00001367:  elog(ERROR, "mirdbid cannot be NULL"); 
 aaaaa GP_IGNORE: gaaf: gpmon - ./backend/utils/gpmon/gpmon.c
-gaaf: gpmon:00000065:  elog(WARNING, "gpmon: unable to set signal handler for SIGVTALRM (%m)"); 
-gaaf: gpmon:00000081:  elog(WARNING, "gpmon: unable to start timer (%m)"); 
-gaaf: gpmon:00000087:  elog(WARNING, "gpmon: cannot create socket (%m)"); 
-gaaf: gpmon:00000091:  elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed"); 
-gaaf: gpmon:00000094:  elog(WARNING, "fcntl(F_SETFD) failed"); 
-gaaf: gpmon:00000158:  elog(WARNING, "gpmon - bad magic %x", p->magic); 
-gaaf: gpmon:00000172:  elog(WARNING, "gpmon: cannot send (%m socket %d)", gpmon.gxsock); 
+gaaf: gpmon:00000066:  elog(WARNING, "gpmon: unable to set signal handler for SIGVTALRM (%m)"); 
+gaaf: gpmon:00000082:  elog(WARNING, "gpmon: unable to start timer (%m)"); 
+gaaf: gpmon:00000088:  elog(WARNING, "gpmon: cannot create socket (%m)"); 
+gaaf: gpmon:00000092:  elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed"); 
+gaaf: gpmon:00000095:  elog(WARNING, "fcntl(F_SETFD) failed"); 
+gaaf: gpmon:00000172:  elog(WARNING, "gpmon - bad magic %x", p->magic); 
+gaaf: gpmon:00000186:  elog(WARNING, "gpmon: cannot send (%m socket %d)", gpmon.gxsock); 
 aaaaa GP_IGNORE: daai: dynahash - ./backend/utils/hash/dynahash.c
 daai: dynahash:00000361:  ereport(ERROR, 
 daai: dynahash:00000362:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -24783,129 +24797,129 @@ paai: plpython:00000893:  elog(ERROR, "unrecognized WHEN tg_event: %u", tdata->t
 paai: plpython:00000943:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
 paai: plpython:00000968:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
 paai: plpython:00000976:  elog(ERROR, "unrecognized LEVEL tg_event: %u", tdata->tg_event); 
-paai: plpython:00001098:  ereport(ERROR, 
-paai: plpython:00001099:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001100:  errmsg("unsupported set function return mode"), 
-paai: plpython:00001101:  errdetail("PL/Python set-returning functions only support returning only value per call."))); 
-paai: plpython:00001112:  ereport(ERROR, 
-paai: plpython:00001113:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00001114:  errmsg("returned object cannot be iterated"), 
-paai: plpython:00001115:  errdetail("PL/Python set-returning functions must return an iterable object."))); 
-paai: plpython:00001172:  PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname); 
-paai: plpython:00001176:  elog(ERROR, "SPI_finish failed"); 
-paai: plpython:00001190:  elog(ERROR, "SPI_finish failed"); 
-paai: plpython:00001205:  ereport(ERROR, 
-paai: plpython:00001206:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00001207:  errmsg("PL/Python function with return type \"void\" did not return None"))); 
-paai: plpython:00001300:  ereport(WARNING, 
-paai: plpython:00001301:  (errmsg("forcibly aborting a subtransaction that has not been exited"))); 
-paai: plpython:00001352:  PLy_elog(ERROR, NULL); 
-paai: plpython:00001417:  PLy_elog(ERROR, "PyList_SetItem() failed, while setting up arguments"); 
-paai: plpython:00001421:  PLy_elog(ERROR, "PyDict_SetItemString() failed, while setting up arguments"); 
-paai: plpython:00001431:  ereport(ERROR, 
-paai: plpython:00001432:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001433:  errmsg("function returning record called in context " 
-paai: plpython:00001434:  "that cannot accept type record"))); 
-paai: plpython:00001505:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-paai: plpython:00001537:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
-paai: plpython:00001602:  elog(ERROR, "procedure name would overrun buffer"); 
-paai: plpython:00001635:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00001636:  procStruct->prorettype); 
-paai: plpython:00001643:  ereport(ERROR, 
-paai: plpython:00001644:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001645:  errmsg("trigger functions can only be called as triggers"))); 
-paai: plpython:00001648:  ereport(ERROR, 
-paai: plpython:00001649:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001650:  errmsg("PL/Python functions cannot return type %s", 
-paai: plpython:00001651:  format_type_be(procStruct->prorettype)))); 
-paai: plpython:00001720:  elog(ERROR, "cache lookup failed for type %u", types[i]); 
-paai: plpython:00001728:  ereport(ERROR, 
-paai: plpython:00001729:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001730:  errmsg("PL/Python functions cannot accept type %s", 
-paai: plpython:00001731:  format_type_be(types[i])))); 
-paai: plpython:00001759:  elog(ERROR, "null prosrc"); 
-paai: plpython:00001824:  elog(ERROR, "string would overflow buffer"); 
-paai: plpython:00001831:  PLy_elog(ERROR, "could not compile PL/Python function \"%s\"", 
-paai: plpython:00001832:  proc->proname); 
-paai: plpython:00001834:  PLy_elog(ERROR, "could not compile anonymous PL/Python code block"); 
-paai: plpython:00001853:  elog(FATAL, "buffer overrun in PLy_munge_source"); \ 
-paai: plpython:00001854: } \ 
-paai: plpython:00001855: while(0); 
-paai: plpython:00002097:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
-paai: plpython:00002114:  //elog(ERROR, "received unnamed record type as input"); 
-paai: plpython:00002133:  elog(ERROR, "cache lookup failed for relation %u", arg->typ_relid); 
-paai: plpython:00002155:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00002156:  desc->attrs[i]->atttypid); 
-paai: plpython:00002198:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
-paai: plpython:00002222:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00002223:  desc->attrs[i]->atttypid); 
-paai: plpython:00002235:  elog(ERROR, "PLyTypeInfo struct is initialized for a Tuple"); 
-paai: plpython:00002283:  ereport(ERROR, 
-paai: plpython:00002284:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00002285:  errmsg("PL/Python functions cannot return type %s", 
-paai: plpython:00002286:  format_type_be(arg->typoid)), 
-paai: plpython:00002287:  errdetail("PL/Python does not support conversion to arrays of row types."))); 
-paai: plpython:00002306:  elog(ERROR, "PLyTypeInfo struct is initialized for Tuple"); 
-paai: plpython:00002494:  ereport(ERROR, 
-paai: plpython:00002495:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00002496:  errmsg("cannot convert multidimensional array to Python list"), 
-paai: plpython:00002497:  errdetail("PL/Python only supports one-dimensional arrays."))); 
-paai: plpython:00002532:  elog(ERROR, "PLyTypeInfo structure describes a datum"); 
-paai: plpython:00002536:  PLy_elog(ERROR, "could not create new dictionary"); 
-paai: plpython:00002633:  PLy_elog(ERROR, "could not create bytes representation of Python object"); 
-paai: plpython:00002676:  elog(ERROR, "received unnamed record type as input"); 
-paai: plpython:00002731:  PLy_elog(ERROR, "could not create string representation of Python object"); 
-paai: plpython:00002740:  ereport(ERROR, 
-paai: plpython:00002741:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00002742:  errmsg("could not convert Python object into cstring: Python string representation appears to contain null bytes"))); 
-paai: plpython:00002744:  elog(ERROR, "could not convert Python object into cstring: Python string longer than reported length"); 
-paai: plpython:00002776:  PLy_elog(ERROR, "return value of function with array return type is not a Python sequence"); 
-paai: plpython:00002850:  ereport(ERROR, 
-paai: plpython:00002851:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paai: plpython:00002852:  errmsg("key \"%s\" not found in mapping", key), 
-paai: plpython:00002853:  errhint("To return null in a column, " 
-paai: plpython:00002854:  "add the value None to the mapping with the key named after the column."))); 
-paai: plpython:00002899:  ereport(ERROR, 
-paai: plpython:00002900:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00002901:  errmsg("length of returned sequence did not match number of columns in row"))); 
-paai: plpython:00002999:  ereport(ERROR, 
-paai: plpython:00003000:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paai: plpython:00003001:  errmsg("attribute \"%s\" does not exist in Python object", key), 
-paai: plpython:00003002:  errhint("To return null in a column, " 
-paai: plpython:00003003:  "let the returned object have an attribute named " 
-paai: plpython:00003004:  "after column with value None."))); 
-paai: plpython:00003498:  ereport(ERROR, 
-paai: plpython:00003499:  (errmsg("plpy.prepare: type name at ordinal position %d is not a string", i))); 
-paai: plpython:00003514:  elog(ERROR, "cache lookup failed for type %u", typeId); 
-paai: plpython:00003529:  ereport(ERROR, 
-paai: plpython:00003530:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00003531:  errmsg("plpy.prepare does not support composite types"))); 
-paai: plpython:00003538:  elog(ERROR, "SPI_prepare failed: %s", 
-paai: plpython:00003539:  SPI_result_code_string(SPI_result)); 
-paai: plpython:00003546:  elog(ERROR, "SPI_saveplan failed: %s", 
-paai: plpython:00003547:  SPI_result_code_string(SPI_result)); 
-paai: plpython:00003656:  PLy_elog(ERROR, "could not execute plan"); 
-paai: plpython:00004145:  PLy_elog(ERROR, "failed to add the spiexceptions module"); 
-paai: plpython:00004221:  ereport(FATAL, 
-paai: plpython:00004222:  (errmsg("Python major version mismatch in session"), 
-paai: plpython:00004223:  errdetail("This session has previously used Python major version %d, and it is now attempting to use Python major version %d.", 
-paai: plpython:00004224:  **version_ptr, plpython_python_version), 
-paai: plpython:00004225:  errhint("Start a new session to use a different Python major version."))); 
-paai: plpython:00004240:  PLy_elog(FATAL, "untrapped error in initialization"); 
-paai: plpython:00004268:  PLy_elog(ERROR, "could not import \"__main__\" module"); 
-paai: plpython:00004275:  PLy_elog(ERROR, "could not initialize globals"); 
-paai: plpython:00004290:  elog(ERROR, "could not initialize PLy_PlanType"); 
-paai: plpython:00004292:  elog(ERROR, "could not initialize PLy_ResultType"); 
-paai: plpython:00004294:  elog(ERROR, "could not initialize PLy_SubtransactionType"); 
-paai: plpython:00004314:  elog(ERROR, "could not initialize plpy"); 
-paai: plpython:00004571:  elog(ERROR, "could not convert SPI error to Python exception"); 
-paai: plpython:00004828:  elog(ERROR, "could not get line number from Python traceback"); 
-paai: plpython:00004832:  elog(ERROR, "could not get frame from Python traceback"); 
-paai: plpython:00004836:  elog(ERROR, "could not get code object from Python frame"); 
-paai: plpython:00004840:  elog(ERROR, "could not get function name from Python code object"); 
-paai: plpython:00004844:  elog(ERROR, "could not get file name from Python code object"); 
-paai: plpython:00004922:  elog(ERROR, "could not traverse Python traceback"); 
-paai: plpython:00004996:  PLy_elog(ERROR, "could not convert Python Unicode object to PostgreSQL server encoding"); 
+paai: plpython:00001097:  ereport(ERROR, 
+paai: plpython:00001098:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001099:  errmsg("unsupported set function return mode"), 
+paai: plpython:00001100:  errdetail("PL/Python set-returning functions only support returning only value per call."))); 
+paai: plpython:00001111:  ereport(ERROR, 
+paai: plpython:00001112:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00001113:  errmsg("returned object cannot be iterated"), 
+paai: plpython:00001114:  errdetail("PL/Python set-returning functions must return an iterable object."))); 
+paai: plpython:00001171:  PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname); 
+paai: plpython:00001175:  elog(ERROR, "SPI_finish failed"); 
+paai: plpython:00001188:  elog(ERROR, "SPI_finish failed"); 
+paai: plpython:00001203:  ereport(ERROR, 
+paai: plpython:00001204:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00001205:  errmsg("PL/Python function with return type \"void\" did not return None"))); 
+paai: plpython:00001301:  ereport(WARNING, 
+paai: plpython:00001302:  (errmsg("forcibly aborting a subtransaction that has not been exited"))); 
+paai: plpython:00001353:  PLy_elog(ERROR, NULL); 
+paai: plpython:00001418:  PLy_elog(ERROR, "PyList_SetItem() failed, while setting up arguments"); 
+paai: plpython:00001422:  PLy_elog(ERROR, "PyDict_SetItemString() failed, while setting up arguments"); 
+paai: plpython:00001432:  ereport(ERROR, 
+paai: plpython:00001433:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001434:  errmsg("function returning record called in context " 
+paai: plpython:00001435:  "that cannot accept type record"))); 
+paai: plpython:00001506:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+paai: plpython:00001538:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
+paai: plpython:00001603:  elog(ERROR, "procedure name would overrun buffer"); 
+paai: plpython:00001636:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00001637:  procStruct->prorettype); 
+paai: plpython:00001644:  ereport(ERROR, 
+paai: plpython:00001645:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001646:  errmsg("trigger functions can only be called as triggers"))); 
+paai: plpython:00001649:  ereport(ERROR, 
+paai: plpython:00001650:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001651:  errmsg("PL/Python functions cannot return type %s", 
+paai: plpython:00001652:  format_type_be(procStruct->prorettype)))); 
+paai: plpython:00001721:  elog(ERROR, "cache lookup failed for type %u", types[i]); 
+paai: plpython:00001729:  ereport(ERROR, 
+paai: plpython:00001730:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001731:  errmsg("PL/Python functions cannot accept type %s", 
+paai: plpython:00001732:  format_type_be(types[i])))); 
+paai: plpython:00001760:  elog(ERROR, "null prosrc"); 
+paai: plpython:00001825:  elog(ERROR, "string would overflow buffer"); 
+paai: plpython:00001832:  PLy_elog(ERROR, "could not compile PL/Python function \"%s\"", 
+paai: plpython:00001833:  proc->proname); 
+paai: plpython:00001835:  PLy_elog(ERROR, "could not compile anonymous PL/Python code block"); 
+paai: plpython:00001854:  elog(FATAL, "buffer overrun in PLy_munge_source"); \ 
+paai: plpython:00001855: } \ 
+paai: plpython:00001856: while(0); 
+paai: plpython:00002098:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
+paai: plpython:00002115:  //elog(ERROR, "received unnamed record type as input"); 
+paai: plpython:00002134:  elog(ERROR, "cache lookup failed for relation %u", arg->typ_relid); 
+paai: plpython:00002156:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00002157:  desc->attrs[i]->atttypid); 
+paai: plpython:00002199:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
+paai: plpython:00002223:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00002224:  desc->attrs[i]->atttypid); 
+paai: plpython:00002236:  elog(ERROR, "PLyTypeInfo struct is initialized for a Tuple"); 
+paai: plpython:00002284:  ereport(ERROR, 
+paai: plpython:00002285:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00002286:  errmsg("PL/Python functions cannot return type %s", 
+paai: plpython:00002287:  format_type_be(arg->typoid)), 
+paai: plpython:00002288:  errdetail("PL/Python does not support conversion to arrays of row types."))); 
+paai: plpython:00002307:  elog(ERROR, "PLyTypeInfo struct is initialized for Tuple"); 
+paai: plpython:00002495:  ereport(ERROR, 
+paai: plpython:00002496:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00002497:  errmsg("cannot convert multidimensional array to Python list"), 
+paai: plpython:00002498:  errdetail("PL/Python only supports one-dimensional arrays."))); 
+paai: plpython:00002533:  elog(ERROR, "PLyTypeInfo structure describes a datum"); 
+paai: plpython:00002537:  PLy_elog(ERROR, "could not create new dictionary"); 
+paai: plpython:00002634:  PLy_elog(ERROR, "could not create bytes representation of Python object"); 
+paai: plpython:00002677:  elog(ERROR, "received unnamed record type as input"); 
+paai: plpython:00002732:  PLy_elog(ERROR, "could not create string representation of Python object"); 
+paai: plpython:00002741:  ereport(ERROR, 
+paai: plpython:00002742:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00002743:  errmsg("could not convert Python object into cstring: Python string representation appears to contain null bytes"))); 
+paai: plpython:00002745:  elog(ERROR, "could not convert Python object into cstring: Python string longer than reported length"); 
+paai: plpython:00002777:  PLy_elog(ERROR, "return value of function with array return type is not a Python sequence"); 
+paai: plpython:00002851:  ereport(ERROR, 
+paai: plpython:00002852:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paai: plpython:00002853:  errmsg("key \"%s\" not found in mapping", key), 
+paai: plpython:00002854:  errhint("To return null in a column, " 
+paai: plpython:00002855:  "add the value None to the mapping with the key named after the column."))); 
+paai: plpython:00002900:  ereport(ERROR, 
+paai: plpython:00002901:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00002902:  errmsg("length of returned sequence did not match number of columns in row"))); 
+paai: plpython:00003000:  ereport(ERROR, 
+paai: plpython:00003001:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paai: plpython:00003002:  errmsg("attribute \"%s\" does not exist in Python object", key), 
+paai: plpython:00003003:  errhint("To return null in a column, " 
+paai: plpython:00003004:  "let the returned object have an attribute named " 
+paai: plpython:00003005:  "after column with value None."))); 
+paai: plpython:00003499:  ereport(ERROR, 
+paai: plpython:00003500:  (errmsg("plpy.prepare: type name at ordinal position %d is not a string", i))); 
+paai: plpython:00003515:  elog(ERROR, "cache lookup failed for type %u", typeId); 
+paai: plpython:00003530:  ereport(ERROR, 
+paai: plpython:00003531:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00003532:  errmsg("plpy.prepare does not support composite types"))); 
+paai: plpython:00003539:  elog(ERROR, "SPI_prepare failed: %s", 
+paai: plpython:00003540:  SPI_result_code_string(SPI_result)); 
+paai: plpython:00003547:  elog(ERROR, "SPI_saveplan failed: %s", 
+paai: plpython:00003548:  SPI_result_code_string(SPI_result)); 
+paai: plpython:00003657:  PLy_elog(ERROR, "could not execute plan"); 
+paai: plpython:00004146:  PLy_elog(ERROR, "failed to add the spiexceptions module"); 
+paai: plpython:00004222:  ereport(FATAL, 
+paai: plpython:00004223:  (errmsg("Python major version mismatch in session"), 
+paai: plpython:00004224:  errdetail("This session has previously used Python major version %d, and it is now attempting to use Python major version %d.", 
+paai: plpython:00004225:  **version_ptr, plpython_python_version), 
+paai: plpython:00004226:  errhint("Start a new session to use a different Python major version."))); 
+paai: plpython:00004241:  PLy_elog(FATAL, "untrapped error in initialization"); 
+paai: plpython:00004269:  PLy_elog(ERROR, "could not import \"__main__\" module"); 
+paai: plpython:00004276:  PLy_elog(ERROR, "could not initialize globals"); 
+paai: plpython:00004291:  elog(ERROR, "could not initialize PLy_PlanType"); 
+paai: plpython:00004293:  elog(ERROR, "could not initialize PLy_ResultType"); 
+paai: plpython:00004295:  elog(ERROR, "could not initialize PLy_SubtransactionType"); 
+paai: plpython:00004315:  elog(ERROR, "could not initialize plpy"); 
+paai: plpython:00004572:  elog(ERROR, "could not convert SPI error to Python exception"); 
+paai: plpython:00004829:  elog(ERROR, "could not get line number from Python traceback"); 
+paai: plpython:00004833:  elog(ERROR, "could not get frame from Python traceback"); 
+paai: plpython:00004837:  elog(ERROR, "could not get code object from Python frame"); 
+paai: plpython:00004841:  elog(ERROR, "could not get function name from Python code object"); 
+paai: plpython:00004845:  elog(ERROR, "could not get file name from Python code object"); 
+paai: plpython:00004923:  elog(ERROR, "could not traverse Python traceback"); 
+paai: plpython:00004997:  PLy_elog(ERROR, "could not convert Python Unicode object to PostgreSQL server encoding"); 
 aaaaa GP_IGNORE: pabi: pgxbackendxsupport - ./pl/plr/pg_backend_support.c
 pabi: pgxbackendxsupport:00000101:  ereport(ERROR, 
 pabi: pgxbackendxsupport:00000102:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
