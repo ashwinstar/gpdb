@@ -1854,9 +1854,17 @@ external_scan_error_callback(void *arg)
 			 * dare not try to convert it, and at present there's no way
 			 * to regurgitate it without conversion.  So we have to punt
 			 * and just report the line number.
+			 *
+			 * since the gpfdist protocol does not transfer line numbers
+			 * correclty in certain places - if line number is 0 we just
+			 * do not print it.
 			 */
-			errcontext("External table %s, line %s of file %s",
+			if(cstate->cur_lineno > 0)
+				errcontext("External table %s, line %s of file %s",
 					   cstate->cur_relname, linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename);
+			else
+				errcontext("External table %s, file %s",
+						   cstate->cur_relname, cstate->filename);
 		}
 	}
 

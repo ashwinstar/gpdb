@@ -612,6 +612,7 @@ int fstream_read(fstream_t *fs,
 				 const int read_whole_lines)
 {
 	int buffer_capacity = fs->options.bufsize;
+	static char err_buf[FILE_ERROR_SZ] = {0};
 	
 	if (fs->ferror)
 		return -1;
@@ -779,10 +780,10 @@ int fstream_read(fstream_t *fs,
 			 */
 			if (!p || (char*)dest + size >= p + buffer_capacity)
 			{
-				gfile_printf_then_putc_newline(
-						"fstream ERROR: line too long in file %s near (%lld bytes)",
+				snprintf(err_buf, sizeof(err_buf)-1, "line too long in file %s near (%lld bytes)",
 						fs->glob.gl_pathv[fs->fidx], (long long) fs->foff);
-				fs->ferror = "line too long in file";
+				fs->ferror = err_buf;
+				gfile_printf_then_putc_newline("%s", err_buf);
 				return -1;
 			}
 
