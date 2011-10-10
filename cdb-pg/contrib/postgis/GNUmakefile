@@ -109,8 +109,9 @@ include $(BLD_TOP)/releng/tools.mk
 GEOS_DIR=$(RELENG_TOOLS)/geos-3.2.2
 GEOS_CONFIG=$(GEOS_DIR)/bin/geos-config
 PROJ_DIR=$(RELENG_TOOLS)/proj-4.7.0
+PG_CONFIG=$(BLD_TOP)/cdb-pg/src/bin/pg_config/pg_config
 
 config.status: $(GEOS_DIR) $(PROJ_DIR)
-	GEOS_PREFIX=$(GEOS_DIR) ./configure --with-geosconfig=$(GEOS_CONFIG) --with-projdir=$(PROJ_DIR)
+	GEOS_PREFIX=$(GEOS_DIR) ./configure --with-geosconfig=$(GEOS_CONFIG) --with-projdir=$(PROJ_DIR) --with-pgconfig=$(PG_CONFIG)
 
 .PHONY: utils liblwgeom

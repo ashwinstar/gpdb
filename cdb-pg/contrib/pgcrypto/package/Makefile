@@ -5,7 +5,7 @@ all: gppkg
 MACHINE_ARCH=$(shell uname -p)
 top_builddir=../../..
 OS=$(shell uname -s)
-GPMGMT=$(top_builddir)/../gpMgmt/
+GPMGMT=$(top_builddir)/../gpMgmt
 
 gppkg:  
 	sed -i".bk" "s/#arch/$(MACHINE_ARCH)/g" gppkg/gppkg_spec.yml
@@ -15,10 +15,11 @@ gppkg:
 	mkdir RPMS SOURCES SRPMS BUILD
 	rpmbuild -bb SPECS/pgcrypto.spec 
 	cp RPMS/$(MACHINE_ARCH)/pgcrypto* gppkg/
-	$(GPMGMT)/bin/gppkg -b gppkg/
+	source $(INSTLOC)/greenplum_path.sh && $(GPMGMT)/bin/gppkg -b gppkg/
 						
 clean:
 	rm -rf RPMS SOURCES SRPMS BUILD
+	rm -rf install
 	rm gppkg/*.rpm
 
 .PHONY: gppkg clean

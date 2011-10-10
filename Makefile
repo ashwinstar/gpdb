@@ -41,7 +41,7 @@ all : devel
 # Internal functions which are invoked by other rules within this makefile
 .PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr copylibs
 .PHONY : greenplum_path RECONFIG HOMEDEP GPROOTDEP GPROOTDEP GPROOTFAIL
-.PHONY : version gccVersionCheck pygres authlibs clients loaders connectivity
+.PHONY : version gccVersionCheck pygres authlibs clients loaders connectivity gppkg
 
 #---------------------------------------------------------------------
 # Make 3rd-party libraries and tools
@@ -332,6 +332,7 @@ define BUILD_STEPS
 	$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
+	@$(MAKE) gppkg INSTLOC=$(INSTLOC) GPPKGINSTLOC=$(GPPKGINSTLOC)
 
 endef
 
@@ -543,12 +544,16 @@ ifneq "$(GPROOT)" ""
 CLIENT_HOME_DIR=$(GPROOT)
 CONNECTIVITY_HOME_DIR=$(GPROOT)
 LOADERS_HOME_DIR=$(GPROOT)
+GPPKG_HOME_DIR=$(GPROOT)
 else
 CLIENT_HOME_DIR=$(BLD_HOME)
 CONNECTIVITY_HOME_DIR=$(BLD_HOME)
 dist_faultinj : CLIENTINSTLOC=$(CLIENTDISTPATH)
 LOADERS_HOME_DIR=$(BLD_HOME)
+GPPKG_HOME_DIR=$(BLD_HOME)
 endif
+
+GPPKGINSTLOC=$(GPPKG_HOME_DIR)
 
 CLIENTINSTLOC=$(CLIENT_HOME_DIR)/greenplum-clients
 CLIENTINSTLOC_BIN=$(CLIENTINSTLOC)/bin
@@ -1377,3 +1382,24 @@ pygres: GPROOTDEP
 
 authlibs:
 	@echo "# authlibs are now provided in the ext/ directory on this platform" > authlib_libpath_setup.sh
+
+
+
+GPPKG_TARGETS = \
+	cdb-pg/contrib/pgcrypto/package \
+	cdb-pg/contrib/postgis/package \
+	cdb-pg/src/pl/plr/package \
+	cdb-pg/src/pl/plperl/package \
+	cdb-pg/src/pl/pljava/package \
+	$(NULL)
+
+gppkg:
+ifeq "$(findstring gppkg,$(BLD_TARGETS))" ""
+	# ---- build and packaging of gppkgs are currently disabled
+	# ---- set BLD_TARGETS="gppkg" to enable them.
+else
+	@for target in $(GPPKG_TARGETS); do \
+		$(MAKE) -C $${target} INSTLOC=$(INSTLOC); \
+		cp $${target}/*.gppkg $(GPPKGINSTLOC); \
+	done || true
+endif

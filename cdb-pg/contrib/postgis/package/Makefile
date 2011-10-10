@@ -43,7 +43,7 @@ $(POSTGIS_GPPKG): $(GEOS_DIR) $(PROJ_DIR) $(POSTGIS_RPM) $(PROJ_RPM) $(GEOS_RPM)
 	mkdir gppkg/deps 
 	cp $(GEOS_RPM) gppkg/deps 
 	cp $(PROJ_RPM) gppkg/deps 
-	$(GPMGMT)/bin/gppkg -b gppkg 
+	source $(INSTLOC)/greenplum_path.sh && $(GPMGMT)/bin/gppkg -b gppkg 
 
 clean:
 	rm -rf RPMS SOURCES BUILD SRPMS

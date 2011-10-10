@@ -38,7 +38,7 @@ $(PLR_GPPKG): $(R_DIR) $(R_RPM) $(PLR_RPM)
 	rm -rf gppkg/deps 
 	mkdir gppkg/deps
 	cp $(R_RPM) gppkg/deps/ 
-	$(GPMGMT)/bin/gppkg -b gppkg 
+	source $(INSTLOC)/greenplum_path.sh && $(GPMGMT)/bin/gppkg -b gppkg 
 
 clean:
 	rm -rf RPMS SRPMS SOURCES BUILD
