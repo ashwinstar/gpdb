@@ -422,6 +422,7 @@ CREATE WRITABLE EXTERNAL TABLE ext_w(a int) location('demoprot://demoprotfile.tx
 CREATE READABLE EXTERNAL TABLE ext_r(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
 
 RESET SESSION AUTHORIZATION;
+ALTER PROTOCOL demoprot_untrusted OWNER TO extprotu; -- should fail. protocol is not trusted
 GRANT SELECT ON PROTOCOL demoprot_untrusted TO extprotu; -- should fail. protocol is not trusted
 GRANT SELECT ON PROTOCOL demoprot TO extprotu;
 GRANT INSERT ON PROTOCOL demoprot TO extprotu;

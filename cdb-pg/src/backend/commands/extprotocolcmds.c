@@ -201,9 +201,11 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	Oid			ownerId;
 	AclResult	aclresult;
 	bool		isNull;
+	bool		isTrusted;
 	ScanKeyData	key;
 	SysScanDesc	scan;
 	Datum		ownerDatum;
+	Datum		trustedDatum;
 	
 	
 	/*
@@ -245,10 +247,23 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("internal error: protocol \"%s\"  has no owner defined",
-						 name)));	
+						 name)));
 
 	ownerId = DatumGetObjectId(ownerDatum);
 
+	trustedDatum = heap_getattr(tup, 
+							 Anum_pg_extprotocol_ptctrusted,
+							 dsc, 
+							 &isNull);
+	
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("internal error: protocol \"%s\" has no trust attribute defined",
+						 name)));
+
+	isTrusted = DatumGetBool(trustedDatum);
+	
 	if (ownerId != newOwnerId)
 	{
 		Acl		   *newAcl;
@@ -276,6 +291,14 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 				aclcheck_error(aclresult, ACL_KIND_EXTPROTOCOL, name);
 		}
 
+		/* MPP-14592: untrusted? don't allow ALTER OWNER to non-super user */
+		if(!isTrusted && !superuser_arg(newOwnerId))
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("untrusted protocol \"%s\" can't be owned by non superuser", 
+							 name)));
+
+		
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, false, sizeof(nulls));
 		MemSet(replaces, false, sizeof(replaces));
