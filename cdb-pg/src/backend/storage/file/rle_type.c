@@ -99,14 +99,18 @@ bool rle_type_compression_stats = true;
  *         align:            char to indicate alignment of the datums
  *         inbuf:            buffer of data to be compressed
  *         inSizeBytes:      amount of data to be compressed
- *         outbuf:           buffer into which we should place the decompressed  *                           data
+ *         outbuf:           buffer into which we should place the decompressed  
+ *                           data
  *         outbufSizeBytes:  physical size of the output buffer
- *         outSizeBytes:     amount of decompressed data actually placed in the  *                           output buffer
+ *         outSizeBytes:     amount of decompressed data actually placed in the  
+ *                           output buffer
  *
  *   returns -1 if there is an error that cannot be handled
  *   returns the number of bytes compressed
- *   if return is not inSizeBytes then function should be recalled with an 
- *   output buffer large enough to hold all the compressed data
+ *   if return is not inSizeBytes then there was not enough space
+ *   to write all the output - the data must either be left unompressed or
+ *   the function should be recalled with an output buffer large enough 
+ *   to hold all the compressed data
  *    
  *   Function cannot just be recalled on remaining data unless we pass in a 
  *   parameter that says not to expect a block header in subsequent calls
@@ -456,10 +460,12 @@ rle_type_comp(
 					/* 
 					 * can't be recalled unless we pass a parameter into 
 					 * subsequent calls that says not to expect a
-					 * block header - so for now just return -1
+					 * block header - but don't just return -1
+					 * because upper layer needs to know difference
+					 * between fundamental error and not room in output
+					 * buffer to handle all output
 					 */
-					/* return finishedIndex;*/
-					return -1;
+					return finishedIndex;
 
 				}
 
@@ -492,10 +498,12 @@ rle_type_comp(
 					/* 
 					 * can't be recalled unless we pass a parameter into 
 					 * subsequent calls that says not to expect a
-					 * block header - so for now just return -1
+					 * block header - but don't just return -1
+					 * because upper layer needs to know difference
+					 * between fundamental error and not room in output
+					 * buffer to handle all output
 					 */
-					/* return finishedIndex;*/
-					return -1;
+					return finishedIndex;
 
 				}
 
@@ -603,8 +611,9 @@ rle_type_comp(
  *   returns -1 if there is an error that cannot be handled
  *
  *   otherwise returns the number of bytes decompressed
- *   if return is not inSizeBytes then function could be recalled
- *   with rest of unhandled data
+ *   if return is not inSizeBytes then output buffer was not large enough
+ *   to hold all the output - it would need to be recalled with an output buffer
+ *   large enough to hold the entire output
  *
  *   Function cannot just be recalled on remaining data unless we pass in a 
  *   parameter that says not to expect a block header in subsequent calls 
@@ -941,10 +950,12 @@ rle_type_decomp(
 				/* 
 				 * can't be recalled unless we pass a parameter into 
 				 * subsequent calls that says not to expect a
-				 * block header - so for now just return -1
+				 * block header - but don't just return -1
+				 * because upper layer needs to know difference
+				 * between fundamental error and not room in output
+				 * buffer to handle all output
 				 */
-				/* return finishedIndex;*/
-				return -1;
+				return finishedIndex;
 					
 			}
 
@@ -1016,10 +1027,12 @@ rle_type_decomp(
 				/* 
 				 * can't be recalled unless we pass a parameter into 
 				 * subsequent calls that says not to expect a
-				 * block header - so for now just return -1
+				 * block header - but don't just return -1
+				 * because upper layer needs to know difference
+				 * between fundamental error and not room in output
+				 * buffer to handle all output
 				 */
-				/* return finishedIndex;*/
-				return -1;
+				return finishedIndex;
 			}
 
 			nDatum++;

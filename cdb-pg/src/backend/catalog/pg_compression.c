@@ -655,6 +655,24 @@ rle_type_compress(PG_FUNCTION_ARGS)
 			 dst_sz,
 			 *dst_used,
 			 res);
+	} 
+	else if (res != src_sz)
+	{
+		/* if res > 0 but not == src_sz then compression was proceeding without 
+		 * error but in the end there was not enough room in the output buffer
+		 * to hold the result - this should also mean it is resulting in 
+		 * expansion rather than compression which is possible - res itself is 
+		 * not being passed up through the stack to
+		 *  AppendOnlyStorageWrite_CompressAppend - there it will simply
+		 * look if the dst_used is less than src_sz - if not then it will 
+		 * leave it uncompressed - we need to make sure that we don't hit 
+		 * the case where res != src_sz ie not all the input data is processed 
+		 * but dst_used happens to be exactly src_sz; so here we set dst_used to 
+		 * src_sz+ 1 to make sure we don't hit that case; Long-term, 
+		 * it might better to be able to pass the actual res up through the 
+		 * stack to AppendOnlyStorageWrite_CompressAppend 
+		 */
+		*dst_used = src_sz+1;
 	}
 
 	PG_RETURN_VOID();
@@ -689,8 +707,16 @@ rle_type_decompress(PG_FUNCTION_ARGS)
 			 dst_sz,
 			 *dst_used,
 			 res);
+	} 
+	else 
+	{
+		/* if there isn't an error then the only other reason for res != src_sz 
+		 * is if the output buffer is not big enough but we know how big it 
+		 * should be in the upper layers and that should never happen 
+		 */
+		Insist(res == src_sz);
 	}
-
+	
 	PG_RETURN_VOID();
 }
 
