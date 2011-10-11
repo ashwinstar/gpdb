@@ -570,7 +570,7 @@ class ValidateInstallRpms(Operation):
                 # this MissingDependencyError. However, this exception does not support
                 # multiple missing dependencies. Some refactoring work is needed in both places.
                 logger.error(e.cmd.get_results().stderr)
-                raise MissingDependencyError(None)
+                raise MissingDependencyError('')
 
             # Code path 2, possibly (see docstring)
             # example stderr:
