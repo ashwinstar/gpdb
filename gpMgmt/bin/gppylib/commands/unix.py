@@ -551,13 +551,20 @@ class Scp(Command):
         if recursive:
             cmdStr = cmdStr + "-r "
 
+        # MPP-13617                                                                                                                          
+        def canonicalize(addr):
+            if ':' not in addr: return addr
+            if '[' in addr: return addr
+            return '[' + addr + ']'
+
         if srcHost:
-            cmdStr = cmdStr + srcHost + ":"
+            cmdStr = cmdStr + canonicalize(srcHost) + ":"
         cmdStr = cmdStr + srcFile + " "
 
         if dstHost:
-            cmdStr = cmdStr + dstHost + ":"
+            cmdStr = cmdStr + canonicalize(dstHost) + ":"
         cmdStr = cmdStr + dstFile
+
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 

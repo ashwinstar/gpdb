@@ -34,6 +34,10 @@ try:
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
+# MPP-13617                                                                                                                                  
+import re
+RE1=re.compile('\\[([^]]+)\\]:(.+)')
+
 WARN_MARK = '<<<<<'
 logger = gplog.get_default_logger()
 
@@ -68,7 +72,12 @@ class GpdbRestore(Operation):
         if self.restore_tables is not None:
             self.restore_tables = self.restore_tables.split(',')
         if self.db_host_path is not None:
-            self.db_host_path = self.db_host_path.split(':')
+            # MPP-13617                                                                                                                      
+            m = re.match(RE1, self.db_host_path)
+            if m:
+                self.db_host_path = m.groups()
+            else:
+                self.db_host_path = self.db_host_path.split(':')
 
         self.interactive = options.interactive
         self.master_datadir = options.masterDataDirectory
