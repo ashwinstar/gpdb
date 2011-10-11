@@ -152,7 +152,7 @@ OPTIONS
  to running gpdbrestore -T.
 
 
--v (verbose)
+-v | --verbose
   Specifies verbose mode.
 
 
