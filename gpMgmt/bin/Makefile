@@ -190,9 +190,7 @@ checkcode: pylint
 check:
 	@echo "Running unit tests..."
 	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
-	gppylib/unit2 discover --verbose -s gppylib 2> $(SRC)/../gpMgmt_testresults.log 1> $(SRC)/../gpMgmt_testoutput.log; \
-	  cat $(SRC)/../gpMgmt_testoutput.log; \
-	  cat $(SRC)/../gpMgmt_testresults.log
+	gppylib/unit2 discover --verbose -s gppylib 2> $(SRC)/../gpMgmt_testresults.log 1> $(SRC)/../gpMgmt_testoutput.log
 
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \
