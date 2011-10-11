@@ -2768,20 +2768,20 @@ pabe: pgxcompression:00000654:  src_sz,
 pabe: pgxcompression:00000655:  dst_sz, 
 pabe: pgxcompression:00000656:  *dst_used, 
 pabe: pgxcompression:00000657:  res); 
-pabe: pgxcompression:00000683:  elog(ERROR, 
-pabe: pgxcompression:00000684:  "RLE decompression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
-pabe: pgxcompression:00000685:  state->byteLen, 
-pabe: pgxcompression:00000686:  state->colType, 
-pabe: pgxcompression:00000687:  state->align, 
-pabe: pgxcompression:00000688:  src_sz, 
-pabe: pgxcompression:00000689:  dst_sz, 
-pabe: pgxcompression:00000690:  *dst_used, 
-pabe: pgxcompression:00000691:  res); 
-pabe: pgxcompression:00000707:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000714:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000721:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000728:  elog(ERROR, "dummy compression called directly"); 
-pabe: pgxcompression:00000735:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000701:  elog(ERROR, 
+pabe: pgxcompression:00000702:  "RLE decompression failure; rle_type_decomp (len %d colType %d align %c src_sz %d dst_sz %d dst_used %d) returned %d; )", 
+pabe: pgxcompression:00000703:  state->byteLen, 
+pabe: pgxcompression:00000704:  state->colType, 
+pabe: pgxcompression:00000705:  state->align, 
+pabe: pgxcompression:00000706:  src_sz, 
+pabe: pgxcompression:00000707:  dst_sz, 
+pabe: pgxcompression:00000708:  *dst_used, 
+pabe: pgxcompression:00000709:  res); 
+pabe: pgxcompression:00000733:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000740:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000747:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000754:  elog(ERROR, "dummy compression called directly"); 
+pabe: pgxcompression:00000761:  elog(ERROR, "dummy compression called directly"); 
 aaaaa GP_IGNORE: pabd: pgxconstraint - ./backend/catalog/pg_constraint.c
 pabd: pgxconstraint:00000445:  elog(ERROR, "could not find tuple for constraint %u", conId); 
 pabd: pgxconstraint:00000478:  elog(ERROR, "cache lookup failed for relation %u", 
@@ -8827,22 +8827,30 @@ eabf: extprotocolcmds:00000157:  ereport(NOTICE,
 eabf: extprotocolcmds:00000158:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 eabf: extprotocolcmds:00000159:  errmsg("protocol \"%s\" does not exist, skipping", 
 eabf: extprotocolcmds:00000160:  protocolName))); 
-eabf: extprotocolcmds:00000232:  ereport(ERROR, 
-eabf: extprotocolcmds:00000233:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eabf: extprotocolcmds:00000234:  errmsg("protocol \"%s\" does not exist", 
-eabf: extprotocolcmds:00000235:  name))); 
-eabf: extprotocolcmds:00000245:  ereport(ERROR, 
-eabf: extprotocolcmds:00000246:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eabf: extprotocolcmds:00000247:  errmsg("internal error: protocol \"%s\" has no owner defined", 
-eabf: extprotocolcmds:00000248:  name))); 
-eabf: extprotocolcmds:00000357:  ereport(ERROR, 
-eabf: extprotocolcmds:00000358:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eabf: extprotocolcmds:00000359:  errmsg("protocol \"%s\" does not exist", 
-eabf: extprotocolcmds:00000360:  oldname))); 
-eabf: extprotocolcmds:00000370:  ereport(ERROR, 
-eabf: extprotocolcmds:00000371:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eabf: extprotocolcmds:00000372:  errmsg("internal error: protocol \"%s\" has no owner defined", 
-eabf: extprotocolcmds:00000373:  oldname))); 
+eabf: extprotocolcmds:00000234:  ereport(ERROR, 
+eabf: extprotocolcmds:00000235:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000236:  errmsg("protocol \"%s\" does not exist", 
+eabf: extprotocolcmds:00000237:  name))); 
+eabf: extprotocolcmds:00000247:  ereport(ERROR, 
+eabf: extprotocolcmds:00000248:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000249:  errmsg("internal error: protocol \"%s\" has no owner defined", 
+eabf: extprotocolcmds:00000250:  name))); 
+eabf: extprotocolcmds:00000260:  ereport(ERROR, 
+eabf: extprotocolcmds:00000261:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000262:  errmsg("internal error: protocol \"%s\" has no trust attribute defined", 
+eabf: extprotocolcmds:00000263:  name))); 
+eabf: extprotocolcmds:00000296:  ereport(ERROR, 
+eabf: extprotocolcmds:00000297:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eabf: extprotocolcmds:00000298:  errmsg("untrusted protocol \"%s\" can't be owned by non superuser", 
+eabf: extprotocolcmds:00000299:  name))); 
+eabf: extprotocolcmds:00000380:  ereport(ERROR, 
+eabf: extprotocolcmds:00000381:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000382:  errmsg("protocol \"%s\" does not exist", 
+eabf: extprotocolcmds:00000383:  oldname))); 
+eabf: extprotocolcmds:00000393:  ereport(ERROR, 
+eabf: extprotocolcmds:00000394:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000395:  errmsg("internal error: protocol \"%s\" has no owner defined", 
+eabf: extprotocolcmds:00000396:  oldname))); 
 aaaaa GP_IGNORE: faaj: filespace - ./backend/commands/filespace.c
 faaj: filespace:00000106:  elog(ERROR, "cannot create filespaces in utility mode"); 
 faaj: filespace:00000110:  ereport(ERROR, 
