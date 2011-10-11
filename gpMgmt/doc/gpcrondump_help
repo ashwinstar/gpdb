@@ -237,7 +237,7 @@ OPTIONS
  commands to set object ownership.
 
 
--v (verbose)
+-v | --verbose
 
  Specifies verbose mode.
 
