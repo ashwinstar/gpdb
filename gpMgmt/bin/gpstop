@@ -99,7 +99,7 @@ class GpStop:
             self._stop_master()                                 
         else:
             if self.sighup:
-                self._sighup_cluster()
+                return self._sighup_cluster()
             else:
                 if self.interactive:
                     self._summarize_actions()
@@ -487,10 +487,30 @@ class GpStop:
     def _sighup_cluster(self):
         """ assumes prepare() has been called """
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
-        self.pool = base.WorkerPool(numWorkers = workers)
+
+        class SighupWorkerPool(base.WorkerPool):
+            """
+            This pool knows all the commands are calls to pg_ctl.
+            The failed list collects segments without a running postmaster.
+            """
+            def __init__(self, numWorkers):        
+                base.WorkerPool.__init__(self, numWorkers)
+                self.failed = []
+            def check_results(self):
+                while not self.completed_queue.empty():
+                    item    = self.completed_queue.get(False)
+                    results = item.get_results()
+                    if results.wasSuccessful():
+                        continue
+                    if "No such process" in results.stderr:
+                        self.failed.append(item.db)
+                        continue
+                    raise ExecutionError("Error Executing Command: ",item)           
+
+        self.pool = SighupWorkerPool(numWorkers = workers)
         dbList = self.gparray.getDbList()
         dispatch_count = 0
-        logger.info("Signalling all postmasters processes to reload")
+        logger.info("Signalling all postmaster processes to reload")
         for db in dbList:
             cmd = pg.ReloadDbConf( name = "reload segment number " + str(db.getSegmentDbId())
                                  , db = db
@@ -502,7 +522,21 @@ class GpStop:
         self.pool.wait_and_printdots(dispatch_count,self.quiet)
         self.pool.check_results()
         self.pool.empty_completed_items()
-        pass
+
+        if len(self.pool.failed) < 1:
+            return 0
+
+        logger.info("--------------------------------------------")
+        logger.info("Some segment postmasters were not reloaded")
+        logger.info("--------------------------------------------")
+        tabLog = TableLogger().setWarnWithArrows(True)
+        tabLog.info(["Host","Datadir","Port","Status"])
+        for db in self.pool.failed:
+            tup = [db.getSegmentHostName(), db.getSegmentDataDirectory(), str(db.getSegmentPort()), db.getSegmentStatus()]
+            tabLog.info(tup)
+        tabLog.outputTable()
+        logger.info("--------------------------------------------")
+        return 1
     
     
     ######
