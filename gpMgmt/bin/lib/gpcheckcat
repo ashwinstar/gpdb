@@ -10,7 +10,6 @@ Usage: gpcheckcat [<option>] [dbname]
     -P passwd  : DB password
     -U uname   : DB User Name
     -v         : verbose
-    -T dir     : use <dir> as a temporary working directory
     -A         : all databases
     -S option  : shared table options (none, only)
     -O         : Online 
@@ -88,7 +87,6 @@ class Global():
         self.opt['-U'] = None
         self.opt['-v'] = False
         self.opt['-V'] = False
-        self.opt['-o'] = False
         self.opt['-t'] = False
     
         self.opt['-g'] = 'gpcheckcat.repair.' + strftime('%Y-%m-%d.%H.%M.%S', localtime())
@@ -205,14 +203,14 @@ def getalldbs():
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:tT:AOS:R:C:l')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vg:t:AOS:R:C:l')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':      usage(0)
-        elif switch[1] in 'hpBPUgTSRC': GV.opt[switch] = val
-        elif switch[1] in 'votAOl':   GV.opt[switch] = True
+        elif switch[1] in 'hpBPUgSRC': GV.opt[switch] = val
+        elif switch[1] in 'vtAOl':   GV.opt[switch] = True
 
     def setdef(x, v):
         if not GV.opt[x]:
@@ -264,7 +262,6 @@ def parseCommandLine():
     # build list of all connectable databases
     if GV.opt['-A']:
         alldb = getalldbs()
-        GV.opt['-T'] = None # clear specified temp directory
         GV.alldb.pop()
         for adbname in alldb:
             GV.alldb.append(adbname[0])
@@ -2205,25 +2202,10 @@ def checkDepend():
             logger.info('[OK] basic object dependencies')
         else:   
             GV.testStatus = False
-            setError(ERROR_REMOVE)
+            setError(ERROR_NOREPAIR)
             logger.info('[FAIL] basic object dependencies')
             logger.error('  found %d dependencies on dropped objects' % len(err))
             # logger.info(qry)
-
-            todrop = {}
-            for e in err:
-                seg = e[0]['dbid']    # segment the error came from
-                oid = e[2]['objid']   # objid that did not exist
-                cat = e[2]['catalog'] # catname
-                if seg not in todrop:
-                    todrop[seg] = set()
-                todrop[seg].add((oid, cat))
-
-            for seg in todrop:
-                segdb = connect2(GV.cfg[seg])
-                for (objid, cat) in todrop[seg]:
-                    name = "dropped oid %s in %s" % (objid, cat)
-                    removeDepend(seg, segdb, objid, name)
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -3550,12 +3532,15 @@ def listAllTests():
 def runOneTest(name):
 
     if not name_test.has_key(name):
-        logger.info("%s: This is not a valid test" % (name))
-        return
+        logger.info("'%s' is not a valid test" % (name))
+        raise LookupError
     if GV.opt['-O'] and not name_test[name]["online"]:
         logger.info("%s: Skip this test in online mode" % (name))
         return
     else:
+        myprint("Performing test '%s'" % name)
+        GV.totalTestRun += 1
+        GV.testStatus = True
         stime = time.time()
         name_test[name]["fn"]()
         etime = time.time()
@@ -3563,6 +3548,8 @@ def runOneTest(name):
         GV.elapsedTime += elapsed
         elapsed = str(datetime.timedelta(seconds=elapsed))[:-4]
         myprint('Total runtime for this test: %s' % (elapsed))
+        if GV.testStatus == False:
+            GV.failedTest.append(name)
 
 
 
@@ -3572,32 +3559,9 @@ def runAllTests():
     perform catalog check for specified database
     '''
 
-    try:
-        if GV.opt['-T']:
-            GV.tmpdir = os.path.abspath(GV.opt['-T'])
-            if not os.path.exists(GV.tmpdir):
-                try:
-                    os.mkdir(GV.tmpdir)
-                except Exception, e:
-                    logger.fatal('cannot create directory %s: %s' %
-                                 (GV.tmpdir, str(e)))
-                    sys.exit(1)
-        else:
-            GV.tmpdir = tempfile.mkdtemp()
-        logger.debug('Created temporary working directory %s' % GV.tmpdir)
-    except Exception, e:
-        logger.fatal(str(e))
-        logger.fatal('Unable to create temporary directory')
-        sys.exit(1)
-
     for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
         if name_test[name]["version"] >= GV.version:
-            GV.totalTestRun += 1
-            GV.testStatus = True
-            myprint("Performing test '%s'" % name)
             runOneTest(name)
-            if GV.testStatus == False:
-                GV.failedTest.append(name)
 
     closeDbs()
 
@@ -3799,7 +3763,6 @@ def runAllTests():
 
         myprint('')
         myprint('[INFO]: repair scripts generated in directory %s' % GV.opt['-g'])
-    subprocess.call('rm -rf ' + GV.tmpdir, shell=True, close_fds=True)
 
     if GV.retcode >= ERROR_NOREPAIR:
         logger.warn('[WARN]: unable to generate repairs for some issues')
@@ -4338,7 +4301,7 @@ class GPObject:
         self.duplicateIssues    = {} # key=issue.catname, value=list of catDuplicateIssue
         self.aclIssues          = {} # key=issue.catname, value=list of catACLIssue
         self.foreignkeyIssues   = {} # key=issue.catname, value=list of catForeignKeyIssue
-   
+
     def setMissingIssue(self, issue):
         if issue.catname in self.missingIssues:
             self.missingIssues[issue.catname].append(issue)
@@ -4433,6 +4396,17 @@ class GPObject:
                 for each in issues:
                     each.report()
             myprint('') 
+
+    
+    def __cmp__(self, other):
+        if isinstance(other, GPObject):
+            return cmp((self.oid, self.catname), (other.oid, other.catname))
+        else:
+            return NotImplemented
+
+    def __hash__(self):
+        return hash((self.oid, self.catname))
+   
 
 #-------------------------------------------------------------------------------
 class RelationObject(GPObject):
@@ -4594,12 +4568,12 @@ def buildGraph():
             # Not top level object, find parent, add to localObjects if needed
             else:
                 parobj = objects.get((obj.paroid, catname), None)
-                if parobj == None:
+                if parobj is None:
                     parobj = localObjects.get((obj.paroid, catname), None)
-                    if parobj == None:
+                    if parobj is None:
                         parobj = RelationObject(obj.paroid, catname)
                         localObjects[(obj.paroid, catname)] = parobj
-                assert (parobj != None)
+                assert (parobj is not None)
                 # Add obj and parobj to graph
                 if parobj not in graph:
                     graph[parobj] = []
@@ -4618,7 +4592,7 @@ def checkcatReport():
         par.reportAllIssues()
         if par not in graph: 
             return
-        for child in graph[par]:
+        for child in sorted(graph[par]):
             reportAllIssuesRecursive(child, graph)
 
     buildGraph()
@@ -4627,20 +4601,22 @@ def checkcatReport():
     myprint('SUMMARY REPORT')
     myprint('===================================================================')
     elapsed = str(datetime.timedelta(seconds=GV.elapsedTime))[:-4]
-    myprint('Total runtime for %d tests: %s' % (GV.totalTestRun, elapsed))
+    myprint('Total runtime for %d test(s): %s' % (GV.totalTestRun, elapsed))
 
-    if len(GPObjectGraph) <= 0:
-        myprint('Found no catalog issue')
-    else:
+    if len(GPObjectGraph) == 0 and len(GV.failedTest) == 0:
+        myprint('Found no catalog issue\n')
+        return
+  
+    if len(GPObjectGraph) > 0:
         total = 0
         for par in GPObjectGraph:
             if par.isTopLevel(): total += 1
         myprint('Found a total of %d issue(s)' % total)
     
-    for par in GPObjectGraph:
-        if par.isTopLevel():
-            reportAllIssuesRecursive(par, GPObjectGraph)
-    myprint('')
+        for par in sorted(GPObjectGraph):
+            if par.isTopLevel():
+                reportAllIssuesRecursive(par, GPObjectGraph)
+        myprint('')
 
     notReported = set(GV.failedTest).difference(reportedTest)
     if len(notReported) > 0:
@@ -4683,7 +4659,13 @@ if __name__ == '__main__':
         myprint('-------------------------------------------------------------------')
            
         if GV.opt['-R']:
-            runOneTest(GV.opt['-R'])
+            name = GV.opt['-R']
+            try:
+                runOneTest(name)
+            except LookupError, e:
+                myprint("'%s' is not a valid test\n\n" % (name))
+                setError(ERROR_NOREPAIR)
+                sys.exit(GV.retcode)
         elif GV.opt['-C']:
             namestr = GV.opt['-C']
             try:
