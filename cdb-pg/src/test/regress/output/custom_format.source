@@ -181,13 +181,13 @@ NOTICE:  Found 4 data formatting errors (4 or more input rows). Rejected related
  jjj        | twoj | shpits | Wed Jun 01 12:30:30 2011 | 23 | 732 | 834567 | 45.67 | 789.123 | 7.12345 | 123.456789
 (6 rows)
 
-SELECT relname,linenum,errmsg FROM err_fixedwidth ORDER BY errmsg;
+SELECT relname,linenum,errmsg FROM err_fixedwidth ORDER BY linenum;
       relname       | linenum |                 errmsg                  
 --------------------+---------+-----------------------------------------
- tbl_ext_fixedwidth |       3 | invalid input syntax for integer: "7d2"
- tbl_ext_fixedwidth |       3 | invalid input syntax for integer: "7v2"
  tbl_ext_fixedwidth |       3 | invalid input syntax for integer: "s32"
- tbl_ext_fixedwidth |       3 | invalid input syntax for integer: "y32"
+ tbl_ext_fixedwidth |       4 | invalid input syntax for integer: "7v2"
+ tbl_ext_fixedwidth |       5 | invalid input syntax for integer: "y32"
+ tbl_ext_fixedwidth |       6 | invalid input syntax for integer: "7d2"
 (4 rows)
 
 DROP EXTERNAL TABLE tbl_ext_fixedwidth;

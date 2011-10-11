@@ -17,7 +17,6 @@
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(fixedwidth_out);
 PG_FUNCTION_INFO_V1(fixedwidth_in);
-
 Datum fixedwidth_out(PG_FUNCTION_ARGS);
 Datum fixedwidth_in(PG_FUNCTION_ARGS);
 
@@ -332,7 +331,7 @@ get_tuple_info(TupleDesc tupdesc, int *r_ncolumns, format_t **r_myData, char **d
 }
 
 static int
-get_actual_line_size(FormatConfig *format_in_config, char *line_start, int cur_size, int tot_size)
+get_actual_line_size(FormatConfig *format_in_config, char *line_start, int cur_size, int tot_size, PG_FUNCTION_ARGS)
 {
 	int   row_size;
 	int   actual_fields_size;
@@ -391,6 +390,19 @@ get_actual_line_size(FormatConfig *format_in_config, char *line_start, int cur_s
 			return (format_in_config->fields_tot_size + 1);
 		}
 		
+		/*
+		 * this is the case where the last line in the buffer is incomplete, that's why the end of line was not found.
+		 * the rest of the line is in the next buffer
+		 */  
+		if ( (tot_size - cur_size) < format_in_config->fields_tot_size )
+		{
+			return tot_size - cur_size;
+		}
+		
+		/* 
+		 * if we are here, it means the file simply does not contain the line delimiter specified in the formatter string.
+		 * so we throw an exception
+		 */
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 	             errmsg("The line delimiter specified in the Formatter arguments: <%s> is not located in the data file", 
@@ -400,10 +412,11 @@ get_actual_line_size(FormatConfig *format_in_config, char *line_start, int cur_s
 	actual_fields_size = line_end - line_start; 
 	if ( actual_fields_size != format_in_config->fields_tot_size )
 	{
-		StringInfoData line;
+		int total_actual_field_size = actual_fields_size + format_in_config->line_delimiter_length;
 		
-		initStringInfo( &line );
-		appendBinaryStringInfo(&line, line_start, actual_fields_size);
+		FORMATTER_SET_BAD_ROW_DATA(fcinfo, line_start, total_actual_field_size);
+		FORMATTER_SET_BYTE_NUMBER(fcinfo, total_actual_field_size);
+		
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 	             errmsg("Expected line size from the formatting string: %d, but the actual size is: %d", 
@@ -551,16 +564,36 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	/*
 	 * if data_cur == data_len, it means we finished the current buffer, we will not do any formatting,
 	 * instead inside forboth loop we will fall inside "if (remaining < field_size)", so there is NO need to
-	 * set the BAD_ROW_DATA error string ---> there will bw no formatting errors that throw exceptions
+	 * set the BAD_ROW_DATA error string ---> there will be no formatting errors that throw exceptions
 	 */
 	if (data_cur < data_len)
-	{		
-		int   row_size = get_actual_line_size(&format_in_config, data_buf + data_cur, data_cur, data_len);
+	{
+		/* setting the line number for "line size" exceptions that might be thrown in get_actual_line_size */
+		FORMATTER_SET_BAD_ROW_NUM(fcinfo, myData->lineno); 
+		/*
+		 * myData->lineno represents the line number in the datafile, when the file was opened
+		 * with a conventional editor, so we increase the lineno only when the delimiter is LF
+		 */
+		if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
+			myData->lineno++;	
+		int   row_size = get_actual_line_size(&format_in_config, data_buf + data_cur, data_cur, data_len, fcinfo);
 
 		FORMATTER_SET_BAD_ROW_DATA(fcinfo, data_buf + data_cur, row_size);
-		FORMATTER_SET_BAD_ROW_NUM(fcinfo, myData->lineno);
 		FORMATTER_SET_BYTE_NUMBER(fcinfo, row_size);
 	}
+	else 
+	{
+		/*
+		 * This line is not finish. Next buffer will bring the remaining of the line.
+		 * So the line number shpuld not grow.
+		 */
+		if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
+			myData->lineno--;			
+		
+		MemoryContextSwitchTo(oldcontext);
+		FORMATTER_RETURN_NOTIFICATION(fcinfo, FMT_NEED_MORE_DATA);				
+	}
+	
 		
 	if (format_in_config.null_value != NULL)
 		cur_null_with_blanks = list_head(format_in_config.fldNullsWithBlanks);
@@ -574,6 +607,12 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		
 		if (remaining < field_size)
 		{
+			/*
+			 * we will get here only in the case we are working without a line delimiter. Because "remaining smaller then fieldsize"
+			 * means that our actual line is smaller than expected size, and if we have a line delimiter this problem will be discovered
+			 * in function  get_actual_line_size which is called above.
+			 */
+			
 			if (  saw_eof && (remaining > 1) )
 			{
 				data_cur += remaining;
@@ -594,6 +633,13 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 			}			 
 			else 
 			{
+				/*
+				 * This line is not finish. Next buffer will bring the remaining of the line.
+				 * So the line number shpuld not grow.
+				 */
+				if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
+					myData->lineno--;			
+				
 				MemoryContextSwitchTo(oldcontext);
 				FORMATTER_RETURN_NOTIFICATION(fcinfo, FMT_NEED_MORE_DATA);				
 			}
@@ -603,7 +649,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		resetStringInfo(&(myData->one_val));
 		
 		idx  = lfirst_int(curIdx) - 1;
-
+		
 		if ( 0 == format_in_config.preserve_blanks )
 		/*
 		 * trailing blanks are removed from the field value
@@ -669,13 +715,6 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	{
 		data_cur += 1;
 	}
-	
-	/*
-	 * myData->lineno represents the line number in the datafile, when the file was opened
-	 * with a conventional editor, so we increase the lineno only when the delimiter is LF
-	 */
-	if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
-			myData->lineno++;
 
 	/*
 	 * wrapping up
