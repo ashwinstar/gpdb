@@ -44,7 +44,10 @@ static void validateBackupDirectory(char *pszBackupDirectory);
 static char *positionToError(char *source);
 
 #ifdef USE_DDBOOST
+
 static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCompress);
+static int getDDBoostCredentials(char *pszPassThroughParameters, char **ddbUserName, 
+				 char **ddbPassword, char **ddbHostName, char **ddbDirectory);
 static int dd_boost_enabled = 0;
 
 #ifndef MAX_PATH_NAME
@@ -53,11 +56,12 @@ static int dd_boost_enabled = 0;
 
 #define MAX_DDBOOST_BUF_NAME 50
 
+static char *gpDDBoostPg = NULL;
+
 #endif
 
 static char *compPg = NULL,
 		   *bkPg = NULL;
-
 typedef enum backup_file_type
 {
 	BFT_BACKUP = 0,
@@ -98,9 +102,11 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	bool		rsyncable;
 	itimers 	savetimers;
 #ifdef USE_DDBOOST
-	char       *pszDDBoostFileName = NULL;
-	char	   *pszDDBoostDirName = "db_dumps";		/* Default directory */	
-	char 	   *dd_boost_buffer_size = NULL;
+	char       	*pszDDBoostFileName = NULL;
+	char	   	*pszDDBoostDirName = "db_dumps";		/* Default directory */	
+	char 	   	*dd_boost_buffer_size = NULL;
+	char 		*ddbUserName = NULL, *ddbPassword = NULL, *ddbHostName = NULL;	
+	char		*gpDDBoostCmdLine = NULL;
 #endif
 
 	rsyncable = false;
@@ -165,8 +171,22 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	if (dd_boost_enabled)
 	{
 		pszDDBoostFileName = formDDBoostFileName(pszBackupKey, false, is_compress);
-	}	
+	
+		/* Parse the passThroughParameters for DDBoost login credentials */	
+		getDDBoostCredentials(pszPassThroughParameters, &ddbUserName, &ddbPassword, 
+				      &ddbHostName, &pszDDBoostDirName);	
 
+		gpDDBoostPg = testProgramExists("gpddboost"); 
+        	if (gpDDBoostPg == NULL)
+        	{
+                	ereport(ERROR,
+                                (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+                                 errmsg("%s not found in PGPATH or PATH (PGPATH: %s | PATH:  %s)",
+                                                "gpddboost", getenv("PGPATH"), getenv("PATH")),
+                                 errhint("Restart the server and try again")));
+        	}
+	
+	}
 #endif
 
 	pszDBName = NULL;
@@ -248,15 +268,53 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	}
 
 #ifdef USE_DDBOOST
-	dd_boost_buffer_size = (char*)malloc(MAX_DDBOOST_BUF_NAME);
-	if (!dd_boost_buffer_size)
+	if (dd_boost_enabled)
 	{
-		ereport(ERROR,
-                (errcode(ERRCODE_OUT_OF_MEMORY),
-                 errmsg("out of memory")));
+		dd_boost_buffer_size = (char*)palloc(MAX_DDBOOST_BUF_NAME);
+		if (!dd_boost_buffer_size)
+		{
+			ereport(ERROR,
+                		(errcode(ERRCODE_OUT_OF_MEMORY),
+                 	errmsg("out of memory")));
+		}
+
+		sprintf(dd_boost_buffer_size, "%d", ddboost_buf_size);
+
+
+		/* Create the gpddboost parameter string */
+		len = strlen(ddbUserName) 
+			+ strlen(ddbPassword)
+			+ strlen(ddbHostName)
+			+ strlen(pszDDBoostDirName)
+			+ strlen(pszDDBoostFileName)
+			+ strlen("_post_data")
+			+ strlen(".gz")
+			+ strlen(" --user= ")
+			+ strlen(" --passwd= ")
+			+ strlen(" --host= ")
+			+ strlen(" --to-file= ")
+			+ strlen(" --write-file-from-stdin  ")
+			+ strlen(gpDDBoostPg)
+			+ 20;
+
+		gpDDBoostCmdLine = (char *) palloc(len);
+        	if (gpDDBoostCmdLine == NULL)
+        	{
+                	ereport(ERROR,
+                                (errcode(ERRCODE_OUT_OF_MEMORY),
+                                 errmsg("out of memory")));
+        	}
+
+		if (pszDDBoostFileName == NULL)
+			elog(ERROR, "\nDDboost filename is NULL\n");
+
+		sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s --user=%s --passwd=%s --host=%s",
+				gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName, ddbUserName, ddbPassword,
+                                ddbHostName);
+
 	}
 
-	sprintf(dd_boost_buffer_size, "%d", ddboost_buf_size);
+
 #endif
 	/*
 	 * dump schema and data for entry db, and data only for segment db.
@@ -303,8 +361,10 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 			+ 14 + 2			/* --dd_boost_dir */
 			+ strlen(dd_boost_buffer_size)
 			+ 20 + 2			/* --dd_boost_buf_size */
-			+ strlen("post_data")
-			+ strlen(".gz")
+			+ strlen("post_data") + 2
+			+ strlen(".gz") + 2
+			+ strlen("--compress") + 2
+			+ strlen(gpDDBoostCmdLine) + 10
 			+ 1;
 	}
 #endif
@@ -327,20 +387,22 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
+
 		if (pszCompressionProgram[0] != '\0')
         	{
                 	/* gp_dump_agent + options, pipe into compression program, direct
                  	* stdout to backup file and stderr to status file */
-                	sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_dir %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2> %s | %s ",
+                	sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_dir %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2> %s | %s | %s",
                                 bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, pszDDBoostDirName, dd_boost_buffer_size,
-								port, pszUserName, pszPassThroughParameters,pszDataOption, pszDBName, pszStatusFileName, compPg);
+				port, pszUserName, pszPassThroughParameters,pszDataOption, pszDBName, pszStatusFileName, compPg,
+				gpDDBoostCmdLine);
         	}
         	else
         	{
-                	sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_dir %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2> %s ",
+                	sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_dir %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2> %s | %s",
                                 bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, pszDDBoostDirName, dd_boost_buffer_size,
                                 port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-                                pszStatusFileName);
+                                pszStatusFileName, gpDDBoostCmdLine);
         	}
 	}
 	else 
@@ -360,6 +422,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 				bkPg, pszKeyParm, pszBackupDirectory, 
 				port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 				pszStatusFileName, pszBackupFileName);
+
 		}
 	}
 #else
@@ -423,21 +486,30 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 #ifdef USE_DDBOOST
 		if(dd_boost_enabled)
 		{
+		
+			pszDDBoostFileName = formDDBoostFileName(pszBackupKey, true, is_compress);
+
+			memset(gpDDBoostCmdLine, 0, strlen(gpDDBoostCmdLine));
+	
+			sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s --user=%s --passwd=%s --host=%s",
+                                gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName, ddbUserName, ddbPassword,
+                                ddbHostName);
+
 			/* if user selected a compression program */
 			if (pszCompressionProgram[0] != '\0')
 			{
 				/* gp_dump_agent + options, pipe into compression program, direct
 			 	* stdout to backup file and stderr to status file */
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
+				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2>> %s | %s | %s",
 					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, dd_boost_buffer_size, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
+					pszDataOption, pszDBName, pszStatusFileName, compPg, gpDDBoostCmdLine);
 			}
 			else
 			{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2>> %s",
+				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2>> %s | %s",
 					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, dd_boost_buffer_size,
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName);
+					pszStatusFileName, gpDDBoostCmdLine);
 			}
 		}
 		else
@@ -457,6 +529,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 					bkPg, pszKeyParm, pszBackupDirectory, 
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 					pszStatusFileName, pszBackupFileName);
+
 			}
 		}
 #else
@@ -513,6 +586,69 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 	return DirectFunctionCall1(textin, CStringGetDatum(pszSaveBackupfileName));
 }
+
+#ifdef USE_DDBOOST
+/*
+ * Parse the string for DDboost login credentials. this is essential to call
+ * gpddboost utility for piping the output of gp_dump
+ *
+ */
+int 
+getDDBoostCredentials(char *pszPassThroughParameters, char **ddbUserName, 
+		      char **ddbPassword, char **ddbHostName, char **ddbDirectory)	
+{
+	char *temp = NULL;
+	char *pch = NULL, *pchs = NULL;
+
+	/* DDboost username from pass through parameters */	
+	temp = strdup(pszPassThroughParameters);
+	pch = strstr(temp, "--gp-ddb-user");
+	pch = pch + strlen("--gp-ddb-user ");
+	pchs = strtok(pch," ");
+	if (pchs)
+		*ddbUserName = strdup(pchs);
+	else
+		*ddbUserName = NULL;
+	
+	free(temp);
+		
+	/* DDboost password from pass through parameters */	
+	temp = strdup(pszPassThroughParameters);
+	pch = strstr(temp, "--gp-ddb-passwd");
+	pch = pch + strlen("--gp-ddb-passwd ");
+	pchs = strtok(pch," ");
+	if (pchs)
+		*ddbPassword = strdup(pchs);
+	else
+		*ddbPassword = NULL;
+
+	free(temp);
+	
+	/* DDboost hostname from pass through parameters */	
+	temp = strdup(pszPassThroughParameters);
+	pch = strstr(temp, "--gp-ddb-hostname");
+	pch = pch + strlen("--gp-ddb-hostname ");
+	pchs = strtok(pch," ");
+	if (pchs)
+		*ddbHostName = strdup(pchs);
+	else
+		*ddbHostName = NULL;
+	free(temp);
+
+	/* DDboost directory from pass through parameters */	
+	temp = strdup(pszPassThroughParameters);
+	pch = strstr(temp, "--dd_boost_dir");
+	pch = pch + strlen("--dd_boost_dir");
+	pchs = strtok(pch," ");
+	if (pchs)
+		*ddbDirectory = strdup(pchs);
+	else
+		*ddbDirectory = strdup("db_dumps/");
+	free(temp);
+	
+	return 0;
+}
+#endif
 
 /*
  * gp_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, bool ) returns TEXT
@@ -712,7 +848,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
 
 #ifdef USE_DDBOOST
-    dd_boost_buffer_size = (char*)malloc(MAX_DDBOOST_BUF_NAME);
+    dd_boost_buffer_size = (char*)palloc(MAX_DDBOOST_BUF_NAME);
     if (!dd_boost_buffer_size)
     {
         ereport(ERROR,
@@ -827,6 +963,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
 				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
 		}
+			
 #else
 		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
@@ -1726,10 +1863,10 @@ static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCom
        len += strlen(szFileNamePrefix);
        len += strlen(pszBackupKey);
 
-	if(isPostData)
+	if (isPostData)
 		len += strlen("_post_data");
 
-	if(isCompress)
+	if (isCompress)
 		len += strlen(".gz");
 
        if (len > PATH_MAX)
@@ -1751,11 +1888,11 @@ static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCom
        strcat(pszBackupFileName, szFileNamePrefix);
        strcat(pszBackupFileName, pszBackupKey);
 
-       if (isPostData)
-               strcat(pszBackupFileName, "_post_data");
+	if (isPostData)
+		strcat(pszBackupFileName, "_post_data");
 
-	if(isCompress)
-		strcat(pszBackupFileName, ".gz");
+	if (isCompress)
+		strcat(pszBackupFileName, ".gz"); 
 
        return pszBackupFileName;
 }

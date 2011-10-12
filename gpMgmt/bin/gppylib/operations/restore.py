@@ -155,7 +155,8 @@ class ValidateTimestamp(Operation):
             compressed_file = os.path.join(path, "%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
             compress = CheckFile(compressed_file).run()
         else:
-            compress = False
+	    compressed_file = os.path.join(path, "%s%s_post_data.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
+	    compress = CheckFile(compressed_file).run()	
         return (self.candidate_timestamp, restore_db, compress)
 
 
@@ -199,7 +200,8 @@ class RestoreTables(Operation):
         self.ddboost = ddboost
     def execute(self):
         (restore_timestamp, restore_db, compress) = ValidateTimestamp(candidate_timestamp = self.restore_timestamp,
-                                                                      master_datadir = self.master_datadir).run()
+                                                                      master_datadir = self.master_datadir,
+                                                                      ddboost = self.ddboost).run()
         ValidateRestoreTables(restore_tables = self.restore_tables,
                               restore_db = restore_db,
                               master_port = self.master_port).run()
@@ -316,6 +318,11 @@ class BuildDDBoostTableDumps(Operation):
         for seg in primaries:
             real_filename = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp))
             fake_filename = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, fake_timestamp[0:8], "%s0_%d_%s" % (DBDUMP_PREFIX, seg.getSegmentDbId(), fake_timestamp))
+            
+            if self.compress:
+                real_filename += '.gz'
+                fake_filename += '.gz'
+            
             table_str = ' '.join(['--table=%s' % table for table in self.restore_tables])
             # TODO: Escaping. Low priority due to MPP-12880, et al
             cmd = Command('DDBoost building dump file for dbid %s' % seg.getSegmentDbId(),
@@ -326,7 +333,10 @@ class BuildDDBoostTableDumps(Operation):
         pool.check_results()
 
         from_file = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
-        to_file = os.path.join(self.master_datadir, from_file)
+	if self.compress:
+            from_file += '.gz';        
+	to_file = os.path.join(self.master_datadir, from_file)
+
         Command('Copying master dump file from DDBoost',
                 'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
                 % (from_file, to_file, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd'])).run(validateAfter = True)
@@ -438,6 +448,7 @@ class BuildMasterTableDump(Operation):
                 real_file = open(real_filename, 'r')
                 fake_file = open(fake_filename, 'w')
 
+ 
             # TODO: copy over data among the first 20 lines that begin with 'SET'. Why 20? See gpdbrestore.sh:1025.
             # e.g.
             #  1 --
@@ -700,9 +711,14 @@ class GetDumpTables(Operation):
                                                                       candidate_timestamp = self.restore_timestamp,
                                                                       ddboost = self.ddboost).run()
         dump_file = os.path.join(self.master_datadir, DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
+        if compress:
+            dump_file += '.gz'
 
         if self.ddboost is not None:
             from_file = os.path.join(DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
+            if compress:
+                from_file += '.gz'
+ 
             cmd = Command('DDBoost copy of master dump file',
                           'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s' 
                             % (from_file, dump_file, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
@@ -714,7 +730,7 @@ class GetDumpTables(Operation):
         ret = []
         try:
             if compress:
-                f = gzip.open(dump_file + '.gz', 'r')
+                f = gzip.open(dump_file, 'r')
             else:
                 f = open(dump_file, 'r')
 

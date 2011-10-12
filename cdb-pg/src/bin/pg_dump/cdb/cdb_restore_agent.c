@@ -826,6 +826,8 @@ main(int argc, char **argv)
 					strcat(pszCmdLine, " --from-file=");
 
 					strcat(pszCmdLine, ddp_file_name);
+					if(bCompUsed)
+						strcat(pszCmdLine, ".gz");
 					strcat(pszCmdLine, " --user=");
 					strcat(pszCmdLine, dd_boost_username);
 					strcat(pszCmdLine, " --passwd=");
@@ -837,7 +839,7 @@ main(int argc, char **argv)
 
 					if(bCompUsed)
 					{
-						strcpy(pszCmdLine, g_compPg);
+						strcat(pszCmdLine, g_compPg);
 						strcat(pszCmdLine, " | ");
 					}
 

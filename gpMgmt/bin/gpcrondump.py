@@ -94,7 +94,6 @@ class GpCronDump(Operation):
             self.ddboost = { 'user' : options.ddb_user,
                              'passwd' : options.ddb_passwd,
                              'host' : options.ddb_host } 
-            self.compress = False
             self.free_space_percent = None
             logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:

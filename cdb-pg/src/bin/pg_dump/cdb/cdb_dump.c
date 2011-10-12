@@ -1034,10 +1034,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			case 3:
 				/* gp-d backup remote directory */
 				pInputOpts->pszBackupDirectory = Safe_strdup(optarg);
-#ifdef USE_DDBOOST
-				ddboost_directory = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_dir", ddboost_directory, pInputOpts->pszPassThroughParms);
-#endif
 				break;
 
 			case 4:
@@ -1109,7 +1105,17 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm("rsyncable", NULL, pInputOpts->pszPassThroughParms);
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
+	{
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_enabled", NULL, pInputOpts->pszPassThroughParms);
+
+		/* If no directory is specified, for example when we gp_dump, then dump to default directory db_dumps */		
+		if (pInputOpts->pszBackupDirectory)
+			ddboost_directory = Safe_strdup(pInputOpts->pszBackupDirectory);
+		else
+			ddboost_directory = Safe_strdup("db_dumps/");
+	
+		pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_dir", ddboost_directory, pInputOpts->pszPassThroughParms);
+	}
 #endif
 
 	 /* Get database name from command line */

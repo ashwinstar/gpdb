@@ -3098,6 +3098,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 static struct config_int ConfigureNamesInt[] =
 {
+	/* maximum read/write I/O size for DD Boost is 1MB */
 	{
 		{"ddboost_buf_size", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("size of ddboost dump/restore buffer"),
@@ -3105,7 +3106,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&ddboost_buf_size,
-		524288, 65536, 2097152, NULL, NULL
+		524288, 65536, 1048576, NULL, NULL
 	},
 
 	{

@@ -746,7 +746,14 @@ main(int argc, char **argv)
 
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
+	{
 		ret = initDDSystem();
+		if (ret)
+		{
+			mpp_err_msg(logError, progname, "Error connecting to DDboost. Check parameters\n");
+			exit(1);
+		}
+	}
 #endif
 
 	/* open the output file */
@@ -1011,13 +1018,6 @@ main(int argc, char **argv)
 	 */
 	mpp_err_msg(logInfo, progname, "Dumping database \"%s\"...\n", g_conn->dbName);
 	dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
-
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		ret = ddp_close_file(AH->ddHandle);
-	}
-#endif
 
 	reset();
 
@@ -7667,7 +7667,6 @@ int
 updateArchiveWithDDFile(ArchiveHandle *AH, char *g_pszDDBoostFile, const char *g_pszDDBoostDir)
 {
        	int err = 0;
-       	ddp_file_desc_t handle = DDP_INVALID_DESCRIPTOR;
        	char *full_path = NULL;
 	char *dir_name = "db_dumps";
 	char *orig_dir = NULL;
@@ -7689,16 +7688,6 @@ updateArchiveWithDDFile(ArchiveHandle *AH, char *g_pszDDBoostFile, const char *g
 
 	sprintf(full_path, "%s/%s", orig_dir, g_pszDDBoostFile);
        	path1.path_name = full_path;
-
-       	err = ddp_open_file(ddp_conn, &path1, DDP_O_CREAT | DDP_O_RDWR , 0777, &handle);
-
-      	if (err)
-       	{
-               mpp_err_msg(logError, progname, "ddboost file open failed. Err code = %d\n", err);
-               return err;
-       	}
-
-       	AH->ddHandle = handle;
 
        	return 0;
 }

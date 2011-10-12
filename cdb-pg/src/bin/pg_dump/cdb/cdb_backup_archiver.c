@@ -76,11 +76,6 @@ static void dumpTimestamp(ArchiveHandle *AH, const char *msg, time_t tim);
 static OutputContext SetOutput(ArchiveHandle *AH, char *filename, int compression);
 static void ResetOutput(ArchiveHandle *AH, OutputContext savedContext);
 
-#ifdef USE_DDBOOST
-static size_t dd_write(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH);
-char *ddboost_buf = NULL;
-int ddboost_buf_data_length = 0;
-#endif
 
 /*
  *	Wrapper functions.
@@ -151,11 +146,14 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	AH->ropt = ropt;
 	AH->stage = STAGE_INITIALIZING;
 	
+
 #ifdef USE_DDBOOST
-	ddboost_buf = malloc(AH->dd_boost_buf_size);
-	ddboost_buf_data_length = 0;
-	if (ddboost_buf == NULL)
-		die_horribly(AH, modulename, "could not allocate memory for ddboost buffer\n");
+
+	char * new_c_lib_buf = malloc(AH->dd_boost_buf_size);
+	if (new_c_lib_buf == NULL)
+		die_horribly(AH, modulename, "could not alloc memory for new C stdio lib buffer");
+	setbuffer(AH->OF, new_c_lib_buf, AH->dd_boost_buf_size);
+
 #endif
 
 	/*
@@ -459,11 +457,6 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 
 	ahprintf(AH, "--\n-- Greenplum Database database dump complete\n--\n\n");
 
-#ifdef USE_DDBOOST
-	if (ddboost_buf_data_length > 0)
-		dd_write(ddboost_buf, 1, ddboost_buf_data_length, AH);
-	free(ddboost_buf);
-#endif
 
 	/*
 	 * Clean up & we're done.
@@ -1188,41 +1181,7 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 			return ExecuteSqlCommandBuf(AH, (void *) ptr, size * nmemb);		/* Always 1, currently */
 		else
 		{
-#ifdef USE_DDBOOST
-			if (AH->ddHandle != -1) 
-			{
-				if (nmemb < AH->dd_boost_buf_size)
-				{
-					if ((ddboost_buf_data_length + nmemb) <= AH->dd_boost_buf_size)
-					{
-						memcpy(ddboost_buf + ddboost_buf_data_length, ptr, nmemb);
-						ddboost_buf_data_length += nmemb;
-					}
-					else
-					{
-						res = dd_write(ddboost_buf, size, ddboost_buf_data_length, AH);
-						memcpy(ddboost_buf, ptr, nmemb);
-						ddboost_buf_data_length = nmemb;
-					}
-				}
-				else
-				{
-					/* Flush the buffer if there is any data already */
-					if (ddboost_buf_data_length)
-					{
-						res = dd_write(ddboost_buf, size, ddboost_buf_data_length, AH);
-						ddboost_buf_data_length = 0;
-					}	
-					res = dd_write((void*) ptr, size, nmemb, AH);
-				}
-				
-				return nmemb; /* an ugly hack for now, todo: ERROR handling */
-			}
-			else
-				res = fwrite((void *) ptr, size, nmemb, AH->OF);
-#else
 			res = fwrite((void *) ptr, size, nmemb, AH->OF);
-#endif
 
  			if (res != nmemb)
 				die_horribly(AH, modulename, "could not write to output file: %s\n",
@@ -1252,26 +1211,6 @@ write_msg(const char *modulename, const char *fmt,...)
 	_write_msg(modulename, fmt, ap);
 	va_end(ap);
 }
-
-#ifdef USE_DDBOOST
-static size_t
-dd_write(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
-{
-
-       	dd_errno_t err = DD_OK;
-       	ddp_uint64_t ret_count;
-       	static uint64_t offset = 0;
-
-       	err = ddp_write(AH->ddHandle, (char*)ptr, nmemb, offset, &ret_count);
-		
-		if (ret_count != nmemb)
-			die_horribly(AH, modulename, "could not write to Data Domain system through DD Boost\n");
- 
-		offset += ret_count;
-
-       	return ret_count;
-}
-#endif
 
 static void
 _die_horribly(ArchiveHandle *AH, const char *modulename, const char *fmt, va_list ap)
