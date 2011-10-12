@@ -5,7 +5,6 @@ Usage: gpcheckcat [<option>] [dbname]
     -? 
     -B parallel: number of worker threads
     -g dir     : generate SQL to rectify catalog corruption, put it in dir
-    -h host    : DB host name
     -p port    : DB port number
     -P passwd  : DB password
     -U uname   : DB User Name
@@ -203,13 +202,13 @@ def getalldbs():
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vg:t:AOS:R:C:l')
+        (options, args) = getopt.getopt(sys.argv[1:], '?p:P:U:B:vg:t:AOS:R:C:l')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':      usage(0)
-        elif switch[1] in 'hpBPUgSRC': GV.opt[switch] = val
+        elif switch[1] in 'pBPUgSRC': GV.opt[switch] = val
         elif switch[1] in 'vtAOl':   GV.opt[switch] = True
 
     def setdef(x, v):
@@ -225,7 +224,6 @@ def parseCommandLine():
     if GV.opt['-v']:
         enable_verbose_logging()
 
-    setdef('-h', 'PGHOST')
     setdef('-P', 'PGPASSWORD')
     setdef('-U', 'PGUSER')
     setdef('-U', 'USER')
@@ -234,9 +232,8 @@ def parseCommandLine():
         usage('Please specify -p port')
     GV.opt['-p'] = parse_int(GV.opt['-p'])
 
-    if not GV.opt['-h']:
-        GV.opt['-h'] = 'localhost'
-        logger.debug('-h not specified; default to %s' % GV.opt['-h'])
+    GV.opt['-h'] = getLocalHostname()
+    logger.debug('Set default hostname to %s' % GV.opt['-h'])
     
     if GV.opt['-R']:
         logger.debug('Run this test: %s' % GV.opt['-R'])
@@ -308,7 +305,7 @@ def connect(user=None, password=None, host=None, port=None,
 
 #############
 def connect2(cfgrec, user=None, password=None, database=None, utilityMode=True):
-    host = cfgrec['hostname']
+    host = cfgrec['address']
     port = cfgrec['port']
     datadir = cfgrec['datadir']
     logger.debug('connect %s:%s:%s' % (host, port, datadir))
@@ -415,7 +412,7 @@ def getGPConfiguration():
     # so we filter out non-primary segment databases in the query
     qry = '''
           SELECT content, preferred_role = 'p' as definedprimary,
-                 dbid, role = 'p' as isprimary, hostname, port, 
+                 dbid, role = 'p' as isprimary, hostname, address, port, 
                  fselocation as datadir
             FROM gp_segment_configuration JOIN pg_filespace_entry on (dbid = fsedbid)
            WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system')
@@ -1954,79 +1951,87 @@ def checkPGNamespace():
 #############
 # remove all remnants of a schema
 def removeSchema(seg, db, schemaid):
-    # see if table has a toast table and if so, remove that
-    # must do it like this so we can get toast tables
-    qry = 'select oid from pg_class where relnamespace = %i' % schemaid
-    curs = db.query(qry)
-    for row in curs.dictresult():
-        removeTable(seg, db, row['oid'])
+    try:
+        # see if table has a toast table and if so, remove that
+        # must do it like this so we can get toast tables
+        qry = 'select oid from pg_class where relnamespace = %i' % schemaid
+        curs = db.query(qry)
+        for row in curs.dictresult():
+            removeTable(seg, db, row['oid'])
+    
+        # get schema name
+        curs = db.query('select nspname from pg_namespace where oid = %i' % schemaid)
+        if curs.ntuples() > 0:
+            row = db.getresult()[0]
+            schemaname = row[0]
+            oidmap[schemaid] = schemaname
+        else:
+            schemaname = str(schemaid)
+    
+        buildRemove(seg, 'schema operators', 'pg_operator',
+                    dict([('oprnamespace', schemaid)]), schemaname)
+    
+        buildRemove(seg, 'schema types', 'pg_type',
+                    dict([('typnamespace', schemaid)]), schemaname)
+    
+        buildRemove(seg, 'schema procedures', 'pg_proc',
+                    dict([('pronamespace', schemaid)]), schemaname)
+    
+        removeDepend(seg, db, schemaid, schemaname)
 
-    # get schema name
-    curs = db.query('select nspname from pg_namespace where oid = %i' % schemaid)
-    if curs.ntuples() > 0:
-        row = db.getresult()[0]
-        schemaname = row[0]
-        oidmap[schemaid] = schemaname
-    else:
-        schemaname = str(schemaid)
-
-    buildRemove(seg, 'schema operators', 'pg_operator',
-                dict([('oprnamespace', schemaid)]), schemaname)
-
-    buildRemove(seg, 'schema types', 'pg_type',
-                dict([('typnamespace', schemaid)]), schemaname)
-
-    buildRemove(seg, 'schema procedures', 'pg_proc',
-                dict([('pronamespace', schemaid)]), schemaname)
-
-    removeDepend(seg, db, schemaid, schemaname)
+    except Exception, e:
+        logger.error('removeSchema: ' + str(e))
     
 
 #############
 def removeTable(seg, db, reloid):
-    # see if table has a toast table and if so, remove that
-    qry = """
-      SELECT oid, reltoastrelid, reltoastidxid
-      FROM pg_class
-      WHERE oid = %i
-    """ % reloid
-    curs = db.query(qry)
-    for row in curs.dictresult():
-        if row['reltoastrelid'] != 0:
-            removeTable(seg, db, row['reltoastrelid'])
-        if row['reltoastidxid'] != 0:
-            removeTable(seg, db, row['reltoastidxid'])
-
-    if reloid in oidmap:
-        rel = oidmap[reloid]
-    else:
-        # get relname
-        curs = db.query('select nspname, relname, relnamespace from pg_namespace n' +
-                    ' right outer join pg_class c on ' +
-                    '(c.relnamespace = n.oid) where c.oid = %i' % reloid)
-        if curs.ntuples() > 0:
-            row = curs.getresult()[0]
-            nspname = row[0]
-            relname = row[1]
-            if nspname == None:
-                nspname = str(row[2])
-            rel = nspname + '.' + relname
-            oidmap[reloid] = rel
+    try:
+        # see if table has a toast table and if so, remove that
+        qry = """
+          SELECT oid, reltoastrelid, reltoastidxid
+          FROM pg_class
+          WHERE oid = %i
+        """ % reloid
+        curs = db.query(qry)
+        for row in curs.dictresult():
+            if row['reltoastrelid'] != 0:
+                removeTable(seg, db, row['reltoastrelid'])
+            if row['reltoastidxid'] != 0:
+                removeTable(seg, db, row['reltoastidxid'])
+    
+        if reloid in oidmap:
+            rel = oidmap[reloid]
         else:
-            rel = str(reloid)
+            # get relname
+            curs = db.query('select nspname, relname, relnamespace from pg_namespace n' +
+                        ' right outer join pg_class c on ' +
+                        '(c.relnamespace = n.oid) where c.oid = %i' % reloid)
+            if curs.ntuples() > 0:
+                row = curs.getresult()[0]
+                nspname = row[0]
+                relname = row[1]
+                if nspname == None:
+                    nspname = str(row[2])
+                rel = nspname + '.' + relname
+                oidmap[reloid] = rel
+            else:
+                rel = str(reloid)
+    
+        removeInheritance(seg, db, reloid, rel)
+        removeStats(seg, db, reloid, rel)
+        removeAttributes(seg, db, reloid, rel)
+        removeRelTuple(seg, db, reloid, rel)
+        removeIndexes(seg, db, reloid, rel)
+        removeRelType(seg, db, reloid, rel)
+        removeExtTable(seg, db, reloid, rel)
+        removeAppendOnly(seg, db, reloid, rel)
+        removeDepend(seg, db, reloid, rel)
+    
+        if seg == -1:
+            removePolicy(seg, db, reloid, rel)
 
-    removeInheritance(seg, db, reloid, rel)
-    removeStats(seg, db, reloid, rel)
-    removeAttributes(seg, db, reloid, rel)
-    removeRelTuple(seg, db, reloid, rel)
-    removeIndexes(seg, db, reloid, rel)
-    removeRelType(seg, db, reloid, rel)
-    removeExtTable(seg, db, reloid, rel)
-    removeAppendOnly(seg, db, reloid, rel)
-    removeDepend(seg, db, reloid, rel)
-
-    if seg == -1:
-        removePolicy(seg, db, reloid, rel)
+    except Exception, e:
+        logger.error('removeTable: ' + str(e))
 
 def removeInheritance(seg, db, reloid, rel):
     buildRemove(seg, 'inheritance', 'pg_inherits',
@@ -2078,23 +2083,27 @@ def removeIndexes(seg, db, reloid, rel):
     buildRemove(seg, 'indexes', 'pg_index', {'indrelid': reloid}, rel)
 
 def removeAppendOnly(seg, db, reloid, rel):
-    # see if table has appendonly subtables and if so, remove them
-    qry = """
-      SELECT relid, segrelid, segidxid
-      FROM pg_appendonly
-      WHERE relid = %i
-    """ % reloid
-    curs = db.query(qry)
-    if curs.ntuples() == 0:
-        return
-    for row in curs.dictresult():
-        if row['segrelid'] != 0:
-            removeTable(seg, db, row['segrelid'])
-        if row['segidxid'] != 0:
-            removeTable(seg, db, row['segidxid'])
-    
-    buildRemove(seg, 'append only subtables', 'pg_appendonly',
-                {'relid': reloid}, rel)
+    try:
+        # see if table has appendonly subtables and if so, remove them
+        qry = """
+          SELECT relid, segrelid, segidxid
+          FROM pg_appendonly
+          WHERE relid = %i
+        """ % reloid
+        curs = db.query(qry)
+        if curs.ntuples() == 0:
+            return
+        for row in curs.dictresult():
+            if row['segrelid'] != 0:
+                removeTable(seg, db, row['segrelid'])
+            if row['segidxid'] != 0:
+                removeTable(seg, db, row['segidxid'])
+        
+        buildRemove(seg, 'append only subtables', 'pg_appendonly',
+                    {'relid': reloid}, rel)
+
+    except Exception, e:
+        logger.error('removeAppendOnly: ' + str(e))
 
 
 def removeDepend(seg, db, reloid, rel):
@@ -2583,7 +2592,7 @@ def checkPersistentTables():
     queries.append([qname, qry])
 
     # Checks on RELATION
-    qname = "gp_persistent_tablespace_node state check"
+    qname = "gp_persistent_relation_node state check"
     qry = """
     SELECT p.tablespace_oid, p.relfilenode_oid, p.segment_file_num,
        case when p.persistent_state = 0 then 'free'
@@ -2816,7 +2825,7 @@ def getCatObj(namestr):
     try:
         cat = GV.catalog.getCatalogTable(namestr)
     except Exception, e:
-        logger.error("No such catalog table: %s" % str(namestr))
+        myprint("No such catalog table: %s\n" % str(namestr))
         raise
     return cat
 
@@ -2937,9 +2946,13 @@ def checkTableForeignKey(cat):
     # skip tables without fkey
     if len(fkeylist) <= 0:
         return
-    if cat.isMasterOnly():
-        return
     if len(cat.getPrimaryKey()) <= 0:
+        return
+
+    # skip these master-only tables
+    skipped_masteronly = ['gp_relation_node', 'pg_description', 'pg_shdescription', 
+                          'pg_stat_last_operation', 'pg_stat_last_shoperation', 'pg_statistic']
+    if catname in skipped_masteronly:
         return
 
     # skip shared/non-shared tables
@@ -3527,6 +3540,28 @@ def listAllTests():
         myprint(" %24s: %s" % \
               (name, name_test[name]["description"]))
     myprint('')
+
+
+#-------------------------------------------------------------------------------
+def runTestCatname(cat):
+
+    tests = {'missing_extraneous': lambda: checkTableMissingEntry(cat),
+             'inconsistent': lambda: checkTableInconsistentEntry(cat),
+             'foreign_key': lambda: checkTableForeignKey(cat),
+             'duplicate': lambda: checkTableDuplicateEntry(cat),
+             'acl': lambda: checkTableACL(cat)}
+
+    for t in sorted(tests):
+        myprint("Performing test '%s' for %s" % (t,cat.getTableName()))
+        stime = time.time()
+        tests[t]()
+        etime = time.time()
+        elapsed = etime - stime
+        GV.elapsedTime += elapsed
+        elapsed = str(datetime.timedelta(seconds=elapsed))[:-4]
+        GV.totalTestRun += 1
+        myprint('Total runtime for this test: %s' % (elapsed))
+
 
 #-------------------------------------------------------------------------------
 def runOneTest(name):
@@ -4638,7 +4673,7 @@ if __name__ == '__main__':
 
     GV.version = getversion()
     if GV.version < "4.0":
-        logger.error("Error: only Greenplum database versions >= 4.0 are supported")
+        myprint("Error: only Greenplum database version >= 4.0 are supported\n")
         sys.exit(GV.retcode)
 
     GV.cfg = getGPConfiguration()
@@ -4670,10 +4705,7 @@ if __name__ == '__main__':
             namestr = GV.opt['-C']
             try:
                 cat = getCatObj(namestr)
-                checkTableMissingEntry(cat)
-                checkTableInconsistentEntry(cat)
-                checkTableForeignKey(cat)
-                checkTableACL(cat)
+                runTestCatname(cat)
             except Exception, e:
                 setError(ERROR_NOREPAIR)
                 sys.exit(GV.retcode)
