@@ -335,7 +335,7 @@ public class GPDBWritable implements Writable {
 	public void setShort(int colIdx, Short val)
 	throws TypeMismatchException {
 		checkType(SMALLINT, colIdx, true);
-		colValue[colIdx] = new Short(val);
+		colValue[colIdx] = val;
 	}
 	
 	/**
