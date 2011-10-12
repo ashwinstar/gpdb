@@ -169,7 +169,8 @@ FileRepConnClient_SendMessage(
 	 if (messageSynchronous || conn->outCount >= file_rep_min_data_before_flush )
 	{
 		int result = 0;
-		while ((status = pqFlush(conn)) > 0)
+		/* wait and timeout will be handled by pqWaitTimeout */
+		while ((status = pqFlushNonBlocking(conn)) > 0)
 		{
 			/* retry on timeout */
 			while (!(result = pqWaitTimeout(FALSE, TRUE, conn, time(NULL) + file_rep_socket_timeout)))

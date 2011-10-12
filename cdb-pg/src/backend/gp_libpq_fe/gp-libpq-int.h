@@ -533,6 +533,7 @@ extern int	pqPutMsgEnd(PGconn *conn);
 extern void pqPutMsgEndNoAutoFlush(PGconn *conn);   /* GPDB only */
 extern int	pqReadData(PGconn *conn);
 extern int	pqFlush(PGconn *conn);
+extern int	pqFlushNonBlocking(PGconn *conn);
 extern int	pqWait(int forRead, int forWrite, PGconn *conn);
 extern int pqWaitTimed(int forRead, int forWrite, PGconn *conn,
 			time_t finish_time);

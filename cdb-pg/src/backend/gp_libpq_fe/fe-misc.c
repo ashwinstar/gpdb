@@ -974,6 +974,26 @@ pqFlush(PGconn *conn)
 	return 0;
 }
 
+/*
+ * pqFlushNonBlocking:
+ *
+ * wrapper for pqFlush, used by FileRep,
+ * conn will be temporarily set to non-blocking mode,
+ * so that if not all data could be sent on 1st attempt, 
+ * pqFlushNonBlocking will return 1 instead of waiting/retrying.
+ *
+ * Return 0 on success, -1 on failure and 1 when not all data could be sent
+ */
+int
+pqFlushNonBlocking(PGconn *conn)
+{
+	bool old = conn->nonblocking;
+	conn->nonblocking = TRUE;
+	int ret = pqFlush(conn);
+	conn->nonblocking = old;
+	return ret;
+}
+
 
 /*
  * pqWait: wait until we can read or write the connection socket
