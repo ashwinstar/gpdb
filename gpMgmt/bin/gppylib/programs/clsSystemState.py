@@ -940,12 +940,11 @@ class GpSystemStateProgram:
         #
         # populate change tracking fields
         #
-        if not isMirror: # we don't populate CHANGE_TRACKING values for hte mirror
+        if not isMirror: # we don't populate CHANGE_TRACKING values for the mirror
 
             if primary.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION or \
                 primary.getSegmentMode() == gparray.MODE_CHANGELOGGING:
 
-                mirrorData = primarySegmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
                 if mirrorData is None or mirrorData["changeTrackingBytesUsed"] < 0:
                     # server returns <0 if there was an error calculating size
                     data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE, "unable to retrieve data size", isWarning=True)
@@ -955,7 +954,11 @@ class GpSystemStateProgram:
                             self.__abbreviateBytes(mirrorData["changeTrackingBytesUsed"]))
                     data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES, mirrorData["changeTrackingBytesUsed"])
                     
-            if mirrorData["verificationStatus"] == "Running" or mirrorData["verificationStatus"] == "Suspended" or mirrorData["verificationStatus"] == "Pending":                   
+            if mirrorData is None:
+                # MPP-14054
+                pass
+
+            elif mirrorData["verificationStatus"] == "Running" or mirrorData["verificationStatus"] == "Suspended" or mirrorData["verificationStatus"] == "Pending":                   
                 data.addValue(VALUE__VERIFICATION_STATUS, mirrorData["verificationStatus"])
                 data.addValue(VALUE__VERIFICATION_MODE, mirrorData["verificationMode"])
                 verifyStartTimeStr = None
@@ -1002,6 +1005,7 @@ class GpSystemStateProgram:
         # populate resync modes on primary and mirror
         #
         if primary.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION:
+
             if mirrorData is None:
                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, "unable to retrieve progress", isWarning=True)
             else:
