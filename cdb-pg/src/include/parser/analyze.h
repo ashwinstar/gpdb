@@ -75,5 +75,6 @@ List *make_partition_rules(ParseState *pstate,
 Node *coerce_partition_value(Node *node, Oid typid, int32 typmod,
 							 PartitionByType partype);
 List *transformStorageEncodingClause(List *options);
+List *TypeNameGetStorageDirective(TypeName *typname);
 
 #endif   /* ANALYZE_H */

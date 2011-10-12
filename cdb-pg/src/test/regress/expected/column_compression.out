@@ -1126,8 +1126,7 @@ ERROR:  unknown compresstype "sdf2sdf"
 -----------------------------------------------------------------------
 -- The basics
 drop type if exists int42 cascade;
-NOTICE:  drop cascades to function int42_out(int42)
-NOTICE:  drop cascades to function int42_in(cstring)
+NOTICE:  type "int42" does not exist, skipping
 create type int42;
 CREATE FUNCTION int42_in(cstring)
 RETURNS int42
@@ -1170,7 +1169,7 @@ execute ccddlcheck;
  relname | attnum |                       attoptions                       
 ---------+--------+--------------------------------------------------------
  ccddl   |      1 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
- ccddl   |      2 | {compresstype=none,blocksize=32768}
+ ccddl   |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (2 rows)
 
 drop table ccddl;

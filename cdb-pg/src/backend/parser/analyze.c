@@ -1650,7 +1650,7 @@ find_crsd(Value *column, List *stenc)
 	return NULL;
 }
 
-static List *
+List *
 TypeNameGetStorageDirective(TypeName *typname)
 {
 	SysScanDesc scan;

@@ -6787,7 +6787,13 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		if (colDef->encoding)
 			c->encoding = colDef->encoding;
 		else
-			c->encoding = default_column_encoding_clause();
+		{
+			/* Use the type specific storage directive, if one exists */
+			c->encoding = TypeNameGetStorageDirective(colDef->typname);
+			
+			if (!c->encoding)
+				c->encoding = default_column_encoding_clause();
+		}
 
 		AddRelationAttributeEncodings(rel, list_make1(c));
 	}
