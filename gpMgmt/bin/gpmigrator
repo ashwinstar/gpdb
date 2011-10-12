@@ -1388,22 +1388,15 @@ class GPUpgrade(GPUpgradeBase):
                 cmd = 'ifconfig'        
             ifconf = self.RunCmd(cmd)
             ipv4_re = re.compile('inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)')
+            ipv6_re = re.compile('inet6 (?:addr: )?([a-zA-Z0-9:\.]+[a-zA-Z0-9:])')
             ip = []
             for line in ifconf.split('\n'):
                 m = ipv4_re.search(line)
                 if m:
                     ip.append(m.group(1))
-
-            ipv6_p1 = subprocess.Popen(cmd.split(' '), stdout=subprocess.PIPE)
-            ipv6_p2 = subprocess.Popen(["grep", "inet6"], stdin=ipv6_p1.stdout, stdout=subprocess.PIPE)
-            ipv6_p3 = subprocess.Popen(["awk", "{print $2}"], stdin=ipv6_p2.stdout, stdout=subprocess.PIPE)
-            ipv6_p4 = subprocess.Popen(["cut", "-d","/", '-f1'], stdin=ipv6_p3.stdout, stdout=subprocess.PIPE)
-            ipv6_p1.stdout.close()
-            ipv6_p2.stdout.close()
-            ipv6_p3.stdout.close()
-            ipv6_list = ipv6_p4.communicate()[0].rstrip()
-            for line in ipv6_list.split('\n'):
-                ip.append(line)
+                m = ipv6_re.search(line)
+                if m:
+                    ip.append(m.group(1))
 
             # Currently we only lock the MASTER node
             #
