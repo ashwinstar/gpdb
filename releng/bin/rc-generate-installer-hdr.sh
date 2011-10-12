@@ -621,6 +621,11 @@ generate_applicance_installer_header(){
 		## Setup segments
 		##
 
+		# MPP-14633 - greenplum_path.sh must be sourced just after symlink modification and
+		# just prior to gpseginstall invocation. gpseginstall depends on \$GPHOME pointing 
+		# to a symlink to determine whether it too must set up the symlinks on the segments.
+		source \${installPath}/greenplum_path.sh
+
 		echo "Executing: gpseginstall --file hostfile -c csv 2>&1 | tee -a \${install_log}" | tee -a \${install_log}
 		gpseginstall --file hostfile -c csv 2>&1 | tee -a \${install_log}
 
