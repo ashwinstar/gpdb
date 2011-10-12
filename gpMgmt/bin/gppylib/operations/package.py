@@ -287,7 +287,11 @@ class ListPackages(Operation):
         pass 
 
     def execute(self):
-        #Get all gppkgs from archive
+        # Ensure archive path exists
+        # TODO: AK: In hindsight, this should've been named MakeDirP,
+        # to reflect that it won't blow up if the path already exists.
+        MakeDir(GPPKG_ARCHIVE_PATH).run()
+
         package_list = ListFilesByPattern(GPPKG_ARCHIVE_PATH, '*' + GPPKG_EXTENSION).run() 
 
         package_name_list = []
