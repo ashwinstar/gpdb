@@ -3343,157 +3343,166 @@ cacf: cdbappendonlystoragewrite:00001378:  storageWrite->maxBufferLen,
 cacf: cdbappendonlystoragewrite:00001379:  storageWrite->currentCompleteHeaderLen, 
 cacf: cdbappendonlystoragewrite:00001380:  (storageWrite->isFirstRowNumSet ? "true" : "false")); 
 aaaaa GP_IGNORE: caaj: cdbbackup - ./backend/cdb/cdbbackup.c
-caaj: cdbbackup:00000245:  ereport(ERROR, 
-caaj: cdbbackup:00000246:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000247:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000254:  ereport(ERROR, 
-caaj: cdbbackup:00000255:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000256:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000322:  ereport(ERROR, 
-caaj: cdbbackup:00000323:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000324:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000395:  ereport(ERROR, 
-caaj: cdbbackup:00000396:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000397:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
-caaj: cdbbackup:00000405:  ereport(ERROR, 
-caaj: cdbbackup:00000406:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000407:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
-caaj: cdbbackup:00000408:  "/bin/sh", pszCmdLine))); 
-caaj: cdbbackup:00000490:  ereport(ERROR, 
-caaj: cdbbackup:00000491:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000492:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
-caaj: cdbbackup:00000500:  ereport(ERROR, 
-caaj: cdbbackup:00000501:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000502:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
-caaj: cdbbackup:00000503:  "/bin/sh", pszCmdLine))); 
-caaj: cdbbackup:00000560:  elog(ERROR, "Out of memory\n"); 
-caaj: cdbbackup:00000634:  ereport(ERROR, 
-caaj: cdbbackup:00000635:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00000636:  errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found " 
-caaj: cdbbackup:00000637:  " in directory %s with backup key %s and source dbid key %d", target_dbid, 
-caaj: cdbbackup:00000638:  pszBackupDirectory, pszBackupKey, segid))); 
-caaj: cdbbackup:00000651:  ereport(ERROR, 
-caaj: cdbbackup:00000652:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000653:  errmsg("dump file appears to be compressed. Pass a decompression " 
-caaj: cdbbackup:00000654:  "option to gp_restore to decompress it on the fly"))); 
-caaj: cdbbackup:00000657:  ereport(ERROR, 
-caaj: cdbbackup:00000658:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000659:  errmsg("a decompression cmd line option is used but the dump " 
-caaj: cdbbackup:00000660:  "file does not appear to be compressed."))); 
-caaj: cdbbackup:00000692:  ereport(ERROR, 
-caaj: cdbbackup:00000693:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000694:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
-caaj: cdbbackup:00000707:  ereport(ERROR, 
-caaj: cdbbackup:00000708:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000709:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000718:  ereport(ERROR, 
-caaj: cdbbackup:00000719:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000720:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000182:  ereport(ERROR, 
+caaj: cdbbackup:00000183:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000184:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00000185:  "gpddboost", getenv("PGPATH"), getenv("PATH")), 
+caaj: cdbbackup:00000186:  errhint("Restart the server and try again"))); 
+caaj: cdbbackup:00000265:  ereport(ERROR, 
+caaj: cdbbackup:00000266:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000267:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000276:  ereport(ERROR, 
+caaj: cdbbackup:00000277:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000278:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000303:  ereport(ERROR, 
+caaj: cdbbackup:00000304:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000305:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000309:  elog(ERROR, "\nDDboost filename is NULL\n"); 
+caaj: cdbbackup:00000382:  ereport(ERROR, 
+caaj: cdbbackup:00000383:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000384:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000458:  ereport(ERROR, 
+caaj: cdbbackup:00000459:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000460:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
+caaj: cdbbackup:00000468:  ereport(ERROR, 
+caaj: cdbbackup:00000469:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000470:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
+caaj: cdbbackup:00000471:  "/bin/sh", pszCmdLine))); 
+caaj: cdbbackup:00000563:  ereport(ERROR, 
+caaj: cdbbackup:00000564:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000565:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
+caaj: cdbbackup:00000573:  ereport(ERROR, 
+caaj: cdbbackup:00000574:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000575:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
+caaj: cdbbackup:00000576:  "/bin/sh", pszCmdLine))); 
+caaj: cdbbackup:00000696:  elog(ERROR, "Out of memory\n"); 
 caaj: cdbbackup:00000770:  ereport(ERROR, 
-caaj: cdbbackup:00000771:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000772:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000809:  ereport(ERROR, 
-caaj: cdbbackup:00000810:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000811:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000844:  ereport(ERROR, 
-caaj: cdbbackup:00000845:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000846:  errmsg("Error in gp_restore_launch - execl of %s with Command Line %s failed", 
-caaj: cdbbackup:00000847:  "/bin/sh", pszCmdLine))); 
-caaj: cdbbackup:00000907:  ereport(ERROR, 
-caaj: cdbbackup:00000908:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000909:  errmsg("Only status files are currently supported in gp_read_backup_file"))); 
-caaj: cdbbackup:00000916:  ereport(ERROR, 
-caaj: cdbbackup:00000917:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000918:  errmsg("Invalid filetype %d passed to gp_read_backup_file", fileType))); 
-caaj: cdbbackup:00000925:  ereport(ERROR, 
-caaj: cdbbackup:00000926:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000927:  errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType))); 
-caaj: cdbbackup:00000933:  ereport(ERROR, 
-caaj: cdbbackup:00000934:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000935:  errmsg("Backup File %s Type %d too large to read", pszFileName, fileType))); 
-caaj: cdbbackup:00000942:  ereport(ERROR, 
-caaj: cdbbackup:00000943:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000944:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000950:  ereport(ERROR, 
-caaj: cdbbackup:00000951:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000952:  errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType))); 
-caaj: cdbbackup:00000958:  ereport(ERROR, 
-caaj: cdbbackup:00000959:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000960:  errmsg("Error reading Backup File %s Type %d", pszFileName, fileType))); 
-caaj: cdbbackup:00001033:  ereport(ERROR, 
-caaj: cdbbackup:00001034:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001035:  errmsg("Backup File %s cannot be opened", pszFileName))); 
-caaj: cdbbackup:00001042:  ereport(ERROR, 
-caaj: cdbbackup:00001043:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001044:  errmsg("Error writing Backup File %s", pszFileName))); 
-caaj: cdbbackup:00001198:  ereport(ERROR, 
-caaj: cdbbackup:00001199:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001200:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001212:  ereport(ERROR, 
-caaj: cdbbackup:00001213:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001214:  errmsg("Could not compile regular expression for backup filename matching"))); 
-caaj: cdbbackup:00001222:  ereport(ERROR, 
-caaj: cdbbackup:00001223:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001224:  errmsg("Backup Directory %s does not exist.", pszBackupDirectory))); 
-caaj: cdbbackup:00001229:  ereport(ERROR, 
-caaj: cdbbackup:00001230:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001231:  errmsg("Backup Location %s is not a directory.", pszBackupDirectory))); 
-caaj: cdbbackup:00001237:  ereport(ERROR, 
-caaj: cdbbackup:00001238:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001239:  errmsg("Backup Directory %s cannot be opened for enumerating files.", pszBackupDirectory))); 
-caaj: cdbbackup:00001319:  ereport(ERROR, 
-caaj: cdbbackup:00001320:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001321:  errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
-caaj: cdbbackup:00001327:  ereport(ERROR, 
-caaj: cdbbackup:00001328:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001329:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001383:  ereport(ERROR, 
-caaj: cdbbackup:00001384:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001385:  errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
-caaj: cdbbackup:00001391:  ereport(ERROR, 
-caaj: cdbbackup:00001392:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001393:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001425:  ereport(ERROR, 
-caaj: cdbbackup:00001426:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001427:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001448:  ereport(ERROR, 
-caaj: cdbbackup:00001449:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001450:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
-caaj: cdbbackup:00001451:  pszBackupProgram, getenv("PGPATH"), getenv("PATH")), 
-caaj: cdbbackup:00001452:  errhint("Restart the server and try again"))); 
-caaj: cdbbackup:00001460:  ereport(ERROR, 
-caaj: cdbbackup:00001461:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001462:  errmsg("%s (compression utility) not found in in PGPATH or " 
-caaj: cdbbackup:00001463:  "PATH (PGPATH: %s *PIPE* PATH: %s)", 
-caaj: cdbbackup:00001464:  pszCompressionProgram, getenv("PGPATH"), getenv("PATH")))); 
-caaj: cdbbackup:00001498:  ereport(ERROR, 
-caaj: cdbbackup:00001499:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001500:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001522:  ereport(ERROR, 
-caaj: cdbbackup:00001523:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001524:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001537:  ereport(ERROR, 
-caaj: cdbbackup:00001538:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001539:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001563:  ereport(ERROR, 
-caaj: cdbbackup:00001564:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001565:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001582:  ereport(ERROR, 
-caaj: cdbbackup:00001583:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001584:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001624:  ereport(ERROR, 
-caaj: cdbbackup:00001625:  (errcode_for_file_access(), 
-caaj: cdbbackup:00001626:  errmsg("could not create backup directory \"%s\": %m", 
-caaj: cdbbackup:00001627:  pszBackupDirectory))); 
-caaj: cdbbackup:00001638:  ereport(ERROR, 
-caaj: cdbbackup:00001639:  (errcode_for_file_access(), 
-caaj: cdbbackup:00001640:  errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory))); 
-caaj: cdbbackup:00001737:  ereport(ERROR, 
-caaj: cdbbackup:00001738:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001739:  errmsg("Backup FileName based on key %s too long", pszBackupKey))); 
-caaj: cdbbackup:00001745:  ereport(ERROR, 
-caaj: cdbbackup:00001746:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001747:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000771:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00000772:  errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found " 
+caaj: cdbbackup:00000773:  " in directory %s with backup key %s and source dbid key %d", target_dbid, 
+caaj: cdbbackup:00000774:  pszBackupDirectory, pszBackupKey, segid))); 
+caaj: cdbbackup:00000787:  ereport(ERROR, 
+caaj: cdbbackup:00000788:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000789:  errmsg("dump file appears to be compressed. Pass a decompression " 
+caaj: cdbbackup:00000790:  "option to gp_restore to decompress it on the fly"))); 
+caaj: cdbbackup:00000793:  ereport(ERROR, 
+caaj: cdbbackup:00000794:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000795:  errmsg("a decompression cmd line option is used but the dump " 
+caaj: cdbbackup:00000796:  "file does not appear to be compressed."))); 
+caaj: cdbbackup:00000828:  ereport(ERROR, 
+caaj: cdbbackup:00000829:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000830:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
+caaj: cdbbackup:00000843:  ereport(ERROR, 
+caaj: cdbbackup:00000844:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000845:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000854:  ereport(ERROR, 
+caaj: cdbbackup:00000855:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000856:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000906:  ereport(ERROR, 
+caaj: cdbbackup:00000907:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000908:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000945:  ereport(ERROR, 
+caaj: cdbbackup:00000946:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000947:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000981:  ereport(ERROR, 
+caaj: cdbbackup:00000982:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000983:  errmsg("Error in gp_restore_launch - execl of %s with Command Line %s failed", 
+caaj: cdbbackup:00000984:  "/bin/sh", pszCmdLine))); 
+caaj: cdbbackup:00001044:  ereport(ERROR, 
+caaj: cdbbackup:00001045:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001046:  errmsg("Only status files are currently supported in gp_read_backup_file"))); 
+caaj: cdbbackup:00001053:  ereport(ERROR, 
+caaj: cdbbackup:00001054:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001055:  errmsg("Invalid filetype %d passed to gp_read_backup_file", fileType))); 
+caaj: cdbbackup:00001062:  ereport(ERROR, 
+caaj: cdbbackup:00001063:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001064:  errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType))); 
+caaj: cdbbackup:00001070:  ereport(ERROR, 
+caaj: cdbbackup:00001071:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001072:  errmsg("Backup File %s Type %d too large to read", pszFileName, fileType))); 
+caaj: cdbbackup:00001079:  ereport(ERROR, 
+caaj: cdbbackup:00001080:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001081:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001087:  ereport(ERROR, 
+caaj: cdbbackup:00001088:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001089:  errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType))); 
+caaj: cdbbackup:00001095:  ereport(ERROR, 
+caaj: cdbbackup:00001096:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001097:  errmsg("Error reading Backup File %s Type %d", pszFileName, fileType))); 
+caaj: cdbbackup:00001170:  ereport(ERROR, 
+caaj: cdbbackup:00001171:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001172:  errmsg("Backup File %s cannot be opened", pszFileName))); 
+caaj: cdbbackup:00001179:  ereport(ERROR, 
+caaj: cdbbackup:00001180:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001181:  errmsg("Error writing Backup File %s", pszFileName))); 
+caaj: cdbbackup:00001335:  ereport(ERROR, 
+caaj: cdbbackup:00001336:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001337:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001349:  ereport(ERROR, 
+caaj: cdbbackup:00001350:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001351:  errmsg("Could not compile regular expression for backup filename matching"))); 
+caaj: cdbbackup:00001359:  ereport(ERROR, 
+caaj: cdbbackup:00001360:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001361:  errmsg("Backup Directory %s does not exist.", pszBackupDirectory))); 
+caaj: cdbbackup:00001366:  ereport(ERROR, 
+caaj: cdbbackup:00001367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001368:  errmsg("Backup Location %s is not a directory.", pszBackupDirectory))); 
+caaj: cdbbackup:00001374:  ereport(ERROR, 
+caaj: cdbbackup:00001375:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001376:  errmsg("Backup Directory %s cannot be opened for enumerating files.", pszBackupDirectory))); 
+caaj: cdbbackup:00001456:  ereport(ERROR, 
+caaj: cdbbackup:00001457:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001458:  errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
+caaj: cdbbackup:00001464:  ereport(ERROR, 
+caaj: cdbbackup:00001465:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001466:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001520:  ereport(ERROR, 
+caaj: cdbbackup:00001521:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001522:  errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
+caaj: cdbbackup:00001528:  ereport(ERROR, 
+caaj: cdbbackup:00001529:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001530:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001562:  ereport(ERROR, 
+caaj: cdbbackup:00001563:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001564:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001585:  ereport(ERROR, 
+caaj: cdbbackup:00001586:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001587:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00001588:  pszBackupProgram, getenv("PGPATH"), getenv("PATH")), 
+caaj: cdbbackup:00001589:  errhint("Restart the server and try again"))); 
+caaj: cdbbackup:00001597:  ereport(ERROR, 
+caaj: cdbbackup:00001598:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001599:  errmsg("%s (compression utility) not found in in PGPATH or " 
+caaj: cdbbackup:00001600:  "PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00001601:  pszCompressionProgram, getenv("PGPATH"), getenv("PATH")))); 
+caaj: cdbbackup:00001635:  ereport(ERROR, 
+caaj: cdbbackup:00001636:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001637:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001659:  ereport(ERROR, 
+caaj: cdbbackup:00001660:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001661:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001674:  ereport(ERROR, 
+caaj: cdbbackup:00001675:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001676:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001700:  ereport(ERROR, 
+caaj: cdbbackup:00001701:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001702:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001719:  ereport(ERROR, 
+caaj: cdbbackup:00001720:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001721:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001761:  ereport(ERROR, 
+caaj: cdbbackup:00001762:  (errcode_for_file_access(), 
+caaj: cdbbackup:00001763:  errmsg("could not create backup directory \"%s\": %m", 
+caaj: cdbbackup:00001764:  pszBackupDirectory))); 
+caaj: cdbbackup:00001775:  ereport(ERROR, 
+caaj: cdbbackup:00001776:  (errcode_for_file_access(), 
+caaj: cdbbackup:00001777:  errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory))); 
+caaj: cdbbackup:00001874:  ereport(ERROR, 
+caaj: cdbbackup:00001875:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001876:  errmsg("Backup FileName based on key %s too long", pszBackupKey))); 
+caaj: cdbbackup:00001882:  ereport(ERROR, 
+caaj: cdbbackup:00001883:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001884:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: cabh: cdbbufferedappend - ./backend/cdb/cdbbufferedappend.c
 cabh: cdbbufferedappend:00000151:  ereport(ERROR, (errcode_for_file_access(), 
 cabh: cdbbufferedappend:00000152:  errmsg("unable to get current position in table \"%s\" for file \"%s\" (errcode %d)", 
@@ -3905,10 +3914,10 @@ caca: cdbfilerepconnclient:00000063:  port,
 caca: cdbfilerepconnclient:00000064:  PQerrorMessage(conn)), 
 caca: cdbfilerepconnclient:00000065:  errSendAlert(true), 
 caca: cdbfilerepconnclient:00000066:  FileRep_errcontext())); 
-caca: cdbfilerepconnclient:00000179:  elog(WARNING, "segment state transition requested while waiting to write data to socket"); 
-caca: cdbfilerepconnclient:00000187:  ereport(WARNING, 
-caca: cdbfilerepconnclient:00000188:  (errcode_for_socket_access(), 
-caca: cdbfilerepconnclient:00000189:  errmsg("could not write data to socket, failure detected : %m"))); 
+caca: cdbfilerepconnclient:00000180:  elog(WARNING, "segment state transition requested while waiting to write data to socket"); 
+caca: cdbfilerepconnclient:00000188:  ereport(WARNING, 
+caca: cdbfilerepconnclient:00000189:  (errcode_for_socket_access(), 
+caca: cdbfilerepconnclient:00000190:  errmsg("could not write data to socket, failure detected : %m"))); 
 aaaaa GP_IGNORE: caca: cdbfilerepconnserver - ./backend/cdb/cdbfilerepconnserver.c
 caca: cdbfilerepconnserver:00000059:  ereport(WARNING, 
 caca: cdbfilerepconnserver:00000060:  (errcode_for_socket_access(), 
@@ -23195,112 +23204,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006410:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006411:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006424:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006425:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006438:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006439:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006469:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006470:  conf->gen.name, str); 
-gaad: guc:00006727:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006744:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006761:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006792:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007648:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007758:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007759:  " in a future release.", name); 
-gaad: guc:00007767:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007768:  name); 
-gaad: guc:00008242:  ereport(ERROR, 
-gaad: guc:00008243:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008244:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008246:  ereport(ERROR, 
-gaad: guc:00008247:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008248:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008282:  ereport(ERROR, 
-gaad: guc:00008283:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008284:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008286:  ereport(ERROR, 
-gaad: guc:00008287:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008288:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008357:  ereport(ERROR, 
-gaad: guc:00008358:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008359:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008366:  ereport(ERROR, 
-gaad: guc:00008367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008368:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008381:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008428:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008429:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008486:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008512:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008513:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008539:  ereport(ERROR, 
-gaad: guc:00008540:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008541:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008603:  ereport(ERROR, 
-gaad: guc:00008604:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008605:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008924:  ereport(ERROR, 
-gaad: guc:00008925:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008926:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008928:  ereport(ERROR, 
-gaad: guc:00008929:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008930:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009699:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009732:  ereport(FATAL, 
-gaad: guc:00009733:  (errcode_for_file_access(), 
-gaad: guc:00009734:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009735:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009747:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009749:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009751:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009842:  ereport(WARNING, 
-gaad: guc:00009843:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009844:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010038:  ereport(ERROR, 
-gaad: guc:00010039:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010040:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010061:  ereport(ERROR, 
-gaad: guc:00010062:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010063:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010064:  tok))); 
-gaad: guc:00010090:  ereport(ERROR, 
-gaad: guc:00010091:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010092:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010093:  value))); 
-gaad: guc:00010501:  ereport(ERROR, 
-gaad: guc:00010502:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010503:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010577:  ereport(ERROR, 
-gaad: guc:00010578:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010579:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010588:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010598:  ereport(ERROR, 
-gaad: guc:00010599:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010600:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010611:  ereport(ERROR, 
-gaad: guc:00010612:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010613:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010628:  ereport(ERROR, 
-gaad: guc:00010629:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010630:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010631:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010632:  "\"log_dispatch_stats\", " 
-gaad: guc:00010633:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010648:  ereport(ERROR, 
-gaad: guc:00010649:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010650:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010651:  "\"log_statement_stats\", " 
-gaad: guc:00010652:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010653:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010668:  ereport(ERROR, 
-gaad: guc:00010669:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010670:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011067:  elog(ERROR, 
-gaad: guc:00011068:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011069:  show_allow_system_table_mods()); 
+gaad: guc:00006411:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006412:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006425:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006426:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006439:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006440:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006470:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006471:  conf->gen.name, str); 
+gaad: guc:00006728:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006745:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006762:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006793:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007649:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007759:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007760:  " in a future release.", name); 
+gaad: guc:00007768:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007769:  name); 
+gaad: guc:00008243:  ereport(ERROR, 
+gaad: guc:00008244:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008245:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008247:  ereport(ERROR, 
+gaad: guc:00008248:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008249:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008283:  ereport(ERROR, 
+gaad: guc:00008284:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008285:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008287:  ereport(ERROR, 
+gaad: guc:00008288:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008289:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008358:  ereport(ERROR, 
+gaad: guc:00008359:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008360:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008367:  ereport(ERROR, 
+gaad: guc:00008368:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008369:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008382:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008429:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008430:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008487:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008513:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008514:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008540:  ereport(ERROR, 
+gaad: guc:00008541:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008542:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008604:  ereport(ERROR, 
+gaad: guc:00008605:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008606:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008925:  ereport(ERROR, 
+gaad: guc:00008926:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008927:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008929:  ereport(ERROR, 
+gaad: guc:00008930:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008931:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009700:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009733:  ereport(FATAL, 
+gaad: guc:00009734:  (errcode_for_file_access(), 
+gaad: guc:00009735:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009736:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009748:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009750:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009752:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009843:  ereport(WARNING, 
+gaad: guc:00009844:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009845:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010039:  ereport(ERROR, 
+gaad: guc:00010040:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010041:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010062:  ereport(ERROR, 
+gaad: guc:00010063:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010064:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010065:  tok))); 
+gaad: guc:00010091:  ereport(ERROR, 
+gaad: guc:00010092:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010093:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010094:  value))); 
+gaad: guc:00010502:  ereport(ERROR, 
+gaad: guc:00010503:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010504:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010578:  ereport(ERROR, 
+gaad: guc:00010579:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010580:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010589:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010599:  ereport(ERROR, 
+gaad: guc:00010600:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010601:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010612:  ereport(ERROR, 
+gaad: guc:00010613:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010614:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010629:  ereport(ERROR, 
+gaad: guc:00010630:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010631:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010632:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010633:  "\"log_dispatch_stats\", " 
+gaad: guc:00010634:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010649:  ereport(ERROR, 
+gaad: guc:00010650:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010651:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010652:  "\"log_statement_stats\", " 
+gaad: guc:00010653:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010654:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010669:  ereport(ERROR, 
+gaad: guc:00010670:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010671:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011068:  elog(ERROR, 
+gaad: guc:00011069:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011070:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
