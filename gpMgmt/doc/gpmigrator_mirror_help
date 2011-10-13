@@ -3,7 +3,7 @@ COMMAND NAME: gpmigrator_mirror
 Upgrades an existing Greenplum Database 4.1.x system 
 with mirrors to 4.2.x.
 
-Use gpmigrator to upgrade a 4.2.x system that does not
+Use gpmigrator to upgrade a 4.1.x system that does not
 have mirrors.
 
 Note: Using gpmigrator_mirror on a system without mirrors
