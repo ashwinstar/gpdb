@@ -76,7 +76,7 @@ class GpCronDump(Operation):
                 self.dump_databases = self.dump_databases.split(",")
             elif 'PGDATABASE' in os.environ:
                 self.dump_databases = [os.environ['PGDATABASE']]
-                logger.info("Setting dump database to value  of $PGDATABASE which is %s" % self.dump_database)
+                logger.info("Setting dump database to value of $PGDATABASE which is %s" % self.dump_databases[0])
             else:
                  raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
 
