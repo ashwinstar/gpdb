@@ -7901,6 +7901,10 @@ ChooseConstraintNameForPartitionCreate(const char *rname,
 	
 	Assert(rname && *rname);
 	
+	/* Allow caller to pass "" instead of NULL for non-singular cname */
+	if ( cname && *cname == '\0' )
+		cname = NULL;
+	
 	/* try the unmodified label first */
 	StrNCpy(modlabel, label, sizeof(modlabel));
 	
