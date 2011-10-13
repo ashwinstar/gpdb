@@ -755,12 +755,14 @@ static void ConstructInitPlan(PartitionJoinMutatorContext *ctx)
 	ctx->outerPlan = plan_pushdown_tlist(ctx->outerPlan, ctx->outerTargetList);
 
 	/**
-	 * Mark plan as strewn.
+	 * Gather rows to QD if they aren't already
 	 */
-	ctx->outerPlan->flow = NULL;
-	mark_plan_strewn(ctx->outerPlan);
-
-	ctx->outerPlan = (Plan *) make_motion_gather_to_QD(ctx->outerPlan, false);
+	if (! (ctx->outerPlan->flow
+			&& ctx->outerPlan->flow->flotype == FLOW_SINGLETON
+			&& ctx->outerPlan->flow->segindex == -1))
+	{
+		ctx->outerPlan = (Plan *) make_motion_gather_to_QD(ctx->outerPlan, false);
+	}
 
 	/* single tlist entry that is the aggregate target */
 	TargetEntry *tle = ConstructAggTLE(ctx);

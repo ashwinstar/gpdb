@@ -330,3 +330,21 @@ select * from dim inner join malp on (dim.i = malp.i);
 
 set gp_dynamic_partition_pruning = on;
 select * from dim inner join malp on (dim.i = malp.i and dim.j = malp.j); -- only one partition should be chosen
+
+--
+-- bugs
+--
+
+drop schema if exists dpe_bugs cascade;
+create schema dpe_bugs;
+set search_path='dpe_bugs';
+set gp_segments_for_planner=2;
+
+create table pat(a int, b date) partition by range (b) (start ('2010-01-01') end ('2010-01-05') every (1), default partition other);
+insert into pat select i,date '2010-01-01' + i from generate_series(1, 10)i;  
+create table jpat(a int, b date);
+insert into jpat values(1, '2010-01-02');
+explain select * from (select count(*) over (order by a rows between 1 preceding and 1 following), a, b from jpat)jpat inner join pat using(b);
+
+select * from (select count(*) over (order by a rows between 1 preceding and 1 following), a, b from jpat)jpat inner join pat using(b);
+
