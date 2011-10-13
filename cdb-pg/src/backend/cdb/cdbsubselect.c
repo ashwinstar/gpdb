@@ -1049,6 +1049,12 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	if (IsSubqueryMultiLevelCorrelated(subselect))
 		return (Node *) sublink;
 
+	/**
+	 * If there are CTEs, then the transformation does not work. Don't attempt to pullup.
+	 */
+	if (root->parse->cteList)
+		return (Node *) sublink;
+
     /*
      * If uncorrelated, and no Var nodes on lhs, the subquery will be executed
      * only once.  It should become an InitPlan, but make_subplan() doesn't

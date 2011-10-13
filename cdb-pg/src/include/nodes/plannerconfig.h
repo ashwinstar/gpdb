@@ -50,7 +50,7 @@ typedef struct PlannerConfig
 	bool		gp_enable_direct_dispatch;
 	bool		gp_dynamic_partition_pruning;
 
-	bool		is_initplan; /* Indicate whether this plan is an InitPlan */
+	bool		gp_cte_sharing; /* Indicate whether sharing is to be disabled on any CTEs */
 
 	/* These ones are tricky */
 	//GpRoleValue	Gp_role; // TODO: this one is tricky

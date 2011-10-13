@@ -1825,14 +1825,12 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 				shareinput_walker(f, (Node *)plan->righttree, ctxt);
 			}
 		}
-
-		else if(IsA(node, HashJoin))
+		else if(IsA(node, HashJoin) || IsA(node, MergeJoin))
 		{
 			/* Hash join the hash table is at inner */
 			shareinput_walker(f, (Node *)plan->righttree, ctxt);
 			shareinput_walker(f, (Node *)plan->lefttree, ctxt);
 		}
-
 		else
 		{
 			shareinput_walker(f, (Node *)plan->lefttree, ctxt);
@@ -2212,8 +2210,9 @@ static bool assign_plannode_id_walker(Node *node, ApplyShareInputContext *ctxt, 
 	return true;
 }
 
-Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt) 
+Plan *apply_shareinput_xslice(Plan *plan, PlannerGlobal *glob)
 {
+	ApplyShareInputContext *ctxt = &glob->share;
 	ctxt->sharedNodes = NULL;
 	ctxt->sliceMarks = NULL;
 	ctxt->motStack = NULL;
@@ -2224,14 +2223,32 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 
 	shareinput_pushmot(ctxt, 0);
 	
+	ListCell *lp = NULL;
 	/* 
 	 * Walk the tree.  See comment for each pass for what each pass will do.
 	 * Note: We depends on the contxt of between the passes, so do not reset 
 	 * the context between calls.
 	 */
-	shareinput_walker(shareinput_mutator_xslice_1, (Node *) plan, ctxt); 
-	shareinput_walker(shareinput_mutator_xslice_2, (Node *) plan, ctxt); 
-	shareinput_walker(shareinput_mutator_xslice_3, (Node *) plan, ctxt); 
+	foreach (lp, glob->subplans)
+	{
+		Plan	   *subplan = (Plan *) lfirst(lp);
+		shareinput_walker(shareinput_mutator_xslice_1, (Node *) subplan, ctxt);
+	}
+	shareinput_walker(shareinput_mutator_xslice_1, (Node *) plan, ctxt);
+
+	foreach (lp, glob->subplans)
+	{
+		Plan	   *subplan = (Plan *) lfirst(lp);
+		shareinput_walker(shareinput_mutator_xslice_2, (Node *) subplan, ctxt);
+	}
+	shareinput_walker(shareinput_mutator_xslice_2, (Node *) plan, ctxt);
+
+	foreach (lp, glob->subplans)
+	{
+		Plan	   *subplan = (Plan *) lfirst(lp);
+		shareinput_walker(shareinput_mutator_xslice_3, (Node *) subplan, ctxt);
+	}
+	shareinput_walker(shareinput_mutator_xslice_3, (Node *) plan, ctxt);
 
 	return plan;
 }

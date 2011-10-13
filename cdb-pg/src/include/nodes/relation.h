@@ -137,13 +137,9 @@ typedef struct CtePlanInfo
 	int nextPlanId;
 
 	/*
-	 * Number of InitPlans.
-	 * Note that InitPlans can not use ShareNode with the main plan. We
-	 * generate a separate subplan for InitPlans. This counter keeps track
-	 * of number of InitPlans in the query. The 'subplans' above does not
-	 * include these plans.
+	 * Number of non-shared plans generated for this cte.
 	 */
-	int numInitPlans;
+	int numNonSharedPlans;
 } CtePlanInfo;
 
 /*----------

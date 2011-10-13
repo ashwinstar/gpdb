@@ -771,8 +771,8 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	List *pathkeys = NULL;
 	PlannerInfo *subroot = NULL;
 
-	/* If this is an initplan, we create a new subplan for this CTE. */
-	if (root->config->is_initplan)
+	/* If sharing is not allowed, we create a new subplan for this CTE. */
+	if (!root->config->gp_cte_sharing)
 	{
 		PlannerConfig *config = CopyPlannerConfig(root->config);
 
@@ -784,7 +784,7 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 		subplan = subquery_planner(cteroot->glob, subquery, cteroot,
 								   tuple_fraction, &subroot, config);
-		cteplaninfo->numInitPlans++;
+		cteplaninfo->numNonSharedPlans++;
 
 		subrtable = subroot->parse->rtable;
 		pathkeys = subroot->query_pathkeys;
@@ -806,16 +806,21 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		PlannerConfig *config = CopyPlannerConfig(root->config);
 
 		/**
+		 * Having multiple SharedScans can lead to deadlocks. For now,
+		 * disallow sharing of ctes at lower levels.
+		 */
+		config->gp_cte_sharing = false;
+		/**
 		 * Copy query node since subquery_planner may trash it and we need it intact
 		 * in case we need to create another plan for the CTE
 		 */
 
 		Query		  *subquery = (Query *) copyObject(cte->ctequery);
 
-		if ((cte->cterefcount - cteplaninfo->numInitPlans) == 1)
+		if ((cte->cterefcount - cteplaninfo->numNonSharedPlans) == 1)
 		{
 			/*
-			 * If this CTE is referrenced only once,
+			 * If this CTE is referenced only once,
 			 * it will become simple subquery scan.
 			 * In that case, we can push down quals in the same way
 			 * as set_subqeury_pathlist().
@@ -834,9 +839,8 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		subplan = subquery_planner(cteroot->glob, subquery, cteroot,
 								   tuple_fraction, &subroot, config);
 
-		Assert(cte->cterefcount - cteplaninfo->numInitPlans >= 1);
 		List *subplans = share_plan(cteroot, subplan,
-									cte->cterefcount - cteplaninfo->numInitPlans);
+									cte->cterefcount);
 		
 		cteplaninfo->subplans = subplans;
 		cteplaninfo->subrtable = subroot->parse->rtable;
@@ -856,12 +860,11 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 	else
 	{
-		Assert(!root->config->is_initplan && cteplaninfo->subplans != NULL);
+		Assert(root->config->gp_cte_sharing && cteplaninfo->subplans != NULL);
 		Assert(cteplaninfo->nextPlanId < list_length(cteplaninfo->subplans));
 		subplan = list_nth(cteplaninfo->subplans, cteplaninfo->nextPlanId);
 		subrtable = cteplaninfo->subrtable;
 		pathkeys = cteplaninfo->pathkeys;
-		
 		cteplaninfo->nextPlanId++;
 	}
 		
@@ -1500,6 +1503,14 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 			safe = false;
 			break;
 		}
+
+		/* Refuse subplans */
+		if (contain_subplans((Node *) tle->expr))
+		{
+			safe = false;
+			break;
+		}
+
 	}
 
 	list_free(vars);

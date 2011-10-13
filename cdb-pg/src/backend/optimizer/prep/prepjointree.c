@@ -580,7 +580,8 @@ is_simple_subquery(PlannerInfo *root, Query *subquery)
 		subquery->distinctClause ||
 		subquery->limitOffset ||
 		subquery->limitCount ||
-		subquery->cteList)
+		subquery->cteList ||
+		root->parse->cteList)
 		return false;
 
 	/*

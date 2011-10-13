@@ -415,11 +415,11 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		config->is_initplan = !IsSubqueryCorrelated(subquery) &&
-			(subLinkType == ROWCOMPARE_SUBLINK ||
-			 subLinkType == ARRAY_SUBLINK ||
-			 subLinkType == EXPR_SUBLINK ||
-			 subLinkType == EXISTS_SUBLINK);
+		config->gp_cte_sharing = IsSubqueryCorrelated(subquery) ||
+				!(subLinkType == ROWCOMPARE_SUBLINK ||
+				 subLinkType == ARRAY_SUBLINK ||
+				 subLinkType == EXPR_SUBLINK ||
+				 subLinkType == EXISTS_SUBLINK);
 	}
 
 	PlannerInfo *subroot = NULL;
@@ -1049,7 +1049,7 @@ SS_finalize_plan(PlannerInfo *root, List *rtable, Plan *plan, bool attach_initpl
 			valid_params = bms_add_member(valid_params, paramid);
 		}
 
-		if (pitem->abslevel < root->query_level)
+		if (pitem->abslevel <= root->query_level)
 		{
 			/* valid outer-level parameter */
 			outer_params = bms_add_member(outer_params, paramid);

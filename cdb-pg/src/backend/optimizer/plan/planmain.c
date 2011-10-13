@@ -506,7 +506,7 @@ PlannerConfig *DefaultPlannerConfig(void)
 	c1->gp_enable_direct_dispatch = gp_enable_direct_dispatch;
 	c1->gp_dynamic_partition_pruning = gp_dynamic_partition_pruning;
 
-	c1->is_initplan = false;
+	c1->gp_cte_sharing = true;
 
 	return c1;
 }

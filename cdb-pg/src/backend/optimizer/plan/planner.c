@@ -256,12 +256,12 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * apply_shareinput will fix shared_id, and change the DAG to a tree.
 	 */
 
-	top_plan = apply_shareinput_dag_to_tree(top_plan, &glob->share); 
 	foreach(lp, glob->subplans)
 	{
 		Plan	   *subplan = (Plan *) lfirst(lp);
 		lfirst(lp) = apply_shareinput_dag_to_tree(subplan, &glob->share);
 	}
+	top_plan = apply_shareinput_dag_to_tree(top_plan, &glob->share);
 
 	/* final cleanup of the plan */
 	Assert(glob->finalrtable == NIL);
@@ -291,13 +291,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		/* cdbparallelize may create additional slices that may affect share input.
 		 * need to mark material nodes that are split acrossed multi slices.
 		 */
-		top_plan = apply_shareinput_xslice(top_plan, &glob->share);
-
-		foreach (lp, glob->subplans)
-		{
-			Plan	   *subplan = (Plan *) lfirst(lp);
-			lfirst(lp) = apply_shareinput_xslice(subplan, &glob->share);
-		}
+		top_plan = apply_shareinput_xslice(top_plan, glob);
 
 		/*
 		 * Walk the plan tree to set hasXslice field in each Append node to true
