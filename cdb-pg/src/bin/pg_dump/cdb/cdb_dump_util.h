@@ -11,7 +11,27 @@
 #include <regex.h>
 #include "cdb_seginst.h"
 
+#ifdef USE_DDBOOST
+#include <limits.h>
+#include "ddp_api.h"
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
+
 #define CDB_BACKUP_KEY_LEN 14
+#define DDBOOST_CONFIG_FILE ".ddconfig"
+#define DDBOOST_USERNAME_MAXLENGTH 30
+#define DDBOOST_PASSWORD_MAXLENGTH 40
+
+#ifndef DDBOOST_POOL_SIZE
+#define DDBOOST_POOL_SIZE (32 * 1024 * 2048)
+#endif
+
+extern int  parseDDBoostCredential(char *hostname, char *user, char *password, const char *progName);
+extern void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
+extern int initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info,
+                        char **dd_su_name);
+#endif
 
 /* --------------------------------------------------------------------------------------------------
  * This needs to be the same as that in cdbbackup.h in src/backend/cdb/cdbbackup.c

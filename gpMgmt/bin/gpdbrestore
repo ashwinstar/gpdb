@@ -85,24 +85,14 @@ class GpdbRestore(Operation):
 
         self.gparray = None
 
-        count = sum([1 for opt in ['ddb_host', 'ddb_user', 'ddb_passwd']
-                       if options.__dict__[opt] is not None])
-        if count > 0:
-            if count < 3:
-                raise ExceptionNoStackTraceNeeded("--gp-ddb-user, --gp-ddb-host, --gp-ddb-passwd must all be provided for DDBoost capabilities.")
-            self.ddboost = { 'user' : options.ddb_user,
-                             'passwd' : options.ddb_passwd,
-                             'host' : options.ddb_host }
+        self.ddboost = options.ddboost
+        if self.ddboost:
             if self.db_host_path is not None:
                 raise ExceptionNoStackTraceNeeded("-R cannot be used with DDBoost parameters.")
-        else:
-            self.ddboost = None
 
     def execute(self):
-        if self.ddboost is not None:
-            cmd = Command('DDBoost sync',
-                          'gpddboost --sync --dir=%s --host=%s --user=%s --passwd=%s'
-                            % (self.master_datadir, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
+        if self.ddboost:
+            cmd = Command('DDBoost sync', 'gpddboost --sync --dir=%s' % self.master_datadir)
             cmd.run(validateAfter = True)
 
         self.gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
@@ -411,10 +401,8 @@ def create_parser():
                      help="Suppress the ANALYZE run following a successful restore. The user is responsible for running ANALYZE on any restored tables; failure to run ANALYZE following a restore may result in poor databse performance.")
     parser.add_option_group(addTo)
 
-    ddOpt = OptionGroup(parser, "DDBoost APIs")
-    ddOpt.add_option('--gp-ddb-host', dest='ddb_host')
-    ddOpt.add_option('--gp-ddb-user', dest='ddb_user')
-    ddOpt.add_option('--gp-ddb-passwd', dest='ddb_passwd')
+    ddOpt = OptionGroup(parser, "DDBoost")
+    ddOpt.add_option('--ddboost', dest='ddboost', help="Dump to DDBoost using ~/.ddconfig", action="store_true", default=False)
     parser.add_option_group(ddOpt)
 
     return parser

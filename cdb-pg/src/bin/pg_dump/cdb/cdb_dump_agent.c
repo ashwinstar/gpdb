@@ -263,12 +263,7 @@ static void dumpDatabaseDefinitionToDDBoost(void);
 #endif
 
 /* DDBoost routines */
-static int initDDSystem(void);
 static int cleanupDDSystem(void);
-
-static char *dd_boost_hostname = NULL;
-static char *dd_boost_username = NULL;
-static char *dd_boost_passwd = NULL;
 
 static char *g_pszDDBoostDir = "db_dumps";
 static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
@@ -283,25 +278,6 @@ char *log_message_path = NULL;
 
 static int createDDBoostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, char *path_name);
 static int updateArchiveWithDDFile(ArchiveHandle *AH, char *g_pszDDBoostFile, const char *g_pszDDBoostDir);
-static void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
-
-void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
-{
-    FILE* log_file = NULL;
-    time_t ltime;
-    struct tm *Tm;
-
-    log_file = fopen("libDDBoost_test.log", "a");
-    if (log_file) {
-        ltime = time(NULL);
-        Tm = localtime(&ltime);
-        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
-                           Tm->tm_mon + 1, Tm->tm_mday,
-                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
-                           log_msg);
-        fclose(log_file);
-    }
-}
 #endif
 
 /*
@@ -360,9 +336,6 @@ main(int argc, char **argv)
 
 #ifdef USE_DDBOOST
 	char            *g_pszDDBoostFile = NULL;
-	char		*g_DDBoostUser = NULL;
-	char 		*g_DDBoostPasswd = NULL;
-	char		*g_DDBoostHost = NULL;
 	int 		ret = 0;
 	char		*temp_dd_file = NULL;
 #endif
@@ -429,12 +402,9 @@ main(int argc, char **argv)
 
 #ifdef USE_DDBOOST
 		{"dd_boost_file", required_argument, NULL, 6},
-		{"gp-ddb-user", required_argument, NULL, 7},
-		{"gp-ddb-passwd", required_argument, NULL, 8},
-		{"gp-ddb-hostname", required_argument, NULL, 9},
-		{"dd_boost_enabled", no_argument, NULL, 10},
-		{"dd_boost_dir", required_argument, NULL, 11},
-		{"dd_boost_buf_size", required_argument, NULL, 12},
+		{"dd_boost_enabled", no_argument, NULL, 7},
+		{"dd_boost_dir", required_argument, NULL, 8},
+		{"dd_boost_buf_size", required_argument, NULL, 9},
 #endif
 		{NULL, 0, NULL, 0}
 	};
@@ -638,26 +608,12 @@ main(int argc, char **argv)
 				g_pszDDBoostFile = strdup(optarg);
 				break;
 			case 7:
-				g_DDBoostUser = strdup(optarg);
 				dd_boost_enabled = 1;
-				dd_boost_username = strdup(optarg);
 				break;
 			case 8:
-				g_DDBoostPasswd = strdup(optarg);
-				dd_boost_enabled = 1;
-				dd_boost_passwd = strdup(optarg);
+				g_pszDDBoostDir = strdup(optarg);
 				break;
 			case 9:
-				g_DDBoostHost = strdup(optarg);
-				dd_boost_enabled = 1;
-				dd_boost_hostname = strdup(optarg);
-				break;
-			case 10:
-				dd_boost_enabled = 1;
-				break;
-			case 11:g_pszDDBoostDir = strdup(optarg);
-				break;
-			case 12:
 				sscanf(optarg, "%d", &dd_boost_buf_size);
 				break;
 #endif
@@ -694,29 +650,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		if (dd_boost_username == NULL)
-		{
-			fprintf(stderr, _("%s: Trying to log into DDBoost system with no username\n"),
-				progname);
-			exit(1);
-		}
-		if (dd_boost_passwd == NULL)
-		{
-			fprintf(stderr, _("%s: Trying to log into DDBoost system with no username\n"),
-				progname);
-			exit(1);
-		}
-		if (dd_boost_hostname == NULL)
-		{
-			fprintf(stderr, _("%s: Trying to log into DDBoost system with no username\n"),
-				progname);
-			exit(1);
-		}
-	}
-#endif
+
+
 	if (dataOnly && outputClean)
 	{
 		/*
@@ -747,7 +682,7 @@ main(int argc, char **argv)
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
-		ret = initDDSystem();
+		ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME);
 		if (ret)
 		{
 			mpp_err_msg(logError, progname, "Error connecting to DDboost. Check parameters\n");
@@ -7594,53 +7529,6 @@ installSignalHandlers(void)
 }
 
 #ifdef USE_DDBOOST
-/* Initialize the ddboost instance and create a connection */
-int
-initDDSystem(void)
-{
-	int err = DD_ERR_NONE;
-	uint POOL_SIZE = DDBOOST_POOL_SIZE;
-	char *storage_unit_name = NULL;
-
-      	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
-
-	sprintf(storage_unit_name, "%s", "GPDB");
-
-	DDP_SU_NAME = storage_unit_name;
-
-	err = ddp_init("gp_dump");
-                if (err != DD_ERR_NONE) {
-                        mpp_err_msg(logError, progname,"ddboost init failed. Err = %d\n", err);
-                        return err;
-        }
-
-        err = ddp_instance_create(POOL_SIZE, &cl_info, &ddp_inst);
-
-        if (err)
-        {
-                mpp_err_msg(logError, progname,"ddboost instance creation failed. Err = %d\n", err);
-                return err;
-        }
-
-       ddp_log_init(ddp_inst, NULL, _ddp_test_log);
-
-        err = ddp_connect_with_user_pwd(ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, &ddp_conn);
-
-        if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "ddboost connect failed. Err = %d\n", err);
-               return err;
-        }
-
-       err = ddp_create_storage_unit(ddp_conn, storage_unit_name);
-       if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "ddboost create storage unit failed. Err = %d\n", err);
-                return err;
-       }
-
-        return 0;
-
-}
-
 int
 cleanupDDSystem(void)
 {

@@ -46,8 +46,6 @@ static char *positionToError(char *source);
 #ifdef USE_DDBOOST
 
 static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCompress);
-static int getDDBoostCredentials(char *pszPassThroughParameters, char **ddbUserName, 
-				 char **ddbPassword, char **ddbHostName, char **ddbDirectory);
 static int dd_boost_enabled = 0;
 
 #ifndef MAX_PATH_NAME
@@ -105,8 +103,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	char       	*pszDDBoostFileName = NULL;
 	char	   	*pszDDBoostDirName = "db_dumps";		/* Default directory */	
 	char 	   	*dd_boost_buffer_size = NULL;
-	char 		*ddbUserName = NULL, *ddbPassword = NULL, *ddbHostName = NULL;	
 	char		*gpDDBoostCmdLine = NULL;
+	char 		*temp = NULL, *pch = NULL, *pchs = NULL;
 #endif
 
 	rsyncable = false;
@@ -172,10 +170,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	{
 		pszDDBoostFileName = formDDBoostFileName(pszBackupKey, false, is_compress);
 	
-		/* Parse the passThroughParameters for DDBoost login credentials */	
-		getDDBoostCredentials(pszPassThroughParameters, &ddbUserName, &ddbPassword, 
-				      &ddbHostName, &pszDDBoostDirName);	
-
 		gpDDBoostPg = testProgramExists("gpddboost"); 
         	if (gpDDBoostPg == NULL)
         	{
@@ -280,18 +274,25 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 		sprintf(dd_boost_buffer_size, "%d", ddboost_buf_size);
 
+		temp = strdup(pszPassThroughParameters);
+		pch = strstr(temp, "--dd_boost_dir");
+		if (pch)
+		{
+			pch = pch + strlen("--dd_boost_dir");
+			pchs = strtok(pch," ");
+			if (pchs)
+				pszDDBoostDirName = strdup(pchs);
+			else
+				pszDDBoostDirName = strdup("db_dumps/");
+		}
+		free(temp);
+
 
 		/* Create the gpddboost parameter string */
-		len = strlen(ddbUserName) 
-			+ strlen(ddbPassword)
-			+ strlen(ddbHostName)
-			+ strlen(pszDDBoostDirName)
+		len = strlen(pszDDBoostDirName)
 			+ strlen(pszDDBoostFileName)
 			+ strlen("_post_data")
 			+ strlen(".gz")
-			+ strlen(" --user= ")
-			+ strlen(" --passwd= ")
-			+ strlen(" --host= ")
 			+ strlen(" --to-file= ")
 			+ strlen(" --write-file-from-stdin  ")
 			+ strlen(gpDDBoostPg)
@@ -308,9 +309,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		if (pszDDBoostFileName == NULL)
 			elog(ERROR, "\nDDboost filename is NULL\n");
 
-		sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s --user=%s --passwd=%s --host=%s",
-				gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName, ddbUserName, ddbPassword,
-                                ddbHostName);
+		sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s",
+				gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName);
 
 	}
 
@@ -491,9 +491,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 			memset(gpDDBoostCmdLine, 0, strlen(gpDDBoostCmdLine));
 	
-			sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s --user=%s --passwd=%s --host=%s",
-                                gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName, ddbUserName, ddbPassword,
-                                ddbHostName);
+			sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s",
+                                gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName);
 
 			/* if user selected a compression program */
 			if (pszCompressionProgram[0] != '\0')
@@ -587,68 +586,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	return DirectFunctionCall1(textin, CStringGetDatum(pszSaveBackupfileName));
 }
 
-#ifdef USE_DDBOOST
-/*
- * Parse the string for DDboost login credentials. this is essential to call
- * gpddboost utility for piping the output of gp_dump
- *
- */
-int 
-getDDBoostCredentials(char *pszPassThroughParameters, char **ddbUserName, 
-		      char **ddbPassword, char **ddbHostName, char **ddbDirectory)	
-{
-	char *temp = NULL;
-	char *pch = NULL, *pchs = NULL;
-
-	/* DDboost username from pass through parameters */	
-	temp = strdup(pszPassThroughParameters);
-	pch = strstr(temp, "--gp-ddb-user");
-	pch = pch + strlen("--gp-ddb-user ");
-	pchs = strtok(pch," ");
-	if (pchs)
-		*ddbUserName = strdup(pchs);
-	else
-		*ddbUserName = NULL;
-	
-	free(temp);
-		
-	/* DDboost password from pass through parameters */	
-	temp = strdup(pszPassThroughParameters);
-	pch = strstr(temp, "--gp-ddb-passwd");
-	pch = pch + strlen("--gp-ddb-passwd ");
-	pchs = strtok(pch," ");
-	if (pchs)
-		*ddbPassword = strdup(pchs);
-	else
-		*ddbPassword = NULL;
-
-	free(temp);
-	
-	/* DDboost hostname from pass through parameters */	
-	temp = strdup(pszPassThroughParameters);
-	pch = strstr(temp, "--gp-ddb-hostname");
-	pch = pch + strlen("--gp-ddb-hostname ");
-	pchs = strtok(pch," ");
-	if (pchs)
-		*ddbHostName = strdup(pchs);
-	else
-		*ddbHostName = NULL;
-	free(temp);
-
-	/* DDboost directory from pass through parameters */	
-	temp = strdup(pszPassThroughParameters);
-	pch = strstr(temp, "--dd_boost_dir");
-	pch = pch + strlen("--dd_boost_dir");
-	pchs = strtok(pch," ");
-	if (pchs)
-		*ddbDirectory = strdup(pchs);
-	else
-		*ddbDirectory = strdup("db_dumps/");
-	free(temp);
-	
-	return 0;
-}
-#endif
 
 /*
  * gp_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, bool ) returns TEXT

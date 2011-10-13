@@ -72,13 +72,7 @@ int			optreset;
 
 #ifdef USE_DDBOOST
 #include "ddp_api.h"
-static int initDDSystem(void);
-static void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
 static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *ddBoostDir);
-
-static char *dd_boost_hostname = NULL;
-static char *dd_boost_username = NULL;
-static char *dd_boost_passwd = NULL;
 
 static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
 
@@ -225,13 +219,10 @@ main(int argc, char **argv)
 		{"post-data-schema-only", no_argument, &postDataSchemaOnly, 1},
 
 #ifdef USE_DDBOOST      
-                {"dd_boost_file", required_argument, NULL, 8},
-                {"gp-ddb-user", required_argument, NULL, 9},
-                {"gp-ddb-passwd", required_argument, NULL, 10},
-                {"gp-ddb-hostname", required_argument, NULL, 11},
-                {"dd_boost_enabled", no_argument, NULL, 12},
-		{"dd_boost_dir", required_argument, NULL, 13},
-		{"dd_boost_buf_size", required_argument, NULL, 14},
+        {"dd_boost_file", required_argument, NULL, 8},
+        {"dd_boost_enabled", no_argument, NULL, 9},
+		{"dd_boost_dir", required_argument, NULL, 10},
+		{"dd_boost_buf_size", required_argument, NULL, 11},
 #endif 
 		{NULL, 0, NULL, 0}
 	};
@@ -421,23 +412,11 @@ main(int argc, char **argv)
 #ifdef USE_DDBOOST
 			case 9:
 				dd_boost_enabled = 1;
-                                dd_boost_username = strdup(optarg);
 				break;
 			case 10:
-				dd_boost_enabled = 1;
-                                dd_boost_passwd = strdup(optarg);
-				break;
-			case 11:
-				dd_boost_enabled = 1;
-                                dd_boost_hostname = strdup(optarg);
-				break;
-			case 12:
-				dd_boost_enabled = 1;
-				break;
-			case 13:
 				dd_boost_dir = strdup(optarg);
 				break;
-			case 14:
+			case 11:
 				sscanf(optarg, "%d", &dd_boost_buf_size);
 				break;
 #endif
@@ -530,25 +509,13 @@ main(int argc, char **argv)
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
-		if (dd_boost_username == NULL)
-		{
-			mpp_err_msg(logInfo, progname, "ddboost username is NULL\n");
+
+		if (initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME))
+               	{
+			mpp_err_msg(logInfo, progname, "Initializing DD system failed\n");
 			exit(1);
 		}
-
-		if (dd_boost_passwd == NULL)
-		{
-			mpp_err_msg(logInfo, progname, "ddboost passwd is NULL\n");
-			exit(1);
-		}
-
-		if (dd_boost_hostname == NULL)
-		{
-			mpp_err_msg(logInfo, progname, "ddboost hostname is NULL\n");
-			exit(1);
-		}
-
-		initDDSystem();
+                
 		mpp_err_msg(logInfo, progname, "ddboost is initialized\n");
 		
      		if (!postDataSchemaOnly)
@@ -755,15 +722,6 @@ main(int argc, char **argv)
 
 					if (ddp_file_name)
 						len += strlen(ddp_file_name);
-					len += strlen(" --user= ");
-					if (dd_boost_username)
-						len += strlen(dd_boost_username);
-					len += strlen(" --passwd= ");
-					if (dd_boost_passwd)
-						len += strlen(dd_boost_passwd);
-					len += strlen(" --host= ");
-					if (dd_boost_hostname)
-						len += strlen(dd_boost_hostname);
 				}
 						
 			}
@@ -826,15 +784,9 @@ main(int argc, char **argv)
 					strcat(pszCmdLine, " --from-file=");
 
 					strcat(pszCmdLine, ddp_file_name);
+	
 					if(bCompUsed)
 						strcat(pszCmdLine, ".gz");
-					strcat(pszCmdLine, " --user=");
-					strcat(pszCmdLine, dd_boost_username);
-					strcat(pszCmdLine, " --passwd=");
-					strcat(pszCmdLine, dd_boost_passwd);
-					strcat(pszCmdLine, " --host=");
-					strcat(pszCmdLine, dd_boost_hostname);
-	
 					strcat(pszCmdLine, " | ");
 
 					if(bCompUsed)
@@ -1584,69 +1536,6 @@ testProgramExists(char *pszProgramName)
 }
 
 #ifdef USE_DDBOOST
-int
-initDDSystem(void)
-{
-        int err = DD_ERR_NONE;
-        uint POOL_SIZE = 32 * 1024 * 2048;
-        char *storage_unit_name = NULL;
-
-        storage_unit_name = (char*)malloc(1024);
-
-        sprintf(storage_unit_name, "%s", "GPDB");
-
-        DDP_SU_NAME = storage_unit_name;
-
-        err = ddp_init("gp_dump");
-                if (err != DD_ERR_NONE) {
-                        mpp_err_msg(logError, progname,"DDInit fails with code %d\n", err);
-                        return err;
-        }
-
-        err = ddp_instance_create(POOL_SIZE, &cl_info, &ddp_inst);
-
-        if (err)
-        {
-                mpp_err_msg(logError, progname,"dd instance creation failed. Err = %d\n", err);
-                return err;
-        }
-
-        ddp_log_init(ddp_inst, NULL, _ddp_test_log);
-
-        err = ddp_connect_with_user_pwd(ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, &ddp_conn);
-
-        if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "dd_connect failed. err = %d\n", err);
-                return err;
-        }
-
-        err = ddp_create_storage_unit(ddp_conn, storage_unit_name);
-        if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "dd_connect failed. err = %d\n", err);
-                return err;
-       }
-
-        return 0;
-}
-
-void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
-{
-    FILE* log_file = NULL;
-    time_t ltime;
-    struct tm *Tm;
-
-    log_file = fopen("libDDBoost_test.log", "a");
-    if (log_file) {
-        ltime = time(NULL);
-        Tm = localtime(&ltime);
-        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
-                           Tm->tm_mon + 1, Tm->tm_mday,
-                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
-                           log_msg);
-        fclose(log_file);
-    }
-}
-
 static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *dd_boost_dir)
 {
         /* First form the prefix */

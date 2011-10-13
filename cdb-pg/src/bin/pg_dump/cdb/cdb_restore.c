@@ -312,11 +312,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	int			lenCmdLineParms;
 	int			i;
 
-#ifdef USE_DDBOOST
-        char            *ddboost_user = NULL;
-        char            *ddboost_passwd = NULL;
-        char            *ddboost_hostname = NULL;
-#endif
 
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
@@ -368,9 +363,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"gp-l", required_argument, NULL, 9},
 
 #ifdef USE_DDBOOST
-                {"gp-ddb-user", required_argument, NULL, 10},
-                {"gp-ddb-passwd", required_argument, NULL, 11},
-                {"gp-ddb-hostname", required_argument, NULL, 12},
+                {"ddboost", no_argument, NULL, 10},
 #endif
 
 		{NULL, 0, NULL, 0}
@@ -716,24 +709,9 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				}
 				break;
 #ifdef USE_DDBOOST
-                        case 10:
-                                /* DDBoost user name */
-                                ddboost_user = Safe_strdup(optarg);
-                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-user", ddboost_user, pInputOpts->pszPassThroughParms);
-                                dd_boost_enabled = 1;
-                                break;
-                        case 11:
-                                /* DDBoost password */
-                                ddboost_passwd = Safe_strdup(optarg);
-                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-passwd", ddboost_passwd, pInputOpts->pszPassThroughParms);
-                                dd_boost_enabled = 1;
-                                break;
-                        case 12:
-                                /* DDBoost hostname */
-                                ddboost_hostname = Safe_strdup(optarg);
-                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-hostname", optarg, pInputOpts->pszPassThroughParms);
-                                dd_boost_enabled = 1;
-                                break;
+			case 10:
+				dd_boost_enabled = 1;
+				break;
 #endif
 
 
@@ -809,26 +787,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		return false;
 	}
 
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		if (ddboost_user == NULL)
-		{
-			mpp_err_msg_cache(logError, progname, "DDBoost login username missing\n");
-			return false;
-		}
-		if (ddboost_passwd == NULL)
-		{
-			mpp_err_msg_cache(logError, progname, "DDBoost login password missing\n");
-			return false;
-		}
-		if (ddboost_hostname == NULL)
-		{
-			mpp_err_msg_cache(logError, progname, "DDBoost login hostname missing\n");
-			return false;
-		}
-	}
-#endif
 
 	if (opts->formatName == NULL)
 	{

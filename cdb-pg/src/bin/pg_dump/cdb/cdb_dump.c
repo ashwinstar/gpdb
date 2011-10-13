@@ -684,9 +684,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	int			i;
 
 #ifdef USE_DDBOOST
-	char 		*ddboost_user = NULL;
-	char		*ddboost_passwd = NULL;
-	char		*ddboost_hostname = NULL;
 	char		*ddboost_directory = NULL;
 #endif
 
@@ -746,9 +743,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 
 #ifdef USE_DDBOOST
-		{"gp-ddb-user", required_argument, NULL, 6},
-		{"gp-ddb-passwd", required_argument, NULL, 7},
-		{"gp-ddb-hostname", required_argument, NULL, 8},
+		{"ddboost", no_argument, NULL, 6},
 #endif
 		{NULL, 0, NULL, 0}
 	};
@@ -1061,21 +1056,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				break;
 #ifdef USE_DDBOOST
 			case 6:
-				/* DDBoost user name */
-				ddboost_user = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-user", ddboost_user, pInputOpts->pszPassThroughParms);
-				dd_boost_enabled = 1;
-				break;
-			case 7:
-				/* DDBoost password */
-				ddboost_passwd = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-passwd", ddboost_passwd, pInputOpts->pszPassThroughParms);
-				dd_boost_enabled = 1;
-				break;
-			case 8:
-				/* DDBoost hostname */
-				ddboost_hostname = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-hostname", optarg, pInputOpts->pszPassThroughParms);
 				dd_boost_enabled = 1;
 				break;
 #endif
@@ -1200,28 +1180,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		goto cleanup;
 	}
 
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		if (ddboost_user == NULL)
-		{
-			mpp_err_msg_cache(logError, progname,"DDboost login username missing\n");
-			goto cleanup;
-		}
 
-		if (ddboost_passwd == NULL)
-		{
-			mpp_err_msg_cache(logError, progname,"DDboost login password missing\n");
-                        goto cleanup;
-		}
-
-		if (ddboost_hostname == NULL)
-		{
-			mpp_err_msg_cache(logError, progname,"DDboost login hostname missing\n");
-                        goto cleanup;
-		}	
-	}
-#endif
 	bRtn = true;
 
 	cleanup:

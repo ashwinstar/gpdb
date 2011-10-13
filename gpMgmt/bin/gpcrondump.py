@@ -86,20 +86,12 @@ class GpCronDump(Operation):
         if options.backup_set is not None:
             logger.info("-w is no longer supported, will continue with dump of primary segments.")
 
-        count = sum([1 for opt in ['ddb_host', 'ddb_user', 'ddb_passwd']
-                       if options.__dict__[opt] is not None])
-        if count > 0:
-            if count < 3:
-                raise ExceptionNoStackTraceNeeded("--gp-ddb-user, --gp-ddb-host, --gp-ddb-passwd must all be provided for DDBoost capabilities.")
-            self.ddboost = { 'user' : options.ddb_user,
-                             'passwd' : options.ddb_passwd,
-                             'host' : options.ddb_host } 
+        self.ddboost = options.ddboost
+        if self.ddboost:
             self.free_space_percent = None
             logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
-        else:
-            self.ddboost = None
 
     def execute(self):
         if self.clear_dumps_only:
@@ -469,11 +461,8 @@ def create_parser():
 
     parser.add_option_group(addTo)
 
-    ddOpt = OptionGroup(parser, "DDBoost APIs")
-    ddOpt.add_option('--gp-ddb-host', dest='ddb_host')
-    ddOpt.add_option('--gp-ddb-user', dest='ddb_user')
-    ddOpt.add_option('--gp-ddb-passwd', dest='ddb_passwd')
-    
+    ddOpt = OptionGroup(parser, "DDBoost")
+    ddOpt.add_option('--ddboost', dest='ddboost', help="Dump to DDBoost using ~/.ddconfig", action="store_true", default=False)
     parser.add_option_group(ddOpt)
 
     parser.setHelp([

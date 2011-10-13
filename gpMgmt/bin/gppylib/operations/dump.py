@@ -68,10 +68,8 @@ class DumpDatabase(Operation):
         else:
             report_path = os.path.join(self.master_datadir, DUMP_DIR, dump_date)
         dump_line = "gp_dump -p %d -U %s --gp-d=%s --gp-r=%s --gp-s=p" % (self.master_port, getUserName(), dump_path, report_path) 
-        if self.ddboost is not None:
-            dump_line += " --gp-ddb-host=%s" % self.ddboost['host']
-            dump_line += " --gp-ddb-user=%s" % self.ddboost['user']
-            dump_line += " --gp-ddb-passwd=%s" % self.ddboost['passwd']
+        if self.ddboost:
+            dump_line += " --ddboost"
         if self.clear_catalog_dumps:
             dump_line += " -c"
         if self.compress:
@@ -149,7 +147,7 @@ class PostDumpDatabase(Operation):
             return {'exit_status': 2, 'timestamp': 'n/a'}
         logger.info("Timestamp key = %s" % timestamp)
 
-        if self.ddboost is not None:
+        if self.ddboost:
             return {'exit_status': 0,               # feign success with exit_status = 0
                     'timestamp': timestamp}
 
@@ -703,13 +701,12 @@ class DumpGlobal(Operation):
         global_file = os.path.join(self.master_datadir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         Command('Dump global objects', 
                 "pg_dumpall -g --gp-syntax > %s" % global_file).run(validateAfter=True)
-        if self.ddboost is not None:       
+        if self.ddboost:       
             abspath = global_file
             relpath = os.path.join(DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath, 
-                          'gpddboost --copyToDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
-                            % (abspath, relpath, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
+                          'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
             cmd.run(validateAfter = True)
 
 
@@ -733,13 +730,12 @@ class DumpConfig(Operation):
         logger.info("Dumping master config files")
         Command("Dumping master configuration files",
                 "tar cf %s %s/*.conf" % (path, self.master_datadir)).run(validateAfter=True)
-        if self.ddboost is not None:
+        if self.ddboost:
             abspath = path
             relpath = os.path.join(DUMP_DIR, dump_date, config_backup_file)
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath,
-                          'gpddboost --copyToDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
-                            % (abspath, relpath, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
+                          'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
             cmd.run(validateAfter = True)
 
         logger.info("Dumping segment config files")
@@ -756,13 +752,12 @@ class DumpConfig(Operation):
                     "tar cf %s %s/*.conf" % (path, seg.getSegmentDataDirectory()),
                     ctxt=REMOTE,
                     remoteHost=host).run(validateAfter=True)
-            if self.ddboost is not None:
+            if self.ddboost:
                 abspath = path
                 relpath = os.path.join(DUMP_DIR, dump_date, config_backup_file)
                 logger.debug('Copying %s to DDBoost' % abspath)
                 cmd = Command('DDBoost copy of %s' % abspath,
-                              'gpddboost --copyToDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
-                                % (abspath, relpath, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
+                              'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
                 cmd.run(validateAfter = True)
 
 
@@ -788,12 +783,11 @@ class DeleteCurrentDump(Operation):
             except OSError, e:
                 logger.warn("Error encountered during deletion of %s on %s" % (self.timestamp, seg.getSegmentHostName()))
 
-        if self.ddboost is not None:
+        if self.ddboost:
             relpath = os.path.join(DUMP_DIR, self.timestamp[0:8])
             logger.debug('Listing %s on DDBoost to locate dump files with timestamp %s' % (relpath, self.timestamp))
             cmd = Command('DDBoost list dump files',
-                          'gpddboost --listDirectory --dir=%s --host=%s --user=%s --passwd=%s'
-                            % (relpath, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
+                          'gpddboost --listDirectory --dir=%s' % relpath)
             cmd.run(validateAfter = True)
             for line in cmd.get_results().stdout.splitlines():
                 line = line.strip()
@@ -801,8 +795,7 @@ class DeleteCurrentDump(Operation):
                     abspath = os.path.join(relpath, line)
                     logger.debug('Deleting %s from DDBoost' % abspath)
                     cmd = Command('DDBoost delete of %s' % abspath,
-                                  'gpddboost --del-file=%s --host=%s --user=%s --passwd=%s'
-                                    % (abspath, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
+                                  'gpddboost --del-file=%s' % abspath)
                     cmd.run(validateAfter = True)
 
 
@@ -856,11 +849,10 @@ class DeleteOldestDumps(Operation):
             except ExecutionError, e:
                 logger.warn("Error encountered during deletion of %s on %s" % (path, seg.getSegmentHostName()))
 
-        if self.ddboost is not None:
+        if self.ddboost:
             logger.info("Preparing to remove dump %s from DDBoost" % old_date)
             cmd = Command('DDBoost cleanup',
-                          'gpddboost --del-dir=%s --host=%s --passwd=%s --user=%s' 
-                          % (os.path.join(DUMP_DIR, old_date), self.ddboost['host'], self.ddboost['passwd'], self.ddboost['user']))
+                          'gpddboost --del-dir=%s' % os.path.join(DUMP_DIR, old_date))
             cmd.run(validateAfter = False)
             if gplog.logging_is_verbose():
                 logger.debug(cmd.get_results().stdout)

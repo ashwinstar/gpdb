@@ -842,3 +842,144 @@ parseDbidSet(int *dbidset, char *dump_set)
 
 	return count;
 }
+
+#ifdef USE_DDBOOST
+
+int parseDDBoostCredential(char *hostname, char *user, char *password, const char *progName)
+{
+	char filepath[PATH_MAX];
+    memset(filepath, 0, PATH_MAX);
+    sprintf(filepath, "%s/%s", getenv("HOME"), DDBOOST_CONFIG_FILE);
+
+    char line[PATH_MAX];
+    memset(line, 0, PATH_MAX);
+    memset(hostname, 0, PATH_MAX);
+    memset(user, 0, PATH_MAX);
+    memset(password, 0, PATH_MAX);
+
+    FILE *fp = fopen(filepath, "r");
+    if (!fp)
+    {
+        mpp_err_msg("ERROR", progName, "error opening DD Boost credential config file %s\n", filepath);
+        return -1;
+    }
+
+    if (!fgets(line, PATH_MAX, fp))
+    {
+        mpp_err_msg("ERROR", progName, "end of DD Boost config file, missing hostname\n");
+        return -1;
+    }
+    strncpy(hostname, line, strlen(line) - 1);
+    memset(line, 0, PATH_MAX);
+
+    if (!fgets(line, PATH_MAX, fp))
+    {
+        mpp_err_msg("ERROR", progName, "end of DD Boost config file, missing user name \n");
+        return -1;
+    }
+    if (strlen(line) > (DDBOOST_USERNAME_MAXLENGTH + 1) || strlen(line) < 2)
+    {
+        mpp_err_msg("ERROR", progName, "username too long or too short, user name is limited to 30 characters\n");
+        return -1;
+    }   
+    strncpy(user, line, strlen(line) - 1);
+    memset(line, 0, PATH_MAX);
+
+    if (!fgets(line, PATH_MAX, fp))
+    {
+        mpp_err_msg("ERROR", progName, "end of DD Boost config file, missing password\n");
+        return -1;
+    }
+    if (strlen(line) > (DDBOOST_PASSWORD_MAXLENGTH + 1) || strlen(line) < 2)
+    {
+        mpp_err_msg("ERROR", progName, "password too long or too short, password is limited to 40 characters\n");
+        return -1;
+    }   
+    strncpy(password, line, strlen(line) - 1);
+
+	return 0;
+} 
+
+/* Initialize the file for logging DDboost related information */
+void 
+_ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
+{
+    FILE* log_file = NULL;
+    time_t ltime;
+    struct tm *Tm;
+
+    log_file = fopen("libDDBoost_test.log", "a");
+    if (log_file) {
+        ltime = time(NULL);
+        Tm = localtime(&ltime);
+        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
+                           Tm->tm_mon + 1, Tm->tm_mday,
+                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
+                           log_msg);
+        fclose(log_file);
+    }
+}
+
+int 
+initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info, char **ddp_su_name)
+{
+	int err = DD_ERR_NONE;
+	uint POOL_SIZE = DDBOOST_POOL_SIZE;
+        char *storage_unit_name = NULL;
+	char *dd_boost_username = NULL, *dd_boost_passwd, *dd_boost_hostname = NULL;
+
+	dd_boost_hostname = malloc(PATH_MAX);
+        dd_boost_username = malloc(PATH_MAX);
+        dd_boost_passwd = malloc(PATH_MAX);
+        if ((dd_boost_hostname == NULL) || (dd_boost_username == NULL) || (dd_boost_passwd == NULL))
+        {
+                mpp_err_msg("ERROR", "ddboost", "Memory allocation failed\n");
+               	return -1; 
+        }
+
+	err = parseDDBoostCredential(dd_boost_hostname, dd_boost_username, dd_boost_passwd, "ddboost");
+	if (err)
+	{
+		mpp_err_msg("ERROR", "ddboost", "Parsing DDBoost login credentials failed\n");
+		return -1;
+	}
+
+	storage_unit_name = (char*)malloc(PATH_MAX);
+	if (storage_unit_name == NULL)
+	{
+		mpp_err_msg("ERROR", "ddboost", "Memory allocation failed during DDBoost initialization\n");
+		return -1;
+	}
+	sprintf(storage_unit_name, "%s", "GPDB");	
+	*ddp_su_name = storage_unit_name;
+
+	err = ddp_init("gp_dump");
+                if (err != DD_ERR_NONE) {
+                        mpp_err_msg("ERROR", "ddboost", "ddboost init failed. Err = %d\n", err);
+                        return err;
+        }
+
+	err = ddp_instance_create(POOL_SIZE, cl_info, ddp_inst);
+	if (err)
+        {
+                mpp_err_msg("ERROR", "ddboost", "ddboost instance creation failed. Err = %d\n", err);
+                return err;
+        }
+
+	ddp_log_init(*ddp_inst, NULL, _ddp_test_log);
+	
+	err = ddp_connect_with_user_pwd(*ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, ddp_conn);	
+	if (err != DD_ERR_NONE) {
+               mpp_err_msg("ERROR", "ddboost", "ddboost connect failed. Err = %d\n", err);
+               return err;
+        }
+
+	err = ddp_create_storage_unit(*ddp_conn, storage_unit_name);
+	if (err != DD_ERR_NONE) {
+                mpp_err_msg("ERROR", "ddboost", "ddboost create storage unit failed. Err = %d\n", err);
+                return err;
+        }	
+	
+	return 0;
+}
+#endif

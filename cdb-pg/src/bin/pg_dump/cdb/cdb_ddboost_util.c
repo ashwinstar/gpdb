@@ -66,6 +66,7 @@ int			optreset;
 
 static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
 static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
+static char *DDP_SU_NAME = NULL;
 
 struct schemaTableList
 {
@@ -77,9 +78,6 @@ struct schemaTableList
 struct ddboost_options
 {
 	char *timestamp;
-	char *ddb_username;
-	char *ddb_password;
-	char *ddb_hostname;
 	char *directory;	
 	char *from_file;
 	char *to_file;
@@ -99,7 +97,6 @@ struct ddboost_options
 };
 
 static struct ddboost_options *dd_options = NULL;
-static void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
 
 /* Forward decls */
 static bool fillInputOptions(int argc, char **argv, InputOptions * pInputOpts);
@@ -108,9 +105,7 @@ static void usage(void);
 static int readFromDDFile(FILE *fp, char *ddBoostFileName);	
 static int readFromDDFileToOutput(char *ddBoostFileName);
 static int writeToDDFileFromInput(char *ddBoostFileName);
-static int readFromLocalFileToOutput(char *FileName);
 static int writeToDDFile(FILE *fp, char *ddBoostFileName);	
-static int initDDSystem(const char *dd_boost_username, const char *dd_boost_passwd, const char *dd_boost_hostname);
 
 typedef struct option optType;
 
@@ -122,7 +117,7 @@ const char *progname;
 
 static char * addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThroughParmString);
 static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
-static int dd_boost_enabled = 0;
+static int dd_boost_enabled = 1;
 
 static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
 
@@ -244,31 +239,8 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	if (dd_options->readFile && (!dd_options->ddb_username))
-	{
-		/* This is a read from local file */
-		failCount = readFromLocalFileToOutput(dd_options->from_file);
-		goto cleanup;
-	}
-
-	if (!dd_options->ddb_username)
-	{
-		mpp_err_msg(logInfo, progname, "ddboost username is NULL");
-		goto cleanup;
-	}
-	if (!dd_options->ddb_password)
-	{
-		mpp_err_msg(logInfo, progname, "ddboost password is NULL");
-		goto cleanup;
-	}
-	if (!dd_options->ddb_hostname)
-	{
-		mpp_err_msg(logInfo, progname, "ddboost hostname is NULL");
-		goto cleanup;
-	}
-
-	ret = initDDSystem(dd_options->ddb_username, dd_options->ddb_password, dd_options->ddb_hostname);
-
+	ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME);
+	
 	if (ret)
 	{
 		mpp_err_msg(logInfo, progname, "Initialization of ddboost failed. Check login credentials\n");
@@ -396,11 +368,6 @@ usage(void)
 	printf("  --listTables			To list the tables in a dump file\n");
 	printf(("  --help                   	show this help, then exit\n"));
 	printf(("  --version                	output version information, then exit\n"));
-
-	printf(("\nConnection options:\n"));
-	printf("  --user			Username to login to DDboost\n");
-	printf("  --passwd			Password to login to DDBoost\n");
-	printf("  --host			Hostname of DDboost machine\n");
 }
 
 bool
@@ -412,31 +379,24 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	int			lenCmdLineParms;
 	int			i;
 
-        char            	*ddboost_user = NULL;
-        char            	*ddboost_passwd = NULL;
-        char            	*ddboost_hostname = NULL;
-
 	struct option cmdopts[] = {
-                {"user", required_argument, NULL, 1},
-                {"passwd", required_argument, NULL, 2},
-                {"host", required_argument, NULL, 3},
-		{"key", required_argument, NULL, 4},
-		{"from-file", required_argument, NULL, 5},
-		{"to-file", required_argument, NULL, 6},
-		{"copyFromDDBoost", no_argument, NULL, 7},
-		{"copyToDDBoost", no_argument, NULL, 8},
-		{"del-dir", required_argument, NULL, 9},
-		{"getFreePercent", no_argument, NULL, 10},
-		{"del-file", required_argument, NULL, 11},
-		{"readFile", no_argument, NULL, 12},
-		{"listDirectory", no_argument, NULL, 13},
-		{"table", required_argument, NULL, 14},
-		{"getLatestTimestamp", no_argument, NULL, 15},
-		{"dir", required_argument, NULL, 16},
-		{"database", required_argument, NULL, 17},
-		{"sync", no_argument, NULL, 18},
-		{"write-file-from-stdin", no_argument, NULL, 19},
-		{"listTables", no_argument, NULL, 20},
+		{"key", required_argument, NULL, 1},
+		{"from-file", required_argument, NULL, 2},
+		{"to-file", required_argument, NULL, 3},
+		{"copyFromDDBoost", no_argument, NULL, 4},
+		{"copyToDDBoost", no_argument, NULL, 5},
+		{"del-dir", required_argument, NULL, 6},
+		{"getFreePercent", no_argument, NULL, 7},
+		{"del-file", required_argument, NULL, 8},
+		{"readFile", no_argument, NULL, 9},
+		{"listDirectory", no_argument, NULL, 10},
+		{"table", required_argument, NULL, 11},
+		{"getLatestTimestamp", no_argument, NULL, 12},
+		{"dir", required_argument, NULL, 13},
+		{"database", required_argument, NULL, 14},
+		{"sync", no_argument, NULL, 15},
+		{"write-file-from-stdin", no_argument, NULL, 16},
+		{"listTables", no_argument, NULL, 17},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -491,70 +451,49 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	{
 		switch (c)
 		{
-                        case 1:
-                                /* DDBoost user name */
-                                ddboost_user = Safe_strdup(optarg);
-				dd_options->ddb_username = Safe_strdup(optarg);
-                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-user", ddboost_user, pInputOpts->pszPassThroughParms);
-                                dd_boost_enabled = 1;
-                                break;
-                        case 2:
-                                /* DDBoost password */
-                                ddboost_passwd = Safe_strdup(optarg);
-				dd_options->ddb_password = Safe_strdup(optarg);
-                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-passwd", ddboost_passwd, pInputOpts->pszPassThroughParms);
-                                dd_boost_enabled = 1;
-                                break;
-                        case 3:
-                                /* DDBoost hostname */
-                                ddboost_hostname = Safe_strdup(optarg);
-				dd_options->ddb_hostname = Safe_strdup(optarg);
-                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-hostname", optarg, pInputOpts->pszPassThroughParms);
-                                dd_boost_enabled = 1;
-                                break;
-			case 4:
+			case 1:
 				/* Timestamp */
 				dd_options->timestamp = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-key", optarg, pInputOpts->pszPassThroughParms);
 				dd_boost_enabled = 1;
 				break;
-			case 5:
+			case 2:
 				/* Directory name on gpdb */
 				dd_options->from_file = Safe_strdup(optarg);
 				break;
-			case 6:
+			case 3:
 				/* Directory name on gpdb */
 				dd_options->to_file = Safe_strdup(optarg);
 				break;
-			case 7:
+			case 4:
 				/* Cleanup the files on DDBoost */
 				dd_options->copyFromDDBoost = true;
 				break;
-			case 8:
+			case 5:
 				/* Copy File from DDBoost */
 				dd_options->copyToDDBoost = true;
 				break;
-			case 9:
+			case 6:
 				/* Cleanup specified directory */
 				dd_options->deleteDir = Safe_strdup(optarg);
 				break;
-			case 10:
+			case 7:
 				/* Get free percent */
 				dd_options->getFreePercent = true;
 				break;
-			case 11:
+			case 8:
 				/* Cleanup specified file */
 				dd_options->deleteFile = Safe_strdup(optarg);
 				break;
-			case 12:
+			case 9:
 				/* read file and write to stdout */
 				dd_options->readFile = true;
 				break;
-			case 13:
+			case 10:
 				/* List directory contents */
 				dd_options->listDir = true;
 				break;
-			case 14:
+			case 11:
 				/* Schema.Table to restore */
 				if (!optarg)
 				{
@@ -563,10 +502,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				}
 				insertTableName(optarg, &dd_options);	
 				break;
-			case 15:
+			case 12:
 				dd_options->getLatestTimestamp = true;
 				break;
-			case 16:
+			case 13:
 				dd_options->directory = Safe_strdup(optarg);
 				if (!optarg)
 				{
@@ -574,18 +513,18 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 					return false;
 				}	
 				break;
-			case 17:
+			case 14:
 				dd_options->database = Safe_strdup(optarg);
 				break;
-			case 18:
 				/* sync cdatabase, post_data and global dump files */
+			case 15:
 				dd_options->syncFiles = true;
 				break;	
-			case 19:
+			case 16:
 				/* Pipe input from stdout to DDboost file */
 				dd_options->writeToDDFileFromInput = true;
 				break;
-			case 20:
+			case 17:
 				/* List tables in a dump file */
 				dd_options->listTables = true;
 				break;	
@@ -801,56 +740,6 @@ cleanup:
 
         return err;
 }
-
-int
-initDDSystem(const char *dd_boost_username, const char *dd_boost_passwd, const char *dd_boost_hostname)
-{
-        int err = DD_ERR_NONE;
-
-        err = ddp_init("gp_dump");
-                if (err != DD_ERR_NONE) {
-                        mpp_err_msg(logError, progname,"DDInit fails with code %d\n", err);
-                        return err;
-        }
-
-        err = ddp_instance_create(DDB_POOL_SIZE, &cl_info, &ddp_inst);
-
-        if (err)
-        {
-                mpp_err_msg(logError, progname,"dd instance creation failed. Err = %d\n", err);
-                return err;
-        }
-
-        ddp_log_init(ddp_inst, NULL, _ddp_test_log);
-
-        err = ddp_connect_with_user_pwd(ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, &ddp_conn);
-
-        if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "dd_connect failed. err = %d\n", err);
-                return err;
-        }
-
-	return 0;
-}
-
-void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
-{
-    FILE* log_file = NULL;
-    time_t ltime;
-    struct tm *Tm;
-
-    log_file = fopen("libDDBoost_test.log", "a");
-    if (log_file) {
-        ltime = time(NULL);
-        Tm = localtime(&ltime);
-        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
-                           Tm->tm_mon + 1, Tm->tm_mday,
-                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
-                           log_msg);
-        fclose(log_file);
-    }
-}
-
 
 int 
 copyFileFromDDBoost(struct ddboost_options *dd_options)
@@ -1473,6 +1362,7 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 	return err;
 }
 
+#if 0
 static int readFromLocalFileToOutput(char *fileName)
 {
         char *buf = NULL;
@@ -1510,6 +1400,7 @@ static int readFromLocalFileToOutput(char *fileName)
 	free(buf);
         return 0;
 }
+#endif
 
 /* For selective restore we need to parse the specified dump file
  * for psql statements corresponding to the required table 

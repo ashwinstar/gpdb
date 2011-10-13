@@ -117,10 +117,8 @@ class RestoreDatabase(Operation):
         if compress:
             restore_line += " --gp-c"
         restore_line += " -d %s" % restore_db
-        if self.ddboost is not None:
-            restore_line += " --gp-ddb-host=%s" % self.ddboost['host']
-            restore_line += " --gp-ddb-user=%s" % self.ddboost['user']
-            restore_line += " --gp-ddb-passwd=%s" % self.ddboost['passwd']
+        if ddboost:
+            restore_line += " --ddboost"
         return restore_line
 
 
@@ -134,14 +132,14 @@ class ValidateRestoreDatabase(Operation):
         self.ddboost = ddboost
     def execute(self):
         (restore_timestamp, restore_db, compress) = ValidateTimestamp(self.restore_timestamp, self.master_datadir, self.ddboost).run()   
-        if self.ddboost is None:
+        if not self.ddboost:
             ValidateSegments(restore_timestamp, compress, self.master_port).run()
         return (restore_timestamp, restore_db, compress)
 
 
 
 class ValidateTimestamp(Operation):
-    def __init__(self, candidate_timestamp, master_datadir, ddboost=None):
+    def __init__(self, candidate_timestamp, master_datadir, ddboost = False):
         self.master_datadir = master_datadir
         self.candidate_timestamp = candidate_timestamp
         self.ddboost = ddboost
@@ -151,12 +149,12 @@ class ValidateTimestamp(Operation):
         if not CheckFile(createdb_file).run():
             raise ExceptionNoStackTraceNeeded("Dump file %s%s does not exist on Master" % (CREATEDB_PREFIX, self.candidate_timestamp))
         restore_db = GetDbName(createdb_file).run()
-        if self.ddboost is None:
+        if not self.ddboost:
             compressed_file = os.path.join(path, "%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
             compress = CheckFile(compressed_file).run()
         else:
-	    compressed_file = os.path.join(path, "%s%s_post_data.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
-	    compress = CheckFile(compressed_file).run()	
+            compressed_file = os.path.join(path, "%s%s_post_data.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
+            compress = CheckFile(compressed_file).run()	
         return (self.candidate_timestamp, restore_db, compress)
 
 
@@ -206,7 +204,7 @@ class RestoreTables(Operation):
                               restore_db = restore_db,
                               master_port = self.master_port).run()
 
-        if self.ddboost is not None:
+        if self.ddboost:
             fake_timestamp = BuildDDBoostTableDumps(restore_timestamp = self.restore_timestamp,
                                                     compress = compress,
                                                     restore_tables = self.restore_tables,
@@ -326,20 +324,20 @@ class BuildDDBoostTableDumps(Operation):
             table_str = ' '.join(['--table=%s' % table for table in self.restore_tables])
             # TODO: Escaping. Low priority due to MPP-12880, et al
             cmd = Command('DDBoost building dump file for dbid %s' % seg.getSegmentDbId(),
-                          'gpddboost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s %s'
-                          % (real_filename, fake_filename, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd'], table_str))
+                          'gpddboost --from-file=%s --to-file=%s %s'
+                          % (real_filename, fake_filename, table_str))
             pool.addCommand(cmd)
         pool.join()
         pool.check_results()
 
         from_file = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
-	if self.compress:
-            from_file += '.gz';        
-	to_file = os.path.join(self.master_datadir, from_file)
+        if self.compress:
+            from_file += '.gz';
+        to_file = os.path.join(self.master_datadir, from_file)
 
         Command('Copying master dump file from DDBoost',
-                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
-                % (from_file, to_file, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd'])).run(validateAfter = True)
+                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s'
+                % (from_file, to_file)).run(validateAfter = True)
 
         BuildMasterTableDump(restore_timestamp = self.restore_timestamp,
                              fake_timestamp = fake_timestamp,
@@ -350,8 +348,8 @@ class BuildDDBoostTableDumps(Operation):
         real_createdb = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.restore_timestamp))
         fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
         Command('Copying cdatabase file from DDBoost',
-                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s'
-                % (real_createdb, fake_createdb, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd'])).run(validateAfter = True)
+                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s'
+                % (real_createdb, fake_createdb)).run(validateAfter = True)
 
         return fake_timestamp
 
@@ -477,6 +475,7 @@ class BuildMasterTableDump(Operation):
                 if lineno > 20:
                     break
         except Exception, e:
+            logger.exception('Master dump file build failed.')
             raise ExceptionNoStackTraceNeeded('Master dump file build failed, review log file for details')
         finally:
             if real_file is not None:
@@ -714,14 +713,14 @@ class GetDumpTables(Operation):
         if compress:
             dump_file += '.gz'
 
-        if self.ddboost is not None:
+        if self.ddboost:
             from_file = os.path.join(DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
             if compress:
                 from_file += '.gz'
  
             cmd = Command('DDBoost copy of master dump file',
-                          'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s' 
-                            % (from_file, dump_file, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
+                          'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s' 
+                            % (from_file, dump_file))
             cmd.run(validateAfter = True)
 
         f = None
