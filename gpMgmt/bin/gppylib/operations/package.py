@@ -822,9 +822,10 @@ class InstallGppkg(Operation):
             if not IsVersionCompatible(gppkg).run():
                 raise GpdbVersionError
 
-            #OS compatibility
-            if gppkg.os.lower() != platform.system().lower():
-                raise OSCompatibilityError(gppkg.os, platform.system().lower())
+            # TODO: AK: I've changed our use of the OS tag from 'Linux' to 'rhel5' or 'suse10'.
+            # So, the two lines below will not work properly.
+            #if gppkg.os.lower() != platform.system().lower():
+            #    raise OSCompatibilityError(gppkg.os, platform.system().lower())
 
             #architecture compatibility
             if gppkg.architecture.lower() !=  platform.machine().lower():

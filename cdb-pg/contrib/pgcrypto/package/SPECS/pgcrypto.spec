@@ -1,8 +1,5 @@
 %define pgcrypto_dir %(echo `cd ..;pwd`)
 %define _topdir     %(echo `pwd`) 
-%define name        pgcrypto
-%define release     0
-%define version     1
 %define buildroot   %{_topdir}/install
 %define buildarch   %(uname -p)
 %define __os_install_post    %{nil}
@@ -10,15 +7,15 @@
 BuildRoot:      %{buildroot}
 Summary:        Cryptographic functions for Greenplum Database 
 License:        PostgreSQL License        
-Name:           %{name}
-Version:        %{version}
-Release:        %{release}
+Name:           pgcrypto
+Version:        %{pgcrypto_ver}
+Release:        %{pgcrypto_rel}
 Group:          Development/Tools
 Prefix:         /temp
 AutoReq:        no
 AutoProv:       no
 BuildArch:      %{buildarch} 
-Provides:       pgcrypto-%{version}-%{release}.%{buildarch}.rpm 
+Provides:       pgcrypto-%{pgcrypto_ver}-%{pgcrypto_rel}.%{buildarch}.rpm 
 
 %description
 The Pgcrypto package provides cryptographic package for the Greenplum Database.

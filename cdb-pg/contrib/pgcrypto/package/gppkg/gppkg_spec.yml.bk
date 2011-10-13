@@ -1,5 +1,5 @@
 Pkgname: pgcrypto
-Architecture: #arch 
+Architecture: #arch
 Version: 1.0
 OS: #os
 GPDBVersion: 4.2
