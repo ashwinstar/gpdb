@@ -52,6 +52,7 @@
 #include "cdb/cdbsetop.h"
 #include "cdb/cdbgroup.h"
 
+extern void UpdateScatterClause(Query *query, List *newtlist);
 
 /*
  * MppGroupPrep represents a strategy by which to precondition the
@@ -3670,7 +3671,7 @@ void adapt_flow_to_targetlist(Plan *plan)
  * is to be modified, we must call this method to ensure that the scatter clause
  * is kept in sync with the new targetlist.
  */
-static void UpdateScatterClause(Query *query, List *newtlist)
+void UpdateScatterClause(Query *query, List *newtlist)
 {
 	Assert(query);
 	Assert(query->targetList);
