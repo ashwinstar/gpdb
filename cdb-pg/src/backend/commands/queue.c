@@ -688,7 +688,7 @@ GetResqueueCapabilityEntry(Oid  queueid)
 	int			 ii;
 	TupleDesc	 tupdesc;
 
-	rel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+	rel = heap_open(ResQueueCapabilityRelationId, AccessShareLock);
 
 	tupdesc = RelationGetDescr(rel);
 
@@ -699,7 +699,7 @@ GetResqueueCapabilityEntry(Oid  queueid)
 
 	scan = systable_beginscan(rel,
 							  ResQueueCapabilityResqueueidIndexId,
-							  true, SnapshotDirty, 1, key);
+							  true, SnapshotNow, 1, key);
 
 	ii = 0;
 	
@@ -738,7 +738,7 @@ GetResqueueCapabilityEntry(Oid  queueid)
 	}
 	systable_endscan(scan); 
 
-	heap_close(rel, NoLock);
+	heap_close(rel, AccessShareLock);
 	
 	return (elems);
 } /* end GetResqueueCapabilityEntry */
