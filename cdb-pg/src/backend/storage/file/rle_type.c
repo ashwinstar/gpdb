@@ -199,6 +199,7 @@ rle_type_comp(
 		 * and the null bit map - no more work to do 
 		 * oddly I have seen block->ndatum be 1 in this case?
 		 */
+		*outSizeBytes = headerNullSize;
 		return inSizeBytes;
 
 	}
@@ -706,6 +707,7 @@ rle_type_decomp(
 		 * and the null bit map - no more work to do 
 		 * oddly I have seen block->ndatum be 1 in this case?
 		 */
+		*outSizeBytes = headerNullSize;
 		return inSizeBytes;
 
 	}
