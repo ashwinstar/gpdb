@@ -1362,8 +1362,16 @@ createDDboostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, const char *
         char *full_path = NULL;
 	char *path_name = strdup(filePath);
 
+	if (!filePath)
+	{
+		mpp_err_msg(logError, progname, "Specify path for directory\n");
+		return -1;
+	}
+
         full_path = (char*)malloc(MAX_PATH_NAME);
         memset(full_path, 0, MAX_PATH_NAME);
+	if (filePath[0] == '/')
+		strcat(full_path, "/");
 
         pch = strtok(path_name, " /");
         while(pch != NULL)
@@ -1372,7 +1380,7 @@ createDDboostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, const char *
                 strcat(full_path, pch);
                 path.path_name = full_path;
 
-		if (strcmp(full_path, filePath))
+		if (strncmp(full_path, filePath, strlen(filePath)))
 		{
                 	err = ddp_mkdir(ddp_conn, &path, 0755);
                 	if ((err != 0) && (err != DD_ERR_EXIST))
@@ -2234,6 +2242,18 @@ static int writeToDDFileFromInput(char *ddBoostFileName)
 	char *full_path = NULL;       
 	char *buf_iogroup = NULL;
 	int   buf_data_length = 0;
+
+	if (!ddBoostFileName)
+	{
+		mpp_err_msg(logInfo, progname, "Destination filename not specified\n");
+		return -1;
+	}
+
+	if (ddBoostFileName[strlen(ddBoostFileName)-1] == '/')
+	{
+		mpp_err_msg(logInfo, progname, "Invalid filename specified. Filename cannot end with /\n"); 
+		return -1;
+	}
  
 	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
 	if (storage_unit_name == NULL)
