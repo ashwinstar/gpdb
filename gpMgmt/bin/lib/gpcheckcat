@@ -232,7 +232,7 @@ def parseCommandLine():
         usage('Please specify -p port')
     GV.opt['-p'] = parse_int(GV.opt['-p'])
 
-    GV.opt['-h'] = getLocalHostname()
+    GV.opt['-h'] = 'localhost'
     logger.debug('Set default hostname to %s' % GV.opt['-h'])
     
     if GV.opt['-R']:
