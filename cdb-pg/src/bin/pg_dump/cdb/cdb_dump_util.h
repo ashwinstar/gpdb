@@ -11,6 +11,8 @@
 #include <regex.h>
 #include "cdb_seginst.h"
 
+#define CDB_BACKUP_KEY_LEN 14
+
 #ifdef USE_DDBOOST
 #include <limits.h>
 #include "ddp_api.h"
@@ -18,7 +20,6 @@
 #define PATH_MAX 1024
 #endif
 
-#define CDB_BACKUP_KEY_LEN 14
 #define DDBOOST_CONFIG_FILE ".ddconfig"
 #define DDBOOST_USERNAME_MAXLENGTH 30
 #define DDBOOST_PASSWORD_MAXLENGTH 40
