@@ -289,25 +289,23 @@ FindMatchingIf()
 
 		if (ifa ->ifa_addr->sa_family == AF_INET)
 		{
-			found = CompareIP
-				(
-				(char*) &hostAddrV4,
-				ifa->ifa_addr->sa_data,
-				ifa->ifa_netmask->sa_data,
-				sizeof(hostAddrV4)
-				);
+			char nicAddr[sizeof(hostAddrV4)];
+			char maskAddr[sizeof(hostAddrV4)];
+			(void) memcpy(nicAddr, ifa->ifa_addr->sa_data, sizeof(nicAddr));
+			(void) memcpy(maskAddr, ifa->ifa_netmask->sa_data, sizeof(maskAddr));
+
+			found = CompareIP((char*) &hostAddrV4, nicAddr, maskAddr, sizeof(hostAddrV4));
 		}
 		else
 		{
 			Assert(ifa->ifa_addr->sa_family == AF_INET6);
 
-			found = CompareIP
-				(
-				(char*) &hostAddrV6,
-				ifa->ifa_addr->sa_data,
-				ifa->ifa_netmask->sa_data,
-				sizeof(hostAddrV6)
-				);
+			char nicAddr[sizeof(hostAddrV6)];
+			char maskAddr[sizeof(hostAddrV6)];
+			(void) memcpy(nicAddr, ifa->ifa_addr->sa_data, sizeof(nicAddr));
+			(void) memcpy(maskAddr, ifa->ifa_netmask->sa_data, sizeof(maskAddr));
+
+			found = CompareIP((char*) &hostAddrV6, nicAddr, maskAddr, sizeof(hostAddrV6));
 		}
 
 		if (found)
