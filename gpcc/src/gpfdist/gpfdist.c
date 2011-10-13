@@ -1721,6 +1721,42 @@ static int setup_read(request_t* r)
 	}
 }
 
+/*
+ * Search linked list (head) for first element with family (first_family).
+ * Moves first matching element to head of the list.
+ */
+static struct addrinfo* rearrange_addrs(struct addrinfo *head, int first_family)
+{
+	struct addrinfo* iter; 
+	struct addrinfo* new_head = head;
+	struct addrinfo* holder = NULL;
+	
+	if (head->ai_family == first_family)
+		return head;
+	
+	for (iter = head; iter != NULL && iter->ai_next != NULL; iter = iter->ai_next)
+	{
+		if ( iter->ai_next->ai_family == first_family )
+		{
+			holder = iter->ai_next;
+			iter->ai_next = iter->ai_next->ai_next; 
+			/* 
+			 * we don't break here since if there are more addrinfo structure that belong to first_family 
+			 * in the list, we want to remove them all and keep only one in the holder.
+			 * and then we will put the holder in the front
+			 */
+		}
+	}
+	
+	if ( holder != NULL )
+	{
+		holder->ai_next = new_head;
+		new_head = holder;
+	}
+	
+	return new_head;
+	
+}
 
 /* Create HTTP port and start to receive request */
 static void http_setup(void)
@@ -1754,7 +1790,7 @@ static void http_setup(void)
 		hints.ai_socktype = SOCK_STREAM; /* tcp socket */
 		hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
 		hints.ai_protocol = 0;			/* Any protocol */
-
+		
 		s = getaddrinfo(hostaddr, service, &hints, &addrs);
 		if (s != 0)
 #if (!defined(WIN32)) || defined(gai_strerror)
@@ -1763,7 +1799,9 @@ static void http_setup(void)
 			/* Broken mingw header file from old version of mingw doesn't have gai_strerror */
 			gfatal(FLINE,"getaddrinfo says %d",s);
 #endif
-
+		
+		addrs = rearrange_addrs(addrs, AF_INET6);
+		
 		/*
 		 * getaddrinfo() returns a list of address structures,
 		 * one for each valid address and family we can use.
@@ -1780,7 +1818,7 @@ static void http_setup(void)
 			 * getaddrinfo gives us all the parameters for the socket() call
 			 * as well as the parameters for the bind() call.
 			 */
-			f = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+			f = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);			
 			if (f == -1)
 				continue;
 
@@ -1830,6 +1868,12 @@ static void http_setup(void)
 				continue;
 			}
 			gcb.listen_socks[gcb.listen_sock_count++] = f;
+			
+			/*
+			 * if we got here, it means that for this given socket we succeeded to do bind and listen
+			 * and since we can only bind to one listening socket on a given port - it's time to live this iteration
+			 */
+			break;
 
 		}
 
