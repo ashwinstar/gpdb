@@ -505,6 +505,10 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 						exprType((Node*)tle->expr),
 						exprTypmod((Node*)tle->expr), 0));
 			}
+			else
+			{
+				hash = lappend(hash, x);
+			}
 		}
 		flow->hashExpr = hash;
 	}
