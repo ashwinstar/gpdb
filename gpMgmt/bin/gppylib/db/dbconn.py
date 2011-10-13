@@ -93,8 +93,10 @@ class DbURL:
     pgdb='template1'
     pguser='username'
     pgpass='pass'    
+    timeout=None
+    retries=None 
 
-    def __init__(self,hostname=None,port=0,dbname=None,username=None,password=None):
+    def __init__(self,hostname=None,port=0,dbname=None,username=None,password=None,timeout=None,retries=None):
         
         if hostname is None:
             self.pghost = os.environ.get('PGHOST', 'localhost')
@@ -128,9 +130,16 @@ class DbURL:
                     self.pgpass = os.environ.get('PGPASSWORD', None)
         else:
             self.pgpass = password
-
-        
     
+        if timeout is not None:
+            self.timeout = int(timeout)
+
+        if retries is None:
+            self.retries = 1
+        else:
+            self.retries = int(retries)
+
+
     def __str__(self):
 
         # MPP-13617
@@ -169,8 +178,35 @@ def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTable
     dbtty    = "1"
     dbuser   = dburl.pguser
     dbpasswd = dburl.pgpass
-    cnx      = pgdb._connect_(dbbase, dbhost, dbport, dbopt, dbtty, dbuser, dbpasswd)
-    conn     = pgdb.pgdbCnx(cnx)
+    timeout  = dburl.timeout
+    cnx      = None
+
+    # MPP-14121, use specified connection timeout
+    #
+    if timeout is not None:
+        cstr    = "dbname=%s connect_timeout=%s" % (dbbase, timeout)
+        retries = dburl.retries
+    else:
+        cstr    = "dbname=%s" % dbbase
+        retries = 1
+
+    (logger.info if timeout is not None else logger.debug)("Connecting to %s" % cstr)
+
+    for i in range(retries):
+        try:
+            cnx  = pgdb._connect_(cstr, dbhost, dbport, dbopt, dbtty, dbuser, dbpasswd)
+            break
+
+        except pgdb.InternalError, e:
+            if 'timeout expired' in str(e):
+                logger.warning('Timeout expired connecting to %s, attempt %d/%d' % (dbbase, i+1, retries))
+                continue
+            raise
+
+    if cnx is None:
+        raise ConnectionError('Failed to connect to %s' % dbbase)
+
+    conn = pgdb.pgdbCnx(cnx)
     
     #by default, libpq will print WARNINGS to stdout
     if not verbose:

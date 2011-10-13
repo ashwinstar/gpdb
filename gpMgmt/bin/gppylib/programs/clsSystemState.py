@@ -1433,7 +1433,7 @@ class GpSystemStateProgram:
         self.__pool = base.WorkerPool(self.__options.parallelDegree)
 
         # load config
-        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
+        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True, self.__options.timeout, self.__options.retries)
         confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort())
         gpArray = confProvider.loadSystemConfig(useUtilityMode=True)
 
@@ -1543,6 +1543,14 @@ class GpSystemStateProgram:
                             dest="parallelDegree",
                             metavar="<parallelDegree>",
                             help="Max # of workers to use querying segments for status.  [default: %default]")
+        addTo.add_option("--timeout", None, type="int", default=None,
+                            dest="timeout",
+                            metavar="<timeout>",
+                            help="Database connection timeout. [default: %default]")
+        addTo.add_option("--retries", None, type="int", default=None,
+                            dest="retries",
+                            metavar="<retries>",
+                            help="Database connection retries. [default: %default]")
 
         parser.set_defaults()
         return parser

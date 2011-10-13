@@ -20,7 +20,7 @@ class GpMasterEnvironment:
 
     """
 
-    def __init__(self, masterDataDir, readFromMasterCatalog):
+    def __init__(self, masterDataDir, readFromMasterCatalog, timeout=None, retries=None):
         """
         masterDataDir: if None then we try to find it from the system environment
         readFromMasterCatalog: if True then we will connect to the master in utility mode and fetch some more
@@ -44,7 +44,7 @@ class GpMasterEnvironment:
 
         # read collation settings from master
         if readFromMasterCatalog:
-            dbUrl = dbconn.DbURL(port=self.__masterPort, dbname='template1')
+            dbUrl = dbconn.DbURL(port=self.__masterPort, dbname='template1', timeout=timeout, retries=retries)
             conn = dbconn.connect(dbUrl, utility=True)
             (self.__lcCollate, self.__lcMonetary, self.__lcNumeric) = catalog.getCollationSettings(conn)
 
