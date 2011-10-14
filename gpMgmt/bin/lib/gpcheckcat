@@ -3169,7 +3169,7 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
                  SELECT gp_segment_id as segid, {primary_key} FROM gp_dist_random('{catalog}')
                ) actual USING (segid, {primary_key})
           ) missing_extra
-          WHERE subcount <= ({max_content}+1)/2.0
+          WHERE subcount <= ({max_content}+2)/2.0
           GROUP BY {oidcasted_pk}, exists;
           """.format(oidcasted_pk = ','.join(castedPkey),
                      primary_key  = ','.join(pkey),
@@ -3204,10 +3204,6 @@ def checkTableInconsistentEntry(cat):
     columns  = cat.getTableColumns(with_acl=False)
     coltypes = cat.getTableColtypes()
    
-    # Skip pg_constraint due to MPP-14531:
-    if catname == 'pg_constraint':
-        return
-
     # Skip master only tables
     if master:
         return
@@ -3284,7 +3280,11 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns):
         #-- 
         #--   Majority gets reported with gp_segment_id == null
         #--
+        #-- SET GUC due to MPP-14531:
+
         qry = """
+              SET gp_enable_mk_sort=off; 
+
               SELECT {columns}, array_agg(gp_segment_id order by gp_segment_id) as segids
               FROM
               (
