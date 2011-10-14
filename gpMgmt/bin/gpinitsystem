@@ -993,15 +993,31 @@ CREATE_QE_ARRAY () {
 }
 
 ARRAY_REORDER() {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	# Now re-order the array so that it is ordered by PORT to spread out the number of parallel processes initiated on each host
-	QE_REORDER_ARRAY=(`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$SORT -t"~" -k2,2|$TR '\n' ' '`)
-	QE_PRIMARY_ARRAY=(${QE_REORDER_ARRAY[@]})
-	if [ $MIRROR_TYPE -eq 1 ];then
-		QE_REORDER_ARRAY=(`$ECHO ${QE_MIRROR_ARRAY[@]}|$TR ' ' '\n'|$SORT -t"~" -k2,2|$TR '\n' ' '`)
-		QE_MIRROR_ARRAY=(${QE_REORDER_ARRAY[@]})
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+
+    # Now re-order the array so that it is ordered by PORT to spread out the 
+    # number of parallel processes initiated on each host
+    #
+    # MPP-13617: If segment contains a ~, we assume ~ is the field delimiter.
+    # Otherwise we assume : is the delimiter.  This allows us to easily 
+    # handle IPv6 addresses which may contain a : by using a ~ as a delimiter. 
+    # 
+    case `$ECHO ${QE_PRIMARY_ARRAY[@]}` in 
+        *~*)
+	    S="~"
+            ;;
+        *)
+	    S=":"
+            ;;
+    esac
+
+    QE_REORDER_ARRAY=(`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$SORT -t$S -k2,2|$TR '\n' ' '`)
+    QE_PRIMARY_ARRAY=(${QE_REORDER_ARRAY[@]})
+    if [ $MIRROR_TYPE -eq 1 ];then
+	QE_REORDER_ARRAY=(`$ECHO ${QE_MIRROR_ARRAY[@]}|$TR ' ' '\n'|$SORT -t$S -k2,2|$TR '\n' ' '`)
+	QE_MIRROR_ARRAY=(${QE_REORDER_ARRAY[@]})
+    fi
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 DISPLAY_CONFIG () {
@@ -1404,10 +1420,23 @@ CREATE_QES_MIRROR () {
 	LOG_MSG "[INFO]:-Commencing parallel build of mirror segment instances" 1
 	BATCH_LIMIT=${#QE_MIRROR_ARRAY[@]}
 
-    REORDERING=(`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$SORT -t"~" -k5,5|$TR '\n' ' '`)
+        # MPP-13617: If segment contains a ~, we assume ~ is the field delimiter.
+        # Otherwise we assume : is the delimiter.  This allows us to easily 
+        # handle IPv6 addresses which may contain a : by using a ~ as a delimiter. 
+        # 
+	case `$ECHO ${QE_PRIMARY_ARRAY[@]}` in 
+            *~*)
+		S="~"
+		;;
+            *)
+		S=":"
+		;;
+	esac
+
+	REORDERING=(`$ECHO ${QE_PRIMARY_ARRAY[@]}|$TR ' ' '\n'|$SORT -t$S -k5,5|$TR '\n' ' '`)
 	PRIMARIES_ORDERED_BY_CONTENT_ID=(${REORDERING[@]})
 
-    REORDERING=(`$ECHO ${QE_MIRROR_ARRAY[@]}|$TR ' ' '\n'|$SORT -t"~" -k5,5|$TR '\n' ' '`)
+	REORDERING=(`$ECHO ${QE_MIRROR_ARRAY[@]}|$TR ' ' '\n'|$SORT -t$S -k5,5|$TR '\n' ' '`)
 	MIRRORS_ORDERED_BY_CONTENT_ID=(${REORDERING[@]})
 
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
