@@ -1,0 +1,87 @@
+COMMAND NAME: gppkg
+
+Installs add-on modules such as pgcrypto, 
+PL/R, PL/Java, etc., along with their dependencies, 
+across an entire cluster.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gp_dump [option ...] [-a]
+
+gppkg-? | -h | --help
+
+gppkg --version
+
+gppkg -v | -verbose
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+The extensions package manager (gppkg) utility installs 
+add-on modules, including any dependencies, on all hosts 
+across a cluster. It will also automatically install add-on 
+modules on new hosts in the case of system expansion and 
+segment recovery.
+First download one or more of the available add-on 
+modules from the EMC Download Center then copy it to the 
+master host. Use the extension package manager to install 
+each package using the options described below.
+After an upgrade to Greenplum Database, you must download 
+and install all add-on modules again.
+The following packages are available for download from the
+EMC Download Center.
+* PostGIS
+* PL/Java
+* PL/R
+* PL/Perl
+* Pgcrypto
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+Options
+-a (do not prompt)
+Do not prompt the user for confirmation.
+
+-c | --clean
+Reconciles the package state of the cluster to match the 
+state of the master host. Running this option after a failed
+or partial install/uninstall ensures that the package 
+installation state is complete across the cluster.
+
+-d <master_data_directory>
+The master data directory. If not specified, the value set
+ for $MASTER_DATA_DIRECTORY will be used.
+
+-i <package> | --install=<package>
+Installs the given package. This includes any pre/post 
+installation steps and installation of any dependencies.
+Once a package has been correctly installed, it is stored
+here: $GPHOME/share/packages/archive.
+
+--migrate <GP_Home1> <GP_Home2>
+Migrates packages from a separate $GPHOME. Carries over 
+packages from one version of Greenplum Database to another.
+For example: gppkg —migrate from_gphome to_gphome
+
+-r <package> | --remove=<package>
+Removes the given package.
+
+-u <package> | --update=<package>
+Updates the given package.
+
+--version 
+
+Displays the version of this utility.
+
+-v | --verbose
+Sets the logging level to verbose.
+
+-? | -h | --help
+Displays the online help.
+
+
