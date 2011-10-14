@@ -7312,8 +7312,6 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 
 	ReleaseSysCache(tuple);
 
-	RemoveRelationAttributeEncoding(RelationGetRelid(rel), attnum);
-
 	policy = rel->rd_cdbpolicy;
 	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
 	{
