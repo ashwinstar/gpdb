@@ -1291,6 +1291,31 @@ execute ccddlcheck;
 (20 rows)
 
 drop table ccddl;
+-- Precedence test: c3 in the partition child must be zlib, not rle_type
+CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
+                     c2 char ENCODING (compresstype=quicklz, blocksize=65536),
+				     c3 date,
+					 COLUMN c3 ENCODING (compresstype=RLE_TYPE))
+WITH (appendonly=true, orientation=column)
+	PARTITION BY RANGE (c3) (
+		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
+		        COLUMN c3 ENCODING (compresstype=zlib)
+	);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1" for table "ccddl"
+execute ccddlcheck;
+    relname    | attnum |                       attoptions                        
+---------------+--------+---------------------------------------------------------
+ ccddl         |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl         |      2 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
+ ccddl         |      3 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1 |      2 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
+ ccddl_1_prt_1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+(6 rows)
+
+drop table ccddl;
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure
@@ -1326,8 +1351,7 @@ LINE 3:       subpartition template(start(1) end(10) default column ...
 -----------------------------------------------------------------------
 -- The basics
 drop type if exists int42 cascade;
-NOTICE:  drop cascades to function int42_out(int42)
-NOTICE:  drop cascades to function int42_in(cstring)
+NOTICE:  type "int42" does not exist, skipping
 create type int42;
 CREATE FUNCTION int42_in(cstring)
 RETURNS int42

@@ -7435,6 +7435,75 @@ l_next_iteration:
 	return 1;
 } /* end partition_range_every */
 
+/*
+ * Add or override any column reference storage directives inherited from the
+ * parent table.
+ */
+static void
+merge_part_column_encodings(CreateStmt *cs, List *stenc)
+{
+	ListCell *lc;
+	List *parentencs = NIL;
+	List *others = NIL;
+	List *finalencs = NIL;
+
+	/* Don't waste time unnecessarily */
+	if (!stenc)
+		return;
+
+	/* 
+	 * First, split the table elements into column reference storage directives
+	 * and everything else.
+	 */
+
+	foreach(lc, cs->tableElts)
+	{
+		Node *n = lfirst(lc);
+
+		if (IsA(n, ColumnReferenceStorageDirective))
+			parentencs = lappend(parentencs, n);
+		else
+			others = lappend(others, n);
+	}
+
+	/*
+	 * Now build a final set of storage directives for this partition. Start
+	 * with stenc and then add everything from parentencs which doesn't appear
+	 * in that. This means we prefer partition level directives over those
+	 * directives specified for the parent.
+	 *
+	 * We must copy stenc, since list_concat may modify it destructively.
+	 */
+	finalencs = list_copy(stenc);
+
+	foreach(lc, parentencs)
+	{
+		bool found = false;
+		ListCell *lc2;
+		ColumnReferenceStorageDirective *p = lfirst(lc);
+
+		if (p->deflt)
+			continue;
+
+		foreach(lc2, finalencs)
+		{
+			ColumnReferenceStorageDirective *f = lfirst(lc2);
+ 
+			/* Should be no default directives at this stage */
+			Insist(!f->deflt);
+			Insist(PointerIsValid(f->column));
+			if (equal(f->column, p->column))
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			finalencs = lappend(finalencs, p);
+	}
+
+	cs->tableElts = list_concat(others, finalencs);
+}
 
 static void
 make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
@@ -7486,16 +7555,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	 */
 	child_tab_stmt->tableElts = copyObject(stmt->tableElts);
 
-	/* add encoding clauses */
-	{
-		ListCell *lc;
-
-		foreach(lc, stenc)
-		{
-			child_tab_stmt->tableElts = lappend(child_tab_stmt->tableElts,
-												lfirst(lc));
-		}
-	}
+	merge_part_column_encodings(child_tab_stmt, stenc);
 
 	/* Hash partitioning special case. */
 	if (pConstraint && ((enable_partition_rules &&

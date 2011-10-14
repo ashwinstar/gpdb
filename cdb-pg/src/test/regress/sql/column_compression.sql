@@ -360,6 +360,21 @@ partition by range(i) subpartition by range(j)
 execute ccddlcheck;
 drop table ccddl;
 
+
+-- Precedence test: c3 in the partition child must be zlib, not rle_type
+CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
+                     c2 char ENCODING (compresstype=quicklz, blocksize=65536),
+				     c3 date,
+					 COLUMN c3 ENCODING (compresstype=RLE_TYPE))
+WITH (appendonly=true, orientation=column)
+	PARTITION BY RANGE (c3) (
+		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
+		        COLUMN c3 ENCODING (compresstype=zlib)
+	);
+
+execute ccddlcheck;
+drop table ccddl;
+
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure
