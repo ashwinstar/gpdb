@@ -2224,6 +2224,7 @@ cleanup:
 	return err;
 }
 
+int 
 isFileCompressed(const char *filename)
 {
 	if (!filename)
