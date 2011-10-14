@@ -36,16 +36,23 @@ PARALLELISM   = 16
 
 #============================================================
 def make_conn(ug, user, db, options, port, sockdir):
-    try:
-        logger.debug("making database connection: user = %s, "
-                     "dbname = %s port = %i" 
-                     % (user, db, port))
-        conn = pg.connect(user=user,
-                          dbname=db, 
-                          opt=options,
-                          port=port)
-    except pg.InternalError, e:
-        raise ConnectionError(str(e))
+    retries = 5
+    for i in range(retries):
+        try:
+            logger.debug("making database connection: user = %s, "
+                         "dbname = %s port = %i" 
+                         % (user, db, port))
+            conn = pg.connect(user=user,
+                              dbname=db, 
+                              opt=options,
+                              port=port)
+            break
+        except pg.InternalError, e:
+            if 'too many clients already' in str(e) and i < retries:
+                logger.warning('Max Connection reached, attempt %d / %d' % (i+1, retries))
+                sleep(2)
+                continue
+            raise ConnectionError(str(e))
     return conn
 
 #============================================================
