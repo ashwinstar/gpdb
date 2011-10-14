@@ -137,7 +137,7 @@ drop table ccddl;
 select * from pg_attribute_encoding where 
 	attrelid not in (select oid from pg_class where
 	relname = 't3coquicklz' or relname = 'co' or
-	relname = 'aocs_new');
+	relname = 'aocs_new' or relname = 'tenk_aocs7');
  attrelid | attnum | attoptions 
 ----------+--------+------------
 (0 rows)
@@ -254,16 +254,55 @@ execute ccddlcheck;
 (2 rows)
 
 drop table ccddl;
+-- CREATE TABLE (LIKE) WITH (...) must honour the directives in the WITH clause.
+create table ccddl (i int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+create table ccddl_co(LIKE ccddl)
+  with (appendonly = true, orientation=column);
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+execute ccddlcheck;
+ relname  | attnum |             attoptions              
+----------+--------+-------------------------------------
+ ccddl_co |      1 | {compresstype=none,blocksize=32768}
+(1 row)
+
+drop table ccddl_co;
+create table ccddl_co(LIKE ccddl)
+  with (appendonly = true, orientation=column, compresstype=quicklz);
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+execute ccddlcheck;
+ relname  | attnum |                       attoptions                       
+----------+--------+--------------------------------------------------------
+ ccddl_co |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(1 row)
+
+drop table ccddl_co, ccddl;
+-- storage directives when we only use LIKE
+create table ccddl (i int, j int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
+with (appendonly=true, orientation=column, compresstype=zlib);
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+execute ccddlcheck;
+ relname  | attnum |                       attoptions                       
+----------+--------+--------------------------------------------------------
+ ccddl_co |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_co |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+(2 rows)
+
+drop table ccddl, ccddl_co;
 -----------------------------------------------------------------------
 -- Basic syntax
 -- Expect: failure
 -----------------------------------------------------------------------
 -- only support CO tables
 create table ccddl (i int encoding (compresstype=quicklz));
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1880)
+ERROR:  ENCODING clause only supported with column oriented tables
 create table ccddl (i int encoding (compresstype=quicklz))
 	with (appendonly = true);
-ERROR:  ENCODING clause only supported with column oriented tables (analyze.c:1880)
+ERROR:  ENCODING clause only supported with column oriented tables
 -- can't add encoding to a non-CO table
 create table ccddl (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
@@ -296,7 +335,7 @@ ERROR:  ENCODING clause conflicts with table WITH clause
 -- conflicting WITH and DEFAULT COLUMN ENCODING clause
 create table t1 (i int, j int, default column encoding (compresstype=quicklz))
 with (compresstype=zlib, appendonly=true, orientation=column);
-ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause (analyze.c:1770)
+ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause
 -- Invalid encoding clauses
 create table t1 (i int encoding (compresstype=quicklz, compresslevel=9))
 with (appendonly=true, orientation=column);
@@ -314,6 +353,15 @@ create table ccddlchild (j int encoding (compresstype=zlib))
 inherits(ccddlparent) with (appendonly = true, orientation = column);
 ERROR:  INHERITS clause cannot be used with column encoding
 drop table ccddlparent cascade;
+-- Conflict between default and with, in the LIKE case
+create table ccddl (i int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+create table ccddl_co (like ccddl, 
+					   default column encoding(compresstype=quicklz)) 
+with (appendonly=true, orientation=column, compresstype=zlib);
+ERROR:  DEFAULT COLUMN ENCODING clause cannot override values set in WITH clause
+drop table ccddl;
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: success
@@ -963,7 +1011,7 @@ execute ccddlcheck;
 (2 rows)
 
 alter table ccddl split partition p1 at (5) into (partition p2, partition p3);
-NOTICE:  exchanged partition "p1" of relation "ccddl" with relation "pg_temp_2020231"
+NOTICE:  exchanged partition "p1" of relation "ccddl" with relation "pg_temp_3541203"
 NOTICE:  dropped partition "p1" for relation "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p2" for table "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p3" for table "ccddl"
@@ -1000,7 +1048,7 @@ execute ccddlcheck;
 (6 rows)
 
 alter table ccddl alter partition p1 split partition sp1 at (10) into (partition sp2, partition sp3);
-NOTICE:  exchanged partition "sp1" of partition "p1" of relation "ccddl" with relation "pg_temp_2020450"
+NOTICE:  exchanged partition "sp1" of partition "p1" of relation "ccddl" with relation "pg_temp_3541422"
 NOTICE:  dropped partition "sp1" for partition "p1" of relation "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp2" for table "ccddl_1_prt_p1"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp3" for table "ccddl_1_prt_p1"
@@ -1018,7 +1066,7 @@ execute ccddlcheck;
 (8 rows)
 
 alter table ccddl alter partition p1 split partition sp2 at (5) into (partition sp2, partition sp2_5);
-NOTICE:  exchanged partition "sp2" of partition "p1" of relation "ccddl" with relation "pg_temp_2020450"
+NOTICE:  exchanged partition "sp2" of partition "p1" of relation "ccddl" with relation "pg_temp_3541422"
 NOTICE:  dropped partition "sp2" for partition "p1" of relation "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp2" for table "ccddl_1_prt_p1"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp2_5" for table "ccddl_1_prt_p1"

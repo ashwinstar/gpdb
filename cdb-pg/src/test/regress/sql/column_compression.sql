@@ -31,7 +31,7 @@ drop table ccddl;
 select * from pg_attribute_encoding where 
 	attrelid not in (select oid from pg_class where
 	relname = 't3coquicklz' or relname = 'co' or
-	relname = 'aocs_new');
+	relname = 'aocs_new' or relname = 'tenk_aocs7');
 
 -- mix inline and default
 create table ccddl (
@@ -95,6 +95,26 @@ create table ccddl (i int, j int encoding (COMPRESSTYPE="QuIckLZ"))
 execute ccddlcheck;
 drop table ccddl;
 
+-- CREATE TABLE (LIKE) WITH (...) must honour the directives in the WITH clause.
+create table ccddl (i int);
+create table ccddl_co(LIKE ccddl)
+  with (appendonly = true, orientation=column);
+execute ccddlcheck;
+drop table ccddl_co;
+
+create table ccddl_co(LIKE ccddl)
+  with (appendonly = true, orientation=column, compresstype=quicklz);
+execute ccddlcheck;
+drop table ccddl_co, ccddl;
+
+-- storage directives when we only use LIKE
+create table ccddl (i int, j int);
+create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
+with (appendonly=true, orientation=column, compresstype=zlib);
+execute ccddlcheck;
+drop table ccddl, ccddl_co;
+
+
 -----------------------------------------------------------------------
 -- Basic syntax
 -- Expect: failure
@@ -144,6 +164,13 @@ with (appendonly = true, orientation = column);
 create table ccddlchild (j int encoding (compresstype=zlib))
 inherits(ccddlparent) with (appendonly = true, orientation = column);
 drop table ccddlparent cascade;
+
+-- Conflict between default and with, in the LIKE case
+create table ccddl (i int);
+create table ccddl_co (like ccddl, 
+					   default column encoding(compresstype=quicklz)) 
+with (appendonly=true, orientation=column, compresstype=zlib);
+drop table ccddl;
 
 -----------------------------------------------------------------------
 -- Partitioning support

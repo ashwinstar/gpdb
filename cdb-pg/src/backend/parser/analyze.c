@@ -295,7 +295,8 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		 Node *pWhere
 		);
 
-static List *transformAttributeEncoding(List *stenc, CreateStmt *stmt);
+static List *transformAttributeEncoding(List *stenc, CreateStmt *stmt,
+										CreateStmtContext cxt);
 /*
  * parse_analyze
  *		Analyze a raw parse tree and transform it to Query form.
@@ -1715,7 +1716,7 @@ form_default_storage_directive(List *enc)
 }
 
 static List *
-transformAttributeEncoding(List *stenc, CreateStmt *stmt)
+transformAttributeEncoding(List *stenc, CreateStmt *stmt, CreateStmtContext cxt)
 {
 	ListCell *lc;
 	bool found_enc = stenc != NIL;
@@ -1725,7 +1726,9 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 	List *tmpenc;
 
 #define UNSUPPORTED_ORIENTATION_ERROR() \
-	elog(ERROR, "ENCODING clause only supported with column oriented tables")
+	ereport(ERROR, \
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
+			 errmsg("ENCODING clause only supported with column oriented tables")))
 
 	/*
 	 * The migrator puts lots of confusing things in the WITH() clause. We never
@@ -1767,8 +1770,10 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 				 */
 
 				if (encodings_overlap(stmt->options, c->encoding, false))
-					elog(ERROR, "DEFAULT COLUMN ENCODING clause cannot "
-						 "override values set in WITH clause");
+					ereport(ERROR,
+						    (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 	 errmsg("DEFAULT COLUMN ENCODING clause cannot "
+						 			"override values set in WITH clause")));
 			}
 		}
 	}
@@ -1791,86 +1796,70 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt)
 	 * -- i.e., COLUMN name ENCODING () -- apply that. Otherwise, apply the
 	 * default.
 	 */
-	foreach(lc, stmt->tableElts)
+	foreach(lc, cxt.columns)
 	{
 		Node *n = lfirst(lc);
+		ColumnDef *d = (ColumnDef *)n;
+		ColumnReferenceStorageDirective *c =
+			makeNode(ColumnReferenceStorageDirective);
 
-		if (IsA(n, InhRelation))
+		Insist(IsA(d, ColumnDef));
+
+		c->column = makeString(pstrdup(d->colname));
+
+		if (d->encoding)
 		{
-			/* 
-			 * This is the partitioning case. That code generates a new table
-			 * `LIKE' the other one, so there are no explicit ColumnDef entries.
-			 * So, just set newenc to stenc.
-			 */
-			newenc = stenc;
+			found_enc = true;
+			c->encoding = d->encoding;
+			c->encoding = transformStorageEncodingClause(c->encoding);
 		}
-		else if (IsA(n, ColumnDef))
+		else
 		{
 			/*
-			 * Convert inline storage directives to column reference directives.
-			 * This makes it easier to deal with them later.
+			 * No explicit encoding clause but we may still have a
+			 * clause if
+			 * i. There's a column reference storage directive for this
+			 * column
+			 * ii. There's a default column encoding
+			 * iii. There's a default for the type.
+			 *
+			 * If none of these is the case, we set an 'empty' encoding
+			 * clause.
 			 */
-			ColumnDef *d = (ColumnDef *)n;
-			ColumnReferenceStorageDirective *c =
-				makeNode(ColumnReferenceStorageDirective);
 
-			c->column = makeString(pstrdup(d->colname));
+			/*
+			 * We use stenc here -- the storage encoding directives
+			 * gleaned from the table elements list because we know
+			 * there's nothing to look at in new_enc, since we're
+			 * generating that
+			 */
+			ColumnReferenceStorageDirective *s = find_crsd(c->column, stenc);
 
-			if (d->encoding)
+			if (s)
 			{
-				found_enc = true;
-				c->encoding = d->encoding;
-				c->encoding = transformStorageEncodingClause(c->encoding);
+				s->encoding = transformStorageEncodingClause(s->encoding);
+				newenc = lappend(newenc, s);
+				continue;
+			}
+
+			/* ... and so we beat on, boats against the current... */
+			if (deflt)
+			{
+				c->encoding = copyObject(deflt->encoding);
 			}
 			else
 			{
-				/*
-				 * No explicit encoding clause but we may still have a
-				 * clause if
-				 * i. There's a column reference storage directive for this
-				 * column
-				 * ii. There's a default column encoding
-				 * iii. There's a default for the type.
-				 *
-				 * If none of these is the case, we set an 'empty' encoding
-				 * clause.
-				 */
+				List *te = TypeNameGetStorageDirective(d->typname);
 
-				/*
-				 * We use stenc here -- the storage encoding directives
-				 * gleaned from the table elements list because we know
-				 * there's nothing to look at in new_enc, since we're
-				 * generating that
-				 */
-				ColumnReferenceStorageDirective *s = find_crsd(c->column, stenc);
-
-				if (s)
+				if (te)
 				{
-					s->encoding = transformStorageEncodingClause(s->encoding);
-					newenc = lappend(newenc, s);
-					continue;
-				}
-
-				/* ... and so we beat on, boats against the current... */
-				if (deflt)
-				{
-					c->encoding = copyObject(deflt->encoding);
+					c->encoding = copyObject(te);
 				}
 				else
-				{
-					List *te = TypeNameGetStorageDirective(d->typname);
-
-					if (te)
-					{
-						c->encoding = copyObject(te);
-					}
-					else
-						c->encoding = default_column_encoding_clause();
-				}
+					c->encoding = default_column_encoding_clause();
 			}
-			newenc = lappend(newenc, c);
 		}
-
+		newenc = lappend(newenc, c);
 	}
 
 	/* Check again incase we expanded a some column encoding clauses */
@@ -2049,7 +2038,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	if (!is_aocs(stmt->options) && stmt->is_part_child)
 		stmt->attr_encodings = NIL;
 	else
-		stmt->attr_encodings = transformAttributeEncoding(stenc, stmt);
+		stmt->attr_encodings = transformAttributeEncoding(stenc, stmt, cxt);
 
 	/*
 	 * Postprocess Greenplum Database distribution columns
