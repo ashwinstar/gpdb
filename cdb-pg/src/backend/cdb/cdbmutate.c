@@ -1825,11 +1825,25 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 				shareinput_walker(f, (Node *)plan->righttree, ctxt);
 			}
 		}
-		else if(IsA(node, HashJoin) || IsA(node, MergeJoin))
+		else if(IsA(node, HashJoin))
 		{
 			/* Hash join the hash table is at inner */
 			shareinput_walker(f, (Node *)plan->righttree, ctxt);
 			shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+		}
+		else if (IsA(node, MergeJoin))
+		{
+			MergeJoin *mj = (MergeJoin *) node;
+			if (mj->unique_outer)
+			{
+				shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+				shareinput_walker(f, (Node *)plan->righttree, ctxt);
+			}
+			else
+			{
+				shareinput_walker(f, (Node *)plan->righttree, ctxt);
+				shareinput_walker(f, (Node *)plan->lefttree, ctxt);
+			}
 		}
 		else
 		{
