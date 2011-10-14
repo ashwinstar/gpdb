@@ -1671,6 +1671,9 @@ class gpload:
                 sep = ''
                 if file[0] != '/':
                     sep = '/'
+                # MPP-13617
+                if ':' in l:
+                    l = '[' + l + ']'
                 self.locations.append('gpfdist://%s:%d%s%s%s' % (l, port, sep, '%20'.join(file), fragment))
         if not found_source:
             self.control_file_error("configuration file must contain source definition")
