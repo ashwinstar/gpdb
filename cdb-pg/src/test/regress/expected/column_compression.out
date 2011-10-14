@@ -1279,12 +1279,12 @@ execute ccddlcheck;
  ccddl_1_prt_p1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p1 |      3 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p1 |      4 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p2 |      1 | {blocksize=65536,compresstype=none,compresslevel=1}
+ ccddl_1_prt_p2 |      1 | {blocksize=65536,compresstype=none,compresslevel=0}
  ccddl_1_prt_p2 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p2 |      3 | {blocksize=8192,compresstype=none,compresslevel=1}
+ ccddl_1_prt_p2 |      3 | {blocksize=8192,compresstype=none,compresslevel=0}
  ccddl_1_prt_p2 |      4 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p3 |      1 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p3 |      2 | {blocksize=8192,compresstype=none,compresslevel=1}
+ ccddl_1_prt_p3 |      2 | {blocksize=8192,compresstype=none,compresslevel=0}
  ccddl_1_prt_p3 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p3 |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (16 rows)
@@ -1332,9 +1332,9 @@ execute ccddlcheck;
  ccddl_1_prt_p2           |      2 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p2           |      3 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p2           |      4 | {compresstype=none,blocksize=32768}
- ccddl_1_prt_p2_2_prt_sp1 |      1 | {blocksize=65536,compresstype=none,compresslevel=1}
+ ccddl_1_prt_p2_2_prt_sp1 |      1 | {blocksize=65536,compresstype=none,compresslevel=0}
  ccddl_1_prt_p2_2_prt_sp1 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p2_2_prt_sp1 |      3 | {blocksize=8192,compresstype=none,compresslevel=1}
+ ccddl_1_prt_p2_2_prt_sp1 |      3 | {blocksize=8192,compresstype=none,compresslevel=0}
  ccddl_1_prt_p2_2_prt_sp1 |      4 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (20 rows)
 
@@ -1469,7 +1469,7 @@ NOTICE:  Table doesn't have 'distributed by' clause, and no column type is suita
 execute ccddlcheck;
  relname | attnum |                     attoptions                      
 ---------+--------+-----------------------------------------------------
- ccddl   |      1 | {compresstype=none,compresslevel=1,blocksize=32768}
+ ccddl   |      1 | {compresstype=none,compresslevel=0,blocksize=32768}
 (1 row)
 
 drop table ccddl;

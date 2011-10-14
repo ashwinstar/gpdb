@@ -1490,7 +1490,7 @@ transformStorageEncodingClause(List *options)
 	/* add defaults for missing values */
 	options = fillin_encoding(options);
 
-	/* 
+	/*
 	 * The following two statements validate that the encoding clause is well
 	 * formed.
 	 */
@@ -1565,7 +1565,7 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 		}
 	}
 
-	/* 
+	/*
 	 * If the table has no columns -- usually in the partitioning case -- then
 	 * we can short circuit.
 	 */
@@ -3304,10 +3304,13 @@ static List *
 fillin_encoding(List *list)
 {
 	bool foundCompressType = false;
+	bool foundCompressTypeNone = false;
 	bool foundCompressLevel = false;
 	bool foundBlockSize = false;
+	char *arg;
 	DefElem *e1 = makeDefElem("compresstype", (Node *) makeString("none"));
-	DefElem *e2 = makeDefElem("compresslevel", (Node *) makeInteger(1));
+	DefElem *e2 = makeDefElem("compresslevel", (Node *) makeInteger(0));  /* compress level 0 */
+	DefElem *e2b = makeDefElem("compresslevel", (Node *) makeInteger(1)); /* compress level 1 */
 	DefElem *e3 = makeDefElem("blocksize", (Node *) makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
 	List *retList = list;
 	ListCell *lc;
@@ -3317,7 +3320,12 @@ fillin_encoding(List *list)
 		DefElem *el = lfirst(lc);
 
 		if (pg_strcasecmp("compresstype", el->defname) == 0)
+		{
 			foundCompressType = true;
+			arg = defGetString(el);
+			if (pg_strcasecmp("none", arg) == 0)
+				foundCompressTypeNone = true;
+		}
 		else if (pg_strcasecmp("compresslevel", el->defname) == 0)
 			foundCompressLevel = true;
 		else if (pg_strcasecmp("blocksize", el->defname) == 0)
@@ -3327,7 +3335,12 @@ fillin_encoding(List *list)
 	if (foundCompressType == false)
 		retList = lappend(retList, e1);
 	if (foundCompressLevel == false)
-		retList = lappend(retList, e2);
+	{
+		if (foundCompressType == false || foundCompressTypeNone == true)
+			retList = lappend(retList, e2);   /* no compress type => compresslevel = 0 */
+		else
+			retList = lappend(retList, e2b);  /* compress type, but no compress level => compress level = 1 */
+	}
 	if (foundBlockSize == false)
 		retList = lappend(retList, e3);
 
@@ -6198,7 +6211,7 @@ transformPartitionStorageEncodingClauses(List *enc)
 	ListCell *lc;
 	List *out = NIL;
 
-	/* 
+	/*
 	 * Test that directives at different levels of subpartitioning do not
 	 * conflict. A conflict would be the case where a directive appears for the
 	 * same column but different parameters have been supplied.
@@ -6216,7 +6229,7 @@ transformPartitionStorageEncodingClauses(List *enc)
 			ColumnReferenceStorageDirective *b = lfirst(in);
 
 			Insist(IsA(b, ColumnReferenceStorageDirective));
-			
+
 			if (lc == in)
 				continue;
 
@@ -7975,19 +7988,19 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			pBy->keyopclass = lappend_oid(pBy->keyopclass, opclass);
 		}
 	}
-	
+
 	/* Have partitioning keys; check for violating unique constraints */
 	foreach (lc, cxt->ixconstraints)
 	{
 		ListCell *ilc = NULL;
-		
+
 		Constraint *ucon = (Constraint*)lfirst(lc);
 		Insist (ucon->keys != NIL);
-		
+
 		foreach (ilc, key_attnames)
 		{
 			Value *partkeyname = (Value *)lfirst(ilc);
-			
+
 			if (!list_member(ucon->keys,  partkeyname))
 			{
 				char *what = NULL;
@@ -8006,16 +8019,16 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("%s constraint must contain all columns in the "
-								"partition key", 
+								"partition key",
 								what),
 						 errhint("Include column \"%s\" in the %s constraint or create "
 								 "a part-wise UNIQUE index after creating the table instead.",
 								 strVal(partkeyname), what)));
 			}
 		}
-		
+
 	}
-	
+
 	/* No further use for key_attnames, so clean up. */
 	if (key_attnames)
 	{
