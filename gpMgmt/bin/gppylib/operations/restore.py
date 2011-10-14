@@ -320,7 +320,7 @@ class BuildDDBoostTableDumps(Operation):
             if self.compress:
                 real_filename += '.gz'
                 fake_filename += '.gz'
-            
+  
             table_str = ' '.join(['--table=%s' % table for table in self.restore_tables])
             # TODO: Escaping. Low priority due to MPP-12880, et al
             cmd = Command('DDBoost building dump file for dbid %s' % seg.getSegmentDbId(),
@@ -330,16 +330,7 @@ class BuildDDBoostTableDumps(Operation):
         pool.join()
         pool.check_results()
 
-        from_file = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
-        if self.compress:
-            from_file += '.gz';
-        to_file = os.path.join(self.master_datadir, from_file)
-
-        Command('Copying master dump file from DDBoost',
-                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s'
-                % (from_file, to_file)).run(validateAfter = True)
-
-        BuildMasterTableDump(restore_timestamp = self.restore_timestamp,
+        BuildDDBoostMasterTableDump(restore_timestamp = self.restore_timestamp,
                              fake_timestamp = fake_timestamp,
                              compress = self.compress,
                              master_datadir = self.master_datadir).run()
@@ -470,6 +461,66 @@ class BuildMasterTableDump(Operation):
             # 19 
             # 20 
             for lineno, line in enumerate(real_file):
+                if line.startswith("SET"):
+                    fake_file.write(line)
+                if lineno > 20:
+                    break
+        except Exception, e:
+            logger.exception('Master dump file build failed.')
+            raise ExceptionNoStackTraceNeeded('Master dump file build failed, review log file for details')
+        finally:
+            if real_file is not None:
+                real_file.close()
+            if fake_file is not None:
+                fake_file.close()
+   
+
+class BuildDDBoostMasterTableDump(Operation):
+    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
+        self.restore_timestamp = restore_timestamp
+        self.fake_timestamp = fake_timestamp
+        self.compress = compress
+        self.master_datadir = master_datadir
+    def execute(self):
+        real_filename = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
+        fake_filename = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
+        real_file, fake_file = None, None
+        try:
+            if self.compress:
+                real_filename += '.gz'
+                fake_file = gzip.open(fake_filename + '.gz', 'w')
+            else:
+                fake_file = open(fake_filename, 'w')
+                
+            cmd = Command('Copying master dump file from DDBoost',
+                'gpddboost --readFile --from-file=%s | head -n 20'
+                % (real_filename))
+
+            cmd.run(validateAfter = True)
+            line_list = cmd.get_results().stdout.splitlines()
+            # TODO: copy over data among the first 20 lines that begin with 'SET'. Why 20? See gpdbrestore.sh:1025.
+            # e.g.
+            #  1 --
+            #  2 -- Greenplum Database database dump
+            #  3 --
+            #  4 
+            #  5 SET statement_timeout = 0;
+            #  6 SET client_encoding = 'UTF8';
+            #  7 SET standard_conforming_strings = off;
+            #  8 SET check_function_bodies = false;
+            #  9 SET client_min_messages = warning;
+            # 10 SET escape_string_warning = off;
+            # 11 
+            # 12 SET default_with_oids = false;
+            # 13 
+            # 14 --
+            # 15 -- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: ashwin
+            # 16 --
+            # 17 
+            # 18 COMMENT ON SCHEMA public IS 'Standard public schema';
+            # 19 
+            # 20 
+            for line in line_list:
                 if line.startswith("SET"):
                     fake_file.write(line)
                 if lineno > 20:
@@ -717,26 +768,24 @@ class GetDumpTables(Operation):
             from_file = os.path.join(DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
             if compress:
                 from_file += '.gz'
- 
-            cmd = Command('DDBoost copy of master dump file',
-                          'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s' 
-                            % (from_file, dump_file))
-            cmd.run(validateAfter = True)
-
-        f = None
-        schema = ''
-        owner = ''
-        ret = []
-        try:
+            ret = []
+            schema = ''
+            owner = '' 
             if compress:
-                f = gzip.open(dump_file, 'r')
+                cmd = Command('DDBoost copy of master dump file',
+                          'gpddboost --readFile --from-file=%s | gunzip | grep -e "SET search_path = " -e "-- Data for Name: " -e "COPY "' 
+                            % (from_file))
             else:
-                f = open(dump_file, 'r')
+                cmd = Command('DDBoost copy of master dump file',
+                          'gpddboost --readFile --from-file=%s | grep -e "SET search_path = " -e "-- Data for Name: " -e "COPY "' 
+                            % (from_file))
 
-            while True:
-                line = f.readline()
-                if not line:
-                    break
+            # TODO: The code below is duplicated from the code for local restore
+            #       We need to refactor this. Probably use the same String IO interfaces 
+            #       to extract lines in both the cases.
+            cmd.run(validateAfter = True)
+            line_list = cmd.get_results().stdout.splitlines()
+            for line in line_list:
                 if line.startswith("SET search_path = "):
                     line = line[len("SET search_path = ") : ]
                     if ", pg_catalog;" in line:
@@ -754,9 +803,44 @@ class GetDumpTables(Operation):
                             table = table[: table.index(" (")]
                     else:
                         table = table[: table.index(" FROM stdin;")]
-                    table = table.rstrip()
+                    table = table.rstrip()  
                     ret.append( (schema, table, owner) )
-        finally:
-            if f is not None:
-                f.close()
-        return ret
+            return ret
+        else: 
+            f = None
+            schema = ''
+            owner = ''
+            ret = []
+            try:
+                if compress:
+                    f = gzip.open(dump_file, 'r')
+                else:
+                    f = open(dump_file, 'r')
+
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+                    if line.startswith("SET search_path = "):
+                        line = line[len("SET search_path = ") : ]
+                        if ", pg_catalog;" in line:
+                            schema = line[ : line.index(", pg_catalog;")]
+                        else:
+                            schema = "pg_catalog"
+                    elif line.startswith("-- Data for Name: "):
+                        owner = line[line.index("; Owner: ") + 9 : ].rstrip()
+                    elif line.startswith("COPY "):
+                        table = line[5:]
+                        if table.rstrip().endswith(") FROM stdin;"):
+                            if table.startswith("\""):
+                                table = table[: table.index("\" (") + 1]
+                            else:
+                                table = table[: table.index(" (")]
+                        else:
+                            table = table[: table.index(" FROM stdin;")]
+                        table = table.rstrip()
+                        ret.append( (schema, table, owner) )
+            finally:
+                if f is not None:
+                    f.close()
+            return ret

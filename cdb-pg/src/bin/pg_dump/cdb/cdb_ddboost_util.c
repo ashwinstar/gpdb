@@ -93,7 +93,6 @@ struct ddboost_options
 	bool getLatestTimestamp;
 	bool syncFiles;
 	bool writeToDDFileFromInput;
-	bool listTables;	
 };
 
 static struct ddboost_options *dd_options = NULL;
@@ -134,7 +133,6 @@ static int createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_de
 static int splitSchemaAndTableName(char *schemaTable, char **schema, char **table);
 static int lineStartsWithSchema(char *line, struct schemaTableList *tableList, char **curSchema);
 static int lineStartsWithTable(char *line, struct schemaTableList *tableList, char *curSchema);
-static int lineStartsWith(char *line, char *pattern);
 static int lineEndsWith(char *line, char *pattern);
 static int getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath, char *database);
 static int dumpFileHasDatabaseName(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath, char *database);
@@ -145,10 +143,6 @@ static struct schemaTableList *getNode(char *tableName);
 static void insertTableName(char *table, struct ddboost_options **dd_options);
 static void deleteTableName(char *table, char *schema, struct ddboost_options **dd_options);
 static void cleanupTableList(struct ddboost_options **dd_options);
-static int listTablesInDumpFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
-static char *getOwnerFromBackupLine(char *line);
-static char *getTableFromBackupLine(char *line);
-static char *getSchemaFromBackupLine(char *line);
 static int isFileCompressed(const char *full_path);
 
 /* Helper routines for handling multiple -T options using a linked list */
@@ -320,12 +314,6 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	if (dd_options->listTables)
-	{
-		failCount = listTablesInDumpFile(dd_options, ddp_conn);
-		goto cleanup;
-	}
-
 cleanup:
 	FreeInputOptions(&inputOpts);
 	if (opts != NULL)
@@ -365,7 +353,6 @@ usage(void)
 	printf("  --database=<Databasename>	Database name \n");	
 	printf("  --table				To restore a specific table\n");
 	printf("  --sync			To copy over the config and global dump files\n"); 		
-	printf("  --listTables			To list the tables in a dump file\n");
 	printf("  --dd_boost_buf_size		DDboost I/O buffer size\n");
 	printf(("  --help                   	show this help, then exit\n"));
 	printf(("  --version                	output version information, then exit\n"));
@@ -397,7 +384,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"database", required_argument, NULL, 14},
 		{"sync", no_argument, NULL, 15},
 		{"write-file-from-stdin", no_argument, NULL, 16},
-		{"listTables", no_argument, NULL, 17},
 		{"dd_boost_buf_size", required_argument, NULL, 18},
 		{NULL, 0, NULL, 0}
 	};
@@ -526,10 +512,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				/* Pipe input from stdout to DDboost file */
 				dd_options->writeToDDFileFromInput = true;
 				break;
-			case 17:
-				/* List tables in a dump file */
-				dd_options->listTables = true;
-				break;	
 			case 18:
 				/* set I/O size for DD Boost */
 				dd_boost_buf_size = atoi(optarg);
@@ -2242,230 +2224,6 @@ cleanup:
 	return err;
 }
 
-int 
-listTablesInDumpFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
-{
-        ddp_file_desc_t handle = DDP_INVALID_DESCRIPTOR;
-        int err = 0;
-        ddp_uint64_t ret_count = 0;
-        char *buf = NULL;
-        int i = 0;
-        ddp_uint64_t rw_size = dd_boost_buf_size;
-        ddp_uint64_t total_bytes = 0;
-	ddp_path_t path1 = {0};
-	char *storage_unit_name = NULL;
-	char *full_path = NULL;       
-	ddp_stat_t stat_buf;
-	int fd[2];
-	char line[101];
-	int done = false;
-	char *schema = NULL, *table = NULL, *owner = NULL;
-	int isCompress = false;
-	void *ddfp = NULL;
-
-	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
-        if (storage_unit_name == NULL)
-        {
-                mpp_err_msg(logInfo, progname, "Memory allocation failed\n");
-                return -1;
-        }
-	sprintf(storage_unit_name, "%s", "GPDB");
-
-	full_path = (char*)malloc(MAX_PATH_NAME);
-	if (storage_unit_name == NULL)
-        {
-                mpp_err_msg(logInfo, progname, "Memory allocation failed\n");
-                err = -1;
-		goto cleanup;
-        }
-	sprintf(full_path, "%s", dd_options->from_file);
-
-	path1.su_name = storage_unit_name;
-        path1.path_name = full_path;
-
-        err = ddp_open_file(ddp_conn, &path1, DDP_O_READ , 0400, &handle);
-        if (err)
-        {
-               	mpp_err_msg(logInfo, progname,"File open on ddboost failed.Err %d\n", err);
-               	err = -1;
-		goto cleanup;	
-        }
-
-        buf = (char*)malloc(rw_size);
-        if (buf == NULL)
-        {
-               	mpp_err_msg(logInfo, progname, "Memory allocation failed\n");
-               	err = -2;
-		goto cleanup;
-        }
-
-	isCompress = isFileCompressed(full_path);
-
-	/* Create two processes. In one write to named pipe.
-  	 * In the other read from the named pipe and use getline to
-	 * parse as before.
-	 * Close the pipe after the file is exhausted */	
-
-	pipe(fd);	
-	
-	if (fork() == 0)
-	{	
-		/* Child reads from DDboost and writes it to pipe */
-		close(fd[0]);	
-       		do
-       		{
-                	memset(buf, 0, rw_size);
-                	ret_count = 0;
-		
-			err = ddp_stat(ddp_conn, &path1, &stat_buf);
-			if (err)
-				break;
-		
-			if (stat_buf.st_size < rw_size )
-				rw_size = stat_buf.st_size;	
-
-                	err = ddp_read(handle, buf, rw_size,
-                	rw_size * i, &ret_count);
-                	if (err)
-                        	break;
-	
-			write(fd[1], buf, ret_count);
-
-                	total_bytes += ret_count;
-                	i++;
-       		} while ((err == 0) && (ret_count > 0));
-		done = 1;
-		close(fd[1]);
-	}
-	else
-	{
-		/* Parent reader */
-		close(fd[1]);
-
-		ddfp = DDDOPEN(fd[0], "r", isCompress);
-		if (ddfp == NULL)
-		{
-			printf("\nOpening gzip file failed\n");
-			err = -1;
-			goto cleanup;
-		}
-
-		do
-		{
-			memset(line, 0, 101);
-			if (DDGETS(line, 100, ddfp, isCompress) != NULL)
-			{
-				if (lineStartsWith(line, "-- Data for Name: "))
-				{
-					owner = getOwnerFromBackupLine(line);
-                                        schema = getSchemaFromBackupLine(line);
-                                        table = getTableFromBackupLine(line);
-
-                                        printf("\n-Table %s.%s Owner %s", schema, table, owner);
-                                        printf("\n-----------------------------------------------------------");			
-				}
-			}
-			else
-				done = true;
-		} while (!done);
-		printf("\n");
-		close(fd[0]);
-		ddp_close_file(handle);
-	}
-
-cleanup:
-	if (storage_unit_name)
-		free(storage_unit_name);
-	if (full_path)
-		free(full_path);
-	if (buf)
-		free(buf);
-	return err;
-}
-
-char*
-getSchemaFromBackupLine(char *line)
-{
-	char *pch = NULL;
-	char *newLine = NULL;
-	char *pcht = NULL;
-
-	if (!line)
-		return NULL;
-
-	newLine = strdup(line);
-	
-        pch = strstr(line, "Schema: ");
-	if (!pch)
-		return NULL;
-
-	pch = pch + strlen("Schema: ");
-
-	pcht = strtok(pch, " ;");
-	
-	return pcht;
-
-}
-
-char*
-getOwnerFromBackupLine(char *line)
-{
-	char *pch = NULL;
-	char *pcht = NULL;
-
-	if (!line)
-		return NULL;
-
-	pch = strstr(line, "Owner: ");
-	if (!pch)
-		return NULL;
-
-	pch = pch + strlen("Owner: ");
-
-	pcht = strtok(pch, " ,;\n");
-
-	return pcht;
-}
-
-char*
-getTableFromBackupLine(char *line)
-{
-	char *pch = NULL;
-	char *newLine = NULL;
-	char *pcht = NULL;
-
-	if (!line)
-		return NULL;
-
-	newLine = strdup(line);
-
-	pch = strstr(newLine, "-- Data for Name: ");
-	if (!pch)
-		return NULL;
-
-	pch += strlen("-- Data for Name: ");	
-
-	pcht = strtok(pch, " ;");
-
-	return pcht;
-}
-
-int 
-lineStartsWith(char *line, char *pattern)
-{
-	if (!line)
-		return 0;
-
-	if (!pattern)
-		return 0;
-
-	if (!strncmp(line, pattern, strlen(pattern)))
-		return 1;
-
-	return 0;
-}
-
-int 
 isFileCompressed(const char *filename)
 {
 	if (!filename)
