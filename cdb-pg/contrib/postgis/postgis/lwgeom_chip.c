@@ -170,9 +170,10 @@ Datum CHIP_in(PG_FUNCTION_ARGS)
 
 	if (result->compression ==0) /*only true for non-compressed data */
 	{
-		if (result->size != (sizeof(CHIP) - sizeof(void*) + datum_size * result->width*result->height) )
+		long computed_size = sizeof(CHIP) - sizeof(void*) + datum_size * result->width * result->height;
+		if (result->size != computed_size )
 		{
-			elog(ERROR,"CHIP_in parser - bad data (actual size [%d] != computed size [%ld])!", result->size, (sizeof(CHIP)-sizeof(void*) + datum_size * result->width*result->height) );
+			elog(ERROR,"CHIP_in parser - bad data (actual size [%d] != computed size [%ld])!", result->size, computed_size);
 			PG_RETURN_NULL();
 		}
 	}
