@@ -25,11 +25,6 @@ except ImportError, ex:
 
 logger = gplog.get_default_logger()
 
-# TODO: AK: This concerns me. If we need this degree of specificity, we should provide a version or rpm
-# under $GPHOME/ext. Otherwise, this choice of versions seem completely arbitrary. If the end user has
-# 4.4.2.4, we'll blow up! Why?!
-REQUIRED_RPM_VERSIONS = ["4.4.2.3", "5.0.0"]        #I use 5.0.0 on my mac but the qavms use 4.4.2.3. So we support these two versions.
-
 class GpPkgProgram:
     """ This is the CLI entry point to package management code.  """
     def __init__(self, options, args):
@@ -169,8 +164,8 @@ class GpPkgProgram:
             results = cmd.get_results().stdout.strip()
             rpm_version_string = results.split(' ')[-1]
 
-            if rpm_version_string not in  REQUIRED_RPM_VERSIONS:
-                raise ExceptionNoStackTraceNeeded('gppkg requires one of the RPM versions %s' % REQUIRED_RPM_VERSIONS)
+            if not rpm_version_string.startswith('4.'):
+                raise ExceptionNoStackTraceNeeded('gppkg requires rpm version 4.x')
 
         except ExecutionError, ex: 
             results = ex.cmd.get_results().stderr.strip()
