@@ -2032,9 +2032,24 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 		transformFKConstraints(pstate, &cxt, true, false);
 
 	/*
-	 * Analyze attribute encoding clauses
+	 * Analyze attribute encoding clauses.
+	 *
+	 * Partitioning configurations may have things like:
+	 *
+	 * CREATE TABLE ...
+	 *  ( a int ENCODING (...))
+	 * WITH (appendonly=true, orientation=column)
+	 * PARTITION BY ...
+	 * (PARTITION ... WITH (appendonly=false));
+	 *
+	 * We don't want to throw an error when we try to apply the ENCODING clause
+	 * to the partition which the user wants to be non-AO. Just ignore it
+	 * instead.
 	 */
-	stmt->attr_encodings = transformAttributeEncoding(stenc, stmt);
+	if (!is_aocs(stmt->options) && stmt->is_part_child)
+		stmt->attr_encodings = NIL;
+	else
+		stmt->attr_encodings = transformAttributeEncoding(stenc, stmt);
 
 	/*
 	 * Postprocess Greenplum Database distribution columns
@@ -6249,6 +6264,121 @@ transformPartitionStorageEncodingClauses(List *enc)
 
 }
 
+static void
+split_encoding_clauses(List *encs, List **non_def,
+					   ColumnReferenceStorageDirective **def)
+{
+	ListCell *lc;
+
+	foreach(lc, encs)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+
+		Insist(IsA(c, ColumnReferenceStorageDirective));
+
+		if (c->deflt)
+		{
+			if (*def)
+				elog(ERROR,
+					 "DEFAULT COLUMN ENCODING clause specified more than "
+					 "once for partition");
+			*def = c;
+		}
+		else
+			*non_def = lappend(*non_def, c);
+	}
+}
+
+static void
+merge_partition_encoding(ParseState *pstate, PartitionElem *elem, List *penc)
+{
+	List *elem_nondefs = NIL;
+	List *part_nondefs = NIL;
+	ColumnReferenceStorageDirective *elem_def = NULL;
+	ColumnReferenceStorageDirective *part_def = NULL;
+	ListCell *lc;
+	AlterPartitionCmd *pc;
+
+	/* 
+	 * First of all, we shouldn't proceed if this partition isn't AOCO
+	 */
+
+	/* 
+	 * Yes, I am as surprised as you are that this is how we represent the WITH
+	 * clause here.
+	 */
+	pc = (AlterPartitionCmd *)elem->storeAttr;
+	if (pc && !is_aocs((List *)pc->arg1))
+	{
+		if (elem->colencs)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("ENCODING clause only supported with "
+							"column oriented partitions"),
+				 	 parser_errposition(pstate, elem->location)));
+		else
+			return; /* nothing more to do */
+	}
+
+	/* 
+	 * If the specific partition has no specific column encoding, just
+	 * set it to the partition level default and we're done.
+	 */
+	if (!elem->colencs)
+	{
+		elem->colencs = penc;
+		return;
+	}
+	
+	/*
+	 * Fixup the actual column encoding clauses for this specific partition
+	 * element.
+	 *
+	 * Rules:
+	 *
+	 * 1. If an element level clause mentions a specific column, do not override
+	 * it.
+	 * 2. Clauses at the partition configuration level which mention a column
+	 * not already mentioned at the element level, are applied to the element.
+	 * 3. If an element level default clause exists, we're done.
+	 * 4. If a partition configuration level default clause exists, apply it to
+	 * the element level.
+	 * 5. We're done.
+	 */
+
+	/* Split specific clauses and default clauses from both our lists */
+	split_encoding_clauses(elem->colencs, &elem_nondefs, &elem_def);
+	split_encoding_clauses(penc, &part_nondefs, &part_def);
+
+	/* Add clauses from part_nondefs if the columns are not already mentioned */
+	foreach(lc, part_nondefs)
+	{
+		ListCell *lc2;
+		ColumnReferenceStorageDirective *pd = lfirst(lc);
+		bool found = false;
+
+		foreach(lc2, elem_nondefs)
+		{
+			ColumnReferenceStorageDirective *ed = lfirst(lc2);
+
+			if (equal(pd->column, ed->column))
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+			elem->colencs = lappend(elem->colencs, pd);
+	}
+
+	if (elem_def)
+		return;
+
+	if (part_def)
+		elem->colencs = lappend(elem->colencs, part_def);
+}
+
 int
 validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 						CreateStmt *stmt, PartitionBy *pBy,
@@ -6332,6 +6462,13 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 			continue;
 		}
 		vstate->pElem = pElem;
+
+		if (pSpec->istemplate && pElem->colencs)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("partition specific ENCODING clause not supported in SUBPARTITION TEMPLATE"),
+					 parser_errposition(pstate, pElem->location)));
+
 
 		/*
 		 * We've done all possible expansions so now number the
@@ -6499,6 +6636,16 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	} /* end foreach(lc, partElts) */
 
 	pSpec->enc_clauses = transformPartitionStorageEncodingClauses(enc_cls);
+
+	foreach(lc, partElts)
+	{
+		PartitionElem *elem = (PartitionElem *)lfirst(lc);
+
+		if (!IsA(elem, PartitionElem))
+			continue;
+
+		merge_partition_encoding(pstate, elem, pSpec->enc_clauses);
+	}
 
 	/* validate_range_partition might have changed some boundaries */
 	if (pBy->partType == PARTTYP_RANGE)
@@ -7946,6 +8093,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		PartitionBy				*curPby		  = NULL;
 		bool					 bQuiet		  = false;
 		char					*pWithTname	  = NULL;
+		List					*colencs	  = NIL;
 
 		/* silence partition name messages if really generating a
 		 * subpartition template
@@ -7956,6 +8104,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		if (pElem)
 		{
 			pStoreAttr = pElem->storeAttr;
+			colencs = pElem->colencs;
 
 			if (pElem->boundSpec && IsA(pElem->boundSpec, PartitionBoundSpec))
 			{
@@ -8255,7 +8404,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		make_child_node(stmt, cxt, relname, curPby, (Node *)newSub,
 						pRuleCatalog, pPostCreate, pConstraint, pStoreAttr,
-						prtstr, bQuiet, stenc);
+						prtstr, bQuiet, colencs);
 
 		if (pBSpec)
 			prevEvery = pBSpec->partEvery;

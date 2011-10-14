@@ -463,7 +463,8 @@ static void setWindowExclude(WindowFrame *wframe, WindowExclusion exclude);
 %type <node>	opt_time
 
 %type <node>	column_reference_storage_directive
-%type <list>	opt_storage_encoding
+%type <list>	opt_storage_encoding OptTabPartitionColumnEncList
+				TabPartitionColumnEncList
 
 /*
  * If you make any token changes, update the keyword table in
@@ -3780,6 +3781,18 @@ OptDistributedBy:   DistributedBy			{ $$ = $1; }
 
 /* START PARTITION RULES */
 
+OptTabPartitionColumnEncList: TabPartitionColumnEncList { $$ = $1; }
+			| /*EMPTY*/ { $$ = NULL; }
+	;
+
+TabPartitionColumnEncList:
+	column_reference_storage_directive { $$ = list_make1($1); }
+	| TabPartitionColumnEncList column_reference_storage_directive
+				{
+					$$ = lappend($1, $2);
+				}
+	;
+
 OptTabPartitionStorageAttr: WITH definition TABLESPACE name 
 				{
                     /* re-use alterpartitioncmd struct here... */
@@ -4066,15 +4079,17 @@ part_values_or_spec_list: TabPartitionBoundarySpecValList { $$ = $1; }
 TabPartitionElem: 
             TabPartitionNameDecl 
             OptTabPartitionBoundarySpec	OptTabPartitionStorageAttr
+			OptTabPartitionColumnEncList
 			OptTabSubPartitionSpec 
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = $4;
+                        n->subSpec   = $5;
                         n->location  = @1;
                         n->isDefault = 0;
                         n->storeAttr = $3;
+                        n->colencs   = $4;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
@@ -4083,28 +4098,32 @@ TabPartitionElem:
 			| TabPartitionDefaultNameDecl 
               OptTabPartitionBoundarySpec
               OptTabPartitionStorageAttr
+			  OptTabPartitionColumnEncList
 			  OptTabSubPartitionSpec 
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = $4;
+                        n->subSpec   = $5;
                         n->location  = @1;
                         n->isDefault = true;
                         n->storeAttr = $3;
+                        n->colencs   = $4;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 
               OptTabPartitionStorageAttr
+			  OptTabPartitionColumnEncList
 			  OptTabSubPartitionSpec 
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = NULL;
                         n->boundSpec = $1;
-                        n->subSpec   = $3;
+                        n->subSpec   = $4;
                         n->location  = @1;
                         n->isDefault = 0;
                         n->storeAttr = $2;
+                        n->colencs   = $3;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
@@ -4117,43 +4136,49 @@ TabPartitionElem:
 TabSubPartitionElem: 
             TabSubPartitionNameDecl OptTabPartitionBoundarySpec	
 			OptTabPartitionStorageAttr
+			OptTabPartitionColumnEncList
             OptTabSubPartitionSpec
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = $4;
+                        n->subSpec   = $5;
                         n->location  = @1;
                         n->isDefault = 0;
                         n->storeAttr = $3;
+                        n->colencs   = $4;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
 /* allow boundary spec for default partition in parser, but complain later */
 			| TabSubPartitionDefaultNameDecl OptTabPartitionBoundarySpec	
  			  OptTabPartitionStorageAttr
+			  OptTabPartitionColumnEncList
               OptTabSubPartitionSpec
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = $4;
+                        n->subSpec   = $5;
                         n->location  = @1;
                         n->isDefault = true;
                         n->storeAttr = $3;
+                        n->colencs   = $4;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec
               OptTabPartitionStorageAttr
+			  OptTabPartitionColumnEncList
  			  OptTabSubPartitionSpec	
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = NULL;
                         n->boundSpec = $1;
-                        n->subSpec   = $3;
+                        n->subSpec   = $4;
                         n->location  = @1;
                         n->isDefault = false;
+                        n->colencs   = $3;
                         n->storeAttr = $2;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;

@@ -2677,6 +2677,7 @@ _copyPartitionElem(PartitionElem *from)
 	COPY_NODE_FIELD(storeAttr);
 	COPY_SCALAR_FIELD(partno);
 	COPY_SCALAR_FIELD(rrand);
+	COPY_NODE_FIELD(colencs);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;

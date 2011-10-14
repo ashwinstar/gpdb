@@ -282,6 +282,52 @@ insert into ccddl select 1, 2008, 1, 2, 'usa' from generate_series(1, 100);
 select * from ccddl;
 drop table ccddl;
 
+-- Partition specific column encoding
+create table ccddl (
+	i int,
+	j int,
+	k int,
+	l int
+	)
+	with (appendonly=true, orientation=column)
+	partition by range(i)
+	(
+		partition p1 start(1) end(2) column i encoding(compresstype=zlib),
+	 	partition p2 start(2) end(3) column j encoding(compresstype=rle_type)
+									 column k encoding(blocksize=8192),
+	 	partition p3 start(3) end(4) column i encoding(compresstype=rle_type)
+									 column j encoding(blocksize=8192)
+									 default column encoding
+									 	(compresstype=zlib),
+		column i encoding (blocksize=65536),
+		default column encoding (compresstype=quicklz)
+	);
+
+execute ccddlcheck;
+drop table ccddl;
+
+
+create table ccddl (i int, j int, k int, l int )
+with (appendonly=true, orientation=column)
+partition by range(i) subpartition by range(j)
+ (
+ partition p1 start(1) end(2)
+		(subpartition sp1 start(1) end(2) column i encoding(compresstype=zlib),
+		 column i encoding (blocksize=65536),
+		 default column encoding (compresstype=quicklz)
+		),
+ partition p2 start(2) end(3)
+ 		(subpartition sp1 start(1) end(2)
+			column j encoding(compresstype=rle_type)
+			column k encoding(blocksize=8192),
+		 column i encoding (blocksize=65536),
+		 default column encoding (compresstype=quicklz)
+		)
+);
+
+execute ccddlcheck;
+drop table ccddl;
+
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure
@@ -294,6 +340,14 @@ partition by range(k) (partition p1 start(1) end(2), column i encoding(a=b));
 create table gg (i int, k int) with (appendonly=true, orientation=column)
 partition by range(k) (partition p1 start(1) end(2), column i
 encoding(compresstype=sdf2sdf));
+
+-- We don't support partition element specific encoding clauses in subpartition
+-- templates as we have no place to store them.
+create table a (i int, j int) with (appendonly=true, orientation=column)
+      partition by range(i) subpartition by range(j)
+      subpartition template(start(1) end(10) default column encoding (compresstype=zlib),
+                            start(10) end(20))
+(partition p1 start(1) end(10));
 
 -----------------------------------------------------------------------
 -- Type support
