@@ -324,6 +324,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 									if (IsA(target->expr, Var))
 									{
 										new_var = copyObject(target->expr);
+										new_var->varno = OUTER;
 										new_var->varattno = n;
 									}
 					

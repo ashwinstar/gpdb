@@ -311,4 +311,14 @@ select attrnums from gp_distribution_policy where localoid='bar'::regclass;
 drop table if exists foo;
 drop table if exists bar;
 
--- 
+CREATE TABLE foo (
+col_with_default numeric DEFAULT 0,
+col_with_default_drop_default character varying(30) DEFAULT 'test1',
+col_with_constraint numeric UNIQUE
+) DISTRIBUTED BY (col_with_constraint);
+
+CREATE TABLE bar AS SELECT * FROM foo;
+select attrnums from gp_distribution_policy where localoid='bar'::regclass;
+
+drop table if exists foo;
+drop table if exists bar;
