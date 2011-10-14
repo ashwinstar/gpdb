@@ -83,7 +83,7 @@ static char *DDP_SU_NAME = NULL;
 
 char *log_message_path = NULL;
 static int dd_boost_enabled = 0;
-static int dd_boost_buf_size = 0;
+static char *dd_boost_buf_size = NULL;
 static char *ddboostPg = NULL;
 
 #ifndef PATH_NAME_MAX
@@ -417,7 +417,7 @@ main(int argc, char **argv)
 				dd_boost_dir = strdup(optarg);
 				break;
 			case 11:
-				sscanf(optarg, "%d", &dd_boost_buf_size);
+				dd_boost_buf_size = strdup(optarg);
 				break;
 #endif
 
@@ -719,9 +719,12 @@ main(int argc, char **argv)
 					len += strlen("gpddboost ");
 					len += strlen("--readFile ");
 					len += strlen("--from-file=");
+					len += strlen(" --dd_boost_buf_size= ");
 
 					if (ddp_file_name)
 						len += strlen(ddp_file_name);
+					if (dd_boost_buf_size)
+						len += strlen(dd_boost_buf_size);
 				}
 						
 			}
@@ -787,6 +790,9 @@ main(int argc, char **argv)
 	
 					if(bCompUsed)
 						strcat(pszCmdLine, ".gz");
+
+					strcat(pszCmdLine, " --dd_boost_buf_size=");
+					strcat(pszCmdLine, dd_boost_buf_size);
 					strcat(pszCmdLine, " | ");
 
 					if(bCompUsed)

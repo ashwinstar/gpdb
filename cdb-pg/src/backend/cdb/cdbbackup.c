@@ -291,10 +291,12 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		/* Create the gpddboost parameter string */
 		len = strlen(pszDDBoostDirName)
 			+ strlen(pszDDBoostFileName)
+			+ strlen(dd_boost_buffer_size)
 			+ strlen("_post_data")
 			+ strlen(".gz")
 			+ strlen(" --to-file= ")
 			+ strlen(" --write-file-from-stdin  ")
+			+ strlen(" --dd_boost_buf_size= ")
 			+ strlen(gpDDBoostPg)
 			+ 20;
 
@@ -309,8 +311,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		if (pszDDBoostFileName == NULL)
 			elog(ERROR, "\nDDboost filename is NULL\n");
 
-		sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s",
-				gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName);
+		sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s --dd_boost_buf_size=%s",
+				gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName, dd_boost_buffer_size);
 
 	}
 
@@ -491,8 +493,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 			memset(gpDDBoostCmdLine, 0, strlen(gpDDBoostCmdLine));
 	
-			sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s",
-                                gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName);
+			sprintf(gpDDBoostCmdLine, "%s --write-file-from-stdin --to-file=%s/%s --dd_boost_buf_size=%s",
+                                gpDDBoostPg, pszDDBoostDirName, pszDDBoostFileName, dd_boost_buffer_size);
 
 			/* if user selected a compression program */
 			if (pszCompressionProgram[0] != '\0')

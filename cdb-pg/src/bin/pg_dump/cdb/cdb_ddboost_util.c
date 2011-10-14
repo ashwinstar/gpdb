@@ -54,7 +54,6 @@
 #include "ddp_api.h"
 
 #define MAX_PATH_NAME 1024
-#define DDB_IO_SIZE (1024 * 512)
 #define DDB_POOL_SIZE (32 * 1024 * 2048)
 
 /* This is necessary on platforms where optreset variable is not available.
@@ -67,6 +66,7 @@ int			optreset;
 static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
 static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
 static char *DDP_SU_NAME = NULL;
+static int dd_boost_buf_size = 512*1024;
 
 struct schemaTableList
 {
@@ -366,6 +366,7 @@ usage(void)
 	printf("  --table				To restore a specific table\n");
 	printf("  --sync			To copy over the config and global dump files\n"); 		
 	printf("  --listTables			To list the tables in a dump file\n");
+	printf("  --dd_boost_buf_size		DDboost I/O buffer size\n");
 	printf(("  --help                   	show this help, then exit\n"));
 	printf(("  --version                	output version information, then exit\n"));
 }
@@ -397,6 +398,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"sync", no_argument, NULL, 15},
 		{"write-file-from-stdin", no_argument, NULL, 16},
 		{"listTables", no_argument, NULL, 17},
+		{"dd_boost_buf_size", required_argument, NULL, 18},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -528,6 +530,15 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				/* List tables in a dump file */
 				dd_options->listTables = true;
 				break;	
+			case 18:
+				/* set I/O size for DD Boost */
+				dd_boost_buf_size = atoi(optarg);
+				if (dd_boost_buf_size < 64*1024 || dd_boost_buf_size > 1024*1024)
+				{
+					mpp_err_msg(logInfo, progname, "dd_boost_buf_size shoule be between 64KB and 1MB\n");
+					dd_boost_buf_size = 512*1024; /* reset to default value */
+				}
+				break;
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				return false;
@@ -660,7 +671,7 @@ readFromDDFile(FILE *fp, char *ddBoostFileName)
         ddp_uint64_t ret_count = 0;
         char *buf = NULL;
         int i = 0;
-        ddp_uint64_t rw_size = DDB_IO_SIZE;
+        ddp_uint64_t rw_size = dd_boost_buf_size;
         ddp_uint64_t total_bytes = 0;
         size_t written = 0;
 	ddp_path_t path1 = {0};
@@ -1018,7 +1029,7 @@ static int writeToDDFile(FILE *fp, char *ddBoostFileName)
         ddp_uint64_t ret_count = 0;
         char *buf = NULL;
         int i = 0;
-        ddp_uint64_t rw_size = DDB_IO_SIZE;
+        ddp_uint64_t rw_size = dd_boost_buf_size;
         ddp_uint64_t total_bytes = 0;
 	ddp_uint64_t read_bytes = 0;
 	ddp_path_t path1 = {0};
@@ -1169,7 +1180,7 @@ readFromDDFileToOutput(char *ddBoostFileName)
         ddp_uint64_t ret_count = 0;
         char *buf = NULL;
         int i = 0;
-        ddp_uint64_t rw_size = DDB_IO_SIZE;
+        ddp_uint64_t rw_size = dd_boost_buf_size;
         ddp_uint64_t total_bytes = 0;
 	ddp_path_t path1 = {0};
 	char *storage_unit_name = NULL;
@@ -1373,7 +1384,7 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
         ddp_uint64_t ret_count = 0;
         char *buf = NULL;
         int i = 0;
-        ddp_uint64_t rw_size = DDB_IO_SIZE;
+        ddp_uint64_t rw_size = dd_boost_buf_size;
         ddp_uint64_t total_bytes = 0;
 	ddp_path_t path1 = {0};
 	char *storage_unit_name = NULL;
@@ -1740,7 +1751,7 @@ dumpFileHasDatabaseName(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_
         int err = 0, ret = 0;
         ddp_uint64_t ret_count = 0;
         char *buf = NULL;
-        ddp_uint64_t rw_size = DDB_IO_SIZE;
+        ddp_uint64_t rw_size = dd_boost_buf_size;
 	ddp_path_t path1 = {0};
 	char *storage_unit_name = NULL;
 	char *full_path = NULL;       
@@ -2084,7 +2095,7 @@ static int writeToDDFileFromInput(char *ddBoostFileName)
 	int err = 0;
 	ddp_uint64_t ret_count = 0;
 	char *buf = NULL;
-	ddp_uint64_t rw_size = DDB_IO_SIZE;
+	ddp_uint64_t rw_size = dd_boost_buf_size;
 	ddp_uint64_t total_bytes = 0;
 	ddp_uint64_t read_bytes = 0;
 	ddp_path_t path1 = {0};
@@ -2239,7 +2250,7 @@ listTablesInDumpFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_con
         ddp_uint64_t ret_count = 0;
         char *buf = NULL;
         int i = 0;
-        ddp_uint64_t rw_size = DDB_IO_SIZE;
+        ddp_uint64_t rw_size = dd_boost_buf_size;
         ddp_uint64_t total_bytes = 0;
 	ddp_path_t path1 = {0};
 	char *storage_unit_name = NULL;
