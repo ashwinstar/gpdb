@@ -219,6 +219,39 @@ extern Oid	LookupFuncName(List *funcname, int nargs, const Oid *argtypes, bool n
  */
 void analyzeStatement(VacuumStmt *stmt, List *relids)
 {
+	/* MPP-14608: Analyze may create temp tables.
+	 * Disable autostats so that analyze is not called during their creation. */
+
+	GpAutoStatsModeValue autostatvalBackup = gp_autostats_mode;
+
+	gp_autostats_mode = GP_AUTOSTATS_NONE;
+
+	PG_TRY();
+	{
+		analyzeStmt(stmt, relids);
+		gp_autostats_mode = autostatvalBackup;
+	}
+
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		gp_autostats_mode = autostatvalBackup;
+
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	Assert(gp_autostats_mode == autostatvalBackup);
+}
+
+/**
+ * This method can only be called in DISPATCH or UTILITY roles.
+ * Input:
+ * 	vacstmt - Vacuum statement.
+ * 	relids  - Usually NULL except when called by autovacuum.
+ */
+void analyzeStmt(VacuumStmt *stmt, List *relids)
+{
 	List	   			  	*lRelOids = NIL;
 	MemoryContext			callerContext = NULL;
 	MemoryContext 			analyzeStatementContext = NULL;
@@ -258,38 +291,37 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		return;
 	}
 	
-	
 	if (stmt->verbose)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
 
 	callerContext = CurrentMemoryContext;
-	
-	/* 
+
+	/*
 	 * This is the statement-level context. This will be cleaned up when we exit this
 	 * function.
 	 */
 	analyzeStatementContext = AllocSetContextCreate(PortalContext,
-										"Analyze",
-										ALLOCSET_DEFAULT_MINSIZE,
-										ALLOCSET_DEFAULT_INITSIZE,
-										ALLOCSET_DEFAULT_MAXSIZE);
+			"Analyze",
+			ALLOCSET_DEFAULT_MINSIZE,
+			ALLOCSET_DEFAULT_INITSIZE,
+			ALLOCSET_DEFAULT_MAXSIZE);
 
 	MemoryContextSwitchTo(analyzeStatementContext);
-	
-	
+
+
 	/*
 	 * This is a per relation context.
 	 */
 	analyzeRelationContext = AllocSetContextCreate(analyzeStatementContext,
-										"AnalyzeRel",
-										ALLOCSET_DEFAULT_MINSIZE,
-										ALLOCSET_DEFAULT_INITSIZE,
-										ALLOCSET_DEFAULT_MAXSIZE);
+			"AnalyzeRel",
+			ALLOCSET_DEFAULT_MINSIZE,
+			ALLOCSET_DEFAULT_INITSIZE,
+			ALLOCSET_DEFAULT_MAXSIZE);
 
 	/**
-	 * What relations need to be ANALYZED. 
+	 * What relations need to be ANALYZED.
 	 */
 	if (relids == NIL && stmt->relation == NULL)
 	{
@@ -319,8 +351,8 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		relationOid = RangeVarGetRelid(stmt->relation, false);
 		if (rel_is_partitioned(relationOid))
 		{
-			PartitionNode *pn = get_parts(relationOid, 0 /*level*/ , 
-										  0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
+			PartitionNode *pn = get_parts(relationOid, 0 /*level*/ ,
+					0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
 			Assert(pn);
 			lRelOids = all_partition_relids(pn);
 			lRelOids = lappend_oid(lRelOids, relationOid);
@@ -330,7 +362,7 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 			lRelOids = list_make1_oid(relationOid);
 		}
 	}
-	
+
 	/*
 	 * Decide whether we need to start/commit our own transactions.
 	 * The scenarios in which we can start/commit our own transactions are:
@@ -356,7 +388,7 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		CommitTransactionCommand();
 		MemoryContextSwitchTo(analyzeStatementContext);
 	}
-		
+
 	foreach (le1, lRelOids)
 	{
 		Oid				candidateOid	  = InvalidOid;
@@ -364,7 +396,7 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		bool			bTemp;
 
 		bTemp = false;
-		
+
 		Assert(analyzeStatementContext == CurrentMemoryContext);
 
 		if (bUseOwnXacts)
@@ -380,8 +412,8 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		}
 
 		candidateOid = lfirst_oid(le1);
-		candidateRelation = 
-			try_relation_open(candidateOid, ShareUpdateExclusiveLock, false);
+		candidateRelation =
+				try_relation_open(candidateOid, ShareUpdateExclusiveLock, false);
 
 		if (candidateRelation)
 		{
@@ -397,21 +429,21 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 				/* MPP-7576: don't track internal namespace tables */
 				switch (candidateRelation->rd_rel->relnamespace)
 				{
-					case PG_CATALOG_NAMESPACE:
-						/* MPP-7773: don't track objects in system namespace
-						 * if modifying system tables (eg during upgrade)  
-						 */
-						if (allowSystemTableModsDDL)
-							bTemp = true;
-						break;
-
-					case PG_TOAST_NAMESPACE:
-					case PG_BITMAPINDEX_NAMESPACE:
-					case PG_AOSEGMENT_NAMESPACE:
+				case PG_CATALOG_NAMESPACE:
+					/* MPP-7773: don't track objects in system namespace
+					 * if modifying system tables (eg during upgrade)
+					 */
+					if (allowSystemTableModsDDL)
 						bTemp = true;
-						break;
-					default:
-						break;
+					break;
+
+				case PG_TOAST_NAMESPACE:
+				case PG_BITMAPINDEX_NAMESPACE:
+				case PG_AOSEGMENT_NAMESPACE:
+					bTemp = true;
+					break;
+				default:
+					break;
 				}
 
 				/* MPP-7572: Don't track metadata if table in any
@@ -420,7 +452,7 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 				if (!bTemp)
 					bTemp = isAnyTempNamespace(
 							candidateRelation->rd_rel->relnamespace);
-				
+
 				if (candidateRelation->rd_rel->relkind != RELKIND_RELATION)
 				{
 					/**
@@ -455,13 +487,13 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 					{
 						lAttNames = analyzableAttributes(candidateRelation);
 					}
-					
+
 					analyzeRelation(candidateRelation, lAttNames);
 
 					/* Switch back to statement context and reset relation context */
 					MemoryContextSwitchTo(analyzeStatementContext);
 					MemoryContextResetAndDeleteChildren(analyzeRelationContext);
-					
+
 					/*
 					 * Close source relation now, but keep lock so
 					 * that no one deletes it before we commit.  (If
@@ -482,11 +514,11 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 							asubtype = "AUTO";
 
 						MetaTrackUpdObject(RelationRelationId,
-										   RelationGetRelid(candidateRelation),
-										   GetUserId(),
-										   "ANALYZE", 
-										   asubtype
-								);
+								RelationGetRelid(candidateRelation),
+								GetUserId(),
+								"ANALYZE",
+								asubtype
+						);
 					}
 				}
 			}
@@ -504,10 +536,10 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		}
 		else
 		{
-			/* 
+			/*
 			 * Relation may have been dropped out from under us.
-			 * TODO: should we print a warning here? Do we print it during 
-			 * ANALYZE DB or AutoVacuum? 
+			 * TODO: should we print a warning here? Do we print it during
+			 * ANALYZE DB or AutoVacuum?
 			 */
 		} /* if (candidateRelation) */
 
