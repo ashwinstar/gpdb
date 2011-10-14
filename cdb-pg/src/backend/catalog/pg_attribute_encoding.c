@@ -376,8 +376,7 @@ remove_attr_encoding(Oid relid, AttrNumber attnum, bool error_not_found)
 void
 RemoveRelationAttributeEncoding(Oid relid, AttrNumber attnum)
 {
-
-	remove_attr_encoding(relid, attnum, true);
+	remove_attr_encoding(relid, attnum, false);
 }
 
 void

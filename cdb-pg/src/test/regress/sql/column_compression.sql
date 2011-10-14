@@ -253,6 +253,38 @@ drop table ccddl;
 -- Should be nothing in pg_partition_encoding now
 select * from pg_partition_encoding;
 
+-- Split support. We must preserve the column encodings of the split partition
+create table ccddl (i int encoding (compresstype=zlib))
+with (appendonly = true, orientation=column)
+partition by range(i)
+(partition p1 start(1) end(10));
+execute ccddlcheck;
+
+alter table ccddl split partition p1 at (5) into (partition p2, partition p3);
+execute ccddlcheck;
+
+drop table ccddl;
+
+-- With subpartitioning
+create table ccddl (i int, j int)
+with (appendonly=true, orientation=column)
+partition by range(i) subpartition by range(j)
+subpartition template (subpartition sp1 start(1) end(20),
+	column i encoding (compresstype=zlib),
+	column j encoding (compresstype=rle_type))
+(partition p1 start(1) end(20));
+
+execute ccddlcheck;
+
+alter table ccddl alter partition p1 split partition sp1 at (10) into (partition sp2, partition sp3);
+execute ccddlcheck;
+
+alter table ccddl alter partition p1 split partition sp2 at (5) into (partition sp2, partition sp2_5);
+execute ccddlcheck;
+
+drop table ccddl;
+
+
 -- MPP-14407
 -- Multi level partitioning: the expansion of the multi-level partitioning
 -- configuration duplicates the encoding for `month'. Make sure we 

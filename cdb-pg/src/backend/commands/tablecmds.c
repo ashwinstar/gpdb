@@ -7312,6 +7312,8 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 
 	ReleaseSysCache(tuple);
 
+	RemoveRelationAttributeEncoding(RelationGetRelid(rel), attnum);
+
 	policy = rel->rd_cdbpolicy;
 	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
 	{
@@ -15168,6 +15170,37 @@ make_dist_clause(Relation rel)
 	return distro;
 }
 
+/*
+ * Given a relation, get all column encodings for that relation as a list of
+ * ColumnReferenceStorageDirective structures.
+ */
+static List *
+rel_get_column_encodings(Relation rel)
+{
+	List **colencs = RelationGetUntransformedAttributeOptions(rel);
+	List *out = NIL;
+
+	if (colencs)
+	{
+		AttrNumber attno;
+
+		for (attno = 0; attno < RelationGetNumberOfAttributes(rel); attno++)
+		{
+			if (colencs[attno] && !rel->rd_att->attrs[attno]->attisdropped)
+			{
+				ColumnReferenceStorageDirective *d =
+					makeNode(ColumnReferenceStorageDirective);
+				char *colname = pstrdup(NameStr(rel->rd_att->attrs[attno]->attname));
+				d->column = makeString(colname);
+				d->encoding = colencs[attno];
+		
+				out = lappend(out, d);
+			}
+		}
+	}
+	return out;
+}
+
 static void
 ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
@@ -15215,6 +15248,7 @@ ATPExecPartSplit(Relation rel,
 		ListCell *lc;
 		char *defparname = NULL; /* name of default partition (if specified) */
 		List *distro = NIL;
+		List *colencs = NIL;
 
 		/* Get target meta data */
 		prule = get_part_rule(rel, pid, true, true,
@@ -15431,6 +15465,7 @@ ATPExecPartSplit(Relation rel,
 		existopts = relopts_for_ctas(existrel);
 		existstorage_opts = stdoptions_to_list(existrel, existopts);
 		distro = make_dist_clause(existrel);
+		colencs = rel_get_column_encodings(existrel);
 
 		heap_close(existrel, NoLock);
 
@@ -15668,6 +15703,9 @@ ATPExecPartSplit(Relation rel,
 
 			mycs->relation = makeRangeVar(NULL, "fake_partition_name", -1);
 			mycs->relKind = RELKIND_RELATION;
+
+			mycs->attr_encodings = colencs;
+			
 			mypid->idtype = AT_AP_IDNone;
 			mypid->location = -1;
 			mypid->partiddef = NULL;
