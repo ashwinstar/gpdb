@@ -691,7 +691,7 @@ readFromDDFile(FILE *fp, char *ddBoostFileName)
         err = ddp_open_file(ddp_conn, &path1, DDP_O_READ , 0400, &handle);
         if (err)
         {
-               	mpp_err_msg(logInfo, progname,("File open on ddboost failed\n"));
+               	mpp_err_msg(logInfo, progname,"File open on ddboost failed. Err %d\n", err);
                	err = -1;
 		goto cleanup;
         }
@@ -890,7 +890,7 @@ ddBoostRmdir(char *dir_path, ddp_conn_desc_t ddp_conn, char *parent_dir)
 	err = ddp_open_dir(ddp_conn, &temp_path, &dird);
 	if (err)
 	{
-		mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed\n", dir_path);
+		mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed. Err %d\n", dir_path, err);
 		return -1;
 	}
 
@@ -1200,7 +1200,7 @@ readFromDDFileToOutput(char *ddBoostFileName)
         err = ddp_open_file(ddp_conn, &path1, DDP_O_READ , 0400, &handle);
         if (err)
         {
-               	mpp_err_msg(logInfo, progname,("File open on ddboost failed\n"));
+               	mpp_err_msg(logInfo, progname,"File open on ddboost failed. Err %d\n", err);
                	err =-1;
 		goto cleanup;
         }
@@ -1319,7 +1319,7 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
         {
 		free(storage_unit_name);
 		free(full_path);
-                mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed\n", ddboostDir);
+                mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed. Err %d\n", ddboostDir, err);
                 return -1;
         }
 
@@ -1361,46 +1361,6 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 	free(full_path);
 	return err;
 }
-
-#if 0
-static int readFromLocalFileToOutput(char *fileName)
-{
-        char *buf = NULL;
-        ddp_uint64_t rw_size = DDB_IO_SIZE;
-        ddp_uint64_t ret_count = 0;
-	FILE *fp = NULL;
-
-        fp = fopen(fileName, "r");
-        if (fp == NULL)
-        {
-               mpp_err_msg(logInfo, progname,("File open on GPDB failed\n"));
-               return -1;
-        }
-
-        buf = (char*)malloc(rw_size);
-        if (buf == NULL)
-        {
-               mpp_err_msg(logInfo, progname, "Memory allocation failed\n");
-               return -1;
-        }
-
-      	 do
-       	{
-                memset(buf, 0, rw_size);
-                ret_count = 0;
-	
-                ret_count = fread(buf, 1, rw_size, fp);
-                if (ret_count <= 0)
-                        break;
-
-		write(1, buf, ret_count);
-
-       	} while(ret_count > 0);
-
-	free(buf);
-        return 0;
-}
-#endif
 
 /* For selective restore we need to parse the specified dump file
  * for psql statements corresponding to the required table 
@@ -1448,7 +1408,7 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
         {
 		free(storage_unit_name);
 		free(full_path);
-              	mpp_err_msg(logInfo, progname,("File open on ddboost failed\n"));
+              	mpp_err_msg(logInfo, progname,"File open on ddboost failed. Err %d\n", err);
                	return -1;
         }
 
@@ -1682,7 +1642,7 @@ getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn,
 	err = ddp_open_dir(ddp_conn, &path1, &dird);
         if (err)
         {
-                mpp_err_msg(logInfo, progname, "Directory %s doesn't exist on ddboost\n", ddboostDir);
+                mpp_err_msg(logInfo, progname, "Directory %s open failed on ddboost. Err %d\n", ddboostDir, err);
                 return -1;
         }
 
@@ -1811,8 +1771,7 @@ dumpFileHasDatabaseName(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_
         err = ddp_open_file(ddp_conn, &path1, DDP_O_READ , 0400, &handle);
         if (err)
         {
-	       	printf("\nFile path is %s\n", full_path);	
-               	mpp_err_msg(logInfo, progname,("File open on ddboost failed\n"));
+	       	printf("\nFile %s open on DDBoost failed. Err %d\n", full_path, err);	
                	ret = 0;
 		goto cleanup;
         }
@@ -1910,7 +1869,7 @@ syncFilesFromDDBoost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_con
 	err = ddp_open_dir(ddp_conn, &path1, &dird);
         if (err)
         {
-                mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed\n", ddboostDir);
+                mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed. Err %d\n", ddboostDir, err);
                 err = -1;
 		goto cleanup;
         }
@@ -1924,7 +1883,7 @@ syncFilesFromDDBoost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_con
 	err = mkdir(dest_path, S_IRWXU);
 	if (err && (err != EEXIST) && (err != -1))
 	{
-		printf("\nDirectory %s creation on GPDB path failed with error %d\n", dest_path, err);
+		printf("\nDirectory %s creation on GPDB path failed .Err %d\n", dest_path, err);
 		err = -1;
 		goto cleanup;	
 	}
@@ -2024,7 +1983,7 @@ copyFilesFromDir(const char *fromDir, char *toDir, ddp_conn_desc_t ddp_conn)
 	err = ddp_open_dir(ddp_conn, &path1, &dird);
         if (err)
         {
-                mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed\n", ddboostDir);
+                mpp_err_msg(logInfo, progname, "Opening directory %s on ddboost failed. Err %d\n", ddboostDir, err);
 		err = -1;
 		goto cleanup;
         }
@@ -2316,7 +2275,7 @@ listTablesInDumpFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_con
         err = ddp_open_file(ddp_conn, &path1, DDP_O_READ , 0400, &handle);
         if (err)
         {
-               	mpp_err_msg(logInfo, progname,("File open on ddboost failed\n"));
+               	mpp_err_msg(logInfo, progname,"File open on ddboost failed.Err %d\n", err);
                	err = -1;
 		goto cleanup;	
         }
