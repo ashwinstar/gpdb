@@ -109,6 +109,9 @@ This sets the password for the user you specify with the -u option. The
 default password is changeme. This option is only available when you run 
 gpseginstall as root.
 
+Best practises: Always use passwords, do not use default passwords, 
+change default passwords immediately after installation.
+
 
 -u | --user user
 

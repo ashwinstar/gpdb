@@ -205,6 +205,9 @@ OPTIONS
  the network require a password login for the database superuser 
  account (for example, the gpadmin user).
 
+ Best practises: Always use passwords, do not use default passwords,
+ change default passwords immediately after installation.
+
 
 -S (spread mirror configuration)
 
