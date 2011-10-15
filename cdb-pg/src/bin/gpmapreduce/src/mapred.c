@@ -2595,30 +2595,67 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 							 clist; 
 							 clist = clist->next)
 						{
-							char *host, *path, *tokenizer = NULL;
+							char *domain_port, *path, *p = NULL;
 
 							if (obj->u.input.type == MAPRED_INPUT_GPFDIST)
 								bufcat(&buffer, "'gpfdist://");
 							else
 								bufcat(&buffer, "'file://");
 
-							/* should be split by ':' */
-							host = strtok_r(clist->value, ":", &tokenizer);
-							path = strtok_r(NULL, ":", &tokenizer);
-							if (!path)
+							/*
+							 * The general syntax of a URL is    scheme://domain:port/path?query_string#fragment_id
+							 * clist->value should contain just           domain:port/path?query_string#fragment_id
+							 */
+							p = strchr(clist->value, '/');
+							if (p == NULL)
 							{
-								mapred_obj_error(obj, "No file host specified (%s)",
+								mapred_obj_error(obj, "Failed to find '/' indicating start of path (%s)",
+												 clist->value);
+								XRAISE(MAPRED_PARSE_ERROR,
+									   "Invalid INPUT source specification");
+							}
+							if (p == clist->value)
+							{
+								mapred_obj_error(obj, "Missing domain and port before '/' indicating start of path (%s)",
+												 clist->value);
+								XRAISE(MAPRED_PARSE_ERROR,
+									   "Invalid INPUT source specification");
+							}
+							domain_port = clist->value;
+							path        = p+1;
+
+							/* 
+							 * Overwrite the / separating the domain:port from the path 
+							 * with a nul and move back one byte to check for a trailing ':'.
+							 * We put the / back in when copying into the destination buffer.
+							 */
+							*p-- = '\0';
+
+							if (strlen(path) < 1)
+							{
+								mapred_obj_error(obj, "Missing path after '/' (%s)",
 												 clist->value);
 								XRAISE(MAPRED_PARSE_ERROR,
 									   "Invalid INPUT source specification");
 							}
 
-							bufcat(&buffer, host);
+							/*
+							 * We allow a trailing ':'  (e.g. host:/filepath) 
+							 * but we must not copy it into the external table url.
+							 */
+							if (*p == ':')
+								*p = '\0';
 
-							/* If a port was specified use it */
-							if (strchr("0123456789", path[0]))
-								bufcat(&buffer, ":");
+							if (strlen(domain_port) < 1)
+							{
+								mapred_obj_error(obj, "Missing host before '/' (%s)",
+												 clist->value);
+								XRAISE(MAPRED_PARSE_ERROR,
+									   "Invalid INPUT source specification");
+							}
 
+							bufcat(&buffer, domain_port);
+							bufcat(&buffer, "/");
 							bufcat(&buffer, path);
 							if (clist->next)
 								bufcat(&buffer, "',\n           ");

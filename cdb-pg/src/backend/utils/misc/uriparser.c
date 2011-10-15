@@ -125,7 +125,7 @@ ParseExternalTableUri(const char *uri_str)
 		}
 		else
 		{
-			char   *colon;
+			char   *colon, *p;
 
 			len = end - start;
 
@@ -137,9 +137,33 @@ ParseExternalTableUri(const char *uri_str)
 			uri->hostname[len] = '\0';
 			
 			/*
+			 * MPP-13617, if we have an ipv6 address in the URI hostname 
+			 * (e.g. [2620:0:170:610::11]:8080/path/data.txt ) then we 
+			 * we start our search for the :port after the closing ].
+			 */
+			p = strchr(uri->hostname, ']');
+			if (p) 
+			{
+				colon = strchr(p, ':');
+
+				/*
+				 * Eliminate the [ ] from the hostname.  
+				 * note we don't change the uri->hostname pointer because we pfree() it later
+				 */
+				*p = '\0';
+				for (p = strchr(uri->hostname, '['); p && *p; p++)
+				{
+					p[0] = p[1];
+				}
+			}
+			else
+			{
+				colon = strchr(uri->hostname, ':');
+			}
+
+			/*
 			 * port
 			 */
-			colon = strchr(uri->hostname, ':');
 			if (colon) 
 			{
 				int portlen = 0;
@@ -156,7 +180,6 @@ ParseExternalTableUri(const char *uri_str)
 			{
 				uri->port = -1; /* no port was indicated. will use default if needed */
 			}
-
 		}
 	}
 

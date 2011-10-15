@@ -1309,7 +1309,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				{
 					if(uri->protocol == URI_FILE)
 					{
-						if (pg_strcasecmp(uri->hostname, p->hostname) != 0)
+						if (pg_strcasecmp(uri->hostname, p->hostname) != 0 && pg_strcasecmp(uri->hostname, p->address) != 0)
 							continue;
 					}
 
