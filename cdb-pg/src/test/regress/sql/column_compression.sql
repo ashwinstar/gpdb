@@ -536,3 +536,64 @@ deallocate ccddlcheck;
 
 -- RLE_TYPE is not supported on AO (non-CO) tables
 create table ccddl (i int) with(appendonly = true, compresstype = rle_type);
+
+-----------------------------------------------------------------------
+-- MPP-14381 cdbfast regression: Dropping and adding a column to AO partitioned tables fails with SIGSEGV
+-- Expect: success
+-----------------------------------------------------------------------
+DROP TABLE IF EXISTS ccddl;
+
+CREATE TABLE ccddl (
+                    P_PARTKEY INTEGER,
+                    P_SIZE integer,
+                    P_CONTAINER CHAR(10),
+                    P_RETAILPRICE decimal,
+                    P_COMMENT VARCHAR(23)
+                    )
+  partition by range (p_size)
+  (
+    partition p1 start('1')  WITH (appendonly=true, checksum=true, blocksize=819200, compresslevel=8)
+  , partition p2 start('21') end('28')
+  , partition p3 start('28') WITH (appendonly=true, checksum=true, blocksize=819200, compresslevel=8)
+  , partition p4 start('32') end('33')
+  , partition p5 start('33') WITH (appendonly=true, checksum=true, blocksize=819200, compresslevel=8)
+);
+
+INSERT INTO ccddl values ( generate_series(1,25000), 3, 'JUMBO CASE', 1001.00, 'ronic dependencies d' );
+
+INSERT INTO ccddl values ( generate_series(1,25000), 23, 'JUMBO CASE', 1001.00, 'ronic dependencies d' );
+
+INSERT INTO ccddl values ( generate_series(1,25000), 29, 'JUMBO CASE', 1001.00, 'ronic dependencies d' );
+
+INSERT INTO ccddl values ( generate_series(1,25000), 37, 'JUMBO CASE', 1001.00, 'ronic dependencies d' );
+
+ALTER TABLE ccddl DROP COLUMN P_PARTKEY;
+
+ALTER TABLE ccddl ADD COLUMN   P_PARTKEY  INTEGER  DEFAULT 100;
+
+
+-----------------------------------------------------------------------
+-- MPP-14477 cdbfast regression: Bitmap Index scan on AO tables with compression fails with SIGSEGV
+-- Expect: success
+-----------------------------------------------------------------------
+DROP TABLE IF EXISTS ccddl cascade;
+
+CREATE TABLE ccddl ( 
+   id INTEGER
+ , owner VARCHAR
+ , property BOX
+  ) 
+WITH (APPENDONLY=True, COMPRESSTYPE=ZLIB, COMPRESSLEVEL=1)  
+DISTRIBUTED BY (id);
+
+insert into ccddl values (59,'Hypatia','( (6050, 20), (7052, 250) )');
+
+
+CREATE INDEX ccddl_propertyBoxIndex ON ccddl USING Gist (property);
+
+SET enable_seqscan = FALSE;
+
+-- to the same internal representation.
+SELECT owner, property FROM ccddl
+ WHERE property ~= '((7052,250),(6050,20))';
+
