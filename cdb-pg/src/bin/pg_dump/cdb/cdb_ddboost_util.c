@@ -850,7 +850,7 @@ deleteDir(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 	err = ddBoostRmdir(ddboostDir, ddp_conn, ddboostDir);
 	if (err)
 	{
-		mpp_err_msg(logInfo, progname, "Deleting Directory on GPDB failed with err %d\n", err);
+		mpp_err_msg(logInfo, progname, "Deleting Directory on DDBoost failed with err %d\n", err);
 		err = -1;
 		goto cleanup;
 	}
