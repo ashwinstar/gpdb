@@ -2494,7 +2494,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_cancel_print,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	
 	{
