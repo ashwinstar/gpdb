@@ -7457,7 +7457,6 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 	 * First, split the table elements into column reference storage directives
 	 * and everything else.
 	 */
-
 	foreach(lc, cs->tableElts)
 	{
 		Node *n = lfirst(lc);
@@ -7491,9 +7490,9 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 		{
 			ColumnReferenceStorageDirective *f = lfirst(lc2);
  
-			/* Should be no default directives at this stage */
-			Insist(!f->deflt);
-			Insist(PointerIsValid(f->column));
+			if (f->deflt)
+				continue;
+
 			if (equal(f->column, p->column))
 			{
 				found = true;
@@ -7502,6 +7501,36 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 		}
 		if (!found)
 			finalencs = lappend(finalencs, p);
+	}
+
+	/*
+	 * Finally, make sure we don't propagate any conflicting clauses in the
+	 * ColumnDef.
+	 */
+	foreach(lc, others)
+	{
+		Node *n = lfirst(lc);
+
+		if (IsA(n, ColumnDef))
+		{
+			ColumnDef *c = (ColumnDef *)n;
+			ListCell *lc2;
+
+			foreach(lc2, finalencs)
+			{
+				ColumnReferenceStorageDirective *r = lfirst(lc2);
+
+				if (r->deflt)
+					continue;
+
+				if (strcmp(strVal(r->column), c->colname) == 0)
+				{
+					c->encoding = NIL;
+					break;
+				}
+			}
+
+		}
 	}
 
 	cs->tableElts = list_concat(others, finalencs);

@@ -1347,7 +1347,8 @@ CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
 WITH (appendonly=true, orientation=column)
 	PARTITION BY RANGE (c3) (
 		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
-		        COLUMN c3 ENCODING (compresstype=zlib)
+		        COLUMN c3 ENCODING (compresstype=zlib),
+				COLUMN c2 ENCODING (compresstype=rle_type)
 	);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
@@ -1359,7 +1360,7 @@ execute ccddlcheck;
  ccddl         |      2 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
  ccddl         |      3 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
  ccddl_1_prt_1 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_1 |      2 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
+ ccddl_1_prt_1 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
  ccddl_1_prt_1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (6 rows)
 

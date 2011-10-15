@@ -396,7 +396,8 @@ CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
 WITH (appendonly=true, orientation=column)
 	PARTITION BY RANGE (c3) (
 		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
-		        COLUMN c3 ENCODING (compresstype=zlib)
+		        COLUMN c3 ENCODING (compresstype=zlib),
+				COLUMN c2 ENCODING (compresstype=rle_type)
 	);
 
 execute ccddlcheck;
