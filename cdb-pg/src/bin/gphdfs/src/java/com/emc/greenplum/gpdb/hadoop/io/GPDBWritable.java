@@ -42,12 +42,34 @@ public class GPDBWritable implements Writable {
 	public static final int NUMERIC   = 1700;
 	
 	/**
+	 * Enum of the Database type
+	 */
+	public enum DBType {
+		BIGINT(8, 8, false), BOOLEAN(1, 1, false), FLOAT8(8, 8, false), INTEGER(4, 4, false), REAL(4, 4, false),
+		SMALLINT(2, 2, false), BYTEA(4, -1, false), TEXT(4, -1, true);
+		
+		private final int typelength; // -1 means var length
+		private final int alignment;
+		private final boolean isTextFormat;
+
+		DBType(int align, int len, boolean isbin) {
+			this.typelength = len;
+			this.alignment  = align;
+			this.isTextFormat = isbin;
+		}
+		
+		public int getTypeLength() { return typelength; }
+		public boolean isVarLength() { return typelength == -1; }
+
+		// return the alignment requirement of the type
+		public int getAlignment() { return alignment; }
+	}
+
+	/**
 	 * Constants
 	 */
 	private static final int    VERSION = 1;
 	private static final String CHARSET = "UTF-8";
-	private static final int    RECHEADERLEN = 12; /* length, version and col cnt */
-	private static final int    COLHEADERLEN = 9;  /* coltype, collen, bitflag(1) */
 	
 	/**
 	 * Local variables
@@ -94,20 +116,23 @@ public class GPDBWritable implements Writable {
 		this.readFields(dis);
 	}
 	
-	/**
-	 * Serialize the object using the following format:
-	 * Total Length | Version | Number of columns | Col type |	Bit flag | Col len ...| Col val
-     * 4 byte		| 4 byte	4 byte				4 byte	    1 byte	   4 byte		<var len>
-	 */
 
 	/**
-	 *  @inheritDoc
+	 * Serialize the object using the following format:
+	 * Total Length | Version | #columns | Col type | Col type |... | Null Bit array   | Col val...
+     * 4 byte		| 2 byte	2 byte	   2 byte     2 byte	      ceil(#col/8) byte	 fixed length or var len
+     * 
+     * For fixed length type, we know the length.
+     * In the col val, we align pad according to the alignemnt requirement of the type.
+     * For var length type, the alignment is always 4 byte.
+     * For var legnth type, col val is <4 byte length><payload val>
 	 */
 	public void readFields(DataInput in) throws IOException {
 		/* extract the version and col cnt */
 		int pklen   = in.readInt();
-		int version = in.readInt();
-		int colCnt  = in.readInt();
+		int version = in.readShort();
+		int colCnt  = in.readShort();
+		int curOffset = 4+2+2;
 		
 		/* !!! Check VERSION !!! */
 		if (version != this.VERSION) {
@@ -116,20 +141,51 @@ public class GPDBWritable implements Writable {
 					version+")");
 		}
 		
-		/* extract column definition */
-		colType        = new int[colCnt];
-		colValue       = new Object[colCnt];
-		byte[] bitflag = new byte[colCnt];
-		int[] colLen   = new int[colCnt];
+		/* Extract Column Type */
+		colType = new int[colCnt];
+		DBType[] coldbtype = new DBType[colCnt];
 		for(int i=0; i<colCnt; i++) {
-			colType[i] = in.readInt();
-			bitflag[i] = in.readByte();
-			colLen[i]  = in.readInt();
+			int enumType = in.readShort();
+			curOffset += 2;
+			if      (enumType == DBType.BIGINT.ordinal())   { colType[i] = BIGINT; coldbtype[i] = DBType.BIGINT;} 
+			else if (enumType == DBType.BOOLEAN.ordinal())  { colType[i] = BOOLEAN; coldbtype[i] = DBType.BOOLEAN;}
+			else if (enumType == DBType.FLOAT8.ordinal())   { colType[i] = FLOAT8;  coldbtype[i] = DBType.FLOAT8;}
+			else if (enumType == DBType.INTEGER.ordinal())  { colType[i] = INTEGER; coldbtype[i] = DBType.INTEGER;}
+			else if (enumType == DBType.REAL.ordinal())     { colType[i] = REAL; coldbtype[i] = DBType.REAL;}
+			else if (enumType == DBType.SMALLINT.ordinal()) { colType[i] = SMALLINT; coldbtype[i] = DBType.SMALLINT;}
+			else if (enumType == DBType.BYTEA.ordinal())    { colType[i] = BYTEA; coldbtype[i] = DBType.BYTEA;}
+			else if (enumType == DBType.TEXT.ordinal())     { colType[i] = TEXT; coldbtype[i] = DBType.TEXT; }
+			else throw new IOException("Unknown GPDBWritable.DBType ordinal value");
 		}
 		
+		/* Extract null bit array */
+		byte[] nullbytes = new byte[getNullByteArraySize(colCnt)];
+		in.readFully(nullbytes);
+		curOffset += nullbytes.length;
+		boolean[] colIsNull = byteArrayToBooleanArray(nullbytes, colCnt);
+
 		/* extract column value */
+		colValue = new Object[colCnt];
 		for(int i=0; i<colCnt; i++) {
-			if (bitflag[i] != 1) {
+			if (!colIsNull[i]) {
+				/* Skip the aligment padding */
+				int skipbytes = roundUpAlignment(curOffset, coldbtype[i].getAlignment()) - curOffset;
+				for(int j=0; j<skipbytes; j++)
+					in.readByte();
+				curOffset += skipbytes;
+
+				/* For fixed length type, increment the offset according to type type length here.
+				 * For var length type (BYTEA, TEXT), we'll read 4 byte length header and the
+				 * actual payload.
+				 */
+				int varcollen = -1;
+				if (coldbtype[i].isVarLength()) {
+					varcollen = in.readInt();
+					curOffset += 4 + varcollen;
+				}
+				else
+					curOffset += coldbtype[i].getTypeLength();
+				
 				switch(colType[i]) {
 					case BIGINT:   { long    val = in.readLong();    colValue[i] = new Long(val);    break; } 
 					case BOOLEAN:  { boolean val = in.readBoolean(); colValue[i] = new Boolean(val); break; }
@@ -137,74 +193,138 @@ public class GPDBWritable implements Writable {
 					case INTEGER:  { int     val = in.readInt();     colValue[i] = new Integer(val); break; }
 					case REAL:     { float   val = in.readFloat();   colValue[i] = new Float(val);   break; }
 					case SMALLINT: { short   val = in.readShort();   colValue[i] = new Short(val);   break; }
+					
+					/* For BYTEA column, it has a 4 byte var length header. */
 					case BYTEA:    { 
-						colValue[i] = new byte[colLen[i]]; 
-						in.readFully((byte[])colValue[i], 0, colLen[i]);
+						colValue[i] = new byte[varcollen]; 
+						in.readFully((byte[])colValue[i]);
 						break;
 					}
-					/* For text formatted column, it's always null terminated string.
+					/* For text formatted column, it has a 4 byte var length header
+					 * and it's always null terminated string.
 					 * So, we can remove the last "\0" when constructing the string.
 					 */
-					default:       {
-						byte[] data = new byte[colLen[i]];
-						in.readFully(data, 0, colLen[i]);
-						colValue[i] = new String(data, 0, colLen[i]-1, CHARSET);
+					case TEXT:       {
+						byte[] data = new byte[varcollen];
+						in.readFully(data, 0, varcollen);
+						colValue[i] = new String(data, 0, varcollen-1, CHARSET);
+						break;
 					}
-				}
+					
+					default:
+						throw new IOException("Unknown GPDBWritable ColType");
+				}				
 			}
 		}
+		
+		/* Skip the ending aligment padding */
+		int skipbytes = roundUpAlignment(curOffset, 8) - curOffset;
+		for(int j=0; j<skipbytes; j++)
+			in.readByte();
+		curOffset += skipbytes;
 	}
-	
-	
+
 	/**
 	 *  @inheritDoc
 	 */
 	public void write(DataOutput out) throws IOException {
-		/* We need to know the bit flag list and col length list first */
-		int    numCol    = colType.length;
-		byte[] bitflags  = new byte[numCol];
-		int[]  colLength = new int[numCol];
+		int       numCol    = colType.length;
+		boolean[] nullBits  = new boolean[numCol];
+		int[]     colLength = new int[numCol];
+		int[]     enumType  = new int[numCol];
+		int[]     padLength = new int[numCol];
+		int       maxpad    = 0;
+		byte[]    padbytes  = null;
+		
+		/**
+		 * Compute the total payload and header length
+		 * header = total length (4 byte), Version (2 byte), #col (2 byte)
+		 * col type array = #col * 2 byte
+		 * null bit array = ceil(#col/8)
+		 */
+		int datlen = 4+2+2;
+		datlen += numCol*2;
+		datlen += getNullByteArraySize(numCol);
 		
 		for(int i=0; i<numCol; i++) {
+			/* Get the enum type */
+			DBType coldbtype;
+			switch(colType[i]) {
+				case BIGINT:   coldbtype = DBType.BIGINT; break;
+				case BOOLEAN:  coldbtype = DBType.BOOLEAN; break;
+				case FLOAT8:   coldbtype = DBType.FLOAT8; break;
+				case INTEGER:  coldbtype = DBType.INTEGER; break;
+				case REAL:     coldbtype = DBType.REAL; break;
+				case SMALLINT: coldbtype = DBType.SMALLINT; break;
+				case BYTEA:    coldbtype = DBType.BYTEA; break;
+				default:       coldbtype = DBType.TEXT; 
+			}
+			enumType[i] = coldbtype.ordinal();
+
+			/* Get the actual value, and set the null bit */
 			if (colValue[i] == null) {
-				bitflags[i]  = 1;
+				nullBits[i]  = true;
 				colLength[i] = 0;
 			} else {
-				bitflags[i] = 0;
-				switch(colType[i]) {
-					case BIGINT:   colLength[i] = 8; break;
-					case BOOLEAN:  colLength[i] = 1; break;
-					case FLOAT8:   colLength[i] = 8; break;
-					case INTEGER:  colLength[i] = 4; break;
-					case REAL:     colLength[i] = 4; break;
-					case SMALLINT: colLength[i] = 2; break;
-					case BYTEA:    colLength[i] = ((byte[])colValue[i]).length; break;
-					/* For text format, add a "\0" at the end */
-					default: colLength[i] = ((String)colValue[i]).getBytes(CHARSET).length + 1;
-				}
+				nullBits[i]  = false;
+								
+				/* For binary format and fixed length type, we know it's fixed.
+				 * 
+				 * For binary format and var length type, the length is in the col value.
+				 * 
+				 * For text format, we need to add "\0" in the length.
+				 */
+				if (!isTextForm(colType[i]) && !coldbtype.isVarLength())
+					colLength[i] = coldbtype.getTypeLength();
+				else if (!isTextForm(colType[i]) && coldbtype.isVarLength())
+					colLength[i] = ((byte[])colValue[i]).length;
+				else
+					colLength[i] = ((String)colValue[i]).getBytes(CHARSET).length + 1;
+
+				/* Add type alignment padding.
+				 * For variable length type, we added a 4 byte length header.
+				 */
+				padLength[i] = roundUpAlignment(datlen, coldbtype.getAlignment()) - datlen;
+				maxpad = padLength[i]>maxpad? padLength[i]:maxpad;
+				datlen += padLength[i];
+				if (coldbtype.isVarLength())
+					datlen += 4;
 			}
+			datlen += colLength[i];
 		}
+
+		/*
+		 * Add the final alignment padding for the next record
+		 */
+		int endpadding = roundUpAlignment(datlen, 8) - datlen;
+		maxpad = endpadding > maxpad? endpadding:maxpad;
+		datlen += endpadding;
 		
-		/* Now, compute the total payload and header length */
-		int packetlen = RECHEADERLEN;
-		for(int i=0; i<numCol; i++)
-			packetlen += COLHEADERLEN + colLength[i];
+		if (maxpad > 0)
+			padbytes = new byte[maxpad];
 
 		/* Construct the packet header */
-		out.writeInt(packetlen);
-		out.writeInt(VERSION);
-		out.writeInt(numCol);
+		out.writeInt(datlen);
+		out.writeShort(VERSION);
+		out.writeShort(numCol);
 		
-		/* Column definitions */
-		for(int i=0; i<numCol; i++) {
-			out.writeInt(colType[i]);
-			out.writeByte(bitflags[i]);
-			out.writeInt(colLength[i]);
-		}
+		/* Write col type */
+		for(int i=0; i<numCol; i++)
+			out.writeShort(enumType[i]);
+		
+		/* Nullness */
+		byte[] nullBytes = boolArrayToByteArray(nullBits);
+		out.write(nullBytes);
 		
 		/* Column Value */
 		for(int i=0; i<numCol; i++) {
-			if (bitflags[i] == 0) {
+			if (!nullBits[i]) {
+				/* Pad the alignment byte first */
+				if (padLength[i] > 0) {
+					out.write(padbytes, 0, padLength[i]);
+				}
+
+				/* Now, write the actual column value */
 				switch(colType[i]) {
 					case BIGINT:   out.writeLong(   ((Long)   colValue[i]).longValue());    break;
 					case BOOLEAN:  out.writeBoolean(((Boolean)colValue[i]).booleanValue()); break;
@@ -212,18 +332,68 @@ public class GPDBWritable implements Writable {
 					case INTEGER:  out.writeInt(    ((Integer)colValue[i]).intValue());     break;
 					case REAL:     out.writeFloat(  ((Float)  colValue[i]).floatValue());   break;
 					case SMALLINT: out.writeShort(  ((Short)  colValue[i]).shortValue());   break;
-					case BYTEA:    out.write((byte[])colValue[i], 0, colLength[i]);         break;
-					/* For text format, add a "\0" at the end */
+					/* For BYTEA format, add 4byte length header at the beginning  */
+					case BYTEA:
+						out.writeInt(((byte[])colValue[i]).length);
+						out.write((byte[])colValue[i]);
+						break;
+					/* For text format, add 4byte length header (length include the "\0" at the end)
+					 * at the beginning and add a "\0" at the end */
 					default: {
-						byte[] data = ((String)colValue[i]+"\0").getBytes(CHARSET);
-						out.write(data, 0, colLength[i]);
+						String outStr = (String)colValue[i]+"\0";
+						out.writeInt(outStr.length());
+						byte[] data = (outStr).getBytes(CHARSET);
+						out.write(data);
 						break;
 					}
 				}	
 			}
 		}
-	}
 		
+		/* End padding */
+		out.write(padbytes, 0, endpadding);
+	}
+
+	/**
+	 * Private helper to convert boolean array to byte array
+	 */
+	private static byte[] boolArrayToByteArray(boolean[] data) {
+	    int len = data.length;
+	    byte[] byts = new byte[getNullByteArraySize(len)];
+
+	    for (int i = 0, j = 0, k = 7; i < data.length; i++) {
+	        byts[j] |= (data[i] ? 1 : 0) << k--;
+	        if (k < 0) { j++; k = 7; }
+	    }
+	    return byts;
+	}
+	
+	/**
+	 * Private helper to determine the size of the null byte array
+	 */
+	private static int getNullByteArraySize(int colCnt) {
+		return (colCnt/8) + (colCnt%8 != 0 ? 1:0);
+	}
+
+	/**
+	 * Private helper to convert byte array to boolean array
+	 */
+	private static boolean[] byteArrayToBooleanArray(byte[] data, int colCnt) {
+	    boolean[] bools = new boolean[colCnt];
+	    for (int i = 0, j = 0, k = 7; i < bools.length; i++) {
+	        bools[i] = ((data[j] >> k--) & 0x01) == 1;
+	        if (k < 0) { j++; k = 7; }
+	    }
+	    return bools;
+	}
+	
+	/**
+	 * Private helper to round up alignment for the given length
+	 */
+	private static int roundUpAlignment(int len, int align) {
+		return (((len) + ((align) - 1)) & ~((align) - 1));
+	}
+
 	/**
 	 * Return the byte form
 	 * @return the binary representation of this object
