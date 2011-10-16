@@ -37,6 +37,10 @@ Datum gphdfsprotocol_export(PG_FUNCTION_ARGS);
 Datum gphdfsprotocol_import(PG_FUNCTION_ARGS);
 Datum gphdfsprotocol_validate_urls(PG_FUNCTION_ARGS);
 
+typedef struct {
+	URL_FILE *importFile;
+	bool      importDone;
+} gphdfs_import_t;
 
 /*
  * Using the Hadoop connector requires proper setup of GUCs
@@ -226,28 +230,35 @@ gphdfsprotocol_import(PG_FUNCTION_ARGS)
 	char     *data;
 	int	      datlen;
 	size_t    nread = 0;
-	URL_FILE *myData;
+	gphdfs_import_t *myData;
 
 	/* Must be called via the external table format manager */
 	if (!CALLED_AS_EXTPROTOCOL(fcinfo))
 		elog(ERROR, "cannot execute gphdfsprotocol_import outside protocol manager");
 
 	/* Get our internal description of the protocol */
-	myData = (URL_FILE *) EXTPROTOCOL_GET_USER_CTX(fcinfo);
+	myData = (gphdfs_import_t*) EXTPROTOCOL_GET_USER_CTX(fcinfo);
 
 	/* =======================================================================
 	 *                            DO LAST CALL
-	 *                            Nothing to be done
+	 *                            Nothing to be done if it has already been closed
 	 * ======================================================================= */
 	if (EXTPROTOCOL_IS_LAST_CALL(fcinfo))
-		PG_RETURN_INT32(0);
+	{
+		int ret = 0;
+		if (myData != NULL && !myData->importDone)
+			ret = url_fclose(myData->importFile, true, "gphdfs protocol");
+		PG_RETURN_INT32(ret);
+	}
 
 	/* =======================================================================
 	 *                            DO OPEN
 	 * ======================================================================= */
 	if (myData == NULL)
 	{
-		myData = gphdfs_fopen(fcinfo, false);
+		myData = palloc(sizeof(gphdfs_import_t));
+		myData->importFile = gphdfs_fopen(fcinfo, false);
+		myData->importDone = false;
 		EXTPROTOCOL_SET_USER_CTX(fcinfo, myData);
 	}
 
@@ -257,15 +268,18 @@ gphdfsprotocol_import(PG_FUNCTION_ARGS)
 	data 	= EXTPROTOCOL_GET_DATABUF(fcinfo);
 	datlen 	= EXTPROTOCOL_GET_DATALEN(fcinfo);
 
-	if (datlen > 0)
-		nread = piperead(myData->u.exec.pipes[EXEC_DATA_P], data, datlen);
+	if (datlen > 0 && !myData->importDone)
+		nread = piperead(myData->importFile->u.exec.pipes[EXEC_DATA_P], data, datlen);
 
 	/* =======================================================================
 	 *                            DO CLOSE
 	 *                            close early to raise error early
 	 * ======================================================================= */
 	if (nread == 0)
-		url_fclose(myData, true, "gphdfs protocol");
+	{
+		myData->importDone = true;
+		url_fclose(myData->importFile, true, "gphdfs protocol");
+	}
 
 	PG_RETURN_INT32((int)nread);
 }
