@@ -746,6 +746,32 @@ static void AdjustVarno(PlannerInfo *root, Node *node, int offset)
 }
 
 /**
+ * Ensure that all rows are gathered on QD.
+ */
+static Plan* GatherToQD(Plan *outerPlan)
+{
+	bool gatheredOnMaster = outerPlan->flow
+			&& outerPlan->flow->flotype == FLOW_SINGLETON
+			&& outerPlan->flow->segindex == -1;
+
+	if (gatheredOnMaster)
+	{
+		return outerPlan;
+	}
+
+	/**
+	 * Some plan nodes don't maintain flow. If it is not set,
+	 * assume it is partitioned.
+	 */
+	if (!outerPlan->flow)
+	{
+		mark_plan_strewn(outerPlan);
+	}
+
+	return (Plan *) make_motion_gather_to_QD(outerPlan, false);
+}
+
+/**
  * Construct the initplan and create a parameter. Save reference to parameter.
  */
 static void ConstructInitPlan(PartitionJoinMutatorContext *ctx)
@@ -754,15 +780,7 @@ static void ConstructInitPlan(PartitionJoinMutatorContext *ctx)
 
 	ctx->outerPlan = plan_pushdown_tlist(ctx->outerPlan, ctx->outerTargetList);
 
-	/**
-	 * Gather rows to QD if they aren't already
-	 */
-	if (! (ctx->outerPlan->flow
-			&& ctx->outerPlan->flow->flotype == FLOW_SINGLETON
-			&& ctx->outerPlan->flow->segindex == -1))
-	{
-		ctx->outerPlan = (Plan *) make_motion_gather_to_QD(ctx->outerPlan, false);
-	}
+	ctx->outerPlan = GatherToQD(ctx->outerPlan);
 
 	/* single tlist entry that is the aggregate target */
 	TargetEntry *tle = ConstructAggTLE(ctx);
