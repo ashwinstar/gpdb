@@ -402,6 +402,10 @@ int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
 
+int			gp_filerep_tcp_keepalives_idle;
+int			gp_filerep_tcp_keepalives_interval;
+int			gp_filerep_tcp_keepalives_count;
+
 int			WalSendClientTimeout = 30000;	// 30 seconds.
 
 char 	   *data_directory;
@@ -3947,6 +3951,38 @@ static struct config_int ConfigureNamesInt[] =
 		&tcp_keepalives_count,
 		0, 0, INT_MAX, assign_tcp_keepalives_count, show_tcp_keepalives_count
 	},
+
+	{
+		{"gp_filerep_tcp_keepalives_idle", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Seconds between issuing TCP keepalives for FileRep connection."),
+			gettext_noop("A value of 0 uses the system default."),
+			GUC_UNIT_S
+		},
+		&gp_filerep_tcp_keepalives_idle,
+		60, 0, INT_MAX, NULL, NULL 
+	},
+
+	{
+		{"gp_filerep_tcp_keepalives_interval", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Seconds between TCP keepalive retransmits for FileRep connection."),
+			gettext_noop("A value of 0 uses the system default."),
+			GUC_UNIT_S
+		},
+		&gp_filerep_tcp_keepalives_interval,
+		30, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_filerep_tcp_keepalives_count", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Maximum number of TCP keepalive retransmits for FileRep connection."),
+			gettext_noop("This controls the number of consecutive keepalive retransmits that can be "
+						 "lost before a connection is considered dead. A value of 0 uses the "
+						 "system default."),
+		},
+		&gp_filerep_tcp_keepalives_count,
+		2, 0, INT_MAX, NULL, NULL
+	},
+
 
 	{
 		{"max_resource_queues", PGC_POSTMASTER, RESOURCES_MGM,

@@ -106,6 +106,12 @@ FileRepConnServer_CreateConnection()
 		tv.tv_sec = file_rep_socket_timeout;
 		tv.tv_usec = 0;	/* Not initializing this can cause strange errors */
 		setsockopt(port->sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
+
+		/* set TCP keep-alive parameters for FileRep connection */
+		(void) pq_setkeepalivesidle(gp_filerep_tcp_keepalives_idle, port);
+		(void) pq_setkeepalivesinterval(gp_filerep_tcp_keepalives_interval, port);
+		(void) pq_setkeepalivescount(gp_filerep_tcp_keepalives_count, port);
+
 		MyProcPort = port;
 	}
 
