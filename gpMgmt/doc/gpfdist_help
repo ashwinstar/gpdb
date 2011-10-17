@@ -41,6 +41,9 @@ than the hosts where Greenplum Database is installed. To install gpfidist
 on another host, simply copy the utility over to that host and add gpfdist 
 to your $PATH.
 
+You can also run gpfdist as a Windows Service. See below for
+details.
+
 
 *****************************************************
 OPTIONS
@@ -106,19 +109,62 @@ Prints out the version of this utility.
 
 Displays online help.
 
+*****************************************************
+RUNNING GPFDIST AS A WINDOWS SERVICE
+*****************************************************
+
+Greenplum Loaders allow gpfdist to run as a Windows 
+Service.
+
+Follow the instructions below to download, register and
+activate gpfdist as a service: 
+
+1. Update your Greenplum Loader package to the latest 
+   version. This package is available from the 
+   EMC Download Center (https://emc.subscribenet.com) 
+
+2. Register gpfdist as a Windows service:
+   * Open a Windows command window
+   * Run the following command:
+      sc create gpfdist binpath= "path_to_gpfdist.exe -p 8081
+      -d External\load\files\path -l Log\file\path"
+      
+     You can create multiple instances of gpfdist by 
+     running the same command again, with a unique 
+     name and port number for each instance, for example:
+       sc create gpfdistN binpath= "path_to_gpfdist.exe
+       -p 8082 -d External\load\files\path -l Log\file\path"
+
+3. Activate the gpfdist service:
+   * Open the Windows Control Panel and select 
+     Administrative Tools>Services.
+   * Highlight then right-click on the gpfdist 
+     service in the list of services.
+   * Select Properties from the right-click menu, 
+     the Service Properties window opens.
+     Note that you can also stop this service 
+     from the Service Properties window.
+   * Optional: Change the Startup Type to 
+     Automatic (after a system restart, this 
+     service will be running), then under Service 
+     status, click Start.
+   * Click OK.
+Repeat the above steps for each instance of 
+gpfdist that you created. 
+
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Serve files from a specified directory using port 8081 (and start 
-gpfdist in the background):
+Serve files from a specified directory using port 8081 
+(and start gpfdist in the background):
 
 gpfdist -d /var/load_files -p 8081 &
 
 
-Start gpfdist in the background and redirect output and errors
-to a log file:
+Start gpfdist in the background and redirect output and 
+errors to a log file:
 
 gpfdist -d /var/load_files -p 8081 -l /home/gpadmin/log &
 
