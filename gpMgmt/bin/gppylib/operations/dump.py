@@ -822,7 +822,17 @@ class DeleteOldestDumps(Operation):
         self.ddboost = ddboost
     def execute(self):
         dburl = dbconn.DbURL(port=self.master_port)
-        old_dates = ListFiles(os.path.join(self.master_datadir, DUMP_DIR)).run()
+        if self.ddboost:
+            cmd = Command('List directories in DDBoost db_dumps dir',
+                'gpddboost --listDir --dir=db_dumps/ | grep ^[0-9]')
+            cmd.run(validateAfter=False)
+            rc = cmd.get_results().rc
+            if rc != 0:
+                logger.info("Cannot find old backup sets to remove on DDboost")
+                return 
+            old_dates = cmd.get_results().stdout.splitlines()
+        else:
+            old_dates = ListFiles(os.path.join(self.master_datadir, DUMP_DIR)).run()
         dump_date = datetime.now().strftime("%Y%m%d")
         try: 
             old_dates.remove(dump_date)
@@ -834,29 +844,36 @@ class DeleteOldestDumps(Operation):
         old_dates.sort()
         old_date = old_dates[0]
 
-        logger.info("Preparing to remove dump %s from all hosts" % old_date)
-        path = os.path.join(self.master_datadir, DUMP_DIR, old_date)
-        try:
-            RemoveTree(path).run()
-        except OSError, e:
-            logger.warn("Error encountered during deletion of %s" % path)
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
-        primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
-        for seg in primaries:
-            path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, old_date)
-            try:
-                RemoveRemoteTree(path, seg.getSegmentHostName()).run()
-            except ExecutionError, e:
-                logger.warn("Error encountered during deletion of %s on %s" % (path, seg.getSegmentHostName()))
-
+        # Remove the directories on DDBoost only. This will avoid the problem
+        # where we might accidently end up deleting local backup files, but 
+        # the intention was to delete only the files on DDboost.          
         if self.ddboost:
             logger.info("Preparing to remove dump %s from DDBoost" % old_date)
             cmd = Command('DDBoost cleanup',
                           'gpddboost --del-dir=%s' % os.path.join(DUMP_DIR, old_date))
-            cmd.run(validateAfter = False)
-            if gplog.logging_is_verbose():
-                logger.debug(cmd.get_results().stdout)
-                logger.debug(cmd.get_results().stderr)
+            cmd.run(validateAfter=False)
+            rc = cmd.get_results().rc
+            if rc != 0:
+                logger.info("Error encountered during deletion of %s on DDBoost" % os.path.join(DUMP_DIR, old_date))  
+            logger.debug(cmd.get_results().stdout)
+            logger.debug(cmd.get_results().stderr)
+
+        else:
+            logger.info("Preparing to remove dump %s from all hosts" % old_date)
+            path = os.path.join(self.master_datadir, DUMP_DIR, old_date)
+
+            try:
+                RemoveTree(path).run()
+            except OSError, e:
+                logger.warn("Error encountered during deletion of %s" % path)
+            gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
+            primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
+            for seg in primaries:
+                path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, old_date)
+                try:
+                    RemoveRemoteTree(path, seg.getSegmentHostName()).run()
+                except ExecutionError, e:
+                    logger.warn("Error encountered during deletion of %s on %s" % (path, seg.getSegmentHostName()))
 
         return old_date
 
