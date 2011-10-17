@@ -2203,8 +2203,9 @@ class gpload:
         # already existing temp table in the catalog which will match
         # the one that we need to use. It must have identical attributes
         # and be called 'temp_gpload_reusable_<tbl>_*'
+        is_temp_table = 'temp'
         if self.reuse_tables == True:
-            
+            is_temp_table = ''
             tableName = quote_unident(self.table)
 
             # MPP-13348
@@ -2233,27 +2234,21 @@ class gpload:
             self.tempTableName = "temp_gpload_reusable_%s_created_%s" % (shortTableName, self.unique_suffix)
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
         
-            # construct a CREATE TABLE statement (without TEMP!)
-            sql = "create table %s(like %s%s)" % (self.tempTableName, self.get_qualified_tablename(), including_defaults)
-        else:
-            # NOTE: there's no real reason to create a *TEMP* table here, since
-            # we will drop it anyway soon. do it for sake of not changing the
-            # tests. it's harmless.
-            method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
-            
-            if method=='update':
-                
-                # it would be tempting to use LIKE here but we cannot as it
-                # inherits NOT NULL and other constraints from the target table
-                # which might not actually be violated by this update.
-                sql = 'create temp table %s' % self.tempTableName
-                cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
-                sql += "(%s)" % ','.join(cols)
-                sql += " distributed by (%s)" % ', '.join(distcols)
-                self.log(self.LOG, sql)
-            else: # (merge)
-                sql = 'create temp table %s(like %s%s)' % (self.tempTableName, self.get_qualified_tablename(), including_defaults)
-                self.log(self.DEBUG, sql)
+        # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
+        # and that is, whether it's a temp table or not. In other words, is_temp_table = '' iff self.reuse_tables == True.
+        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
+        if method=='update':
+            # it would be tempting to use LIKE here but we cannot as it
+            # inherits NOT NULL and other constraints from the target table
+            # which might not actually be violated by this update.
+            sql = 'create %s table %s' % (is_temp_table, self.tempTableName)
+            cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
+            sql += "(%s)" % ','.join(cols)
+            sql += " distributed by (%s)" % ', '.join(distcols)
+            self.log(self.LOG, sql)
+        else: # (merge)
+            sql = 'create %s table %s(like %s%s)' % (is_temp_table, self.tempTableName, self.get_qualified_tablename(), including_defaults)
+            self.log(self.DEBUG, sql)
 
         if not self.options.D:
             self.db.query(sql.encode('utf-8'))
