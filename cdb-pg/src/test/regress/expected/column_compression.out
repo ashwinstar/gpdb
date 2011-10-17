@@ -1365,6 +1365,32 @@ execute ccddlcheck;
 (6 rows)
 
 drop table ccddl;
+-- Should be able to turn have a partition ignore a column encoding clause
+-- if it's explicitly marked appendonly=false. This is to support
+-- what dump has been doing all along
+create table ccddl
+	(i int, j int encoding (compresstype=quicklz))
+	with (appendonly=true, orientation=column)
+	partition by range(i)
+	(
+		partition p1 start(1) end(2) with(appendonly=false),
+		partition p2 start(2) end(3),
+		default column encoding (compresstype=zlib)
+	);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p2" for table "ccddl"
+execute ccddlcheck;
+    relname     | attnum |                       attoptions                       
+----------------+--------+--------------------------------------------------------
+ ccddl          |      1 | {compresstype=none,blocksize=32768}
+ ccddl          |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p2 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p2 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(4 rows)
+
+drop table ccddl;
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure
@@ -1394,6 +1420,19 @@ NOTICE:  CREATE TABLE will create partition "a_1_prt_p1" for table "a"
 ERROR:  partition specific ENCODING clause not supported in SUBPARTITION TEMPLATE
 LINE 3:       subpartition template(start(1) end(10) default column ...
                                     ^
+-- partition level mention of column encoding but the table isn't heap oriented
+CREATE TABLE ccddl
+(a1 int,a2 char(5),a3 text,a4 timestamp ,a5 date) 
+partition by range(a1) 
+	(   
+		start(1) end(1000) every(500),
+		COLUMN a1 ENCODING (compresstype=zlib,compresslevel=4,blocksize=32768)
+	);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_2" for table "ccddl"
+ERROR:  ENCODING clause only supported with column oriented partitioned tables
 -----------------------------------------------------------------------
 -- Type support
 -- Expect: success

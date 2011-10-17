@@ -1392,6 +1392,43 @@ transformInsertRow(ParseState *pstate, List *exprlist,
 	return result;
 }
 
+/*
+ * Tells the caller if CO is explicitly disabled, to handle cases where we
+ * want to ignore encoding clauses in partition expansion.
+ *
+ * This is an ugly special case that backup expects to work and since we've got
+ * tonnes of dumps out there and the possibility that users have learned this
+ * grammar from them, we must continue to support it.
+ */
+static bool
+co_explicitly_disabled(List *opts)
+{
+	ListCell *lc;
+
+	foreach(lc, opts)
+	{
+		DefElem *el = lfirst(lc);
+		char *arg = NULL;
+
+		/* Arguement will be a Value */
+		if (!el->arg)
+			continue;
+
+		arg = defGetString(el);
+
+		if (pg_strcasecmp("appendonly", el->defname) == 0 &&
+			pg_strcasecmp("false", arg) == 0)
+		{
+			return true;
+		}
+		else if (pg_strcasecmp("orientation", el->defname) == 0 &&
+				 pg_strcasecmp("column", arg) != 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 /*
  * Tell the caller whether appendonly=true and orientation=column
@@ -2036,7 +2073,18 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	 * instead.
 	 */
 	if (!is_aocs(stmt->options) && stmt->is_part_child)
-		stmt->attr_encodings = NIL;
+	{
+		if (co_explicitly_disabled(stmt->options) || !stenc)
+			stmt->attr_encodings = NIL;
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("ENCODING clause only supported with "
+							"column oriented partitioned tables")));
+
+		}
+	}
 	else
 		stmt->attr_encodings = transformAttributeEncoding(stenc, stmt, cxt);
 

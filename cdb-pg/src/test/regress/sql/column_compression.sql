@@ -403,6 +403,21 @@ WITH (appendonly=true, orientation=column)
 execute ccddlcheck;
 drop table ccddl;
 
+-- Should be able to turn have a partition ignore a column encoding clause
+-- if it's explicitly marked appendonly=false. This is to support
+-- what dump has been doing all along
+create table ccddl
+	(i int, j int encoding (compresstype=quicklz))
+	with (appendonly=true, orientation=column)
+	partition by range(i)
+	(
+		partition p1 start(1) end(2) with(appendonly=false),
+		partition p2 start(2) end(3),
+		default column encoding (compresstype=zlib)
+	);
+execute ccddlcheck;
+drop table ccddl;
+
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure
@@ -423,6 +438,15 @@ create table a (i int, j int) with (appendonly=true, orientation=column)
       subpartition template(start(1) end(10) default column encoding (compresstype=zlib),
                             start(10) end(20))
 (partition p1 start(1) end(10));
+
+-- partition level mention of column encoding but the table isn't heap oriented
+CREATE TABLE ccddl
+(a1 int,a2 char(5),a3 text,a4 timestamp ,a5 date) 
+partition by range(a1) 
+	(   
+		start(1) end(1000) every(500),
+		COLUMN a1 ENCODING (compresstype=zlib,compresslevel=4,blocksize=32768)
+	);
 
 -----------------------------------------------------------------------
 -- Type support
