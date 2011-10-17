@@ -229,5 +229,6 @@ extern void AddPartitionEncoding(Oid relid, Oid paroid, AttrNumber attnum,
 								 bool deflt, List *encoding);
 extern void RemovePartitionEncodingByRelid(Oid relid);
 extern void RemovePartitionEncodingByRelidAttribute(Oid relid, AttrNumber attnum);
+extern Datum *get_partition_encoding_attoptions(Relation rel, Oid paroid);
 
 #endif   /* CDBPARTITION_H */

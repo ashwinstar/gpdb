@@ -15,6 +15,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_partition.h"
@@ -6187,17 +6188,69 @@ make_par_name(char *parname, bool isevery)
 }
 
 static char *
+column_encodings_to_string(Relation rel, Datum *opts, char *sep, int indent)
+{
+	StringInfoData str;
+	AttrNumber i;
+
+	initStringInfo(&str);
+
+	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+	{
+		char *attname;
+
+		if (rel->rd_att->attrs[i]->attisdropped)
+			continue;
+
+		if (!opts[i])
+			continue;
+
+		if (i > 0)
+			appendStringInfoString(&str, sep);
+
+		attname = NameStr(rel->rd_att->attrs[i]->attname);
+
+		/* only defined for pretty printing */
+		if (indent)
+		{
+			appendStringInfoChar(&str, '\n');
+			appendStringInfoSpaces(&str, indent + 4);
+		}
+		appendStringInfo(&str, "COLUMN %s ENCODING (%s)",
+						 quote_identifier(attname),
+						 reloptions_to_string(opts[i]));
+	}
+
+	return str.data;
+}
+
+static char *
+make_partition_column_encoding_str(Oid relid, int indent)
+{
+	char *str;
+	Relation rel = heap_open(relid, AccessShareLock);
+	Datum *opts = get_rel_attoptions(relid,
+									 RelationGetNumberOfAttributes(rel));
+
+	str = column_encodings_to_string(rel, opts, " ", indent);
+	heap_close(rel, AccessShareLock);
+
+	return str;
+}
+
+static char *
 partition_rule_def_worker(PartitionRule *rule, Node *start, 
 						  Node *end, PartitionRule *end_rule,
 						  Node *every,
 						  Partition *part, bool handleevery, int prettyFlags,
-						  bool bLeafTablename)
+						  bool bLeafTablename, int indent)
 {
 	StringInfoData		 str;
 	deparse_context		 c;
 	char				*reloptions	   = NULL;
 	char				*tspaceoptions = NULL;
 	bool				 needspace	   = false;
+	char 				*colenc = NULL;
 
 	if (OidIsValid(rule->parchildrelid))
 	{
@@ -6270,9 +6323,17 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 
 				pfree(reloptions);
 			}
-			reloptions = sid1.data;
 
+
+			reloptions = sid1.data;
 		}
+
+		/* COLUMN ... ENCODING ( ) for the partition */
+		if (prettyFlags & PRETTYFLAG_INDENT)
+			indent += PRETTYINDENT_STD;
+
+		colenc = make_partition_column_encoding_str(rule->parchildrelid,
+													indent);
 	}
 	else if ((PointerIsValid(rule->parreloptions) ||
 			  OidIsValid(rule->partemplatespaceId))
@@ -6340,6 +6401,7 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			tspaceoptions = sid3.data;
 		}
 
+		/* We do not dump per partition column encodings for templates */
 	}
 
 	initStringInfo(&str);
@@ -6447,6 +6509,9 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 						 tspaceoptions);
 	}
 
+	if (colenc && strlen(colenc) > 0)
+		appendStringInfo(&str, " %s", colenc);
+
 	return str.data;
 }
 
@@ -6482,7 +6547,8 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 									end, end_rule, 
 									every, pn->part, handleevery,
 									body->prettyFlags,
-									bLeafTablename);
+									bLeafTablename,
+									body->indentLevel);
 	if (str && strlen(str))
 	{
 		if (strlen(body->buf->data) && !first_rule && 
@@ -6768,7 +6834,35 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 	}
 
 	if (pn->rules || pn->default_part)
+	{
+		if (pn->part->paristemplate)
+		{
+			/* Add column encoding rules at the end */
+			int indent = 0;
+			Relation rel = heap_open(pn->part->parrelid, AccessShareLock);
+			Datum *opts = get_partition_encoding_attoptions(rel, 
+															pn->part->partid);
+			char *str;
+
+			if (PRETTY_INDENT(body))
+			{
+				/* subtract 2 for the built in stepping in indentLevel */
+				indent = body->indentLevel - 2;
+				if (indent < 0)
+					indent = 0;
+			}	
+
+			str = column_encodings_to_string(rel, opts, ", ", indent);
+
+			if (str && strlen(str) > 0)
+				appendStringInfo(body->buf, ", %s", str);
+
+			heap_close(rel, AccessShareLock);
+
+		}
+
 		appendContextKeyword(body, ")", 0, -PRETTYINDENT_STD, 2);
+	}
 }
 
 /* MPP-6095: dump template definitions */
@@ -7053,7 +7147,7 @@ get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 	return partition_rule_def_worker(rule, rule->parrangestart, 
 									 rule->parrangeend, rule,
 									 rule->parrangeevery, part, 
-									 false, prettyFlags, bLeafTablename);
+									 false, prettyFlags, bLeafTablename, 0);
 }
 
 Datum

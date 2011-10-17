@@ -79,7 +79,11 @@ get_funcs_for_compression(char *compresstype)
 	return func;
 }
 
-static Datum *
+/*
+ * Get datum representations of the attoptions field in pg_attribute_encoding
+ * for the given relation.
+ */
+Datum *
 get_rel_attoptions(Oid relid, AttrNumber max_attno)
 {
 	Form_pg_attribute attform;

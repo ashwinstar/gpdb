@@ -596,4 +596,28 @@ SET enable_seqscan = FALSE;
 -- to the same internal representation.
 SELECT owner, property FROM ccddl
  WHERE property ~= '((7052,250),(6050,20))';
+drop table ccddl;
 
+-----------------------------------------------------------------------
+-- Dump / restore
+-----------------------------------------------------------------------
+
+-- We can only test partition dumping here, since pg_dump does table level
+-- dump/restore
+
+create table ccddl (i int, j int)
+with (appendonly=true, orientation=column)
+partition by range(i) subpartition by range(j)
+	subpartition template
+		( subpartition sp1 start(1) end(2),
+		  subpartition sp2 start(2) end (3),
+		  column i encoding (compresstype=quicklz),
+		  column j encoding (blocksize=65536)
+		)
+	(partition p1 start(1) end (2));
+
+select pg_get_partition_def('ccddl'::regclass, true);
+
+select pg_get_partition_template_def('ccddl'::regclass, true, false);
+
+drop table ccddl;

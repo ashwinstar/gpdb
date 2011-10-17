@@ -40,6 +40,7 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/datum.h"
 #include "utils/elog.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -8286,15 +8287,18 @@ add_template_encoding_clauses(Oid relid, Oid paroid, List *stenc)
 	}
 }
 
-static List *
-get_deparsed_partition_encodings(Oid relid, Oid paroid)
+Datum *
+get_partition_encoding_attoptions(Relation rel, Oid paroid)
 {
-	List		   *out = NIL;
 	ScanKeyData		key[1];
 	SysScanDesc		scan;
 	HeapTuple		tup;
 	Relation		pgpeenc = heap_open(PartitionEncodingRelationId,
 										RowExclusiveLock);
+	Datum		   *opts;
+
+
+	opts = palloc0(sizeof(Datum) * RelationGetNumberOfAttributes(rel));
 
 	ScanKeyInit(&key[0],
 				Anum_pg_partition_encoding_parencoid,
@@ -8306,11 +8310,9 @@ get_deparsed_partition_encodings(Oid relid, Oid paroid)
 
 	while ((tup = systable_getnext(scan)) != NULL)
 	{
-		ColumnReferenceStorageDirective *c;
 		Datum paroptions;
 		AttrNumber attnum;
 		bool isnull;
-		char *column;
 		
 		attnum = ((Form_pg_partition_encoding)GETSTRUCT(tup))->parencattnum;
 		paroptions = heap_getattr(tup,
@@ -8319,16 +8321,41 @@ get_deparsed_partition_encodings(Oid relid, Oid paroid)
 								  &isnull);
 
 		Insist(!isnull);
-		
-		c = makeNode(ColumnReferenceStorageDirective);
-		c->encoding = untransformRelOptions(paroptions);
-		column = get_attname(relid, attnum);
-		c->column = makeString(column);
-		out = lappend(out, c);
+		Insist((attnum - 1) >= 0);
+
+		opts[attnum - 1] = datumCopy(paroptions, false, -1);
 	}
 
 	systable_endscan(scan);
 	heap_close(pgpeenc, RowExclusiveLock);
+
+	return opts;
+}
+
+static List *
+get_deparsed_partition_encodings(Oid relid, Oid paroid)
+{
+	int i;
+	List *out = NIL;
+	Relation rel = heap_open(relid, AccessShareLock);
+	Datum *opts = get_partition_encoding_attoptions(rel, paroid);
+
+	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+	{
+		if (opts[i] && !rel->rd_att->attrs[i]->attisdropped)
+		{
+			char *column;
+			ColumnReferenceStorageDirective *c =
+				makeNode(ColumnReferenceStorageDirective);
+
+			c->encoding = untransformRelOptions(opts[i]);
+			column = get_attname(relid, i + 1);
+			c->column = makeString(column);
+			out = lappend(out, c);
+		}
+	}
+
+	heap_close(rel, AccessShareLock);
 
 	return out;
 }
