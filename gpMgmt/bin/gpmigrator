@@ -1975,7 +1975,7 @@ class GPUpgrade(GPUpgradeBase):
             '''
                SELECT 
                   datname 
-               FROM pg_database 
+               FROM pg_database where datname != 'template0'
                ORDER BY datname
             ''', port=port)
 
@@ -2008,7 +2008,7 @@ class GPUpgrade(GPUpgradeBase):
                       and d.dattablespace = ts.oid
                       and ts.spcfsoid = fs.oid
                       and d.datname = '%s';
-                ''' % (dir, db), port=port, db='template1')
+                ''' % (dir, db), port=port, db=db)
                 
                 first = True
                 f = []
@@ -2050,6 +2050,13 @@ class GPUpgrade(GPUpgradeBase):
                 for f in fs:
                     # Prefix each name with the database it's in
                     mapfile.write('db:%s\n' % f)
+                    
+            # add template0
+            r = self.Select("""select oid from pg_database where 
+                               datname = 'template0'""", port=port)
+            if len(r) > 0:
+                mapfile.write('dir:%s\n' % os.path.join('base', str(r[0])))
+
             for f in meta:
                 mapfile.write('meta:%s\n' % f)
 
@@ -2278,6 +2285,8 @@ class GPUpgrade(GPUpgradeBase):
                         os.remove(right)
                     os.link(left, right)
                 elif maptype == 'meta':
+                    do_copy(src, dst, f)
+                elif maptype == 'dir':
                     do_copy(src, dst, f)
                 else:
                     (filespace, segid, tablespace, dbid, filenode) = f.rsplit("/", 4)
