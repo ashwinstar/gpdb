@@ -121,6 +121,28 @@ static uint16 readInt2FromBuffer(char* buffer, int *offset)
 }
 
 /**
+ * Write a int1 to the buffer
+ */
+static void appendInt1ToBuffer(StringInfo buf, uint8 val)
+{
+	unsigned char n8;
+	n8 = (unsigned char)val;
+	appendBinaryStringInfo(buf, (char *) &n8, 1);
+}
+
+/**
+ * Read a int1 to the buffer, given the offset;
+ * it will return the int value and increase the offset
+ */
+static uint8 readInt1FromBuffer(char* buffer, int *offset)
+{
+	uint8 n8;
+	memcpy(&n8, &buffer[*offset], sizeof(uint8));
+	*offset += 1;
+	return n8;
+}
+
+/**
  * Tells whether the given type will be formatted as binary or text
  */
 static inline bool isBinaryFormatType(Oid typeid)
@@ -150,7 +172,7 @@ static inline bool isVariableLength(Oid typeid)
 /**
  * Convert typeOID to java enum DBType.ordinal()
  */
-static inline int16 getJavaEnumOrdinal(Oid typeid)
+static inline int8 getJavaEnumOrdinal(Oid typeid)
 {
 	/* For version 1, we support binary format for these type */
 	switch (typeid)
@@ -169,7 +191,7 @@ static inline int16 getJavaEnumOrdinal(Oid typeid)
 /**
  * Convert java enum DBType.ordinal() to typeOID
  */
-static inline Oid getTypeOidFromJavaEnumOrdinal(int16 enumType)
+static inline Oid getTypeOidFromJavaEnumOrdinal(int8 enumType)
 {
 	switch(enumType)
 	{
@@ -326,11 +348,11 @@ gphdfsformatter_export(PG_FUNCTION_ARGS)
 	/**
 	 * Now, compute the total payload and header length
 	 * header = total length (4 byte), Version (2 byte), #col (2 byte)
-	 * col type array = #col * 2 byte
+	 * col type array = #col * 1 byte
 	 * null bit array = ceil(#col/8)
 	 */
 	datlen = sizeof(int32)+sizeof(int16)+sizeof(int16);
-	datlen += ncolumns*2;
+	datlen += ncolumns;
 	datlen += getNullByteArraySize(ncolumns);
 
 	/**
@@ -419,7 +441,7 @@ gphdfsformatter_export(PG_FUNCTION_ARGS)
 
 	/* Write col type */
 	for(i=0; i<ncolumns; i++)
-		appendInt2ToBuffer(myData->export_format_tuple,
+		appendInt1ToBuffer(myData->export_format_tuple,
 				getJavaEnumOrdinal(tupdesc->attrs[i]->atttypid));
 
 	/* Write Nullness */
@@ -601,7 +623,7 @@ gphdfsformatter_import(PG_FUNCTION_ARGS)
 	{
 		Oid   input_type = 0;
 		Oid   defined_type = tupdesc->attrs[i]->atttypid;
-		int16 enumType   = readInt2FromBuffer(data_buf, &bufidx);
+		int8  enumType   = readInt1FromBuffer(data_buf, &bufidx);
 
 		/* Convert enumType to type oid */
 		input_type = getTypeOidFromJavaEnumOrdinal(enumType);

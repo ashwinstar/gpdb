@@ -120,7 +120,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Serialize the object using the following format:
 	 * Total Length | Version | #columns | Col type | Col type |... | Null Bit array   | Col val...
-     * 4 byte		| 2 byte	2 byte	   2 byte     2 byte	      ceil(#col/8) byte	 fixed length or var len
+     * 4 byte		| 2 byte	2 byte	   1 byte     1 byte	      ceil(#col/8) byte	 fixed length or var len
      * 
      * For fixed length type, we know the length.
      * In the col val, we align pad according to the alignemnt requirement of the type.
@@ -145,8 +145,8 @@ public class GPDBWritable implements Writable {
 		colType = new int[colCnt];
 		DBType[] coldbtype = new DBType[colCnt];
 		for(int i=0; i<colCnt; i++) {
-			int enumType = in.readShort();
-			curOffset += 2;
+			int enumType = (int)(in.readByte());
+			curOffset += 1;
 			if      (enumType == DBType.BIGINT.ordinal())   { colType[i] = BIGINT; coldbtype[i] = DBType.BIGINT;} 
 			else if (enumType == DBType.BOOLEAN.ordinal())  { colType[i] = BOOLEAN; coldbtype[i] = DBType.BOOLEAN;}
 			else if (enumType == DBType.FLOAT8.ordinal())   { colType[i] = FLOAT8;  coldbtype[i] = DBType.FLOAT8;}
@@ -231,7 +231,7 @@ public class GPDBWritable implements Writable {
 		int       numCol    = colType.length;
 		boolean[] nullBits  = new boolean[numCol];
 		int[]     colLength = new int[numCol];
-		int[]     enumType  = new int[numCol];
+		byte[]    enumType  = new byte[numCol];
 		int[]     padLength = new int[numCol];
 		int       maxpad    = 0;
 		byte[]    padbytes  = null;
@@ -239,11 +239,11 @@ public class GPDBWritable implements Writable {
 		/**
 		 * Compute the total payload and header length
 		 * header = total length (4 byte), Version (2 byte), #col (2 byte)
-		 * col type array = #col * 2 byte
+		 * col type array = #col * 1 byte
 		 * null bit array = ceil(#col/8)
 		 */
 		int datlen = 4+2+2;
-		datlen += numCol*2;
+		datlen += numCol;
 		datlen += getNullByteArraySize(numCol);
 		
 		for(int i=0; i<numCol; i++) {
@@ -259,7 +259,7 @@ public class GPDBWritable implements Writable {
 				case BYTEA:    coldbtype = DBType.BYTEA; break;
 				default:       coldbtype = DBType.TEXT; 
 			}
-			enumType[i] = coldbtype.ordinal();
+			enumType[i] = (byte)(coldbtype.ordinal());
 
 			/* Get the actual value, and set the null bit */
 			if (colValue[i] == null) {
@@ -310,7 +310,7 @@ public class GPDBWritable implements Writable {
 		
 		/* Write col type */
 		for(int i=0; i<numCol; i++)
-			out.writeShort(enumType[i]);
+			out.writeByte(enumType[i]);
 		
 		/* Nullness */
 		byte[] nullBytes = boolArrayToByteArray(nullBits);
