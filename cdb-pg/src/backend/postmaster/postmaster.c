@@ -2894,7 +2894,6 @@ processTransitionRequest_beginPostmasterReset(void)
 	char statusBuf[10000];
  	int counterToReturn;
 
- 	copyTransitionParametersToLocalMemory();
  	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
 
 	if (args.mode == PMModeMaster)

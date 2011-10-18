@@ -129,6 +129,11 @@ typedef struct PMModuleState
 	 */
 	volatile TransitionState transitionState;
 
+	/**
+	  * Has the postmaster copied the currently requested transition to its local memory yet?
+	  */
+	volatile bool transitionCopiedToPMLocalMem;
+
     /* FILE REPLICATION PARAMETERS */
 	volatile PrimaryMirrorMode mode;
 	volatile SegmentState_e segmentState;
@@ -883,6 +888,7 @@ primaryMirrorModeShmemInit(void)
 
 	pmModuleState = (PMModuleState *) ShmemAlloc(sizeof(PMModuleState));
 	pmModuleState->isTransitionRequested = false;
+	pmModuleState->transitionCopiedToPMLocalMem = false;
 	pmModuleState->mode = PMModeUninitialized;
 	pmModuleState->segmentState = SegmentStateNotInitialized;
 	pmModuleState->dataState = DataStateNotInitialized;
@@ -924,6 +930,7 @@ static void
 resetModuleStateForInitialTransition(void)
 {
 	pmModuleState->isTransitionRequested = true;
+	pmModuleState->transitionCopiedToPMLocalMem = false;
 	pmModuleState->isTransitionListenerFinished = true; /* yes, true, because there is no waiting dispatcher */
 	pmModuleState->transitionState = TSNone;
     pmModuleState->requestedTransition.transitionNumber = pmModuleState->transitionNumberCounter++;
@@ -1183,6 +1190,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 					pmModuleState->isTransitionRequested = true;
 					pmModuleState->requestedTransition = *args;
 					pmModuleState->isTransitionListenerFinished = false;
+					pmModuleState->transitionCopiedToPMLocalMem = false;
 					pmModuleState->transitionState = TSNone;
 					pmModuleState->requestedTransition.transitionNumber = args->transitionNumber;
 				}
@@ -1425,6 +1433,22 @@ isPrimaryMirrorModeTransitionRequested(void)
 
 
 /*
+ * Update local memory with passed transition request
+ */
+static void
+setTransitionParametersToLocalMemory(PrimaryMirrorModeTransitionArguments *args)
+{
+	Assert(pmModuleState->isTransitionRequested);
+	if (!pmModuleState->transitionCopiedToPMLocalMem)
+	{
+		pmLocalState.mostRecentTransition = *args;
+		pmLocalState.haveSetMostRecentTransition = true;
+		pmModuleState->transitionCopiedToPMLocalMem = true;
+	}
+}
+
+
+/*
  * Copy most recent transition request from shared memory to local memory
  */
 void copyTransitionParametersToLocalMemory()
@@ -1432,6 +1456,7 @@ void copyTransitionParametersToLocalMemory()
 	/* this is called before resetting shared memory so no locking is required */
 	pmLocalState.mostRecentTransition = pmModuleState->requestedTransition;
 	pmLocalState.haveSetMostRecentTransition = true;
+	pmModuleState->transitionCopiedToPMLocalMem = true;
 }
 
 
@@ -1595,6 +1620,13 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 			}
 
 			Assert(result != PMTransitionOtherTransitionInProgress);
+
+			if (result != PMTransitionInvalidTargetMode &&
+			    result != PMTransitionInvalidInputParameter)
+			{
+				/* copy transition request to local memory so that a postmaster reset can replay it */
+				setTransitionParametersToLocalMemory(&requestedTransition);
+			}
 
 			if (result != PMTransitionSuccess)
 			{
