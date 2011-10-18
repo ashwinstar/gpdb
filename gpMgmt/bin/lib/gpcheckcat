@@ -3621,6 +3621,11 @@ def runAllTests():
             sys.exit(1)
                    
         logger.debug('Building catalog repair scripts')
+        # set allow_system_table_mods GUC for gpdb >= 4.2
+        catmod_guc = ""
+        if GV.version >= "4.2":
+            catmod_guc = "-c allow_system_table_mods=dml"
+
         # build a script to run these files     
         script = '#!/bin/bash\ncd $(dirname $0)\n'
 
@@ -3672,9 +3677,10 @@ def runAllTests():
 
             script += '%secho "Repairing segment %i"\n' % (maybeRemove, seg)
             script += '''
-{maybe}env PGOPTIONS="-c gp_session_role=utility -c allow_system_table_mods=dml" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
+{maybe}env PGOPTIONS="-c gp_session_role=utility {guc}" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
 '''.format(
                 maybe = maybeRemove,
+                guc = catmod_guc,
                 hostname = c['hostname'], 
                 port = c['port'], 
                 fname = filename, 
