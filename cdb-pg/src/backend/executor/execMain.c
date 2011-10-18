@@ -47,6 +47,7 @@
 #include "catalog/aoseg.h"
 #include "catalog/aoblkdir.h"
 #include "catalog/catalog.h"
+#include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h" /* XXX: temp for get_parts() */
@@ -4187,6 +4188,19 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 */
 	intoRelationDesc = heap_open(intoRelationId, AccessExclusiveLock);
 	
+	/*
+	 * Add column encoding entries based on the WITH clause.
+	 *
+	 * NOTE:  we could also do this expansion during parse analysis, by
+	 * expanding the IntoClause options field into some attr_encodings field
+	 * (cf. CreateStmt and transformCreateStmt()). As it stands, there's no real
+	 * benefit for doing that from a code complexity POV. In fact, it would mean
+	 * more code. If, however, we supported column encoding syntax during CTAS,
+	 * it would be a good time to relocate this code.
+	 */
+	AddDefaultRelationAttributeOptions(intoRelationDesc,
+									   intoClause->options);
+
 	/* use_wal off requires rd_targblock be initially invalid */
 	Assert(intoRelationDesc->rd_targblock == InvalidBlockNumber);
 	

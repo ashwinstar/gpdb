@@ -76,5 +76,6 @@ Node *coerce_partition_value(Node *node, Oid typid, int32 typmod,
 							 PartitionByType partype);
 List *transformStorageEncodingClause(List *options);
 List *TypeNameGetStorageDirective(TypeName *typname);
+extern List * form_default_storage_directive(List *enc);
 
 #endif   /* ANALYZE_H */

@@ -172,6 +172,13 @@ create table ccddl_co (like ccddl,
 with (appendonly=true, orientation=column, compresstype=zlib);
 drop table ccddl;
 
+-- Make sure we preserve WITH() in the presence of CTAS 
+create table ccddl (a, b)
+with (appendonly=true, orientation=column, compresstype=quicklz) as
+select 1, 1;
+execute ccddlcheck;
+drop table ccddl;
+
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: success

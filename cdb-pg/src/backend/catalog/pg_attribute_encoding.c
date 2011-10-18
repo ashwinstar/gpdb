@@ -15,6 +15,7 @@
 #include "catalog/dependency.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbappendonlystoragelayer.h"
+#include "parser/analyze.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
@@ -276,6 +277,37 @@ RelationGetRelationCompressionFuncs(Relation rel)
 
 	return compFuncs;
 
+}
+
+/*
+ * Given a WITH(...) clause and no other column encoding directives -- such as
+ * in the case of CREATE TABLE WITH () AS SELECT -- fill in the column encoding
+ * catalog entries for that relation.
+ */
+void
+AddDefaultRelationAttributeOptions(Relation rel, List *options)
+{
+	Datum opts;
+	AttrNumber attno;
+	List *ce;
+
+	/* only supported on AOCO at this stage */
+	if (!RelationIsAoCols(rel))
+		return;
+
+ 	ce = form_default_storage_directive(options);
+	if (!ce)
+		ce = default_column_encoding_clause();
+
+	ce = transformStorageEncodingClause(ce);
+
+	opts = transformRelOptions(PointerGetDatum(NULL), ce, true, false);
+
+	for (attno = 1; attno <= RelationGetNumberOfAttributes(rel); attno++)
+		add_attribute_encoding_entry(RelationGetRelid(rel),
+									 attno,
+									 opts);
+	CommandCounterIncrement();
 }
 
 /*

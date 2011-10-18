@@ -1730,7 +1730,7 @@ TypeNameGetStorageDirective(TypeName *typname)
 /*
  * Make a default column storage directive from a WITH clause
  */
-static List *
+List *
 form_default_storage_directive(List *enc)
 {
 	List *out = NIL;
