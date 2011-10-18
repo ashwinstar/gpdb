@@ -89,6 +89,8 @@ void
 FileRepConnClient_CloseConnection(void)
 {
 	if (conn) {
+		/* use non-blocking mode to avoid the long timeout in pqSendSome */
+		conn->nonblocking = TRUE;
 		PQfinish(conn);
 		conn = NULL;
 	}
