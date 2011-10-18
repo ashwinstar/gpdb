@@ -421,8 +421,6 @@ void BackoffBackendEntryInit(int sessionid, int commandcount, int weight)
 	/* Shared information */
 	mySharedEntry = myBackoffSharedEntry();
 
-	init(&mySharedEntry->statementId, sessionid, commandcount);
-	Assert(!isInvalid(&mySharedEntry->statementId));
 	mySharedEntry->targetUsage = 1.0 / numProcsPerSegment(); /* Initially, do not perform any backoffs */
 	mySharedEntry->isActive = false;
 	mySharedEntry->noBackoff = false;
@@ -437,6 +435,10 @@ void BackoffBackendEntryInit(int sessionid, int commandcount, int weight)
 	mySharedEntry->weight = weight;
 	mySharedEntry->groupSize = 0;
 	mySharedEntry->numFollowers = 1;
+
+	/* this should happen last or the sweeper may pick up a non-complete entry */
+	init(&mySharedEntry->statementId, sessionid, commandcount);
+	Assert(!isInvalid(&mySharedEntry->statementId));
 
 	/* Local information */
 	myLocalEntry = myBackoffLocalEntry();
