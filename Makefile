@@ -995,7 +995,6 @@ SET_VERSION_SCRIPTS = \
 	bin/gpmigrator \
 	bin/gpmigrator_mirror \
 	bin/gpmovemirrors \
-	bin/gppkg \
 	bin/gprebuildsystem \
 	bin/gprecoverseg \
 	bin/gpscp \
@@ -1026,6 +1025,7 @@ SET_VERSION_SCRIPTS = \
 	lib/python/gppylib/programs/clsInjectFault.py \
 	lib/python/gppylib/programs/clsRecoverSegment.py \
 	lib/python/gppylib/programs/clsSystemState.py \
+	lib/python/gppylib/programs/gppkg.py \
 	$(NULL)
 
 set_scripts_version : 
