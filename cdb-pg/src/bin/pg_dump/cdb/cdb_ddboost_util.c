@@ -244,25 +244,25 @@ main(int argc, char **argv)
 	/* Take appropriate actions here */
 	if (dd_options->copyFromDDBoost)
 	{
-		copyFileFromDDBoost(dd_options);
+		failCount = copyFileFromDDBoost(dd_options);
 		goto cleanup;
 	}
 
 	if (dd_options->copyToDDBoost)
 	{
-		copyFileToDDBoost(dd_options);
+		failCount = copyFileToDDBoost(dd_options);
 		goto cleanup;
 	}
 
 	if (dd_options->deleteDir)
 	{
-		deleteDir(dd_options, ddp_conn);
+		failCount = deleteDir(dd_options, ddp_conn);
 		goto cleanup;
 	}
 
 	if (dd_options->deleteFile)
 	{
-		deleteFile(dd_options, ddp_conn);
+		failCount = deleteFile(dd_options, ddp_conn);
 		goto cleanup;	
 	}
 
