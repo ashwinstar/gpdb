@@ -1964,7 +1964,7 @@ appendonly_fetch_init(
 
 		cs = callCompressionConstructor(cons, RelationGetDescr(relation),
 										&sa,
-										true /* compress */);
+										false /* decompress */);
 		aoFetchDesc->storageRead.compressionState = cs;
 	}
 
