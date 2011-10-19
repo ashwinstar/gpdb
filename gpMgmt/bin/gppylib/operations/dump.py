@@ -757,7 +757,9 @@ class DumpConfig(Operation):
                 relpath = os.path.join(DUMP_DIR, dump_date, config_backup_file)
                 logger.debug('Copying %s to DDBoost' % abspath)
                 cmd = Command('DDBoost copy of %s' % abspath,
-                              'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
+                              'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath),
+                              ctxt=REMOTE,
+                              remoteHost=host)
                 cmd.run(validateAfter = True)
 
 
@@ -855,9 +857,8 @@ class DeleteOldestDumps(Operation):
             rc = cmd.get_results().rc
             if rc != 0:
                 logger.info("Error encountered during deletion of %s on DDBoost" % os.path.join(DUMP_DIR, old_date))  
-            logger.debug(cmd.get_results().stdout)
-            logger.debug(cmd.get_results().stderr)
-
+                logger.debug(cmd.get_results().stdout)
+                logger.debug(cmd.get_results().stderr)
         else:
             logger.info("Preparing to remove dump %s from all hosts" % old_date)
             path = os.path.join(self.master_datadir, DUMP_DIR, old_date)

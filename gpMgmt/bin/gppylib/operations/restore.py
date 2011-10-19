@@ -11,7 +11,7 @@ from gppylib.db import dbconn
 from gppylib.db.dbconn import execSQL, execSQLForSingleton
 from gppylib.gparray import GpArray
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
-from gppylib.commands.base import WorkerPool, Command
+from gppylib.commands.base import WorkerPool, Command, REMOTE
 from gppylib.commands.gp import Psql
 from gppylib.commands.unix import Scp
 from gppylib.operations import Operation
@@ -324,8 +324,9 @@ class BuildDDBoostTableDumps(Operation):
             table_str = ' '.join(['--table=%s' % table for table in self.restore_tables])
             # TODO: Escaping. Low priority due to MPP-12880, et al
             cmd = Command('DDBoost building dump file for dbid %s' % seg.getSegmentDbId(),
-                          'gpddboost --from-file=%s --to-file=%s %s'
-                          % (real_filename, fake_filename, table_str))
+                          'gpddboost --from-file=%s --to-file=%s %s' % (real_filename, fake_filename, table_str),
+                          ctxt=REMOTE,
+                          remoteHost = seg.getSegmentHostName())
             pool.addCommand(cmd)
         pool.join()
         pool.check_results()
@@ -339,7 +340,7 @@ class BuildDDBoostTableDumps(Operation):
         real_createdb = os.path.join(DUMP_DIR, self.restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.restore_timestamp))
         fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
         Command('Copying cdatabase file from DDBoost',
-                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s'
+                'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s' 
                 % (real_createdb, fake_createdb)).run(validateAfter = True)
 
         return fake_timestamp
