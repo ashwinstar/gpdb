@@ -2872,6 +2872,9 @@ alter_table_partition_cmd:
 						{
 							PartitionElem *e = lfirst(lc);
 
+							if (!IsA(e, PartitionElem))
+								continue;
+
 							if (e->subSpec)
 								ereport(ERROR,
 										(errcode(ERRCODE_SYNTAX_ERROR),

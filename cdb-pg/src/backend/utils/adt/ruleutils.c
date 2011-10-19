@@ -6192,6 +6192,7 @@ column_encodings_to_string(Relation rel, Datum *opts, char *sep, int indent)
 {
 	StringInfoData str;
 	AttrNumber i;
+	bool need_comma = false;
 
 	initStringInfo(&str);
 
@@ -6205,7 +6206,7 @@ column_encodings_to_string(Relation rel, Datum *opts, char *sep, int indent)
 		if (!opts[i])
 			continue;
 
-		if (i > 0)
+		if (need_comma)
 			appendStringInfoString(&str, sep);
 
 		attname = NameStr(rel->rd_att->attrs[i]->attname);
@@ -6219,6 +6220,7 @@ column_encodings_to_string(Relation rel, Datum *opts, char *sep, int indent)
 		appendStringInfo(&str, "COLUMN %s ENCODING (%s)",
 						 quote_identifier(attname),
 						 reloptions_to_string(opts[i]));
+		need_comma = true;
 	}
 
 	return str.data;
