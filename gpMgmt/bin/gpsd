@@ -73,16 +73,14 @@ pg_dump does not script constraints on inherited tables correctly, in particular
 
 =head1 AUTHORS
  
-Florian Waas (flw@greenplum.com)
- 
-Copyright (C) 2007 - 2011 Greenplum Inc.  All rights reserved.
+Copyright (C) 2007 - 2011 Greenplum.  All rights reserved.
 
 =cut
 
 my $glob_id = "";
 
 my $GPSD = "gpsd";
-my $copyright = "Copyright (C) 2007 - 2011  Greenplum Inc.";
+my $copyright = "Copyright (C) 2007 - 2011  Greenplum";
 my $psqlClient = "psql";
 my $pgdump = "pg_dump";
 my $pgdumpall = "pg_dumpall";
