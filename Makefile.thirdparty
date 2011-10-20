@@ -129,7 +129,7 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	apr-util/1.2.12
 	bzip2/1.0.5
 	clapack/3.1.1
-	curl/7.17.1
+	curl/7.21.7
 	emcconnect/1.0
 	json-c/0.6
 	krb5/1.6.2
