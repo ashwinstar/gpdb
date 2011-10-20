@@ -2,7 +2,7 @@
 %define _topdir     %{postgis_dir}/package 
 %define name        postgis
 %define release     1
-%define version     1.4.2
+%define version     1.0
 %define buildroot   %{postgis_dir}/postgis/build
 %define buildarch   %(uname -p) 
 %define __os_install_post %{nil}
