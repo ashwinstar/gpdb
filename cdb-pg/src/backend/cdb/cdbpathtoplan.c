@@ -19,6 +19,8 @@
 
 #include "cdb/cdbpathtoplan.h"  /* me */
 
+extern List *add_to_flat_tlist(List *tlist, List *exprs, bool resjunk);
+
 
 /*
  * cdbpathtoplan_create_flow
@@ -168,6 +170,8 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                                           path->path.parent->relids,
                                                           subplan->targetlist);
         Insist(hashExpr);
+		subplan->targetlist = add_to_flat_tlist(subplan->targetlist, hashExpr, true /* resjunk */);
+
         motion = make_hashed_motion(subplan,
                                     hashExpr,
                                     false /* useExecutorVarFormat */);

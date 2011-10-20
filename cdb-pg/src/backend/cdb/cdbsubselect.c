@@ -1084,6 +1084,11 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
     	{
     		return (Node *) sublink;
     	}
+
+    	if (contain_subplans(subselect->jointree->quals))
+    	{
+    		return (Node *) sublink;
+    	}
     }
 
     /*

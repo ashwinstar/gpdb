@@ -735,6 +735,11 @@ prescan_walker(Node *node, PlanProfile * context)
         	context->dispatchParallel = true;
 
         context->currentPlanFlow = plan->flow;
+        if (context->currentPlanFlow
+        		&& context->currentPlanFlow->flow_before_req_move)
+        {
+        	context->currentPlanFlow = context->currentPlanFlow->flow_before_req_move;
+        }
 
     }
 
@@ -765,7 +770,7 @@ prescan_walker(Node *node, PlanProfile * context)
 
 		case T_Motion:
 		{
-			context->dispatchParallel = TRUE;
+			context->dispatchParallel = true;
 			break;
 		}
 

@@ -586,6 +586,7 @@ bool        gp_enable_groupext_distinct_pruning = true;
 bool        gp_enable_groupext_distinct_gather = true;
 bool		gp_dynamic_partition_pruning = true;
 bool		gp_log_dynamic_partition_pruning = false;
+bool		gp_cte_sharing = false;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -3074,6 +3075,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_cte_sharing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("This guc enables sharing of plan fragments for common table expressions."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_cte_sharing,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_log_dynamic_partition_pruning", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("This guc enables debug messages related to dynamic partition pruning."),
 			NULL,
@@ -4734,7 +4745,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB | GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_resqueue_memory_policy_auto_fixed_mem,
-		200, 50, INT_MAX, NULL, NULL
+		100, 50, INT_MAX, NULL, NULL
 	},
 
 	/* End-of-list marker */

@@ -1040,20 +1040,14 @@ SS_finalize_plan(PlannerInfo *root, List *rtable, Plan *plan, bool attach_initpl
 	foreach(l, root->glob->paramlist)
 	{
 		PlannerParamItem *pitem = (PlannerParamItem *) lfirst(l);
-		if (IsA(pitem->item, Param))
-		{
-#ifdef USE_ASSERT_CHECKING
-			Param *p = (Param *) pitem->item;
-			Assert(p->paramid == paramid);
-#endif
-			valid_params = bms_add_member(valid_params, paramid);
-		}
+		AssertImply(IsA(pitem->item, Param), ((Param *) pitem->item)->paramid == paramid);
+
+		valid_params = bms_add_member(valid_params, paramid);
 
 		if (pitem->abslevel <= root->query_level)
 		{
 			/* valid outer-level parameter */
 			outer_params = bms_add_member(outer_params, paramid);
-			valid_params = bms_add_member(valid_params, paramid);
 		}
 
 		paramid++;

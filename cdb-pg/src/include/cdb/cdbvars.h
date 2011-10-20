@@ -895,6 +895,11 @@ extern bool	gp_enable_hash_partitioned_tables;
  */
 extern bool gp_dynamic_partition_pruning;
 
+/**
+ * Sharing of plan fragments for common table expressions
+ */
+extern bool gp_cte_sharing;
+
 /* turn SQL/MED functionality on */
 
 extern bool	gp_foreign_data_access;

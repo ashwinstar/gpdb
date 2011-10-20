@@ -426,6 +426,16 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 					  best_path->pathkeys,
 					  plan);
 
+	/**
+	 * If plan has a flow node, ensure all entries of hashExpr
+	 * are in the targetlist.
+	 */
+	if (plan->flow
+			&& plan->flow->hashExpr)
+	{
+		plan->targetlist = add_to_flat_tlist(plan->targetlist, plan->flow->hashExpr, true /* resjunk */);
+	}
+
 	/*
 	 * If there are any pseudoconstant clauses attached to this node, insert a
 	 * gating Result node that evaluates the pseudoconstants as one-time
@@ -636,6 +646,23 @@ create_join_plan(CreatePlanContext *ctx, JoinPath *best_path)
 				 (int) best_path->path.pathtype);
 			plan = NULL;		/* keep compiler quiet */
 			break;
+	}
+
+	plan->flow = cdbpathtoplan_create_flow(ctx->root,
+			best_path->path.locus,
+			best_path->path.parent ? best_path->path.parent->relids
+					: NULL,
+					  best_path->path.pathkeys,
+					  plan);
+
+	/**
+	 * If plan has a flow node, ensure all entries of hashExpr
+	 * are in the targetlist.
+	 */
+	if (plan->flow
+			&& plan->flow->hashExpr)
+	{
+		plan->targetlist = add_to_flat_tlist(plan->targetlist, plan->flow->hashExpr, true /* resjunk */);
 	}
 
 	/*
