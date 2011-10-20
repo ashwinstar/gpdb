@@ -6,7 +6,7 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapred.SequenceFileInputFormat;
 
 /**
- * An {@link inputFormat} that read GPDB binary format from HDFS.
+ * An {@link org.apache.hadoop.mapred.InputFormat} that read GPDB binary format from HDFS.
  * @author achoi
  *
  */

@@ -6,7 +6,7 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 
 /**
- * An {@link inputFormat} that read GPDB binary format from HDFS.
+ * An {@link org.apache.hadoop.mapreduce.InputFormat} that read GPDB binary format from HDFS.
  * @author achoi
  *
  */

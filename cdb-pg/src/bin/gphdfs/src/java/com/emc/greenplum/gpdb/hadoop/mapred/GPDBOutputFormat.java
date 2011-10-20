@@ -6,7 +6,7 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapred.SequenceFileOutputFormat;
 
 /**
- * An {@link OutputFormat} that writes GPDB binary format on HDFS.
+ * An {@link org.apache.hadoop.mapred.OutputFormat} that writes GPDB binary format on HDFS.
  * @author achoi
  *
  */

@@ -13,6 +13,9 @@ gphdfs:
 	$(ANT) dist -Dgphdconn.version=CE_1.0.0.0 -Dhadoop.core.version=0.20.2
 	$(ANT) clean
 	$(ANT) dist -Dgphdconn.version=EE_1.0.0.0 -Dhadoop.core.version=0.20.2
+	
+gphdfsdoc:
+	$(ANT) javadoc -Dgphdconn.version=CE_1.0.0.0 -Dhadoop.core.version=0.20.2
 
 install: all installdirs
 	$(MAKE) -C src/protocol_formatter install

@@ -18,8 +18,19 @@ import org.apache.hadoop.io.Writable;
  *
  */
 public class GPDBWritable implements Writable {
+	/*
+	 * GPDBWritable is using the following serialization form:
+	 * Total Length | Version | #columns | Col type | Col type |... | Null Bit array   | Col val...
+     * 4 byte		| 2 byte	2 byte	   1 byte     1 byte	      ceil(#col/8) byte	 fixed length or var len
+     * 
+     * For fixed length type, we know the length.
+     * In the col val, we align pad according to the alignemnt requirement of the type.
+     * For var length type, the alignment is always 4 byte.
+     * For var legnth type, col val is <4 byte length><payload val>
+	 */
 
-	/**
+
+	/*
 	 * "DEFINE" of the Database Datatype OID
 	 * All datatypes are supported. The types listed here
 	 * are commonly used type to facilitaes ease-of-use.
@@ -41,10 +52,10 @@ public class GPDBWritable implements Writable {
 	public static final int TIMESTAMP = 1114;
 	public static final int NUMERIC   = 1700;
 	
-	/**
+	/*
 	 * Enum of the Database type
 	 */
-	public enum DBType {
+	private enum DBType {
 		BIGINT(8, 8, false), BOOLEAN(1, 1, false), FLOAT8(8, 8, false), INTEGER(4, 4, false), REAL(4, 4, false),
 		SMALLINT(2, 2, false), BYTEA(4, -1, false), TEXT(4, -1, true);
 		
@@ -65,13 +76,13 @@ public class GPDBWritable implements Writable {
 		public int getAlignment() { return alignment; }
 	}
 
-	/**
+	/*
 	 * Constants
 	 */
 	private static final int    VERSION = 1;
 	private static final String CHARSET = "UTF-8";
 	
-	/**
+	/*
 	 * Local variables
 	 */
 	protected int[]    colType;
@@ -97,7 +108,7 @@ public class GPDBWritable implements Writable {
 	
 	/**
 	 * Constructor to build a db record. colType defines the schema
-	 * @param colType the table column types
+	 * @param columnType the table column types
 	 */
 	public GPDBWritable(int[] columnType) {
 		colType = columnType;
@@ -118,14 +129,7 @@ public class GPDBWritable implements Writable {
 	
 
 	/**
-	 * Serialize the object using the following format:
-	 * Total Length | Version | #columns | Col type | Col type |... | Null Bit array   | Col val...
-     * 4 byte		| 2 byte	2 byte	   1 byte     1 byte	      ceil(#col/8) byte	 fixed length or var len
-     * 
-     * For fixed length type, we know the length.
-     * In the col val, we align pad according to the alignemnt requirement of the type.
-     * For var length type, the alignment is always 4 byte.
-     * For var legnth type, col val is <4 byte length><payload val>
+	 *  Implement {@link org.apache.hadoop.io.Writable#readFields(DataInput)} 
 	 */
 	public void readFields(DataInput in) throws IOException {
 		/* extract the version and col cnt */
@@ -225,7 +229,7 @@ public class GPDBWritable implements Writable {
 	}
 
 	/**
-	 *  @inheritDoc
+	 *  Implement {@link org.apache.hadoop.io.Writable#write(DataOutput)} 
 	 */
 	public void write(DataOutput out) throws IOException {
 		int       numCol    = colType.length;
@@ -416,7 +420,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setLong(int colIdx, Long val)
 	throws TypeMismatchException {
@@ -428,7 +432,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setBoolean(int colIdx, Boolean val)
 	throws TypeMismatchException {
@@ -440,7 +444,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setBytes(int colIdx, byte[] val)
 	throws TypeMismatchException {
@@ -452,7 +456,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setString(int colIdx, String val)
 	throws TypeMismatchException {
@@ -464,7 +468,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setFloat(int colIdx, Float val)
 	throws TypeMismatchException {
@@ -476,7 +480,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setDouble(int colIdx, Double val)
 	throws TypeMismatchException {
@@ -488,7 +492,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setInt(int colIdx, Integer val)
 	throws TypeMismatchException {
@@ -500,7 +504,7 @@ public class GPDBWritable implements Writable {
 	 * Set the column value of the record
 	 * @param colIdx the column index
 	 * @param val the value
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public void setShort(int colIdx, Short val)
 	throws TypeMismatchException {
@@ -511,7 +515,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public Long getLong(int colIdx)
 	throws TypeMismatchException {
@@ -522,7 +526,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public Boolean getBoolean(int colIdx)
 	throws TypeMismatchException {
@@ -533,7 +537,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public byte[] getBytes(int colIdx)
 	throws TypeMismatchException {
@@ -544,7 +548,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public String getString(int colIdx)
 	throws TypeMismatchException {
@@ -555,7 +559,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public Float getFloat(int colIdx)
 	throws TypeMismatchException {
@@ -566,7 +570,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public Double getDouble(int colIdx)
 	throws TypeMismatchException {
@@ -577,7 +581,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public Integer getInt(int colIdx)
 	throws TypeMismatchException {
@@ -588,7 +592,7 @@ public class GPDBWritable implements Writable {
 	/**
 	 * Get the column value of the record
 	 * @param colIdx the column index
-	 * @throw TypeMismatchException the column type does not match
+	 * @throws TypeMismatchException the column type does not match
 	 */
 	public Short getShort(int colIdx)
 	throws TypeMismatchException {
@@ -597,7 +601,7 @@ public class GPDBWritable implements Writable {
 	}
 	
 	/**
-	 * @inheritDoc
+	 * Return a string representation of the object
 	 */
 	public String toString() {
 		if (colType == null)
