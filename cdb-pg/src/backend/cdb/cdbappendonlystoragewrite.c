@@ -223,6 +223,12 @@ void AppendOnlyStorageWrite_FinishSession(
 		storageWrite->segmentFileName = NULL;
 	}
 
+	if (storageWrite->compression_functions != NULL)
+	{
+		callCompressionDestructor(storageWrite->compression_functions[COMPRESSION_DESTRUCTOR], storageWrite->compressionState);
+		pfree(storageWrite->compressionState);
+	}
+
 	/* Deallocation is done.	  Go back to caller memory-context. */
 	MemoryContextSwitchTo(oldMemoryContext);
 
