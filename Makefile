@@ -306,7 +306,7 @@ gen_json_cat:
 	if [ $$? != 0 ]; then echo ""; echo "FATAL: json cat file generation failed."; echo ""; exit 1; fi; \
 	echo "To manually review and submit the updated json cat file, run:"; \
 	echo "  p4 diff $$JASON_CAT"; \
-	echo "  p4 submit \"Regenerate Json catalog file.\" $$JASON_CAT"; \
+	echo "  p4 submit -d \"Regenerate Json catalog file. [JIRA: MPP-XXXX]\" $$JASON_CAT"; \
 
 #---------------------------------------------------------------------
 # autoconf
