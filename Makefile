@@ -302,7 +302,7 @@ gen_json_cat:
 	@JASON_CAT=gpMgmt/bin/gppylib/data/`grep GP_MAJORVERSION cdb-pg/src/include/pg_config.h | sed 's/.*"\(.*\)"/\1/g' `.json; \
 	if [ ! -w $$JASON_CAT ]; then echo ""; echo "FATAL: The json cat file is not writable ($$JASON_CAT).  Have you performed a p4 edit $$JASON_CAT operation?"; echo ""; exit 1; fi; \
 	cd $(BLD_TOP)/cdb-pg/src/include/catalog; \
-	perl $(BLD_TOP)/cdb-pg/src/include/catalog/tidycat.pl -dd $(BLD_TOP)/$$JASON_CAT -df json *.h; \
+	perl tidycat.pl -dd $(BLD_TOP)/$$JASON_CAT -df json *.h; \
 	if [ $$? != 0 ]; then echo ""; echo "FATAL: json cat file generation failed."; echo ""; exit 1; fi; \
 	echo "To manually review and submit the updated json cat file, run:"; \
 	echo "  p4 diff $$JASON_CAT"; \
