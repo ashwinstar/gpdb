@@ -277,6 +277,36 @@ Release/GNUmakefile : $(GPPGDIR)/configure  env.sh
 	mkdir -p Release 
 	cd Release && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" CFLAGS=$(INSTCFLAGS) $(BLD_CONFIG_SHELL) ../$(GPPGDIR)/configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
 
+## ======================================================================
+## Generate json catalog file
+##
+## Requirement:
+##   This tidycat.pl utility has a perl JSON package dependency.  You'll
+##   need to ensure you have this setup in your enviroment to execute
+##   this process.
+##
+## Here are the basic steps:
+##
+##   1) A "configure" must have been run.  This is required so
+##      GP_MAJORVERSION can be retrieved from the
+##      cdb-pg/src/include/pg_config.h and used to create the
+##      json file name (eg. 4.2.json).
+##   2) (manual) p4 edit gpMgmt/bin/gppylib/data/<version>.json
+##   3) make gen_json_cat
+##   4) (manual file generation review) p4 diff gpMgmt/bin/gppylib/data/<version>.json
+##   5) (manual) p4 submit "Regenerate Json catalog file." gpMgmt/bin/gppylib/data/<version>.json
+## ======================================================================
+
+gen_json_cat:
+	@if [ ! -f $(ISCONFIG) ]; then echo ""; echo "FATAL: The cdb-pg environment has not been configured.  Thus we cannot attempt to generate json catalog file."; echo ""; exit 1; fi
+	@JASON_CAT=gpMgmt/bin/gppylib/data/`grep GP_MAJORVERSION cdb-pg/src/include/pg_config.h | sed 's/.*"\(.*\)"/\1/g' `.json; \
+	if [ ! -w $$JASON_CAT ]; then echo ""; echo "FATAL: The json cat file is not writable ($$JASON_CAT).  Have you performed a p4 edit $$JASON_CAT operation?"; echo ""; exit 1; fi; \
+	cd $(BLD_TOP)/cdb-pg/src/include/catalog; \
+	perl $(BLD_TOP)/cdb-pg/src/include/catalog/tidycat.pl -dd $(BLD_TOP)/$$JASON_CAT -df json *.h; \
+	if [ $$? != 0 ]; then echo ""; echo "FATAL: json cat file generation failed."; echo ""; exit 1; fi; \
+	echo "To manually review and submit the updated json cat file, run:"; \
+	echo "  p4 diff $$JASON_CAT"; \
+	echo "  p4 submit \"Regenerate Json catalog file.\" $$JASON_CAT"; \
 
 #---------------------------------------------------------------------
 # autoconf
