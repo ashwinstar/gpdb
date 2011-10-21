@@ -310,6 +310,8 @@ def connect2(cfgrec, user=None, password=None, database=None, utilityMode=True):
     datadir = cfgrec['datadir']
     logger.debug('connect %s:%s:%s' % (host, port, datadir))
     if not database: database = GV.dbname
+    if cfgrec['content'] == -1:
+        utilityMode = False
 
     key = "%s.%s.%s.%s.%s.%s.%s" % (host, port, datadir, user, password, database,
                                  str(utilityMode))
@@ -461,8 +463,8 @@ def checkDistribPolicy():
                                   cons['constraint'])
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: checkDistribPolicy')
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: checkDistribPolicy')
+        myprint('  Execution error: ' + str(e))
 
 
     logger.info('-----------------------------------')
@@ -503,8 +505,8 @@ def checkDistribPolicy():
                                   cons['constraint'])
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: checkDistribPolicy')
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: checkDistribPolicy')
+        myprint('  Execution error: ' + str(e))
 
 
 #############
@@ -551,8 +553,8 @@ def checkPartitionIntegrity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: checkPartitionInterity')
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('  Execution error: ' + str(e))
 
     # MPP-9283: look for partitions create "with oids".
     qry = '''
@@ -586,8 +588,8 @@ def checkPartitionIntegrity():
                 logger.error("...")
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: checkPartitionInterity')
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('  Execution error: ' + str(e))
 
         # TODO: add repair script
 
@@ -701,8 +703,8 @@ def checkPartitionIntegrity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: checkPartitionInterity')
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('  Execution error: ' + str(e))
 
 
     db.close()
@@ -1710,8 +1712,8 @@ def checkPartitionRegularity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: %s' % testname)
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: %s' % testname)
+        myprint('  Execution error: ' + str(e))
 
     testname = 'system-defined partition constraint regularity on partitioned tables'
     
@@ -1743,8 +1745,8 @@ def checkPartitionRegularity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: %s' % testname)
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: %s' % testname)
+        myprint('  Execution error: ' + str(e))
 
     testname = 'unenforced unique constraints on partitioned tables'
     
@@ -1787,8 +1789,8 @@ def checkPartitionRegularity():
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
-            logger.error('Error in executing test: %s' % testname)
-            logger.error('  Execution error: ' + str(e))
+            myprint('[ERROR] executing test: %s' % testname)
+            myprint('  Execution error: ' + str(e))
           
 
     testname = 'inconsistently named constraint in partitioned table'
@@ -1833,8 +1835,8 @@ def checkPartitionRegularity():
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
-            logger.error('Error in executing test: %s' % testname)
-            logger.error('  Execution error: ' + str(e))
+            myprint('[ERROR] executing test: %s' % testname)
+            myprint('  Execution error: ' + str(e))
 
     db.close()
 
@@ -1916,8 +1918,8 @@ def checkPGNamespace():
                 GV.Schemas.append(row[0])
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('Error in executing test: checkPGNamespace')
-        logger.error('  Execution error: ' + str(e))
+        myprint('[ERROR] executing test: checkPGNamespace')
+        myprint('  Execution error: ' + str(e))
 
     # Check for objects in various catalogs that are in a schema that has
     # been dropped.
@@ -2121,7 +2123,7 @@ def removeAppendOnly(seg, db, reloid, rel):
                     {'relid': reloid}, rel)
 
     except Exception, e:
-        logger.error('removeAppendOnly: ' + str(e))
+        myprint('removeAppendOnly: ' + str(e))
 
 
 def removeDepend(seg, db, reloid, rel):
@@ -2236,9 +2238,9 @@ def checkDepend():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info("[FAIL] basic object dependencies")
-        logger.error("  Execution error: " + str(e))
-        logger.error(qry)
+        myprint("[ERROR] executing test: basic object dependencies")
+        myprint("  Execution error: " + str(e))
+        myprint(qry)
         
 
 def fixupowners(nspname, relname, oldrole, newrole):
@@ -2320,9 +2322,9 @@ def checkOwners():
                             row['master_rolname'])
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info("Error in executing: check table ownership")
-        logger.error("  Execution error: " + str(e))
-        logger.error(qry)
+        myprint("[ERROR] executing: check table ownership")
+        myprint("  Execution error: " + str(e))
+        myprint(qry)
 
     # TODO: add a check that subobject owners agree with the main object owner.
     # (The above checks only compare master vs segment)
@@ -2366,9 +2368,9 @@ def checkOwners():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info("Error in executing: check type ownership")
-        logger.error("  Execution error: " + str(e))
-        logger.error(qry)
+        myprint("[ERROR] executing test: check type ownership")
+        myprint("  Execution error: " + str(e))
+        myprint(qry)
 
         # FIXME: add repair script
         # NOTE: types with typrelid probably will be repaired by the
@@ -2932,9 +2934,9 @@ def checkTableACL(cat):
     except Exception, e:
         setError(ERROR_NOREPAIR)
         GV.aclStatus = False
-        logger.info('[FAIL] Cross consistency check for ' + catname)
-        logger.error('  Execution error: ' + str(e))
-        logger.error(qry)
+        myprint('[ERROR] executing: Cross consistency check for ' + catname)
+        myprint('  Execution error: ' + str(e))
+        myprint(qry)
 
 
 #-------------------------------------------------------------------------------
@@ -2970,6 +2972,9 @@ def checkTableForeignKey(cat):
     # skip these master-only tables
     skipped_masteronly = ['gp_relation_node', 'pg_description', 'pg_shdescription', 
                           'pg_stat_last_operation', 'pg_stat_last_shoperation', 'pg_statistic']
+    # skip this check because of MPP-14758:
+    skipped_masteronly.append('gp_fastsequence')
+
     if catname in skipped_masteronly:
         return
 
@@ -3027,9 +3032,9 @@ def checkTableForeignKey(cat):
         except Exception, e:
             setError(ERROR_NOREPAIR)
             GV.foreignKeyStatus = False
-            logger.info('[FAIL] Foreign key check for ' + catname)
-            logger.error('  Execution error: ' + str(e))
-            logger.error(qry)
+            myprint('[ERROR] executing: Foreign key check for ' + catname)
+            myprint('  Execution error: ' + str(e))
+            myprint(qry)
 
 
 #-------------------------------------------------------------------------------
@@ -3145,9 +3150,9 @@ def checkTableMissingEntry(cat):
     except Exception, e:
         setError(ERROR_NOREPAIR)
         GV.missingEntryStatus = False
-        logger.info('[FAIL] Checking for missing or extraneous entries for ' + catname)
-        logger.error('  Execution error: ' + str(e))
-        logger.error(qry)
+        myprint('[ERROR] executing: Missing or extraneous entries check for ' + catname)
+        myprint('  Execution error: ' + str(e))
+        myprint(qry)
 
 
 
@@ -3273,9 +3278,9 @@ def checkTableInconsistentEntry(cat):
     except Exception, e:
         setError(ERROR_NOREPAIR)
         GV.inconsistentEntryStatus = False
-        logger.info('[FAIL] Checking for inconsistent entries for ' + catname)
-        logger.error('  Execution error: ' + str(e))
-        logger.error(qry)
+        myprint('[ERROR] executing: Inconsistent entries check for ' + catname)
+        myprint('  Execution error: ' + str(e))
+        myprint(qry)
 
 
 #-------------------------------------------------------------------------------
@@ -3401,9 +3406,9 @@ def checkTableDuplicateEntry(cat):
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] Checking for duplicate entries for ' + catname)
-        logger.error('  Execution error: ' + str(e))
-        logger.error(qry)
+        myprint('[ERROR] executing: duplicate entries check for ' + catname)
+        myprint('  Execution error: ' + str(e))
+        myprint(qry)
 
 
 #-------------------------------------------------------------------------------
@@ -3952,8 +3957,8 @@ def getOidFromPK(catname, pkeys):
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('  Execution error: ' + str(e))
-        logger.error(qry)
+        myprint('  Execution error: ' + str(e))
+        myprint(qry)
 
 
 #-------------------------------------------------------------------------------
@@ -3976,7 +3981,7 @@ def getClassOidForType(oid):
         return curs.dictresult().pop()['oid']
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('  Execution error: ' + str(e))
+        myprint('  Execution error: ' + str(e))
 
 
 #-------------------------------------------------------------------------------
@@ -3999,7 +4004,7 @@ def getResourceTypeOid(oid):
         return curs.dictresult().pop()['oid']
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('  Execution error: ' + str(e))
+        myprint('  Execution error: ' + str(e))
 
   
 #-------------------------------------------------------------------------------
@@ -4608,8 +4613,8 @@ def getRelInfo(objects):
             
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        logger.error('  Execution error: ' + str(e))
-        logger.error(qry)
+        myprint('  Execution error: ' + str(e))
+        myprint(qry)
 
 
 #-------------------------------------------------------------------------------
