@@ -2203,8 +2203,18 @@ class gpload:
         # already existing temp table in the catalog which will match
         # the one that we need to use. It must have identical attributes
         # and be called 'temp_gpload_reusable_<tbl>_*'
+
+        # MPP-14775 - If this is a 'merge' operation, we don't attempt reusing tables.
+        # get_reuse_temptable_query is not prepared to handle 'merge' cases, in which the yaml
+        # file specifies only a proper subset of the target table's columns; that function
+        # consumes from_cols and dist_cols, whereas the create table ddl for 'merge' below does not.
+        # Thus, the get_reuse_temptable_query would have us reuse a table that we would
+        # not create ourselves. This leads to errors later in the merge operation, in do_method_merge,
+        # where there are assumptions that the temp table had been created "LIKE" the target table.
+        # So, we disable merge + reuse_tables for now.
+        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         is_temp_table = 'temp'
-        if self.reuse_tables == True:
+        if method == 'update' and self.reuse_tables == True:
             is_temp_table = ''
             tableName = quote_unident(self.table)
 
@@ -2236,7 +2246,6 @@ class gpload:
         
         # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
         # and that is, whether it's a temp table or not. In other words, is_temp_table = '' iff self.reuse_tables == True.
-        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         if method=='update':
             # it would be tempting to use LIKE here but we cannot as it
             # inherits NOT NULL and other constraints from the target table
