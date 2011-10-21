@@ -381,7 +381,7 @@ def connect2run(qry, col=None):
         # test message and the test reports as "passing".
         if th.error:
             setError(ERROR_NOREPAIR)
-            logger.error("%s:%d:%s : %s" % 
+            myprint("%s:%d:%s : %s" % 
                          (th.cfg['hostname'],
                           th.cfg['port'],
                           th.cfg['datadir'],
