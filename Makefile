@@ -129,16 +129,20 @@ endif
 ISCONFIG=cdb-pg/GNUmakefile
 
 #---------------------------------------------------------------------
+# GPPKG
+#---------------------------------------------------------------------
+
+##
+## Support gppkg platforms
+##
+
+GPPKG_PLATFORMS=rhel5_x86_64 suse10_x86_64
+
+#---------------------------------------------------------------------
 # Compiler options
 #---------------------------------------------------------------------
 
 INLINE_FLAGS=-finline-limit=1800
-
-# Siva - talk to Hayden about this. This breaks on build0 machine. 
-#ifeq "$(BLD_ARCH)" "sol10_x86_64"
-#	TRACE_CFG_FLAG=--enable-dtrace DTRACEFLAGS=-64
-#	TRACE_GCC_FLAG=-m64
-#endif
 
 OPTFLAGS="$(strip -O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG))"
 PROFFLAGS="$(strip -O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG))"
@@ -336,7 +340,6 @@ define BUILD_STEPS
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) gppkg INSTLOC=$(INSTLOC) GPPKGINSTLOC=$(GPPKGINSTLOC)
-
 endef
 
 ifeq "$(BLD_GPDB_BUILDSET)" "aix_subset"
@@ -1100,6 +1103,10 @@ mgmtcopy :
 	cp -rp $(GPMGMT)/bin/gppylib $(INSTLOC)/lib/python
 	cp -rp $(GPMGMT)/bin/ext/* $(INSTLOC)/lib/python
 	cp -rp $(GPMGMT)/bin $(INSTLOC)
+ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
+	@echo "Removing gppkg from distribution"
+	rm -f $(INSTLOC)/bin/gppkg
+endif
 	cp -rp $(GPMGMT)/sbin/* $(INSTLOC)/sbin/.
 	cp -rp $(GPCC)/build/bin $(INSTLOC)
 	cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
@@ -1394,13 +1401,24 @@ GPPKG_TARGETS = \
 	cdb-pg/src/pl/pljava/package \
 	$(NULL)
 
+## ----------------------------------------------------------------------
+
 gppkg:
 ifeq "$(findstring gppkg,$(BLD_TARGETS))" ""
 	# ---- build and packaging of gppkgs are currently disabled
 	# ---- set BLD_TARGETS="gppkg" to enable them.
+else
+ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
+	@echo ""
+	@echo "The gppkg build and packaging processes are not supported"
+	@echo "on this platform: $(BLD_ARCH)"
+	@echo ""
 else
 	@for target in $(GPPKG_TARGETS); do \
 		$(MAKE) -C $${target} INSTLOC=$(INSTLOC); \
 		cp $${target}/*.gppkg $(GPPKGINSTLOC); \
 	done || true
 endif
+endif
+
+## ----------------------------------------------------------------------
