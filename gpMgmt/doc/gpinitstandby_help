@@ -7,8 +7,8 @@ Adds and/or initializes a standby master host for a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpinitstandby { -s <standby_hostname> | -r } 
-              [-M smart | -M fast] [-n] [-a] [-q] [-D] [-L]
+gpinitstandby { -s <standby_hostname> | -r | -n } 
+              [-M smart | -M fast] [-a] [-q] [-D] [-L]
               [-l <logfile_directory>]
 
  
@@ -62,7 +62,7 @@ OPTIONS
 
 -s <standby_hostname>
 
-Required. The host name of the standby master host.
+The host name of the standby master host.
 
 
 -r (remove standby master)
