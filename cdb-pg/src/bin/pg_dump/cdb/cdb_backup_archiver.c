@@ -147,15 +147,6 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	AH->stage = STAGE_INITIALIZING;
 	
 
-#ifdef USE_DDBOOST
-
-	char * new_c_lib_buf = malloc(AH->dd_boost_buf_size);
-	if (new_c_lib_buf == NULL)
-		die_horribly(AH, modulename, "could not alloc memory for new C stdio lib buffer");
-	setbuffer(AH->OF, new_c_lib_buf, AH->dd_boost_buf_size);
-
-#endif
-
 	/*
 	 * Check for nonsensical option combinations.
 	 *
