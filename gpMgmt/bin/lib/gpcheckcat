@@ -1222,10 +1222,13 @@ where
             d.refobjsubid = 0 and 
             d.deptype = 'i'
     );
---Disconnect constraint {conname} from table columns {partid}
-delete
-from 
+--Replace dependency of constraint {conname} on table columns of {partid}
+--with dependency of index {indexoid} on same.
+update 
     pg_depend
+set
+    classid = 'pg_class'::regclass,
+    objid = {indexoid}
 where
     (classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype) =
     (
