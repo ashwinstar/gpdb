@@ -170,7 +170,15 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                                           path->path.parent->relids,
                                                           subplan->targetlist);
         Insist(hashExpr);
-		subplan->targetlist = add_to_flat_tlist(subplan->targetlist, hashExpr, true /* resjunk */);
+
+        /**
+         * If there are subplans in the hashExpr, push it down to lower level.
+         */
+        if (contain_subplans( (Node *) hashExpr)
+        		&& is_projection_capable_plan(subplan))
+        {
+        	subplan->targetlist = add_to_flat_tlist(subplan->targetlist, hashExpr, true /* resjunk */);
+        }
 
         motion = make_hashed_motion(subplan,
                                     hashExpr,
