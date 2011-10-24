@@ -197,6 +197,8 @@ class GPUpgrade(GPUpgradeBase):
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('-l', dest='logdir',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('-c', '--check-only', dest='checkonly', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('-q', '--quiet', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--debug', action='store_true',
@@ -221,7 +223,7 @@ class GPUpgrade(GPUpgradeBase):
                 sys.exit(0)
 
             if len(args) != 2:
-                usage()
+                usage(EXECNAME)
                 msg = "incorrect number of arguments"
                 if len(args) > 0:
                     msg += ": %s" % str(args)
@@ -240,6 +242,8 @@ class GPUpgrade(GPUpgradeBase):
             self.datadirs = pickle.loads(base64.urlsafe_b64decode((urllib.unquote(options.datadirs))))
         if options.option:
             self.option   = urllib.unquote(options.option)
+        if options.checkonly:
+            self.checkonly = True
         if options.debug:
             self.debug = True
             enable_verbose_logging()
@@ -847,8 +851,12 @@ class GPUpgrade(GPUpgradeBase):
         if (len(self.mirrors) ==0):
             raise UpgradeError("This upgrade requires mirroring.")
         
-        #   5. pass gpcheckcat
-        self.CheckCatalog()
+        #   5. pass common pre-upgrade check
+        self.PreUpgradeCheck()
+        
+        # If we're in check only mode, then we exit here
+        if self.checkonly:
+            sys.exit(0)
         
         # Everything is ok. Write info to disk
         self.GenerateConfigFiles()
@@ -1009,9 +1017,9 @@ class GPUpgrade(GPUpgradeBase):
             logger.warn("****************************************************")
             logger.warn("Recovering Primary Failed...!!!!")
             logger.warn("   Please examine the log in %s" % self.logdir)
-            logger.warn("   fix the problem and re-run gpmigrator_mirror to recover the primary")
+            logger.warn("   fix the problem and gprecoverseg -F to recover the primary")
             logger.warn("****************************************************")
-            
+        
         return "AbortMirrorUpgrade"
 
 

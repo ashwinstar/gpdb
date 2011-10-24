@@ -151,8 +151,9 @@ class GPUpgradeBase(object):
         self.path      = None     # Default path
         self.pool      = None     # worker pool
         self.user      = None     # db admin user
-        self.workdir    = None     # directory: masterdir/gpmigrator
-        
+        self.workdir   = None     # directory: masterdir/gpmigrator
+        self.checkonly = False    # checkcat only; do not run upgrade
+
     #------------------------------------------------------------
     def RunCmd(self, cmd, env=None, utility=False, supressDebug=False):
         '''
@@ -674,6 +675,40 @@ class GPUpgradeBase(object):
 
         self.CheckDown();
         
+
+    #------------------------------------------------------------
+    def PreUpgradeCheck(self):
+        '''
+        Check free space
+        Check catalog
+        '''
+        self.CheckFreeSpace()
+        self.CheckCatalog()
+
+    #------------------------------------------------------------
+    def CheckFreeSpace(self):
+        '''
+        Validate that we've enough space for upgrade.
+        Right now, we require 2GB. It's arbitrary.
+        '''
+        logger.info('Checking Free Space')
+        nospacesegs = self.Select("select dfsegment from gp_toolkit.gp_disk_free where dfspace::float/1024/1024 < 2")
+        if (len(nospacesegs)>0):
+            logger.fatal('***************************************')
+            logger.fatal('The following segment ID has less than 2GB of free space.')
+            logger.fatal('Please make sure that there is at least 2GB of free space on each segment before upgrade.')
+            logger.fatal(nospacesegs)
+            logger.fatal('***************************************')
+            raise UpgradeError('Insufficient Space on Segment')
+
+        df=unix.DiskFree.get_disk_free_info_local('gpmigrator_check_freespace', self.masterdir)
+        mdf = float(df[3])/1024/1024
+        if (mdf < 2):
+            logger.fatal('***************************************')
+            logger.fatal('The Master data directory has only %sGB of free space.' % mdf)
+            logger.fatal('Please make sure that there is at least 2GB of free space on the master.')
+            logger.fatal('***************************************')
+            raise UpgradeError('Insufficient Space on Master')
         
     #------------------------------------------------------------
     def CheckCatalog(self):

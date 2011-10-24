@@ -286,6 +286,8 @@ class GPUpgrade(GPUpgradeBase):
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('-R', dest='revert', action='store_true',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('-c', '--check-only', dest='checkonly', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             
             parser.add_option('--debug', action='store_true',
                               help=optparse.SUPPRESS_HELP)
@@ -344,6 +346,9 @@ class GPUpgrade(GPUpgradeBase):
 
         if options.revert:
             self.revert = True
+        
+        if options.checkonly:
+            self.checkonly = True
 
         if options.directory:
             self.masterdir = options.directory
@@ -2815,10 +2820,14 @@ class GPUpgrade(GPUpgradeBase):
                 self.SetState('CREATE_DIRS')
     
 
-            # Check the catalog
+            # Run the common pre-upgrade check
             if 'CHECKCAT' not in current_state and self.checkcat:
-                self.CheckCatalog()
+                self.PreUpgradeCheck()
                 self.SetState('CHECKCAT')
+                
+            # If we're in checkcat only mode, return here. Don't do the actual upgrade
+            if self.checkonly:
+                return
 
             # SetupLockdown:
             # + Requires the database to be up
