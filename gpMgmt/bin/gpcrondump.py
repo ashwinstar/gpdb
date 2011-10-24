@@ -161,6 +161,7 @@ class GpCronDump(Operation):
                 if current_exit_status == 0:
                     DumpGlobal(timestamp = post_dump_outcome['timestamp'],
                                master_datadir = self.master_datadir,
+                               backup_dir = self.backup_dir,
                                ddboost = self.ddboost).run()
                 else:
                     logger.info("Skipping global dump due to issues during post-dump checks.")

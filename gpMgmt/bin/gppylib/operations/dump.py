@@ -691,14 +691,17 @@ class UpdateHistoryTable(Operation):
 
 
 class DumpGlobal(Operation):
-    """ TODO: use backup_dir? """
-    def __init__(self, timestamp, master_datadir, ddboost):
+    def __init__(self, timestamp, master_datadir, backup_dir, ddboost):
         self.timestamp = timestamp
         self.master_datadir = master_datadir
+        self.backup_dir = backup_dir
         self.ddboost = ddboost
     def execute(self):
         logger.info("Commencing pg_catalog dump")
-        global_file = os.path.join(self.master_datadir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+        if self.backup_dir is not None:
+            global_file = os.path.join(self.backup_dir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+        else:
+            global_file = os.path.join(self.master_datadir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         Command('Dump global objects', 
                 "pg_dumpall -g --gp-syntax > %s" % global_file).run(validateAfter=True)
         if self.ddboost:       
