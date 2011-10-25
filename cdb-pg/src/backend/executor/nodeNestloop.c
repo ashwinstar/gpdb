@@ -138,9 +138,7 @@ ExecNestLoop(NestLoopState *node)
 		ExecReScan(innerPlan, econtext);
 		ResetExprContext(econtext);
 
-		/* MPP-2235: nl_Untouched isn't a good name, something like
-		 * "nl_innerSquelchNeeded would be better */
-		node->nl_Untouched = false; /* we will never need to Squelch the inner, we've fetched it all */
+		node->nl_innerSquelchNeeded = false; /* no need to squelch inner since it was completely prefetched */
 		node->prefetch_inner = false;
 		node->reset_inner = false;
 	}
@@ -178,8 +176,10 @@ ExecNestLoop(NestLoopState *node)
 				 * we have reached inner end-of-data at least once and
 				 * squelch is not needed.
 				 */
-				if (node->nl_Untouched)
+				if (node->nl_innerSquelchNeeded)
+				{
 					ExecSquelchNode(innerPlan);
+				}
 
 				/*
 				 * The memory used by child nodes might not be freed because
@@ -196,7 +196,6 @@ ExecNestLoop(NestLoopState *node)
 			econtext->ecxt_outertuple = outerTupleSlot;
 			node->nl_NeedNewOuter = false;
 			node->nl_MatchedOuter = false;
-			/* MPP-2235: we leave nl_untouched alone here */
 
 			/*
 			 * now rescan the inner plan
@@ -448,7 +447,7 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->js.ps.ps_OuterTupleSlot = NULL;
 	nlstate->nl_NeedNewOuter = true;
 	nlstate->nl_MatchedOuter = false;
-	nlstate->nl_Untouched = true;		/* CDB */
+	nlstate->nl_innerSquelchNeeded = true;		/*CDB*/
 
     /* CDB: Set flag if empty inner implies empty join result. */
     nlstate->nl_QuitIfEmptyInner = false;
@@ -535,7 +534,7 @@ ExecReScanNestLoop(NestLoopState *node, ExprContext *exprCtxt)
 	node->js.ps.ps_OuterTupleSlot = NULL;
 	node->nl_NeedNewOuter = true;
 	node->nl_MatchedOuter = false;
-	/* CDB: We intentionally leave node->nl_Untouched unchanged on ReScan. */
+	/* CDB: We intentionally leave node->nl_innerSquelchNeeded unchanged on ReScan */
 }
 
 void

@@ -1042,8 +1042,17 @@ squelchNodeWalker(PlanState *node,
 void
 ExecSquelchNode(PlanState *node)
 {
-    planstate_walk_node_extended(node, squelchNodeWalker, NULL, PSW_IGNORE_INITPLAN);
+	/*
+	 * If parameters have changed, then node can be part of subquery execution.
+	 * In this case we cannot squelch node, otherwise next subquery invocations
+	 * will receive no tuples from lower motion nodes (MPP-13921).
+	 */
+	if (node->chgParam == NULL)
+	{
+		planstate_walk_node_extended(node, squelchNodeWalker, NULL, PSW_IGNORE_INITPLAN);
+	}
 }	                            /* ExecSquelchNode */
+
 
 static CdbVisitOpt
 transportUpdateNodeWalker(PlanState *node, void *context)

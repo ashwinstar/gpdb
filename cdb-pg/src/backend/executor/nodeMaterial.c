@@ -31,6 +31,8 @@
 #include "cdb/cdbvars.h"
 
 static void ExecMaterialExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+static void ExecChildRescan(MaterialState *node, ExprContext *exprCtxt);
+static void DestroyTupleStore(MaterialState *node);
 
 
 /* ----------------------------------------------------------------
@@ -458,6 +460,51 @@ ExecMaterialRestrPos(MaterialState *node)
 	ntuplestore_acc_seek((NTupleStoreAccessor *) node->ts_pos, (NTupleStorePos *) node->ts_markpos);
 }
 
+/*
+ * DestroyTupleStore
+ * 		Helper function for destroying tuple store
+ */
+void
+DestroyTupleStore(MaterialState *node)
+{
+	Assert(node);
+
+	ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
+	ntuplestore_destroy((NTupleStore *) node->ts_state);
+	if(node->ts_markpos)
+	{
+		pfree(node->ts_markpos);
+	}
+
+	node->ts_state = NULL;
+	node->ts_pos = NULL;
+	node->ts_markpos = NULL;
+	node->eof_underlying = false;
+}
+
+
+/*
+ * ExecChildRescan
+ *      Helper function for rescanning child of materialize node
+ */
+void
+ExecChildRescan(MaterialState *node, ExprContext *exprCtxt)
+{
+	Assert(node);
+	/*
+	 * if parameters of subplan have changed, then subplan will be rescanned by
+	 * first ExecProcNode. Otherwise, we need to rescan subplan here
+	 */
+	if (((PlanState *) node)->lefttree->chgParam == NULL)
+	{
+		Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_MATERIAL_RESCAN);
+		CheckSendPlanStateGpmonPkt(&node->ss.ps);
+		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+  	}
+	node->eof_underlying = false;
+}
+
+
 /* ----------------------------------------------------------------
  *		ExecMaterialReScan
  *
@@ -467,25 +514,22 @@ ExecMaterialRestrPos(MaterialState *node)
 void
 ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 {
-#ifdef DEBUG
-	{
-		/* share input should never call this */
-		Material *ma = (Material *) node->ss.ps.plan;
-		Assert(ma->share_type == SHARE_NOTSHARED);
-	}
-#endif
-
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
 	if (node->randomAccess)
 	{
+
 		/*
-		 * If we haven't materialized yet, just return. If outerplan' chgParam
-		 * is not NULL then it will be re-scanned by ExecProcNode, else - no
-		 * reason to re-scan it at all.
+		 * If tuple store is empty, then either we have not materialized yet
+		 * or tuple store was destroyed after a previous execution of materialize.
+		 * The second case occurs when materialize is part of parameterized subquery
+		 * execution, and we need to rescan child in that case (MPP-15087).
 		 */
 		if (!node->ts_state)
+		{
+			ExecChildRescan(node, exprCtxt);
 			return;
+		}
 
 		/*
 		 * If subnode is to be rescanned then we forget previous stored
@@ -496,15 +540,7 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 		 */
 		if (((PlanState *) node)->lefttree->chgParam != NULL)
 		{
-			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
-			ntuplestore_destroy((NTupleStore *) node->ts_state);
-			if(node->ts_markpos)
-				pfree(node->ts_markpos);
-
-			node->ts_state = NULL;
-			node->ts_pos = NULL;
-			node->ts_markpos = NULL;
-			node->eof_underlying = false;
+			DestroyTupleStore(node);
 		}
 		else
 		{
@@ -514,18 +550,7 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 	else
 	{
 		/* In this case we are just passing on the subquery's output */
-
-		/*
-		 * if chgParam of subnode is not null then plan will be re-scanned by
-		 * first ExecProcNode.
-		 */
-		if (((PlanState *) node)->lefttree->chgParam == NULL)
-           {
-           	Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_MATERIAL_RESCAN);
-           	CheckSendPlanStateGpmonPkt(&node->ss.ps);
-           	ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
-          	}
-		node->eof_underlying = false;
+		ExecChildRescan(node, exprCtxt);
 	}
 }
 
@@ -556,18 +581,9 @@ ExecEagerFreeMaterial(MaterialState *node)
 		{
 			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice);
 		}
-
 		Assert(node->ts_pos);
-		ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
-		ntuplestore_destroy((NTupleStore *) node->ts_state);
-
-		if(node->ts_markpos)
-		{
-			pfree(node->ts_markpos);
-		}
 		
-		node->ts_markpos = NULL;
-		node->ts_pos = NULL;
-		node->ts_state = NULL;
+		DestroyTupleStore(node);
 	}
 }
+

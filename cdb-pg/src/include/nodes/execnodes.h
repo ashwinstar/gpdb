@@ -1495,12 +1495,11 @@ typedef struct JoinState
  */
 typedef struct NestLoopState
 {
-        JoinState        js;                                /* its first field is NodeTag */
+        JoinState        	js;                                /* its first field is NodeTag */
         bool                nl_NeedNewOuter;
         bool                nl_MatchedOuter;
-        bool        nl_Untouched;           /*CDB*/
-        bool        nl_QuitIfEmptyInner;    /*CDB*/
-
+        bool				nl_innerSquelchNeeded;	/*CDB*/
+        bool        		nl_QuitIfEmptyInner;    /*CDB*/
         bool                shared_outer;
         bool                prefetch_inner;
         bool                reset_inner; /*CDB-OLAP*/
