@@ -22,6 +22,7 @@
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbsetop.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbpullup.h"
 
 #include "optimizer/tlist.h" /* tlist_member */
 #include "parser/parse_expr.h" /* exprType and exprTypmod */
@@ -463,15 +464,14 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 	
 	flow = copyFlow(subplan->flow, with_hash && !is_subquery, with_sort);
 	
-	
 	if ( is_subquery && with_hash && flow->flotype == FLOW_PARTITIONED )
 	{
 		ListCell *c;
-		TargetEntry *tle;
 		List *hash = NIL;
 		Index varno = ((Scan*)plan)->scanrelid;
-		Flow *subplanflow = subplan->flow; 
-		
+
+		Flow *subplanflow = subplan->flow;
+
 		/* Make sure all the expressions the flow thinks we're hashed on
 		 * occur in the subplan targetlist.
 		 */
@@ -479,37 +479,11 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		{
 			Node *x = (Node*)lfirst(c);
 
-			/* MPP-14099
-			 * Addressing the issue when the node is a Const. In such a scenario
-			 * there is no matching targetlist entry. A Const entry need not
-			 * be inserted into the flow
-			 */
-			if(!IsA(x, Const))
-			{
-				/* MPP-12273 && MPP-12928
-				 * Addressing the issue when the hashexpr's argument is a RELABELTYPE
-				 */
-				Assert(x);
-				tle = tlist_member(x, subplan->targetlist);
+			Expr *exprNew = cdbpullup_expr((Expr *) x, subplan->targetlist, NULL, varno);
 
-				if (NULL == tle && IsA(x, RelabelType))
-				{
-					x = (Node*) ((RelabelType*)x)->arg;
-					Assert(x);
-					tle = tlist_member(x, subplan->targetlist);
-				}
-
-				Insist(tle && equal(x, tle->expr));
-
-				hash = lappend(hash, makeVar(varno, tle->resno,
-						exprType((Node*)tle->expr),
-						exprTypmod((Node*)tle->expr), 0));
-			}
-			else
-			{
-				hash = lappend(hash, x);
-			}
+			hash = lappend(hash, exprNew);
 		}
+
 		flow->hashExpr = hash;
 	}
 
