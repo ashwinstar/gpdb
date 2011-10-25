@@ -4658,8 +4658,9 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-if test x"$GP_VERSION" = x"main build dev" ; then
-   GP_VERSION="4.1.0"
+
+if `echo "$GP_VERSION" | grep "main build" > /dev/null 2>&1` ; then
+   GP_VERSION="4.2.0"
 fi
 
 GP_MAJORVERSION=`expr "$GP_VERSION" : '\([0-9][0-9]*\.[0-9][0-9]*\)'`
