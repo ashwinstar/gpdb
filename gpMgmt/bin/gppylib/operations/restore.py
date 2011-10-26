@@ -742,7 +742,7 @@ class RecoverRemoteDumps(Operation):
                             srcFile=os.path.join(from_path, createdb_file),
                             dstFile=os.path.join(to_path, createdb_file)))
         if self.restore_global:
-            global_file = "%s%s" % (GLOBAL_PREFIX, self.restore_timestamp[0:8])
+            global_file = "%s%s" % (GLOBAL_PREFIX, self.restore_timestamp)
             pool.addCommand(Scp("Copying global dump",
                             srcHost=from_host,
                             srcFile=os.path.join(from_path, global_file),
