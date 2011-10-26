@@ -374,10 +374,10 @@ class ExecutionContext():
     def execute(self,cmd):
         pass
 
-    def interrupt(self):
+    def interrupt(self,cmd):
         pass
     
-    def cancel(self):
+    def cancel(self,cmd):
         pass
 
 
@@ -414,14 +414,14 @@ class LocalExecutionContext(ExecutionContext):
          
         cmd.set_results(CommandResult(rc,"".join(stdout_value),"".join(stderr_value),self.completed,self.halt))
 
-    def cancel(self):
+    def cancel(self,cmd):
         if self.proc:
             try:
                 os.kill(self.proc.pid, signal.SIGTERM)
             except OSError:
                 pass
 
-    def interrupt(self):
+    def interrupt(self,cmd):
         self.halt=True
         if self.proc:
             self.proc.cancel()
@@ -589,12 +589,12 @@ class NakedExecutionContext(LocalExecutionContext):
             ftp.close()
             self.client.close()
 
-    def interrupt(self):
+    def interrupt(self, cmd):
         self.halt=True
         self.client.close()
         cmd.set_results(CommandResult(1,"","command on host " + self.targetHost + " interrupted ", False, False))
     
-    def cancel(self):
+    def cancel(self, cmd):
         self.client.close()
         cmd.set_results(CommandResult(1,"","command on host " + self.targetHost + " canceled ", False, False))
 
@@ -693,10 +693,10 @@ class Command:
     
     
     def cancel(self):
-        self.exec_context.cancel()    
+        self.exec_context.cancel(self)    
     
     def interrupt(self):
-        self.exec_context.interrupt()
+        self.exec_context.interrupt(self)
     
     def was_successful(self):
         if self.results is None:
