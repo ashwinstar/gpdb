@@ -71,7 +71,7 @@ fmtId(const char *rawid)
 	 * use islower() etc.
 	 */
 	/* slightly different rules for first character */
-	if (!((rawid[0] >= 'a' && rawid[0] <= 'z') || rawid[0] == '_'))
+	if (!((rawid[0] >= 'a' && rawid[0] <= 'z') || (rawid[0] == '_')))
 		need_quotes = true;
 	else
 	{
