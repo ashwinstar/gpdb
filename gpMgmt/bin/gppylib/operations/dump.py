@@ -664,6 +664,7 @@ class UpdateHistoryTable(Operation):
                 dburl = dbconn.DbURL(port=self.master_port, dbname=self.dump_database)
                 conn = dbconn.connect(dburl)
                 execSQL(conn, CREATE_HISTORY_TABLE)
+                conn.commit()
             except Exception, e:
                 logger.exception("Unable to create %s in %s database" % (UpdateHistoryTable.HISTORY_TABLE, self.dump_database))
                 return
@@ -681,6 +682,7 @@ class UpdateHistoryTable(Operation):
             dburl = dbconn.DbURL(port=self.master_port, dbname=self.dump_database)
             conn = dbconn.connect(dburl)
             execSQL(conn, APPEND_HISTORY_TABLE)
+            conn.commit()
         except Exception, e:
             logger.exception("Failed to insert record into %s in %s database" % (UpdateHistoryTable.HISTORY_TABLE, self.dump_database))
         else:

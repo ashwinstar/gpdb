@@ -68,6 +68,7 @@ class RestoreDatabase(Operation):
             dburl = dbconn.DbURL(port=master_port, dbname=restore_db)
             conn = dbconn.connect(dburl)
             execSQL(conn, 'analyze')
+            conn.commit()
         except Exception, e:
             logger.warn('Issue with analyze of %s database' % restore_db)
         else:
@@ -246,6 +247,7 @@ class RestoreTables(Operation):
                 logger.info('Commencing analyze of %s in %s database, please wait...' % (table, restore_db))
                 try:
                     execSQL(conn, 'analyze %s' % table)
+                    conn.commit()
                 except Exception, e:
                     logger.warn('Issue with analyze of %s table, check log file for details' % table)
                 else:

@@ -231,9 +231,13 @@ def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTable
 
 
 def execSQL(conn,sql):    
+    """ 
+    If necessary, user must invoke conn.commit().
+    Do *NOT* violate that API here without considering
+    the existing callers of this function.
+    """
     cursor=conn.cursor()
     cursor.execute(sql)
-    conn.commit()
     return cursor
 
 def execSQLForSingletonRow(conn, sql):
