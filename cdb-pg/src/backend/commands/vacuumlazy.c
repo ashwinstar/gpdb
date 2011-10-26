@@ -169,12 +169,12 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
-		
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 
 	vacrelstats = (LVRelStats *) palloc0(sizeof(LVRelStats));
-	
+
 	/*
 	 * Execute the various vaccum operations. Appendonly tables are treated
 	 * differently as they are not heap based and have no indexes.
@@ -183,7 +183,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	{
 		/* append-only relation. has a special path */
 		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ false);
-	} 
+	}
 	else if (RelationIsAoCols(onerel))
 	{
         vacuum_aocs_rel(onerel, vacrelstats, /* FULL */ false);
@@ -192,7 +192,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	{
 		vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 							  &OldestXmin, &FreezeLimit);
-		
+
 		/* Set threshold for interesting free space = average request size */
 		/* XXX should we scale it up or down?  Adjust vacuum.c too, if so */
 		vacrelstats->threshold = GetAvgFSMRequestSize(&onerel->rd_node);
@@ -226,7 +226,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	vac_update_relstats(onerel,
 						vacrelstats->rel_pages,
 						vacrelstats->rel_tuples,
-						vacrelstats->hasindex, 
+						vacrelstats->hasindex,
 						FreezeLimit,
 						updated_stats);
 
@@ -269,6 +269,9 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 	int			i;
 	int reindex_count = 1;
 	PGRUsage	ru0;
+
+	/* Fetch gp_persistent_relation_node information that will be added to XLOG record. */
+	RelationFetchGpRelationNodeForXLog(onerel);
 
 	pg_rusage_init(&ru0);
 
@@ -316,7 +319,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			{
 				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i],
 													   onerel, reindex_count);
-				
+
 				lazy_vacuum_index(Irel[i],
 								  &indstats[i],
 								  vacrelstats,
@@ -324,16 +327,16 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 				list_free(extra_oids);
 			}
 			reindex_count++;
-			
+
 			/* Remove tuples from heap */
 			lazy_vacuum_heap(onerel, vacrelstats);
 			/* Forget the now-vacuumed tuples, and press on */
 			vacrelstats->num_dead_tuples = 0;
 		}
-		
-		// -------- MirroredLock ----------
+
+		/* -------- MirroredLock ---------- */
 		MIRROREDLOCK_BUFMGR_LOCK;
-		
+
 		buf = ReadBuffer(onerel, blkno);
 
 		/* Initially, we only need shared access to the buffer */
@@ -366,22 +369,22 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 
 			MIRROREDLOCK_BUFMGR_UNLOCK;
-			// -------- MirroredLock ----------
+			/* -------- MirroredLock ---------- */
 
 			LockRelationForExtension(onerel, ExclusiveLock);
 			UnlockRelationForExtension(onerel, ExclusiveLock);
-			
-			// -------- MirroredLock ----------
+
+			/* -------- MirroredLock ---------- */
 			MIRROREDLOCK_BUFMGR_LOCK;
-			
-			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);  // LockBufferForCleanup(buf)?
+
+			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);  /* LockBufferForCleanup(buf)? */
 			if (PageIsNew(page))
 			{
 				ereport(WARNING,
 				(errmsg("relation \"%s\" page %u is uninitialized --- fixing",
 						relname, blkno)));
 				PageInit(page, BufferGetPageSize(buf), 0);
-				
+
 				/* must record in xlog so that changetracking will know about this change */
 				log_heap_newpage(onerel, page, blkno);
 
@@ -393,7 +396,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			UnlockReleaseBuffer(buf);
 
 			MIRROREDLOCK_BUFMGR_UNLOCK;
-			// -------- MirroredLock ----------
+			/* -------- MirroredLock ---------- */
 
 			continue;
 		}
@@ -406,7 +409,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			UnlockReleaseBuffer(buf);
 
 			MIRROREDLOCK_BUFMGR_UNLOCK;
-			// -------- MirroredLock ----------
+			/* -------- MirroredLock ---------- */
 
 			continue;
 		}
@@ -466,9 +469,6 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 					break;
 			}
 
-			// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-			RelationFetchGpRelationNodeForXLog(onerel);
-
 			if (tupgone)
 			{
 				lazy_record_dead_tuple(vacrelstats, &(tuple.t_self));
@@ -521,9 +521,6 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 			LockBufferForCleanup(buf);
 
-			// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-			RelationFetchGpRelationNodeForXLog(onerel);
-
 			/* Remove tuples from heap */
 			lazy_vacuum_page(onerel, blkno, buf, 0, vacrelstats);
 			/* Forget the now-vacuumed tuples, and press on */
@@ -549,10 +546,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			vacrelstats->nonempty_pages = blkno + 1;
 
 		UnlockReleaseBuffer(buf);
-		
+
 		MIRROREDLOCK_BUFMGR_UNLOCK;
-		// -------- MirroredLock ----------
-		
+		/* -------- MirroredLock ---------- */
+
 	}
 
 	/* save stats for use later */
@@ -568,7 +565,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		{
 			List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i],
 												   onerel, reindex_count);
-			
+
 			lazy_vacuum_index(Irel[i],
 							  &indstats[i],
 							  vacrelstats,
@@ -576,7 +573,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			list_free(extra_oids);
 		}
 		reindex_count++;
-		
+
 		/* Remove tuples from heap */
 		lazy_vacuum_heap(onerel, vacrelstats);
 	}
@@ -640,6 +637,10 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 	npages = 0;
 
 	tupindex = 0;
+
+	/* Fetch gp_persistent_relation_node information that will be added to XLOG record. */
+	RelationFetchGpRelationNodeForXLog(onerel);
+
 	while (tupindex < vacrelstats->num_dead_tuples)
 	{
 		BlockNumber tblk;
@@ -649,10 +650,10 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 		vacuum_delay_point();
 
 		tblk = ItemPointerGetBlockNumber(&vacrelstats->dead_tuples[tupindex]);
-		
-		// -------- MirroredLock ----------
+
+		/* -------- MirroredLock ---------- */
 		MIRROREDLOCK_BUFMGR_LOCK;
-		
+
 		buf = ReadBuffer(onerel, tblk);
 		LockBufferForCleanup(buf);
 		tupindex = lazy_vacuum_page(onerel, tblk, buf, tupindex, vacrelstats);
@@ -661,10 +662,10 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 		lazy_record_free_space(vacrelstats, tblk,
 							   PageGetFreeSpace(page));
 		UnlockReleaseBuffer(buf);
-		
+
 		MIRROREDLOCK_BUFMGR_UNLOCK;
-		// -------- MirroredLock ----------
-		
+		/* -------- MirroredLock ---------- */
+
 		npages++;
 	}
 
@@ -697,9 +698,6 @@ lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 
 	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
-	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-	RelationFetchGpRelationNodeForXLog(onerel);
-	
 	START_CRIT_SECTION();
 
 	for (; tupindex < vacrelstats->num_dead_tuples; tupindex++)
@@ -880,7 +878,7 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 	 * Okay to truncate.
 	 */
 	RelationTruncate(
-				onerel, 
+				onerel,
 				new_rel_pages,
 				/* markPersistentAsPhysicallyTruncated */ true);
 
@@ -937,7 +935,7 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
  *		and VACUUM FULL (and also ANALYZE or any other thing that
  *		needs the pg_class stats updated).
  *
- *		In here we don't really vacuum nor scan anything per-se. We 
+ *		In here we don't really vacuum nor scan anything per-se. We
  *		already have the information that we need in pg_aoseg_<oid>
  *		relation on each segment. We are interested in reltuples and
  *		relpages. reltuples is the same as "pg_aoseg_<oid>:tupcount"
@@ -965,24 +963,24 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	double		totalbytes;
 	double		eof;
 	PGRUsage	ru0;
-		
+
 	pg_rusage_init(&ru0);
-	
+
 	relname = RelationGetRelationName(aorel);
 	ereport(elevel,
 			(errmsg("vacuuming \"%s.%s\"",
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
-	
+
 	/* get statistics from the pg_aoseg table */
 	fstotal = GetSegFilesTotals(aorel);
-		
+
 	/* calculate the values we care about */
 	eof = (double)fstotal->totalbytes;
 	num_tuples = (double)fstotal->totaltuples;
 	totalbytes = eof;
 	nblocks = (uint32)RelationGuessNumberOfBlocks(totalbytes);
-		
+
 	if(isVacFull)
 	{
 		/* FULL */
@@ -1035,7 +1033,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		segfile_array = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
 
 		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(), 
+			elog(Persistent_DebugPrintLevel(),
 				 "vacuum_appendonly_rel: AO ROL relation \"%s.%s\", relation id %u, relfilenode %u has %d physical segment files, %d atributes (columns)",
 				 get_namespace_name(RelationGetNamespace(aorel)),
 				 relname,
@@ -1063,7 +1061,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 			segno = segfile_array[i]->segno;
 
-			/* 
+			/*
 			 * Try to get the transaction write-lock for the Append-Only segment file.
 			 *
 			 * NOTE: This is a transaction scope lock that must be held until commit / abort.
@@ -1082,20 +1080,20 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			{
 				FileSegInfo*		   fsinfo;
 				MirroredAppendOnlyOpen mirroredOpened;
-				int32				   fileSegNo;		
-				
+				int32				   fileSegNo;
+
 				/* Re-fetch under the write lock to get latest committed eof. */
 				fsinfo = GetFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
 				if (fsinfo == NULL)
 					continue;
-				
+
 				segeof = (int64)fsinfo->eof;
 
 				/* Open and truncate the relation segfile beyond its eof */
 				MakeAOSegmentFileName(aorel, segno, -1, &fileSegNo, filenamepath);
-				
+
 				if (Debug_persistent_print)
-					elog(Persistent_DebugPrintLevel(), 
+					elog(Persistent_DebugPrintLevel(),
 						 "vacuum_appendonly_rel: Opening AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 						 get_namespace_name(RelationGetNamespace(aorel)),
 						 relname,
@@ -1103,14 +1101,14 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 						 aorel->rd_node.relNode,
 						 segno,
 						 segeof);
-				
+
 				if (OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened))
 				{
 					TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
 					CloseAOSegmentFile(&mirroredOpened);
-					
+
 					if (Debug_persistent_print)
-						elog(Persistent_DebugPrintLevel(), 
+						elog(Persistent_DebugPrintLevel(),
 							 "vacuum_appendonly_rel: Successfully truncated AO ROL relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 							 get_namespace_name(RelationGetNamespace(aorel)),
 							 relname,
@@ -1122,7 +1120,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 				else
 				{
 					if (Debug_persistent_print)
-						elog(Persistent_DebugPrintLevel(), 
+						elog(Persistent_DebugPrintLevel(),
 							 "vacuum_appendonly_rel: No gp_relation_node entry for AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 							 get_namespace_name(RelationGetNamespace(aorel)),
 							 relname,
@@ -1144,7 +1142,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			pfree(segfile_array);
 		}
 	}
-	
+
 	ereport(elevel,
 			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
 					relname, num_tuples, nblocks,
@@ -1167,12 +1165,12 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	int totalseg;
 	AOCSFileSegInfo **allseg;
 	AppendOnlyEntry *aoEntry;
-	
+
 	PGRUsage	ru0;
 	int i, j;
-		
+
 	pg_rusage_init(&ru0);
-	
+
 	relname = RelationGetRelationName(aorel);
 	ereport(elevel,
 			(errmsg("vacuuming \"%s.%s\"",
@@ -1180,10 +1178,10 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					relname)));
 
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
-	
+
 	allseg = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &totalseg);
 	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "vacuum_aocs_rel: AO COL relation \"%s.%s\", relation id %u, relfilenode %u has %d logical segments, %d atributes (columns)",
 			 get_namespace_name(RelationGetNamespace(aorel)),
 			 relname,
@@ -1195,17 +1193,17 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	{
 		num_tuples += allseg[i]->tupcount;
 		nblocks += allseg[i]->varblockcount;
-		
+
 		for(j=0; j<allseg[i]->vpinfo.nEntry; ++j)
 		{
 			AOCSVPInfoEntry *entry;
 			entry = getAOCSVPEntry(allseg[i], j);
-			
+
 			sz += entry->eof;
 		}
 	}
 	nblocks = (uint32)RelationGuessNumberOfBlocks(sz);
-                
+
 	if(isVacFull)
 	{
 		/* FULL */
@@ -1269,7 +1267,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			segno = allseg[i]->segno;
 
 			if (Debug_persistent_print)
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "vacuum_aocs_rel: Working on AO COL relation \"%s.%s\", relation id %u, relfilenode %u logical segment #%d",
 					 get_namespace_name(RelationGetNamespace(aorel)),
 					 relname,
@@ -1295,18 +1293,18 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			}
 			else
 			{
-				
+
 				/* Re-fetch under the write lock to get latest committed eof. */
 				fsinfo = GetAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
 				if (fsinfo == NULL)
 					continue;
-				
+
 				for(j=0; j<fsinfo->vpinfo.nEntry; ++j)
 				{
 					int64 			segeof;
 					char 			filenamepath[MAXPGPATH];
 					AOCSVPInfoEntry *entry;
-					
+
 					MirroredAppendOnlyOpen mirroredOpened;
 					int32				   fileSegNo;
 
@@ -1317,7 +1315,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					MakeAOSegmentFileName(aorel, segno, j, &fileSegNo, filenamepath);
 
 					if (Debug_persistent_print)
-						elog(Persistent_DebugPrintLevel(), 
+						elog(Persistent_DebugPrintLevel(),
 							 "vacuum_aocs_rel: Opening AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 							 get_namespace_name(RelationGetNamespace(aorel)),
 							 relname,
@@ -1332,9 +1330,9 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					{
 						TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
 						CloseAOSegmentFile(&mirroredOpened);
-						
+
 						if (Debug_persistent_print)
-							elog(Persistent_DebugPrintLevel(), 
+							elog(Persistent_DebugPrintLevel(),
 								 "vacuum_aocs_rel: Successfully truncated AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 								 get_namespace_name(RelationGetNamespace(aorel)),
 								 relname,
@@ -1348,7 +1346,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					else
 					{
 						if (Debug_persistent_print)
-							elog(Persistent_DebugPrintLevel(), 
+							elog(Persistent_DebugPrintLevel(),
 								 "vacuum_aocs_rel: No gp_relation_node entry for AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 								 get_namespace_name(RelationGetNamespace(aorel)),
 								 relname,
@@ -1366,7 +1364,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			}
 		}
 	}
-	
+
 	ereport(elevel,
 			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
 					relname, (double) num_tuples, nblocks,
@@ -1411,10 +1409,10 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 		CHECK_FOR_INTERRUPTS();
 
 		blkno--;
-		
-		// -------- MirroredLock ----------
+
+		/* -------- MirroredLock ---------- */
 		MIRROREDLOCK_BUFMGR_LOCK;
-		
+
 		buf = ReadBuffer(onerel, blkno);
 
 		/* In this phase we only need shared access to the buffer */
@@ -1428,7 +1426,7 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 			UnlockReleaseBuffer(buf);
 
 			MIRROREDLOCK_BUFMGR_UNLOCK;
-			// -------- MirroredLock ----------
+			/* -------- MirroredLock ---------- */
 
 			continue;
 		}
@@ -1457,10 +1455,10 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 		}						/* scan along page */
 
 		UnlockReleaseBuffer(buf);
-		
+
 		MIRROREDLOCK_BUFMGR_UNLOCK;
-		// -------- MirroredLock ----------
-		
+		/* -------- MirroredLock ---------- */
+
 		/* Done scanning if we found a tuple here */
 		if (hastup)
 			return blkno + 1;
