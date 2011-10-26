@@ -64,6 +64,12 @@ def makeCommand(oldHome, newHome,
            ]
     return cmd
 
+#============================================================
+def logGenericErrorMessage():
+    logger.fatal('Upgrade Failed..!!!')
+    logger.fatal('...Database might be in an unusable state')
+    logger.fatal('...Please check the logs, resolve the issue an re-run gpmigrator_mirror')
+
 
 #============================================================
 class GPUpgrade(GPUpgradeBase):
@@ -1250,18 +1256,21 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.fatal('***************************************')
         logger.fatal('==  Upgrade interrupted by user ==        <<<<< ')
+        logGenericErrorMessage()
         logger.fatal('***************************************')
         sys.exit(1)
     
     except ConnectionError, e:
         logger.fatal('***************************************')
         logger.fatal(str(e))
+        logGenericErrorMessage()
         logger.fatal('***************************************')
         sys.exit(1)
     
     except UpgradeError, e:
         logger.fatal('***************************************')
         logger.fatal(str(e))
+        logGenericErrorMessage()
         logger.fatal('***************************************')
         sys.exit(1)
     
@@ -1270,6 +1279,7 @@ if __name__ == '__main__':
         logger.fatal('Error executing command:')
         logger.fatal('  ' + str(e.cmd.strip()))
         logger.fatal('  ' + str(e.stderr.strip()))
+        logGenericErrorMessage()
         logger.fatal('***************************************')
         sys.exit(1)
     
