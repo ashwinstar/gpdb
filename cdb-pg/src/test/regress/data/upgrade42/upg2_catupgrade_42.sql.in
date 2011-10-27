@@ -420,7 +420,7 @@ INSERT INTO @gpupgradeschemaname@.pg_attribute_encoding
 			'blocksize=' || blocksize::text END AS blocksize,
 		CASE WHEN compresstype IS NULL THEN 'compresstype=none' ELSE
 			'compresstype=' || compresstype END AS compresstype,
-		CASE WHEN compresstype IS NULL THEN null ELSE
+		CASE WHEN compresstype IS NULL THEN 'compresslevel=0' ELSE
 			'compresslevel=' || compresslevel::text END AS compresslevel
 		FROM pg_appendonly
 		WHERE columnstore='t') a,
