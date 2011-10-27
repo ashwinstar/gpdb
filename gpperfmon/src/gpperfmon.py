@@ -33,7 +33,7 @@ except ImportError, e:
 
 
 script_name = os.path.split(__file__)[-1]
-script_version = '$Revision$'
+script_version = 'main build 29200'
 
 # consts
 STOPPED = 0
@@ -444,9 +444,10 @@ a hostname.
     lighty_port = 28080
 
     #lighty conf
-    #TODO: log location change
     lighty_access_log = os.path.join(instance_info['log_dir'], 'lighttpd-access.log')
     lighty_error_log = os.path.join(instance_info['log_dir'], 'lighttpd-error.log')
+    ipv6accesslog = os.path.join(instance_info['log_dir'], 'lighttpd-access-ipv6.log')
+    ipv6errorlog = os.path.join(instance_info['log_dir'], 'lighttpd-error-ipv6.log')
 
     help = """The Greenplum Performance Monitor runs a small web server for the UI and web API.  
 This web server by default runs on port 28080, but you may specify any available port."""
@@ -474,9 +475,16 @@ that SSL be enabled."""
         
         ssl_cert = os.path.join(instance_info['ui_conf_dir'], 'cert.pem')
 
+
+    yn = ask_yesno(None, '\nDo you want to enable ipV6 for the Web API', 'N')
+    if yn:
+        useipv6 = True
+    else:
+        useipv6 = False
+
     lighty_conf = generate_lighty_conf(instance_info, lighty_port, lighty_access_log, lighty_error_log,
                                        os.path.join(instance_info['web_root_dir'], 'gpmonws.py'), 
-                                       enable_ssl, ssl_cert)
+                                       enable_ssl, ssl_cert, useipv6, ipv6accesslog, ipv6errorlog)
 
     try:
         FILE = open(instance_info['lighttpd_conf_file'], 'w')
@@ -591,7 +599,7 @@ def setup_instance_directory(instance_name):
 
 #################
 def generate_lighty_conf(instance_info, port, lighty_access_log, 
-                         lighty_err_log, webpybin, usessl, certpath):
+                         lighty_err_log, webpybin, usessl, certpath, useipv6, ipv6accesslog, ipv6errorlog):
     # TODO: by instance
     fcgisocket = os.path.join(instance_info['root_dir'], 'perfmon.fastcgi.socket')
     fileString = '''server.modules = (
@@ -693,6 +701,15 @@ fastcgi.server = ( "/gpmonws.py" =>
        lighty_err_log, lighty_access_log, 
        port, instance_info['temp_dir'], 
        fcgisocket, webpybin)
+
+    if useipv6:
+
+        fileString += '''
+$SERVER["socket"] == "[::]:%d" {
+    accesslog.filename = "%s"
+    server.errorlog = "%s"
+}
+''' % (port, ipv6accesslog, ipv6errorlog)
 
     if usessl == 'enable':
 
