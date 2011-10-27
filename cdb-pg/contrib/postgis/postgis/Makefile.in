@@ -77,6 +77,7 @@ PG_CONFIG = @PGCONFIG@
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 libdir = $(shell $(PG_CONFIG) --libdir)
+includedir = $(shell $(PG_CONFIG) --includedir)
 else
 subdir = contrib/postgis/postgis
 top_builddir = ../../..
@@ -99,7 +100,7 @@ postgis_upgrade_12_to_14.sql: postgis.sql
 
 # Generate any .sql.in files from .sql.in.c files by running them through the C pre-processor 
 $(SQL_OBJS): %.in: %.in.c
-	$(CPP) -traditional-cpp $< | grep -v '^#' > $@
+	$(CPP) -I$(includedir) -traditional-cpp $< | grep -v '^#' > $@
 
 deps-install:
 	$(INSTALL_SHLIB) $(GEOS_DIR)/lib/libgeos* $(libdir)
