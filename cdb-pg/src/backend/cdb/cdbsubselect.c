@@ -305,14 +305,14 @@ static void InitConvertSubqueryToJoinContext(ConvertSubqueryToJoinContext *ctx)
 }
 
 /**
- * Process correlated opexpr of the form outer.var OP inner.expr. Sets outerVar
- * and innerExpr accordingly.
+ * Process correlated opexpr of the form foo(outer.var) OP bar(inner.var). Extracts
+ * bar(inner.var) as innerExpr.
+ * Returns true, if this is not a compatible correlated opexpr.
  */
-static bool IsCorrelatedOpExpr(OpExpr *opexp, Var **outerVar, Expr **innerExpr)
+static bool IsCorrelatedOpExpr(OpExpr *opexp, Expr **innerExpr)
 {
 	Assert(opexp);
 	Assert(list_length(opexp->args) > 1);
-	Assert(outerVar);
 	Assert(innerExpr);
 
 	if (list_length(opexp->args) != 2)
@@ -320,34 +320,33 @@ static bool IsCorrelatedOpExpr(OpExpr *opexp, Var **outerVar, Expr **innerExpr)
 		return false;
 	}
 
-	Expr *v1 = (Expr *) list_nth(opexp->args, 0);
-	Expr *v2 = (Expr *) list_nth(opexp->args, 1);
+	Expr *e1 = (Expr *) list_nth(opexp->args, 0);
+	Expr *e2 = (Expr *) list_nth(opexp->args, 1);
 
 	/**
 	 * One of the vars must be outer, and other must be inner.
 	 */
 
-	Var *tOuterVar = NULL;
+	Expr *tOuterExpr = NULL;
 	Expr *tInnerExpr = NULL;
 
-	if (IsA(v1, Var) && ((Var *) v1)->varlevelsup > 0)
+	if (contain_vars_of_level((Node *) e1, 1))
 	{
-		tOuterVar = (Var *) copyObject(v1);
-		tInnerExpr = v2;
+		tOuterExpr = (Expr *) copyObject(e1);
+		tInnerExpr = (Expr *) copyObject(e2);
 	}
-	else if (IsA(v2, Var) && ((Var *) v2)->varlevelsup > 0)
+	else if ((contain_vars_of_level((Node *) e2, 1)))
 	{
-		tOuterVar = (Var *) copyObject(v2);
-		tInnerExpr = v1;
+		tOuterExpr = (Expr *) copyObject(e2);
+		tInnerExpr = (Expr *) copyObject(e1);
 	}
 
 	/**
 	 * It is correlated only if we found an outer var and inner expr
 	 */
 
-	if (tOuterVar)
+	if (tOuterExpr)
 	{
-		*outerVar = tOuterVar;
 		*innerExpr = tInnerExpr;
 		return true;
 	}
@@ -357,21 +356,18 @@ static bool IsCorrelatedOpExpr(OpExpr *opexp, Var **outerVar, Expr **innerExpr)
 }
 
 /**
- * Checks if an opexpression is of the form (a = b) where a and b are vars. One of them must
- * be an outer var and one of them is an inner var.
+ * Checks if an opexpression is of the form (foo(outervar) = bar(innervar))
  * Input:
  * 	opexp - op expression
  * Output:
  * 	returns true if correlated equality condition
- * 	*outerVar - points to the outer var in the condition
- * 	*innerVar - points to the inner var in the condition
+ * 	*innerExpr - points to the inner expr i.e. bar(innervar) in the condition
  * 	*sortOp - postgres special, sort operator to implement the condition as a mergejoin.
  */
-static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Expr **innerExpr, Oid *sortOp )
+static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Expr **innerExpr, Oid *sortOp )
 {
 	Assert(opexp);
 	Assert(list_length(opexp->args) > 1);
-	Assert(outerVar);
 	Assert(innerExpr);
 	Assert(sortOp);
 
@@ -394,7 +390,7 @@ static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Expr **in
 
 	*sortOp = lsortOp;
 
-	if (!IsCorrelatedOpExpr(opexp, outerVar, innerExpr))
+	if (!IsCorrelatedOpExpr(opexp, innerExpr))
 	{
 		return false;
 	}
@@ -532,54 +528,52 @@ SubqueryToJoinWalker(Node *node, ConvertSubqueryToJoinContext *context)
 		return;
 	}
 
-	if (contain_vars_of_level_or_above(node, 1))
+	/**
+	 * If this is a correlated opexpression, we'd need to look inside.
+	 */
+	if (contain_vars_of_level_or_above(node, 1) && IsA(node, OpExpr))
 	{
-		if ( IsA(node, OpExpr))
+		OpExpr *opexp = (OpExpr *) node;
+
+		/**
+		 * If this is an expression of the form foo(outervar) = bar(innervar), then we want to know about the inner expression.
+		 */
+		Oid sortOp = InvalidOid;
+		Expr *innerExpr = NULL;
+		bool considerOpExpr = false;
+
+		if (context->considerNonEqualQual)
 		{
-			OpExpr *opexp = (OpExpr *) node;
+			considerOpExpr = IsCorrelatedOpExpr(opexp, &innerExpr);
+		}
+		else
+		{
+			considerOpExpr = IsCorrelatedEqualityOpExpr(opexp, &innerExpr, &sortOp);
+		}
 
-			/**
-			 * If this is an expression of the form a = b, then we want to know about the vars involved.
-			 */
-			Oid sortOp = InvalidOid;
-			Var *outerVar = NULL;
-			Expr *innerExpr = NULL;
+		if (considerOpExpr)
+		{
 
-			bool considerOpExpr = false;
+			TargetEntry *tle = makeTargetEntry(copyObject(innerExpr),
+					list_length(context->targetList) + 1,
+					NULL,
+					false);
 
-			if (context->considerNonEqualQual)
+			if (context->extractGrouping)
 			{
-				considerOpExpr = IsCorrelatedOpExpr(opexp, &outerVar, &innerExpr);
+				GroupClause *gc = makeNode(GroupClause);
+				gc->sortop = sortOp;
+				gc->tleSortGroupRef = list_length(context->groupClause) + 1;
+				context->groupClause = lappend(context->groupClause, gc);
+				tle->ressortgroupref = list_length(context->targetList) + 1;
 			}
-			else
-			{
-				considerOpExpr = IsCorrelatedEqualityOpExpr(opexp, &outerVar, &innerExpr, &sortOp);
-			}
 
-			if (considerOpExpr)
-			{
+			context->targetList = lappend(context->targetList, tle);
+			context->joinQual = make_and_qual(context->joinQual, (Node *) opexp);
 
-				TargetEntry *tle = makeTargetEntry(copyObject(innerExpr),
-						list_length(context->targetList) + 1,
-						NULL,
-						false);
+			AssertImply(context->extractGrouping, list_length(context->groupClause) == list_length(context->targetList));
 
-				if (context->extractGrouping)
-				{
-					GroupClause *gc = makeNode(GroupClause);
-					gc->sortop = sortOp;
-					gc->tleSortGroupRef = list_length(context->groupClause) + 1;
-					context->groupClause = lappend(context->groupClause, gc);
-					tle->ressortgroupref = list_length(context->targetList) + 1;
-				}
-
-				context->targetList = lappend(context->targetList, tle);
-				context->joinQual = make_and_qual(context->joinQual, (Node *) opexp);
-
-				AssertImply(context->extractGrouping, list_length(context->groupClause) == list_length(context->targetList));
-
-				return;
-			}
+			return;
 		}
 
 		/**
