@@ -1,21 +1,18 @@
 COMMAND NAME: gppkg
 
 Installs Greenplum Database extensions such as 
-pgcrypto, PL/R, PL/Java, PL/Java, PL/R, along 
+pgcrypto, PL/R, PL/Java, PL/Perl, and PostGIS, along 
 with their dependencies, across an entire cluster.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-gp_dump [option ...] [-a]
-
-gppkg-? | -h | --help
-
+gppkg [-i <package>| -u <package> | -r <name-version> | -c] 
+[-d <master_data_directory>] [-a] [-v]
+gppkg --migrate <GPHOME_1> <GPHOME_2> [-a] [-v]
+gppkg -? | --help | -h
 gppkg --version
-
-gppkg -v | -verbose
-
 
 *****************************************************
 DESCRIPTION
@@ -33,7 +30,7 @@ Package Manager to install each package using the
 options described below.
 
 After a major upgrade to Greenplum Database, you must 
-download and install all add-on modules again.
+download and install all extensions again.
 
 The following packages are available for download from the
 EMC Download Center.
@@ -65,16 +62,24 @@ The master data directory. If not specified, the value set
 Installs the given package. This includes any pre/post 
 installation steps and installation of any dependencies.
 
---migrate <GP_Home1> <GP_Home2>
+--migrate <GPHOME_1> <GPHOME_2>
 Migrates packages from a separate $GPHOME. Carries over 
 packages from one version of Greenplum Database to another.
-For example: gppkg —migrate from_gphome to_gphome
+For example: 
+  gppkg —migrate /usr/local/greenplum-db-4.2.0.1 
+  /usr/local/greenplum-db-4.2.1.0
+
 This option is automatically invoked by the installer 
 during minor upgrades. This option is given here for 
 cases when the user wants to migrate packages 
 manually.
+Migration can only proceed if gppkg is executed 
+from the installation directory to which packages 
+are being migrated. That is, GPHOME_2 must match 
+the $GPHOME from which the currently executing 
+gppkg is being run. 
 
--r <name><version> | --remove=<name><version>
+-r <name>-<version> | --remove=<name>-<version>
 Removes the specified package.
 
 -u <package> | --update=<package>
