@@ -154,7 +154,6 @@ class Global():
         self.foreignKeyStatus = None
         self.aclStatus = None
 
-        self.retcode = SUCCESS
 
         # the following variables used for reporting purposes
         self.elapsedTime = 0
@@ -1867,19 +1866,6 @@ def checkPGClass():
             logger.error(formatErr(e[0], e[1], e[2]))
         if len(err) > 100:
             logger.error("...")
-        relids = {}
-        for e in err:
-            seg = e[0]['dbid'] 
-            if not relids.has_key(seg):
-                relids[seg] = []
-            
-            relids[seg].append(e[2]['oid'])    
-
-        for seg in relids:
-            rels = relids[seg] 
-            for relid in rels:
-                c = GV.cfg[seg]
-                removeTable(seg, connect2(c), relid)
 
 
 #############
@@ -4451,7 +4437,7 @@ class GPObject:
 
         if len(self.duplicateIssues):
             for catname,issues in self.duplicateIssues.iteritems():
-                myprint('    Name of test which found this issue: duplicate_%' % catname)
+                myprint('    Name of test which found this issue: duplicate_%s' % catname)
                 for each in issues:
                     each.report()
             myprint('') 
