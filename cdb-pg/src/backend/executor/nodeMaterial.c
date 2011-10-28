@@ -285,6 +285,7 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	matstate->ts_pos = NULL;
 	matstate->ts_markpos = NULL;
 	matstate->share_lk_ctxt = NULL;
+	matstate->ts_destroyed = false;
 
 	/*
 	 * Miscellaneous initialization
@@ -480,6 +481,7 @@ DestroyTupleStore(MaterialState *node)
 	node->ts_pos = NULL;
 	node->ts_markpos = NULL;
 	node->eof_underlying = false;
+	node->ts_destroyed = true;
 }
 
 
@@ -522,12 +524,17 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 		/*
 		 * If tuple store is empty, then either we have not materialized yet
 		 * or tuple store was destroyed after a previous execution of materialize.
-		 * The second case occurs when materialize is part of parameterized subquery
-		 * execution, and we need to rescan child in that case (MPP-15087).
 		 */
 		if (!node->ts_state)
 		{
-			ExecChildRescan(node, exprCtxt);
+			/*
+			 *  If tuple store was destroyed before, then materialize is part of subquery
+			 *  execution, and we need to rescan child (MPP-15087).
+			 */
+			if (node->ts_destroyed)
+			{
+				ExecChildRescan(node, exprCtxt);
+			}
 			return;
 		}
 

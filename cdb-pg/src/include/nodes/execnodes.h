@@ -1623,6 +1623,7 @@ typedef struct MaterialState
         ScanState        ss;                                /* its first field is NodeTag */
         bool                randomAccess;        /* need random access to subplan output? */
         bool                eof_underlying; /* reached end of underlying plan? */
+        bool                ts_destroyed; /* called destroy tuple store? */
 
         void           *ts_state;            /* private state of tuplestore.c */
         void       *ts_pos;
