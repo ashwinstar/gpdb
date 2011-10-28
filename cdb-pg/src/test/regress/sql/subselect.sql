@@ -507,3 +507,83 @@ SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
 -- fails: correlation in distributed subplan
 -- force_explain
 explain SELECT * FROM csq_r WHERE a IN (SELECT csq_f FROM csq_f(csq_r.a),csq_r);
+
+--
+-- Test pullup of expr CSQs to joins
+--
+
+--
+-- Test data
+--
+
+drop table if exists csq_pullup;
+create table csq_pullup(t text, n numeric, i int, v varchar(10));
+insert into csq_pullup values ('abc',1, 2, 'xyz');
+insert into csq_pullup values ('xyz',2, 3, 'def');  
+insert into csq_pullup values ('def',3, 1, 'abc'); 
+
+--
+-- Expr CSQs to joins
+--
+
+--
+-- text, text
+--
+
+explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.t);
+
+select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.t);
+
+--
+-- text, varchar
+--
+
+explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.v);
+
+select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.t=t1.v);
+
+--
+-- numeric, numeric
+--
+
+explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n=t1.n);
+
+select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n=t1.n);
+
+--
+-- function(numeric), function(numeric)
+--
+
+explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.n + 1);
+
+select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.n + 1);
+
+
+--
+-- function(numeric), function(int)
+--
+
+explain select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.i + 1);
+
+select * from csq_pullup t0 where 1= (select count(*) from csq_pullup t1 where t0.n + 1=t1.i + 1);
+
+
+--
+-- NOT EXISTS CSQs to joins
+--
+
+--
+-- text, text
+--
+
+explain select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.t=t1.t and t1.i = 1);
+
+select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.t=t1.t and t1.i = 1);
+
+--
+-- int, function(int)
+--
+
+explain select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.i=t1.i + 1);
+
+select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.i=t1.i + 1);

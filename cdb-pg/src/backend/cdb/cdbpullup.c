@@ -597,8 +597,8 @@ cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr, bool modify
                       exprType((Node *)oldexpr),
                       exprTypmod((Node *)oldexpr),
                       0);
-        var->varnoold = 0;      /* assuming it wasn't ever a plain Var */
-        var->varoattno = 0;
+        var->varnoold = varno;      /* assuming it wasn't ever a plain Var */
+        var->varoattno = varattno;
         return (Expr *) var;
     }
 }                               /* cdbpullup_make_var */
