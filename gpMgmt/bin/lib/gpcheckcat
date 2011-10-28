@@ -1858,7 +1858,7 @@ def checkPGClass():
         logger.info('[OK] pg_class')
     else:
         GV.testStatus = False
-        setError(ERROR_REMOVE)
+        setError(ERROR_NOREPAIR)
         logger.info('[FAIL] pg_class')
         logger.error('pg_class has %d issue(s)' % len(err))
         logger.error(qry)
