@@ -2168,6 +2168,8 @@ static int writeToDDFileFromInput(char *ddBoostFileName)
 					if (err)
 						break;
 					total_bytes += ret_count;
+					memset(buf_iogroup, 0, rw_size);
+					buf_data_length = 0;
 				}
 
 
