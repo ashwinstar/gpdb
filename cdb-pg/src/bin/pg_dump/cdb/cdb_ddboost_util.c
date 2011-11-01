@@ -144,6 +144,7 @@ static void insertTableName(char *table, struct ddboost_options **dd_options);
 static void deleteTableName(char *table, char *schema, struct ddboost_options **dd_options);
 static void cleanupTableList(struct ddboost_options **dd_options);
 static int isFileCompressed(const char *full_path);
+static int createDbdumpsDir(char *filePath);
 
 /* Helper routines for handling multiple -T options using a linked list */
 struct schemaTableList *getNode(char *schemaTable)
@@ -1416,6 +1417,17 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
 
 	isCompress = isFileCompressed(full_path);
 
+    /* Always try to create the Directory db_dumps and db_dumps/<date> before we start the
+     * creation of fake dump files. If the directories already exist, then ignore the error.
+     * This creation is important beacause, when we do a selective restore of an old backup 
+     * onto a fresh cluster, the segment directories wont have the db_dumps and db_dumps/<date>
+     * directories */
+    err = createDbdumpsDir(dd_options->to_file);
+    if (err)
+    {
+        return -1;
+    }
+
 	/* Create two processes. In one write to named pipe.
   	 * In the other read from the named pipe and use getline to
 	 * parse as before.
@@ -2238,6 +2250,58 @@ isFileCompressed(const char *filename)
 	}
 	
 	return 0;
+}
+
+int
+createDbdumpsDir(char *filePath)
+{
+    char *pch = NULL;
+    char *filePathCopy = NULL;
+    int found = 0;
+    char curPath[MAX_PATH_NAME];
+    int err= 0;
+
+    memset(curPath, 0, MAX_PATH_NAME);
+    if (filePath[0] == '/')
+        curPath[0]='/';
+
+    /* Retain a copy of the original pathname as strtok strips off the string */
+    filePathCopy = strdup(filePath);
+
+    pch = strtok(filePathCopy, " /");
+    while(pch != NULL)
+    {
+        /* Create only the db_dumps and the next directory in the hierarchy */
+        if (!found && (strcmp(pch, "db_dumps") == 0))
+            found = 1;
+
+        strcat(curPath, pch);
+
+        /* Do not create the file here */
+        if (strncmp(curPath, filePath, strlen(filePath)))
+        {
+            if (found)
+            {
+                err = mkdir(curPath, S_IRWXU);
+                if (err && (err != EEXIST) && (err != -1))
+                {
+                    printf("\nDirectory %s creation on GPDB path failed with error %d\n", curPath, err);
+                    return -1;
+                }
+        
+                /* The directory structure is <some_path>/db_dumps/<date>/
+                 * When we finish creating the dated directory, we need to stop */
+                if (isdigit(pch[0]))
+                    return 0;
+            }
+
+            strcat(curPath, "/");
+            pch = strtok(NULL, " /");
+        }
+        else
+            break;
+    }
+    return 0;
 }
 
 #else
