@@ -15,7 +15,8 @@
 #include "cdb_dump_util.h"
 #include "cdb_backup_state.h"
 
-#define WAIT_COUNT_MAX 50
+/* increase timeout to 10min for heavily loaded system */
+#define WAIT_COUNT_MAX 300
 
 static int	assignSortVal(const PGnotify *pNotify);
 static int	cmpNotifyStructs(const void *lhs, const void *rhs);

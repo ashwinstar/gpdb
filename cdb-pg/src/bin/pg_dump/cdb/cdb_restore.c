@@ -1127,7 +1127,8 @@ threadProc(void *arg)
 			if (!bIsStarted)
 			{
 				nTries++;
-				if (nTries == 10)
+				/* increase timeout to 10min for heavily loaded system */
+				if (nTries == 300)
 				{
 					bIsFinished = true;
 					pParm->bSuccess = false;
