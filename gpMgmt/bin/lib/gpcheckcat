@@ -552,7 +552,7 @@ def checkPartitionIntegrity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('[ERROR] executing test: checkPartitionIntegrity')
         myprint('  Execution error: ' + str(e))
 
     # MPP-9283: look for partitions create "with oids".
@@ -587,7 +587,7 @@ def checkPartitionIntegrity():
                 logger.error("...")
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('[ERROR] executing test: checkPartitionIntegrity')
         myprint('  Execution error: ' + str(e))
 
         # TODO: add repair script
@@ -702,7 +702,7 @@ def checkPartitionIntegrity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('[ERROR] executing test: checkPartitionIntegrity')
         myprint('  Execution error: ' + str(e))
 
 
