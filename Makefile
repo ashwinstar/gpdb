@@ -1429,6 +1429,7 @@ GPPKG_TARGETS = \
 	cdb-pg/src/pl/plr/package \
 	cdb-pg/src/pl/plperl/package \
 	cdb-pg/src/pl/pljava/package \
+	cdb-pg/src/bin/gphdfs/package \
 	$(NULL)
 
 ## ----------------------------------------------------------------------
