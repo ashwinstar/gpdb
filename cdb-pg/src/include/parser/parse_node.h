@@ -29,7 +29,6 @@ typedef struct ParseStateBreadCrumb
 	struct ParseStateBreadCrumb	   *pop; 
 } ParseStateBreadCrumb;
 
-
 /*
  * State information used during parse analysis
  *
@@ -103,6 +102,8 @@ typedef struct ParseState
 	struct HTAB *p_namecache;  /* parse state object name cache */
 	bool        p_hasTblValueExpr;
 	bool        p_hasDynamicFunction; /* function w/unstable return type */
+	List	   *p_setopTypes;		/* predicated types on Setop */
+	List	   *p_setopTypmods;		/* predicated typmods on Setop */
 } ParseState;
 
 extern ParseState *make_parsestate(ParseState *parentParseState);

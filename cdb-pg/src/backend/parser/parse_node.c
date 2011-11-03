@@ -49,6 +49,8 @@ make_parsestate(ParseState *parentParseState)
 	{
 		pstate->p_sourcetext = parentParseState->p_sourcetext;
 		pstate->p_variableparams = parentParseState->p_variableparams;
+		pstate->p_setopTypes = parentParseState->p_setopTypes;
+		pstate->p_setopTypmods = parentParseState->p_setopTypmods;
 	}
 
 	return pstate;
