@@ -7342,6 +7342,15 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->newname = $6;
 					$$ = (Node *)n;
 				}
+			| ALTER EXTERNAL TABLE relation_expr RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TABLE;
+					n->relation = $4;
+					n->subname = NULL;
+					n->newname = $7;
+					$$ = (Node *)n;
+				}
 			| ALTER INDEX relation_expr RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);
@@ -7358,6 +7367,15 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->relation = $3;
 					n->subname = $6;
 					n->newname = $8;
+					$$ = (Node *)n;
+				}
+			| ALTER EXTERNAL TABLE relation_expr RENAME opt_column name TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_COLUMN;
+					n->relation = $4;
+					n->subname = $7;
+					n->newname = $9;
 					$$ = (Node *)n;
 				}
 			| ALTER TRIGGER name ON relation_expr RENAME TO name
@@ -7455,6 +7473,14 @@ AlterObjectSchemaStmt:
 					n->objectType = OBJECT_TABLE;
 					n->relation = $3;
 					n->newschema = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER EXTERNAL TABLE relation_expr SET SCHEMA name
+				{
+					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
+					n->objectType = OBJECT_TABLE;
+					n->relation = $4;
+					n->newschema = $7;
 					$$ = (Node *)n;
 				}
 			| ALTER TYPE_P SimpleTypename SET SCHEMA name
