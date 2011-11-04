@@ -194,18 +194,18 @@ aabg: appendonlywriter:00000340:  "found none", relid)));
 aabg: appendonlywriter:00000465:  ereport(ERROR, 
 aabg: appendonlywriter:00000466:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
 aabg: appendonlywriter:00000467:  errmsg("int64 out of range"))); 
-aabg: appendonlywriter:00000632:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
-aabg: appendonlywriter:00000633:  "tables open for writing data at the same time. " 
-aabg: appendonlywriter:00000634:  "if tables are heavily partitioned or if your " 
-aabg: appendonlywriter:00000635:  "workload requires, increase the value of " 
-aabg: appendonlywriter:00000636:  "max_appendonly_tables and retry", 
-aabg: appendonlywriter:00000637:  MaxAppendOnlyTables))); 
-aabg: appendonlywriter:00000710:  ereport(ERROR, (errmsg("could not find segment file to use for " 
-aabg: appendonlywriter:00000711:  "inserting into relation %s (%d).", 
-aabg: appendonlywriter:00000712:  get_rel_name(relid), relid))); 
-aabg: appendonlywriter:00000818:  ereport(ERROR, 
-aabg: appendonlywriter:00000819:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-aabg: appendonlywriter:00000820:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
+aabg: appendonlywriter:00000678:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
+aabg: appendonlywriter:00000679:  "tables open for writing data at the same time. " 
+aabg: appendonlywriter:00000680:  "if tables are heavily partitioned or if your " 
+aabg: appendonlywriter:00000681:  "workload requires, increase the value of " 
+aabg: appendonlywriter:00000682:  "max_appendonly_tables and retry", 
+aabg: appendonlywriter:00000683:  MaxAppendOnlyTables))); 
+aabg: appendonlywriter:00000756:  ereport(ERROR, (errmsg("could not find segment file to use for " 
+aabg: appendonlywriter:00000757:  "inserting into relation %s (%d).", 
+aabg: appendonlywriter:00000758:  get_rel_name(relid), relid))); 
+aabg: appendonlywriter:00000864:  ereport(ERROR, 
+aabg: appendonlywriter:00000865:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+aabg: appendonlywriter:00000866:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
 aaaaa GP_IGNORE: baag: bitmap - ./backend/access/bitmap/bitmap.c
 baag: bitmap:00000075:  elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes"); 
 baag: bitmap:00000079:  ereport (ERROR, 
@@ -6249,222 +6249,226 @@ cabc: cdbpartition:00004654:  errmsg("Need START or END when adding "
 cabc: cdbpartition:00004655:  "RANGE partition to %s", 
 cabc: cdbpartition:00004656:  lrelname), 
 cabc: cdbpartition:00004657:  errOmitLocation(true))); 
-cabc: cdbpartition:00004754:  ereport(ERROR, 
-cabc: cdbpartition:00004755:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004756:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004757:  "partition"), 
-cabc: cdbpartition:00004758:  errOmitLocation(true))); 
-cabc: cdbpartition:00004812:  ereport(ERROR, 
-cabc: cdbpartition:00004813:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004814:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004815:  "partition"), 
-cabc: cdbpartition:00004816:  errOmitLocation(true))); 
-cabc: cdbpartition:00004927:  ereport(ERROR, 
-cabc: cdbpartition:00004928:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004929:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004930:  "partition"), 
-cabc: cdbpartition:00004931:  errOmitLocation(true))); 
-cabc: cdbpartition:00004969:  ereport(ERROR, 
-cabc: cdbpartition:00004970:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00004971:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00004972:  "partition"), 
-cabc: cdbpartition:00004973:  errOmitLocation(true))); 
-cabc: cdbpartition:00005634:  ereport(ERROR, 
-cabc: cdbpartition:00005635:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00005636:  errmsg("new partition overlaps existing " 
-cabc: cdbpartition:00005637:  "partition%s", 
-cabc: cdbpartition:00005638:  (prule && prule->isName) ? 
-cabc: cdbpartition:00005639:  prule->partIdStr : ""), 
-cabc: cdbpartition:00005640:  errOmitLocation(true))); 
-cabc: cdbpartition:00005693:  ereport(ERROR, 
-cabc: cdbpartition:00005694:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00005695:  errmsg("new partition definition overlaps " 
-cabc: cdbpartition:00005696:  "existing partition%s of %s", 
-cabc: cdbpartition:00005697:  prule->partIdStr, 
-cabc: cdbpartition:00005698:  lrelname), 
-cabc: cdbpartition:00005699:  errOmitLocation(true))); 
-cabc: cdbpartition:00005815:  elog(ERROR, "cache lookup failed for relation %u", 
-cabc: cdbpartition:00005816:  RelationGetRelid(rel)); 
-cabc: cdbpartition:00006197:  elog(ERROR, "cache lookup failed for relation %u", oldrelid); 
-cabc: cdbpartition:00006205:  elog(ERROR, "cache lookup failed for relation %u", newrelid); 
-cabc: cdbpartition:00006264:  ereport(ERROR, 
-cabc: cdbpartition:00006265:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006266:  errmsg("cannot MODIFY %s partition%s for " 
-cabc: cdbpartition:00006267:  "relation \"%s\" to ADD values -- would " 
-cabc: cdbpartition:00006268:  "overlap DEFAULT partition \"%s\"", 
-cabc: cdbpartition:00006269:  "LIST", 
-cabc: cdbpartition:00006270:  prule->partIdStr, 
-cabc: cdbpartition:00006271:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006272:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006273:  errhint("need to SPLIT partition \"%s\"", 
-cabc: cdbpartition:00006274:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006275:  errOmitLocation(true))); 
-cabc: cdbpartition:00006325:  ereport(ERROR, 
-cabc: cdbpartition:00006326:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006327:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006328:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006329:  "would overlap " 
-cabc: cdbpartition:00006330:  "existing partition%s", 
-cabc: cdbpartition:00006331:  prule->partIdStr, 
-cabc: cdbpartition:00006332:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006333:  prule2->isName ? 
-cabc: cdbpartition:00006334:  prule2->partIdStr : ""), 
-cabc: cdbpartition:00006335:  errOmitLocation(true))); 
-cabc: cdbpartition:00006337:  ereport(ERROR, 
-cabc: cdbpartition:00006338:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006339:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006340:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006341:  "ADD value has duplicate in " 
-cabc: cdbpartition:00006342:  "existing partition", 
-cabc: cdbpartition:00006343:  prule->partIdStr, 
-cabc: cdbpartition:00006344:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00006345:  errOmitLocation(true))); 
-cabc: cdbpartition:00006356:  ereport(ERROR, 
-cabc: cdbpartition:00006357:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006358:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006359:  "relation \"%s\" -- DROP value not found", 
-cabc: cdbpartition:00006360:  prule->partIdStr, 
-cabc: cdbpartition:00006361:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00006362:  errOmitLocation(true))); 
-cabc: cdbpartition:00006367:  ereport(ERROR, 
-cabc: cdbpartition:00006368:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006369:  errmsg("cannot MODIFY LIST partition%s for " 
-cabc: cdbpartition:00006370:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006371:  "found DROP value in%s partition%s", 
-cabc: cdbpartition:00006372:  prule->partIdStr, 
-cabc: cdbpartition:00006373:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006374:  prule2->isName ? "" : "other", 
-cabc: cdbpartition:00006375:  prule2->isName ? prule2->partIdStr : ""), 
-cabc: cdbpartition:00006376:  errOmitLocation(true))); 
-cabc: cdbpartition:00006488:  ereport(ERROR, 
-cabc: cdbpartition:00006489:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006490:  errmsg("cannot MODIFY %s partition%s for " 
-cabc: cdbpartition:00006491:  "relation \"%s\" to extend range -- would " 
-cabc: cdbpartition:00006492:  "overlap DEFAULT partition \"%s\"", 
-cabc: cdbpartition:00006493:  "RANGE", 
-cabc: cdbpartition:00006494:  prule->partIdStr, 
-cabc: cdbpartition:00006495:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006496:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006497:  errhint("need to SPLIT partition \"%s\"", 
-cabc: cdbpartition:00006498:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006499:  errOmitLocation(true))); 
-cabc: cdbpartition:00006643:  ereport(ERROR, 
-cabc: cdbpartition:00006644:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006645:  errmsg("cannot MODIFY %s partition%s for " 
-cabc: cdbpartition:00006646:  "relation \"%s\" to extend range -- would " 
-cabc: cdbpartition:00006647:  "overlap DEFAULT partition \"%s\"", 
-cabc: cdbpartition:00006648:  "RANGE", 
-cabc: cdbpartition:00006649:  prule->partIdStr, 
-cabc: cdbpartition:00006650:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006651:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006652:  errhint("need to SPLIT partition \"%s\"", 
-cabc: cdbpartition:00006653:  prule->pNode->default_part->parname), 
-cabc: cdbpartition:00006654:  errOmitLocation(true))); 
-cabc: cdbpartition:00006783:  ereport(ERROR, 
-cabc: cdbpartition:00006784:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-cabc: cdbpartition:00006785:  errmsg("cannot MODIFY RANGE partition%s for " 
-cabc: cdbpartition:00006786:  "relation \"%s\" -- " 
-cabc: cdbpartition:00006787:  "would overlap " 
-cabc: cdbpartition:00006788:  "existing partition%s", 
-cabc: cdbpartition:00006789:  prule->partIdStr, 
-cabc: cdbpartition:00006790:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00006791:  (prule2 && prule2->isName) ? 
-cabc: cdbpartition:00006792:  prule2->partIdStr : ""), 
-cabc: cdbpartition:00006793:  errOmitLocation(true))); 
-cabc: cdbpartition:00006899:  ereport(ERROR, 
-cabc: cdbpartition:00006900:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-cabc: cdbpartition:00006901:  errmsg("relation name \"%s\" for child partition " 
-cabc: cdbpartition:00006902:  "is too long", 
-cabc: cdbpartition:00006903:  newRelNameBuf))); 
-cabc: cdbpartition:00006970:  elog(ERROR, "could not find operator"); 
-cabc: cdbpartition:00007118:  ereport(ERROR, 
-cabc: cdbpartition:00007119:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-cabc: cdbpartition:00007120:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-cabc: cdbpartition:00007121:  cname, 
-cabc: cdbpartition:00007122:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007123:  errOmitLocation(true))); 
-cabc: cdbpartition:00007158:  ereport(ERROR, 
-cabc: cdbpartition:00007159:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007160:  errmsg("cannot exchange relation " 
-cabc: cdbpartition:00007161:  "which is not a table"))); 
-cabc: cdbpartition:00007173:  elog(ERROR, "existing part \"%s\" not congruent with" 
-cabc: cdbpartition:00007174:  "partitioned table \"%s\"", 
-cabc: cdbpartition:00007175:  RelationGetRelationName(oldrel), 
-cabc: cdbpartition:00007176:  RelationGetRelationName(rel)); 
-cabc: cdbpartition:00007192:  ereport(ERROR, 
-cabc: cdbpartition:00007193:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007194:  errmsg("owner of \"%s\" must be the same as that " 
-cabc: cdbpartition:00007195:  "of \"%s\"", 
-cabc: cdbpartition:00007196:  RelationGetRelationName(newrel), 
-cabc: cdbpartition:00007197:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007198:  errOmitLocation(true))); 
-cabc: cdbpartition:00007206:  ereport(ERROR, 
-cabc: cdbpartition:00007207:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007208:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
-cabc: cdbpartition:00007209:  RelationGetRelationName(rel), 
-cabc: cdbpartition:00007210:  RelationGetRelationName(newrel)), 
+cabc: cdbpartition:00004696:  ereport(ERROR, 
+cabc: cdbpartition:00004697:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004698:  errmsg("invalid partition range specification."), 
+cabc: cdbpartition:00004699:  errOmitLocation(true))); 
+cabc: cdbpartition:00004767:  ereport(ERROR, 
+cabc: cdbpartition:00004768:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004769:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004770:  "partition"), 
+cabc: cdbpartition:00004771:  errOmitLocation(true))); 
+cabc: cdbpartition:00004825:  ereport(ERROR, 
+cabc: cdbpartition:00004826:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004827:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004828:  "partition"), 
+cabc: cdbpartition:00004829:  errOmitLocation(true))); 
+cabc: cdbpartition:00004940:  ereport(ERROR, 
+cabc: cdbpartition:00004941:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004942:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004943:  "partition"), 
+cabc: cdbpartition:00004944:  errOmitLocation(true))); 
+cabc: cdbpartition:00004982:  ereport(ERROR, 
+cabc: cdbpartition:00004983:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00004984:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00004985:  "partition"), 
+cabc: cdbpartition:00004986:  errOmitLocation(true))); 
+cabc: cdbpartition:00005647:  ereport(ERROR, 
+cabc: cdbpartition:00005648:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00005649:  errmsg("new partition overlaps existing " 
+cabc: cdbpartition:00005650:  "partition%s", 
+cabc: cdbpartition:00005651:  (prule && prule->isName) ? 
+cabc: cdbpartition:00005652:  prule->partIdStr : ""), 
+cabc: cdbpartition:00005653:  errOmitLocation(true))); 
+cabc: cdbpartition:00005706:  ereport(ERROR, 
+cabc: cdbpartition:00005707:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00005708:  errmsg("new partition definition overlaps " 
+cabc: cdbpartition:00005709:  "existing partition%s of %s", 
+cabc: cdbpartition:00005710:  prule->partIdStr, 
+cabc: cdbpartition:00005711:  lrelname), 
+cabc: cdbpartition:00005712:  errOmitLocation(true))); 
+cabc: cdbpartition:00005828:  elog(ERROR, "cache lookup failed for relation %u", 
+cabc: cdbpartition:00005829:  RelationGetRelid(rel)); 
+cabc: cdbpartition:00006210:  elog(ERROR, "cache lookup failed for relation %u", oldrelid); 
+cabc: cdbpartition:00006218:  elog(ERROR, "cache lookup failed for relation %u", newrelid); 
+cabc: cdbpartition:00006277:  ereport(ERROR, 
+cabc: cdbpartition:00006278:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006279:  errmsg("cannot MODIFY %s partition%s for " 
+cabc: cdbpartition:00006280:  "relation \"%s\" to ADD values -- would " 
+cabc: cdbpartition:00006281:  "overlap DEFAULT partition \"%s\"", 
+cabc: cdbpartition:00006282:  "LIST", 
+cabc: cdbpartition:00006283:  prule->partIdStr, 
+cabc: cdbpartition:00006284:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006285:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006286:  errhint("need to SPLIT partition \"%s\"", 
+cabc: cdbpartition:00006287:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006288:  errOmitLocation(true))); 
+cabc: cdbpartition:00006338:  ereport(ERROR, 
+cabc: cdbpartition:00006339:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006340:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006341:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006342:  "would overlap " 
+cabc: cdbpartition:00006343:  "existing partition%s", 
+cabc: cdbpartition:00006344:  prule->partIdStr, 
+cabc: cdbpartition:00006345:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006346:  prule2->isName ? 
+cabc: cdbpartition:00006347:  prule2->partIdStr : ""), 
+cabc: cdbpartition:00006348:  errOmitLocation(true))); 
+cabc: cdbpartition:00006350:  ereport(ERROR, 
+cabc: cdbpartition:00006351:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006352:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006353:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006354:  "ADD value has duplicate in " 
+cabc: cdbpartition:00006355:  "existing partition", 
+cabc: cdbpartition:00006356:  prule->partIdStr, 
+cabc: cdbpartition:00006357:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00006358:  errOmitLocation(true))); 
+cabc: cdbpartition:00006369:  ereport(ERROR, 
+cabc: cdbpartition:00006370:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006371:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006372:  "relation \"%s\" -- DROP value not found", 
+cabc: cdbpartition:00006373:  prule->partIdStr, 
+cabc: cdbpartition:00006374:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00006375:  errOmitLocation(true))); 
+cabc: cdbpartition:00006380:  ereport(ERROR, 
+cabc: cdbpartition:00006381:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006382:  errmsg("cannot MODIFY LIST partition%s for " 
+cabc: cdbpartition:00006383:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006384:  "found DROP value in%s partition%s", 
+cabc: cdbpartition:00006385:  prule->partIdStr, 
+cabc: cdbpartition:00006386:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006387:  prule2->isName ? "" : "other", 
+cabc: cdbpartition:00006388:  prule2->isName ? prule2->partIdStr : ""), 
+cabc: cdbpartition:00006389:  errOmitLocation(true))); 
+cabc: cdbpartition:00006501:  ereport(ERROR, 
+cabc: cdbpartition:00006502:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006503:  errmsg("cannot MODIFY %s partition%s for " 
+cabc: cdbpartition:00006504:  "relation \"%s\" to extend range -- would " 
+cabc: cdbpartition:00006505:  "overlap DEFAULT partition \"%s\"", 
+cabc: cdbpartition:00006506:  "RANGE", 
+cabc: cdbpartition:00006507:  prule->partIdStr, 
+cabc: cdbpartition:00006508:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006509:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006510:  errhint("need to SPLIT partition \"%s\"", 
+cabc: cdbpartition:00006511:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006512:  errOmitLocation(true))); 
+cabc: cdbpartition:00006656:  ereport(ERROR, 
+cabc: cdbpartition:00006657:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006658:  errmsg("cannot MODIFY %s partition%s for " 
+cabc: cdbpartition:00006659:  "relation \"%s\" to extend range -- would " 
+cabc: cdbpartition:00006660:  "overlap DEFAULT partition \"%s\"", 
+cabc: cdbpartition:00006661:  "RANGE", 
+cabc: cdbpartition:00006662:  prule->partIdStr, 
+cabc: cdbpartition:00006663:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006664:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006665:  errhint("need to SPLIT partition \"%s\"", 
+cabc: cdbpartition:00006666:  prule->pNode->default_part->parname), 
+cabc: cdbpartition:00006667:  errOmitLocation(true))); 
+cabc: cdbpartition:00006796:  ereport(ERROR, 
+cabc: cdbpartition:00006797:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabc: cdbpartition:00006798:  errmsg("cannot MODIFY RANGE partition%s for " 
+cabc: cdbpartition:00006799:  "relation \"%s\" -- " 
+cabc: cdbpartition:00006800:  "would overlap " 
+cabc: cdbpartition:00006801:  "existing partition%s", 
+cabc: cdbpartition:00006802:  prule->partIdStr, 
+cabc: cdbpartition:00006803:  RelationGetRelationName(rel), 
+cabc: cdbpartition:00006804:  (prule2 && prule2->isName) ? 
+cabc: cdbpartition:00006805:  prule2->partIdStr : ""), 
+cabc: cdbpartition:00006806:  errOmitLocation(true))); 
+cabc: cdbpartition:00006912:  ereport(ERROR, 
+cabc: cdbpartition:00006913:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+cabc: cdbpartition:00006914:  errmsg("relation name \"%s\" for child partition " 
+cabc: cdbpartition:00006915:  "is too long", 
+cabc: cdbpartition:00006916:  newRelNameBuf))); 
+cabc: cdbpartition:00006983:  elog(ERROR, "could not find operator"); 
+cabc: cdbpartition:00007131:  ereport(ERROR, 
+cabc: cdbpartition:00007132:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+cabc: cdbpartition:00007133:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+cabc: cdbpartition:00007134:  cname, 
+cabc: cdbpartition:00007135:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00007136:  errOmitLocation(true))); 
+cabc: cdbpartition:00007171:  ereport(ERROR, 
+cabc: cdbpartition:00007172:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007173:  errmsg("cannot exchange relation " 
+cabc: cdbpartition:00007174:  "which is not a table"))); 
+cabc: cdbpartition:00007186:  elog(ERROR, "existing part \"%s\" not congruent with" 
+cabc: cdbpartition:00007187:  "partitioned table \"%s\"", 
+cabc: cdbpartition:00007188:  RelationGetRelationName(oldrel), 
+cabc: cdbpartition:00007189:  RelationGetRelationName(rel)); 
+cabc: cdbpartition:00007205:  ereport(ERROR, 
+cabc: cdbpartition:00007206:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007207:  errmsg("owner of \"%s\" must be the same as that " 
+cabc: cdbpartition:00007208:  "of \"%s\"", 
+cabc: cdbpartition:00007209:  RelationGetRelationName(newrel), 
+cabc: cdbpartition:00007210:  RelationGetRelationName(rel)), 
 cabc: cdbpartition:00007211:  errOmitLocation(true))); 
 cabc: cdbpartition:00007219:  ereport(ERROR, 
 cabc: cdbpartition:00007220:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007221:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
-cabc: cdbpartition:00007222:  "child table(s)", 
+cabc: cdbpartition:00007221:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
+cabc: cdbpartition:00007222:  RelationGetRelationName(rel), 
 cabc: cdbpartition:00007223:  RelationGetRelationName(newrel)), 
 cabc: cdbpartition:00007224:  errOmitLocation(true))); 
-cabc: cdbpartition:00007231:  ereport(ERROR, 
-cabc: cdbpartition:00007232:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007233:  errmsg("cannot exchange table \"%s\" as it " 
-cabc: cdbpartition:00007234:  "inherits other table(s)", 
-cabc: cdbpartition:00007235:  RelationGetRelationName(newrel)), 
-cabc: cdbpartition:00007236:  errOmitLocation(true))); 
+cabc: cdbpartition:00007232:  ereport(ERROR, 
+cabc: cdbpartition:00007233:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007234:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
+cabc: cdbpartition:00007235:  "child table(s)", 
+cabc: cdbpartition:00007236:  RelationGetRelationName(newrel)), 
+cabc: cdbpartition:00007237:  errOmitLocation(true))); 
 cabc: cdbpartition:00007244:  ereport(ERROR, 
 cabc: cdbpartition:00007245:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007246:  errmsg("cannot exchange table which has rules " 
-cabc: cdbpartition:00007247:  "defined on it"), 
-cabc: cdbpartition:00007248:  errOmitLocation(true))); 
-cabc: cdbpartition:00007277:  elog(ERROR, 
-cabc: cdbpartition:00007278:  "discrepancy in partitioning policy of \"%s\"", 
-cabc: cdbpartition:00007279:  RelationGetRelationName(rel)); 
-cabc: cdbpartition:00007285:  elog(ERROR, 
-cabc: cdbpartition:00007286:  "discrepancy in partitioning policy of \"%s\"", 
-cabc: cdbpartition:00007287:  RelationGetRelationName(rel)); 
-cabc: cdbpartition:00007310:  ereport(ERROR, 
-cabc: cdbpartition:00007311:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007312:  errmsg("distribution policy for \"%s\" " 
-cabc: cdbpartition:00007313:  "must be the same as that for \"%s\"", 
-cabc: cdbpartition:00007314:  RelationGetRelationName(newrel), 
-cabc: cdbpartition:00007315:  RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007316:  errOmitLocation(true))); 
+cabc: cdbpartition:00007246:  errmsg("cannot exchange table \"%s\" as it " 
+cabc: cdbpartition:00007247:  "inherits other table(s)", 
+cabc: cdbpartition:00007248:  RelationGetRelationName(newrel)), 
+cabc: cdbpartition:00007249:  errOmitLocation(true))); 
+cabc: cdbpartition:00007257:  ereport(ERROR, 
+cabc: cdbpartition:00007258:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007259:  errmsg("cannot exchange table which has rules " 
+cabc: cdbpartition:00007260:  "defined on it"), 
+cabc: cdbpartition:00007261:  errOmitLocation(true))); 
+cabc: cdbpartition:00007290:  elog(ERROR, 
+cabc: cdbpartition:00007291:  "discrepancy in partitioning policy of \"%s\"", 
+cabc: cdbpartition:00007292:  RelationGetRelationName(rel)); 
+cabc: cdbpartition:00007298:  elog(ERROR, 
+cabc: cdbpartition:00007299:  "discrepancy in partitioning policy of \"%s\"", 
+cabc: cdbpartition:00007300:  RelationGetRelationName(rel)); 
 cabc: cdbpartition:00007323:  ereport(ERROR, 
 cabc: cdbpartition:00007324:  (errcode(ERRCODE_SYNTAX_ERROR), 
-cabc: cdbpartition:00007325:  errmsg("distribution policy matches but implementation lags"), 
-cabc: cdbpartition:00007326:  errOmitLocation(true))); 
-cabc: cdbpartition:00007503:  ereport(ERROR, 
-cabc: cdbpartition:00007504:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-cabc: cdbpartition:00007505:  errmsg("%s constraint \"%s\" missing", what, who), 
-cabc: cdbpartition:00007506:  errhint("Add %s constraint \"%s\" to the candidate table" 
-cabc: cdbpartition:00007507:  " or drop it from the partitioned table." 
-cabc: cdbpartition:00007508:  , what, who), 
-cabc: cdbpartition:00007509:  errOmitLocation(true))); 
-cabc: cdbpartition:00007513:  ereport(ERROR, 
-cabc: cdbpartition:00007514:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-cabc: cdbpartition:00007515:  errmsg("WITHOUT VALIDATION incompatible with missing %s constraint \"%s\"", 
-cabc: cdbpartition:00007516:  what, who), 
-cabc: cdbpartition:00007517:  errhint("Add %s constraint %s to the candidate table" 
-cabc: cdbpartition:00007518:  " or drop it from the partitioned table." 
-cabc: cdbpartition:00007519:  , what, who), 
-cabc: cdbpartition:00007520:  errOmitLocation(true))); 
-cabc: cdbpartition:00007527:  elog(ERROR,"invalid constraint type: %c", con->contype); 
-cabc: cdbpartition:00007548:  elog(WARNING, "Won't enforce FK constraint."); 
-cabc: cdbpartition:00007553:  elog(WARNING, "Won't enforce PK constraint."); 
-cabc: cdbpartition:00007558:  elog(WARNING, "Won't enforce ND constraint."); 
-cabc: cdbpartition:00007563:  elog(WARNING, "!! NOT READY FOR TYPE %c CONSTRAINT !!", con->contype); 
-cabc: cdbpartition:00007671:  elog(ERROR, "name request for constraint of inappropriate type"); 
-cabc: cdbpartition:00007964:  ereport(ERROR, 
-cabc: cdbpartition:00007965:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-cabc: cdbpartition:00007966:  errmsg("%s constraint must contain all columns in the " 
-cabc: cdbpartition:00007967:  "partition key of relation \"%s\".", 
-cabc: cdbpartition:00007968:  what, RelationGetRelationName(rel)), 
-cabc: cdbpartition:00007969:  errhint("Include the partition key or create a part-wise UNIQUE index instead."))); 
+cabc: cdbpartition:00007325:  errmsg("distribution policy for \"%s\" " 
+cabc: cdbpartition:00007326:  "must be the same as that for \"%s\"", 
+cabc: cdbpartition:00007327:  RelationGetRelationName(newrel), 
+cabc: cdbpartition:00007328:  RelationGetRelationName(rel)), 
+cabc: cdbpartition:00007329:  errOmitLocation(true))); 
+cabc: cdbpartition:00007336:  ereport(ERROR, 
+cabc: cdbpartition:00007337:  (errcode(ERRCODE_SYNTAX_ERROR), 
+cabc: cdbpartition:00007338:  errmsg("distribution policy matches but implementation lags"), 
+cabc: cdbpartition:00007339:  errOmitLocation(true))); 
+cabc: cdbpartition:00007516:  ereport(ERROR, 
+cabc: cdbpartition:00007517:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+cabc: cdbpartition:00007518:  errmsg("%s constraint \"%s\" missing", what, who), 
+cabc: cdbpartition:00007519:  errhint("Add %s constraint \"%s\" to the candidate table" 
+cabc: cdbpartition:00007520:  " or drop it from the partitioned table." 
+cabc: cdbpartition:00007521:  , what, who), 
+cabc: cdbpartition:00007522:  errOmitLocation(true))); 
+cabc: cdbpartition:00007526:  ereport(ERROR, 
+cabc: cdbpartition:00007527:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+cabc: cdbpartition:00007528:  errmsg("WITHOUT VALIDATION incompatible with missing %s constraint \"%s\"", 
+cabc: cdbpartition:00007529:  what, who), 
+cabc: cdbpartition:00007530:  errhint("Add %s constraint %s to the candidate table" 
+cabc: cdbpartition:00007531:  " or drop it from the partitioned table." 
+cabc: cdbpartition:00007532:  , what, who), 
+cabc: cdbpartition:00007533:  errOmitLocation(true))); 
+cabc: cdbpartition:00007540:  elog(ERROR,"invalid constraint type: %c", con->contype); 
+cabc: cdbpartition:00007561:  elog(WARNING, "Won't enforce FK constraint."); 
+cabc: cdbpartition:00007566:  elog(WARNING, "Won't enforce PK constraint."); 
+cabc: cdbpartition:00007571:  elog(WARNING, "Won't enforce ND constraint."); 
+cabc: cdbpartition:00007576:  elog(WARNING, "!! NOT READY FOR TYPE %c CONSTRAINT !!", con->contype); 
+cabc: cdbpartition:00007684:  elog(ERROR, "name request for constraint of inappropriate type"); 
+cabc: cdbpartition:00007977:  ereport(ERROR, 
+cabc: cdbpartition:00007978:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+cabc: cdbpartition:00007979:  errmsg("%s constraint must contain all columns in the " 
+cabc: cdbpartition:00007980:  "partition key of relation \"%s\".", 
+cabc: cdbpartition:00007981:  what, RelationGetRelationName(rel)), 
+cabc: cdbpartition:00007982:  errhint("Include the partition key or create a part-wise UNIQUE index instead."))); 
 aaaaa GP_IGNORE: caah: cdbpath - ./backend/cdb/cdbpath.c
 caah: cdbpath:00001327:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
 caah: cdbpath:00001328:  errmsg("The query is not yet supported in " 
