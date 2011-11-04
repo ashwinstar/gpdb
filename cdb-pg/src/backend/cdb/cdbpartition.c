@@ -4686,6 +4686,19 @@ atpxPartAddList(Relation rel,
 				
 				{
 					Node *n1;
+					
+					if ( !IsA(pbs->partEnd, PartitionRangeItem) )
+					{
+						/* pbs->partEnd isn't a PartitionRangeItem!  This probably means
+						 * an invalid split of a default part, but we aren't really sure. 
+						 * See MPP-14613.
+						 */
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("invalid partition range specification."),
+								 errOmitLocation(true)));
+					}
+
 					PartitionRangeItem *ri =
 					(PartitionRangeItem *)pbs->partEnd;
 					PartitionRangeItemIsValid(NULL, ri);
