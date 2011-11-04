@@ -1196,6 +1196,7 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
  */
 static void
 ExecUpdateAOtupCount(ResultRelInfo *result_rels,
+					 Snapshot shapshot,
 					 int num_result_rels,
 					 uint64 processed)
 {
@@ -2043,6 +2044,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 			/* counts from a (non partitioned) AO table */
 
 			ExecUpdateAOtupCount(estate->es_result_relations,
+								 estate->es_snapshot,
 								 estate->es_num_result_relations,
 								 estate->es_processed);
 		}

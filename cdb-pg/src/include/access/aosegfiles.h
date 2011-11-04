@@ -111,13 +111,13 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry, int segno);
   * to append data to the segment file.
   */
 extern FileSegInfo *
-GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int segno);
+GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnlyMetaDataSnapshot, int segno);
 
 extern FileSegInfo **
-GetAllFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalsegs);
+GetAllFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnlyMetaDataSnapshot, int *totalsegs);
 
 extern FileSegInfo **
-GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot snapshot, int *totalsegs);
+GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot appendOnlyMetaDataSnapshot, int *totalsegs);
 
 extern void
 UpdateFileSegInfo(Relation parentrel,
@@ -129,9 +129,9 @@ UpdateFileSegInfo(Relation parentrel,
 				  int64 varblocks_added);
 
 extern FileSegTotals *
-GetSegFilesTotals(Relation parentrel);
+GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
 
-extern int64 GetAOTotalBytes(Relation parentrel);
+extern int64 GetAOTotalBytes(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
 
 extern void FreeAllSegFileInfo(FileSegInfo **allSegInfo,
 							   int totalSegFiles);

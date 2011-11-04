@@ -1940,7 +1940,7 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 	Assert(parentRelation->rd_att != NULL);
 	proj = palloc0(parentRelation->rd_att->natts * sizeof(bool));
 
-	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentRelation),
+	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentRelation), SnapshotNow,
 							  NULL, NULL,
 							  &blkdirrelid, &blkdiridxid);
 
@@ -2868,7 +2868,8 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 
 	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
 	if ((aoseg_too || aoblkdir_too) && relIsAO)
-		GetAppendOnlyEntryAuxOids(relid, &aoseg_relid, NULL, &aoblkdir_relid, NULL);
+		GetAppendOnlyEntryAuxOids(relid, SnapshotNow,
+								  &aoseg_relid, NULL, &aoblkdir_relid, NULL);
 
 	/*
 	 * If an AO rel has a secondary segment list rel, reindex that too while we

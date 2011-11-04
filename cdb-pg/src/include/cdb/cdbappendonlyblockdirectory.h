@@ -85,6 +85,7 @@ typedef struct MinipagePerColumnGroup
 typedef struct AppendOnlyBlockDirectory
 {
 	Relation aoRel;
+	Snapshot appendOnlyMetaDataSnapshot;
 	Relation blkdirRel;
 	Relation blkdirIdx;
 	int numColumnGroups;
@@ -166,6 +167,7 @@ extern bool AppendOnlyBlockDirectory_GetEntry(
 extern void AppendOnlyBlockDirectory_Init_forInsert(
 	AppendOnlyBlockDirectory *blockDirectory,
 	AppendOnlyEntry *aoEntry,
+	Snapshot appendOnlyMetaDataSnapshot,
 	FileSegInfo *segmentFileInfo,
 	int64 lastSequence,
 	Relation aoRel,
@@ -175,6 +177,7 @@ extern void AppendOnlyBlockDirectory_Init_forInsert(
 extern void AppendOnlyBlockDirectory_Init_forSearch(
 	AppendOnlyBlockDirectory *blockDirectory,
 	AppendOnlyEntry *aoEntry,
+	Snapshot appendOnlyMetaDataSnapshot,
 	FileSegInfo **segmentFileInfo,
 	int totalSegfiles,
 	Relation aoRel,

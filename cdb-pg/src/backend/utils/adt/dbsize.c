@@ -431,9 +431,9 @@ calculate_relation_size(Relation rel)
         }
     }
 	else if (RelationIsAoRows(rel))
-		totalsize = GetAOTotalBytes(rel);
+		totalsize = GetAOTotalBytes(rel, SnapshotNow);
 	else if (RelationIsAoCols(rel))
-		totalsize = GetAOCSTotalBytes(rel);
+		totalsize = GetAOCSTotalBytes(rel, SnapshotNow);
            
     /* RELSTORAGE_VIRTUAL has no space usage */
     return totalsize;
@@ -588,7 +588,7 @@ calculate_total_relation_size(Oid Relid)
 	toastOid = heapRel->rd_rel->reltoastrelid;
 
 	if (RelationIsAoRows(heapRel) || RelationIsAoCols(heapRel))
-		aoEntry = GetAppendOnlyEntry(Relid);
+		aoEntry = GetAppendOnlyEntry(Relid, SnapshotNow);
 	
 	/* Get the heap size */
 	if (Relid == 0 || heapRel->rd_node.relNode == 0)

@@ -1849,7 +1849,8 @@ ExecuteTruncate(TruncateStmt *stmt)
 
 			if (RelationIsAoRows(rel) ||
 				RelationIsAoCols(rel))
-				GetAppendOnlyEntryAuxOids(heap_relid, &aoseg_relid, NULL,
+				GetAppendOnlyEntryAuxOids(heap_relid, SnapshotNow,
+										  &aoseg_relid, NULL,
 										  &aoblkdir_relid, NULL);
 
 			/*
@@ -1974,7 +1975,8 @@ ExecuteTruncate(TruncateStmt *stmt)
 			heap_close(rel, NoLock);
 
 			if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
-				GetAppendOnlyEntryAuxOids(heap_relid, &aoseg_relid, NULL,
+				GetAppendOnlyEntryAuxOids(heap_relid, SnapshotNow,
+										  &aoseg_relid, NULL,
 										  &aoblkdir_relid, NULL);
 
 			/*
@@ -9714,7 +9716,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 			if(RelationIsAoRows(target_rel) || RelationIsAoCols(target_rel))
 			{
 				Oid segrelid, blkdirrelid;
-				GetAppendOnlyEntryAuxOids(relationOid, &segrelid, NULL,
+				GetAppendOnlyEntryAuxOids(relationOid, SnapshotNow,
+										  &segrelid, NULL,
 										  &blkdirrelid, NULL);
 				
 				/* If it has an AO segment table, recurse to change its
@@ -10325,25 +10328,45 @@ ATExecSetTableSpace_AppendOnly(
 
 	AppendOnlyEntry *aoEntry;
 
+	Snapshot	appendOnlyMetaDataSnapshot = SnapshotNow;
+				/*
+				 * We can use SnapshotNow since we have an exclusive lock on the source.
+				 */
+					
+	int segmentCount;
+
 	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "ALTER TABLE SET TABLESPACE: Append-Only "
-			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
-			 "new path '%s', new relfilenode %u, new reltablespace %u",
+			 "relation id %u, old path %u/%u/%u, new path %u/%u/%u",
 			 RelationGetRelid(rel),
-			 relpath(rel->rd_node),
-			 rel->rd_rel->relfilenode,
-			 oldTablespace,
-			 relpath(*newRelFileNode),
-			 newRelFileNode->relNode,
-			 newRelFileNode->spcNode);
+			 rel->rd_node.spcNode,
+			 rel->rd_node.dbNode,
+			 rel->rd_node.relNode,
+			 newRelFileNode->spcNode,
+			 newRelFileNode->dbNode,
+			 newRelFileNode->relNode);
 
 	/* Use palloc to ensure we get a maxaligned buffer */		
 	buffer = palloc(2*BLCKSZ);
 
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), appendOnlyMetaDataSnapshot);
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "ALTER TABLE SET TABLESPACE: pg_appendonly entry for Append-Only %u/%u/%u, segment file #%d "
+			 "segrelid %u, segidxid %u, "
+			 "persistent TID %s and serial number " INT64_FORMAT,
+			 rel->rd_node.spcNode,
+			 rel->rd_node.dbNode,
+			 rel->rd_node.relNode,
+			 segmentFileNum,
+			 aoEntry->segrelid,
+			 aoEntry->segidxid,
+			 ItemPointerToString(&oldPersistentTid),
+			 oldPersistentSerialNum);	
 
 	/*
 	 * Loop through segment files
@@ -10357,7 +10380,7 @@ ATExecSetTableSpace_AppendOnly(
 					tableOid,
 					rel->rd_rel->relfilenode,
 					&gpRelationNodeScan);
-
+	segmentCount = 0;
 	while ((tuple = GpRelationNodeGetNext(
 							&gpRelationNodeScan,
 							&segmentFileNum,
@@ -10379,12 +10402,15 @@ ATExecSetTableSpace_AppendOnly(
 
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "ALTER TABLE SET TABLESPACE: Create for Append-Only '%s', segment file #%d "
+				 "ALTER TABLE SET TABLESPACE: Create for Append-Only %u/%u/%u, segment file #%d "
 				 "persistent TID %s and serial number " INT64_FORMAT,
-				 relpath(*newRelFileNode),
+				 newRelFileNode->spcNode,
+				 newRelFileNode->dbNode,
+				 newRelFileNode->relNode,
 				 segmentFileNum,
 				 ItemPointerToString(&newPersistentTid),
 				 newPersistentSerialNum);
+
 
 		/*
 		 * Update gp_relation_node with new persistent information.
@@ -10411,9 +10437,11 @@ ATExecSetTableSpace_AppendOnly(
 
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "ALTER TABLE SET TABLESPACE: Drop for Append-Only '%s', segment file #%d "
+				 "ALTER TABLE SET TABLESPACE: Drop for Append-Only %u/%u/%u, segment file #%d "
 				 "persistent TID %s and serial number " INT64_FORMAT,
-				 relpath(rel->rd_node),
+				 rel->rd_node.spcNode,
+				 rel->rd_node.dbNode,
+				 rel->rd_node.relNode,
 				 segmentFileNum,
 				 ItemPointerToString(&oldPersistentTid),
 				 oldPersistentSerialNum);
@@ -10425,7 +10453,7 @@ ATExecSetTableSpace_AppendOnly(
 		{
 			FileSegInfo *fileSegInfo;
 
-			fileSegInfo = GetFileSegInfo(rel, aoEntry, SnapshotNow, segmentFileNum);
+			fileSegInfo = GetFileSegInfo(rel, aoEntry, appendOnlyMetaDataSnapshot, segmentFileNum);
 			if (fileSegInfo == NULL)
 			{
 				/*
@@ -10435,8 +10463,12 @@ ATExecSetTableSpace_AppendOnly(
 					eof = 0;
 				else
 					ereport(ERROR,
-							(errmsg("Append-only row segment file #%d information missing",
+							(errmsg("Append-only %u/%u/%u row segment file #%d information missing",
+									rel->rd_node.spcNode,
+									rel->rd_node.dbNode,
+									rel->rd_node.relNode,
 									segmentFileNum)));
+
 			}
 			else
 			{
@@ -10460,7 +10492,7 @@ ATExecSetTableSpace_AppendOnly(
 
 			actualSegmentNum = segmentFileNum % AOTupleId_MultiplierSegmentFileNum;
 			
-			aocsFileSegInfo = GetAOCSFileSegInfo(rel, aoEntry, SnapshotNow, actualSegmentNum);
+			aocsFileSegInfo = GetAOCSFileSegInfo(rel, aoEntry, appendOnlyMetaDataSnapshot, actualSegmentNum);
 			if (aocsFileSegInfo == NULL)
 			{
 				/*
@@ -10470,10 +10502,14 @@ ATExecSetTableSpace_AppendOnly(
 					eof = 0;
 				else
 					ereport(ERROR,
-							(errmsg("Append-only column logical segment file #%d information for missing (physical segment #%d, column %d)",
+							(errmsg("Append-only %u/%u/%u column logical segment file #%d information for missing (physical segment #%d, column %d)",
+									rel->rd_node.spcNode,
+									rel->rd_node.dbNode,
+									rel->rd_node.relNode,
 									actualSegmentNum,
 									segmentFileNum,
 									columnNum)));
+
 			}
 			else
 			{
@@ -10482,6 +10518,21 @@ ATExecSetTableSpace_AppendOnly(
 				pfree(aocsFileSegInfo);
 			}
 		}
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "ALTER TABLE SET TABLESPACE: Going to copy Append-Only %u/%u/%u to %u/%u/%u, segment file #%d, EOF " INT64_FORMAT ", "
+				 "persistent TID %s and serial number " INT64_FORMAT,
+				 rel->rd_node.spcNode,
+				 rel->rd_node.dbNode,
+				 rel->rd_node.relNode,
+				 newRelFileNode->spcNode,
+				 newRelFileNode->dbNode,
+				 newRelFileNode->relNode,
+				 segmentFileNum,
+				 eof,
+				 ItemPointerToString(&newPersistentTid),
+				 newPersistentSerialNum);
 		
 		copy_append_only_data(
 						&rel->rd_node,
@@ -10492,9 +10543,25 @@ ATExecSetTableSpace_AppendOnly(
 						&newPersistentTid,
 						newPersistentSerialNum,
 						buffer);
+
+		segmentCount++;
 	}
 
 	GpRelationNodeEndScan(&gpRelationNodeScan);
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "ALTER TABLE SET TABLESPACE: Copied %d Append-Only segments from %u/%u/%u to %u/%u/%u, "
+			 "persistent TID %s and serial number " INT64_FORMAT,
+			 segmentCount,
+			 rel->rd_node.spcNode,
+			 rel->rd_node.dbNode,
+			 rel->rd_node.relNode,
+			 newRelFileNode->spcNode,
+			 newRelFileNode->dbNode,
+			 newRelFileNode->relNode,
+			 ItemPointerToString(&newPersistentTid),
+			 newPersistentSerialNum);
 
 	pfree(aoEntry);
 
@@ -10767,7 +10834,8 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 
 	/* Get the ao sub objects */
 	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
-		GetAppendOnlyEntryAuxOids(tableOid, &relaosegrelid, &relaosegidxid,
+		GetAppendOnlyEntryAuxOids(tableOid, SnapshotNow,
+								  &relaosegrelid, &relaosegidxid,
 								  &relaoblkdirrelid, &relaoblkdiridxid);
 
 	/* Get the bitmap sub objects */
@@ -11698,7 +11766,7 @@ relopts_for_ctas(Relation rel)
 	StdRdOptions *out = palloc0(sizeof(StdRdOptions));
 	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 	{
-		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel));
+		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
 
 		out->appendonly = true;
 		out->blocksize = opts->blocksize;

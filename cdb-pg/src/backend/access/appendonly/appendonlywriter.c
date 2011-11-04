@@ -176,7 +176,12 @@ AORelCreateHashEntry(Oid relid)
 	 * in this hash entry.
 	 */
 	aorel = heap_open(relid, RowExclusiveLock);
-	aoEntry = GetAppendOnlyEntry(relid);
+
+	/*
+	 * Use SnapshotNow since we have an exclusive lock on the relation.
+	 */
+	aoEntry = GetAppendOnlyEntry(relid, SnapshotNow);
+
 	allfsinfo = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
 	pfree(aoEntry);
 	heap_close(aorel, RowExclusiveLock);
@@ -516,9 +521,9 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 	{
 		elog(LOG, "usedByConcurrentTransaction: current distributed transaction id=%d, latestWriteXid that uses segno %d=%d",
 			 getDistributedTransactionId(), segno, latestWriteXid);
-		if (SerializableSnapshot->haveDistribSnapshot)
+		if (SerializableSnapshot != NULL && SerializableSnapshot->haveDistribSnapshot)
 			LogDistributedSnapshotInfo(SerializableSnapshot, "SerializableSnapshot: ");
-		if (LatestSnapshot->haveDistribSnapshot)
+		if (LatestSnapshot != NULL && LatestSnapshot->haveDistribSnapshot)
 			LogDistributedSnapshotInfo(LatestSnapshot, "LatestSnapshot: ");
 		if (snapshot->haveDistribSnapshot)
 			LogDistributedSnapshotInfo(snapshot, "Used snapshot: ");
@@ -814,7 +819,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount)));
 
-	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel), SnapshotNow);
 	Assert(aoEntry != NULL);
 
 	// CONSIDER: We should probably get this lock even sooner.
@@ -830,7 +835,10 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 
 		/* get the information for the file segment we inserted into */
 
-        fsinfo = GetFileSegInfo(parentrel, aoEntry, ActiveSnapshot, segno);
+		/*
+		 * Since we have an exclusive lock on the segment-file entry, we can use SnapshotNow.
+		 */
+        fsinfo = GetFileSegInfo(parentrel, aoEntry, SnapshotNow, segno);
 		if (fsinfo == NULL)
 		{
 			InsertInitialSegnoEntry(aoEntry, segno);
@@ -855,7 +863,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 		seginfo = GetAOCSFileSegInfo(
 							parentrel, 
 							aoEntry, 
-							ActiveSnapshot, 
+							SnapshotNow, 
 							segno);
 		if (seginfo == NULL)
 		{
@@ -1129,5 +1137,8 @@ AtEOXact_AppendOnly(void)
 
 }
 
-
-
+void ValidateAppendOnlyMetaDataSnapshot(
+	Snapshot *appendOnlyMetaDataSnapshot)
+{
+	// Placeholder.
+}

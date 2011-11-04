@@ -4031,7 +4031,8 @@ CopyFrom(CopyState cstate)
 				{
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
                     resultRelInfo->ri_aocsInsertDesc =
-                        aocs_insert_init(resultRelInfo->ri_RelationDesc, resultRelInfo->ri_aosegno);
+                        aocs_insert_init(resultRelInfo->ri_RelationDesc,
+                        				 resultRelInfo->ri_aosegno);
 				}
 				else if (relstorage == RELSTORAGE_EXTERNAL &&
 						 resultRelInfo->ri_extInsertDesc == NULL)

@@ -2432,13 +2432,13 @@ RelationGetNumberOfBlocks(Relation relation)
 	 */
 	if (RelationIsAoRows(relation))
 	{
-		FileSegTotals *fstotal = GetSegFilesTotals(relation);
+		FileSegTotals *fstotal = GetSegFilesTotals(relation, SnapshotNow);
 		return ((BlockNumber)RelationGuessNumberOfBlocks(fstotal->totalbytes));
 	}
 	
 	if (RelationIsAoCols(relation))
 	{
-		int64 totalBytes = GetAOCSTotalBytes(relation);
+		int64 totalBytes = GetAOCSTotalBytes(relation, SnapshotNow);
 		return ((BlockNumber)RelationGuessNumberOfBlocks(totalBytes));
   	}
 	

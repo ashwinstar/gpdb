@@ -156,6 +156,7 @@ void
 AppendOnlyBlockDirectory_Init_forSearch(
 	AppendOnlyBlockDirectory *blockDirectory,
 	AppendOnlyEntry *aoEntry,
+	Snapshot appendOnlyMetaDataSnapshot,
 	FileSegInfo **segmentFileInfo,
 	int totalSegfiles,
 	Relation aoRel,
@@ -185,6 +186,7 @@ AppendOnlyBlockDirectory_Init_forSearch(
 	blockDirectory->segmentFileInfo = segmentFileInfo;
 	blockDirectory->totalSegfiles = totalSegfiles;
 	blockDirectory->aoRel = aoRel;
+	blockDirectory->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
 	blockDirectory->numColumnGroups = numColumnGroups;
 	blockDirectory->isAOCol = isAOCol;
 	blockDirectory->currentSegmentFileNum = -1;
@@ -215,6 +217,7 @@ void
 AppendOnlyBlockDirectory_Init_forInsert(
 	AppendOnlyBlockDirectory *blockDirectory,
 	AppendOnlyEntry *aoEntry,
+	Snapshot appendOnlyMetaDataSnapshot,
 	FileSegInfo *segmentFileInfo,
 	int64 lastSequence,
 	Relation aoRel,
@@ -227,6 +230,7 @@ AppendOnlyBlockDirectory_Init_forInsert(
 	Assert(aoEntry != NULL);
 
 	blockDirectory->aoRel = aoRel;
+	blockDirectory->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
 
 	if (!OidIsValid(aoEntry->blkdirrelid))
 	{
@@ -499,7 +503,7 @@ AppendOnlyBlockDirectory_GetEntry(
 		scanKeys[2].sk_argument = Int64GetDatum(rowNum);
 		
 		idxScanDesc = index_beginscan(blkdirRel, blkdirIdx,
-									  ActiveSnapshot,
+									  blockDirectory->appendOnlyMetaDataSnapshot,
 									  numScanKeys, scanKeys);
 	
 		tuple = index_getnext(idxScanDesc, BackwardScanDirection);
@@ -870,7 +874,7 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	 * that contains the last minipage.
 	 */
 	idxScanDesc = index_beginscan(blkdirRel, blkdirIdx,
-								  ActiveSnapshot,
+								  blockDirectory->appendOnlyMetaDataSnapshot,
 								  numScanKeys, scanKeys);
 	
 	tuple = index_getnext(idxScanDesc, BackwardScanDirection);

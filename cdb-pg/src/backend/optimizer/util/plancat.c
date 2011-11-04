@@ -510,7 +510,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			if(RelationIsAoRows(rel))
 			{
 				/* MPP-7629 */
-				FileSegTotals	*fstotal = GetSegFilesTotals(rel);
+				FileSegTotals	*fstotal = GetSegFilesTotals(rel, SnapshotNow);
 				
 				Assert(fstotal);
 				curpages = RelationGuessNumberOfBlocks((double)fstotal->totalbytes);
@@ -524,7 +524,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 				
 				int					nsegs, i , j;
 				double				totalBytes = 0;
-				AppendOnlyEntry*	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
+				AppendOnlyEntry*	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
 				AOCSFileSegInfo**	aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
 				
 			    if (aocsInfo)

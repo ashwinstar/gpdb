@@ -16,6 +16,7 @@
 #include "access/tuptoaster.h"
 #include "access/valid.h"
 #include "access/xact.h"
+#include "access/appendonlywriter.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_attribute_encoding.h"
@@ -297,6 +298,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 
 					AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
 															scan->aoEntry,
+															scan->appendOnlyMetaDataSnapshot,
 															(FileSegInfo *) curSegInfo,
 															0 /* lastSequence */,
 															scan->aos_rel,
@@ -356,11 +358,13 @@ static void close_cur_scan_seg(AOCSScanDesc scan)
  *               an alter and relation->rd_att will be the relation's new form but relationTupleDesc is the old form)
  */
 AOCSScanDesc
-aocs_beginscan(Relation relation, Snapshot snapshot, TupleDesc relationTupleDesc, bool *proj)
+aocs_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, TupleDesc relationTupleDesc, bool *proj)
 {
     AOCSScanDesc scan;
     AppendOnlyEntry *aoentry;
 
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
+	
     if (!relationTupleDesc)
     {
         relationTupleDesc = relation->rd_att;
@@ -372,8 +376,9 @@ aocs_beginscan(Relation relation, Snapshot snapshot, TupleDesc relationTupleDesc
     RelationIncrementReferenceCount(relation);
     scan = (AOCSScanDesc) palloc0(sizeof(AOCSScanDescData));
     scan->aos_rel = relation;
+	scan->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
 
-    aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+    aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
     scan->aoEntry = aoentry;
     Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 
@@ -381,7 +386,7 @@ aocs_beginscan(Relation relation, Snapshot snapshot, TupleDesc relationTupleDesc
     scan->compType = aoentry->compresstype;
     scan->blocksz = aoentry->blocksize;
 
-    scan->seginfo = GetAllAOCSFileSegInfo(relation, aoentry, snapshot, &scan->total_seg);
+    scan->seginfo = GetAllAOCSFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot, &scan->total_seg);
 
     scan->relationTupleDesc = relationTupleDesc;
 
@@ -580,9 +585,9 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 
     /* Now open seg info file and get eof mark. */
     seginfo = GetAOCSFileSegInfo(
-    					desc->aoi_rel,
-    					desc->aoEntry,
-    					ActiveSnapshot,
+    					desc->aoi_rel, 
+    					desc->aoEntry, 
+    					desc->appendOnlyMetaDataSnapshot, 
     					desc->cur_segno);
 	if (seginfo == NULL)
 	{
@@ -632,11 +637,17 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
 	TupleDesc tupleDesc;
 	int64 firstSequence = 0;
 
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
-	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+    aoentry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
+    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 
-	desc = (AOCSInsertDesc) palloc0(sizeof(AOCSInsertDescData));
-	desc->aoi_rel = rel;
+
+    desc = (AOCSInsertDesc) palloc0(sizeof(AOCSInsertDescData));
+    desc->aoi_rel = rel;
+	desc->appendOnlyMetaDataSnapshot = SnapshotNow;
+							// Writers uses this since they have exclusive access to the lock acquired with
+							// LockRelationAppendOnlySegmentFile for the segment-file.
+							
+
 	tupleDesc = RelationGetDescr(desc->aoi_rel);
 
 	Assert(segno >= 0);
@@ -675,7 +686,10 @@ AOCSInsertDesc aocs_insert_init(Relation rel, int segno)
 	/* Initialize the block directory. */
 	tupleDesc = RelationGetDescr(rel);
 	AppendOnlyBlockDirectory_Init_forInsert(
-		&(desc->blockDirectory), aoentry, (FileSegInfo *)desc->fsInfo, desc->lastSequence,
+		&(desc->blockDirectory), 
+		aoentry, 
+		desc->appendOnlyMetaDataSnapshot,		// CONCERN: Safe to assume all block directory entries for segment are "covered" by same exclusive lock.
+		(FileSegInfo *)desc->fsInfo, desc->lastSequence,
 		rel, segno, tupleDesc->natts, true);
 
     return desc;
@@ -983,7 +997,7 @@ resetCurrentBlockInfo(CurrentBlock *currentBlock)
  */
 AOCSFetchDesc
 aocs_fetch_init(Relation relation,
-				Snapshot snapshot,
+				Snapshot appendOnlyMetaDataSnapshot,
 				bool *proj)
 {
 	AOCSFetchDesc aocsFetchDesc;
@@ -992,6 +1006,10 @@ aocs_fetch_init(Relation relation,
 	AppendOnlyStorageAttributes *attr;
 	char *basePath = relpath(relation->rd_node);
 	TupleDesc tupleDesc = RelationGetDescr(relation);
+	
+	
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
+
 	PGFunction **cfuncs = RelationGetColumnCompressionFuncs(relation);
 	PGFunction *fns = NULL;
 	/*
@@ -1005,6 +1023,9 @@ aocs_fetch_init(Relation relation,
 
 	aocsFetchDesc = (AOCSFetchDesc) palloc0(sizeof(AOCSFetchDescData));
 	aocsFetchDesc->relation = relation;
+	
+	aocsFetchDesc->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
+	
 
 	aocsFetchDesc->initContext = CurrentMemoryContext;
 
@@ -1017,7 +1038,7 @@ aocs_fetch_init(Relation relation,
 	Assert(proj);
 	aocsFetchDesc->proj = proj;
 
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
     Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 	aocsFetchDesc->aoEntry = aoentry;
 
@@ -1038,11 +1059,12 @@ aocs_fetch_init(Relation relation,
 	aocsFetchDesc->blockSize = aoentry->blocksize;
 
 	aocsFetchDesc->segmentFileInfo =
-		GetAllAOCSFileSegInfo(relation, aoentry, snapshot, &aocsFetchDesc->totalSegfiles);
+		GetAllAOCSFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot, &aocsFetchDesc->totalSegfiles);
 
 	AppendOnlyBlockDirectory_Init_forSearch(
 		&aocsFetchDesc->blockDirectory,
 		aoentry,
+		appendOnlyMetaDataSnapshot,
 		(FileSegInfo **)aocsFetchDesc->segmentFileInfo,
 		aocsFetchDesc->totalSegfiles,
 		aocsFetchDesc->relation,
