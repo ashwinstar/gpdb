@@ -201,6 +201,10 @@ $$ language 'plpgsql';
 select @gpupgradeschemaname@.grant_gphdfs();
 drop function @gpupgradeschemaname@.grant_gphdfs();
 
+-- fixedwidth functions
+CREATE FUNCTION @gpupgradeschemaname@.fixedwidth_in() RETURNS record LANGUAGE c STABLE AS '$libdir/fixedwidth.so', 'fixedwidth_in';
+CREATE FUNCTION @gpupgradeschemaname@.fixedwidth_out(record) RETURNS bytea LANGUAGE c STABLE AS '$libdir/fixedwidth.so', 'fixedwidth_out'; 
+ 
 -- Column compression functions
 
 CREATE FUNCTION @gpupgradeschemaname@.gp_quicklz_constructor(internal, internal, bool) RETURNS internal LANGUAGE internal VOLATILE AS 'quicklz_constructor' WITH (OID=5076, DESCRIPTION="quicklz constructor");
