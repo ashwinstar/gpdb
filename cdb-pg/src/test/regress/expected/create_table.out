@@ -414,3 +414,20 @@ select attrnums from gp_distribution_policy where localoid='bar'::regclass;
 
 drop table if exists foo;
 drop table if exists bar;
+-- MPP-14770: check for duplicate columns in DISTRIBUTED BY clause
+create table foo (a int, b text) distributed by (b,B);
+ERROR:  duplicate column "b" in DISTRIBUTED BY clause
+create table foo (a int, b int) distributed by (a,aA,A);
+ERROR:  column "aa" named in 'DISTRIBUTED BY' clause does not exist
+create table foo (a int, b int) distributed by (b,a,aabb);
+ERROR:  column "aabb" named in 'DISTRIBUTED BY' clause does not exist
+create table foo (a int, b int) distributed by (c,C);
+ERROR:  column "c" named in 'DISTRIBUTED BY' clause does not exist
+create table foo ("I" int, i int) distributed by ("I",I);
+select attrnums from gp_distribution_policy where localoid='foo'::regclass;
+ attrnums
+----------
+ {1,2}
+(1 row)
+
+drop table if exists foo;
