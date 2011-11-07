@@ -108,9 +108,9 @@ public class HDFSWriter
 		    	
 		    	if (key.equals("compress"))
 		    		isCompressed  = val.toLowerCase().equals("true");
-		    	if (key.equals("compression_type"))
+		    	else if (key.equals("compression_type"))
 		    		compressType  = val;
-		    	if (key.equals("codec"))
+		    	else if (key.equals("codec"))
 		    		compressCodec = val;
 		    	else
 		    		throw new IllegalArgumentException("Unexpected parameter:"+key);

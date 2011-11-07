@@ -59,14 +59,12 @@ public class ConnectorUtil
 		 * Parse the URI and reconstruct the destination URI
 		 * Scheme could be hdfs or maprfs
 		 * 
-		 * NOTE: Unless the version starts with EE, we're going to use ordinary
-		 * hdfs://. That's because we haven't deicded on the actual name of 
-		 * Hadoop CE yet.
-		 * 
+		 * NOTE: Unless the version is MR, we're going to use ordinary
+		 * hdfs://. 		 * 
 		 * NOTE: MapR isn't really an URI because of its "///" notation.
 		 * MapR also does not use port.
 		 */
-	    if (connVer.startsWith("EE")) {
+	    if (connVer.startsWith("MR")) {
 	    	conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
 	    	conf.set("fs.default.name", "maprfs:///"+inputURI.getHost());
 	    } else {
