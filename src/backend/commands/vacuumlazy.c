@@ -467,6 +467,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 	int			i;
 	int reindex_count = 1;
 	PGRUsage	ru0;
+	bool freeze_needed = false;
 
 	/* Fetch gp_persistent_relation_node information that will be added to XLOG record. */
 	RelationFetchGpRelationNodeForXLog(onerel);
@@ -479,6 +480,8 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 					get_namespace_name(RelationGetNamespace(onerel)),
 					relname)));
 
+	freeze_needed = TransactionIdPrecedesOrEquals(onerel->rd_rel->relfrozenxid,
+												  FreezeLimit);
 	empty_pages = vacuumed_pages = 0;
 	num_tuples = tups_vacuumed = nkeep = nunused = 0;
 
@@ -531,7 +534,21 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		buf = ReadBufferWithStrategy(onerel, blkno, vac_strategy);
 
 		/* We need buffer cleanup lock so that we can prune HOT chains. */
-		LockBufferForCleanup(buf);
+		if (!ConditionalLockBufferForCleanup(buf))
+		{
+			/*
+			 * It's OK to skip vacuuming a page, as long as its not got data
+			 * that needs to be cleaned for wraparound avoidance.
+			 */
+			if (!freeze_needed)
+			{
+				ReleaseBuffer(buf);
+				continue;
+			}
+
+			LockBufferForCleanup(buf);
+			/* drop through to normal processing */
+		}
 
 		page = BufferGetPage(buf);
 
@@ -881,7 +898,12 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 		MIRROREDLOCK_BUFMGR_LOCK;
 
 		buf = ReadBufferWithStrategy(onerel, tblk, vac_strategy);
-		LockBufferForCleanup(buf);
+		if (!ConditionalLockBufferForCleanup(buf))
+		{
+			ReleaseBuffer(buf);
+			++tupindex;
+			continue;
+		}
 		tupindex = lazy_vacuum_page(onerel, tblk, buf, tupindex, vacrelstats);
 		/* Now that we've compacted the page, record its available space */
 		page = BufferGetPage(buf);
