@@ -10,7 +10,6 @@ from gppylib.mainUtils import *
 
 from datetime import datetime
 import sys
-import os
 import socket
 from optparse import Option, OptionGroup, OptionParser, OptionValueError
 
@@ -83,9 +82,6 @@ class GpCronDump(Operation):
 
         if options.bypass_disk_check:
             self.free_space_percent = None
-        else:
-            disk = os.statvfs('/')
-            self.free_space_percent = disk.f_bavail * 100 /disk.f_blocks
 
         if options.backup_set is not None:
             logger.info("-w is no longer supported, will continue with dump of primary segments.")
@@ -300,7 +296,7 @@ class GpCronDump(Operation):
         if self.clear_catalog_dumps:
             logger.info("Additional options                   = -c")
         if self.free_space_percent is not None:
-            logger.info("Disk free space                      = %d %%" % self.free_space_percent)
+            logger.info("Ensuring remaining free disk         > %d" % self.free_space_percent)
     
         if not userinput.ask_yesno(None, "\nContinue with Greenplum dump", 'N'):
             raise UserAbortedException()
@@ -491,10 +487,9 @@ will be displayed.
     return parser
 
 if __name__ == '__main__':
-    sys.argv[0] = EXECNAME
+    sys.argv[0] = EXECNAME		    # for cli_help
     mainOptions = {
         "pidfilename" : GPCRONDUMP_PID_FILE,
         "programNameOverride" : EXECNAME
-        }        # for logger
-    # for cli_help
+        }							# for logger
     simple_main(create_parser, GpCronDump, mainOptions)
