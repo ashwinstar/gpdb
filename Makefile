@@ -737,19 +737,11 @@ ifeq "$(findstring connectivity,$(BLD_TARGETS))" ""
 	# ---- build and packaging of the Connectivity package is currently disabled;
 	# ---- set BLD_TARGETS="connectivity" to enable them.
 else
-ifneq "$(findstring $(BLD_ARCH)$(BLD_FORCE_OUR_LIBPQ),aix5_ppc_32 aix5_ppc_64)" ""
-	# ---- (for AIX) load LIBPATH with the PostgreSQL library set and build the ODBC drivers ----
-	export LIBPATH=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/lib:$(LIBPATH); \
-	  export PG_CONFIG=$(BLD_THIRDPARTY_DIR)/postgresql-8.4.0/bin/pg_config; \
-	  cd $(BLD_TOP)/client/odbc/src && \
-	    $(MAKE) all
-else
-	# ---- (for other than AIX) load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
+	# ---- load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
 	cd $(INSTLOC)/ && \
 	  . ./greenplum_path.sh; \
 	  cd $(BLD_TOP)/client/odbc/src && \
 	    $(MAKE) all
-endif
 	# ---- copy GPDB fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC_LIB)
 	(cd $(INSTLOC)/lib && $(TAR) cf - *) | (cd $(CONNECTIVITYINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
