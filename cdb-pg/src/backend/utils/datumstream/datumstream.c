@@ -547,7 +547,14 @@ int64 datumstream_write_block(DatumStream *acc)
 
 int64 datumstream_write_lob(DatumStream *acc, Datum d)
 {
-    struct varlena *va = (struct varlena *) DatumGetPointer(d);
+    struct varlena *va;
+
+	if(VARATT_IS_EXTERNAL_D(d))
+	{
+		d = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(d)));
+	}
+
+    va = (struct varlena *) DatumGetPointer(d);
 
     Assert(acc && !acc->is_reader && !acc->ao_read && acc->ao_write);
 
