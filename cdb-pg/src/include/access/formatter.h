@@ -109,22 +109,21 @@ typedef struct FormatterData
 		PG_RETURN_NULL(); \
 	} while (0)
 
-#define FORMATTER_ENCODE_OUTPUT(fcinfo, p, n) \
+#define FORMATTER_ENCODE_STRING(fcinfo, p, n, cvt, is_import) \
 	do { \
 		if (((FormatterData*) fcinfo->context)->fmt_needs_transcoding) \
-			p = pg_server_to_custom(p, \
-								    n, \
-									((FormatterData*) fcinfo->context)->fmt_external_encoding, \
-									((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
-	} while (0)
-
-#define FORMATTER_ENCODE_INPUT(fcinfo, p, n) \
-	do { \
-		if (((FormatterData*) fcinfo->context)->fmt_needs_transcoding) \
-			p = pg_custom_to_server(p, \
-								    n, \
-									((FormatterData*) fcinfo->context)->fmt_external_encoding, \
-									((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
+		{\
+			if(is_import) \
+				cvt = pg_custom_to_server(p, \
+										n, \
+										((FormatterData*) fcinfo->context)->fmt_external_encoding, \
+										((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
+			else \
+				cvt = pg_server_to_custom(p, \
+										n, \
+										((FormatterData*) fcinfo->context)->fmt_external_encoding, \
+										((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
+		}\
 	} while (0)
 
 

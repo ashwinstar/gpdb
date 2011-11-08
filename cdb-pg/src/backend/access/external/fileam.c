@@ -1106,15 +1106,15 @@ externalgettup_custom(FileScanDesc scan)
 						FunctionCallInfoData	fcinfo;
 
 						/* per call formatter prep */
-					FunctionCallPrepareFormatter(&fcinfo,
-												 0,
-												 pstate,
-												 formatter,
-												 scan->fs_rd,
-												 scan->fs_tupDesc,
-												 scan->in_functions,
-												 scan->typioparams);
-					d = FunctionCallInvoke(&fcinfo);
+						FunctionCallPrepareFormatter(&fcinfo,
+													 0,
+													 pstate,
+													 formatter,
+													 scan->fs_rd,
+													 scan->fs_tupDesc,
+													 scan->in_functions,
+													 scan->typioparams);
+						d = FunctionCallInvoke(&fcinfo);
 
 					}
 					PG_CATCH();
@@ -1131,16 +1131,17 @@ externalgettup_custom(FileScanDesc scan)
 						pstate->cur_lineno = formatter->fmt_badrow_num;
 						pstate->cur_byteno = formatter->fmt_bytesread;
 						resetStringInfo(&pstate->line_buf);
+
 						if (formatter->fmt_badrow_len > 0)
 						{
-							if ( NULL != formatter->fmt_badrow_data )
+							if (formatter->fmt_badrow_data)
 								appendBinaryStringInfo(&pstate->line_buf,
 													   formatter->fmt_badrow_data,
 													   formatter->fmt_badrow_len);
 
 							formatter->fmt_databuf.cursor += formatter->fmt_badrow_len;
-							if (    formatter->fmt_databuf.cursor > formatter->fmt_databuf.len
-								 || formatter->fmt_databuf.cursor < 0 )
+							if (formatter->fmt_databuf.cursor > formatter->fmt_databuf.len ||
+								formatter->fmt_databuf.cursor < 0 )
 							{
 								formatter->fmt_databuf.cursor = formatter->fmt_databuf.len;
 							}
