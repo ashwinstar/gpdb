@@ -203,7 +203,7 @@ load_format_config(FormatConfig *format_config, FunctionCallInfo fcinfo)
 static bool
 encoding_check_str(FunctionCallInfo fcinfo, char *str, int len, bool is_import)
 {
-	char	*cvt;
+	char	*cvt = NULL;
 
 	FORMATTER_ENCODE_STRING(fcinfo, str, len, cvt, is_import);
 
@@ -225,7 +225,7 @@ encoding_check_str(FunctionCallInfo fcinfo, char *str, int len, bool is_import)
 static void
 encoding_encode_strinfo(FunctionCallInfo fcinfo, StringInfo strinfo, bool is_import)
 {
-	char	*cvt;
+	char	*cvt = NULL;
 
 	FORMATTER_ENCODE_STRING(fcinfo, strinfo->data, strinfo->len, cvt, is_import);
 
@@ -282,7 +282,7 @@ make_null_val_with_blanks(char *value, int field_size)
 static char*
 make_val_with_blanks(FunctionCallInfo fcinfo, char *value, int field_size, StringInfo buf)
 {
-	int   	sz;
+	int   	sz = 0;
 	
 	if (value)
 	{
