@@ -493,67 +493,67 @@ faag: fileam:00000857: static DataLineStatus parse_next_line(FileScanDesc scan)
 faag: fileam:00000858: { 
 faag: fileam:00000859:  CopyState pstate = scan->fs_pstate; 
 faag: fileam:00001090:  elog(ERROR, "header line in custom format is not yet supported"); 
-faag: fileam:00001186:  elog(ERROR, "unsupported formatter notification (%d)", 
-faag: fileam:00001187:  formatter->fmt_notification); 
-faag: fileam:00001284:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001285:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001286:  formatter_name, 
-faag: fileam:00001287:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001288:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001289:  errOmitLocation(true))); 
-faag: fileam:00001293:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001294:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001295:  formatter_name, 
-faag: fileam:00001296:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001297:  errOmitLocation(true))); 
-faag: fileam:00001301:  ereport(ERROR, 
-faag: fileam:00001302:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faag: fileam:00001303:  errmsg("formatter function %s is not declared STABLE.", 
-faag: fileam:00001304:  formatter_name), 
-faag: fileam:00001305:  errOmitLocation(true))); 
-faag: fileam:00001390:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001391:  errmsg("The specified error table for this " 
-faag: fileam:00001392:  "external table doesn't appear to " 
-faag: fileam:00001393:  "exist in the database. It may have " 
-faag: fileam:00001394:  "been dropped."), 
-faag: fileam:00001395:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001456:  ereport(ERROR, 
-faag: fileam:00001457:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001458:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001647:  ereport(ERROR, 
-faag: fileam:00001648:  (errcode_for_file_access(), 
-faag: fileam:00001649:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001650:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001651:  errOmitLocation(true))); 
-faag: fileam:00001698:  ereport(ERROR, 
-faag: fileam:00001699:  (errcode_for_file_access(), 
-faag: fileam:00001700:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001701:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001760:  ereport(ERROR, 
-faag: fileam:00001761:  (errcode_for_file_access(), 
-faag: fileam:00001762:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001784:  ereport(ERROR, 
-faag: fileam:00001785:  (errcode_for_file_access(), 
-faag: fileam:00001786:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
-faag: fileam:00001787:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001910:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001912:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001918:  elog(NOTICE,"%s",a); 
-faag: fileam:00002517:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002518:  errmsg("external table internal parse error: " 
-faag: fileam:00002519:  "no formatter function name found"))); 
-faag: fileam:00002525:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002526:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002527:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
-faag: fileam:00002534:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002535:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002536:  token))); 
-faag: fileam:00002538:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002539:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002540:  "line"))); 
-faag: fileam:00002591:  ereport(ERROR, 
-faag: fileam:00002592:  (errcode_for_file_access(), 
-faag: fileam:00002593:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00001187:  elog(ERROR, "unsupported formatter notification (%d)", 
+faag: fileam:00001188:  formatter->fmt_notification); 
+faag: fileam:00001285:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001286:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001287:  formatter_name, 
+faag: fileam:00001288:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001289:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001290:  errOmitLocation(true))); 
+faag: fileam:00001294:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001295:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001296:  formatter_name, 
+faag: fileam:00001297:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001298:  errOmitLocation(true))); 
+faag: fileam:00001302:  ereport(ERROR, 
+faag: fileam:00001303:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faag: fileam:00001304:  errmsg("formatter function %s is not declared STABLE.", 
+faag: fileam:00001305:  formatter_name), 
+faag: fileam:00001306:  errOmitLocation(true))); 
+faag: fileam:00001391:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001392:  errmsg("The specified error table for this " 
+faag: fileam:00001393:  "external table doesn't appear to " 
+faag: fileam:00001394:  "exist in the database. It may have " 
+faag: fileam:00001395:  "been dropped."), 
+faag: fileam:00001396:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001457:  ereport(ERROR, 
+faag: fileam:00001458:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001459:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001648:  ereport(ERROR, 
+faag: fileam:00001649:  (errcode_for_file_access(), 
+faag: fileam:00001650:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001651:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001652:  errOmitLocation(true))); 
+faag: fileam:00001699:  ereport(ERROR, 
+faag: fileam:00001700:  (errcode_for_file_access(), 
+faag: fileam:00001701:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001702:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001761:  ereport(ERROR, 
+faag: fileam:00001762:  (errcode_for_file_access(), 
+faag: fileam:00001763:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001785:  ereport(ERROR, 
+faag: fileam:00001786:  (errcode_for_file_access(), 
+faag: fileam:00001787:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
+faag: fileam:00001788:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00001911:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001913:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001919:  elog(NOTICE,"%s",a); 
+faag: fileam:00002518:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002519:  errmsg("external table internal parse error: " 
+faag: fileam:00002520:  "no formatter function name found"))); 
+faag: fileam:00002526:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002527:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002528:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002535:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002536:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002537:  token))); 
+faag: fileam:00002539:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002540:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002541:  "line"))); 
+faag: fileam:00002592:  ereport(ERROR, 
+faag: fileam:00002593:  (errcode_for_file_access(), 
+faag: fileam:00002594:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000159:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000188:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -17979,23 +17979,23 @@ laai: localbuf:00000302:  ereport(FATAL,
 laai: localbuf:00000303:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 laai: localbuf:00000304:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: baad: bfz - ./backend/storage/file/bfz.c
-baad: bfz:00000192:  elog(NOTICE, "Simulate a torn page at block " INT64_FORMAT, bfz->blockNo); 
-baad: bfz:00000215:  ereport(ERROR, 
-baad: bfz:00000216:  (errcode(ERRCODE_IO_ERROR), 
-baad: bfz:00000217:  errmsg("temporary file block checksum mismatch: current %u, " 
-baad: bfz:00000218:  "expected %u", storedCrc, crc))); 
-baad: bfz:00000269:  ereport(ERROR, 
-baad: bfz:00000270:  (errcode(ERRCODE_IO_ERROR), 
-baad: bfz:00000271:  errmsg("could not create temporary file: %m"))); 
-baad: bfz:00000315:  ereport(ERROR, 
-baad: bfz:00000316:  (errcode(ERRCODE_IO_ERROR), 
-baad: bfz:00000317:  errmsg("could not close temporary file %s: %m", thiz->filename))); 
-baad: bfz:00000339:  ereport(ERROR, 
-baad: bfz:00000340:  (errcode(ERRCODE_IO_ERROR), 
-baad: bfz:00000341:  errmsg("could not seek in temporary file: %m"))); 
-baad: bfz:00000357:  ereport(ERROR, 
-baad: bfz:00000358:  (errcode(ERRCODE_IO_ERROR), 
-baad: bfz:00000359:  errmsg("could not seek in temporary file: %m"))); 
+baad: bfz:00000194:  elog(NOTICE, "Simulate a torn page at block " INT64_FORMAT, bfz->blockNo); 
+baad: bfz:00000217:  ereport(ERROR, 
+baad: bfz:00000218:  (errcode(ERRCODE_IO_ERROR), 
+baad: bfz:00000219:  errmsg("temporary file block checksum mismatch: current %u, " 
+baad: bfz:00000220:  "expected %u", storedCrc, crc))); 
+baad: bfz:00000281:  ereport(ERROR, 
+baad: bfz:00000282:  (errcode(ERRCODE_IO_ERROR), 
+baad: bfz:00000283:  errmsg("could not create temporary file: %m"))); 
+baad: bfz:00000327:  ereport(ERROR, 
+baad: bfz:00000328:  (errcode(ERRCODE_IO_ERROR), 
+baad: bfz:00000329:  errmsg("could not close temporary file %s: %m", thiz->filename))); 
+baad: bfz:00000351:  ereport(ERROR, 
+baad: bfz:00000352:  (errcode(ERRCODE_IO_ERROR), 
+baad: bfz:00000353:  errmsg("could not seek in temporary file: %m"))); 
+baad: bfz:00000369:  ereport(ERROR, 
+baad: bfz:00000370:  (errcode(ERRCODE_IO_ERROR), 
+baad: bfz:00000371:  errmsg("could not seek in temporary file: %m"))); 
 aaaaa GP_IGNORE: baah: buffile - ./backend/storage/file/buffile.c
 baah: buffile:00000237:  elog(ERROR, "could not open temporary file \"%s\": %m", fileName); 
 baah: buffile:00000411:  elog(ERROR, "could not seek in temporary file: %m"); 
@@ -18050,37 +18050,37 @@ cabd: compressxzlib:00000152:  ereport(ERROR,
 cabd: compressxzlib:00000153:  (errcode(ERRCODE_IO_ERROR), 
 cabd: compressxzlib:00000154:  errmsg("could not duplicate file descriptor: %m"))); 
 aaaaa GP_IGNORE: faac: fd - ./backend/storage/file/fd.c
-faac: fd:00000340:  ereport(FATAL, 
-faac: fd:00000341:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-faac: fd:00000342:  errmsg("out of memory"))); 
-faac: fd:00000454:  ereport(FATAL, 
-faac: fd:00000455:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-faac: fd:00000456:  errmsg("insufficient file handles available to start server process"), 
-faac: fd:00000457:  errdetail("System allows %d, we need at least %d.", 
-faac: fd:00000458:  max_safe_fds + NUM_RESERVED_FDS, 
-faac: fd:00000459:  FD_MINFREE + NUM_RESERVED_FDS))); 
-faac: fd:00000569:  elog(ERROR, "could not close file \"%s\": %m", 
-faac: fd:00000570:  vfdP->fileName); 
-faac: fd:00000701:  ereport(ERROR, 
-faac: fd:00000702:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-faac: fd:00000703:  errmsg("out of memory"))); 
-faac: fd:00000836:  ereport(ERROR, 
-faac: fd:00000837:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-faac: fd:00000838:  errmsg("out of memory"))); 
-faac: fd:00000995:  elog(ERROR, "could not create temporary file \"%s\": %m", 
-faac: fd:00000996:  tempfilepath); 
-faac: fd:00001036:  elog(ERROR, "could not close file \"%s\": %m", 
-faac: fd:00001037:  vfdP->fileName); 
-faac: fd:00001472:  elog(ERROR, "could not allocate file: out of file handles"); 
-faac: fd:00001587:  elog(ERROR, "could not allocate directory: out of file handles"); 
-faac: fd:00001644:  ereport(ERROR, 
-faac: fd:00001645:  (errcode_for_file_access(), 
-faac: fd:00001646:  errmsg("could not open directory \"%s\": %m", 
-faac: fd:00001647:  dirname))); 
-faac: fd:00001664:  ereport(ERROR, 
-faac: fd:00001665:  (errcode_for_file_access(), 
-faac: fd:00001666:  errmsg("could not read directory \"%s\": %m", 
-faac: fd:00001667:  dirname))); 
+faac: fd:00000341:  ereport(FATAL, 
+faac: fd:00000342:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+faac: fd:00000343:  errmsg("out of memory"))); 
+faac: fd:00000455:  ereport(FATAL, 
+faac: fd:00000456:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+faac: fd:00000457:  errmsg("insufficient file handles available to start server process"), 
+faac: fd:00000458:  errdetail("System allows %d, we need at least %d.", 
+faac: fd:00000459:  max_safe_fds + NUM_RESERVED_FDS, 
+faac: fd:00000460:  FD_MINFREE + NUM_RESERVED_FDS))); 
+faac: fd:00000570:  elog(ERROR, "could not close file \"%s\": %m", 
+faac: fd:00000571:  vfdP->fileName); 
+faac: fd:00000702:  ereport(ERROR, 
+faac: fd:00000703:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+faac: fd:00000704:  errmsg("out of memory"))); 
+faac: fd:00000837:  ereport(ERROR, 
+faac: fd:00000838:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+faac: fd:00000839:  errmsg("out of memory"))); 
+faac: fd:00000997:  elog(ERROR, "could not create temporary file \"%s\": %m", 
+faac: fd:00000998:  tempfilepath); 
+faac: fd:00001038:  elog(ERROR, "could not close file \"%s\": %m", 
+faac: fd:00001039:  vfdP->fileName); 
+faac: fd:00001474:  elog(ERROR, "could not allocate file: out of file handles"); 
+faac: fd:00001589:  elog(ERROR, "could not allocate directory: out of file handles"); 
+faac: fd:00001646:  ereport(ERROR, 
+faac: fd:00001647:  (errcode_for_file_access(), 
+faac: fd:00001648:  errmsg("could not open directory \"%s\": %m", 
+faac: fd:00001649:  dirname))); 
+faac: fd:00001666:  ereport(ERROR, 
+faac: fd:00001667:  (errcode_for_file_access(), 
+faac: fd:00001668:  errmsg("could not read directory \"%s\": %m", 
+faac: fd:00001669:  dirname))); 
 aaaaa GP_IGNORE: gabb: gpxcompress - ./backend/storage/file/gp_compress.c
 gabb: gpxcompress:00000101:  elog(ERROR, 
 gabb: gpxcompress:00000102:  "Uncompress returned length %d which is different than the " 
@@ -24826,158 +24826,161 @@ paah: plxscan:00003140:  errmsg("%s at or near \"%s\"", message, loc),
 paah: plxscan:00003141:  internalerrposition(cursorpos), 
 paah: plxscan:00003142:  internalerrquery(scanstr))); 
 aaaaa GP_IGNORE: paai: plpython - ./pl/plpython/plpython.c
-paai: plpython:00000518:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
-paai: plpython:00000538:  elog(ERROR, "SPI_connect failed"); 
-paai: plpython:00000637:  elog(ERROR, "SPI_finish failed"); 
-paai: plpython:00000652:  ereport(ERROR, 
-paai: plpython:00000653:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paai: plpython:00000654:  errmsg("unexpected return value from trigger procedure"), 
-paai: plpython:00000655:  errdetail("Expected None or a string."))); 
-paai: plpython:00000669:  ereport(WARNING, 
-paai: plpython:00000670:  (errmsg("PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"))); 
-paai: plpython:00000678:  ereport(ERROR, 
-paai: plpython:00000679:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paai: plpython:00000680:  errmsg("unexpected return value from trigger procedure"), 
-paai: plpython:00000681:  errdetail("Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."))); 
-paai: plpython:00000732:  ereport(ERROR, 
-paai: plpython:00000733:  (errmsg("TD[\"new\"] deleted, cannot modify row"))); 
-paai: plpython:00000735:  ereport(ERROR, 
-paai: plpython:00000736:  (errmsg("TD[\"new\"] is not a dictionary"))); 
-paai: plpython:00000759:  ereport(ERROR, 
-paai: plpython:00000760:  (errmsg("TD[\"new\"] dictionary key at ordinal position %d is not a string", i))); 
-paai: plpython:00000765:  ereport(ERROR, 
-paai: plpython:00000766:  (errmsg("key \"%s\" found in TD[\"new\"] does not exist as a column in the triggering row", 
-paai: plpython:00000767:  plattstr))); 
-paai: plpython:00000772:  elog(FATAL, "Python interpreter is probably corrupted"); 
-paai: plpython:00000809:  elog(ERROR, "SPI_modifytuple failed: error %d", SPI_result); 
-paai: plpython:00000862:  PLy_elog(ERROR, "could not create new dictionary while building trigger arguments"); 
-paai: plpython:00000893:  elog(ERROR, "unrecognized WHEN tg_event: %u", tdata->tg_event); 
-paai: plpython:00000943:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
-paai: plpython:00000968:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
-paai: plpython:00000976:  elog(ERROR, "unrecognized LEVEL tg_event: %u", tdata->tg_event); 
-paai: plpython:00001097:  ereport(ERROR, 
-paai: plpython:00001098:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001099:  errmsg("unsupported set function return mode"), 
-paai: plpython:00001100:  errdetail("PL/Python set-returning functions only support returning only value per call."))); 
-paai: plpython:00001111:  ereport(ERROR, 
-paai: plpython:00001112:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00001113:  errmsg("returned object cannot be iterated"), 
-paai: plpython:00001114:  errdetail("PL/Python set-returning functions must return an iterable object."))); 
-paai: plpython:00001171:  PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname); 
-paai: plpython:00001175:  elog(ERROR, "SPI_finish failed"); 
-paai: plpython:00001188:  elog(ERROR, "SPI_finish failed"); 
-paai: plpython:00001203:  ereport(ERROR, 
-paai: plpython:00001204:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00001205:  errmsg("PL/Python function with return type \"void\" did not return None"))); 
-paai: plpython:00001301:  ereport(WARNING, 
-paai: plpython:00001302:  (errmsg("forcibly aborting a subtransaction that has not been exited"))); 
-paai: plpython:00001353:  PLy_elog(ERROR, NULL); 
-paai: plpython:00001418:  PLy_elog(ERROR, "PyList_SetItem() failed, while setting up arguments"); 
-paai: plpython:00001422:  PLy_elog(ERROR, "PyDict_SetItemString() failed, while setting up arguments"); 
-paai: plpython:00001432:  ereport(ERROR, 
-paai: plpython:00001433:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001434:  errmsg("function returning record called in context " 
-paai: plpython:00001435:  "that cannot accept type record"))); 
-paai: plpython:00001506:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-paai: plpython:00001538:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
-paai: plpython:00001603:  elog(ERROR, "procedure name would overrun buffer"); 
-paai: plpython:00001636:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00001637:  procStruct->prorettype); 
-paai: plpython:00001644:  ereport(ERROR, 
-paai: plpython:00001645:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001646:  errmsg("trigger functions can only be called as triggers"))); 
-paai: plpython:00001649:  ereport(ERROR, 
-paai: plpython:00001650:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001651:  errmsg("PL/Python functions cannot return type %s", 
-paai: plpython:00001652:  format_type_be(procStruct->prorettype)))); 
-paai: plpython:00001721:  elog(ERROR, "cache lookup failed for type %u", types[i]); 
-paai: plpython:00001729:  ereport(ERROR, 
-paai: plpython:00001730:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001731:  errmsg("PL/Python functions cannot accept type %s", 
-paai: plpython:00001732:  format_type_be(types[i])))); 
-paai: plpython:00001760:  elog(ERROR, "null prosrc"); 
-paai: plpython:00001825:  elog(ERROR, "string would overflow buffer"); 
-paai: plpython:00001832:  PLy_elog(ERROR, "could not compile PL/Python function \"%s\"", 
-paai: plpython:00001833:  proc->proname); 
-paai: plpython:00001835:  PLy_elog(ERROR, "could not compile anonymous PL/Python code block"); 
-paai: plpython:00001854:  elog(FATAL, "buffer overrun in PLy_munge_source"); \ 
-paai: plpython:00001855: } \ 
-paai: plpython:00001856: while(0); 
-paai: plpython:00002098:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
-paai: plpython:00002115:  //elog(ERROR, "received unnamed record type as input"); 
-paai: plpython:00002134:  elog(ERROR, "cache lookup failed for relation %u", arg->typ_relid); 
-paai: plpython:00002156:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00002157:  desc->attrs[i]->atttypid); 
-paai: plpython:00002199:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
-paai: plpython:00002223:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00002224:  desc->attrs[i]->atttypid); 
-paai: plpython:00002236:  elog(ERROR, "PLyTypeInfo struct is initialized for a Tuple"); 
-paai: plpython:00002284:  ereport(ERROR, 
-paai: plpython:00002285:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00002286:  errmsg("PL/Python functions cannot return type %s", 
-paai: plpython:00002287:  format_type_be(arg->typoid)), 
-paai: plpython:00002288:  errdetail("PL/Python does not support conversion to arrays of row types."))); 
-paai: plpython:00002307:  elog(ERROR, "PLyTypeInfo struct is initialized for Tuple"); 
-paai: plpython:00002495:  ereport(ERROR, 
-paai: plpython:00002496:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00002497:  errmsg("cannot convert multidimensional array to Python list"), 
-paai: plpython:00002498:  errdetail("PL/Python only supports one-dimensional arrays."))); 
-paai: plpython:00002533:  elog(ERROR, "PLyTypeInfo structure describes a datum"); 
-paai: plpython:00002537:  PLy_elog(ERROR, "could not create new dictionary"); 
-paai: plpython:00002634:  PLy_elog(ERROR, "could not create bytes representation of Python object"); 
-paai: plpython:00002677:  elog(ERROR, "received unnamed record type as input"); 
-paai: plpython:00002732:  PLy_elog(ERROR, "could not create string representation of Python object"); 
-paai: plpython:00002741:  ereport(ERROR, 
-paai: plpython:00002742:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00002743:  errmsg("could not convert Python object into cstring: Python string representation appears to contain null bytes"))); 
-paai: plpython:00002745:  elog(ERROR, "could not convert Python object into cstring: Python string longer than reported length"); 
-paai: plpython:00002777:  PLy_elog(ERROR, "return value of function with array return type is not a Python sequence"); 
-paai: plpython:00002851:  ereport(ERROR, 
-paai: plpython:00002852:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paai: plpython:00002853:  errmsg("key \"%s\" not found in mapping", key), 
-paai: plpython:00002854:  errhint("To return null in a column, " 
-paai: plpython:00002855:  "add the value None to the mapping with the key named after the column."))); 
-paai: plpython:00002900:  ereport(ERROR, 
-paai: plpython:00002901:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00002902:  errmsg("length of returned sequence did not match number of columns in row"))); 
-paai: plpython:00003000:  ereport(ERROR, 
-paai: plpython:00003001:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paai: plpython:00003002:  errmsg("attribute \"%s\" does not exist in Python object", key), 
-paai: plpython:00003003:  errhint("To return null in a column, " 
-paai: plpython:00003004:  "let the returned object have an attribute named " 
-paai: plpython:00003005:  "after column with value None."))); 
-paai: plpython:00003499:  ereport(ERROR, 
-paai: plpython:00003500:  (errmsg("plpy.prepare: type name at ordinal position %d is not a string", i))); 
-paai: plpython:00003515:  elog(ERROR, "cache lookup failed for type %u", typeId); 
-paai: plpython:00003530:  ereport(ERROR, 
-paai: plpython:00003531:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00003532:  errmsg("plpy.prepare does not support composite types"))); 
-paai: plpython:00003539:  elog(ERROR, "SPI_prepare failed: %s", 
-paai: plpython:00003540:  SPI_result_code_string(SPI_result)); 
-paai: plpython:00003547:  elog(ERROR, "SPI_saveplan failed: %s", 
-paai: plpython:00003548:  SPI_result_code_string(SPI_result)); 
-paai: plpython:00003657:  PLy_elog(ERROR, "could not execute plan"); 
-paai: plpython:00004146:  PLy_elog(ERROR, "failed to add the spiexceptions module"); 
-paai: plpython:00004222:  ereport(FATAL, 
-paai: plpython:00004223:  (errmsg("Python major version mismatch in session"), 
-paai: plpython:00004224:  errdetail("This session has previously used Python major version %d, and it is now attempting to use Python major version %d.", 
-paai: plpython:00004225:  **version_ptr, plpython_python_version), 
-paai: plpython:00004226:  errhint("Start a new session to use a different Python major version."))); 
-paai: plpython:00004241:  PLy_elog(FATAL, "untrapped error in initialization"); 
-paai: plpython:00004269:  PLy_elog(ERROR, "could not import \"__main__\" module"); 
-paai: plpython:00004276:  PLy_elog(ERROR, "could not initialize globals"); 
-paai: plpython:00004291:  elog(ERROR, "could not initialize PLy_PlanType"); 
-paai: plpython:00004293:  elog(ERROR, "could not initialize PLy_ResultType"); 
-paai: plpython:00004295:  elog(ERROR, "could not initialize PLy_SubtransactionType"); 
-paai: plpython:00004315:  elog(ERROR, "could not initialize plpy"); 
-paai: plpython:00004572:  elog(ERROR, "could not convert SPI error to Python exception"); 
-paai: plpython:00004829:  elog(ERROR, "could not get line number from Python traceback"); 
-paai: plpython:00004833:  elog(ERROR, "could not get frame from Python traceback"); 
-paai: plpython:00004837:  elog(ERROR, "could not get code object from Python frame"); 
-paai: plpython:00004841:  elog(ERROR, "could not get function name from Python code object"); 
-paai: plpython:00004845:  elog(ERROR, "could not get file name from Python code object"); 
-paai: plpython:00004923:  elog(ERROR, "could not traverse Python traceback"); 
-paai: plpython:00004997:  PLy_elog(ERROR, "could not convert Python Unicode object to PostgreSQL server encoding"); 
+paai: plpython:00000530:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
+paai: plpython:00000550:  elog(ERROR, "SPI_connect failed"); 
+paai: plpython:00000649:  elog(ERROR, "SPI_finish failed"); 
+paai: plpython:00000664:  ereport(ERROR, 
+paai: plpython:00000665:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paai: plpython:00000666:  errmsg("unexpected return value from trigger procedure"), 
+paai: plpython:00000667:  errdetail("Expected None or a string."))); 
+paai: plpython:00000681:  ereport(WARNING, 
+paai: plpython:00000682:  (errmsg("PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"))); 
+paai: plpython:00000690:  ereport(ERROR, 
+paai: plpython:00000691:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paai: plpython:00000692:  errmsg("unexpected return value from trigger procedure"), 
+paai: plpython:00000693:  errdetail("Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."))); 
+paai: plpython:00000744:  ereport(ERROR, 
+paai: plpython:00000745:  (errmsg("TD[\"new\"] deleted, cannot modify row"))); 
+paai: plpython:00000747:  ereport(ERROR, 
+paai: plpython:00000748:  (errmsg("TD[\"new\"] is not a dictionary"))); 
+paai: plpython:00000771:  ereport(ERROR, 
+paai: plpython:00000772:  (errmsg("TD[\"new\"] dictionary key at ordinal position %d is not a string", i))); 
+paai: plpython:00000777:  ereport(ERROR, 
+paai: plpython:00000778:  (errmsg("key \"%s\" found in TD[\"new\"] does not exist as a column in the triggering row", 
+paai: plpython:00000779:  plattstr))); 
+paai: plpython:00000784:  elog(FATAL, "Python interpreter is probably corrupted"); 
+paai: plpython:00000821:  elog(ERROR, "SPI_modifytuple failed: error %d", SPI_result); 
+paai: plpython:00000874:  PLy_elog(ERROR, "could not create new dictionary while building trigger arguments"); 
+paai: plpython:00000905:  elog(ERROR, "unrecognized WHEN tg_event: %u", tdata->tg_event); 
+paai: plpython:00000955:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
+paai: plpython:00000980:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
+paai: plpython:00000988:  elog(ERROR, "unrecognized LEVEL tg_event: %u", tdata->tg_event); 
+paai: plpython:00001109:  ereport(ERROR, 
+paai: plpython:00001110:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001111:  errmsg("unsupported set function return mode"), 
+paai: plpython:00001112:  errdetail("PL/Python set-returning functions only support returning only value per call."))); 
+paai: plpython:00001123:  ereport(ERROR, 
+paai: plpython:00001124:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00001125:  errmsg("returned object cannot be iterated"), 
+paai: plpython:00001126:  errdetail("PL/Python set-returning functions must return an iterable object."))); 
+paai: plpython:00001183:  PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname); 
+paai: plpython:00001187:  elog(ERROR, "SPI_finish failed"); 
+paai: plpython:00001200:  elog(ERROR, "SPI_finish failed"); 
+paai: plpython:00001215:  ereport(ERROR, 
+paai: plpython:00001216:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00001217:  errmsg("PL/Python function with return type \"void\" did not return None"))); 
+paai: plpython:00001313:  ereport(WARNING, 
+paai: plpython:00001314:  (errmsg("forcibly aborting a subtransaction that has not been exited"))); 
+paai: plpython:00001365:  PLy_elog(ERROR, NULL); 
+paai: plpython:00001430:  PLy_elog(ERROR, "PyList_SetItem() failed, while setting up arguments"); 
+paai: plpython:00001434:  PLy_elog(ERROR, "PyDict_SetItemString() failed, while setting up arguments"); 
+paai: plpython:00001444:  ereport(ERROR, 
+paai: plpython:00001445:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001446:  errmsg("function returning record called in context " 
+paai: plpython:00001447:  "that cannot accept type record"))); 
+paai: plpython:00001518:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+paai: plpython:00001550:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
+paai: plpython:00001615:  elog(ERROR, "procedure name would overrun buffer"); 
+paai: plpython:00001648:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00001649:  procStruct->prorettype); 
+paai: plpython:00001656:  ereport(ERROR, 
+paai: plpython:00001657:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001658:  errmsg("trigger functions can only be called as triggers"))); 
+paai: plpython:00001661:  ereport(ERROR, 
+paai: plpython:00001662:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001663:  errmsg("PL/Python functions cannot return type %s", 
+paai: plpython:00001664:  format_type_be(procStruct->prorettype)))); 
+paai: plpython:00001733:  elog(ERROR, "cache lookup failed for type %u", types[i]); 
+paai: plpython:00001741:  ereport(ERROR, 
+paai: plpython:00001742:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001743:  errmsg("PL/Python functions cannot accept type %s", 
+paai: plpython:00001744:  format_type_be(types[i])))); 
+paai: plpython:00001772:  elog(ERROR, "null prosrc"); 
+paai: plpython:00001837:  elog(ERROR, "string would overflow buffer"); 
+paai: plpython:00001844:  PLy_elog(ERROR, "could not compile PL/Python function \"%s\"", 
+paai: plpython:00001845:  proc->proname); 
+paai: plpython:00001847:  PLy_elog(ERROR, "could not compile anonymous PL/Python code block"); 
+paai: plpython:00001866:  elog(FATAL, "buffer overrun in PLy_munge_source"); \ 
+paai: plpython:00001867: } \ 
+paai: plpython:00001868: while(0); 
+paai: plpython:00002110:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
+paai: plpython:00002127:  //elog(ERROR, "received unnamed record type as input"); 
+paai: plpython:00002146:  elog(ERROR, "cache lookup failed for relation %u", arg->typ_relid); 
+paai: plpython:00002168:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00002169:  desc->attrs[i]->atttypid); 
+paai: plpython:00002211:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
+paai: plpython:00002235:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00002236:  desc->attrs[i]->atttypid); 
+paai: plpython:00002248:  elog(ERROR, "PLyTypeInfo struct is initialized for a Tuple"); 
+paai: plpython:00002296:  ereport(ERROR, 
+paai: plpython:00002297:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00002298:  errmsg("PL/Python functions cannot return type %s", 
+paai: plpython:00002299:  format_type_be(arg->typoid)), 
+paai: plpython:00002300:  errdetail("PL/Python does not support conversion to arrays of row types."))); 
+paai: plpython:00002319:  elog(ERROR, "PLyTypeInfo struct is initialized for Tuple"); 
+paai: plpython:00002507:  ereport(ERROR, 
+paai: plpython:00002508:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00002509:  errmsg("cannot convert multidimensional array to Python list"), 
+paai: plpython:00002510:  errdetail("PL/Python only supports one-dimensional arrays."))); 
+paai: plpython:00002545:  elog(ERROR, "PLyTypeInfo structure describes a datum"); 
+paai: plpython:00002549:  PLy_elog(ERROR, "could not create new dictionary"); 
+paai: plpython:00002646:  PLy_elog(ERROR, "could not create bytes representation of Python object"); 
+paai: plpython:00002689:  elog(ERROR, "received unnamed record type as input"); 
+paai: plpython:00002744:  PLy_elog(ERROR, "could not create string representation of Python object"); 
+paai: plpython:00002753:  ereport(ERROR, 
+paai: plpython:00002754:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00002755:  errmsg("could not convert Python object into cstring: Python string representation appears to contain null bytes"))); 
+paai: plpython:00002757:  elog(ERROR, "could not convert Python object into cstring: Python string longer than reported length"); 
+paai: plpython:00002789:  PLy_elog(ERROR, "return value of function with array return type is not a Python sequence"); 
+paai: plpython:00002863:  ereport(ERROR, 
+paai: plpython:00002864:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paai: plpython:00002865:  errmsg("key \"%s\" not found in mapping", key), 
+paai: plpython:00002866:  errhint("To return null in a column, " 
+paai: plpython:00002867:  "add the value None to the mapping with the key named after the column."))); 
+paai: plpython:00002912:  ereport(ERROR, 
+paai: plpython:00002913:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00002914:  errmsg("length of returned sequence did not match number of columns in row"))); 
+paai: plpython:00003012:  ereport(ERROR, 
+paai: plpython:00003013:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paai: plpython:00003014:  errmsg("attribute \"%s\" does not exist in Python object", key), 
+paai: plpython:00003015:  errhint("To return null in a column, " 
+paai: plpython:00003016:  "let the returned object have an attribute named " 
+paai: plpython:00003017:  "after column with value None."))); 
+paai: plpython:00003515:  ereport(ERROR, 
+paai: plpython:00003516:  (errmsg("plpy.prepare: type name at ordinal position %d is not a string", i))); 
+paai: plpython:00003531:  elog(ERROR, "cache lookup failed for type %u", typeId); 
+paai: plpython:00003546:  ereport(ERROR, 
+paai: plpython:00003547:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00003548:  errmsg("plpy.prepare does not support composite types"))); 
+paai: plpython:00003555:  elog(ERROR, "SPI_prepare failed: %s", 
+paai: plpython:00003556:  SPI_result_code_string(SPI_result)); 
+paai: plpython:00003563:  elog(ERROR, "SPI_saveplan failed: %s", 
+paai: plpython:00003564:  SPI_result_code_string(SPI_result)); 
+paai: plpython:00003608:  PLy_elog(WARNING, NULL); 
+paai: plpython:00003684:  PLy_elog(ERROR, "could not execute plan"); 
+paai: plpython:00003812:  PLy_elog(WARNING, NULL); 
+paai: plpython:00003916:  PLy_elog(WARNING, NULL); 
+paai: plpython:00004199:  PLy_elog(ERROR, "failed to add the spiexceptions module"); 
+paai: plpython:00004275:  ereport(FATAL, 
+paai: plpython:00004276:  (errmsg("Python major version mismatch in session"), 
+paai: plpython:00004277:  errdetail("This session has previously used Python major version %d, and it is now attempting to use Python major version %d.", 
+paai: plpython:00004278:  **version_ptr, plpython_python_version), 
+paai: plpython:00004279:  errhint("Start a new session to use a different Python major version."))); 
+paai: plpython:00004294:  PLy_elog(FATAL, "untrapped error in initialization"); 
+paai: plpython:00004322:  PLy_elog(ERROR, "could not import \"__main__\" module"); 
+paai: plpython:00004329:  PLy_elog(ERROR, "could not initialize globals"); 
+paai: plpython:00004344:  elog(ERROR, "could not initialize PLy_PlanType"); 
+paai: plpython:00004346:  elog(ERROR, "could not initialize PLy_ResultType"); 
+paai: plpython:00004348:  elog(ERROR, "could not initialize PLy_SubtransactionType"); 
+paai: plpython:00004368:  elog(ERROR, "could not initialize plpy"); 
+paai: plpython:00004625:  elog(ERROR, "could not convert SPI error to Python exception"); 
+paai: plpython:00004882:  elog(ERROR, "could not get line number from Python traceback"); 
+paai: plpython:00004886:  elog(ERROR, "could not get frame from Python traceback"); 
+paai: plpython:00004890:  elog(ERROR, "could not get code object from Python frame"); 
+paai: plpython:00004894:  elog(ERROR, "could not get function name from Python code object"); 
+paai: plpython:00004898:  elog(ERROR, "could not get file name from Python code object"); 
+paai: plpython:00004976:  elog(ERROR, "could not traverse Python traceback"); 
+paai: plpython:00005050:  PLy_elog(ERROR, "could not convert Python Unicode object to PostgreSQL server encoding"); 
 aaaaa GP_IGNORE: pabi: pgxbackendxsupport - ./pl/plr/pg_backend_support.c
 pabi: pgxbackendxsupport:00000101:  ereport(ERROR, 
 pabi: pgxbackendxsupport:00000102:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
