@@ -781,6 +781,11 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 */
 		Query		  *subquery = (Query *) copyObject(cte->ctequery);
 
+		/**
+		 * Push down quals
+		 */
+		subquery = push_down_restrict(root, rel, rte, rel->relid, subquery);
+
 		subplan = subquery_planner(cteroot->glob, subquery, cteroot,
 								   tuple_fraction, &subroot, config);
 		cteplaninfo->numNonSharedPlans++;
