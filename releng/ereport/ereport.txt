@@ -13875,21 +13875,21 @@ aaai: allpaths:00000351:  elog(ERROR, "plan contains range table with relstorage
 aaai: allpaths:00000439:  ereport(ERROR, 
 aaai: allpaths:00000440:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 aaai: allpaths:00000441:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
-aaai: allpaths:00001037:  elog(ERROR, "unrecognized joinlist node type: %d", 
-aaai: allpaths:00001038:  (int) nodeTag(jlnode)); 
-aaai: allpaths:00001357:  elog(ERROR, "unrecognized node type: %d", 
-aaai: allpaths:00001358:  (int) nodeTag(setOp)); 
-aaai: allpaths:00001386:  elog(ERROR, "wrong number of tlist entries"); 
-aaai: allpaths:00001392:  elog(ERROR, "wrong number of tlist entries"); 
-aaai: allpaths:00001592:  elog(ERROR, "unrecognized node type: %d", 
-aaai: allpaths:00001593:  (int) nodeTag(setOp)); 
-aaai: allpaths:00001610:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
-aaai: allpaths:00001611:  errmsg("Query requires a feature that has been disabled " 
-aaai: allpaths:00001612:  "by a configuration setting."), 
-aaai: allpaths:00001613:  errdetail("Could not devise a query plan for the given query."), 
-aaai: allpaths:00001614:  errhint("Current settings: %s", buf.data) 
-aaai: allpaths:00001615:  )); 
-aaai: allpaths:00001617:  elog(ERROR, "Could not devise a query plan for the given query."); 
+aaai: allpaths:00001042:  elog(ERROR, "unrecognized joinlist node type: %d", 
+aaai: allpaths:00001043:  (int) nodeTag(jlnode)); 
+aaai: allpaths:00001362:  elog(ERROR, "unrecognized node type: %d", 
+aaai: allpaths:00001363:  (int) nodeTag(setOp)); 
+aaai: allpaths:00001391:  elog(ERROR, "wrong number of tlist entries"); 
+aaai: allpaths:00001397:  elog(ERROR, "wrong number of tlist entries"); 
+aaai: allpaths:00001597:  elog(ERROR, "unrecognized node type: %d", 
+aaai: allpaths:00001598:  (int) nodeTag(setOp)); 
+aaai: allpaths:00001615:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
+aaai: allpaths:00001616:  errmsg("Query requires a feature that has been disabled " 
+aaai: allpaths:00001617:  "by a configuration setting."), 
+aaai: allpaths:00001618:  errdetail("Could not devise a query plan for the given query."), 
+aaai: allpaths:00001619:  errhint("Current settings: %s", buf.data) 
+aaai: allpaths:00001620:  )); 
+aaai: allpaths:00001622:  elog(ERROR, "Could not devise a query plan for the given query."); 
 aaaaa GP_IGNORE: caai: costsize - ./backend/optimizer/path/costsize.c
 caai: costsize:00000600:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
 caai: costsize:00000949:  elog(ERROR, "unrecognized node type: %d", nodeTag(path)); 
@@ -23598,24 +23598,19 @@ tabc: tuplesortxmk:00002760:  elog(ERROR, "unexpected end of data");
 tabc: tuplesortxmk:00002769:  elog(ERROR, "unexpected end of data"); 
 tabc: tuplesortxmk:00002780:  elog(ERROR, "unexpected end of data"); 
 aaaaa GP_IGNORE: taba: tuplestore - ./backend/utils/sort/tuplestore.c
-taba: tuplestore:00000575:  elog(ERROR, "seek to EOF failed"); 
-taba: tuplestore:00000580:  elog(ERROR, "invalid tuplestore state"); 
-taba: tuplestore:00000650:  elog(ERROR, "seek failed"); 
-taba: tuplestore:00000719:  elog(ERROR, "bogus tuple length in backward scan"); 
-taba: tuplestore:00000733:  elog(ERROR, "bogus tuple length in backward scan"); 
-taba: tuplestore:00000738:  elog(ERROR, "invalid tuplestore state"); 
-taba: tuplestore:00000861:  elog(ERROR, "seek to start failed"); 
-taba: tuplestore:00000864:  elog(ERROR, "invalid tuplestore state"); 
-taba: tuplestore:00000905:  elog(ERROR, "invalid tuplestore state"); 
-taba: tuplestore:00000939:  elog(ERROR, "tuplestore_restorepos failed"); 
-taba: tuplestore:00000942:  elog(ERROR, "invalid tuplestore state"); 
-taba: tuplestore:00000966:  elog(ERROR, "unexpected end of tape"); 
-taba: tuplestore:00000968:  elog(ERROR, "unexpected end of data"); 
-taba: tuplestore:00001007:  elog(ERROR, "write failed"); 
-taba: tuplestore:00001011:  elog(ERROR, "write failed"); 
-taba: tuplestore:00001043:  elog(ERROR, "unexpected end of data"); 
-taba: tuplestore:00001053:  elog(ERROR, "unexepcted end of data"); 
-taba: tuplestore:00001060:  elog(ERROR, "unexpected end of data"); 
+taba: tuplestore:00000569:  elog(ERROR, "seek to EOF failed"); 
+taba: tuplestore:00000574:  elog(ERROR, "invalid tuplestore state"); 
+taba: tuplestore:00000639:  elog(ERROR, "seek failed"); 
+taba: tuplestore:00000711:  elog(ERROR, "bogus tuple length in backward scan"); 
+taba: tuplestore:00000725:  elog(ERROR, "bogus tuple length in backward scan"); 
+taba: tuplestore:00000730:  elog(ERROR, "invalid tuplestore state"); 
+taba: tuplestore:00000853:  elog(ERROR, "seek to start failed"); 
+taba: tuplestore:00000856:  elog(ERROR, "invalid tuplestore state"); 
+taba: tuplestore:00000897:  elog(ERROR, "invalid tuplestore state"); 
+taba: tuplestore:00000931:  elog(ERROR, "tuplestore_restorepos failed"); 
+taba: tuplestore:00000934:  elog(ERROR, "invalid tuplestore state"); 
+taba: tuplestore:00000997:  elog(ERROR, "write failed"); 
+taba: tuplestore:00001001:  elog(ERROR, "write failed"); 
 aaaaa GP_IGNORE: tabd: tuplestorenew - ./backend/utils/sort/tuplestorenew.c
 tabd: tuplestorenew:00000357:  ereport(ERROR, 
 tabd: tuplestorenew:00000358:  (errcode(ERRCODE_OUT_OF_MEMORY), 
