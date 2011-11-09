@@ -3135,6 +3135,17 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX, NULL, NULL
 	},
 	{
+		{"gp_log_retry_count", PGC_USERSET, LOGGING,
+			gettext_noop("Number of retries before a process that attempts to send"
+					     "a log message proceeds without logging."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+
+		},
+		&gp_log_retry_count,
+		1000, 1, INT_MAX, NULL, NULL
+	},
+	{
 		{"post_auth_delay", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Waits N seconds on connection startup after authentication."),
 			gettext_noop("This allows attaching a debugger to the process."),

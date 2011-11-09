@@ -133,6 +133,8 @@ static bool openlog_done = false;
 static char *syslog_ident = NULL;
 static int	syslog_facility = LOG_LOCAL0;
 
+int gp_log_retry_count = 0;
+
 static void write_syslog(int level, const char *line);
 #endif
 
@@ -2534,8 +2536,6 @@ unpack_sql_state(int sql_state)
     return buf;
 }
 
-#define NUM_RETRIES 1000
-
 /*
  * Send the data through the pipe.
  */
@@ -2547,7 +2547,7 @@ gp_write_pipe_chunk(const char *buffer, int len)
     struct timeval tv;
 	int retry_no = 0;
 
-	while (retry_no < NUM_RETRIES)
+	while (retry_no < gp_log_retry_count)
 	{
 		if (pthread_equal(main_tid, pthread_self()))
 		{
@@ -2584,7 +2584,7 @@ gp_write_pipe_chunk(const char *buffer, int len)
 		}
 	}
 
-	Assert((retval == 1) || (retval < 0 && errno != EINTR) || (retry_no == NUM_RETRIES));
+	Assert((retval == 1) || (retval < 0 && errno != EINTR) || (retry_no == gp_log_retry_count));
 
 	if (retval == 1)
 	{
