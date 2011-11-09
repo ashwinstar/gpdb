@@ -98,9 +98,10 @@ extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 typedef struct addressinfo_holder_t addressinfo_holder_t;
 struct addressinfo_holder_t                                                                        
 {
-        char* address;  // an alternate host name to access this host                                                                           
+	char* address;  // an alternate host name to access this host                                                                           
 	char* ipstr; // the ipstring assoicated with this address
-        struct addressinfo_holder_t* next;
+	bool ipv6;
+	struct addressinfo_holder_t* next;
 };
 
 typedef struct multi_interface_holder_t multi_interface_holder_t;
@@ -138,6 +139,7 @@ struct host_t
 
 char* get_connection_hostname(host_t* host);
 char* get_connection_ip(host_t* host);
+bool get_connection_ipv6_status(host_t* host);
 char* get_snmp_hostname(host_t* host);
 void advance_connection_hostname(host_t* host);
 void advance_snmp_hostname(host_t* host);

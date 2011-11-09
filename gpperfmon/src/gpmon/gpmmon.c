@@ -29,6 +29,8 @@
 #include "libpq-fe.h"
 #include <time.h>
 
+#define YES_TEXT "yes"
+#define NO_TEXT "no"
 
 #define SET_MAXFD(fd)  if (fd < opt.max_fd) ; else opt.max_fd = fd
 
@@ -422,14 +424,40 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 	return 0;
 }
 
-static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port)
+
+static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, bool ipv6)
 {
 	struct sockaddr_in sa;
+	struct sockaddr_in6 sa6;
 	SOCKET sock = -1;
 	gpmon_packet_t pkt = { 0 };
 	int e = 0;
+	unsigned short family = 0;
+	struct sockaddr * sockaddrlive = NULL;
+	size_t length = 0;
 
-	if (-1 == (sock = socket(AF_INET, SOCK_STREAM, 0)))
+	if (ipv6)
+	{
+		family = AF_INET6;
+		memset(&sa6, 0, sizeof(sa6));
+		sa6.sin6_family = AF_INET6;
+		sa6.sin6_port = htons(port);
+		inet_pton(AF_INET6, ipstr, &(sa6.sin6_addr));
+		sockaddrlive = (struct sockaddr *)&sa6;
+		length = sizeof(sa6);
+	}
+	else
+	{
+		family = AF_INET;
+		memset(&sa, 0, sizeof(sa));
+		sa.sin_family = AF_INET;
+		sa.sin_addr.s_addr = inet_addr(ipstr);
+		sa.sin_port = htons(port);
+		sockaddrlive = (struct sockaddr *)&sa;
+		length = sizeof(sa);
+	}
+	
+	if (-1 == (sock = socket(family, SOCK_STREAM, 0)))
 	{
 		e = APR_FROM_OS_ERROR(errno);
 		gpmon_warningx(FLINE, e, "socket()");
@@ -437,12 +465,8 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port)
 	}
 
 	SET_MAXFD(sock);
-	memset(&sa, 0, sizeof(sa));
-	sa.sin_family = AF_INET;
-	sa.sin_addr.s_addr = inet_addr(ipstr);
-	sa.sin_port = htons(port);
 
-	if (-1 == connect(sock, (void*) &sa, sizeof(sa)))
+	if (-1 == connect(sock, sockaddrlive, length))
 	{
 		e = APR_FROM_OS_ERROR(errno);
 		gpmon_warningx(FLINE, e, "connect()");
@@ -601,9 +625,10 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 				SOCKET sock = 0;
 				char* active_hostname = get_connection_hostname(h);
 				char* active_ip = get_connection_ip(h);
+				bool ipv6 = get_connection_ipv6_status(h);
 
 				TR1(("connecting to %s (%s:%d)\n", active_hostname, active_ip, ax.port));
-				if (0 != (e = conm_connect(&sock, active_ip, ax.port)))
+				if (0 != (e = conm_connect(&sock, active_ip, ax.port, ipv6)))
 				{
 					gpmon_warningx(FLINE, e, "cannot connect to %s (%s:%d)",
 							active_hostname, active_ip, ax.port);
@@ -1538,7 +1563,9 @@ void populate_smdw_aliases(host_t* host)
 	}
 }
 
-char* get_ip_for_host(char* host)
+// returnParamIsIpv6 will be set to true for IPv6 addresses
+// the actual IP address string is returned from the function
+char* get_ip_for_host(char* host, bool* returnParamIsIpv6)
 {
 	char * ipstr;
 	int			ret;
@@ -1569,11 +1596,13 @@ char* get_ip_for_host(char* host)
     {
         struct sockaddr_in* sock = (struct sockaddr_in*)addrs->ai_addr;
 	    inet_ntop(addrs->ai_family, &sock->sin_addr, ipstr, 128);
+		*returnParamIsIpv6 = false;
     }
     else if (addrs->ai_family == AF_INET6)
     {
         struct sockaddr_in6* sock = (struct sockaddr_in6*)addrs->ai_addr;
 	    inet_ntop(addrs->ai_family, &sock->sin6_addr, ipstr, 128);
+		*returnParamIsIpv6 = true;
     }
     else
     {
@@ -1607,7 +1636,7 @@ static void gethostlist()
 		addressinfo = ax.hosttab[i].addressinfo_head;		
 		while (addressinfo)
 		{
-			addressinfo->ipstr = get_ip_for_host(addressinfo->address);
+			addressinfo->ipstr = get_ip_for_host(addressinfo->address, &addressinfo->ipv6);
 			if (!addressinfo->ipstr)
 			{
 				interuptable_sleep(60); // sleep to prevent loop of forking process and failing
@@ -1641,7 +1670,13 @@ static void gethostlist()
 				gpmon_fatalx(FLINE, 0, "address counter exceeds number of addresses for host %s", ax.hosttab[i].hostname);
 			}
 
-			TR1(("\tALIAS: (host %s) (ipstr %s)\n", addressinfo->address, addressinfo->ipstr));
+			const char* ipv6on = NULL;
+			if (addressinfo->ipv6)
+				ipv6on = YES_TEXT;
+			else
+				ipv6on = NO_TEXT;
+			
+			TR1(("\tALIAS: (host %s) (ipstr %s) (ipv6 %s)\n", addressinfo->address, addressinfo->ipstr, ipv6on));
 			addressinfo = addressinfo->next;
 		}
 	}
