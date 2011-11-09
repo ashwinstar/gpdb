@@ -1030,13 +1030,12 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 static Datum
 PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 {
-	Datum		rv;
-	FuncCallContext  *	 funcctx 	= NULL;
-	PyObject   *volatile plargs 	= NULL;
-	PyObject   *volatile plrv 		= NULL;
-	bool				 bFirstTimeCall = false; 
-
-	ErrorContextCallback plerrcontext;
+	Datum						rv;
+	FuncCallContext	*volatile	funcctx		   = NULL;
+	PyObject 		*volatile	plargs		   = NULL;
+	PyObject		*volatile	plrv		   = NULL;
+	bool						bFirstTimeCall = false; 
+	ErrorContextCallback		plerrcontext;
 
 	PG_TRY();
 	{
