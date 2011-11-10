@@ -332,7 +332,7 @@ class SendFilerepVerifyMessage(Command):
         'recovery.done']
 
     DEFAULT_IGNORE_DIRS = [
-        'pgsql_tmp', 'pg_xlog', 'pg_log', 'pg_stat_tmp', 'pg_changetracking', 'pg_verify', 'db_dumps', 'pg_utilitymodedtmredo'
+        'pgsql_tmp', 'pg_xlog', 'pg_log', 'pg_stat_tmp', 'pg_changetracking', 'pg_verify', 'db_dumps', 'pg_utilitymodedtmredo', 'gpperfmon'
     ]
 
     def __init__(self, name, host, port, token, full=None, verify_file=None, verify_dir=None,
@@ -1109,7 +1109,10 @@ def get_masterdatadir():
         raise GpError("Environment Variable MASTER_DATA_DIRECTORY not set!")
     return master_datadir
 
-
+######
+def get_master_port():
+    logger.debug("Getting the master port number")
+    return pgconf.readfile(os.path.join(get_masterdatadir(), "postgresql.conf")).int('port') 
 
 ######
 def check_permissions(username):
