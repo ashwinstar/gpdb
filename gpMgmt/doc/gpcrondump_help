@@ -15,7 +15,7 @@ gpcrondump -x <database_name>
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
      { [-E <encoding>] [--inserts | --column-inserts] [--oids] 
        [--no-owner | --use-set-session-authorization] 
-       [--no-privileges] [--rsyncable] [--dbboost] }
+       [--no-privileges] [--rsyncable] [--ddboost] }
      
 
 gpcrondump -? 
@@ -108,7 +108,7 @@ OPTIONS
 
 --ddboost
  Use Data Domain DD Boost for this backup. Before using DD Boost 
- make sure the one-time DD Boost Credential setup is completed.
+ make sure the one-time DD Boost credential setup is completed.
  The following options are recommended if --ddboost is specified.
 
     * Use the --rsyncable option with DD Boost
@@ -144,7 +144,7 @@ OPTIONS
  configuration files are dumped in the master or segment data 
  directory to db_dumps/YYYYMMDD/config_files_<timestamp>.tar
 
- If --ddboost is specified, the file are located in the 
+ If --ddboost is specified, the files are located in the 
  db_dumps directory on the default storage unit. 
 
 
@@ -154,9 +154,8 @@ OPTIONS
  Global objects are dumped in the master data directory to 
  db_dumps/YYYYMMDD/gp_global_1_1_<timestamp>.
 
- If --ddboost is specified, the file are located in the 
+ If --ddboost is specified, the files are located in the 
  db_dumps directory on the default storage unit. 
-
 
 
 -h (record dump details)
@@ -235,7 +234,7 @@ OPTIONS
 
 --rsyncable
 
- Passes the --rsyncable flat to the gpzip utility to synchronize
+ Passes the --rsyncable flag to the gpzip utility to synchronize
  the output occasionally, based on the input during compression.
  This synchronization increases the file size by less than 1% in
  most cases. When this flag is passed, the rsync(1) program can
