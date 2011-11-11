@@ -82,6 +82,7 @@ class TriggerFilerepVerifyMessages(Operation):
 
         logger.info('Sending gp_primarymirror requests...')
         pool = WorkerPool(min(len(to_trigger), self.batch_default))
+
         for pseg in to_trigger:
             host, port = pseg.getSegmentHostName(), pseg.getSegmentPort()
             cmd = SendFilerepVerifyMessage(name = 'verify %s' % host, host = host, port = port,
@@ -133,6 +134,11 @@ class ValidateVerification(Operation):
         if my_fault_strategy != FAULT_STRATEGY_FILE_REPLICATION:
             raise NoMirroringError('Fault strategy %s does not support mirror verification.' % FAULT_STRATEGY_LABELS[my_fault_strategy])
 
+        if self.content is not None:
+            contents = set( [seg.getSegmentContentId() for seg in gparray.getDbList()] )
+            if self.content not in contents:
+                raise InvalidContentIDError(self.content)
+
         logger.info('Validating target contents...')
         to_verify = [x for x in gparray.getDbList() if x.isSegmentQE()]
         if self.content is not None:
@@ -141,7 +147,9 @@ class ValidateVerification(Operation):
             to_verify = [x for x in to_verify if x.isSegmentPrimary(current_role=True)]
         return to_verify
 class NoMirroringError(Exception): pass
-
+class InvalidContentIDError(Exception):
+    def __init__(self, content):
+        Exception.__init__(self, "%d is not a valid content ID." % content)
 
 
 class AbortVerification(Operation):
