@@ -47,7 +47,7 @@ typedef struct {
  * This procedure does sanity check on gp_hadoop_connector_jardir,
  * gp_hadoop_version and gp_hadoop_home.
  * and HADOOP_EDITION.
- * 1. $GPHOME/<gp_hadoop_jardir>/gphadoop-$HADOOP_VERSION.jar must exists.
+ * 1. $GPHOME/<gp_hadoop_jardir>/$GP_HADOOP_CONN_VERSION.jar must exists.
  * 2. gp_hadoop_home must exists
  */
 static void
@@ -58,7 +58,7 @@ checkHadoopGUCs()
 	int  jarFD;
 
 
-	/* Check the existence of $GPHOME/<gp_hadoop_jardir>/gphadoop-$HADOOP_CONNECTOR_VERSION.jar
+	/* Check the existence of $GPHOME/<gp_hadoop_jardir>/$GP_HADOOP_CONN_VERSION.jar
 	 *
 	 * To get $GPHOME, we go from my_exec_path, which is $GPHOME/bin/postgres, and
 	 * go up 2 levels.
@@ -72,14 +72,14 @@ checkHadoopGUCs()
 	get_parent_directory(gphome);
 
 	initStringInfoOfSize(&path, MAXPGPATH);
-	appendStringInfo(&path, "%s/%s/gphadoop-%s.jar",
+	appendStringInfo(&path, "%s/%s/%s.jar",
 			gphome, gp_hadoop_connector_jardir, gp_hadoop_connector_version);
 
 	jarFD = BasicOpenFile(path.data, O_RDONLY | PG_BINARY, 0);
 	if (jarFD == -1)
 	{
 		ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-						errmsg("cannot open HDFS connector in %s: %m", path.data),
+						errmsg("cannot open Hadoop Cross Connect in %s: %m", path.data),
 						errOmitLocation(true)));
 	}
 	close(jarFD);

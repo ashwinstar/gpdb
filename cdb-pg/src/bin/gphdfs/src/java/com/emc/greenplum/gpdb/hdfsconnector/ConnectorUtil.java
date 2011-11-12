@@ -64,7 +64,7 @@ public class ConnectorUtil
 		 * NOTE: MapR isn't really an URI because of its "///" notation.
 		 * MapR also does not use port.
 		 */
-	    if (connVer.startsWith("MR")) {
+	    if (connVer.startsWith("gpmr")) {
 	    	conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
 	    	conf.set("fs.default.name", "maprfs:///"+inputURI.getHost());
 	    } else {
