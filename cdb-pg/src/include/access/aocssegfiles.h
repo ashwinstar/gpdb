@@ -140,6 +140,7 @@ GetAllAOCSFileSegInfo_pg_aocsseg_rel(
 	Relation 			pg_aocsseg_rel, 
 	Snapshot 			appendOnlyMetaDataSnapshot, 
 	int32 				*totalseg);
+
 extern void FreeAllAOCSSegFileInfo(AOCSFileSegInfo **allAOCSSegInfo, int totalSegFiles);
 
 extern int64 GetAOCSTotalBytes(

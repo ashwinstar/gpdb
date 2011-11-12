@@ -389,6 +389,8 @@ void UpdateAOCSFileSegInfo(AOCSInsertDesc idesc)
     AOCSVPInfo *vpinfo = create_aocs_vpinfo(nvp);
 	AppendOnlyEntry *aoEntry = idesc->aoEntry;
 
+
+
 	/*
 	 * Since we have the segment-file entry under lock (with LockRelationAppendOnlySegmentFile)
 	 * we can use SnapshotNow.
@@ -489,6 +491,7 @@ void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segn
 	 * we can use SnapshotNow.
 	 */
     Snapshot usesnapshot = SnapshotNow;
+
 
 	Assert(aoEntry != NULL);
 

@@ -1424,6 +1424,7 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 	AppendOnlyStorageAttributes *attr;
 
 	
+
 	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
 	
 	/*
