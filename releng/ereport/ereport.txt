@@ -23818,7 +23818,7 @@ gabf: gphdfsformatter:00000702:  errmsg("Tuplelen != bufidx: %d:%d:%d", tuplelen
 gabf: gphdfsformatter:00000703:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: gabe: gphdfsprotocol - ./bin/gphdfs/src/protocol_formatter/gphdfsprotocol.c
 gabe: gphdfsprotocol:00000081:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabe: gphdfsprotocol:00000082:  errmsg("cannot open HDFS connector in %s: %m", path.data), 
+gabe: gphdfsprotocol:00000082:  errmsg("cannot open Hadoop Cross Connect in %s: %m", path.data), 
 gabe: gphdfsprotocol:00000083:  errOmitLocation(true))); 
 gabe: gphdfsprotocol:00000098:  ereport(ERROR, 
 gabe: gphdfsprotocol:00000099:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
@@ -24833,132 +24833,132 @@ paai: plpython:00000905:  elog(ERROR, "unrecognized WHEN tg_event: %u", tdata->t
 paai: plpython:00000955:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
 paai: plpython:00000980:  elog(ERROR, "unrecognized OP tg_event: %u", tdata->tg_event); 
 paai: plpython:00000988:  elog(ERROR, "unrecognized LEVEL tg_event: %u", tdata->tg_event); 
-paai: plpython:00001109:  ereport(ERROR, 
-paai: plpython:00001110:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001111:  errmsg("unsupported set function return mode"), 
-paai: plpython:00001112:  errdetail("PL/Python set-returning functions only support returning only value per call."))); 
-paai: plpython:00001123:  ereport(ERROR, 
-paai: plpython:00001124:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00001125:  errmsg("returned object cannot be iterated"), 
-paai: plpython:00001126:  errdetail("PL/Python set-returning functions must return an iterable object."))); 
-paai: plpython:00001183:  PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname); 
-paai: plpython:00001187:  elog(ERROR, "SPI_finish failed"); 
-paai: plpython:00001200:  elog(ERROR, "SPI_finish failed"); 
-paai: plpython:00001215:  ereport(ERROR, 
-paai: plpython:00001216:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00001217:  errmsg("PL/Python function with return type \"void\" did not return None"))); 
-paai: plpython:00001313:  ereport(WARNING, 
-paai: plpython:00001314:  (errmsg("forcibly aborting a subtransaction that has not been exited"))); 
-paai: plpython:00001365:  PLy_elog(ERROR, NULL); 
-paai: plpython:00001430:  PLy_elog(ERROR, "PyList_SetItem() failed, while setting up arguments"); 
-paai: plpython:00001434:  PLy_elog(ERROR, "PyDict_SetItemString() failed, while setting up arguments"); 
-paai: plpython:00001444:  ereport(ERROR, 
-paai: plpython:00001445:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001446:  errmsg("function returning record called in context " 
-paai: plpython:00001447:  "that cannot accept type record"))); 
-paai: plpython:00001518:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-paai: plpython:00001550:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
-paai: plpython:00001615:  elog(ERROR, "procedure name would overrun buffer"); 
-paai: plpython:00001648:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00001649:  procStruct->prorettype); 
-paai: plpython:00001656:  ereport(ERROR, 
-paai: plpython:00001657:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001658:  errmsg("trigger functions can only be called as triggers"))); 
-paai: plpython:00001661:  ereport(ERROR, 
-paai: plpython:00001662:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001663:  errmsg("PL/Python functions cannot return type %s", 
-paai: plpython:00001664:  format_type_be(procStruct->prorettype)))); 
-paai: plpython:00001733:  elog(ERROR, "cache lookup failed for type %u", types[i]); 
-paai: plpython:00001741:  ereport(ERROR, 
-paai: plpython:00001742:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00001743:  errmsg("PL/Python functions cannot accept type %s", 
-paai: plpython:00001744:  format_type_be(types[i])))); 
-paai: plpython:00001772:  elog(ERROR, "null prosrc"); 
-paai: plpython:00001837:  elog(ERROR, "string would overflow buffer"); 
-paai: plpython:00001844:  PLy_elog(ERROR, "could not compile PL/Python function \"%s\"", 
-paai: plpython:00001845:  proc->proname); 
-paai: plpython:00001847:  PLy_elog(ERROR, "could not compile anonymous PL/Python code block"); 
-paai: plpython:00001866:  elog(FATAL, "buffer overrun in PLy_munge_source"); \ 
-paai: plpython:00001867: } \ 
-paai: plpython:00001868: while(0); 
-paai: plpython:00002110:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
-paai: plpython:00002127:  //elog(ERROR, "received unnamed record type as input"); 
-paai: plpython:00002146:  elog(ERROR, "cache lookup failed for relation %u", arg->typ_relid); 
-paai: plpython:00002168:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00002169:  desc->attrs[i]->atttypid); 
-paai: plpython:00002211:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
-paai: plpython:00002235:  elog(ERROR, "cache lookup failed for type %u", 
-paai: plpython:00002236:  desc->attrs[i]->atttypid); 
-paai: plpython:00002248:  elog(ERROR, "PLyTypeInfo struct is initialized for a Tuple"); 
-paai: plpython:00002296:  ereport(ERROR, 
-paai: plpython:00002297:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00002298:  errmsg("PL/Python functions cannot return type %s", 
-paai: plpython:00002299:  format_type_be(arg->typoid)), 
-paai: plpython:00002300:  errdetail("PL/Python does not support conversion to arrays of row types."))); 
-paai: plpython:00002319:  elog(ERROR, "PLyTypeInfo struct is initialized for Tuple"); 
-paai: plpython:00002507:  ereport(ERROR, 
-paai: plpython:00002508:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00002509:  errmsg("cannot convert multidimensional array to Python list"), 
-paai: plpython:00002510:  errdetail("PL/Python only supports one-dimensional arrays."))); 
-paai: plpython:00002545:  elog(ERROR, "PLyTypeInfo structure describes a datum"); 
-paai: plpython:00002549:  PLy_elog(ERROR, "could not create new dictionary"); 
-paai: plpython:00002646:  PLy_elog(ERROR, "could not create bytes representation of Python object"); 
-paai: plpython:00002689:  elog(ERROR, "received unnamed record type as input"); 
-paai: plpython:00002744:  PLy_elog(ERROR, "could not create string representation of Python object"); 
-paai: plpython:00002753:  ereport(ERROR, 
-paai: plpython:00002754:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00002755:  errmsg("could not convert Python object into cstring: Python string representation appears to contain null bytes"))); 
-paai: plpython:00002757:  elog(ERROR, "could not convert Python object into cstring: Python string longer than reported length"); 
-paai: plpython:00002789:  PLy_elog(ERROR, "return value of function with array return type is not a Python sequence"); 
-paai: plpython:00002863:  ereport(ERROR, 
-paai: plpython:00002864:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paai: plpython:00002865:  errmsg("key \"%s\" not found in mapping", key), 
-paai: plpython:00002866:  errhint("To return null in a column, " 
-paai: plpython:00002867:  "add the value None to the mapping with the key named after the column."))); 
-paai: plpython:00002912:  ereport(ERROR, 
-paai: plpython:00002913:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paai: plpython:00002914:  errmsg("length of returned sequence did not match number of columns in row"))); 
-paai: plpython:00003012:  ereport(ERROR, 
-paai: plpython:00003013:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paai: plpython:00003014:  errmsg("attribute \"%s\" does not exist in Python object", key), 
-paai: plpython:00003015:  errhint("To return null in a column, " 
-paai: plpython:00003016:  "let the returned object have an attribute named " 
-paai: plpython:00003017:  "after column with value None."))); 
-paai: plpython:00003515:  ereport(ERROR, 
-paai: plpython:00003516:  (errmsg("plpy.prepare: type name at ordinal position %d is not a string", i))); 
-paai: plpython:00003531:  elog(ERROR, "cache lookup failed for type %u", typeId); 
-paai: plpython:00003546:  ereport(ERROR, 
-paai: plpython:00003547:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paai: plpython:00003548:  errmsg("plpy.prepare does not support composite types"))); 
-paai: plpython:00003555:  elog(ERROR, "SPI_prepare failed: %s", 
-paai: plpython:00003556:  SPI_result_code_string(SPI_result)); 
-paai: plpython:00003563:  elog(ERROR, "SPI_saveplan failed: %s", 
-paai: plpython:00003564:  SPI_result_code_string(SPI_result)); 
-paai: plpython:00003608:  PLy_elog(WARNING, NULL); 
-paai: plpython:00003684:  PLy_elog(ERROR, "could not execute plan"); 
-paai: plpython:00003812:  PLy_elog(WARNING, NULL); 
-paai: plpython:00003916:  PLy_elog(WARNING, NULL); 
-paai: plpython:00004199:  PLy_elog(ERROR, "failed to add the spiexceptions module"); 
-paai: plpython:00004275:  ereport(FATAL, 
-paai: plpython:00004276:  (errmsg("Python major version mismatch in session"), 
-paai: plpython:00004277:  errdetail("This session has previously used Python major version %d, and it is now attempting to use Python major version %d.", 
-paai: plpython:00004278:  **version_ptr, plpython_python_version), 
-paai: plpython:00004279:  errhint("Start a new session to use a different Python major version."))); 
-paai: plpython:00004294:  PLy_elog(FATAL, "untrapped error in initialization"); 
-paai: plpython:00004322:  PLy_elog(ERROR, "could not import \"__main__\" module"); 
-paai: plpython:00004329:  PLy_elog(ERROR, "could not initialize globals"); 
-paai: plpython:00004344:  elog(ERROR, "could not initialize PLy_PlanType"); 
-paai: plpython:00004346:  elog(ERROR, "could not initialize PLy_ResultType"); 
-paai: plpython:00004348:  elog(ERROR, "could not initialize PLy_SubtransactionType"); 
-paai: plpython:00004368:  elog(ERROR, "could not initialize plpy"); 
-paai: plpython:00004625:  elog(ERROR, "could not convert SPI error to Python exception"); 
-paai: plpython:00004882:  elog(ERROR, "could not get line number from Python traceback"); 
-paai: plpython:00004886:  elog(ERROR, "could not get frame from Python traceback"); 
-paai: plpython:00004890:  elog(ERROR, "could not get code object from Python frame"); 
-paai: plpython:00004894:  elog(ERROR, "could not get function name from Python code object"); 
-paai: plpython:00004898:  elog(ERROR, "could not get file name from Python code object"); 
-paai: plpython:00004976:  elog(ERROR, "could not traverse Python traceback"); 
-paai: plpython:00005050:  PLy_elog(ERROR, "could not convert Python Unicode object to PostgreSQL server encoding"); 
+paai: plpython:00001108:  ereport(ERROR, 
+paai: plpython:00001109:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001110:  errmsg("unsupported set function return mode"), 
+paai: plpython:00001111:  errdetail("PL/Python set-returning functions only support returning only value per call."))); 
+paai: plpython:00001122:  ereport(ERROR, 
+paai: plpython:00001123:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00001124:  errmsg("returned object cannot be iterated"), 
+paai: plpython:00001125:  errdetail("PL/Python set-returning functions must return an iterable object."))); 
+paai: plpython:00001182:  PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname); 
+paai: plpython:00001186:  elog(ERROR, "SPI_finish failed"); 
+paai: plpython:00001199:  elog(ERROR, "SPI_finish failed"); 
+paai: plpython:00001214:  ereport(ERROR, 
+paai: plpython:00001215:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00001216:  errmsg("PL/Python function with return type \"void\" did not return None"))); 
+paai: plpython:00001312:  ereport(WARNING, 
+paai: plpython:00001313:  (errmsg("forcibly aborting a subtransaction that has not been exited"))); 
+paai: plpython:00001364:  PLy_elog(ERROR, NULL); 
+paai: plpython:00001429:  PLy_elog(ERROR, "PyList_SetItem() failed, while setting up arguments"); 
+paai: plpython:00001433:  PLy_elog(ERROR, "PyDict_SetItemString() failed, while setting up arguments"); 
+paai: plpython:00001443:  ereport(ERROR, 
+paai: plpython:00001444:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001445:  errmsg("function returning record called in context " 
+paai: plpython:00001446:  "that cannot accept type record"))); 
+paai: plpython:00001517:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+paai: plpython:00001549:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
+paai: plpython:00001614:  elog(ERROR, "procedure name would overrun buffer"); 
+paai: plpython:00001647:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00001648:  procStruct->prorettype); 
+paai: plpython:00001655:  ereport(ERROR, 
+paai: plpython:00001656:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001657:  errmsg("trigger functions can only be called as triggers"))); 
+paai: plpython:00001660:  ereport(ERROR, 
+paai: plpython:00001661:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001662:  errmsg("PL/Python functions cannot return type %s", 
+paai: plpython:00001663:  format_type_be(procStruct->prorettype)))); 
+paai: plpython:00001732:  elog(ERROR, "cache lookup failed for type %u", types[i]); 
+paai: plpython:00001740:  ereport(ERROR, 
+paai: plpython:00001741:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00001742:  errmsg("PL/Python functions cannot accept type %s", 
+paai: plpython:00001743:  format_type_be(types[i])))); 
+paai: plpython:00001771:  elog(ERROR, "null prosrc"); 
+paai: plpython:00001836:  elog(ERROR, "string would overflow buffer"); 
+paai: plpython:00001843:  PLy_elog(ERROR, "could not compile PL/Python function \"%s\"", 
+paai: plpython:00001844:  proc->proname); 
+paai: plpython:00001846:  PLy_elog(ERROR, "could not compile anonymous PL/Python code block"); 
+paai: plpython:00001865:  elog(FATAL, "buffer overrun in PLy_munge_source"); \ 
+paai: plpython:00001866: } \ 
+paai: plpython:00001867: while(0); 
+paai: plpython:00002109:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
+paai: plpython:00002126:  //elog(ERROR, "received unnamed record type as input"); 
+paai: plpython:00002145:  elog(ERROR, "cache lookup failed for relation %u", arg->typ_relid); 
+paai: plpython:00002167:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00002168:  desc->attrs[i]->atttypid); 
+paai: plpython:00002210:  elog(ERROR, "PLyTypeInfo struct is initialized for a Datum"); 
+paai: plpython:00002234:  elog(ERROR, "cache lookup failed for type %u", 
+paai: plpython:00002235:  desc->attrs[i]->atttypid); 
+paai: plpython:00002247:  elog(ERROR, "PLyTypeInfo struct is initialized for a Tuple"); 
+paai: plpython:00002295:  ereport(ERROR, 
+paai: plpython:00002296:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00002297:  errmsg("PL/Python functions cannot return type %s", 
+paai: plpython:00002298:  format_type_be(arg->typoid)), 
+paai: plpython:00002299:  errdetail("PL/Python does not support conversion to arrays of row types."))); 
+paai: plpython:00002318:  elog(ERROR, "PLyTypeInfo struct is initialized for Tuple"); 
+paai: plpython:00002506:  ereport(ERROR, 
+paai: plpython:00002507:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00002508:  errmsg("cannot convert multidimensional array to Python list"), 
+paai: plpython:00002509:  errdetail("PL/Python only supports one-dimensional arrays."))); 
+paai: plpython:00002544:  elog(ERROR, "PLyTypeInfo structure describes a datum"); 
+paai: plpython:00002548:  PLy_elog(ERROR, "could not create new dictionary"); 
+paai: plpython:00002645:  PLy_elog(ERROR, "could not create bytes representation of Python object"); 
+paai: plpython:00002688:  elog(ERROR, "received unnamed record type as input"); 
+paai: plpython:00002743:  PLy_elog(ERROR, "could not create string representation of Python object"); 
+paai: plpython:00002752:  ereport(ERROR, 
+paai: plpython:00002753:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00002754:  errmsg("could not convert Python object into cstring: Python string representation appears to contain null bytes"))); 
+paai: plpython:00002756:  elog(ERROR, "could not convert Python object into cstring: Python string longer than reported length"); 
+paai: plpython:00002788:  PLy_elog(ERROR, "return value of function with array return type is not a Python sequence"); 
+paai: plpython:00002862:  ereport(ERROR, 
+paai: plpython:00002863:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paai: plpython:00002864:  errmsg("key \"%s\" not found in mapping", key), 
+paai: plpython:00002865:  errhint("To return null in a column, " 
+paai: plpython:00002866:  "add the value None to the mapping with the key named after the column."))); 
+paai: plpython:00002911:  ereport(ERROR, 
+paai: plpython:00002912:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paai: plpython:00002913:  errmsg("length of returned sequence did not match number of columns in row"))); 
+paai: plpython:00003011:  ereport(ERROR, 
+paai: plpython:00003012:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paai: plpython:00003013:  errmsg("attribute \"%s\" does not exist in Python object", key), 
+paai: plpython:00003014:  errhint("To return null in a column, " 
+paai: plpython:00003015:  "let the returned object have an attribute named " 
+paai: plpython:00003016:  "after column with value None."))); 
+paai: plpython:00003514:  ereport(ERROR, 
+paai: plpython:00003515:  (errmsg("plpy.prepare: type name at ordinal position %d is not a string", i))); 
+paai: plpython:00003530:  elog(ERROR, "cache lookup failed for type %u", typeId); 
+paai: plpython:00003545:  ereport(ERROR, 
+paai: plpython:00003546:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paai: plpython:00003547:  errmsg("plpy.prepare does not support composite types"))); 
+paai: plpython:00003554:  elog(ERROR, "SPI_prepare failed: %s", 
+paai: plpython:00003555:  SPI_result_code_string(SPI_result)); 
+paai: plpython:00003562:  elog(ERROR, "SPI_saveplan failed: %s", 
+paai: plpython:00003563:  SPI_result_code_string(SPI_result)); 
+paai: plpython:00003607:  PLy_elog(WARNING, NULL); 
+paai: plpython:00003683:  PLy_elog(ERROR, "could not execute plan"); 
+paai: plpython:00003811:  PLy_elog(WARNING, NULL); 
+paai: plpython:00003915:  PLy_elog(WARNING, NULL); 
+paai: plpython:00004198:  PLy_elog(ERROR, "failed to add the spiexceptions module"); 
+paai: plpython:00004274:  ereport(FATAL, 
+paai: plpython:00004275:  (errmsg("Python major version mismatch in session"), 
+paai: plpython:00004276:  errdetail("This session has previously used Python major version %d, and it is now attempting to use Python major version %d.", 
+paai: plpython:00004277:  **version_ptr, plpython_python_version), 
+paai: plpython:00004278:  errhint("Start a new session to use a different Python major version."))); 
+paai: plpython:00004293:  PLy_elog(FATAL, "untrapped error in initialization"); 
+paai: plpython:00004321:  PLy_elog(ERROR, "could not import \"__main__\" module"); 
+paai: plpython:00004328:  PLy_elog(ERROR, "could not initialize globals"); 
+paai: plpython:00004343:  elog(ERROR, "could not initialize PLy_PlanType"); 
+paai: plpython:00004345:  elog(ERROR, "could not initialize PLy_ResultType"); 
+paai: plpython:00004347:  elog(ERROR, "could not initialize PLy_SubtransactionType"); 
+paai: plpython:00004367:  elog(ERROR, "could not initialize plpy"); 
+paai: plpython:00004624:  elog(ERROR, "could not convert SPI error to Python exception"); 
+paai: plpython:00004881:  elog(ERROR, "could not get line number from Python traceback"); 
+paai: plpython:00004885:  elog(ERROR, "could not get frame from Python traceback"); 
+paai: plpython:00004889:  elog(ERROR, "could not get code object from Python frame"); 
+paai: plpython:00004893:  elog(ERROR, "could not get function name from Python code object"); 
+paai: plpython:00004897:  elog(ERROR, "could not get file name from Python code object"); 
+paai: plpython:00004975:  elog(ERROR, "could not traverse Python traceback"); 
+paai: plpython:00005049:  PLy_elog(ERROR, "could not convert Python Unicode object to PostgreSQL server encoding"); 
 aaaaa GP_IGNORE: pabi: pgxbackendxsupport - ./pl/plr/pg_backend_support.c
 pabi: pgxbackendxsupport:00000101:  ereport(ERROR, 
 pabi: pgxbackendxsupport:00000102:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
