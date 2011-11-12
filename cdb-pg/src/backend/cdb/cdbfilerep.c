@@ -1373,7 +1373,7 @@ FileRep_InsertLogEntry(
 		
 	SpinLockAcquire(&fileRepLogShmem->logLock);
 	
-	if ((fileRepLogShmem->logInsert + strlen(buffer)) > fileRepLogShmem->logEnd)
+	if ((fileRepLogShmem->logInsert + strlen(buffer)) >= fileRepLogShmem->logEnd)
 	{
 		fileRepLogShmem->logInsert = fileRepLogShmem->logBegin;
 			
@@ -1382,7 +1382,7 @@ FileRep_InsertLogEntry(
 		fileRepLogShmem->flushSlot2 = TRUE;
 	}
 			
-	if (fileRepLogShmem->logInsert > fileRepLogShmem->logBegin + halfLength)
+	if (fileRepLogShmem->logInsert >= fileRepLogShmem->logBegin + halfLength)
 	{
 		fileRepLogShmem->activeSlot1 = FALSE;
 			
@@ -1748,7 +1748,7 @@ FileRep_InsertConfigLogEntryInternal(char		*description,
 			lineNumber,
 			funcName);						
 	
-	if ((fileRepConfigLogShmem->logInsert + strlen(buffer)) > fileRepConfigLogShmem->logEnd)
+	if ((fileRepConfigLogShmem->logInsert + strlen(buffer)) >= fileRepConfigLogShmem->logEnd)
 	{
 		fileRepConfigLogShmem->logInsert = fileRepConfigLogShmem->logBegin;
 		
@@ -1757,7 +1757,7 @@ FileRep_InsertConfigLogEntryInternal(char		*description,
 		fileRepConfigLogShmem->flushSlot2 = TRUE;
 	}
 	
-	if (fileRepConfigLogShmem->logInsert > fileRepConfigLogShmem->logBegin + halfLength)
+	if (fileRepConfigLogShmem->logInsert >= fileRepConfigLogShmem->logBegin + halfLength)
 	{
 		fileRepConfigLogShmem->activeSlot1 = FALSE;
 	
