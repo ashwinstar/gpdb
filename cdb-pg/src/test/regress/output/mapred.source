@@ -480,25 +480,24 @@ mapreduce
 ---------------------
 STDERR> ERROR:  creation of Perl function failed
 STDERR> DETAIL:  syntax error at line 18, near "[]"
-STDERR> syntax error at line 21, near "; }"
+STDERR> syntax error at line 20, near ";
+STDERR>  }"
 STDERR> Error: Object creation Failure
 STDERR> ERROR:  creation of Perl function failed
 STDERR> DETAIL:  syntax error at line 28, near "[]"
-STDERR> syntax error at line 30, near "; }"
+STDERR> syntax error at line 29, near ";
+STDERR>  }"
 STDERR> Error: Object creation Failure
 STDERR> ERROR:  creation of Perl function failed
 STDERR> DETAIL:  syntax error at line 37, near "[]"
-STDERR> syntax error at line 39, near "; }"
 STDERR> Error: Object creation Failure
 STDERR> ERROR:  creation of Perl function failed
 STDERR> DETAIL:  syntax error at line 45, near "[]"
-STDERR> syntax error at line 47, near "; }"
 STDERR> Error: Object creation Failure
 STDERR> ERROR:  creation of Perl function failed
 STDERR> DETAIL:  syntax error at line 53, near "[]"
-STDERR> syntax error at line 55, near "; }"
 STDERR> Error: Object creation Failure
-STDERR> 
+STDERR>
 STDOUT>
 
 (3 rows)
