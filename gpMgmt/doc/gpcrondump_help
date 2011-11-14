@@ -324,21 +324,18 @@ Call gpcrondump directly and dump mydatabase (and global objects):
 
   gpcrondump -x mydatabase -c -g -G
 
-
-A Linux crontab entry that runs a backup of the sales database 
+A crontab entry that runs a backup of the sales database 
 (and global objects) nightly at one past midnight:
 
-  SHELL=/bin/bash
-  GPHOME=/usr/local/greenplum-db-4.0.0.0
-  MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1
-  PATH=$PATH:$GPHOME/bin
-  01 0 * * * gpadmin gpcrondump -x sales -c -g -G -a -q >> gp_salesdump.log
+  01 0 * * * /home/gpadmin/gpdump.sh >> gpdump.log
 
+The content of dump script gpdump.sh is:
 
-A Solaris crontab entry that runs a backup of the sales database 
-(and global objects) nightly at one past midnight (no line breaks):
-
-  01 0 * * * SHELL=/bin/bash ; GPHOME=/usr/local/greenplum-db-4.0.0.0 ; PATH=$PATH:$GPHOME/bin ; HOME=/export/home/gpadmin ; MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1 ; /usr/local/greenplum-db/bin/gpcrondump -x sales -c -g -G -a -q >> gp_salesdump.log
+  #!/bin/bash
+  export GPHOME=/usr/local/greenplum-db
+  export MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1
+  . $GPHOME/greenplum_path.sh  
+  gpcrondump -x sales -c -g -G -a -q 
 
 
 *****************************************************
