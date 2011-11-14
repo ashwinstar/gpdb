@@ -3,38 +3,38 @@ aaag: aocsam:00000711:  ereport(ERROR,
 aaag: aocsam:00000712:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
 aaag: aocsam:00000713:  errmsg("append-only column-oriented tables do not support rows with OIDs"))); 
 aaaaa GP_IGNORE: aabc: aocssegfiles - ./backend/access/aocs/aocssegfiles.c
-aabc: aocssegfiles:00000410:  elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, " 
-aabc: aocssegfiles:00000411:  "relation %s", idesc->cur_segno, prel->rd_rel->relname.data); 
-aabc: aocssegfiles:00000424:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000425:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000426:  RelationGetRelationName(prel), idesc->cur_segno) 
-aabc: aocssegfiles:00000427:  )); 
-aabc: aocssegfiles:00000505:  elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, " 
-aabc: aocssegfiles:00000506:  "relation %s", segno, prel->rd_rel->relname.data); 
-aabc: aocssegfiles:00000520:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000521:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000522:  RelationGetRelationName(prel), segno) 
-aabc: aocssegfiles:00000523:  )); 
-aabc: aocssegfiles:00000563:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000564:  errmsg("invalid entry for decoding aocsvpinfo") 
-aabc: aocssegfiles:00000565:  )); 
-aabc: aocssegfiles:00000568:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000569:  errmsg("invalid entry for decoding aocsvpinfo") 
-aabc: aocssegfiles:00000570:  )); 
-aabc: aocssegfiles:00000659:  ereport(ERROR, 
-aabc: aocssegfiles:00000660:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000661:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000662:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00000853:  ereport(ERROR, 
-aabc: aocssegfiles:00000854:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000855:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000856:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00000992:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00000993:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00000994:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aabc: aocssegfiles:00001178:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001179:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001180:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aabc: aocssegfiles:00000412:  elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, " 
+aabc: aocssegfiles:00000413:  "relation %s", idesc->cur_segno, prel->rd_rel->relname.data); 
+aabc: aocssegfiles:00000426:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000427:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000428:  RelationGetRelationName(prel), idesc->cur_segno) 
+aabc: aocssegfiles:00000429:  )); 
+aabc: aocssegfiles:00000508:  elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, " 
+aabc: aocssegfiles:00000509:  "relation %s", segno, prel->rd_rel->relname.data); 
+aabc: aocssegfiles:00000523:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000524:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000525:  RelationGetRelationName(prel), segno) 
+aabc: aocssegfiles:00000526:  )); 
+aabc: aocssegfiles:00000566:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000567:  errmsg("invalid entry for decoding aocsvpinfo") 
+aabc: aocssegfiles:00000568:  )); 
+aabc: aocssegfiles:00000571:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000572:  errmsg("invalid entry for decoding aocsvpinfo") 
+aabc: aocssegfiles:00000573:  )); 
+aabc: aocssegfiles:00000662:  ereport(ERROR, 
+aabc: aocssegfiles:00000663:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000664:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000665:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00000856:  ereport(ERROR, 
+aabc: aocssegfiles:00000857:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000858:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000859:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00000995:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00000996:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00000997:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aabc: aocssegfiles:00001181:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001182:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001183:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
 aaaaa GP_IGNORE: aaae: aomd - ./backend/access/appendonly/aomd.c
 aaae: aomd:00000149:  elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u, segment file #%d, logical eof " INT64_FORMAT, 
 aaae: aomd:00000150:  rel->rd_rel->relname.data, 
@@ -152,21 +152,21 @@ aabc: appendonlyam:00001379:  varBlockCheckError,
 aabc: appendonlyam:00001380:  VarBlockGetCheckErrorStr()), 
 aabc: appendonlyam:00001381:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
 aabc: appendonlyam:00001382:  errcontext_appendonly_insert_block(aoInsertDesc))); 
-aabc: appendonlyam:00002103:  ereport(WARNING, 
-aabc: appendonlyam:00002104:  (errmsg("Append-only fetch requires scan prior segment file: " 
-aabc: appendonlyam:00002105:  "segmentFileNum %d, rowNum " INT64_FORMAT 
-aabc: appendonlyam:00002106:  ", currentSegmentFileNum %d", 
-aabc: appendonlyam:00002107:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
-aabc: appendonlyam:00002550:  ereport(ERROR, 
-aabc: appendonlyam:00002551:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002552:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002553:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002554:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
-aabc: appendonlyam:00002592:  ereport(ERROR, 
-aabc: appendonlyam:00002593:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002594:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002595:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002596:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002104:  ereport(WARNING, 
+aabc: appendonlyam:00002105:  (errmsg("Append-only fetch requires scan prior segment file: " 
+aabc: appendonlyam:00002106:  "segmentFileNum %d, rowNum " INT64_FORMAT 
+aabc: appendonlyam:00002107:  ", currentSegmentFileNum %d", 
+aabc: appendonlyam:00002108:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
+aabc: appendonlyam:00002551:  ereport(ERROR, 
+aabc: appendonlyam:00002552:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002553:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002554:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002555:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002593:  ereport(ERROR, 
+aabc: appendonlyam:00002594:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002595:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002596:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002597:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
 aace: appendonlyblockdirectory:00000412:  ereport(ERROR, 
 aace: appendonlyblockdirectory:00000413:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -22349,58 +22349,58 @@ laaj: lsyscache:00001550:  elog(ERROR, "binary I/O not supported during bootstra
 laaj: lsyscache:00001560:  elog(ERROR, "cache lookup failed for type %u", typid); 
 laaj: lsyscache:00001653:  elog(ERROR, "cache lookup failed for type %u", typid); 
 laaj: lsyscache:00001745:  elog(ERROR, "cache lookup failed for type %u", typid); 
-laaj: lsyscache:00001979:  elog(ERROR, "cache lookup failed for type %u", type); 
-laaj: lsyscache:00001983:  ereport(ERROR, 
-laaj: lsyscache:00001984:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-laaj: lsyscache:00001985:  errmsg("type %s is only a shell", 
-laaj: lsyscache:00001986:  format_type_be(type)), 
-laaj: lsyscache:00001987:  errOmitLocation(true))); 
-laaj: lsyscache:00001989:  ereport(ERROR, 
-laaj: lsyscache:00001990:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-laaj: lsyscache:00001991:  errmsg("no input function available for type %s", 
-laaj: lsyscache:00001992:  format_type_be(type)), 
-laaj: lsyscache:00001993:  errOmitLocation(true))); 
-laaj: lsyscache:00002016:  elog(ERROR, "cache lookup failed for type %u", type); 
-laaj: lsyscache:00002020:  ereport(ERROR, 
-laaj: lsyscache:00002021:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-laaj: lsyscache:00002022:  errmsg("type %s is only a shell", 
-laaj: lsyscache:00002023:  format_type_be(type)), 
-laaj: lsyscache:00002024:  errOmitLocation(true))); 
-laaj: lsyscache:00002026:  ereport(ERROR, 
-laaj: lsyscache:00002027:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-laaj: lsyscache:00002028:  errmsg("no output function available for type %s", 
-laaj: lsyscache:00002029:  format_type_be(type)), 
-laaj: lsyscache:00002030:  errOmitLocation(true))); 
-laaj: lsyscache:00002053:  elog(ERROR, "cache lookup failed for type %u", type); 
-laaj: lsyscache:00002057:  ereport(ERROR, 
-laaj: lsyscache:00002058:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-laaj: lsyscache:00002059:  errmsg("type %s is only a shell", 
-laaj: lsyscache:00002060:  format_type_be(type)), 
-laaj: lsyscache:00002061:  errOmitLocation(true))); 
-laaj: lsyscache:00002063:  ereport(ERROR, 
-laaj: lsyscache:00002064:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-laaj: lsyscache:00002065:  errmsg("no binary input function available for type %s", 
-laaj: lsyscache:00002066:  format_type_be(type)), 
-laaj: lsyscache:00002067:  errOmitLocation(true))); 
-laaj: lsyscache:00002090:  elog(ERROR, "cache lookup failed for type %u", type); 
-laaj: lsyscache:00002094:  ereport(ERROR, 
-laaj: lsyscache:00002095:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-laaj: lsyscache:00002096:  errmsg("type %s is only a shell", 
-laaj: lsyscache:00002097:  format_type_be(type)), 
-laaj: lsyscache:00002098:  errOmitLocation(true))); 
-laaj: lsyscache:00002100:  ereport(ERROR, 
-laaj: lsyscache:00002101:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-laaj: lsyscache:00002102:  errmsg("no binary output function available for type %s", 
-laaj: lsyscache:00002103:  format_type_be(type)), 
-laaj: lsyscache:00002104:  errOmitLocation(true))); 
-laaj: lsyscache:00002223:  elog(ERROR, "stavalues is null"); 
-laaj: lsyscache:00002237:  elog(ERROR, "cache lookup failed for type %u", atttype); 
-laaj: lsyscache:00002286:  elog(ERROR, "stanumbers is null"); 
-laaj: lsyscache:00002303:  elog(ERROR, "stanumbers is not a 1-D float4 array"); 
-laaj: lsyscache:00002401:  ereport(ERROR, 
-laaj: lsyscache:00002402:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-laaj: lsyscache:00002403:  errmsg("role \"%s\" does not exist", rolname), 
-laaj: lsyscache:00002404:  errOmitLocation(true))); 
+laaj: lsyscache:00002025:  elog(ERROR, "cache lookup failed for type %u", type); 
+laaj: lsyscache:00002029:  ereport(ERROR, 
+laaj: lsyscache:00002030:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+laaj: lsyscache:00002031:  errmsg("type %s is only a shell", 
+laaj: lsyscache:00002032:  format_type_be(type)), 
+laaj: lsyscache:00002033:  errOmitLocation(true))); 
+laaj: lsyscache:00002035:  ereport(ERROR, 
+laaj: lsyscache:00002036:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+laaj: lsyscache:00002037:  errmsg("no input function available for type %s", 
+laaj: lsyscache:00002038:  format_type_be(type)), 
+laaj: lsyscache:00002039:  errOmitLocation(true))); 
+laaj: lsyscache:00002062:  elog(ERROR, "cache lookup failed for type %u", type); 
+laaj: lsyscache:00002066:  ereport(ERROR, 
+laaj: lsyscache:00002067:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+laaj: lsyscache:00002068:  errmsg("type %s is only a shell", 
+laaj: lsyscache:00002069:  format_type_be(type)), 
+laaj: lsyscache:00002070:  errOmitLocation(true))); 
+laaj: lsyscache:00002072:  ereport(ERROR, 
+laaj: lsyscache:00002073:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+laaj: lsyscache:00002074:  errmsg("no output function available for type %s", 
+laaj: lsyscache:00002075:  format_type_be(type)), 
+laaj: lsyscache:00002076:  errOmitLocation(true))); 
+laaj: lsyscache:00002099:  elog(ERROR, "cache lookup failed for type %u", type); 
+laaj: lsyscache:00002103:  ereport(ERROR, 
+laaj: lsyscache:00002104:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+laaj: lsyscache:00002105:  errmsg("type %s is only a shell", 
+laaj: lsyscache:00002106:  format_type_be(type)), 
+laaj: lsyscache:00002107:  errOmitLocation(true))); 
+laaj: lsyscache:00002109:  ereport(ERROR, 
+laaj: lsyscache:00002110:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+laaj: lsyscache:00002111:  errmsg("no binary input function available for type %s", 
+laaj: lsyscache:00002112:  format_type_be(type)), 
+laaj: lsyscache:00002113:  errOmitLocation(true))); 
+laaj: lsyscache:00002136:  elog(ERROR, "cache lookup failed for type %u", type); 
+laaj: lsyscache:00002140:  ereport(ERROR, 
+laaj: lsyscache:00002141:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+laaj: lsyscache:00002142:  errmsg("type %s is only a shell", 
+laaj: lsyscache:00002143:  format_type_be(type)), 
+laaj: lsyscache:00002144:  errOmitLocation(true))); 
+laaj: lsyscache:00002146:  ereport(ERROR, 
+laaj: lsyscache:00002147:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+laaj: lsyscache:00002148:  errmsg("no binary output function available for type %s", 
+laaj: lsyscache:00002149:  format_type_be(type)), 
+laaj: lsyscache:00002150:  errOmitLocation(true))); 
+laaj: lsyscache:00002269:  elog(ERROR, "stavalues is null"); 
+laaj: lsyscache:00002283:  elog(ERROR, "cache lookup failed for type %u", atttype); 
+laaj: lsyscache:00002332:  elog(ERROR, "stanumbers is null"); 
+laaj: lsyscache:00002349:  elog(ERROR, "stanumbers is not a 1-D float4 array"); 
+laaj: lsyscache:00002447:  ereport(ERROR, 
+laaj: lsyscache:00002448:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+laaj: lsyscache:00002449:  errmsg("role \"%s\" does not exist", rolname), 
+laaj: lsyscache:00002450:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: raai: relcache - ./backend/utils/cache/relcache.c
 raai: relcache:00000166:  elog(WARNING, "trying to delete a rd_id reldesc that does not exist"); \ 
 raai: relcache:00000167: } while(0) 
@@ -24096,192 +24096,183 @@ uaad: udt:00000285:  ereport(ERROR, (
 uaad: udt:00000286:  errcode(ERRCODE_CANNOT_COERCE), 
 uaad: udt:00000287:  errmsg("Attempt to register UDT with Oid %d failed. Oid appoints a non UDT type", typeId))); 
 aaaaa GP_IGNORE: paag: plperl - ./pl/plperl/plperl.c
-paag: plperl:00000299:  " elog(ERROR,'trusted Perl functions disabled - " \ 
-paag: plperl:00000300:  " please upgrade Perl Safe module to version 2.09 or later');}]); }" \ 
-paag: plperl:00000301:  "sub ::mk_strict_safefunc { return $PLContainer->reval(qq[sub { " \ 
-paag: plperl:00000302:  " elog(ERROR,'trusted Perl functions disabled - " \ 
-paag: plperl:00000303:  " please upgrade Perl Safe module to version 2.09 or later');}]); }" 
-paag: plperl:00000304:  
-paag: plperl:00000305: #define TEST_FOR_MULTI \ 
-paag: plperl:00000306:  "use Config; " \ 
-paag: plperl:00000307:  "$Config{usemultiplicity} eq 'define' or " \ 
-paag: plperl:00000308:  "($Config{usethreads} eq 'define' " \ 
-paag: plperl:00000309:  " and $Config{useithreads} eq 'define')" 
-paag: plperl:00000310:  
-paag: plperl:00000311: /* 
-paag: plperl:00000312:  * Every user function gets wrapped in a second layer so that we can 
-paag: plperl:00000313:  * accumulate values returned by "return_next", this also gives the 
-paag: plperl:00000314:  * function the "$_TD" which is the tuple description of the expected 
-paag: plperl:00000315:  */ 
-paag: plperl:00000316: #define USER_FUNCTION_START \ 
-paag: plperl:00000317:  "our $_TD; local $_TD = shift; " \ 
-paag: plperl:00000318:  "our @_RV; local @_RV = ();" \ 
-paag: plperl:00000319:  "sub return_next($) { push @_RV, $_[0] };" \ 
-paag: plperl:00000320:  "my $user_function = sub {" 
-paag: plperl:00000321:  
-paag: plperl:00000322: #define USER_FUNCTION_END \ 
-paag: plperl:00000323:  "\n};" \ 
-paag: plperl:00000324:  "my @rv = &$user_function(@_);" \ 
-paag: plperl:00000325:  "return wantarray ? @rv : $rv[0] if ($#_RV < 0);" \ 
-paag: plperl:00000326:  "return [@_RV] if ($#rv < 0 *PIPE**PIPE* $#rv == 0 && !$rv[0]);" \ 
-paag: plperl:00000327:  "return [@_RV, @{$rv[0]}] if ($#rv == 0 && ref($rv[0]) eq 'ARRAY');" \ 
-paag: plperl:00000328:  "elog(ERROR, 'return must return an array reference when used with return_next');" 
-paag: plperl:00000329:  
-paag: plperl:00000330:  
-paag: plperl:00000331: /******************************************************************** 
-paag: plperl:00000332:  * 
-paag: plperl:00000333:  * We start out by creating a "held" interpreter that we can use in 
-paag: plperl:00000334:  * trusted or untrusted mode (but not both) as the need arises. Later, we 
-paag: plperl:00000335:  * assign that interpreter if it is available to either the trusted or 
-paag: plperl:00000336:  * untrusted interpreter. If it has already been assigned, and we need to 
-paag: plperl:00000337:  * create the other interpreter, we do that if we can, or error out. 
-paag: plperl:00000338:  * We detect if it is safe to run two interpreters during the setup of the 
-paag: plperl:00000339:  * dummy interpreter. 
-paag: plperl:00000340:  */ 
-paag: plperl:00000341:  
-paag: plperl:00000342:  
-paag: plperl:00000343: static void 
-paag: plperl:00000344: check_interp(bool trusted) 
-paag: plperl:00000345: { 
-paag: plperl:00000346:  
-paag: plperl:00000347:  /* previous interp failed, try again */ 
-paag: plperl:00000348:  if (interp_state == INTERP_ERROR) 
-paag: plperl:00000349:  { 
-paag: plperl:00000350:  interp_state = INTERP_NONE; 
-paag: plperl:00000396:  elog(ERROR, 
-paag: plperl:00000397:  "can not allocate second Perl interpreter on this platform"); 
-paag: plperl:00000489:  elog(ERROR, "could not allocate Perl interpreter"); 
-paag: plperl:00000504:  elog(ERROR, "could not initialize Perl interpreter: %s", 
-paag: plperl:00000505:  SvPV(ERRSV, PL_na)); 
-paag: plperl:00000519:  elog(ERROR, "could not initialize Perl interpreter: %s", 
-paag: plperl:00000520:  SvPV(ERRSV, PL_na)); 
-paag: plperl:00000668:  ereport(ERROR, 
-paag: plperl:00000669:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paag: plperl:00000670:  errmsg("Perl hash contains nonexistent column \"%s\"", 
-paag: plperl:00000671:  key))); 
-paag: plperl:00000702:  elog(ERROR, "unexpected _plperl_to_pg_array failure"); 
-paag: plperl:00000836:  ereport(ERROR, 
-paag: plperl:00000837:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paag: plperl:00000838:  errmsg("$_TD->{new} does not exist"))); 
-paag: plperl:00000840:  ereport(ERROR, 
-paag: plperl:00000841:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paag: plperl:00000842:  errmsg("$_TD->{new} is not a hash reference"))); 
-paag: plperl:00000860:  ereport(ERROR, 
-paag: plperl:00000861:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paag: plperl:00000862:  errmsg("Perl hash contains nonexistent column \"%s\"", 
-paag: plperl:00000863:  key))); 
-paag: plperl:00000898:  elog(ERROR, "SPI_modifytuple failed: %s", 
-paag: plperl:00000899:  SPI_result_code_string(SPI_result)); 
-paag: plperl:00000962:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
-paag: plperl:00000977:  ereport(ERROR, 
-paag: plperl:00000978:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paag: plperl:00000979:  errmsg("PL/Perl functions cannot return type %s", 
-paag: plperl:00000980:  format_type_be(proc->prorettype)))); 
-paag: plperl:00000989:  ereport(ERROR, 
-paag: plperl:00000990:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paag: plperl:00000991:  errmsg("PL/Perl functions cannot accept type %s", 
-paag: plperl:00000992:  format_type_be(argtypes[i])))); 
-paag: plperl:00001057:  elog(ERROR, "didn't get a return item from mksafefunc"); 
-paag: plperl:00001066:  ereport(ERROR, 
-paag: plperl:00001067:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paag: plperl:00001068:  errmsg("creation of Perl function failed"), 
-paag: plperl:00001069:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))), 
-paag: plperl:00001070:  errOmitLocation(true))); 
-paag: plperl:00001089:  elog(ERROR, "didn't get a code ref"); 
-paag: plperl:00001187:  elog(ERROR, "didn't get a return item from function"); 
-paag: plperl:00001197:  ereport(ERROR, 
-paag: plperl:00001198:  (errmsg("Perl function \"%s\" failed", desc->proname), 
-paag: plperl:00001199:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
-paag: plperl:00001244:  elog(ERROR, "didn't get a return item from trigger function"); 
-paag: plperl:00001254:  ereport(ERROR, 
-paag: plperl:00001255:  (errmsg("Perl trigger function \"%s\" failed", desc->proname), 
-paag: plperl:00001256:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
-paag: plperl:00001294:  ereport(ERROR, 
-paag: plperl:00001295:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paag: plperl:00001296:  errmsg("Unsupported Perl function \"%s\"", 
-paag: plperl:00001297:  prodesc->proname), 
-paag: plperl:00001298:  errdetail("set-valued function called in context that " 
-paag: plperl:00001299:  "cannot accept a set"))); 
-paag: plperl:00001350:  elog(ERROR, "could not connect to SPI manager"); 
-paag: plperl:00001364:  elog(ERROR, "SPI_finish() failed"); 
-paag: plperl:00001384:  ereport(ERROR, 
-paag: plperl:00001385:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paag: plperl:00001386:  errmsg("set-returning PL/Perl function must return " 
-paag: plperl:00001387:  "reference to array or use return_next"))); 
-paag: plperl:00001406:  elog(ERROR, "plperl null call_data"); 
-paag: plperl:00001427:  ereport(ERROR, 
-paag: plperl:00001428:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-paag: plperl:00001429:  errmsg("function returning set of rows cannot return null value"))); 
-paag: plperl:00001455:  ereport(ERROR, 
-paag: plperl:00001456:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paag: plperl:00001457:  errmsg("composite-returning Perl function " 
-paag: plperl:00001458:  "must return reference to hash"), 
-paag: plperl:00001459:  errOmitLocation(true))); 
-paag: plperl:00001465:  ereport(ERROR, 
-paag: plperl:00001466:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paag: plperl:00001467:  errmsg("function returning record called in context " 
-paag: plperl:00001468:  "that cannot accept type record"), 
-paag: plperl:00001469:  errOmitLocation(true))); 
-paag: plperl:00001522:  elog(ERROR, "could not connect to SPI manager"); 
-paag: plperl:00001541:  elog(ERROR, "SPI_finish() failed"); 
-paag: plperl:00001578:  ereport(WARNING, 
-paag: plperl:00001579:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-paag: plperl:00001580:  errmsg("ignoring modified row in DELETE trigger"))); 
-paag: plperl:00001586:  ereport(ERROR, 
-paag: plperl:00001587:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-paag: plperl:00001588:  errmsg("result of PL/Perl trigger function must be undef, " 
-paag: plperl:00001589:  "\"SKIP\", or \"MODIFY\""))); 
-paag: plperl:00001621:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
-paag: plperl:00001684:  ereport(ERROR, 
-paag: plperl:00001685:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paag: plperl:00001686:  errmsg("out of memory"))); 
-paag: plperl:00001708:  elog(ERROR, "cache lookup failed for language %u", 
-paag: plperl:00001709:  procStruct->prolang); 
-paag: plperl:00001729:  elog(ERROR, "cache lookup failed for type %u", 
-paag: plperl:00001730:  procStruct->prorettype); 
-paag: plperl:00001745:  ereport(ERROR, 
-paag: plperl:00001746:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paag: plperl:00001747:  errmsg("trigger functions can only be called " 
-paag: plperl:00001748:  "as triggers"))); 
-paag: plperl:00001755:  ereport(ERROR, 
-paag: plperl:00001756:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paag: plperl:00001757:  errmsg("PL/Perl functions cannot return type %s", 
-paag: plperl:00001758:  format_type_be(procStruct->prorettype)))); 
-paag: plperl:00001793:  elog(ERROR, "cache lookup failed for type %u", 
-paag: plperl:00001794:  procStruct->proargtypes.values[i]); 
-paag: plperl:00001804:  ereport(ERROR, 
-paag: plperl:00001805:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paag: plperl:00001806:  errmsg("PL/Perl functions cannot accept type %s", 
-paag: plperl:00001807:  format_type_be(procStruct->proargtypes.values[i])))); 
-paag: plperl:00001831:  elog(ERROR, "null prosrc"); 
-paag: plperl:00001851:  elog(ERROR, "could not create internal procedure \"%s\"", 
-paag: plperl:00001852:  internal_plname); 
-paag: plperl:00002043:  elog(ERROR, "SPI_prepare() failed:%s", 
-paag: plperl:00002044:  SPI_result_code_string(SPI_result)); 
-paag: plperl:00002049:  elog(ERROR, "SPI_cursor_open() failed:%s", 
-paag: plperl:00002050:  SPI_result_code_string(SPI_result)); 
-paag: plperl:00002211:  ereport(ERROR, 
-paag: plperl:00002212:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paag: plperl:00002213:  errmsg("out of memory"))); 
-paag: plperl:00002224:  ereport(ERROR, 
-paag: plperl:00002225:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paag: plperl:00002226:  errmsg("out of memory"))); 
-paag: plperl:00002255:  elog(ERROR, "SPI_prepare() failed:%s", 
-paag: plperl:00002256:  SPI_result_code_string(SPI_result)); 
-paag: plperl:00002264:  elog(ERROR, "SPI_saveplan() failed: %s", 
-paag: plperl:00002265:  SPI_result_code_string(SPI_result)); 
-paag: plperl:00002367:  elog(ERROR, "spi_exec_prepared: Invalid prepared query passed"); 
-paag: plperl:00002372:  elog(ERROR, "spi_exec_prepared: panic - plperl_query_hash value vanished"); 
-paag: plperl:00002375:  elog(ERROR, "spi_exec_prepared: expected %d argument(s), %d passed", 
-paag: plperl:00002376:  qdesc->nargs, argc); 
-paag: plperl:00002511:  elog(ERROR, "spi_exec_prepared: Invalid prepared query passed"); 
-paag: plperl:00002516:  elog(ERROR, "spi_query_prepared: panic - plperl_query_hash value vanished"); 
-paag: plperl:00002519:  elog(ERROR, "spi_query_prepared: expected %d argument(s), %d passed", 
-paag: plperl:00002520:  qdesc->nargs, argc); 
-paag: plperl:00002567:  elog(ERROR, "SPI_cursor_open() failed:%s", 
-paag: plperl:00002568:  SPI_result_code_string(SPI_result)); 
-paag: plperl:00002625:  elog(ERROR, "spi_exec_prepared: Invalid prepared query passed"); 
-paag: plperl:00002630:  elog(ERROR, "spi_exec_freeplan: panic - plperl_query_hash value vanished"); 
+paag: plperl:00000604:  elog(ERROR, 
+paag: plperl:00000605:  "cannot allocate multiple Perl interpreters on this platform"); 
+paag: plperl:00000623:  ereport(ERROR, 
+paag: plperl:00000624:  (errmsg("%s", strip_trailing_ws(sv2cstr(ERRSV))), 
+paag: plperl:00000625:  errcontext("while executing PostgreSQL::InServer::SPI::bootstrap"))); 
+paag: plperl:00000751:  elog(ERROR, "could not allocate Perl interpreter"); 
+paag: plperl:00000785:  ereport(ERROR, 
+paag: plperl:00000786:  (errmsg("%s", strip_trailing_ws(sv2cstr(ERRSV))), 
+paag: plperl:00000787:  errcontext("while parsing Perl initialization"))); 
+paag: plperl:00000790:  ereport(ERROR, 
+paag: plperl:00000791:  (errmsg("%s", strip_trailing_ws(sv2cstr(ERRSV))), 
+paag: plperl:00000792:  errcontext("while running Perl initialization"))); 
+paag: plperl:00000894:  ereport(ERROR, 
+paag: plperl:00000895:  (errmsg("%s", strip_trailing_ws(sv2cstr(ERRSV))), 
+paag: plperl:00000896:  errcontext("while executing PLC_TRUSTED"))); 
+paag: plperl:00000905:  ereport(ERROR, 
+paag: plperl:00000906:  (errmsg("%s", strip_trailing_ws(sv2cstr(ERRSV))), 
+paag: plperl:00000907:  errcontext("while executing utf8fix"))); 
+paag: plperl:00000946:  ereport(ERROR, 
+paag: plperl:00000947:  (errmsg("%s", strip_trailing_ws(sv2cstr(ERRSV))), 
+paag: plperl:00000948:  errcontext("while executing plperl.on_plperl_init"))); 
+paag: plperl:00000967:  ereport(ERROR, 
+paag: plperl:00000968:  (errmsg("%s", strip_trailing_ws(sv2cstr(ERRSV))), 
+paag: plperl:00000969:  errcontext("while executing plperl.on_plperlu_init"))); 
+paag: plperl:00001013:  ereport(ERROR, 
+paag: plperl:00001014:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paag: plperl:00001015:  errmsg("Perl hash contains nonexistent column \"%s\"", 
+paag: plperl:00001016:  key))); 
+paag: plperl:00001066:  elog(ERROR, "could not get array reference from PostgreSQL::InServer::ARRAY object"); 
+paag: plperl:00001095:  ereport(ERROR, 
+paag: plperl:00001096:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+paag: plperl:00001097:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+paag: plperl:00001098:  cur_depth + 1, MAXDIM))); 
+paag: plperl:00001109:  ereport(ERROR, 
+paag: plperl:00001110:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+paag: plperl:00001111:  errmsg("multidimensional arrays must have array expressions with matching dimensions"))); 
+paag: plperl:00001214:  ereport(ERROR, 
+paag: plperl:00001215:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paag: plperl:00001216:  errmsg("PL/Perl function must return reference to hash or array"))); 
+paag: plperl:00001249:  elog(ERROR, "lookup failed for type %s", fqtypename); 
+paag: plperl:00001507:  ereport(ERROR, 
+paag: plperl:00001508:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paag: plperl:00001509:  errmsg("$_TD->{new} does not exist"))); 
+paag: plperl:00001511:  ereport(ERROR, 
+paag: plperl:00001512:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paag: plperl:00001513:  errmsg("$_TD->{new} is not a hash reference"))); 
+paag: plperl:00001530:  ereport(ERROR, 
+paag: plperl:00001531:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paag: plperl:00001532:  errmsg("Perl hash contains nonexistent column \"%s\"", 
+paag: plperl:00001533:  key))); 
+paag: plperl:00001558:  elog(ERROR, "SPI_modifytuple failed: %s", 
+paag: plperl:00001559:  SPI_result_code_string(SPI_result)); 
+paag: plperl:00001666:  elog(ERROR, "could not connect to SPI manager"); 
+paag: plperl:00001673:  elog(ERROR, "could not create internal procedure for anonymous code block"); 
+paag: plperl:00001680:  elog(ERROR, "SPI_finish() failed"); 
+paag: plperl:00001728:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
+paag: plperl:00001743:  ereport(ERROR, 
+paag: plperl:00001744:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00001745:  errmsg("PL/Perl functions cannot return type %s", 
+paag: plperl:00001746:  format_type_be(proc->prorettype)))); 
+paag: plperl:00001756:  ereport(ERROR, 
+paag: plperl:00001757:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00001758:  errmsg("PL/Perl functions cannot accept type %s", 
+paag: plperl:00001759:  format_type_be(argtypes[i])))); 
+paag: plperl:00001868:  ereport(ERROR, 
+paag: plperl:00001869:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paag: plperl:00001870:  errmsg("creation of Perl function failed"), 
+paag: plperl:00001871:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))), 
+paag: plperl:00001872:  errOmitLocation(true))); 
+paag: plperl:00001875:  ereport(ERROR, 
+paag: plperl:00001876:  (errmsg("didn't get a CODE reference from compiling function \"%s\"", 
+paag: plperl:00001877:  prodesc->proname))); 
+paag: plperl:00001956:  elog(ERROR, "didn't get a return item from function"); 
+paag: plperl:00001966:  ereport(ERROR, 
+paag: plperl:00001967:  (errmsg("Perl function \"%s\" failed", desc->proname), 
+paag: plperl:00001968:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
+paag: plperl:00002016:  elog(ERROR, "didn't get a return item from trigger function"); 
+paag: plperl:00002026:  ereport(ERROR, 
+paag: plperl:00002027:  (errmsg("Perl trigger function \"%s\" failed", desc->proname), 
+paag: plperl:00002028:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
+paag: plperl:00002059:  elog(ERROR, "could not connect to SPI manager"); 
+paag: plperl:00002077:  ereport(ERROR, 
+paag: plperl:00002078:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00002079:  errmsg("Unsupported Perl function \"%s\"", 
+paag: plperl:00002080:  prodesc->proname), 
+paag: plperl:00002081:  errdetail("set-valued function called in context that " 
+paag: plperl:00002082:  "cannot accept a set"))); 
+paag: plperl:00002084:  ereport(ERROR, 
+paag: plperl:00002085:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00002086:  errmsg("Unsupported Perl function \"%s\"", 
+paag: plperl:00002087:  prodesc->proname), 
+paag: plperl:00002088:  errdetail("function returning record called in context " 
+paag: plperl:00002089:  "that cannot accept type record"))); 
+paag: plperl:00002115:  elog(ERROR, "SPI_finish() failed"); 
+paag: plperl:00002142:  ereport(ERROR, 
+paag: plperl:00002143:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paag: plperl:00002144:  errmsg("set-returning PL/Perl function must return " 
+paag: plperl:00002145:  "reference to array or use return_next"))); 
+paag: plperl:00002171:  ereport(ERROR, 
+paag: plperl:00002172:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paag: plperl:00002173:  errmsg("composite-returning PL/Perl function " 
+paag: plperl:00002174:  "must return reference to hash"), 
+paag: plperl:00002175:  errOmitLocation(true))); 
+paag: plperl:00002181:  ereport(ERROR, 
+paag: plperl:00002182:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00002183:  errmsg("function returning record called in context " 
+paag: plperl:00002184:  "that cannot accept type record"), 
+paag: plperl:00002185:  errOmitLocation(true))); 
+paag: plperl:00002232:  elog(ERROR, "could not connect to SPI manager"); 
+paag: plperl:00002257:  elog(ERROR, "SPI_finish() failed"); 
+paag: plperl:00002296:  ereport(WARNING, 
+paag: plperl:00002297:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+paag: plperl:00002298:  errmsg("ignoring modified row in DELETE trigger"))); 
+paag: plperl:00002304:  ereport(ERROR, 
+paag: plperl:00002305:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+paag: plperl:00002306:  errmsg("result of PL/Perl trigger function must be undef, " 
+paag: plperl:00002307:  "\"SKIP\", or \"MODIFY\""))); 
+paag: plperl:00002378:  elog(ERROR, "cache lookup failed for function %u", fn_oid); 
+paag: plperl:00002430:  ereport(ERROR, 
+paag: plperl:00002431:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paag: plperl:00002432:  errmsg("out of memory"))); 
+paag: plperl:00002436:  ereport(ERROR, 
+paag: plperl:00002437:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paag: plperl:00002438:  errmsg("out of memory"))); 
+paag: plperl:00002455:  elog(ERROR, "cache lookup failed for language %u", 
+paag: plperl:00002456:  procStruct->prolang); 
+paag: plperl:00002475:  elog(ERROR, "cache lookup failed for type %u", 
+paag: plperl:00002476:  procStruct->prorettype); 
+paag: plperl:00002490:  ereport(ERROR, 
+paag: plperl:00002491:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00002492:  errmsg("trigger functions can only be called " 
+paag: plperl:00002493:  "as triggers"))); 
+paag: plperl:00002499:  ereport(ERROR, 
+paag: plperl:00002500:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00002501:  errmsg("PL/Perl functions cannot return type %s", 
+paag: plperl:00002502:  format_type_be(procStruct->prorettype)))); 
+paag: plperl:00002535:  elog(ERROR, "cache lookup failed for type %u", 
+paag: plperl:00002536:  procStruct->proargtypes.values[i]); 
+paag: plperl:00002546:  ereport(ERROR, 
+paag: plperl:00002547:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paag: plperl:00002548:  errmsg("PL/Perl functions cannot accept type %s", 
+paag: plperl:00002549:  format_type_be(procStruct->proargtypes.values[i])))); 
+paag: plperl:00002580:  elog(ERROR, "null prosrc"); 
+paag: plperl:00002600:  elog(ERROR, "could not create PL/Perl internal procedure"); 
+paag: plperl:00002861:  ereport(ERROR, 
+paag: plperl:00002862:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paag: plperl:00002863:  errmsg("cannot use return_next in a non-SETOF function"))); 
+paag: plperl:00002867:  ereport(ERROR, 
+paag: plperl:00002868:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paag: plperl:00002869:  errmsg("SETOF-composite-returning PL/Perl function " 
+paag: plperl:00002870:  "must call return_next with reference to hash"))); 
+paag: plperl:00002989:  elog(ERROR, "SPI_prepare() failed:%s", 
+paag: plperl:00002990:  SPI_result_code_string(SPI_result)); 
+paag: plperl:00002995:  elog(ERROR, "SPI_cursor_open() failed:%s", 
+paag: plperl:00002996:  SPI_result_code_string(SPI_result)); 
+paag: plperl:00003165:  ereport(ERROR, 
+paag: plperl:00003166:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paag: plperl:00003167:  errmsg("out of memory"))); 
+paag: plperl:00003179:  ereport(ERROR, 
+paag: plperl:00003180:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paag: plperl:00003181:  errmsg("out of memory"))); 
+paag: plperl:00003216:  elog(ERROR, "SPI_prepare() failed:%s", 
+paag: plperl:00003217:  SPI_result_code_string(SPI_result)); 
+paag: plperl:00003225:  elog(ERROR, "SPI_saveplan() failed: %s", 
+paag: plperl:00003226:  SPI_result_code_string(SPI_result)); 
+paag: plperl:00003327:  elog(ERROR, "spi_exec_prepared: Invalid prepared query passed"); 
+paag: plperl:00003332:  elog(ERROR, "spi_exec_prepared: panic - plperl query_hash value vanished"); 
+paag: plperl:00003335:  elog(ERROR, "spi_exec_prepared: expected %d argument(s), %d passed", 
+paag: plperl:00003336:  qdesc->nargs, argc); 
+paag: plperl:00003462:  elog(ERROR, "spi_exec_prepared: Invalid prepared query passed"); 
+paag: plperl:00003467:  elog(ERROR, "spi_query_prepared: panic - plperl query_hash value vanished"); 
+paag: plperl:00003470:  elog(ERROR, "spi_query_prepared: expected %d argument(s), %d passed", 
+paag: plperl:00003471:  qdesc->nargs, argc); 
+paag: plperl:00003510:  elog(ERROR, "SPI_cursor_open() failed:%s", 
+paag: plperl:00003511:  SPI_result_code_string(SPI_result)); 
+paag: plperl:00003570:  elog(ERROR, "spi_exec_prepared: Invalid prepared query passed"); 
+paag: plperl:00003575:  elog(ERROR, "spi_exec_freeplan: panic - plperl query_hash value vanished"); 
 aaaaa GP_IGNORE: paah: plxcomp - ./pl/plpgsql/src/pl_comp.c
 paah: plxcomp:00000144:  elog(ERROR, "cache lookup failed for function %u", funcOid); 
 paah: plxcomp:00000293:  elog(ERROR, "null prosrc"); 
