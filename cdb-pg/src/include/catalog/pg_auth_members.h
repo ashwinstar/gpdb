@@ -37,9 +37,11 @@
 
    alter table pg_auth_members add fk roleid  on pg_authid(oid);
    alter table pg_auth_members add fk member  on pg_authid(oid);
-   alter table pg_auth_members add fk grantor on pg_authid(oid);
 
    TIDYCAT_ENDFAKEDEF
+
+   NOTE: we don't mark grantor a foreign key since we don't actually
+   do not remove entries when a grantor is dropped. See DropRole().
 */
 
 /* ----------------
