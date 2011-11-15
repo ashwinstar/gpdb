@@ -49,7 +49,6 @@
 #include "access/appendonlywriter.h"
 #include "catalog/index.h"
 #include "executor/execdebug.h"
-#include "executor/nodeFunctionscan.h"
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
@@ -68,7 +67,7 @@
 #include "cdb/cdbsreh.h"
 #include "cdb/memquota.h"
 #include "catalog/catalog.h" // isMasterOnly()
-
+#include "executor/spi.h"
 #include "utils/elog.h"
 #include "miscadmin.h"
 
@@ -2127,7 +2126,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	 */
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
-		InitFunctionScanMemoryReservedStack();
+		SPIInitMemoryReservedStack();
 	}
 }
 
@@ -2433,4 +2432,3 @@ int RootSliceIndex(EState *estate)
 
 	return result;
 }
-

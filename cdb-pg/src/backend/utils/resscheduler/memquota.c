@@ -211,6 +211,14 @@ IsBlockingOperator(Node *node)
 }
 
 /**
+ * Is a result node memory intensive? It is if it contains function calls.
+ */
+static bool IsResultMemoryIntesive(Result *res)
+{
+	return contains_node_type(NULL, (Node *) res, T_FuncExpr);
+}
+
+/**
  * Is an operator memory intensive?
  */
 static bool IsMemoryIntensiveOperator(Node *node)
@@ -231,6 +239,11 @@ static bool IsMemoryIntensiveOperator(Node *node)
 			{
 				Agg *agg = (Agg *) node;
 				return IsAggMemoryIntensive(agg);
+			}
+		case T_Result:
+			{
+				Result *res = (Result *) node;
+				return IsResultMemoryIntesive(res);
 			}
 		default:
 			return false;

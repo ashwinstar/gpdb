@@ -34,8 +34,4 @@ static inline gpmon_packet_t * GpmonPktFromFuncScanState(FunctionScanState *node
 	return &node->ss.ps.gpmon_pkt;
 }
 
-extern void InitFunctionScanMemoryReservedStack(void);
-extern uint64 CurrentFunctionScanMemoryReserved(void);
-extern bool IsEmptyMemoryReservedForFunctionScan(void);
-
 #endif   /* NODEFUNCTIONSCAN_H */
