@@ -1083,6 +1083,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-catalog-skip", NULL, pInputOpts->pszPassThroughParms);
 	if (rsyncable)
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm("rsyncable", NULL, pInputOpts->pszPassThroughParms);
+	if (column_inserts)
+		pInputOpts->pszPassThroughParms = addPassThroughLongParm("column-inserts", NULL, pInputOpts->pszPassThroughParms);
+	if (dump_inserts)
+		pInputOpts->pszPassThroughParms = addPassThroughLongParm("inserts", NULL, pInputOpts->pszPassThroughParms);
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
