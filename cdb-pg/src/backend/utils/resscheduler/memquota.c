@@ -215,7 +215,7 @@ IsBlockingOperator(Node *node)
  */
 static bool IsResultMemoryIntesive(Result *res)
 {
-	return contains_node_type(NULL, (Node *) res, T_FuncExpr);
+	return contains_node_type(NULL, (Node *) ((Plan *) res)->targetlist, T_FuncExpr);
 }
 
 /**
