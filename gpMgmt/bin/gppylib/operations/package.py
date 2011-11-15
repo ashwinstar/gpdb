@@ -797,11 +797,7 @@ class SyncPackages(Operation):
                 # TODO: AK: Unarchival should be the result of a succesful, local uninstallation! The UnArchive... should not be here.
                 UnArchivePackageOnHost(self.host, package).run()
 
-#TODO: Try to make this operation idempotent
-class InstallGppkg(Operation):
-    '''
-        Main Class for installing a gppkg
-    '''
+class InstallPackage(Operation):
     def __init__(self, gppkg, master_host, standby_host, segment_host_list):
         self.gppkg = gppkg
         self.master_host = master_host
@@ -809,130 +805,111 @@ class InstallGppkg(Operation):
         self.segment_host_list = segment_host_list
 
     def execute(self):
-       
-        rpm_installation_cmd = 'rpm -i %s --dbpath %s --prefix=%s'   
+        logger.info('Installing package %s' % self.gppkg.pkg)
 
-        gppkg = self.gppkg
+        #Check the GPDB requirements
+        if not IsVersionCompatible(self.gppkg).run():
+            raise GpdbVersionError
 
-        logger.info('Installing package %s' % gppkg.pkg)
+        # TODO: AK: I've changed our use of the OS tag from 'Linux' to 'rhel5' or 'suse10'.
+        # So, the two lines below will not work properly.
+        #if self.gppkg.os.lower() != platform.system().lower():
+        #    raise OSCompatibilityError(self.gppkg.os, platform.system().lower())
 
-        try:
+        #architecture compatibility
+        if self.gppkg.architecture.lower() !=  platform.machine().lower():
+            raise ArchCompatibilityError(self.gppkg.architecture, platform.machine().lower())
 
-            #Check the GPDB requirements
-            if not IsVersionCompatible(gppkg).run():
-                raise GpdbVersionError
+        #check if already installed
+        if IsRpmInstalled(self.gppkg.main_rpm).run():
+            raise AlreadyInstalledError(self.gppkg.pkg)      # TODO: AK: self.gppkg.pkg is poorly named
 
-            # TODO: AK: I've changed our use of the OS tag from 'Linux' to 'rhel5' or 'suse10'.
-            # So, the two lines below will not work properly.
-            #if gppkg.os.lower() != platform.system().lower():
-            #    raise OSCompatibilityError(gppkg.os, platform.system().lower())
+        # perform any pre-installation steps 
+        PerformHooks(hooks = self.gppkg.preinstall,
+                     master_host = self.master_host,
+                     standby_host = self.standby_host,
+                     segment_host_list = self.segment_host_list).run() 
 
-            #architecture compatibility
-            if gppkg.architecture.lower() !=  platform.machine().lower():
-                raise ArchCompatibilityError(gppkg.architecture, platform.machine().lower())
+        # distribute package to segments
+        srcFile = self.gppkg.abspath
+        dstFile = os.path.join(GPHOME, self.gppkg.pkg)
+        self.distribute_to_segments(srcFile, dstFile)
+
+        # install package on segments
+        self.install_on_segments(dstFile)
+
+        # install package on standby
+        if self.standby_host:
+            Scp(name = 'copying %s to %s' % (srcFile, self.standby_host),
+                srcFile = srcFile,
+                dstFile = dstFile,
+                dstHost = self.standby_host).run(validateAfter = True)
+            RemoteOperation(InstallPackageLocally(dstFile), self.standby_host).run()
  
-            #check if already installed
-            if IsRpmInstalled(gppkg.main_rpm).run():
-                raise AlreadyInstalledError(gppkg.pkg)      # TODO: AK: gppkg.pkg is poorly named
+        # install package on master
+        InstallPackageLocally(srcFile).run()
 
-            #Extract the package contents
-            ExtractPackage(gppkg).run()
+        # perform any post-installation steps 
+        PerformHooks(hooks = self.gppkg.postinstall,
+                     master_host = self.master_host,
+                     standby_host = self.standby_host,
+                     segment_host_list = self.segment_host_list).run() 
 
-            #Transfer the gppkgs to the new segments 
-            #before actual installation
-            TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run()
-     
-            #perform any preinstallation steps 
-            self._perform_pre_install(gppkg)
-     
-            #get the rpms that need to be installed
-            rpm_set = ValidateInstallRpms(gppkg).run()
-            if not rpm_set:
-                raise AlreadyInstalledError(gppkg.pkg)
-            install_string = " ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
-
-            #prepare the command string
-            cmd_str = rpm_installation_cmd % (install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
-   
-            #First install on the segments
-            RemoteCommand(cmd_str, self.segment_host_list).run()
- 
-            #Second install on the standby
-            if self.standby_host:
-                RemoteCommand(cmd_str, [self.standby_host]).run()
-     
-            #Third install on the master
-            LocalCommand(cmd_str).run()
- 
-            #run postinstall steps
-            self._perform_post_install(gppkg)
- 
-            #Store the gppkg in $GPHOME/addons/archive
-            StorePackageInArchive(gppkg, self.standby_host).run()
-
-            #Archive the packages on segment hosts
-            for host in self.segment_host_list:
-                ArchivePackageOnHost(host, gppkg.pkg).run()
-
-            logger.info('%s successfully installed.' %(gppkg.pkg))
-
-        finally:
-            if  os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
-                raise IOError
-
-    def _perform_pre_install(self, gppkg):
+        logger.info('%s successfully installed.' % (self.gppkg.pkg))
+    def distribute_to_segments(self, srcFile, dstFile):
+        pool = WorkerPool()
+        for host in self.segment_host_list:
+            pool.addCommand(Scp(name = 'copying %s to %s' % (srcFile, host),
+                                srcFile = srcFile,
+                                dstFile = dstFile,
+                                dstHost = host))
+        pool.join()
+    def install_on_segments(self, dstFile):
         """
-        Perform any pre installation steps that have been specified in the yml file 
+        TODO: AK: With the proper support, this could be one line of code...
+            SegmentOperation(InstallPackageLocally(dstFile))
+        """
+        operations = []
+        for host in self.segment_host_list:
+            operations.append(RemoteOperation(InstallPackageLocally(dstFile), host))
+        ParallelOperation(operations).run()
+        for operation in operations:
+            operation.get_ret()
+
+
+
+class PerformHooks(Operation):
+    def __init__(self, hooks, master_host, standby_host, segment_host_list):
+        """
+        Performs steps that have been specified in the yaml file for a particular
+        stage of gppkg execution
 
         TODO: AK: A packager may have added commands to their hooks, with the 
         assumption that the current working directory would be that which contains
         the spec file, rpms, and other artifacts (external scripts, perhaps.) To support
         this, these commands should be prefixed with a "cd".
+
+        TODO: AK: I'm adding master_host for consistency. 
+        But, why would we ever need master_host?  We're on the master host!
         """
-        logger.debug('_perform_pre_install')
-
-        if gppkg.preinstall is None:
-            logger.info('No preinstall hooks')
-            return 
-
-        for preinst in gppkg.preinstall:
-            key = preinst.keys()
-            if key is None:
-                return
-            key_str = key[0]
-            if key_str.lower() == 'master': 
-                if self.standby_host:
-                    RemoteCommand(preinst[key_str], [self.standby_host]).run()
-                LocalCommand(preinst[key_str], True).run()
-            elif key_str.lower() == 'segment':
-                RemoteCommand(preinst[key_str], self.segment_host_list).run()
-
-    def _perform_post_install(self, gppkg):
-        """
-        Perform post installation steps that have been specified in the yml file
-
-        TODO: AK: A packager may have added commands to their hooks, with the 
-        assumption that the current working directory would be that which contains
-        the spec file, rpms, and other artifacts (external scripts, perhaps.) To support
-        this, these commands should be prefixed with a "cd".
-        """
-        logger.debug('_perform_post_install')
-
-        if gppkg.postinstall is None:
-            logger.info('No postinstall hooks')
-            return 
-
-        for postinst in gppkg.postinstall:
-            key = postinst.keys()
+        self.hooks = hooks
+        self.master_host = master_host
+        self.standby_host = standby_host
+        self.segment_host_list = segment_host_list
+    def execute(self):
+        if self.hooks is None:
+            return
+        for hook in self.hooks:
+            key = hook.keys()
             if key is None:
                 return
             key_str = key[0]
             if key_str.lower() == 'master':
                 if self.standby_host:
-                    RemoteCommand(postinst[key_str], [self.standby_host]).run()
-                LocalCommand(postinst[key_str], True).run()
+                    RemoteCommand(hook[key_str], [self.standby_host]).run()
+                LocalCommand(hook[key_str], True).run()
             elif key_str.lower() == 'segment':
-                RemoteCommand(postinst[key_str], self.segment_host_list).run()
+                RemoteCommand(hook[key_str], self.segment_host_list).run()
 
 #TODO: Try to make this operation idempotent
 class UnInstallGppkg(Operation):

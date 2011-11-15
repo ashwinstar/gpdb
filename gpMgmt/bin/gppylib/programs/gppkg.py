@@ -16,7 +16,7 @@ try:
     from gppylib.gpversion import GpVersion
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
-    from gppylib.operations.package import MigratePackages, InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
+    from gppylib.operations.package import MigratePackages, InstallPackage, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
     from gppylib.operations.unix import ListFilesByPattern
 
     import yaml
@@ -188,7 +188,7 @@ class GpPkgProgram:
 
         if self.install:
             pkg = Gppkg.from_package_path(self.install)
-            InstallGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run() 
+            InstallPackage(pkg, self.master_host, self.standby_host, self.segment_host_list).run() 
         elif self.query:
             try:
                 if len(self.__args) == 0:
