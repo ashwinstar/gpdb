@@ -66,7 +66,7 @@ segment_has_mirror(int16 contentid)
 	return content_get_mirror_dbid(contentid) != 0;
 }
 
-/* 
+/*
  * As the function name says, test whether a given dbid is the dbid of the
  * standby master.
  */
@@ -164,7 +164,7 @@ get_availableDbId()
 
 /*
  * Get the highest contentid defined in the system. As above, we
- * AccessExclusiveLock gp_segment_configuration to prevent races but no 
+ * AccessExclusiveLock gp_segment_configuration to prevent races but no
  * one should be calling this code concurrently if we've done our job right.
  */
 static int16
@@ -296,10 +296,6 @@ must_update_persistent(int16 pridbid, seginfo *i)
 	if (i->db.role == SEGMENT_ROLE_MIRROR && pridbid != GpIdentity.dbid)
 		return false;
 
-	/* nothing more to do if we're on the master */
-	if (pridbid == MASTER_DBID)
-		return false;
-
 	return true;
 }
 
@@ -394,7 +390,7 @@ update_filespaces(int16 pridbid, seginfo *i, bool add, ArrayType *fsmap)
 {
 	Assert((add && PointerIsValid(fsmap)) || !add);
 
-	/* 
+	/*
 	 * If we're on the master, process the pg_filespace_entry rows for this
 	 * segment.
 	 */
@@ -483,7 +479,7 @@ update_relations(int16 pridbid, seginfo *i, bool add)
 static void
 dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 {
-	/* 
+	/*
 	 * We want to dispatch the statement:
 	 *
 	 *   SELECT gp_add_segment_persistent_entries(targetdbid, mirdbid,
@@ -499,7 +495,7 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 	FmgrInfo flinfo;
 	char *a;
 
-	/* 
+	/*
 	 * array_out caches data in flinfo, as we cannot just
 	 * do a DirectFunctionCall1().
 	 */
@@ -523,13 +519,13 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 static void
 add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
 {
-	/* 
+	/*
 	 * Add filespace entries in pg_filespace_entry and
 	 * gp_persistent_filespace_node
 	 */
 	update_filespaces(pridbid, i, true, fsmap);
 
-	/* 
+	/*
 	 * Update gp_persistent_tablespace_node.
 	 */
 	update_tablespaces(pridbid, i, true);
@@ -544,7 +540,7 @@ add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
 	 */
 	update_relations(pridbid, i, true);
 
-	/* 
+	/*
 	 * If we're adding a new segment mirror, we need to dispatch to that
 	 * segment's primary.
 	 */
@@ -559,13 +555,13 @@ add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
 static void
 remove_segment_persistent_entries(int16 pridbid, seginfo *i)
 {
-	/* 
+	/*
 	 * Remove filespace entries in pg_filespace_entry and
 	 * gp_persistent_filespace_node
 	 */
 	update_filespaces(pridbid, i, false, NULL);
 
-	/* 
+	/*
 	 * Update gp_persistent_tablespace_node.
 	 */
 	update_tablespaces(pridbid, i, false);
@@ -580,7 +576,7 @@ remove_segment_persistent_entries(int16 pridbid, seginfo *i)
 	 */
 	update_relations(pridbid, i, false);
 
-	/* 
+	/*
 	 * If we're adding a segment mirror, we need to dispatch to that
 	 * segment's primary.
 	 */
@@ -614,7 +610,7 @@ add_segment_config(seginfo *i)
 	values[Anum_gp_segment_configuration_dbid - 1] = Int16GetDatum(i->db.dbid);
 	values[Anum_gp_segment_configuration_content - 1] = Int16GetDatum(i->db.segindex);
 	values[Anum_gp_segment_configuration_role - 1] = CharGetDatum(i->db.role);
-	values[Anum_gp_segment_configuration_preferred_role - 1] = 
+	values[Anum_gp_segment_configuration_preferred_role - 1] =
 		CharGetDatum(i->db.preferred_role);
 	values[Anum_gp_segment_configuration_mode - 1] =
 		CharGetDatum(i->db.mode);
@@ -944,7 +940,7 @@ gp_add_master_standby(PG_FUNCTION_ARGS)
 	int maxdbid;
 	Relation gprel;
 	ArrayType *fsmap;
-   
+
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "host name cannot be NULL");
 	if (PG_ARGISNULL(1))
@@ -993,7 +989,7 @@ update_gp_master_mirroring(char *str)
 {
 	volatile bool connected = false;
 	volatile bool resetModsDML = false;
-	
+
 	PG_TRY();
 	{
 		StringInfoData sql;
@@ -1073,7 +1069,7 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
  */
 Datum
 gp_prep_new_segment(PG_FUNCTION_ARGS)
-{	
+{
 	int16		 pridbid;
 	int16        mirdbid;
 	ArrayType	*fsmap;
@@ -1083,7 +1079,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 
 	fsmap = PG_GETARG_ARRAYTYPE_P(0);
 
-	/* 
+	/*
 	 * The restriction on single-user mode (as opposed to utility mode) is
 	 * because the database cannot be fully started under the postmaster
 	 * when a database has been created in a filespace other than "pg_system"
@@ -1091,10 +1087,10 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	 * this is the function to fix the filespace locations it MUST be run
 	 * in a mode that can startup in this circumstance.
 	 */
-	mirroring_sanity_check(SUPERUSER | SEGMENT_ONLY | SINGLE_USER_MODE, 
+	mirroring_sanity_check(SUPERUSER | SEGMENT_ONLY | SINGLE_USER_MODE,
 						   "gp_prep_new_segment");
-	
-	/* 
+
+	/*
 	 * If the guc isn't set then this function is being called incorrectly -
 	 * the guc is required to start the database when there is a database
 	 * defined in a filespace other than pg_system.
@@ -1103,7 +1099,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 		elog(ERROR, "gp_prep_new_segment requires the database to be started "
 			 "with gp_before_filespace_setup=true");
 
-	/* 
+	/*
 	 * Fixup the filespace locations for this segment.
 	 *
 	 * :HACK:
@@ -1120,7 +1116,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	mirdbid = PersistentFilespace_LookupMirrorDbid(MASTER_DBID);
 	persist_all_filespaces(mirdbid, pridbid, fsmap);
 
-	/* 
+	/*
 	 * Clear out the existing mirror information from gp_persistent_filespace.
 	 */
 	desist_all_filespaces(mirdbid);
@@ -1129,7 +1125,7 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
-/* 
+/*
  * Perform operations necessary to mask a standby master the actual
  * master in the persistent catalogs.
  */
@@ -1179,7 +1175,7 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cannot find standby, dbid %i", standbydbid);
-	
+
 	tuple = heap_copytuple(tuple);
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid = newdbid;
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->role = SEGMENT_ROLE_PRIMARY;
@@ -1198,7 +1194,7 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 static void
 filespace_entry_activate_standby(int standbydbid, int newdbid)
 {
-	/* 
+	/*
 	 * Heavy lock isn't required here, we've serialised operations with
 	 * the lock on gp_segment_configuration.
 	 */
@@ -1284,7 +1280,7 @@ gp_activate_standby(PG_FUNCTION_ARGS)
 
 	persistent_activate_standby(olddbid, newdbid);
 
-	/* 
+	/*
 	 * Now the persistent tables now about us, so we can switch our
 	 * identity
 	 */
