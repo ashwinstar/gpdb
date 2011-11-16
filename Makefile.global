@@ -15,6 +15,10 @@ endif
 ifeq "$(BLD_ARCH)" "suse11.4_x86_64"
 export BLD_ARCH=suse10_x86_64
 endif
+ifeq "$(BLD_ARCH)" "suse12.1_x86_64"
+export BLD_ARCH=suse10_x86_64
+endif
+
 
 # include thirdparty infrastructure which depends on WHERE_THE...
 BLD_WHERE_THE_LIBRARY_THINGS_ARE=LD_LIBRARY_PATH
