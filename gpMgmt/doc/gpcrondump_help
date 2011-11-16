@@ -20,7 +20,7 @@ gpcrondump -x <database_name>
 
 gpcrondump -? 
 
-gpcrondump -o]
+gpcrondump -o
 
 gpcrondump --version
 
