@@ -12,7 +12,8 @@ WANTED_DIRS = \
 		changetrackingdump \
 		formatter \
 		formatter_fixedwidth \
-		extprotocol
+		extprotocol \
+		gp_internal_tools
 
 ifeq ($(with_openssl),yes)
 WANTED_DIRS += sslinfo
