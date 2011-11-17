@@ -539,7 +539,7 @@ class ValidateInstallRpms(Operation):
     2) A non-zero return code, and stderr indicating some of the rpms are already installed.
        We simply omit such rpms from the returned list of rpms, indicating to the caller
        that to be successful, installation should only be attempted on the filtered list of rpms.
-    3) A non-zero return code, and stderr indicating that a failed dependency issue will arise
+    3) A non-zero return code, and stderr indicating that a failed dependency issue will arise.
        This scenario must result in a MissingDependencyError. 
 
     TODO: This is depending on ExtractPackage having put the dependencies in this same directory.
@@ -559,7 +559,7 @@ class ValidateInstallRpms(Operation):
         except ExecutionError, e:
             lines = e.cmd.get_results().stderr.splitlines()
 
-            # Forking between code paths 1 and 2 depends on some meaningful stderr
+            # Forking between code paths 2 and 3 depends on some meaningful stderr
             # Without such stderr, we must bubble up the ExecutionError.
             if len(lines) == 0:
                 raise
@@ -568,7 +568,7 @@ class ValidateInstallRpms(Operation):
                 # Code path 3 (see docstring)
                 # example stderr:
                 # error: Failed dependencies:
-                #    geos-3.2-2.x86_64.rpm is needed by postgis-1-0.x86_64
+                #    geos-3.2.2-1.x86_64.rpm is needed by postgis-1.0-1.x86_64
 
                 # TODO: AK: Dependencies should be parsed out here and used to initialize
                 # this MissingDependencyError. However, this exception does not support
@@ -578,9 +578,9 @@ class ValidateInstallRpms(Operation):
 
             # Code path 2, possibly (see docstring)
             # example stderr:
-            #    package geos-3.2-2.x86_64 is already installed
-            #    package proj-4.7-0.x86_64 is already installed
-            #    package postgis-1-0.x86_64 is already installed
+            #    package geos-3.2.2-1.x86_64 is already installed
+            #    package proj-4.7.0-1.x86_64 is already installed
+            #    package postgis-1.0-1.x86_64 is already installed
             for line in lines:
                 if 'already installed' in line.lower():
                     package_name = line.split()[1]
@@ -594,6 +594,75 @@ class ValidateInstallRpms(Operation):
         return rpm_set
             
 
+
+class ValidateUninstallRpms(Operation):
+    """
+    Ensure that the given rpms can be uninstalled safely. This is accomplished mainly
+    through use of rpm --test. This command will have one of a few outcomes:
+    1) A return code of 0, indicating the uninstallation should proceed smoothly
+    2) A non-zero return code, and stderr indicating some of the rpms are already uninstalled.
+       We simply omit such rpms from the returned list of rpms, indicating to the caller
+       that to be successful, uninstallation should only be attempted on the filtered list of rpms.
+    3) A non-zero return code, and stderr indicating that dependencies remain.
+    
+    TODO: Use regexes for more reliable string matching.
+    """
+    def __init__(self, gppkg):
+        self.gppkg = gppkg
+    def execute(self):
+        rpm_list = [self.gppkg.main_rpm] + self.gppkg.dependencies
+        def strip_extension(filename):
+            return os.path.splitext(filename)[0]
+        rpm_set = set([strip_extension(rpm) for rpm in rpm_list])
+        rpm_uninstall_string = ' '.join(rpm_set)
+        rpm_uninstall_command = 'rpm --test -e %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
+        cmd = Command('Validating rpm uninstallation', rpm_uninstall_command)
+        logger.info(cmd)        # TODO: AK: This should be debug(), but RMI cannot propagate a log level.
+
+        try:
+            cmd.run(validateAfter = True)
+        except ExecutionError, e:
+            lines = e.cmd.get_results().stderr.splitlines()
+
+            # Forking between code paths 2 and 3 depends on some meaningful stderr
+            # Without such stderr, we must bubble up the ExecutionError.
+            if len(lines) == 0:
+                raise
+
+            if 'failed dependencies' in lines[0].lower():
+                # Code path 3 (see docstring)
+                # example stderr:
+                # error: Failed dependencies:
+                #    geos = 3.2.2 is needed by postgis-1.0-1.x86_64
+                logger.error(e.cmd.get_results().stderr)
+
+                # TODO: AK: MPP-15512 - gppkg must be able to handle shared 
+                # dependencies during uninstall.
+                # This will require cross referencing "geos = 3.2.2" with the 
+                # rpm -qp --provides output of the involved rpms to determine
+                # which rpms must remain installed. We cannot assume that 
+                # <name> = <version> will correspond to a <name>-<version>...rpm
+                # that is involved in the given rpm -e --test command.
+                raise
+
+            # Code path 2, possibly (see docstring)
+            # example stderr:
+            #   error: package postgis-1.0-1.x86_64 is not installed
+            #   error: package proj-4.7.0-1.x86_64 is not installed
+            #   error: package geos-3.2.2-1.x86_64 is not installed
+            for line in lines:
+                if 'not installed' in line.lower():
+                    package_name = line.split()[2]
+                    rpm_set.remove(package_name)
+                else:
+                    # This is unexpected, so bubble up the ExecutionError.
+                    raise
+                    
+        # Code path 1 (See docstring)
+        return rpm_set
+
+
+            
 class ExtractPackage(Operation):
     '''
         Extract the contents of the package into the temp folder
@@ -673,7 +742,6 @@ class UnInstallSegGppkg(Operation):
         self.pkg_name = pkg_name
 
     def execute(self): 
-       
         rpm_uninstallation_command = 'rpm -e %s --dbpath %s ' 
 
         gppkg = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_name))
@@ -685,75 +753,17 @@ class UnInstallSegGppkg(Operation):
         #Extract the package contents on the host
         ExtractPackage(gppkg).run()
 
-        #Dependency check on the host
-        #'-4' to remove the '.rpm' extension
-        rpm_uninstall_string = gppkg.main_rpm[:-4] + ' ' 
-        for dep in gppkg.dependencies:
-            rpm_uninstall_string += dep[:-4] + ' '
-
-        #We first do a test removal to see if removing the packages cause any conflicts
-        #We filter out all those rpms which cause conflicts and remove the remaining ones
-        cmd_str = 'rpm -e --test %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
-
-        result = None
-
-        #We parse the stderr to make sure that we exit for the right reason
-        #E.g of the error on which we want to exit :-
-        #error: Failed dependencies:
-        #    geosdevel-1.12-1.noarch.rpm is needed by (installed) geos-1.12-1.noarch
-        #    geosdevel-1.12-1.noarch.rpm is needed by (installed) postgis-1.13-1.noarch
-
-        try:
-            result =  LocalCommand(cmd_str).run() 
-        except ExecutionError, ex:
-            results =  ex.cmd.get_results().stderr.strip().split('\n')
-            for result in results:
-                if 'failed dependencies' in result.lower():     #conflicting dependencies so ignore these and remove the rest
-                    rpm_uninstall_string = GetFilteredRpmString(results).run()          
-                    break
+        rpm_set = ValidateUninstallRpms(gppkg).run()
+        if not rpm_set:
+            raise NotInstalledError(gppkg.pkg)
+        rpm_uninstall_string = " ".join(rpm_set)
 
         cmd_str = rpm_uninstallation_command % (rpm_uninstall_string, RPM_DATABASE)
 
         #run rpm -e on the host
         LocalCommand(cmd_str).run()        
 
-class GetFilteredRpmString(Operation):
-    """
-    TODO: AK: This is poorly designed. The caller is responsible for 
-    producing a very specific input as "results". More unfortunately, that 
-    process for producing "results" is duplicated in a couple of places
-    and it's fairly involved. This Operation should be taking care of that. 
-    So, more explicitly, this class should be renamed to ValidateUninstallRpms,
-    and it should follow the same design pattern as ValidateInstallRpms.
 
-    Filters the results and returns those rpms which can be 
-    uninstalled safely
-    """
-    def __init__(self, results, gppkg):
-        self.results = results
-        self.gppkg = gppkg
-
-    def execute(self):
-
-        results = self.results
-
-        filtered_rpm_string = ' ' 
-        dependencies_to_not_remove = set() 
-        for result in results:
-            tokens = result.split(' ')
-
-            for token in tokens:
-                if '.rpm' in token:
-                    dependencies_to_not_remove.add(token.strip())
-
-        if self.gppkg.main_rpm not in dependencies_to_not_remove:
-            filtered_rpm_string = self.gppkg.main_rpm[:-4] + ' '
-
-        for rpm in self.gppkg.dependencies:
-            if rpm not in dependencies_to_not_remove:
-                filtered_rpm_string += rpm[:-4] + ' '
-
-        return filtered_rpm_string
 
 class SyncPackages(Operation):
     """ Synchronizes packages from master to a remote host """
@@ -951,32 +961,10 @@ class UnInstallGppkg(Operation):
         #Pre uninstall hooks
         self._perform_pre_uninstall(gppkg)
 
-        #perfrom the uninstall. 
-        #'-4' to remove the '.rpm' extension
-        rpm_uninstall_string = gppkg.main_rpm[:-4] + ' ' 
-        for dep in gppkg.dependencies:
-            rpm_uninstall_string += (dep[:-4] + ' ')
-
-        #We first do a test removal to see if removing the packages cause any conflicts
-        #We filter out all those rpms which cause conflicts and remove the remaining ones
-        cmd_str = 'rpm -e --test %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
-
-        result = None
-
-        #We parse the stderr to make sure that we exit for the right reason
-        #E.g of the error on which we want to exit :-
-        #error: Failed dependencies:
-        #    geosdevel-1.12-1.noarch.rpm is needed by (installed) geos-1.12-1.noarch
-        #    geosdevel-1.12-1.noarch.rpm is needed by (installed) postgis-1.13-1.noarch
-
-        try:
-            result =  LocalCommand(cmd_str).run() 
-        except ExecutionError, ex:
-            results =  ex.cmd.get_results().stderr.strip().split('\n')
-            for result in results:
-                if 'failed dependencies' in result.lower():     #conflicting dependencies so ignore these and remove the rest
-                    rpm_uninstall_string = GetFilteredRpmString(results).run()            
-                    break
+        rpm_set = ValidateUninstallRpms(gppkg).run()
+        if not rpm_set:
+            raise NotInstalledError(gppkg.pkg)
+        rpm_uninstall_string = " ".join(rpm_set)
 
         cmd_str = 'rpm -e %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
 
