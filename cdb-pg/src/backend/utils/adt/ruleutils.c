@@ -4044,23 +4044,9 @@ get_rule_expr(Node *node, deparse_context *context,
 							appendStringInfo(buf, "TRUE");
 						else if (not_clause(w))
 						{
-							Expr *arg = get_notclausearg((Expr *) w);
-							if (IsA(arg, CaseTestExpr))
-								appendStringInfo(buf, "FALSE");
-							else
-							{
-								/* WHEN IS NOT DISTINCT FROM */
-								DistinctExpr 	*dexpr;
-								Node			*rhs;
-
-								Insist(IsA(arg, DistinctExpr));
-								dexpr = (DistinctExpr *) arg;
-
-								Insist(IsA(linitial(dexpr->args), CaseTestExpr));
-								appendStringInfo(buf, "IS NOT DISTINCT FROM ");
-								rhs = (Node *) lsecond(dexpr->args);
-								get_rule_expr(rhs, context, false);
-							}
+							Assert(IsA(get_notclausearg((Expr *) w),
+									   CaseTestExpr));
+							appendStringInfo(buf, "FALSE");
 						}
 						else
 							elog(ERROR, "unexpected CASE WHEN clause: %d",

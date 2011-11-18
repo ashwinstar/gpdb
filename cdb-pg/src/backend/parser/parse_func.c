@@ -52,6 +52,88 @@ typedef struct
 static bool 
 checkTableFunctions_walker(Node *node, check_table_func_context *context);
 
+
+static 
+Node*
+TransformDecodeToCase(ParseState *pstate, List *fargs, int location)
+{
+	Assert(fargs &&
+		   (2 < list_length(fargs)));
+
+	if (0)
+	{
+		CaseExpr		*c	   = makeNode(CaseExpr);
+		Node			*exp1  = linitial(fargs);
+		List			*l1    = fargs;
+		ListCell		*lc;
+		int				 nElts = 0;
+
+		/* convert DECODE(expression, when_compare_val1, when_result_val1,
+                                      [when_compare_val2, when_result_val2,]...
+									  [default_result]
+									  )
+		*/
+
+		c->casetype	 = InvalidOid;	/* not analyzed yet */
+		c->arg		 = (Expr *)exp1;
+		c->args		 = NIL;
+		c->defresult = NULL;
+		
+		/* l1 has at least 2 elements (Elts) (after we skip the head).
+		   Always consume two at a time for the WHEN clause
+		   compare_val and result.  If 1 elt is left over then make it
+		   the default, else continue with loop.
+		*/
+
+		nElts = list_length(l1);
+		lc	  = list_head(l1);
+		nElts--;
+
+		/* Note: skip the list head (exp1) */
+		lc = lnext(lc);
+		nElts--;
+
+		Assert(nElts);
+
+		while (nElts)
+		{
+			CaseWhen *w;
+
+			w = makeNode(CaseWhen);
+
+			c->args = lappend(c->args, w);
+				
+			/* when clause - set the compare_val and result */
+			w->expr = (Expr *)lfirst(lc);
+			
+			lc = lnext(lc);
+			nElts--;
+			
+			w->result = (Expr *)lfirst(lc);
+			
+			lc = lnext(lc);
+			nElts--;
+
+			if (!lc)
+				break;
+
+			if (0 == nElts)
+			{
+				c->defresult = (Expr *)lfirst(lc);
+				break;
+			}
+			
+			/* now at least two left -- continue */
+			
+			
+		} /* end while */
+
+		return (transformCaseExpr(pstate, c));
+	}
+
+	return NULL;
+} /* end TransformDecodeToCase */
+
 /*
  *	Parse a function call
  *
@@ -305,6 +387,19 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							  location);
 		}
 
+		/* MPP-12670: Oracle Compatibility - transform DECODE to CASE */
+		if ((fdresult == FUNCDETAIL_NOTFOUND) &&
+			(1 == list_length(funcname)) &&
+			(2 <  list_length(fargs)) &&
+			(0 == pg_strcasecmp(strVal(linitial(funcname)), "DECODE"))
+				)
+		{
+			retval = TransformDecodeToCase(pstate,
+										   fargs,
+										   location);
+			if (retval)
+				return retval;
+		}
 		/*
 		 * Else generate a detailed complaint for a function
 		 */
