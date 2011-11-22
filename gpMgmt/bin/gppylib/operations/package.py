@@ -18,7 +18,7 @@ try:
     from gppylib.mainUtils import ExceptionNoStackTraceNeeded
     from gppylib.operations import Operation
     from gppylib.operations.utils import RemoteOperation, ParallelOperation
-    from gppylib.operations.unix import CheckDir, MakeDir, RemoveFile, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFilesByPattern
+    from gppylib.operations.unix import CheckDir, MakeDir, RemoveFile, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFiles, ListFilesByPattern
 
     import yaml   
     from yaml.scanner import ScannerError
@@ -531,7 +531,7 @@ class RemovePackageFromArchive(Operation):
 
 
 
-class ValidateInstallRpms(Operation):
+class ValidateInstallPackage(Operation):
     """
     Ensure that the given rpms can be installed safely. This is accomplished mainly
     through use of rpm --test, which will have one of a few outcomes:
@@ -542,15 +542,35 @@ class ValidateInstallRpms(Operation):
     3) A non-zero return code, and stderr indicating that a failed dependency issue will arise.
        This scenario must result in a MissingDependencyError. 
 
+    Note: install and update share this code, because there is extensive commonality in regards
+    to the version, os, arch. checking, in addition to the 3 code paths enumerated just above.
+
     TODO: This is depending on ExtractPackage having put the dependencies in this same directory.
     TODO: Use regexes for more reliable string matching. CR-2865#c20112
     """
-    def __init__(self, gppkg):
+    def __init__(self, gppkg, is_update = False):
         self.gppkg = gppkg
+        self.is_update = is_update
     def execute(self):
+        #Check the GPDB requirements
+        if not IsVersionCompatible(self.gppkg).run():
+            raise GpdbVersionError
+
+        # TODO: AK: I've changed our use of the OS tag from 'Linux' to 'rhel5' or 'suse10'.
+        # So, the two lines below will not work properly.
+        #if self.gppkg.os.lower() != platform.system().lower():
+        #    raise OSCompatibilityError(self.gppkg.os, platform.system().lower())
+
+        #architecture compatibility
+        if self.gppkg.architecture.lower() !=  platform.machine().lower():
+            raise ArchCompatibilityError(self.gppkg.architecture, platform.machine().lower())
+
         rpm_set = set([self.gppkg.main_rpm] + self.gppkg.dependencies)
         rpm_install_string = ' '.join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
-        rpm_install_command = 'rpm --test -i %s --dbpath %s --prefix %s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
+        if self.is_update:
+            rpm_install_command = 'rpm --test -U %s --dbpath %s --prefix %s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
+        else:
+            rpm_install_command = 'rpm --test -i %s --dbpath %s --prefix %s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
         cmd = Command('Validating rpm installation', rpm_install_command)
         logger.info(cmd)        # TODO: AK: This should be debug(), but RMI cannot propagate a log level.
 
@@ -589,13 +609,15 @@ class ValidateInstallRpms(Operation):
                 else:
                     # This is unexpected, so bubble up the ExecutionError.
                     raise
+            if not rpm_set:
+                raise AlreadyInstalledError(self.gppkg.pkg)
                     
         # Code path 1 (See docstring)
         return rpm_set
             
 
 
-class ValidateUninstallRpms(Operation):
+class ValidateUninstallPackage(Operation):
     """
     Ensure that the given rpms can be uninstalled safely. This is accomplished mainly
     through use of rpm --test, which will have one of a few outcomes:
@@ -657,6 +679,9 @@ class ValidateUninstallRpms(Operation):
                 else:
                     # This is unexpected, so bubble up the ExecutionError.
                     raise
+
+            if not rpm_set:
+                raise NotInstalledError(self.gppkg.pkg)
                     
         # Code path 1 (See docstring)
         return rpm_set
@@ -700,9 +725,13 @@ class InstallPackageLocally(Operation):
     We must consider the following scenarios and more: package was deleted from archive,
     the main comprising rpm was uninstalled, dependent rpms were removed, the rpm database was
     corrupted, etc.
+
+    Again, much like ValidateInstallPackages, we make cheap reuse of this code for the purposes
+    of an --update as there is considerable commonality.
     """
-    def __init__(self, package_path):
+    def __init__(self, package_path, is_update = False):
         self.package_path = package_path
+        self.is_update = is_update
     def execute(self): 
         current_package_location = self.package_path
         package_name = os.path.basename(current_package_location)
@@ -712,10 +741,12 @@ class InstallPackageLocally(Operation):
         gppkg = Gppkg.from_package_path(current_package_location)
         ExtractPackage(gppkg).run()
 
-        rpm_set = ValidateInstallRpms(gppkg).run()
-        if not rpm_set:
-            raise AlreadyInstalledError(gppkg.pkg)
-        rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s' % \
+        rpm_set = ValidateInstallPackage(gppkg, is_update = self.is_update).run()
+        if self.is_update:
+            rpm_install_command = 'rpm -U %s --dbpath %s --prefix=%s'
+        else:
+            rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s'
+        rpm_install_command = rpm_install_command % \
                               (" ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set]), 
                                RPM_DATABASE, 
                                RPM_INSTALLATION_PATH)
@@ -727,6 +758,8 @@ class InstallPackageLocally(Operation):
         # residing at final_package_location. This is technically not a bug, because
         # SyncPackages will not trigger an InstallPackageLocally if the package archive already exists. 
         # However, this assumption may not necessarily hold with later design improvements.
+
+        # TODO: AK: MPP-15568
         MakeDir(GPPKG_ARCHIVE_PATH).run()
         shutil.copy(current_package_location, final_package_location)
         logger.info("Completed local installation of %s." % package_name)
@@ -745,9 +778,7 @@ class UninstallPackageLocally(Operation):
         current_package_location = os.path.join(GPPKG_ARCHIVE_PATH, self.package_name)
         gppkg = Gppkg.from_package_path(current_package_location)
 
-        rpm_set = ValidateUninstallRpms(gppkg).run()
-        if not rpm_set:
-            raise NotInstalledError(gppkg.pkg)
+        rpm_set = ValidateUninstallPackage(gppkg).run()
         rpm_uninstall_command = 'rpm -e %s --dbpath %s' % (" ".join(rpm_set), RPM_DATABASE)
         cmd = Command('Uninstalling rpms', rpm_uninstall_command)
         logger.info(cmd)
@@ -759,7 +790,11 @@ class UninstallPackageLocally(Operation):
 
 
 class SyncPackages(Operation):
-    """ Synchronizes packages from master to a remote host """
+    """ 
+    Synchronizes packages from master to a remote host 
+
+    TODO: AK: MPP-15568
+    """
     def __init__(self, host):
         self.host = host
     def execute(self):
@@ -810,22 +845,8 @@ class InstallPackage(Operation):
     def execute(self):
         logger.info('Installing package %s' % self.gppkg.pkg)
 
-        #Check the GPDB requirements
-        if not IsVersionCompatible(self.gppkg).run():
-            raise GpdbVersionError
-
-        # TODO: AK: I've changed our use of the OS tag from 'Linux' to 'rhel5' or 'suse10'.
-        # So, the two lines below will not work properly.
-        #if self.gppkg.os.lower() != platform.system().lower():
-        #    raise OSCompatibilityError(self.gppkg.os, platform.system().lower())
-
-        #architecture compatibility
-        if self.gppkg.architecture.lower() !=  platform.machine().lower():
-            raise ArchCompatibilityError(self.gppkg.architecture, platform.machine().lower())
-
-        #check if already installed
-        if IsRpmInstalled(self.gppkg.main_rpm).run():
-            raise AlreadyInstalledError(self.gppkg.pkg)      # TODO: AK: self.gppkg.pkg is poorly named
+        ExtractPackage(self.gppkg).run()
+        ValidateInstallPackage(self.gppkg).run() 
 
         # perform any pre-installation steps 
         PerformHooks(hooks = self.gppkg.preinstall,
@@ -836,10 +857,10 @@ class InstallPackage(Operation):
         # distribute package to segments
         srcFile = self.gppkg.abspath
         dstFile = os.path.join(GPHOME, self.gppkg.pkg)
-        self.distribute_to_segments(srcFile, dstFile)
+        GpScp(srcFile, dstFile, self.segment_host_list).run()
 
         # install package on segments
-        self.install_on_segments(dstFile)
+        HostOperation(InstallPackageLocally(dstFile), self.segment_host_list).run()
 
         # install package on standby
         if self.standby_host:
@@ -859,25 +880,6 @@ class InstallPackage(Operation):
                      segment_host_list = self.segment_host_list).run() 
 
         logger.info('%s successfully installed.' % (self.gppkg.pkg))
-    def distribute_to_segments(self, srcFile, dstFile):
-        pool = WorkerPool()
-        for host in self.segment_host_list:
-            pool.addCommand(Scp(name = 'copying %s to %s' % (srcFile, host),
-                                srcFile = srcFile,
-                                dstFile = dstFile,
-                                dstHost = host))
-        pool.join()
-    def install_on_segments(self, dstFile):
-        """
-        TODO: AK: With the proper support, this could be one line of code...
-            SegmentOperation(InstallPackageLocally(dstFile))
-        """
-        operations = []
-        for host in self.segment_host_list:
-            operations.append(RemoteOperation(InstallPackageLocally(dstFile), host))
-        ParallelOperation(operations).run()
-        for operation in operations:
-            operation.get_ret()
 
 
 
@@ -926,6 +928,9 @@ class UninstallPackage(Operation):
     def execute(self):
         logger.info('Uninstalling package %s' % self.gppkg.pkg)
 
+        ExtractPackage(self.gppkg).run()
+        ValidateUninstallPackage(self.gppkg).run()
+
         # perform any pre-uninstallation steps 
         PerformHooks(hooks = self.gppkg.preuninstall,
                      master_host = self.master_host,
@@ -933,7 +938,7 @@ class UninstallPackage(Operation):
                      segment_host_list = self.segment_host_list).run()
 
         # uninstall on segments
-        self.uninstall_on_segments()
+        HostOperation(UninstallPackageLocally(self.gppkg.pkg), self.segment_host_list).run()
 
         if self.standby_host:
             RemoteOperation(UninstallPackageLocally(self.gppkg.pkg), self.standby_host).run()
@@ -947,14 +952,6 @@ class UninstallPackage(Operation):
                      segment_host_list = self.segment_host_list).run()
 
         logger.info('%s succesfully uninstalled.' % self.gppkg.pkg)
-    def uninstall_on_segments(self):
-        operations = []
-        for host in self.segment_host_list:
-            operations.append(RemoteOperation(UninstallPackageLocally(self.gppkg.pkg), host))
-        ParallelOperation(operations).run()
-        for operation in operations:
-            operation.get_ret()
-
 
 
 
@@ -1129,11 +1126,8 @@ class BuildGppkg(Operation):
 
         return True
         
-class UpdateGppkg(Operation):
-    '''
-        Update to the given gppkg
-    '''
-
+class UpdatePackage(Operation):
+    """ TODO: AK: Enforce gppkg version is higher than currently installed version """
     def __init__(self, gppkg, master_host, standby_host, segment_host_list):
         self.gppkg = gppkg
         self.master_host = master_host
@@ -1141,61 +1135,60 @@ class UpdateGppkg(Operation):
         self.segment_host_list = segment_host_list
 
     def execute(self):
-        gppkg = self.gppkg
+        logger.info('Updating package %s' % self.gppkg.pkg)
 
-        #Check version compatibility
-        if not IsVersionCompatible(gppkg).run():
-            raise GpdbVersionError
+        ExtractPackage(self.gppkg).run()
+        ValidateInstallPackage(self.gppkg, is_update = True).run() 
 
-        #Extract the contents of the package into a temp folder
-        ExtractPackage(gppkg).run()
+        # distribute package to segments
+        srcFile = self.gppkg.abspath
+        dstFile = os.path.join(GPHOME, self.gppkg.pkg)
+        GpScp(srcFile, dstFile, self.segment_host_list).run()
 
-        #Transfer package
-        TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run() 
+        # update package on segments
+        HostOperation(UpdatePackageLocally(dstFile), self.segment_host_list).run()
 
-        #get the installation string
-        rpm_set = ValidateInstallRpms(gppkg).run()
-        if not rpm_set:
-            raise AlreadyInstalledError(gppkg.pkg)
-        rpm_install_string = " ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
-
-        #perform update using rpm -U 
-        #First we test if update is possible. If it fails due to dependencies we abort the update.
-        cmd_str = 'rpm -U %s --test --dbpath %s --prefix=%s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH) 
-
-        try:
-            LocalCommand(cmd_str).run()
-        except ExecutionError, ex:
-            results = ex.cmd.get_results().stderr.split('\n')
-            for result in results:
-                if 'failed dependency'in result.lower():
-                    raise RequiredDependencyError
-        
-        cmd_str = 'rpm -U %s --dbpath %s --prefix=%s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
-
-        #first the segments
-        RemoteCommand(cmd_str, self.segment_host_list).run()
-
-        #next standby
+        # update package on standby
         if self.standby_host:
-            RemoteCommand(cmd_str, [self.standby_host]).run()
+            Scp(name = 'copying %s to %s' % (srcFile, self.standby_host),
+                srcFile = srcFile,
+                dstFile = dstFile,
+                dstHost = self.standby_host).run(validateAfter = True)
+            RemoteOperation(UpdatePackageLocally(dstFile), self.standby_host).run()
 
-        #last master
-        LocalCommand(cmd_str).run()
+        # update package on master
+        UpdatePackageLocally(srcFile).run()
 
-        #Remove older versions of the package from archive
-        file_list = set()
-        if os.path.exists(GPPKG_ARCHIVE_PATH):
-            for filename in os.listdir(GPPKG_ARCHIVE_PATH):
-                if filename[:filename.index('-')] == gppkg.pkgname:
-                    file_list.add(os.path.join(GPPKG_ARCHIVE_PATH, filename)) 
+        logger.info('%s successfully updated.' % (self.gppkg.pkg))
 
-        #Remove on the standby
-        for filename in file_list:
-            RemovePackageFromArchive(filename, self.standby_host).run()
 
-        #Store the latest version of the file in the archive
-        StorePackageInArchive(gppkg, self.standby_host).run()
+
+class UpdatePackageLocally(Operation):
+    """
+    Updates a package on the local host
+
+    We make cheap reuse of InstallPackageLocally with the propagation of is_update = True, which
+    effectively changes the rpm --test command to use -U instead of -i. Beyond the invocation of
+    InstallPackageLocally, here, we also clean up the archive directory to remove other (ideally, older)
+    versions of the updated package.
+    """
+    def __init__(self, package_path):
+        self.package_path = package_path
+    def execute(self):
+        InstallPackageLocally(self.package_path, is_update = True).run()
+
+        # Remove other versions of the package from archive.
+        # Note: Do not rely on filename format to discern such packages.
+        # Rather, interrogate a package only through the Gppkg class interface.
+        current_package = Gppkg.from_package_path(self.package_path)
+        MakeDir(GPPKG_ARCHIVE_PATH).run()
+        archived_package_paths = ListFiles(GPPKG_ARCHIVE_PATH).run()
+        for archived_package_path in archived_package_paths:
+            temp_package = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, archived_package_path))
+            if temp_package.pkgname == current_package.pkgname and temp_package.version != current_package.version:
+                RemoveFile(os.path.join(GPPKG_ARCHIVE_PATH, archived_package_path)).run()
+
+
 
 class CleanGppkg(Operation):
     '''
@@ -1265,3 +1258,66 @@ class MigratePackages(Operation):
             except Exception:
                 logger.exception("Failed to migrate %s from %s" % (old_archive_path, package))
         logger.info('The package migration has completed.')
+
+
+
+class GpScp(Operation):
+    """
+    TODO: AK: This obviously does not belong here. My preference would be that it remain here until
+    the following problem is solved.
+
+    MPP-15270 - Improve performance of file transfer across large clusters
+    
+    I suggest: 
+
+        We consume an extra parameter 'fanout'. We partition the host_list into a number of buckets
+        given by 'fanout'. For each bucket, we scp the artifact to the first host in the bucket, and then
+        we recursively invoke GpScp on that machine for the remaining hosts in its bucket.
+
+        GpScp := ParallelOperation([ A(i) for i in range(0, n) ])
+        A := SerialOperation(B, C)
+        B := scp source_path target_path @ host_i
+            where host_i := the first host in the ith bucket
+        C := RemoteOperation(GpScp(target_path, target_path, host_list_i))
+            where host_list_i := the remaining hosts in the ith bucket
+    """
+    def __init__(self, source_path, target_path, host_list):
+        self.source_path = source_path
+        self.target_path = target_path
+        self.host_list = host_list
+    def execute(self):
+        pool = WorkerPool()
+        for host in self.host_list:
+            pool.addCommand(Scp(name = 'copying %s to %s' % (self.source_path, host),
+                                srcFile = self.source_path,
+                                dstFile = self.target_path,
+                                dstHost = host))
+        pool.join()
+
+
+class HostOperation(Operation):
+    """
+    TODO: AK: This obviously does not belong here. My preference would be to move it to gppylib.operations.utils
+    when another consumer becomes clear.
+
+    TODO: AK: For generality, the underlying operation should inherit/implement NestedHostOperation so that
+    it may be initialized with information about the host to which it's been bound. This is fortunately not necessary
+    for our purposes here, so it's deferrable.
+
+    TODO: AK: Build a SegHostOperation that wraps this and is driven by GpArray content. 
+
+    TODO: AK: Implement something similar for a SegmentOperation + NestedSegmentOperation.
+
+    TODO: AK: This (as well as ParallelOperation) would benefit from an appropriate choice of return value. The likely
+    choice would be: [op.get_ret() for op in self.operations]
+    """
+    def __init__(self, operation, host_list):
+        self.operation = operation
+        self.host_list = host_list
+    def execute(self):
+        operations = []
+        for host in self.host_list:
+            operations.append(RemoteOperation(self.operation, host))
+        ParallelOperation(operations).run()
+        for operation in operations:
+            operation.get_ret()
