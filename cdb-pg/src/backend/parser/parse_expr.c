@@ -50,7 +50,6 @@ static Node *transformAExprNullIf(ParseState *pstate, A_Expr *a);
 static Node *transformAExprOf(ParseState *pstate, A_Expr *a);
 static Node *transformAExprIn(ParseState *pstate, A_Expr *a);
 static Node *transformFuncCall(ParseState *pstate, FuncCall *fn);
-/* static Node *transformCaseExpr(ParseState *pstate, CaseExpr *c); */
 static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
 static Node *transformArrayExpr(ParseState *pstate, ArrayExpr *a);
 static Node *transformRowExpr(ParseState *pstate, RowExpr *r);
@@ -73,7 +72,7 @@ static Node *make_row_distinct_op(ParseState *pstate, List *opname,
 					 RowExpr *lrow, RowExpr *rrow, int location);
 static Expr *make_distinct_op(ParseState *pstate, List *opname,
 				 Node *ltree, Node *rtree, int location);
-
+static bool isWhenIsNotDistinctFromExpr(Node *warg);
 
 /*
  * transformExpr -
@@ -1272,6 +1271,27 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 fn->agg_filter);
 }
 
+/*
+ * Check if this is CASE x WHEN IS NOT DISTINCT FROM y:
+ * From the raw grammar output, we produce AEXPR_NOT expression
+ * 		which has the rhs = AEXPR_DISTINCT expression which has its lhs = NULL
+ */
+static bool
+isWhenIsNotDistinctFromExpr(Node *warg)
+{
+	if (IsA(warg, A_Expr))
+	{
+		A_Expr *top = (A_Expr *) warg;
+		if (top->kind == AEXPR_NOT && IsA(top->rexpr, A_Expr))
+		{
+			A_Expr *expr = (A_Expr *) top->rexpr;
+			if (expr->kind == AEXPR_DISTINCT && expr->lexpr == NULL)
+				return true;
+		}
+	}
+	return false;
+}
+
 Node *
 transformCaseExpr(ParseState *pstate, CaseExpr *c)
 {
@@ -1329,11 +1349,29 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 		warg = (Node *) w->expr;
 		if (placeholder)
 		{
-			/* shorthand form was specified, so expand... */
-			warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
-											 (Node *) placeholder,
-											 warg,
-											 -1);
+			/* 
+			 * CASE placeholder WHEN IS NOT DISTINCT FROM warg:
+			 * 		set: warg->rhs->lhs = placeholder
+			 */
+			if (isWhenIsNotDistinctFromExpr(warg))
+			{
+				A_Expr *top  = (A_Expr *) warg;
+				A_Expr *expr = (A_Expr *) top->rexpr;
+				expr->lexpr = (Node *) placeholder;
+			}
+			else
+				warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+													(Node *) placeholder,
+													 warg,
+													 -1);
+		}
+		else
+		{
+			if (isWhenIsNotDistinctFromExpr(warg))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("syntax error at or near \"NOT\""),
+						 errhint("Missing <operand> for \"CASE <operand> WHEN IS NOT DISTINCT FROM ...\"")));
 		}
 		neww->expr = (Expr *) transformExpr(pstate, warg);
 

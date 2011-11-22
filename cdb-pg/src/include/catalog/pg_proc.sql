@@ -2764,7 +2764,7 @@
 
  CREATE FUNCTION encode(bytea, text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'binary_encode' WITH (OID=1946, DESCRIPTION="Convert bytea value into some ascii-only text string");
 
- CREATE FUNCTION decode(text, text) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'binary_decode' WITH (OID=1947, DESCRIPTION="Convert ascii-encoded text string into bytea value");
+ CREATE FUNCTION "decode"(text, text) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'binary_decode' WITH (OID=1947, DESCRIPTION="Convert ascii-encoded text string into bytea value");
 
  CREATE FUNCTION byteaeq(bytea, bytea) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'byteaeq' WITH (OID=1948, DESCRIPTION="equal");
 
