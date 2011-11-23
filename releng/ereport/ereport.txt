@@ -15245,323 +15245,323 @@ aaah: analyze:00012393:  ereport(NOTICE,
 aaah: analyze:00012394:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
 aaah: analyze:00012395:  "error table with the same name", sreh->errtable->relname))); 
 aaaaa GP_IGNORE: gaae: gram - ./backend/parser/gram.c
-gaae: gram:00019327:  ereport(ERROR, 
-gaae: gram:00019328:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019329:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
-gaae: gram:00019330:  scanner_errposition((yylsp[(3) - (3)])))); 
-gaae: gram:00019342:  ereport(ERROR, 
-gaae: gram:00019343:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00019344:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
-gaae: gram:00019345:  scanner_errposition((yylsp[(3) - (6)])))); 
-gaae: gram:00019348:  ereport(WARNING, 
-gaae: gram:00019349:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00019350:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00019351:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
-gaae: gram:00019357:  ereport(ERROR, 
-gaae: gram:00019358:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019359:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
-gaae: gram:00020042:  ereport(ERROR, 
-gaae: gram:00020043:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020044:  errmsg("Cannot specify a name, rank, " 
-gaae: gram:00020045:  "or value for a DEFAULT partition " 
-gaae: gram:00020046:  "in this context"))); 
-gaae: gram:00020110:  ereport(ERROR, 
-gaae: gram:00020111:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020112:  errmsg("Can only ADD a partition by name"), 
-gaae: gram:00020113:  errOmitLocation(true))); 
-gaae: gram:00020151:  ereport(ERROR, 
-gaae: gram:00020152:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020153:  errmsg("Can only ADD a partition by name"))); 
-gaae: gram:00020230:  ereport(ERROR, 
-gaae: gram:00020231:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020232:  errmsg("Can only COALESCE a partition by name"))); 
-gaae: gram:00020499:  ereport(ERROR, 
-gaae: gram:00020500:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020501:  errmsg("template cannot contain " 
-gaae: gram:00020502:  "specification for child " 
-gaae: gram:00020503:  "partition"))); 
-gaae: gram:00021493:  ereport(ERROR, 
-gaae: gram:00021494:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00021495:  errmsg("MATCH PARTIAL not yet implemented"), 
-gaae: gram:00021496:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00022222:  ereport(ERROR, 
-gaae: gram:00022223:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022224:  errmsg("PARTITION BY must specify RANGE or LIST"), 
-gaae: gram:00022225:  errOmitLocation(true))); 
-gaae: gram:00022271:  ereport(ERROR, 
-gaae: gram:00022272:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022273:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
-gaae: gram:00022275:  ereport(ERROR, 
-gaae: gram:00022276:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022277:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
-gaae: gram:00022335:  ereport(ERROR, 
-gaae: gram:00022336:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022337:  errmsg("template cannot contain " 
-gaae: gram:00022338:  "specification for child " 
-gaae: gram:00022339:  "partition"), 
-gaae: gram:00022340:  errOmitLocation(true))); 
-gaae: gram:00022433:  ereport(ERROR, 
-gaae: gram:00022434:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022435:  errmsg("CREATE TABLE AS cannot specify INTO"), 
-gaae: gram:00022436:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
-gaae: gram:00022445:  ereport(ERROR, 
-gaae: gram:00022446:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00022447:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
-gaae: gram:00022448:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
-gaae: gram:00022449:  errOmitLocation(true))); 
-gaae: gram:00022559:  ereport(ERROR, 
-gaae: gram:00022560:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022561:  errmsg("EXECUTE may not be used with a regular external table"), 
-gaae: gram:00022562:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
-gaae: gram:00022563:  errOmitLocation(true))); 
-gaae: gram:00022573:  ereport(ERROR, 
-gaae: gram:00022574:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022575:  errmsg("ON clause may not be used with a writable external table"), 
-gaae: gram:00022576:  errOmitLocation(true))); 
-gaae: gram:00022581:  ereport(ERROR, 
-gaae: gram:00022582:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022583:  errmsg("Single row error handling may not be used with a writable external table"))); 
-gaae: gram:00022882:  ereport(ERROR, 
-gaae: gram:00022883:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00022884:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
-gaae: gram:00022888:  ereport(ERROR, 
-gaae: gram:00022889:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00022890:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
-gaae: gram:00023844:  ereport(ERROR, 
-gaae: gram:00023845:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023846:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
-gaae: gram:00023847:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00023866:  ereport(ERROR, 
-gaae: gram:00023867:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023868:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
-gaae: gram:00023869:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00023935:  ereport(ERROR, 
-gaae: gram:00023936:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00023937:  errmsg("CREATE ASSERTION is not yet implemented"))); 
-gaae: gram:00023951:  ereport(ERROR, 
-gaae: gram:00023952:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00023953:  errmsg("DROP ASSERTION is not yet implemented"))); 
-gaae: gram:00024056:  ereport(ERROR, 
-gaae: gram:00024057:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00024058:  errmsg("improper qualified name (too many dotted names): %s", 
-gaae: gram:00024059:  NameListToString((yyvsp[(3) - (7)].list))), 
-gaae: gram:00024060:  scanner_errposition((yylsp[(3) - (7)])))); 
-gaae: gram:00025266:  ereport(ERROR, 
-gaae: gram:00025267:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00025268:  errmsg("CREATE INDEX CONCURRENTLY is not supported"))); 
-gaae: gram:00025793:  ereport(ERROR, 
-gaae: gram:00025794:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00025795:  errmsg("missing argument"), 
-gaae: gram:00025796:  errhint("Use NONE to denote the missing argument of a unary operator."), 
-gaae: gram:00025797:  errOmitLocation(true), 
-gaae: gram:00025798:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00026812:  ereport(ERROR, 
-gaae: gram:00026813:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026814:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026821:  ereport(ERROR, 
-gaae: gram:00026822:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026823:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026830:  ereport(ERROR, 
-gaae: gram:00026831:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026832:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00027282:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00027283:  errmsg("cannot use force with explain statement") 
-gaae: gram:00027284:  )); 
-gaae: gram:00027293:  ereport(ERROR, 
-gaae: gram:00027294:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00027295:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
-gaae: gram:00027296:  "clause"))); 
-gaae: gram:00027361:  ereport(ERROR, 
-gaae: gram:00027362:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00027363:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
-gaae: gram:00027628:  ereport(ERROR, 
-gaae: gram:00027629:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00027630:  errmsg("number of columns does not match number of values"), 
-gaae: gram:00027631:  scanner_errposition((yylsp[(1) - (5)])))); 
-gaae: gram:00028109:  ereport(ERROR, 
-gaae: gram:00028110:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00028111:  errmsg("LIMIT #,# syntax is not supported"), 
-gaae: gram:00028112:  errhint("Use separate LIMIT and OFFSET clauses."), 
-gaae: gram:00028113:  scanner_errposition((yylsp[(1) - (4)])))); 
-gaae: gram:00028693:  ereport(ERROR, 
-gaae: gram:00028694:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00028695:  errmsg("VALUES in FROM must have an alias"), 
-gaae: gram:00028696:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
-gaae: gram:00028697:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00028699:  ereport(ERROR, 
-gaae: gram:00028700:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00028701:  errmsg("subquery in FROM must have an alias"), 
-gaae: gram:00028702:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
-gaae: gram:00028703:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00029087:  ereport(ERROR, 
-gaae: gram:00029088:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029089:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
-gaae: gram:00029090:  scanner_errposition((yylsp[(3) - (5)])))); 
-gaae: gram:00029093:  ereport(WARNING, 
-gaae: gram:00029094:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029095:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00029096:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
-gaae: gram:00029097:  scanner_errposition((yylsp[(3) - (5)])))); 
-gaae: gram:00029243:  ereport(ERROR, 
-gaae: gram:00029244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029245:  errmsg("precision for type float must be at least 1 bit"), 
-gaae: gram:00029246:  scanner_errposition((yylsp[(2) - (3)])))); 
-gaae: gram:00029252:  ereport(ERROR, 
-gaae: gram:00029253:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029254:  errmsg("precision for type float must be less than 54 bits"), 
-gaae: gram:00029255:  scanner_errposition((yylsp[(2) - (3)])))); 
-gaae: gram:00029270:  ereport(ERROR, 
-gaae: gram:00029271:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029272:  errmsg("NUMERIC precision %d must be between 1 and %d", 
-gaae: gram:00029273:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00029275:  ereport(ERROR, 
-gaae: gram:00029276:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029277:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
-gaae: gram:00029278:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
-gaae: gram:00029288:  ereport(ERROR, 
-gaae: gram:00029289:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029290:  errmsg("NUMERIC precision %d must be between 1 and %d", 
-gaae: gram:00029291:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00029309:  ereport(ERROR, 
-gaae: gram:00029310:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029311:  errmsg("DECIMAL precision %d must be between 1 and %d", 
-gaae: gram:00029312:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00029314:  ereport(ERROR, 
-gaae: gram:00029315:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029316:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
-gaae: gram:00029317:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
-gaae: gram:00029327:  ereport(ERROR, 
-gaae: gram:00029328:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029329:  errmsg("DECIMAL precision %d must be between 1 and %d", 
-gaae: gram:00029330:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00029381:  ereport(ERROR, 
-gaae: gram:00029382:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029383:  errmsg("length for type %s must be at least 1", 
-gaae: gram:00029384:  typname))); 
-gaae: gram:00029386:  ereport(ERROR, 
-gaae: gram:00029387:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029388:  errmsg("length for type %s cannot exceed %d", 
-gaae: gram:00029389:  typname, MaxAttrSize * BITS_PER_BYTE))); 
-gaae: gram:00029464:  ereport(ERROR, 
-gaae: gram:00029465:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029466:  errmsg("length for type %s must be at least 1", 
-gaae: gram:00029467:  (yyvsp[(1) - (5)].str)))); 
-gaae: gram:00029469:  ereport(ERROR, 
-gaae: gram:00029470:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029471:  errmsg("length for type %s cannot exceed %d", 
-gaae: gram:00029472:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
-gaae: gram:00029569:  ereport(ERROR, 
-gaae: gram:00029570:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029571:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
-gaae: gram:00029572:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
-gaae: gram:00029575:  ereport(WARNING, 
-gaae: gram:00029576:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029577:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
-gaae: gram:00029578:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
-gaae: gram:00029579:  MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00029610:  ereport(ERROR, 
-gaae: gram:00029611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029612:  errmsg("TIME(%d)%s precision must not be negative", 
-gaae: gram:00029613:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
-gaae: gram:00029616:  ereport(WARNING, 
+gaae: gram:00019479:  ereport(ERROR, 
+gaae: gram:00019480:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019481:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
+gaae: gram:00019482:  scanner_errposition((yylsp[(3) - (3)])))); 
+gaae: gram:00019494:  ereport(ERROR, 
+gaae: gram:00019495:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00019496:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
+gaae: gram:00019497:  scanner_errposition((yylsp[(3) - (6)])))); 
+gaae: gram:00019500:  ereport(WARNING, 
+gaae: gram:00019501:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00019502:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00019503:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+gaae: gram:00019509:  ereport(ERROR, 
+gaae: gram:00019510:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019511:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+gaae: gram:00020194:  ereport(ERROR, 
+gaae: gram:00020195:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020196:  errmsg("Cannot specify a name, rank, " 
+gaae: gram:00020197:  "or value for a DEFAULT partition " 
+gaae: gram:00020198:  "in this context"))); 
+gaae: gram:00020262:  ereport(ERROR, 
+gaae: gram:00020263:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020264:  errmsg("Can only ADD a partition by name"), 
+gaae: gram:00020265:  errOmitLocation(true))); 
+gaae: gram:00020303:  ereport(ERROR, 
+gaae: gram:00020304:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020305:  errmsg("Can only ADD a partition by name"))); 
+gaae: gram:00020382:  ereport(ERROR, 
+gaae: gram:00020383:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020384:  errmsg("Can only COALESCE a partition by name"))); 
+gaae: gram:00020651:  ereport(ERROR, 
+gaae: gram:00020652:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020653:  errmsg("template cannot contain " 
+gaae: gram:00020654:  "specification for child " 
+gaae: gram:00020655:  "partition"))); 
+gaae: gram:00021645:  ereport(ERROR, 
+gaae: gram:00021646:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00021647:  errmsg("MATCH PARTIAL not yet implemented"), 
+gaae: gram:00021648:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00022374:  ereport(ERROR, 
+gaae: gram:00022375:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022376:  errmsg("PARTITION BY must specify RANGE or LIST"), 
+gaae: gram:00022377:  errOmitLocation(true))); 
+gaae: gram:00022423:  ereport(ERROR, 
+gaae: gram:00022424:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022425:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+gaae: gram:00022427:  ereport(ERROR, 
+gaae: gram:00022428:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022429:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
+gaae: gram:00022487:  ereport(ERROR, 
+gaae: gram:00022488:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022489:  errmsg("template cannot contain " 
+gaae: gram:00022490:  "specification for child " 
+gaae: gram:00022491:  "partition"), 
+gaae: gram:00022492:  errOmitLocation(true))); 
+gaae: gram:00022585:  ereport(ERROR, 
+gaae: gram:00022586:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022587:  errmsg("CREATE TABLE AS cannot specify INTO"), 
+gaae: gram:00022588:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
+gaae: gram:00022597:  ereport(ERROR, 
+gaae: gram:00022598:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00022599:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
+gaae: gram:00022600:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
+gaae: gram:00022601:  errOmitLocation(true))); 
+gaae: gram:00022711:  ereport(ERROR, 
+gaae: gram:00022712:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022713:  errmsg("EXECUTE may not be used with a regular external table"), 
+gaae: gram:00022714:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
+gaae: gram:00022715:  errOmitLocation(true))); 
+gaae: gram:00022725:  ereport(ERROR, 
+gaae: gram:00022726:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022727:  errmsg("ON clause may not be used with a writable external table"), 
+gaae: gram:00022728:  errOmitLocation(true))); 
+gaae: gram:00022733:  ereport(ERROR, 
+gaae: gram:00022734:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022735:  errmsg("Single row error handling may not be used with a writable external table"))); 
+gaae: gram:00023034:  ereport(ERROR, 
+gaae: gram:00023035:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00023036:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
+gaae: gram:00023040:  ereport(ERROR, 
+gaae: gram:00023041:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00023042:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
+gaae: gram:00023996:  ereport(ERROR, 
+gaae: gram:00023997:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00023998:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+gaae: gram:00023999:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00024018:  ereport(ERROR, 
+gaae: gram:00024019:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00024020:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+gaae: gram:00024021:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00024087:  ereport(ERROR, 
+gaae: gram:00024088:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00024089:  errmsg("CREATE ASSERTION is not yet implemented"))); 
+gaae: gram:00024103:  ereport(ERROR, 
+gaae: gram:00024104:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00024105:  errmsg("DROP ASSERTION is not yet implemented"))); 
+gaae: gram:00024208:  ereport(ERROR, 
+gaae: gram:00024209:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00024210:  errmsg("improper qualified name (too many dotted names): %s", 
+gaae: gram:00024211:  NameListToString((yyvsp[(3) - (7)].list))), 
+gaae: gram:00024212:  scanner_errposition((yylsp[(3) - (7)])))); 
+gaae: gram:00025418:  ereport(ERROR, 
+gaae: gram:00025419:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00025420:  errmsg("CREATE INDEX CONCURRENTLY is not supported"))); 
+gaae: gram:00025945:  ereport(ERROR, 
+gaae: gram:00025946:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00025947:  errmsg("missing argument"), 
+gaae: gram:00025948:  errhint("Use NONE to denote the missing argument of a unary operator."), 
+gaae: gram:00025949:  errOmitLocation(true), 
+gaae: gram:00025950:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00026964:  ereport(ERROR, 
+gaae: gram:00026965:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026966:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00026973:  ereport(ERROR, 
+gaae: gram:00026974:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026975:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00026982:  ereport(ERROR, 
+gaae: gram:00026983:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026984:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00027434:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00027435:  errmsg("cannot use force with explain statement") 
+gaae: gram:00027436:  )); 
+gaae: gram:00027445:  ereport(ERROR, 
+gaae: gram:00027446:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00027447:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
+gaae: gram:00027448:  "clause"))); 
+gaae: gram:00027513:  ereport(ERROR, 
+gaae: gram:00027514:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00027515:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
+gaae: gram:00027780:  ereport(ERROR, 
+gaae: gram:00027781:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00027782:  errmsg("number of columns does not match number of values"), 
+gaae: gram:00027783:  scanner_errposition((yylsp[(1) - (5)])))); 
+gaae: gram:00028261:  ereport(ERROR, 
+gaae: gram:00028262:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00028263:  errmsg("LIMIT #,# syntax is not supported"), 
+gaae: gram:00028264:  errhint("Use separate LIMIT and OFFSET clauses."), 
+gaae: gram:00028265:  scanner_errposition((yylsp[(1) - (4)])))); 
+gaae: gram:00028845:  ereport(ERROR, 
+gaae: gram:00028846:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00028847:  errmsg("VALUES in FROM must have an alias"), 
+gaae: gram:00028848:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
+gaae: gram:00028849:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00028851:  ereport(ERROR, 
+gaae: gram:00028852:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00028853:  errmsg("subquery in FROM must have an alias"), 
+gaae: gram:00028854:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
+gaae: gram:00028855:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00029239:  ereport(ERROR, 
+gaae: gram:00029240:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029241:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
+gaae: gram:00029242:  scanner_errposition((yylsp[(3) - (5)])))); 
+gaae: gram:00029245:  ereport(WARNING, 
+gaae: gram:00029246:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029247:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00029248:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
+gaae: gram:00029249:  scanner_errposition((yylsp[(3) - (5)])))); 
+gaae: gram:00029395:  ereport(ERROR, 
+gaae: gram:00029396:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029397:  errmsg("precision for type float must be at least 1 bit"), 
+gaae: gram:00029398:  scanner_errposition((yylsp[(2) - (3)])))); 
+gaae: gram:00029404:  ereport(ERROR, 
+gaae: gram:00029405:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029406:  errmsg("precision for type float must be less than 54 bits"), 
+gaae: gram:00029407:  scanner_errposition((yylsp[(2) - (3)])))); 
+gaae: gram:00029422:  ereport(ERROR, 
+gaae: gram:00029423:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029424:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+gaae: gram:00029425:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029427:  ereport(ERROR, 
+gaae: gram:00029428:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029429:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
+gaae: gram:00029430:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+gaae: gram:00029440:  ereport(ERROR, 
+gaae: gram:00029441:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029442:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+gaae: gram:00029443:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029461:  ereport(ERROR, 
+gaae: gram:00029462:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029463:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+gaae: gram:00029464:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029466:  ereport(ERROR, 
+gaae: gram:00029467:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029468:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
+gaae: gram:00029469:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+gaae: gram:00029479:  ereport(ERROR, 
+gaae: gram:00029480:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029481:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+gaae: gram:00029482:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029533:  ereport(ERROR, 
+gaae: gram:00029534:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029535:  errmsg("length for type %s must be at least 1", 
+gaae: gram:00029536:  typname))); 
+gaae: gram:00029538:  ereport(ERROR, 
+gaae: gram:00029539:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029540:  errmsg("length for type %s cannot exceed %d", 
+gaae: gram:00029541:  typname, MaxAttrSize * BITS_PER_BYTE))); 
+gaae: gram:00029616:  ereport(ERROR, 
 gaae: gram:00029617:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029618:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
-gaae: gram:00029619:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
-gaae: gram:00029620:  MAX_TIME_PRECISION))); 
-gaae: gram:00030261:  ereport(ERROR, 
-gaae: gram:00030262:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00030263:  errmsg("UNIQUE predicate is not yet implemented"), 
-gaae: gram:00030264:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00030392:  ereport(ERROR, 
-gaae: gram:00030393:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00030394:  errmsg("window OVER clause can only be used " 
-gaae: gram:00030395:  "with an aggregate"))); 
-gaae: gram:00030717:  ereport(ERROR, 
-gaae: gram:00030718:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030719:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
-gaae: gram:00030720:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030723:  ereport(WARNING, 
-gaae: gram:00030724:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030725:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030726:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030770:  ereport(ERROR, 
-gaae: gram:00030771:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030772:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030773:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030776:  ereport(WARNING, 
-gaae: gram:00030777:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030778:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030779:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00030823:  ereport(ERROR, 
-gaae: gram:00030824:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030825:  errmsg("LOCALTIME(%d) precision must not be negative", 
-gaae: gram:00030826:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030829:  ereport(WARNING, 
-gaae: gram:00030830:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030831:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030832:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030877:  ereport(ERROR, 
-gaae: gram:00030878:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030879:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030880:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030883:  ereport(WARNING, 
-gaae: gram:00030884:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030885:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030886:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00031868:  ereport(ERROR, 
-gaae: gram:00031869:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031870:  errmsg("improper qualified name (too many dotted names): %s", 
-gaae: gram:00031871:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
-gaae: gram:00032025:  ereport(ERROR, 
-gaae: gram:00032026:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00032027:  errmsg("INTERVAL(%d) precision must not be negative", 
-gaae: gram:00032028:  (yyvsp[(3) - (6)].ival)))); 
-gaae: gram:00032031:  ereport(WARNING, 
-gaae: gram:00032032:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00032033:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00032034:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
-gaae: gram:00032187:  ereport(ERROR, 
-gaae: gram:00032188:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032189:  errmsg("OLD used in query that is not in a rule"))); 
-gaae: gram:00032199:  ereport(ERROR, 
-gaae: gram:00032200:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032201:  errmsg("NEW used in query that is not in a rule"))); 
-gaae: gram:00032634:  ereport(ERROR, 
-gaae: gram:00032635:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032636:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
-gaae: gram:00032637:  scanner_errposition(location))); 
-gaae: gram:00032641:  ereport(ERROR, 
-gaae: gram:00032642:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032643:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
-gaae: gram:00032644:  scanner_errposition(location))); 
-gaae: gram:00032748:  ereport(ERROR, 
-gaae: gram:00032749:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032750:  errmsg("syntax error at or near \"ORDER BY\""), 
-gaae: gram:00032751:  scanner_errposition(exprLocation((Node *) sortClause)))); 
-gaae: gram:00032759:  ereport(ERROR, 
-gaae: gram:00032760:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032761:  errmsg("syntax error at or near \"OFFSET\""), 
-gaae: gram:00032762:  scanner_errposition(exprLocation(limitOffset)))); 
-gaae: gram:00032768:  ereport(ERROR, 
-gaae: gram:00032769:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032770:  errmsg("syntax error at or near \"LIMIT\""), 
-gaae: gram:00032771:  scanner_errposition(exprLocation(limitCount)))); 
-gaae: gram:00032777:  ereport(ERROR, 
-gaae: gram:00032778:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032779:  errmsg("syntax error at or near \"WITH\""), 
-gaae: gram:00032780:  scanner_errposition(exprLocation((Node *)withClause)))); 
-gaae: gram:00032933:  ereport(ERROR, 
-gaae: gram:00032934:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032935:  errmsg("OUT arguments aren't allowed in TABLE functions"))); 
-gaae: gram:00032938:  ereport(ERROR, 
-gaae: gram:00032939:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032940:  errmsg("INOUT arguments aren't allowed in TABLE functions"))); 
-gaae: gram:00032997:  ereport(ERROR, 
-gaae: gram:00032998:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00032999:  errmsg("window EXCLUDE clause not yet implemented"))); 
-gaae: gram:00033003:  ereport(ERROR, 
-gaae: gram:00033004:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00033005:  errmsg("invalid window EXCLUDE clause"))); 
+gaae: gram:00029618:  errmsg("length for type %s must be at least 1", 
+gaae: gram:00029619:  (yyvsp[(1) - (5)].str)))); 
+gaae: gram:00029621:  ereport(ERROR, 
+gaae: gram:00029622:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029623:  errmsg("length for type %s cannot exceed %d", 
+gaae: gram:00029624:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
+gaae: gram:00029721:  ereport(ERROR, 
+gaae: gram:00029722:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029723:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
+gaae: gram:00029724:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+gaae: gram:00029727:  ereport(WARNING, 
+gaae: gram:00029728:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029729:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
+gaae: gram:00029730:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+gaae: gram:00029731:  MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00029762:  ereport(ERROR, 
+gaae: gram:00029763:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029764:  errmsg("TIME(%d)%s precision must not be negative", 
+gaae: gram:00029765:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+gaae: gram:00029768:  ereport(WARNING, 
+gaae: gram:00029769:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029770:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
+gaae: gram:00029771:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+gaae: gram:00029772:  MAX_TIME_PRECISION))); 
+gaae: gram:00030413:  ereport(ERROR, 
+gaae: gram:00030414:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00030415:  errmsg("UNIQUE predicate is not yet implemented"), 
+gaae: gram:00030416:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00030544:  ereport(ERROR, 
+gaae: gram:00030545:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00030546:  errmsg("window OVER clause can only be used " 
+gaae: gram:00030547:  "with an aggregate"))); 
+gaae: gram:00030874:  ereport(ERROR, 
+gaae: gram:00030875:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030876:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+gaae: gram:00030877:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030880:  ereport(WARNING, 
+gaae: gram:00030881:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030882:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030883:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00030927:  ereport(ERROR, 
+gaae: gram:00030928:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030929:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00030930:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030933:  ereport(WARNING, 
+gaae: gram:00030934:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030935:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030936:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00030980:  ereport(ERROR, 
+gaae: gram:00030981:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030982:  errmsg("LOCALTIME(%d) precision must not be negative", 
+gaae: gram:00030983:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030986:  ereport(WARNING, 
+gaae: gram:00030987:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030988:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030989:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00031034:  ereport(ERROR, 
+gaae: gram:00031035:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031036:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00031037:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00031040:  ereport(WARNING, 
+gaae: gram:00031041:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031042:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00031043:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00032078:  ereport(ERROR, 
+gaae: gram:00032079:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032080:  errmsg("improper qualified name (too many dotted names): %s", 
+gaae: gram:00032081:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
+gaae: gram:00032235:  ereport(ERROR, 
+gaae: gram:00032236:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00032237:  errmsg("INTERVAL(%d) precision must not be negative", 
+gaae: gram:00032238:  (yyvsp[(3) - (6)].ival)))); 
+gaae: gram:00032241:  ereport(WARNING, 
+gaae: gram:00032242:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00032243:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00032244:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+gaae: gram:00032397:  ereport(ERROR, 
+gaae: gram:00032398:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032399:  errmsg("OLD used in query that is not in a rule"))); 
+gaae: gram:00032409:  ereport(ERROR, 
+gaae: gram:00032410:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032411:  errmsg("NEW used in query that is not in a rule"))); 
+gaae: gram:00032844:  ereport(ERROR, 
+gaae: gram:00032845:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032846:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
+gaae: gram:00032847:  scanner_errposition(location))); 
+gaae: gram:00032851:  ereport(ERROR, 
+gaae: gram:00032852:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032853:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
+gaae: gram:00032854:  scanner_errposition(location))); 
+gaae: gram:00032958:  ereport(ERROR, 
+gaae: gram:00032959:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032960:  errmsg("syntax error at or near \"ORDER BY\""), 
+gaae: gram:00032961:  scanner_errposition(exprLocation((Node *) sortClause)))); 
+gaae: gram:00032969:  ereport(ERROR, 
+gaae: gram:00032970:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032971:  errmsg("syntax error at or near \"OFFSET\""), 
+gaae: gram:00032972:  scanner_errposition(exprLocation(limitOffset)))); 
+gaae: gram:00032978:  ereport(ERROR, 
+gaae: gram:00032979:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032980:  errmsg("syntax error at or near \"LIMIT\""), 
+gaae: gram:00032981:  scanner_errposition(exprLocation(limitCount)))); 
+gaae: gram:00032987:  ereport(ERROR, 
+gaae: gram:00032988:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032989:  errmsg("syntax error at or near \"WITH\""), 
+gaae: gram:00032990:  scanner_errposition(exprLocation((Node *)withClause)))); 
+gaae: gram:00033143:  ereport(ERROR, 
+gaae: gram:00033144:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00033145:  errmsg("OUT arguments aren't allowed in TABLE functions"))); 
+gaae: gram:00033148:  ereport(ERROR, 
+gaae: gram:00033149:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00033150:  errmsg("INOUT arguments aren't allowed in TABLE functions"))); 
+gaae: gram:00033207:  ereport(ERROR, 
+gaae: gram:00033208:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00033209:  errmsg("window EXCLUDE clause not yet implemented"))); 
+gaae: gram:00033213:  ereport(ERROR, 
+gaae: gram:00033214:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00033215:  errmsg("invalid window EXCLUDE clause"))); 
 aaaaa GP_IGNORE: paaj: parsexagg - ./backend/parser/parse_agg.c
 paaj: parsexagg:00000087:  ereport(ERROR, 
 paaj: parsexagg:00000088:  (errcode(ERRCODE_GROUPING_ERROR), 
@@ -16083,327 +16083,331 @@ paaj: parsexcte:00000283:  (errcode(ERRCODE_SYNTAX_ERROR),
 paaj: parsexcte:00000284:  errmsg(ERRMSG_GP_WITH_COLUMNS_MISMATCH, cte->ctename), 
 paaj: parsexcte:00000285:  parser_errposition(pstate, cte->location))); 
 aaaaa GP_IGNORE: paba: parsexexpr - ./backend/parser/parse_expr.c
-paba: parsexexpr:00000204:  elog(ERROR, "unrecognized A_Expr kind: %d", a->kind); 
-paba: parsexexpr:00000360:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr)); 
-paba: parsexexpr:00000685:  ereport(ERROR, 
-paba: parsexexpr:00000686:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexexpr:00000687:  errmsg("column \"%s\" does not exist", 
-paba: parsexexpr:00000688:  name), 
-paba: parsexexpr:00000689:  errOmitLocation(true), 
-paba: parsexexpr:00000690:  parser_errposition(pstate, cref->location))); 
-paba: parsexexpr:00000768:  ereport(ERROR, 
-paba: parsexexpr:00000769:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00000770:  errmsg("cross-database references are not implemented: %s", 
-paba: parsexexpr:00000771:  NameListToString(cref->fields)), 
-paba: parsexexpr:00000772:  parser_errposition(pstate, cref->location))); 
-paba: parsexexpr:00000799:  ereport(ERROR, 
-paba: parsexexpr:00000800:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00000801:  errmsg("improper qualified name (too many dotted names): %s", 
-paba: parsexexpr:00000802:  NameListToString(cref->fields)), 
-paba: parsexexpr:00000803:  parser_errposition(pstate, cref->location))); 
-paba: parsexexpr:00000831:  ereport(ERROR, 
-paba: parsexexpr:00000832:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
-paba: parsexexpr:00000833:  errmsg("there is no parameter $%d", paramno))); 
-paba: parsexexpr:00000837:  ereport(ERROR, 
-paba: parsexexpr:00000838:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
-paba: parsexexpr:00000839:  errmsg("there is no parameter $%d", 
-paba: parsexexpr:00000840:  paramno), 
-paba: parsexexpr:00000841:  errOmitLocation(true))); 
-paba: parsexexpr:00001056:  ereport(ERROR, 
-paba: parsexexpr:00001057:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paba: parsexexpr:00001058:  errmsg("NULLIF requires = operator to yield boolean"), 
-paba: parsexexpr:00001059:  parser_errposition(pstate, a->location))); 
-paba: parsexexpr:00001212:  ereport(ERROR, 
-paba: parsexexpr:00001213:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001214:  errmsg("arguments of row IN must all be row expressions"), 
-paba: parsexexpr:00001215:  parser_errposition(pstate, a->location))); 
-paba: parsexexpr:00001423:  elog(ERROR, "unexpected non-SELECT command in SubLink"); 
-paba: parsexexpr:00001425:  ereport(ERROR, 
-paba: parsexexpr:00001426:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001427:  errmsg("subquery cannot have SELECT INTO"), 
-paba: parsexexpr:00001428:  errOmitLocation(true))); 
-paba: parsexexpr:00001452:  ereport(ERROR, 
-paba: parsexexpr:00001453:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001454:  errmsg("subquery must return a column"))); 
-paba: parsexexpr:00001458:  ereport(ERROR, 
-paba: parsexexpr:00001459:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001460:  errmsg("subquery must return only one column"))); 
-paba: parsexexpr:00001517:  ereport(ERROR, 
-paba: parsexexpr:00001518:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001519:  errmsg("subquery has too many columns"))); 
-paba: parsexexpr:00001521:  ereport(ERROR, 
-paba: parsexexpr:00001522:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001523:  errmsg("subquery has too few columns"))); 
-paba: parsexexpr:00001594:  ereport(ERROR, 
-paba: parsexexpr:00001595:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexexpr:00001596:  errmsg("could not find array type for data type %s", 
-paba: parsexexpr:00001597:  format_type_be(array_type)))); 
-paba: parsexexpr:00001649:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
-paba: parsexexpr:00001651:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
-paba: parsexexpr:00001653:  ereport(ERROR, 
-paba: parsexexpr:00001654:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00001655:  errmsg("subquery in TABLE value expression cannot have SELECT INTO"), 
-paba: parsexexpr:00001656:  errOmitLocation(true), 
-paba: parsexexpr:00001657:  parser_errposition(pstate, t->location))); 
-paba: parsexexpr:00001665:  ereport(ERROR, 
-paba: parsexexpr:00001666:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-paba: parsexexpr:00001667:  errmsg("subquery in TABLE value expression may not refer " 
-paba: parsexexpr:00001668:  "to relation of another query level"), 
-paba: parsexexpr:00001669:  errOmitLocation(true), 
-paba: parsexexpr:00001670:  parser_errposition(pstate, t->location))); 
-paba: parsexexpr:00001776:  elog(ERROR, "unrecognized booltesttype: %d", 
-paba: parsexexpr:00001777:  (int) b->booltesttype); 
-paba: parsexexpr:00001827:  elog(ERROR, "could not find type OID for relation %u", 
-paba: parsexexpr:00001828:  rte->relid); 
-paba: parsexexpr:00001971:  elog(ERROR, "cannot get type for untransformed sublink"); 
-paba: parsexexpr:00001980:  ereport(ERROR, 
-paba: parsexexpr:00001981:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexexpr:00001982:  errmsg("could not find array type for data type %s", 
-paba: parsexexpr:00001983:  format_type_be(exprType((Node *) tent->expr))))); 
-paba: parsexexpr:00002012:  ereport(ERROR, 
-paba: parsexexpr:00002013:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexexpr:00002014:  errmsg("could not find array type for data type %s", 
-paba: parsexexpr:00002015:  format_type_be(itemtype)))); 
-paba: parsexexpr:00002092:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr)); 
-paba: parsexexpr:00002338:  ereport(ERROR, 
-paba: parsexexpr:00002339:  (errcode(ERRCODE_CANNOT_COERCE), 
-paba: parsexexpr:00002340:  errmsg("cannot cast type %s to %s", 
-paba: parsexexpr:00002341:  format_type_be(inputType), 
-paba: parsexexpr:00002342:  format_type_be(targetType)), 
-paba: parsexexpr:00002343:  errOmitLocation(true), 
-paba: parsexexpr:00002344:  parser_errposition(pstate, typname->location))); 
-paba: parsexexpr:00002380:  ereport(ERROR, 
-paba: parsexexpr:00002381:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00002382:  errmsg("unequal number of entries in row expressions"), 
-paba: parsexexpr:00002383:  errOmitLocation(true), 
-paba: parsexexpr:00002384:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002391:  ereport(ERROR, 
-paba: parsexexpr:00002392:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002393:  errmsg("cannot compare rows of zero length"), 
-paba: parsexexpr:00002394:  errOmitLocation(true), 
-paba: parsexexpr:00002395:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002417:  ereport(ERROR, 
-paba: parsexexpr:00002418:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paba: parsexexpr:00002419:  errmsg("row comparison operator must yield type boolean, " 
-paba: parsexexpr:00002420:  "not type %s", 
-paba: parsexexpr:00002421:  format_type_be(cmp->opresulttype)), 
-paba: parsexexpr:00002422:  errOmitLocation(true), 
-paba: parsexexpr:00002423:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002425:  ereport(ERROR, 
-paba: parsexexpr:00002426:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paba: parsexexpr:00002427:  errmsg("row comparison operator must not return a set"), 
-paba: parsexexpr:00002428:  errOmitLocation(true), 
-paba: parsexexpr:00002429:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002479:  ereport(ERROR, 
-paba: parsexexpr:00002480:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002481:  errmsg("could not determine interpretation of row comparison operator %s", 
-paba: parsexexpr:00002482:  strVal(llast(opname))), 
-paba: parsexexpr:00002483:  errhint("Row comparison operators must be associated with btree operator classes."), 
-paba: parsexexpr:00002484:  errOmitLocation(true), 
-paba: parsexexpr:00002485:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002529:  ereport(ERROR, 
-paba: parsexexpr:00002530:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002531:  errmsg("could not determine interpretation of row comparison operator %s", 
-paba: parsexexpr:00002532:  strVal(llast(opname))), 
-paba: parsexexpr:00002533:  errdetail("There are multiple equally-plausible candidates."), 
-paba: parsexexpr:00002534:  errOmitLocation(true), 
-paba: parsexexpr:00002535:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002582:  ereport(ERROR, 
-paba: parsexexpr:00002583:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: parsexexpr:00002584:  errmsg("could not determine interpretation of row comparison operator %s", 
-paba: parsexexpr:00002585:  strVal(llast(opname))), 
-paba: parsexexpr:00002586:  errdetail("There are multiple equally-plausible candidates."), 
-paba: parsexexpr:00002587:  errOmitLocation(true), 
-paba: parsexexpr:00002588:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002636:  ereport(ERROR, 
-paba: parsexexpr:00002637:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexexpr:00002638:  errmsg("unequal number of entries in row expressions"), 
-paba: parsexexpr:00002639:  errOmitLocation(true), 
-paba: parsexexpr:00002640:  parser_errposition(pstate, location))); 
-paba: parsexexpr:00002676:  ereport(ERROR, 
-paba: parsexexpr:00002677:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paba: parsexexpr:00002678:  errmsg("IS DISTINCT FROM requires = operator to yield boolean"), 
-paba: parsexexpr:00002679:  errOmitLocation(true), 
-paba: parsexexpr:00002680:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00000203:  elog(ERROR, "unrecognized A_Expr kind: %d", a->kind); 
+paba: parsexexpr:00000359:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr)); 
+paba: parsexexpr:00000684:  ereport(ERROR, 
+paba: parsexexpr:00000685:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexexpr:00000686:  errmsg("column \"%s\" does not exist", 
+paba: parsexexpr:00000687:  name), 
+paba: parsexexpr:00000688:  errOmitLocation(true), 
+paba: parsexexpr:00000689:  parser_errposition(pstate, cref->location))); 
+paba: parsexexpr:00000767:  ereport(ERROR, 
+paba: parsexexpr:00000768:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00000769:  errmsg("cross-database references are not implemented: %s", 
+paba: parsexexpr:00000770:  NameListToString(cref->fields)), 
+paba: parsexexpr:00000771:  parser_errposition(pstate, cref->location))); 
+paba: parsexexpr:00000798:  ereport(ERROR, 
+paba: parsexexpr:00000799:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00000800:  errmsg("improper qualified name (too many dotted names): %s", 
+paba: parsexexpr:00000801:  NameListToString(cref->fields)), 
+paba: parsexexpr:00000802:  parser_errposition(pstate, cref->location))); 
+paba: parsexexpr:00000830:  ereport(ERROR, 
+paba: parsexexpr:00000831:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+paba: parsexexpr:00000832:  errmsg("there is no parameter $%d", paramno))); 
+paba: parsexexpr:00000836:  ereport(ERROR, 
+paba: parsexexpr:00000837:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+paba: parsexexpr:00000838:  errmsg("there is no parameter $%d", 
+paba: parsexexpr:00000839:  paramno), 
+paba: parsexexpr:00000840:  errOmitLocation(true))); 
+paba: parsexexpr:00001055:  ereport(ERROR, 
+paba: parsexexpr:00001056:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paba: parsexexpr:00001057:  errmsg("NULLIF requires = operator to yield boolean"), 
+paba: parsexexpr:00001058:  parser_errposition(pstate, a->location))); 
+paba: parsexexpr:00001211:  ereport(ERROR, 
+paba: parsexexpr:00001212:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001213:  errmsg("arguments of row IN must all be row expressions"), 
+paba: parsexexpr:00001214:  parser_errposition(pstate, a->location))); 
+paba: parsexexpr:00001371:  ereport(ERROR, 
+paba: parsexexpr:00001372:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001373:  errmsg("syntax error at or near \"NOT\""), 
+paba: parsexexpr:00001374:  errhint("Missing <operand> for \"CASE <operand> WHEN IS NOT DISTINCT FROM ...\""))); 
+paba: parsexexpr:00001461:  elog(ERROR, "unexpected non-SELECT command in SubLink"); 
+paba: parsexexpr:00001463:  ereport(ERROR, 
+paba: parsexexpr:00001464:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001465:  errmsg("subquery cannot have SELECT INTO"), 
+paba: parsexexpr:00001466:  errOmitLocation(true))); 
+paba: parsexexpr:00001490:  ereport(ERROR, 
+paba: parsexexpr:00001491:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001492:  errmsg("subquery must return a column"))); 
+paba: parsexexpr:00001496:  ereport(ERROR, 
+paba: parsexexpr:00001497:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001498:  errmsg("subquery must return only one column"))); 
+paba: parsexexpr:00001555:  ereport(ERROR, 
+paba: parsexexpr:00001556:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001557:  errmsg("subquery has too many columns"))); 
+paba: parsexexpr:00001559:  ereport(ERROR, 
+paba: parsexexpr:00001560:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001561:  errmsg("subquery has too few columns"))); 
+paba: parsexexpr:00001632:  ereport(ERROR, 
+paba: parsexexpr:00001633:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexexpr:00001634:  errmsg("could not find array type for data type %s", 
+paba: parsexexpr:00001635:  format_type_be(array_type)))); 
+paba: parsexexpr:00001687:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
+paba: parsexexpr:00001689:  elog(ERROR, "unexpected non-SELECT command in TableValueExpr"); 
+paba: parsexexpr:00001691:  ereport(ERROR, 
+paba: parsexexpr:00001692:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00001693:  errmsg("subquery in TABLE value expression cannot have SELECT INTO"), 
+paba: parsexexpr:00001694:  errOmitLocation(true), 
+paba: parsexexpr:00001695:  parser_errposition(pstate, t->location))); 
+paba: parsexexpr:00001703:  ereport(ERROR, 
+paba: parsexexpr:00001704:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+paba: parsexexpr:00001705:  errmsg("subquery in TABLE value expression may not refer " 
+paba: parsexexpr:00001706:  "to relation of another query level"), 
+paba: parsexexpr:00001707:  errOmitLocation(true), 
+paba: parsexexpr:00001708:  parser_errposition(pstate, t->location))); 
+paba: parsexexpr:00001814:  elog(ERROR, "unrecognized booltesttype: %d", 
+paba: parsexexpr:00001815:  (int) b->booltesttype); 
+paba: parsexexpr:00001865:  elog(ERROR, "could not find type OID for relation %u", 
+paba: parsexexpr:00001866:  rte->relid); 
+paba: parsexexpr:00002009:  elog(ERROR, "cannot get type for untransformed sublink"); 
+paba: parsexexpr:00002018:  ereport(ERROR, 
+paba: parsexexpr:00002019:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexexpr:00002020:  errmsg("could not find array type for data type %s", 
+paba: parsexexpr:00002021:  format_type_be(exprType((Node *) tent->expr))))); 
+paba: parsexexpr:00002050:  ereport(ERROR, 
+paba: parsexexpr:00002051:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexexpr:00002052:  errmsg("could not find array type for data type %s", 
+paba: parsexexpr:00002053:  format_type_be(itemtype)))); 
+paba: parsexexpr:00002130:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr)); 
+paba: parsexexpr:00002376:  ereport(ERROR, 
+paba: parsexexpr:00002377:  (errcode(ERRCODE_CANNOT_COERCE), 
+paba: parsexexpr:00002378:  errmsg("cannot cast type %s to %s", 
+paba: parsexexpr:00002379:  format_type_be(inputType), 
+paba: parsexexpr:00002380:  format_type_be(targetType)), 
+paba: parsexexpr:00002381:  errOmitLocation(true), 
+paba: parsexexpr:00002382:  parser_errposition(pstate, typname->location))); 
+paba: parsexexpr:00002418:  ereport(ERROR, 
+paba: parsexexpr:00002419:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00002420:  errmsg("unequal number of entries in row expressions"), 
+paba: parsexexpr:00002421:  errOmitLocation(true), 
+paba: parsexexpr:00002422:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002429:  ereport(ERROR, 
+paba: parsexexpr:00002430:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002431:  errmsg("cannot compare rows of zero length"), 
+paba: parsexexpr:00002432:  errOmitLocation(true), 
+paba: parsexexpr:00002433:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002455:  ereport(ERROR, 
+paba: parsexexpr:00002456:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paba: parsexexpr:00002457:  errmsg("row comparison operator must yield type boolean, " 
+paba: parsexexpr:00002458:  "not type %s", 
+paba: parsexexpr:00002459:  format_type_be(cmp->opresulttype)), 
+paba: parsexexpr:00002460:  errOmitLocation(true), 
+paba: parsexexpr:00002461:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002463:  ereport(ERROR, 
+paba: parsexexpr:00002464:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paba: parsexexpr:00002465:  errmsg("row comparison operator must not return a set"), 
+paba: parsexexpr:00002466:  errOmitLocation(true), 
+paba: parsexexpr:00002467:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002517:  ereport(ERROR, 
+paba: parsexexpr:00002518:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002519:  errmsg("could not determine interpretation of row comparison operator %s", 
+paba: parsexexpr:00002520:  strVal(llast(opname))), 
+paba: parsexexpr:00002521:  errhint("Row comparison operators must be associated with btree operator classes."), 
+paba: parsexexpr:00002522:  errOmitLocation(true), 
+paba: parsexexpr:00002523:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002567:  ereport(ERROR, 
+paba: parsexexpr:00002568:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002569:  errmsg("could not determine interpretation of row comparison operator %s", 
+paba: parsexexpr:00002570:  strVal(llast(opname))), 
+paba: parsexexpr:00002571:  errdetail("There are multiple equally-plausible candidates."), 
+paba: parsexexpr:00002572:  errOmitLocation(true), 
+paba: parsexexpr:00002573:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002620:  ereport(ERROR, 
+paba: parsexexpr:00002621:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: parsexexpr:00002622:  errmsg("could not determine interpretation of row comparison operator %s", 
+paba: parsexexpr:00002623:  strVal(llast(opname))), 
+paba: parsexexpr:00002624:  errdetail("There are multiple equally-plausible candidates."), 
+paba: parsexexpr:00002625:  errOmitLocation(true), 
+paba: parsexexpr:00002626:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002674:  ereport(ERROR, 
+paba: parsexexpr:00002675:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexexpr:00002676:  errmsg("unequal number of entries in row expressions"), 
+paba: parsexexpr:00002677:  errOmitLocation(true), 
+paba: parsexexpr:00002678:  parser_errposition(pstate, location))); 
+paba: parsexexpr:00002714:  ereport(ERROR, 
+paba: parsexexpr:00002715:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paba: parsexexpr:00002716:  errmsg("IS DISTINCT FROM requires = operator to yield boolean"), 
+paba: parsexexpr:00002717:  errOmitLocation(true), 
+paba: parsexexpr:00002718:  parser_errposition(pstate, location))); 
 aaaaa GP_IGNORE: paba: parsexfunc - ./backend/parser/parse_func.c
-paba: parsexfunc:00000183:  ereport(ERROR, 
-paba: parsexfunc:00000184:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00000185:  errmsg("cannot pass more than %d arguments to a function", 
-paba: parsexfunc:00000186:  FUNC_MAX_ARGS), 
-paba: parsexfunc:00000187:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000345:  ereport(ERROR, 
-paba: parsexfunc:00000346:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000347:  errmsg("%s(*) specified, but %s is not an aggregate function", 
-paba: parsexfunc:00000348:  NameListToString(funcname), 
-paba: parsexfunc:00000349:  NameListToString(funcname)), 
-paba: parsexfunc:00000350:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000352:  ereport(ERROR, 
-paba: parsexfunc:00000353:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000354:  errmsg("DISTINCT specified, but %s is not an aggregate function", 
-paba: parsexfunc:00000355:  NameListToString(funcname)), 
-paba: parsexfunc:00000356:  errOmitLocation(true), 
-paba: parsexfunc:00000357:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000359:  ereport(ERROR, 
-paba: parsexfunc:00000360:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000361:  errmsg("ORDER BY specified, but %s is not an ordered aggregate function", 
-paba: parsexfunc:00000362:  NameListToString(funcname)), 
-paba: parsexfunc:00000363:  errOmitLocation(true), 
-paba: parsexfunc:00000364:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000366:  ereport(ERROR, 
-paba: parsexfunc:00000367:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000368:  errmsg("filter clause specified, but " 
-paba: parsexfunc:00000369:  "%s is not an aggregate function", 
-paba: parsexfunc:00000370:  NameListToString(funcname)), 
-paba: parsexfunc:00000371:  errOmitLocation(true), 
-paba: parsexfunc:00000372:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000407:  ereport(ERROR, 
-paba: parsexfunc:00000408:  (errcode(ERRCODE_AMBIGUOUS_FUNCTION), 
-paba: parsexfunc:00000409:  errmsg("function %s is not unique", 
-paba: parsexfunc:00000410:  func_signature_string(funcname, nargs, 
-paba: parsexfunc:00000411:  actual_arg_types)), 
-paba: parsexfunc:00000412:  errhint("Could not choose a best candidate function. " 
-paba: parsexfunc:00000413:  "You may need to add explicit type casts."), 
-paba: parsexfunc:00000414:  errOmitLocation(true), 
-paba: parsexfunc:00000415:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000417:  ereport(ERROR, 
-paba: parsexfunc:00000418:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00000419:  errmsg("function %s does not exist", 
-paba: parsexfunc:00000420:  func_signature_string(funcname, nargs, 
-paba: parsexfunc:00000421:  actual_arg_types)), 
-paba: parsexfunc:00000422:  errhint("No function matches the given name and argument types. " 
-paba: parsexfunc:00000423:  "You may need to add explicit type casts."), 
-paba: parsexfunc:00000424:  errOmitLocation(true), 
-paba: parsexfunc:00000425:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000434:  ereport(ERROR, 
-paba: parsexfunc:00000435:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00000436:  errmsg("function %s() does not exist", 
-paba: parsexfunc:00000437:  NameListToString(funcname)), 
-paba: parsexfunc:00000438:  errhint("No function matches the given name and argument types. " 
-paba: parsexfunc:00000439:  "You may need to add explicit type casts."), 
-paba: parsexfunc:00000440:  errOmitLocation(true), 
-paba: parsexfunc:00000441:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000477:  ereport(ERROR, 
-paba: parsexfunc:00000478:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-paba: parsexfunc:00000479:  errmsg("window functions may not return sets"), 
-paba: parsexfunc:00000480:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000483:  ereport(ERROR, 
-paba: parsexfunc:00000484:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000485:  errmsg("aggregate ORDER BY is not implemented for window functions"), 
-paba: parsexfunc:00000486:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000497:  ereport(ERROR, 
-paba: parsexfunc:00000498:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000499:  errmsg("window function \"%s\" can not be used with a " 
-paba: parsexfunc:00000500:  "filter clause", 
-paba: parsexfunc:00000501:  NameListToString(funcname)), 
-paba: parsexfunc:00000502:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000559:  ereport(ERROR, 
-paba: parsexfunc:00000560:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000561:  errmsg("%s(*) must be used to call a parameterless aggregate function", 
-paba: parsexfunc:00000562:  NameListToString(funcname)), 
-paba: parsexfunc:00000563:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000583:  ereport(ERROR, 
-paba: parsexfunc:00000584:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-paba: parsexfunc:00000585:  errmsg("function %s is not defined as STRICT", 
-paba: parsexfunc:00000586:  func_signature_string(funcname, nargs, 
-paba: parsexfunc:00000587:  actual_arg_types)), 
-paba: parsexfunc:00000588:  errhint("The filter clause is only supported over functions " 
-paba: parsexfunc:00000589:  "defined as STRICT."), 
-paba: parsexfunc:00000590:  errOmitLocation(true))); 
-paba: parsexfunc:00000594:  ereport(ERROR, 
-paba: parsexfunc:00000595:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-paba: parsexfunc:00000596:  errmsg("aggregates may not return sets"), 
-paba: parsexfunc:00000597:  parser_errposition(pstate, location), 
-paba: parsexfunc:00000598:  errOmitLocation(true))); 
-paba: parsexfunc:00000606:  ereport(ERROR, 
-paba: parsexfunc:00000607:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000608:  errmsg("ORDER BY specified, but %s is not an ordered aggregate function", 
-paba: parsexfunc:00000609:  NameListToString(funcname)), 
-paba: parsexfunc:00000610:  errOmitLocation(true), 
-paba: parsexfunc:00000611:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000619:  ereport(ERROR, 
-paba: parsexfunc:00000620:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-paba: parsexfunc:00000621:  errmsg("ORDER BY and DISTINCT are mutually exclusive"), 
-paba: parsexfunc:00000622:  errOmitLocation(true), 
-paba: parsexfunc:00000623:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000784:  ereport(ERROR, 
-paba: parsexfunc:00000785:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00000786:  errmsg("cannot pass more than %d arguments to a function", 
-paba: parsexfunc:00000787:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001199:  elog(ERROR, "cache lookup failed for function %u", 
-paba: parsexfunc:00001200:  best_candidate->oid); 
-paba: parsexfunc:00001227:  elog(ERROR, "cache lookup failed for aggregate %u", 
-paba: parsexfunc:00001228:  best_candidate->oid); 
-paba: parsexfunc:00001470:  ereport(ERROR, 
-paba: parsexfunc:00001471:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001472:  errmsg("column %s.%s does not exist", 
-paba: parsexfunc:00001473:  rte->eref->aliasname, attname), 
-paba: parsexfunc:00001474:  errOmitLocation(true), 
-paba: parsexfunc:00001475:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001483:  ereport(ERROR, 
-paba: parsexfunc:00001484:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001485:  errmsg("column \"%s\" not found in data type %s", 
-paba: parsexfunc:00001486:  attname, format_type_be(relTypeId)), 
-paba: parsexfunc:00001487:  errOmitLocation(true), 
-paba: parsexfunc:00001488:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001490:  ereport(ERROR, 
-paba: parsexfunc:00001491:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001492:  errmsg("could not identify column \"%s\" in record data type", 
-paba: parsexfunc:00001493:  attname), 
-paba: parsexfunc:00001494:  errOmitLocation(true), 
-paba: parsexfunc:00001495:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001497:  ereport(ERROR, 
-paba: parsexfunc:00001498:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00001499:  errmsg("column notation .%s applied to type %s, " 
-paba: parsexfunc:00001500:  "which is not a composite type", 
-paba: parsexfunc:00001501:  attname, format_type_be(relTypeId)), 
-paba: parsexfunc:00001502:  errOmitLocation(true), 
-paba: parsexfunc:00001503:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001575:  ereport(ERROR, 
-paba: parsexfunc:00001576:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001577:  errmsg("function %s does not exist", 
-paba: parsexfunc:00001578:  func_signature_string(funcname, nargs, argtypes)), 
-paba: parsexfunc:00001579:  errOmitLocation(true))); 
-paba: parsexfunc:00001599:  ereport(ERROR, 
-paba: parsexfunc:00001600:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00001601:  errmsg("functions cannot have more than %d arguments", 
-paba: parsexfunc:00001602:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001612:  ereport(ERROR, 
-paba: parsexfunc:00001613:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexfunc:00001614:  errmsg("type \"%s\" does not exist", 
-paba: parsexfunc:00001615:  TypeNameToString(t)), 
-paba: parsexfunc:00001616:  errOmitLocation(true))); 
-paba: parsexfunc:00001645:  ereport(ERROR, 
-paba: parsexfunc:00001646:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00001647:  errmsg("functions cannot have more than %d arguments", 
-paba: parsexfunc:00001648:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001657:  ereport(ERROR, 
-paba: parsexfunc:00001658:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexfunc:00001659:  errmsg("type \"%s\" does not exist", 
-paba: parsexfunc:00001660:  TypeNameToString(t)), 
-paba: parsexfunc:00001661:  errOmitLocation(true))); 
-paba: parsexfunc:00001672:  ereport(ERROR, 
-paba: parsexfunc:00001673:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001674:  errmsg("aggregate %s(*) does not exist", 
-paba: parsexfunc:00001675:  NameListToString(aggname)), 
-paba: parsexfunc:00001676:  errOmitLocation(true))); 
-paba: parsexfunc:00001678:  ereport(ERROR, 
-paba: parsexfunc:00001679:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001680:  errmsg("aggregate %s does not exist", 
-paba: parsexfunc:00001681:  func_signature_string(aggname, 
-paba: parsexfunc:00001682:  argcount, argoids)), 
-paba: parsexfunc:00001683:  errOmitLocation(true))); 
-paba: parsexfunc:00001691:  elog(ERROR, "cache lookup failed for function %u", oid); 
-paba: parsexfunc:00001700:  ereport(ERROR, 
-paba: parsexfunc:00001701:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00001702:  errmsg("function %s is not an aggregate", 
-paba: parsexfunc:00001703:  func_signature_string(aggname, 
-paba: parsexfunc:00001704:  argcount, argoids)))); 
-paba: parsexfunc:00001755:  ereport(ERROR, 
-paba: parsexfunc:00001756:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexfunc:00001757:  errmsg("table functions must be invoked in FROM clause"))); 
-paba: parsexfunc:00001759:  ereport(ERROR, 
-paba: parsexfunc:00001760:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexfunc:00001761:  errmsg("invalid use of TABLE value expression"))); 
+paba: parsexfunc:00000101:  ereport(ERROR, 
+paba: parsexfunc:00000102:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00000103:  errmsg("cannot pass more than %d arguments to a function", 
+paba: parsexfunc:00000104:  FUNC_MAX_ARGS), 
+paba: parsexfunc:00000105:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000263:  ereport(ERROR, 
+paba: parsexfunc:00000264:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000265:  errmsg("%s(*) specified, but %s is not an aggregate function", 
+paba: parsexfunc:00000266:  NameListToString(funcname), 
+paba: parsexfunc:00000267:  NameListToString(funcname)), 
+paba: parsexfunc:00000268:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000270:  ereport(ERROR, 
+paba: parsexfunc:00000271:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000272:  errmsg("DISTINCT specified, but %s is not an aggregate function", 
+paba: parsexfunc:00000273:  NameListToString(funcname)), 
+paba: parsexfunc:00000274:  errOmitLocation(true), 
+paba: parsexfunc:00000275:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000277:  ereport(ERROR, 
+paba: parsexfunc:00000278:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000279:  errmsg("ORDER BY specified, but %s is not an ordered aggregate function", 
+paba: parsexfunc:00000280:  NameListToString(funcname)), 
+paba: parsexfunc:00000281:  errOmitLocation(true), 
+paba: parsexfunc:00000282:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000284:  ereport(ERROR, 
+paba: parsexfunc:00000285:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000286:  errmsg("filter clause specified, but " 
+paba: parsexfunc:00000287:  "%s is not an aggregate function", 
+paba: parsexfunc:00000288:  NameListToString(funcname)), 
+paba: parsexfunc:00000289:  errOmitLocation(true), 
+paba: parsexfunc:00000290:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000312:  ereport(ERROR, 
+paba: parsexfunc:00000313:  (errcode(ERRCODE_AMBIGUOUS_FUNCTION), 
+paba: parsexfunc:00000314:  errmsg("function %s is not unique", 
+paba: parsexfunc:00000315:  func_signature_string(funcname, nargs, 
+paba: parsexfunc:00000316:  actual_arg_types)), 
+paba: parsexfunc:00000317:  errhint("Could not choose a best candidate function. " 
+paba: parsexfunc:00000318:  "You may need to add explicit type casts."), 
+paba: parsexfunc:00000319:  errOmitLocation(true), 
+paba: parsexfunc:00000320:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000322:  ereport(ERROR, 
+paba: parsexfunc:00000323:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00000324:  errmsg("function %s does not exist", 
+paba: parsexfunc:00000325:  func_signature_string(funcname, nargs, 
+paba: parsexfunc:00000326:  actual_arg_types)), 
+paba: parsexfunc:00000327:  errhint("No function matches the given name and argument types. " 
+paba: parsexfunc:00000328:  "You may need to add explicit type casts."), 
+paba: parsexfunc:00000329:  errOmitLocation(true), 
+paba: parsexfunc:00000330:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000339:  ereport(ERROR, 
+paba: parsexfunc:00000340:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00000341:  errmsg("function %s() does not exist", 
+paba: parsexfunc:00000342:  NameListToString(funcname)), 
+paba: parsexfunc:00000343:  errhint("No function matches the given name and argument types. " 
+paba: parsexfunc:00000344:  "You may need to add explicit type casts."), 
+paba: parsexfunc:00000345:  errOmitLocation(true), 
+paba: parsexfunc:00000346:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000382:  ereport(ERROR, 
+paba: parsexfunc:00000383:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+paba: parsexfunc:00000384:  errmsg("window functions may not return sets"), 
+paba: parsexfunc:00000385:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000388:  ereport(ERROR, 
+paba: parsexfunc:00000389:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000390:  errmsg("aggregate ORDER BY is not implemented for window functions"), 
+paba: parsexfunc:00000391:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000402:  ereport(ERROR, 
+paba: parsexfunc:00000403:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000404:  errmsg("window function \"%s\" can not be used with a " 
+paba: parsexfunc:00000405:  "filter clause", 
+paba: parsexfunc:00000406:  NameListToString(funcname)), 
+paba: parsexfunc:00000407:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000464:  ereport(ERROR, 
+paba: parsexfunc:00000465:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000466:  errmsg("%s(*) must be used to call a parameterless aggregate function", 
+paba: parsexfunc:00000467:  NameListToString(funcname)), 
+paba: parsexfunc:00000468:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000488:  ereport(ERROR, 
+paba: parsexfunc:00000489:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+paba: parsexfunc:00000490:  errmsg("function %s is not defined as STRICT", 
+paba: parsexfunc:00000491:  func_signature_string(funcname, nargs, 
+paba: parsexfunc:00000492:  actual_arg_types)), 
+paba: parsexfunc:00000493:  errhint("The filter clause is only supported over functions " 
+paba: parsexfunc:00000494:  "defined as STRICT."), 
+paba: parsexfunc:00000495:  errOmitLocation(true))); 
+paba: parsexfunc:00000499:  ereport(ERROR, 
+paba: parsexfunc:00000500:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+paba: parsexfunc:00000501:  errmsg("aggregates may not return sets"), 
+paba: parsexfunc:00000502:  parser_errposition(pstate, location), 
+paba: parsexfunc:00000503:  errOmitLocation(true))); 
+paba: parsexfunc:00000511:  ereport(ERROR, 
+paba: parsexfunc:00000512:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000513:  errmsg("ORDER BY specified, but %s is not an ordered aggregate function", 
+paba: parsexfunc:00000514:  NameListToString(funcname)), 
+paba: parsexfunc:00000515:  errOmitLocation(true), 
+paba: parsexfunc:00000516:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000524:  ereport(ERROR, 
+paba: parsexfunc:00000525:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+paba: parsexfunc:00000526:  errmsg("ORDER BY and DISTINCT are mutually exclusive"), 
+paba: parsexfunc:00000527:  errOmitLocation(true), 
+paba: parsexfunc:00000528:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000689:  ereport(ERROR, 
+paba: parsexfunc:00000690:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00000691:  errmsg("cannot pass more than %d arguments to a function", 
+paba: parsexfunc:00000692:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001104:  elog(ERROR, "cache lookup failed for function %u", 
+paba: parsexfunc:00001105:  best_candidate->oid); 
+paba: parsexfunc:00001132:  elog(ERROR, "cache lookup failed for aggregate %u", 
+paba: parsexfunc:00001133:  best_candidate->oid); 
+paba: parsexfunc:00001375:  ereport(ERROR, 
+paba: parsexfunc:00001376:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001377:  errmsg("column %s.%s does not exist", 
+paba: parsexfunc:00001378:  rte->eref->aliasname, attname), 
+paba: parsexfunc:00001379:  errOmitLocation(true), 
+paba: parsexfunc:00001380:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001388:  ereport(ERROR, 
+paba: parsexfunc:00001389:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001390:  errmsg("column \"%s\" not found in data type %s", 
+paba: parsexfunc:00001391:  attname, format_type_be(relTypeId)), 
+paba: parsexfunc:00001392:  errOmitLocation(true), 
+paba: parsexfunc:00001393:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001395:  ereport(ERROR, 
+paba: parsexfunc:00001396:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001397:  errmsg("could not identify column \"%s\" in record data type", 
+paba: parsexfunc:00001398:  attname), 
+paba: parsexfunc:00001399:  errOmitLocation(true), 
+paba: parsexfunc:00001400:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001402:  ereport(ERROR, 
+paba: parsexfunc:00001403:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00001404:  errmsg("column notation .%s applied to type %s, " 
+paba: parsexfunc:00001405:  "which is not a composite type", 
+paba: parsexfunc:00001406:  attname, format_type_be(relTypeId)), 
+paba: parsexfunc:00001407:  errOmitLocation(true), 
+paba: parsexfunc:00001408:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001480:  ereport(ERROR, 
+paba: parsexfunc:00001481:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001482:  errmsg("function %s does not exist", 
+paba: parsexfunc:00001483:  func_signature_string(funcname, nargs, argtypes)), 
+paba: parsexfunc:00001484:  errOmitLocation(true))); 
+paba: parsexfunc:00001504:  ereport(ERROR, 
+paba: parsexfunc:00001505:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00001506:  errmsg("functions cannot have more than %d arguments", 
+paba: parsexfunc:00001507:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001517:  ereport(ERROR, 
+paba: parsexfunc:00001518:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexfunc:00001519:  errmsg("type \"%s\" does not exist", 
+paba: parsexfunc:00001520:  TypeNameToString(t)), 
+paba: parsexfunc:00001521:  errOmitLocation(true))); 
+paba: parsexfunc:00001550:  ereport(ERROR, 
+paba: parsexfunc:00001551:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00001552:  errmsg("functions cannot have more than %d arguments", 
+paba: parsexfunc:00001553:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001562:  ereport(ERROR, 
+paba: parsexfunc:00001563:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexfunc:00001564:  errmsg("type \"%s\" does not exist", 
+paba: parsexfunc:00001565:  TypeNameToString(t)), 
+paba: parsexfunc:00001566:  errOmitLocation(true))); 
+paba: parsexfunc:00001577:  ereport(ERROR, 
+paba: parsexfunc:00001578:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001579:  errmsg("aggregate %s(*) does not exist", 
+paba: parsexfunc:00001580:  NameListToString(aggname)), 
+paba: parsexfunc:00001581:  errOmitLocation(true))); 
+paba: parsexfunc:00001583:  ereport(ERROR, 
+paba: parsexfunc:00001584:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001585:  errmsg("aggregate %s does not exist", 
+paba: parsexfunc:00001586:  func_signature_string(aggname, 
+paba: parsexfunc:00001587:  argcount, argoids)), 
+paba: parsexfunc:00001588:  errOmitLocation(true))); 
+paba: parsexfunc:00001596:  elog(ERROR, "cache lookup failed for function %u", oid); 
+paba: parsexfunc:00001605:  ereport(ERROR, 
+paba: parsexfunc:00001606:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00001607:  errmsg("function %s is not an aggregate", 
+paba: parsexfunc:00001608:  func_signature_string(aggname, 
+paba: parsexfunc:00001609:  argcount, argoids)))); 
+paba: parsexfunc:00001660:  ereport(ERROR, 
+paba: parsexfunc:00001661:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexfunc:00001662:  errmsg("table functions must be invoked in FROM clause"))); 
+paba: parsexfunc:00001664:  ereport(ERROR, 
+paba: parsexfunc:00001665:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexfunc:00001666:  errmsg("invalid use of TABLE value expression"))); 
 aaaaa GP_IGNORE: paba: parsexnode - ./backend/parser/parse_node.c
 paba: parsexnode:00000181:  elog(ERROR, "cache lookup failed for type %u", arrayType); 
 paba: parsexnode:00000188:  ereport(ERROR, 
@@ -21581,50 +21585,50 @@ raaj: ruleutils:00003766:  elog(ERROR, "unexpected refassgnexpr");
 raaj: ruleutils:00003868:  elog(ERROR, "unrecognized boolop: %d", 
 raaj: ruleutils:00003869:  (int) expr->boolop); 
 raaj: ruleutils:00003945:  elog(ERROR, "unexpected FieldStore"); 
-raaj: ruleutils:00004052:  elog(ERROR, "unexpected CASE WHEN clause: %d", 
-raaj: ruleutils:00004053:  (int) nodeTag(w)); 
-raaj: ruleutils:00004254:  elog(ERROR, "unrecognized nulltesttype: %d", 
-raaj: ruleutils:00004255:  (int) ntest->nulltesttype); 
-raaj: ruleutils:00004290:  elog(ERROR, "unrecognized booltesttype: %d", 
-raaj: ruleutils:00004291:  (int) btest->booltesttype); 
-raaj: ruleutils:00004347:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-raaj: ruleutils:00004389:  elog(ERROR, "cache lookup failed for operator %u", opno); 
-raaj: ruleutils:00004408:  elog(ERROR, "bogus oprkind: %d", optup->oprkind); 
-raaj: ruleutils:00004473:  ereport(ERROR, 
-raaj: ruleutils:00004474:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-raaj: ruleutils:00004475:  errmsg("too many arguments"))); 
-raaj: ruleutils:00004537:  ereport(ERROR, 
-raaj: ruleutils:00004538:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-raaj: ruleutils:00004539:  errmsg("too many arguments"))); 
-raaj: ruleutils:00004616:  elog(ERROR, "unknown frame type"); 
-raaj: ruleutils:00004775:  elog(ERROR, "invalid exclusion type: %i", f->exclude); 
-raaj: ruleutils:00004797:  ereport(ERROR, 
-raaj: ruleutils:00004798:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-raaj: ruleutils:00004799:  errmsg("too many arguments"))); 
-raaj: ruleutils:00004823:  elog(ERROR, "internal error"); 
-raaj: ruleutils:00005048:  elog(ERROR, "unrecognized testexpr type: %d", 
-raaj: ruleutils:00005049:  (int) nodeTag(sublink->testexpr)); 
-raaj: ruleutils:00005081:  elog(ERROR, "unrecognized sublink type: %d", 
-raaj: ruleutils:00005082:  (int) sublink->subLinkType); 
-raaj: ruleutils:00005188:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
-raaj: ruleutils:00005296:  elog(ERROR, "unrecognized join type: %d", 
-raaj: ruleutils:00005297:  (int) j->jointype); 
-raaj: ruleutils:00005330:  elog(ERROR, "unrecognized join type: %d", 
-raaj: ruleutils:00005331:  (int) j->jointype); 
-raaj: ruleutils:00005383:  elog(ERROR, "unrecognized node type: %d", 
-raaj: ruleutils:00005384:  (int) nodeTag(jtnode)); 
-raaj: ruleutils:00005493:  elog(ERROR, "cache lookup failed for opclass %u", opclass); 
-raaj: ruleutils:00005553:  elog(ERROR, "argument type %s of FieldStore is not a tuple type", 
-raaj: ruleutils:00005554:  format_type_be(fstore->resulttype)); 
-raaj: ruleutils:00005794:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-raaj: ruleutils:00005864:  elog(ERROR, "cache lookup failed for function %u", funcid); 
-raaj: ruleutils:00005919:  elog(ERROR, "cache lookup failed for operator %u", operid); 
-raaj: ruleutils:00005943:  elog(ERROR, "unrecognized oprkind: %d", operform->oprkind); 
-raaj: ruleutils:00006026:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-raaj: ruleutils:00006604:  elog(ERROR, "unknown partitioning kind '%c'", 
-raaj: ruleutils:00006605:  pn->part->parkind); 
-raaj: ruleutils:00007013:  elog(ERROR, "unrecognized partitioning kind '%c'", 
-raaj: ruleutils:00007014:  pn->part->parkind); 
+raaj: ruleutils:00004066:  elog(ERROR, "unexpected CASE WHEN clause: %d", 
+raaj: ruleutils:00004067:  (int) nodeTag(w)); 
+raaj: ruleutils:00004268:  elog(ERROR, "unrecognized nulltesttype: %d", 
+raaj: ruleutils:00004269:  (int) ntest->nulltesttype); 
+raaj: ruleutils:00004304:  elog(ERROR, "unrecognized booltesttype: %d", 
+raaj: ruleutils:00004305:  (int) btest->booltesttype); 
+raaj: ruleutils:00004361:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+raaj: ruleutils:00004403:  elog(ERROR, "cache lookup failed for operator %u", opno); 
+raaj: ruleutils:00004422:  elog(ERROR, "bogus oprkind: %d", optup->oprkind); 
+raaj: ruleutils:00004487:  ereport(ERROR, 
+raaj: ruleutils:00004488:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+raaj: ruleutils:00004489:  errmsg("too many arguments"))); 
+raaj: ruleutils:00004551:  ereport(ERROR, 
+raaj: ruleutils:00004552:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+raaj: ruleutils:00004553:  errmsg("too many arguments"))); 
+raaj: ruleutils:00004630:  elog(ERROR, "unknown frame type"); 
+raaj: ruleutils:00004789:  elog(ERROR, "invalid exclusion type: %i", f->exclude); 
+raaj: ruleutils:00004811:  ereport(ERROR, 
+raaj: ruleutils:00004812:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+raaj: ruleutils:00004813:  errmsg("too many arguments"))); 
+raaj: ruleutils:00004837:  elog(ERROR, "internal error"); 
+raaj: ruleutils:00005062:  elog(ERROR, "unrecognized testexpr type: %d", 
+raaj: ruleutils:00005063:  (int) nodeTag(sublink->testexpr)); 
+raaj: ruleutils:00005095:  elog(ERROR, "unrecognized sublink type: %d", 
+raaj: ruleutils:00005096:  (int) sublink->subLinkType); 
+raaj: ruleutils:00005202:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
+raaj: ruleutils:00005310:  elog(ERROR, "unrecognized join type: %d", 
+raaj: ruleutils:00005311:  (int) j->jointype); 
+raaj: ruleutils:00005344:  elog(ERROR, "unrecognized join type: %d", 
+raaj: ruleutils:00005345:  (int) j->jointype); 
+raaj: ruleutils:00005397:  elog(ERROR, "unrecognized node type: %d", 
+raaj: ruleutils:00005398:  (int) nodeTag(jtnode)); 
+raaj: ruleutils:00005507:  elog(ERROR, "cache lookup failed for opclass %u", opclass); 
+raaj: ruleutils:00005567:  elog(ERROR, "argument type %s of FieldStore is not a tuple type", 
+raaj: ruleutils:00005568:  format_type_be(fstore->resulttype)); 
+raaj: ruleutils:00005808:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+raaj: ruleutils:00005878:  elog(ERROR, "cache lookup failed for function %u", funcid); 
+raaj: ruleutils:00005933:  elog(ERROR, "cache lookup failed for operator %u", operid); 
+raaj: ruleutils:00005957:  elog(ERROR, "unrecognized oprkind: %d", operform->oprkind); 
+raaj: ruleutils:00006040:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+raaj: ruleutils:00006618:  elog(ERROR, "unknown partitioning kind '%c'", 
+raaj: ruleutils:00006619:  pn->part->parkind); 
+raaj: ruleutils:00007027:  elog(ERROR, "unrecognized partitioning kind '%c'", 
+raaj: ruleutils:00007028:  pn->part->parkind); 
 aaaaa GP_IGNORE: saai: selfuncs - ./backend/utils/adt/selfuncs.c
 saai: selfuncs:00000951:  elog(ERROR, "patternsel called for operator without a negator"); 
 saai: selfuncs:00001055:  elog(ERROR, "unrecognized consttype: %u", 
