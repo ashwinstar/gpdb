@@ -25,7 +25,11 @@ else
 GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c
 GPFDISTOBJSFILES=$(subst .c,.o,$(GPFDISTFILES))
 # link with static libyaml so gpfdist won't need LD_LIBRARY_PATH
+ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
+GPFDIST_LIBS=-lyaml -lz -lbz2
+else
 GPFDIST_LIBS=$(BLD_THIRDPARTY_LIB_DIR)/libyaml.a -lz -lbz2
+endif
 endif
 
 export CC
