@@ -114,11 +114,11 @@ OPTIONS
 
     * -z option (uncompressed)
       Optimal performance of subsequent backups if change rate 
-      is less than 20%.
+      is low.
 
     * --rsyncable option
-      Optimal performance of subsequent backups 
-      if change rate is greater than 20%.
+      Optimal performance for initial backup and subsequent 
+      backups if change rate is high.
 
     * When running a mixed backup that backs up to both
       a local disk and to Data Domain, use the -u option
