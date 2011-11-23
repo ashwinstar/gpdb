@@ -31,6 +31,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 #define SOCKET int
 #ifndef closesocket
 #define closesocket(x)   close(x)
@@ -1720,6 +1721,39 @@ static int setup_read(request_t* r)
 		return (event_add(&r->ev, &r->tm));
 	}
 }
+static void print_listening_address(struct addrinfo *rp)
+{	
+	char stradd[200] = {0};	
+	
+	if (rp->ai_family == AF_INET)
+	{
+#ifndef WIN32
+		struct sockaddr_in *ain = (struct sockaddr_in*)rp->ai_addr;
+		inet_ntop(AF_INET, (const void*)&ain->sin_addr, stradd, 100);
+#else
+		/*
+		 * there is no alternative for inet_ntop in windows that works for all Win platforms
+		 * and for IPV6. inet_ntop transform the integer representation of the IP addr. into a string 
+		 */
+		sprintf(stradd, "IPV4 listening socket");
+#endif
+	}
+	else if (rp->ai_family == AF_INET6)
+	{
+#ifndef WIN32
+		struct sockaddr_in6 *ain = (struct sockaddr_in6*)rp->ai_addr;
+		inet_ntop(AF_INET6, (const void*)&ain->sin6_addr, stradd, 100);	
+#else
+		sprintf(stradd, "IPV6 listening socket");
+#endif
+	}
+	else 
+	{
+		sprintf(stradd, "unknown protocol - %d", rp->ai_family);
+	}
+	
+	gprint("address: %s\n", stradd);
+}
 
 /*
  * Search linked list (head) for first element with family (first_family).
@@ -1756,6 +1790,15 @@ static struct addrinfo* rearrange_addrs(struct addrinfo *head, int first_family)
 	
 	return new_head;
 	
+}
+
+static void print_addrinfo_list(struct addrinfo *head)
+{
+	struct addrinfo *iter;
+	for (iter = head; iter != NULL; iter = iter->ai_next)
+	{ 
+		print_listening_address(iter);
+	}
 }
 
 /* Create HTTP port and start to receive request */
@@ -1801,7 +1844,9 @@ static void http_setup(void)
 #endif
 		
 		addrs = rearrange_addrs(addrs, AF_INET6);
-		
+		gprint("Before opening listening sockets - following listening sockets are available:\n");
+		print_addrinfo_list(addrs);
+
 		/*
 		 * getaddrinfo() returns a list of address structures,
 		 * one for each valid address and family we can use.
@@ -1814,13 +1859,20 @@ static void http_setup(void)
 		 */
 		for (rp = addrs; rp != NULL; rp = rp->ai_next)
 		{
+			gprint("Trying to open listening socket:\n");
+			print_listening_address(rp);
+			
 			/*
 			 * getaddrinfo gives us all the parameters for the socket() call
 			 * as well as the parameters for the bind() call.
 			 */
-			f = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);			
+			f = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+
 			if (f == -1)
+			{
+				gwarning(FLINE, "Creating the socket failed\n");
 				continue;
+			}
 
 #ifndef WIN32
 			if (fcntl(f, F_SETFD, 1) == -1)
@@ -1849,6 +1901,8 @@ static void http_setup(void)
 
 			if (bind(f, rp->ai_addr, rp->ai_addrlen) != 0)
 			{
+				gwarning(FLINE, "bind function failed\n");
+
 				/* failed on bind, maybe this address family isn't supported */
 				close(f);
 				continue;
@@ -1869,12 +1923,7 @@ static void http_setup(void)
 			}
 			gcb.listen_socks[gcb.listen_sock_count++] = f;
 			
-			/*
-			 * if we got here, it means that for this given socket we succeeded to do bind and listen
-			 * and since we can only bind to one listening socket on a given port - it's time to live this iteration
-			 */
-			break;
-
+			gprint("Opening listening socket succeeded\n");
 		}
 
 		/* When we get here, we have either succeeded, or tried all address families for this port */
