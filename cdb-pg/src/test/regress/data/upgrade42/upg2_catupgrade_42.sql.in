@@ -198,7 +198,7 @@ begin
 end;
 $$ language 'plpgsql';
 
-select @gpupgradeschemaname@.grant_gphdfs();
+select @gpupgradeschemaname@.grant_gphdfs() where current_database() != 'template0';
 drop function @gpupgradeschemaname@.grant_gphdfs();
 
 -- fixedwidth functions
