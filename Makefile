@@ -758,8 +758,6 @@ endif
 	# ---- copy ODBC fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC_ODBC)
 	(cd client/odbc/src/greenplum-connectivity/odbc/ && $(TAR) cf - --exclude=*.la *) | (cd $(CONNECTIVITYINSTLOC_ODBC)/ && $(TAR) xvf -)$(check_pipe_for_errors)
-	# ---- copy docs fileset ----
-	cp -f client/docs/release/GPConnect$(DOC_TYPE).pdf $(CONNECTIVITYINSTLOC)
 	# ---- copy scripts fileset ----
 	mkdir -p $(CONNECTIVITYINSTLOC)
 	cp -f client/scripts/greenplum_$@_path$(SCRIPT) $(CONNECTIVITYINSTLOC)/
@@ -826,8 +824,6 @@ ifneq "$(findstring $(BLD_ARCH),sol8_sparc_32 sol9_sparc_32)" ""
 	(cd $(BLD_TOP)/opensource/ && $(TAR) cf - libiconv-* libidn-* libintl-* sasl-*) | (cd $(CLIENTINSTLOC_OPENSOURCE)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
 	# ---- copy docs fileset ----
-	mkdir -p $(CLIENTINSTLOC)
-	cp -f client/docs/release/GPClientTools$(DOC_TYPE).pdf $(CLIENTINSTLOC)/
 	mkdir -p $(CLIENTINSTLOC_DOCS)
 	cp -rpf client/docs/release/$(CLIENT_SQLDOCS) $(CLIENTINSTLOC_DOCS)/
 	# ---- copy scripts fileset ----
@@ -912,8 +908,6 @@ ifneq "$(findstring $(BLD_ARCH),sol8_sparc_32 sol9_sparc_32 sol10_sparc_32)" ""
 	mkdir -p $(LOADERSINSTLOC_OPENSOURCE)
 	(cd $(BLD_TOP)/opensource/ && $(TAR) cf - libiconv-* expat-*) | (cd $(LOADERSINSTLOC_OPENSOURCE)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
-	# ---- copy docs fileset ----
-	cp -f client/docs/release/GPLoadTools$(DOC_TYPE).pdf $(LOADERSINSTLOC)
 	# ---- copy scripts fileset ----
 	mkdir -p $(LOADERSINSTLOC)
 	cp -f client/scripts/greenplum_$@_path$(SCRIPT) $(LOADERSINSTLOC)/
