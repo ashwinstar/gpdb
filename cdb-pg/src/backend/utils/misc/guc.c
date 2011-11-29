@@ -82,6 +82,10 @@
 #include "cdb/cdbappendonlyblockdirectory.h"
 #include "cdb/memquota.h"
 
+#ifdef USE_CONNECTEMC
+#include "emcconnect/api.h"
+#endif
+
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
 #endif

@@ -48,6 +48,7 @@
 #include "utils/builtins.h"
 #if USE_CONNECTEMC
 #include "emcconnect/api.h"
+extern EmcConnectModeType_t gp_emcconnect_transport;
 #endif
 
 extern int	PostPortNumber;
