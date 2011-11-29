@@ -1094,8 +1094,6 @@ copydocs :
 	@if [ ! -d $(GPDOCDIR) ] ; then \
 	    echo "Error Copying Documentation: $(GPDOCDIR) is not present"; \
 	else  echo "Copying Documentation" ;  \
-	    echo "Copying $(GPDOCDIR)/pdf/GP*.pdf" ; \
-	    cp $(GPDOCDIR)/pdf/GP*.pdf $(INSTLOC)/docs/; \
 	    if [ -d $(INSTLOC)/doc/postgresql/contrib ] ; then \
 	        mkdir -p $(INSTLOC)/docs/contrib ; \
 	        echo "Copying postgresql contrib documentation" ; \
