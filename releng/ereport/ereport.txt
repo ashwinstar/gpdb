@@ -2494,8 +2494,8 @@ haae: heap:00003225:  errhint("Truncate table \"%s\" at the same time, "
 haae: heap:00003226:  "or use TRUNCATE ... CASCADE.", 
 haae: heap:00003227:  relname2), 
 haae: heap:00003228:  errOmitLocation(true))); 
-haae: heap:00003349:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003350:  RelationGetRelid(relation)); 
+haae: heap:00003356:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003357:  RelationGetRelid(relation)); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000186:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000217:  elog(ERROR, "too few entries in indexprs list"); 
@@ -13291,13 +13291,21 @@ nabh: nodetablefunction:00000216:  errdetail("Returned tuple does not match outp
 nabh: nodetablefunction:00000217:  "tuple descriptor."))); 
 nabh: nodetablefunction:00000340:  elog(ERROR, "table function expression is not a function expression"); 
 nabh: nodetablefunction:00000385:  elog(ERROR, "table function has unsupported return type"); 
-nabh: nodetablefunction:00000471:  elog(ERROR, "invalid rescan of TableFunctionScan"); 
-nabh: nodetablefunction:00000501:  ereport(ERROR, 
-nabh: nodetablefunction:00000502:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-nabh: nodetablefunction:00000503:  errmsg("invalid null value for anytable type"))); 
-nabh: nodetablefunction:00000518:  ereport(ERROR, 
-nabh: nodetablefunction:00000519:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-nabh: nodetablefunction:00000520:  errmsg("invalid null value for anytable type"))); 
+nabh: nodetablefunction:00000472:  elog(ERROR, "invalid rescan of TableFunctionScan"); 
+nabh: nodetablefunction:00000502:  ereport(ERROR, 
+nabh: nodetablefunction:00000503:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+nabh: nodetablefunction:00000504:  errmsg("invalid null value for anytable type"))); 
+nabh: nodetablefunction:00000519:  ereport(ERROR, 
+nabh: nodetablefunction:00000520:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+nabh: nodetablefunction:00000521:  errmsg("invalid null value for anytable type"))); 
+nabh: nodetablefunction:00000552:  ereport(ERROR, 
+nabh: nodetablefunction:00000553:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+nabh: nodetablefunction:00000554:  errmsg("expected RangeTblEntry node, found %d", 
+nabh: nodetablefunction:00000555:  fcinfo->context ? nodeTag(fcinfo->context) : 0))); 
+nabh: nodetablefunction:00000573:  ereport(ERROR, 
+nabh: nodetablefunction:00000574:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+nabh: nodetablefunction:00000575:  errmsg("expected TableFunctionState node, found %d", 
+nabh: nodetablefunction:00000576:  fcinfo->context ? nodeTag(fcinfo->context) : 0))); 
 aaaaa GP_IGNORE: nabb: nodetidscan - ./backend/executor/nodeTidscan.c
 nabb: nodetidscan:00000094:  elog(ERROR, "could not identify CTID variable"); 
 nabb: nodetidscan:00000154:  elog(ERROR, "could not identify CTID expression"); 
@@ -13763,32 +13771,32 @@ baaj: bitmapset:00000505:  elog(ERROR, "bitmapset is empty");
 baaj: bitmapset:00000636:  elog(ERROR, "negative bitmapset member not allowed"); 
 baaj: bitmapset:00000674:  elog(ERROR, "negative bitmapset member not allowed"); 
 aaaaa GP_IGNORE: caaj: copyfuncs - ./backend/nodes/copyfuncs.c
-caaj: copyfuncs:00002049:  elog(ERROR, "unrecognized node type: %d", 
-caaj: copyfuncs:00002050:  (int) from->val.type); 
-caaj: copyfuncs:00003930:  elog(ERROR, "unrecognized node type: %d", 
-caaj: copyfuncs:00003931:  (int) from->type); 
-caaj: copyfuncs:00004692:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from)); 
+caaj: copyfuncs:00002051:  elog(ERROR, "unrecognized node type: %d", 
+caaj: copyfuncs:00002052:  (int) from->val.type); 
+caaj: copyfuncs:00003932:  elog(ERROR, "unrecognized node type: %d", 
+caaj: copyfuncs:00003933:  (int) from->type); 
+caaj: copyfuncs:00004694:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from)); 
 aaaaa GP_IGNORE: eaba: equalfuncs - ./backend/nodes/equalfuncs.c
-eaba: equalfuncs:00002349:  elog(ERROR, "unrecognized list node type: %d", 
-eaba: equalfuncs:00002350:  (int) a->type); 
-eaba: equalfuncs:00002386:  elog(ERROR, "unrecognized node type: %d", (int) a->type); 
-eaba: equalfuncs:00002994:  elog(ERROR, "unrecognized node type: %d", 
-eaba: equalfuncs:00002995:  (int) nodeTag(a)); 
+eaba: equalfuncs:00002350:  elog(ERROR, "unrecognized list node type: %d", 
+eaba: equalfuncs:00002351:  (int) a->type); 
+eaba: equalfuncs:00002387:  elog(ERROR, "unrecognized node type: %d", (int) a->type); 
+eaba: equalfuncs:00002995:  elog(ERROR, "unrecognized node type: %d", 
+eaba: equalfuncs:00002996:  (int) nodeTag(a)); 
 aaaaa GP_IGNORE: laae: list - ./backend/nodes/list.c
 laae: list:00000328:  elog(ERROR, "cannot list_concat() a list to itself"); 
 aaaaa GP_IGNORE: oaah: outfast - ./backend/nodes/outfast.c
-oaah: outfast:00002972:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
-oaah: outfast:00003066:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
-oaah: outfast:00003163:  elog(WARNING,"serialization doesn't know what to do with this constraint"); 
-oaah: outfast:00004152:  elog(ERROR, "could not serialize unrecognized node type: %d", 
-oaah: outfast:00004153:  (int) nodeTag(obj)); 
+oaah: outfast:00002976:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
+oaah: outfast:00003070:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
+oaah: outfast:00003167:  elog(WARNING,"serialization doesn't know what to do with this constraint"); 
+oaah: outfast:00004156:  elog(ERROR, "could not serialize unrecognized node type: %d", 
+oaah: outfast:00004157:  (int) nodeTag(obj)); 
 aaaaa GP_IGNORE: oaai: outfuncs - ./backend/nodes/outfuncs.c
-oaai: outfuncs:00000196:  elog(ERROR, "unrecognized list node type: %d", 
-oaai: outfuncs:00000197:  (int) node->type); 
-oaai: outfuncs:00003271:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
-oaai: outfuncs:00003370:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
-oaai: outfuncs:00004489:  elog(WARNING, "could not dump unrecognized node type: %d", 
-oaai: outfuncs:00004490:  (int) nodeTag(obj)); 
+oaai: outfuncs:00000200:  elog(ERROR, "unrecognized list node type: %d", 
+oaai: outfuncs:00000201:  (int) node->type); 
+oaai: outfuncs:00003280:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
+oaai: outfuncs:00003379:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
+oaai: outfuncs:00004498:  elog(WARNING, "could not dump unrecognized node type: %d", 
+oaai: outfuncs:00004499:  (int) nodeTag(obj)); 
 aaaaa GP_IGNORE: raae: read - ./backend/nodes/read.c
 raae: read:00000329:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 raae: read:00000330:  errmsg("This operation requires a feature " 
@@ -13815,34 +13823,34 @@ raae: read:00000535:  elog(ERROR, "did not find '%c' as expected", closingDelimi
 raae: read:00000552:  elog(ERROR, "did not find '%c' as expected, instead found %s", 
 raae: read:00000553:  closingDelimiter, token); 
 aaaaa GP_IGNORE: raai: readfast - ./backend/nodes/readfast.c
-raai: readfast:00000561:  elog(WARNING,"Can't deserialize constraint %d",(int)local_node->contype); 
-raai: readfast:00001067:  elog(ERROR,"Unable to understand A_Expr node "); 
-raai: readfast:00001763:  elog(ERROR, "unrecognized RTE kind: %d", 
-raai: readfast:00001764:  (int) local_node->rtekind); 
-raai: readfast:00003590:  elog(ERROR, "unknown Value node type %i", nt); 
-raai: readfast:00004291:  elog(ERROR, "could not deserialize unrecognized node type: %d", 
-raai: readfast:00004292:  (int) nt); 
-raai: readfast:00004310:  elog(ERROR,"Deserialization lost sync."); 
+raai: readfast:00000565:  elog(WARNING,"Can't deserialize constraint %d",(int)local_node->contype); 
+raai: readfast:00001071:  elog(ERROR,"Unable to understand A_Expr node "); 
+raai: readfast:00001768:  elog(ERROR, "unrecognized RTE kind: %d", 
+raai: readfast:00001769:  (int) local_node->rtekind); 
+raai: readfast:00003595:  elog(ERROR, "unknown Value node type %i", nt); 
+raai: readfast:00004296:  elog(ERROR, "could not deserialize unrecognized node type: %d", 
+raai: readfast:00004297:  (int) nt); 
+raai: readfast:00004315:  elog(ERROR,"Deserialization lost sync."); 
 aaaaa GP_IGNORE: raaj: readfuncs - ./backend/nodes/readfuncs.c
-raaj: readfuncs:00001262:  elog(ERROR,"Deserialization problem: A_Const not string, bitstring, float, or int"); 
-raaj: readfuncs:00001334:  elog(ERROR,"Unable to understand A_Expr node %.30s",token); 
-raaj: readfuncs:00001577:  elog(ERROR, "unrecognized boolop \"%.*s\"", length, token); 
-raaj: readfuncs:00002069:  elog(ERROR, "unrecognized RTE kind: %d", 
-raaj: readfuncs:00002070:  (int) local_node->rtekind); 
-raaj: readfuncs:00003146:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raaj: readfuncs:00003147:  errmsg("This operation involves an internal data item " 
-raaj: readfuncs:00003148:  "of a type called \"%.*s\" which is not " 
-raaj: readfuncs:00003149:  "supported in this version of %s.", 
-raaj: readfuncs:00003150:  length, token, PACKAGE_NAME) 
-raaj: readfuncs:00003151:  )); 
-raaj: readfuncs:00003192:  elog(ERROR, "expected \"[\" to start datum, but got \"%s\"; length = %lu", 
-raaj: readfuncs:00003193:  token ? (const char *) token : "[NULL]", 
-raaj: readfuncs:00003194:  (unsigned long) length); 
-raaj: readfuncs:00003199:  elog(ERROR, "byval datum but length = %lu", 
-raaj: readfuncs:00003200:  (unsigned long) length); 
-raaj: readfuncs:00003224:  elog(ERROR, "expected \"]\" to end datum, but got \"%s\"; length = %lu", 
-raaj: readfuncs:00003225:  token ? (const char *) token : "[NULL]", 
-raaj: readfuncs:00003226:  (unsigned long) length); 
+raaj: readfuncs:00001266:  elog(ERROR,"Deserialization problem: A_Const not string, bitstring, float, or int"); 
+raaj: readfuncs:00001338:  elog(ERROR,"Unable to understand A_Expr node %.30s",token); 
+raaj: readfuncs:00001581:  elog(ERROR, "unrecognized boolop \"%.*s\"", length, token); 
+raaj: readfuncs:00002077:  elog(ERROR, "unrecognized RTE kind: %d", 
+raaj: readfuncs:00002078:  (int) local_node->rtekind); 
+raaj: readfuncs:00003154:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raaj: readfuncs:00003155:  errmsg("This operation involves an internal data item " 
+raaj: readfuncs:00003156:  "of a type called \"%.*s\" which is not " 
+raaj: readfuncs:00003157:  "supported in this version of %s.", 
+raaj: readfuncs:00003158:  length, token, PACKAGE_NAME) 
+raaj: readfuncs:00003159:  )); 
+raaj: readfuncs:00003200:  elog(ERROR, "expected \"[\" to start datum, but got \"%s\"; length = %lu", 
+raaj: readfuncs:00003201:  token ? (const char *) token : "[NULL]", 
+raaj: readfuncs:00003202:  (unsigned long) length); 
+raaj: readfuncs:00003207:  elog(ERROR, "byval datum but length = %lu", 
+raaj: readfuncs:00003208:  (unsigned long) length); 
+raaj: readfuncs:00003232:  elog(ERROR, "expected \"]\" to end datum, but got \"%s\"; length = %lu", 
+raaj: readfuncs:00003233:  token ? (const char *) token : "[NULL]", 
+raaj: readfuncs:00003234:  (unsigned long) length); 
 aaaaa GP_IGNORE: taaj: tidbitmap - ./backend/nodes/tidbitmap.c
 taaj: tidbitmap:00000277: // elog(ERROR, "tuple offset out of range: %u", off); 
 taaj: tidbitmap:00000431:  elog(ERROR, "hash table corrupted"); 
@@ -16548,108 +16556,109 @@ pabe: parsexrelation:00001025:  ereport(ERROR,
 pabe: parsexrelation:00001026:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 pabe: parsexrelation:00001027:  errmsg("functions over multiple TABLE value " 
 pabe: parsexrelation:00001028:  "expressions not supported"))); 
-pabe: parsexrelation:00001110:  ereport(ERROR, 
-pabe: parsexrelation:00001111:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabe: parsexrelation:00001112:  errmsg("a column definition list is only allowed for functions returning \"record\""), 
-pabe: parsexrelation:00001113:  errOmitLocation(true))); 
-pabe: parsexrelation:00001118:  ereport(ERROR, 
-pabe: parsexrelation:00001119:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabe: parsexrelation:00001120:  errmsg("a column definition list is required for functions returning \"record\""), 
-pabe: parsexrelation:00001121:  errOmitLocation(true))); 
-pabe: parsexrelation:00001153:  ereport(ERROR, 
-pabe: parsexrelation:00001154:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-pabe: parsexrelation:00001155:  errmsg("column \"%s\" cannot be declared SETOF", 
-pabe: parsexrelation:00001156:  attrname), 
-pabe: parsexrelation:00001157:  errOmitLocation(true))); 
+pabe: parsexrelation:00001093:  elog(ERROR, "function %u returned NULL", flinfo.fn_oid); 
+pabe: parsexrelation:00001123:  ereport(ERROR, 
+pabe: parsexrelation:00001124:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabe: parsexrelation:00001125:  errmsg("a column definition list is only allowed for functions returning \"record\""), 
+pabe: parsexrelation:00001126:  errOmitLocation(true))); 
+pabe: parsexrelation:00001131:  ereport(ERROR, 
+pabe: parsexrelation:00001132:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabe: parsexrelation:00001133:  errmsg("a column definition list is required for functions returning \"record\""), 
+pabe: parsexrelation:00001134:  errOmitLocation(true))); 
 pabe: parsexrelation:00001166:  ereport(ERROR, 
-pabe: parsexrelation:00001167:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-pabe: parsexrelation:00001168:  errmsg("function \"%s\" in FROM has unsupported return type %s", 
-pabe: parsexrelation:00001169:  funcname, format_type_be(funcrettype)), 
+pabe: parsexrelation:00001167:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+pabe: parsexrelation:00001168:  errmsg("column \"%s\" cannot be declared SETOF", 
+pabe: parsexrelation:00001169:  attrname), 
 pabe: parsexrelation:00001170:  errOmitLocation(true))); 
-pabe: parsexrelation:00001236:  ereport(ERROR, 
-pabe: parsexrelation:00001237:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabe: parsexrelation:00001238:  errmsg("VALUES lists \"%s\" have %d columns available but %d columns specified", 
-pabe: parsexrelation:00001239:  refname, numcolumns, numaliases), 
-pabe: parsexrelation:00001240:  errOmitLocation(true))); 
-pabe: parsexrelation:00001290:  ereport(ERROR, 
-pabe: parsexrelation:00001291:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-pabe: parsexrelation:00001292:  errmsg("joins can have at most %d columns", 
-pabe: parsexrelation:00001293:  MaxAttrNumber))); 
-pabe: parsexrelation:00001393:  ereport(ERROR, 
-pabe: parsexrelation:00001394:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabe: parsexrelation:00001395:  errmsg(ERRMSG_GP_WITH_COLUMNS_MISMATCH, refname))); 
-pabe: parsexrelation:00001695:  elog(ERROR, "function in FROM has unsupported return type"); 
-pabe: parsexrelation:00001794:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
-pabe: parsexrelation:00001983:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), 
-pabe: parsexrelation:00001984:  errmsg_internal("invalid attnum %d for rangetable entry %s", 
-pabe: parsexrelation:00001985:  attnum, name) )); 
-pabe: parsexrelation:00002010:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-pabe: parsexrelation:00002011:  attnum, rte->relid); 
-pabe: parsexrelation:00002019:  ereport(ERROR, 
-pabe: parsexrelation:00002020:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabe: parsexrelation:00002021:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-pabe: parsexrelation:00002022:  NameStr(att_tup->attname), 
-pabe: parsexrelation:00002023:  get_rel_name(rte->relid)), 
-pabe: parsexrelation:00002024:  errOmitLocation(true))); 
-pabe: parsexrelation:00002037:  elog(ERROR, "subquery %s does not have attribute %d", 
-pabe: parsexrelation:00002038:  rte->eref->aliasname, attnum); 
-pabe: parsexrelation:00002063:  ereport(ERROR, 
-pabe: parsexrelation:00002064:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabe: parsexrelation:00002065:  errmsg("column %d of relation \"%s\" does not exist", 
-pabe: parsexrelation:00002066:  attnum, 
-pabe: parsexrelation:00002067:  rte->eref->aliasname))); 
+pabe: parsexrelation:00001179:  ereport(ERROR, 
+pabe: parsexrelation:00001180:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+pabe: parsexrelation:00001181:  errmsg("function \"%s\" in FROM has unsupported return type %s", 
+pabe: parsexrelation:00001182:  funcname, format_type_be(funcrettype)), 
+pabe: parsexrelation:00001183:  errOmitLocation(true))); 
+pabe: parsexrelation:00001249:  ereport(ERROR, 
+pabe: parsexrelation:00001250:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabe: parsexrelation:00001251:  errmsg("VALUES lists \"%s\" have %d columns available but %d columns specified", 
+pabe: parsexrelation:00001252:  refname, numcolumns, numaliases), 
+pabe: parsexrelation:00001253:  errOmitLocation(true))); 
+pabe: parsexrelation:00001303:  ereport(ERROR, 
+pabe: parsexrelation:00001304:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+pabe: parsexrelation:00001305:  errmsg("joins can have at most %d columns", 
+pabe: parsexrelation:00001306:  MaxAttrNumber))); 
+pabe: parsexrelation:00001406:  ereport(ERROR, 
+pabe: parsexrelation:00001407:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabe: parsexrelation:00001408:  errmsg(ERRMSG_GP_WITH_COLUMNS_MISMATCH, refname))); 
+pabe: parsexrelation:00001708:  elog(ERROR, "function in FROM has unsupported return type"); 
+pabe: parsexrelation:00001807:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
+pabe: parsexrelation:00001996:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), 
+pabe: parsexrelation:00001997:  errmsg_internal("invalid attnum %d for rangetable entry %s", 
+pabe: parsexrelation:00001998:  attnum, name) )); 
+pabe: parsexrelation:00002023:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+pabe: parsexrelation:00002024:  attnum, rte->relid); 
+pabe: parsexrelation:00002032:  ereport(ERROR, 
+pabe: parsexrelation:00002033:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabe: parsexrelation:00002034:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+pabe: parsexrelation:00002035:  NameStr(att_tup->attname), 
+pabe: parsexrelation:00002036:  get_rel_name(rte->relid)), 
+pabe: parsexrelation:00002037:  errOmitLocation(true))); 
+pabe: parsexrelation:00002050:  elog(ERROR, "subquery %s does not have attribute %d", 
+pabe: parsexrelation:00002051:  rte->eref->aliasname, attnum); 
 pabe: parsexrelation:00002076:  ereport(ERROR, 
 pabe: parsexrelation:00002077:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabe: parsexrelation:00002078:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-pabe: parsexrelation:00002079:  NameStr(att_tup->attname), 
+pabe: parsexrelation:00002078:  errmsg("column %d of relation \"%s\" does not exist", 
+pabe: parsexrelation:00002079:  attnum, 
 pabe: parsexrelation:00002080:  rte->eref->aliasname))); 
-pabe: parsexrelation:00002098:  elog(ERROR, "function in FROM has unsupported return type"); 
-pabe: parsexrelation:00002109:  elog(ERROR, "values list %s does not have attribute %d", 
-pabe: parsexrelation:00002110:  rte->eref->aliasname, attnum); 
-pabe: parsexrelation:00002138:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
-pabe: parsexrelation:00002166:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-pabe: parsexrelation:00002167:  attnum, rte->relid); 
-pabe: parsexrelation:00002192:  elog(ERROR, "invalid varattno %d", attnum); 
-pabe: parsexrelation:00002220:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-pabe: parsexrelation:00002221:  attnum, funcrelid); 
-pabe: parsexrelation:00002236:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
-pabe: parsexrelation:00002361:  elog(ERROR, "invalid attribute number %d", attid); 
-pabe: parsexrelation:00002383:  elog(ERROR, "invalid attribute number %d", attid); 
-pabe: parsexrelation:00002425:  ereport(ERROR, 
-pabe: parsexrelation:00002426:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-pabe: parsexrelation:00002427:  errmsg("invalid reference to FROM-clause entry for table \"%s\"", 
-pabe: parsexrelation:00002428:  relation->relname), 
-pabe: parsexrelation:00002429:  (badAlias ? 
-pabe: parsexrelation:00002430:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
-pabe: parsexrelation:00002431:  badAlias) : 
-pabe: parsexrelation:00002432:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
-pabe: parsexrelation:00002433:  rte->eref->aliasname)), 
-pabe: parsexrelation:00002434:  errOmitLocation(true), 
-pabe: parsexrelation:00002435:  parser_errposition(pstate, location))); 
-pabe: parsexrelation:00002437:  ereport(ERROR, 
-pabe: parsexrelation:00002438:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-pabe: parsexrelation:00002439:  (pstate->parentParseState ? 
-pabe: parsexrelation:00002440:  errmsg("missing FROM-clause entry in subquery for table \"%s\"", 
-pabe: parsexrelation:00002441:  relation->relname) : 
-pabe: parsexrelation:00002442:  errmsg("missing FROM-clause entry for table \"%s\"", 
-pabe: parsexrelation:00002443:  relation->relname)), 
-pabe: parsexrelation:00002444:  errOmitLocation(true), 
-pabe: parsexrelation:00002445:  parser_errposition(pstate, location))); 
-pabe: parsexrelation:00002450:  ereport(NOTICE, 
+pabe: parsexrelation:00002089:  ereport(ERROR, 
+pabe: parsexrelation:00002090:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabe: parsexrelation:00002091:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+pabe: parsexrelation:00002092:  NameStr(att_tup->attname), 
+pabe: parsexrelation:00002093:  rte->eref->aliasname))); 
+pabe: parsexrelation:00002111:  elog(ERROR, "function in FROM has unsupported return type"); 
+pabe: parsexrelation:00002122:  elog(ERROR, "values list %s does not have attribute %d", 
+pabe: parsexrelation:00002123:  rte->eref->aliasname, attnum); 
+pabe: parsexrelation:00002151:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
+pabe: parsexrelation:00002179:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+pabe: parsexrelation:00002180:  attnum, rte->relid); 
+pabe: parsexrelation:00002205:  elog(ERROR, "invalid varattno %d", attnum); 
+pabe: parsexrelation:00002233:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+pabe: parsexrelation:00002234:  attnum, funcrelid); 
+pabe: parsexrelation:00002249:  elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind); 
+pabe: parsexrelation:00002374:  elog(ERROR, "invalid attribute number %d", attid); 
+pabe: parsexrelation:00002396:  elog(ERROR, "invalid attribute number %d", attid); 
+pabe: parsexrelation:00002438:  ereport(ERROR, 
+pabe: parsexrelation:00002439:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+pabe: parsexrelation:00002440:  errmsg("invalid reference to FROM-clause entry for table \"%s\"", 
+pabe: parsexrelation:00002441:  relation->relname), 
+pabe: parsexrelation:00002442:  (badAlias ? 
+pabe: parsexrelation:00002443:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
+pabe: parsexrelation:00002444:  badAlias) : 
+pabe: parsexrelation:00002445:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
+pabe: parsexrelation:00002446:  rte->eref->aliasname)), 
+pabe: parsexrelation:00002447:  errOmitLocation(true), 
+pabe: parsexrelation:00002448:  parser_errposition(pstate, location))); 
+pabe: parsexrelation:00002450:  ereport(ERROR, 
 pabe: parsexrelation:00002451:  (errcode(ERRCODE_UNDEFINED_TABLE), 
 pabe: parsexrelation:00002452:  (pstate->parentParseState ? 
-pabe: parsexrelation:00002453:  errmsg("adding missing FROM-clause entry in subquery for table \"%s\"", 
+pabe: parsexrelation:00002453:  errmsg("missing FROM-clause entry in subquery for table \"%s\"", 
 pabe: parsexrelation:00002454:  relation->relname) : 
-pabe: parsexrelation:00002455:  errmsg("adding missing FROM-clause entry for table \"%s\"", 
+pabe: parsexrelation:00002455:  errmsg("missing FROM-clause entry for table \"%s\"", 
 pabe: parsexrelation:00002456:  relation->relname)), 
-pabe: parsexrelation:00002457:  (badAlias ? 
-pabe: parsexrelation:00002458:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
-pabe: parsexrelation:00002459:  badAlias) : 
-pabe: parsexrelation:00002460:  (rte ? 
-pabe: parsexrelation:00002461:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
-pabe: parsexrelation:00002462:  rte->eref->aliasname) : 0)), 
-pabe: parsexrelation:00002463:  errOmitLocation(true), 
-pabe: parsexrelation:00002464:  parser_errposition(pstate, location))); 
+pabe: parsexrelation:00002457:  errOmitLocation(true), 
+pabe: parsexrelation:00002458:  parser_errposition(pstate, location))); 
+pabe: parsexrelation:00002463:  ereport(NOTICE, 
+pabe: parsexrelation:00002464:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+pabe: parsexrelation:00002465:  (pstate->parentParseState ? 
+pabe: parsexrelation:00002466:  errmsg("adding missing FROM-clause entry in subquery for table \"%s\"", 
+pabe: parsexrelation:00002467:  relation->relname) : 
+pabe: parsexrelation:00002468:  errmsg("adding missing FROM-clause entry for table \"%s\"", 
+pabe: parsexrelation:00002469:  relation->relname)), 
+pabe: parsexrelation:00002470:  (badAlias ? 
+pabe: parsexrelation:00002471:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
+pabe: parsexrelation:00002472:  badAlias) : 
+pabe: parsexrelation:00002473:  (rte ? 
+pabe: parsexrelation:00002474:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
+pabe: parsexrelation:00002475:  rte->eref->aliasname) : 0)), 
+pabe: parsexrelation:00002476:  errOmitLocation(true), 
+pabe: parsexrelation:00002477:  parser_errposition(pstate, location))); 
 aaaaa GP_IGNORE: pabc: parsextarget - ./backend/parser/parse_target.c
 pabc: parsextarget:00000307:  elog(ERROR, "subquery %s does not have attribute %d", 
 pabc: parsextarget:00000308:  rte->eref->aliasname, attnum); 
@@ -17293,198 +17302,198 @@ paag: pgstat:00003840:  ereport(ERROR,
 paag: pgstat:00003841:  (errmsg("database hash table corrupted " 
 paag: pgstat:00003842:  "during cleanup --- abort"))); 
 aaaaa GP_IGNORE: paba: postmaster - ./backend/postmaster/postmaster.c
-paba: postmaster:00001080:  ereport(ERROR, 
-paba: postmaster:00001081:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: postmaster:00001082:  errmsg("--%s requires a value", 
-paba: postmaster:00001083:  optarg))); 
-paba: postmaster:00001085:  ereport(ERROR, 
-paba: postmaster:00001086:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: postmaster:00001087:  errmsg("-c %s requires a value", 
-paba: postmaster:00001088:  optarg))); 
-paba: postmaster:00001202:  ereport(FATAL, 
-paba: postmaster:00001203:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001204:  errmsg("dbid (from -b option) is not specified or is invalid. This value must be >= 0, or >= -1 in utility mode. " 
-paba: postmaster:00001205:  "The dbid value to pass can be determined from this server's entry in the segment configuration; it may be -1 if running in utility mode."))); 
-paba: postmaster:00001210:  ereport(FATAL, 
-paba: postmaster:00001211:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001212:  errmsg("contentid (from -C option) is not specified or is invalid. This value must be >= -1. " 
-paba: postmaster:00001213:  "The contentid value to pass can be determined this server's entry in the segment configuration; it may be -1 for a master, or in utility mode." 
-paba: postmaster:00001214:  ))); 
-paba: postmaster:00001219:  ereport(FATAL, 
-paba: postmaster:00001220:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001221:  errmsg("numContentsInCluster (from -z option) is not specified or is invalid. This value must be >= 0. " 
-paba: postmaster:00001222:  "The value to pass can be determined by determining the number of primary segments in the cluster." 
-paba: postmaster:00001223:  ))); 
-paba: postmaster:00001342:  ereport(FATAL, 
-paba: postmaster:00001343:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001344:  errmsg("invalid list syntax for \"listen_addresses\""))); 
-paba: postmaster:00001364:  ereport(WARNING, 
-paba: postmaster:00001365:  (errmsg("could not create listen socket for \"%s\"", 
-paba: postmaster:00001366:  curhost))); 
-paba: postmaster:00001370:  ereport(FATAL, 
-paba: postmaster:00001371:  (errmsg("could not create any TCP/IP sockets"))); 
-paba: postmaster:00001397:  ereport(WARNING, 
-paba: postmaster:00001398:  (errmsg("could not create Unix-domain socket"))); 
-paba: postmaster:00001405:  ereport(FATAL, 
-paba: postmaster:00001406:  (errmsg("no socket created for listening"))); 
-paba: postmaster:00001431:  ereport(FATAL, 
-paba: postmaster:00001432:  (errmsg("could not create I/O completion port for child queue"))); 
-paba: postmaster:00001445:  ereport(FATAL, 
-paba: postmaster:00001446:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
-paba: postmaster:00001447:  (int) GetLastError()))); 
-paba: postmaster:00001532:  ereport(FATAL, 
-paba: postmaster:00001533:  (errmsg("could not load pg_hba.conf"), 
-paba: postmaster:00001534:  errOmitLocation(true))); 
-paba: postmaster:00001667:  elog(FATAL, "%s: could not locate my own executable path", argv0); 
-paba: postmaster:00001673:  ereport(FATAL, 
-paba: postmaster:00001674:  (errmsg("%s: could not locate matching postgres executable", 
-paba: postmaster:00001675:  argv0))); 
-paba: postmaster:00001693:  ereport(ERROR, 
-paba: postmaster:00001694:  (errcode_for_file_access(), 
-paba: postmaster:00001695:  errmsg("could not open directory \"%s\": %m", 
-paba: postmaster:00001696:  pkglib_path), 
-paba: postmaster:00001697:  errSendAlert(true), 
-paba: postmaster:00001698:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.", 
-paba: postmaster:00001699:  my_exec_path))); 
-paba: postmaster:00001722:  ereport(FATAL, 
-paba: postmaster:00001723:  (errcode_for_file_access(), 
-paba: postmaster:00001724:  errmsg("data directory \"%s\" does not exist", 
-paba: postmaster:00001725:  DataDir))); 
-paba: postmaster:00001727:  ereport(FATAL, 
-paba: postmaster:00001728:  (errcode_for_file_access(), 
-paba: postmaster:00001729:  errmsg("could not read permissions of directory \"%s\": %m", 
-paba: postmaster:00001730:  DataDir))); 
-paba: postmaster:00001735:  ereport(FATAL, 
-paba: postmaster:00001736:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001737:  errmsg("specified data directory \"%s\" is not a directory", 
-paba: postmaster:00001738:  DataDir))); 
-paba: postmaster:00001751:  ereport(FATAL, 
-paba: postmaster:00001752:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001753:  errmsg("data directory \"%s\" has wrong ownership", 
-paba: postmaster:00001754:  DataDir), 
-paba: postmaster:00001755:  errhint("The server must be started by the user that owns the data directory."))); 
-paba: postmaster:00001773:  ereport(FATAL, 
-paba: postmaster:00001774:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001775:  errmsg("data directory \"%s\" has group or world access", 
-paba: postmaster:00001776:  DataDir), 
-paba: postmaster:00001777:  errdetail("Permissions should be u=rwx (0700)."))); 
-paba: postmaster:00001967:  elog(FATAL, "silent_mode is not supported under Windows"); 
-paba: postmaster:00002486:  ereport(FATAL, 
-paba: postmaster:00002487:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002488:  errmsg("invalid value for boolean option \"replication\""))); 
-paba: postmaster:00002544:  elog(FATAL, "could not disable timer for authorization timeout"); 
-paba: postmaster:00002552:  elog(FATAL, "could not disable timer for authorization timeout"); 
-paba: postmaster:00002607:  ereport(FATAL, 
-paba: postmaster:00002608:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: postmaster:00002609:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
-paba: postmaster:00002610:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
-paba: postmaster:00002611:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
-paba: postmaster:00002612:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
-paba: postmaster:00002613:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
-paba: postmaster:00002664:  ereport(FATAL, 
-paba: postmaster:00002665:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002666:  errmsg("option not supported: \"replication\""))); 
-paba: postmaster:00002684:  ereport(FATAL, 
-paba: postmaster:00002685:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paba: postmaster:00002686:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
-paba: postmaster:00002712:  ereport(FATAL, 
-paba: postmaster:00002713:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-paba: postmaster:00002714:  errmsg("no PostgreSQL user name specified in startup packet"))); 
-paba: postmaster:00002761:  ereport(FATAL, 
-paba: postmaster:00002762:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002763:  errSendAlert(true), 
-paba: postmaster:00002764:  errOmitLocation(true), 
-paba: postmaster:00002765:  errmsg("GPAgent deprecated."))); 
-paba: postmaster:00002781:  ereport(FATAL, 
-paba: postmaster:00002782:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002783:  errSendAlert(false), 
-paba: postmaster:00002784:  errOmitLocation(true), 
-paba: postmaster:00002785:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
-paba: postmaster:00002788:  ereport(FATAL, 
-paba: postmaster:00002789:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002790:  errSendAlert(false), 
-paba: postmaster:00002791:  errOmitLocation(true), 
-paba: postmaster:00002792:  errmsg("the database system is shutting down"))); 
-paba: postmaster:00002795:  ereport(FATAL, 
-paba: postmaster:00002796:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002797:  errSendAlert(true), 
-paba: postmaster:00002798:  errOmitLocation(true), 
-paba: postmaster:00002799:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
-paba: postmaster:00002802:  ereport(FATAL, 
-paba: postmaster:00002803:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002804:  errSendAlert(true), 
-paba: postmaster:00002805:  errOmitLocation(true), 
-paba: postmaster:00002806:  errmsg("the database system is in mirror or uninitialized mode"))); 
-paba: postmaster:00002809:  ereport(FATAL, 
-paba: postmaster:00002810:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-paba: postmaster:00002811:  errSendAlert(true), 
-paba: postmaster:00002812:  errOmitLocation(true), 
-paba: postmaster:00002813:  errmsg("sorry, too many clients already"))); 
-paba: postmaster:00002960:  elog(ERROR, "Can only get postmaster reset status on a primary or mirror segment"); 
-paba: postmaster:00004095:  ereport(WARNING, 
-paba: postmaster:00004096:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00004138:  ereport(LOG, 
-paba: postmaster:00004139:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00004140:  errSendAlert(true), 
-paba: postmaster:00004141:  errOmitLocation(true))); 
-paba: postmaster:00004160:  ereport(LOG, 
-paba: postmaster:00004161:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00004162:  errSendAlert(true), 
-paba: postmaster:00004163:  errOmitLocation(true))); 
-paba: postmaster:00004185:  ereport(LOG, 
-paba: postmaster:00004186:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00004187:  errSendAlert(true), 
-paba: postmaster:00004188:  errOmitLocation(true))); 
-paba: postmaster:00004399:  ereport(LOG, 
-paba: postmaster:00004400:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00004401:  errdetail("%s",version), 
-paba: postmaster:00004402:  errSendAlert(true), 
-paba: postmaster:00004403:  errOmitLocation(true))); 
-paba: postmaster:00004834:  ereport(LOG, 
-paba: postmaster:00004835:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00004903:  elog(WARNING, "filerep peer reset during postmaster reset has failed"); 
-paba: postmaster:00005946:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00006489:  elog(FATAL, "setsid() failed: %m"); 
-paba: postmaster:00006519:  ereport(WARNING, 
-paba: postmaster:00006520:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00006521:  gai_strerror(ret)))); 
-paba: postmaster:00006563:  ereport(FATAL, 
-paba: postmaster:00006564:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006576:  elog(FATAL, "could not set timer for authorization timeout"); 
-paba: postmaster:00006631:  elog(FATAL, "could not disable timer for authorization timeout"); 
-paba: postmaster:00006990:  ereport(ERROR, 
-paba: postmaster:00006991:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006992:  (int) GetLastError()))); 
-paba: postmaster:00007017:  ereport(ERROR, 
-paba: postmaster:00007018:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00007019:  (int) GetLastError()))); 
-paba: postmaster:00007034:  ereport(ERROR, 
-paba: postmaster:00007035:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00007036:  (int) GetLastError()))); 
-paba: postmaster:00007043:  ereport(ERROR, 
-paba: postmaster:00007044:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00007045:  (int) GetLastError()))); 
-paba: postmaster:00007059:  ereport(FATAL, 
-paba: postmaster:00007060:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00007061:  errmsg("out of memory"))); 
-paba: postmaster:00007072:  ereport(FATAL, 
-paba: postmaster:00007073:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00007074:  (int) GetLastError()))); 
-paba: postmaster:00007145:  ereport(FATAL, 
-paba: postmaster:00007146:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00007147:  errmsg("out of memory"))); 
-paba: postmaster:00007153:  elog(FATAL, "invalid subpostmaster invocation"); 
-paba: postmaster:00007923:  ereport(ERROR, 
-paba: postmaster:00007924:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007925:  (int) GetLastError()))); 
-paba: postmaster:00007945:  ereport(ERROR, 
-paba: postmaster:00007946:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007947:  src, WSAGetLastError()))); 
+paba: postmaster:00001081:  ereport(ERROR, 
+paba: postmaster:00001082:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: postmaster:00001083:  errmsg("--%s requires a value", 
+paba: postmaster:00001084:  optarg))); 
+paba: postmaster:00001086:  ereport(ERROR, 
+paba: postmaster:00001087:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: postmaster:00001088:  errmsg("-c %s requires a value", 
+paba: postmaster:00001089:  optarg))); 
+paba: postmaster:00001203:  ereport(FATAL, 
+paba: postmaster:00001204:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001205:  errmsg("dbid (from -b option) is not specified or is invalid. This value must be >= 0, or >= -1 in utility mode. " 
+paba: postmaster:00001206:  "The dbid value to pass can be determined from this server's entry in the segment configuration; it may be -1 if running in utility mode."))); 
+paba: postmaster:00001211:  ereport(FATAL, 
+paba: postmaster:00001212:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001213:  errmsg("contentid (from -C option) is not specified or is invalid. This value must be >= -1. " 
+paba: postmaster:00001214:  "The contentid value to pass can be determined this server's entry in the segment configuration; it may be -1 for a master, or in utility mode." 
+paba: postmaster:00001215:  ))); 
+paba: postmaster:00001220:  ereport(FATAL, 
+paba: postmaster:00001221:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001222:  errmsg("numContentsInCluster (from -z option) is not specified or is invalid. This value must be >= 0. " 
+paba: postmaster:00001223:  "The value to pass can be determined by determining the number of primary segments in the cluster." 
+paba: postmaster:00001224:  ))); 
+paba: postmaster:00001343:  ereport(FATAL, 
+paba: postmaster:00001344:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001345:  errmsg("invalid list syntax for \"listen_addresses\""))); 
+paba: postmaster:00001365:  ereport(WARNING, 
+paba: postmaster:00001366:  (errmsg("could not create listen socket for \"%s\"", 
+paba: postmaster:00001367:  curhost))); 
+paba: postmaster:00001371:  ereport(FATAL, 
+paba: postmaster:00001372:  (errmsg("could not create any TCP/IP sockets"))); 
+paba: postmaster:00001398:  ereport(WARNING, 
+paba: postmaster:00001399:  (errmsg("could not create Unix-domain socket"))); 
+paba: postmaster:00001406:  ereport(FATAL, 
+paba: postmaster:00001407:  (errmsg("no socket created for listening"))); 
+paba: postmaster:00001432:  ereport(FATAL, 
+paba: postmaster:00001433:  (errmsg("could not create I/O completion port for child queue"))); 
+paba: postmaster:00001446:  ereport(FATAL, 
+paba: postmaster:00001447:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
+paba: postmaster:00001448:  (int) GetLastError()))); 
+paba: postmaster:00001533:  ereport(FATAL, 
+paba: postmaster:00001534:  (errmsg("could not load pg_hba.conf"), 
+paba: postmaster:00001535:  errOmitLocation(true))); 
+paba: postmaster:00001668:  elog(FATAL, "%s: could not locate my own executable path", argv0); 
+paba: postmaster:00001674:  ereport(FATAL, 
+paba: postmaster:00001675:  (errmsg("%s: could not locate matching postgres executable", 
+paba: postmaster:00001676:  argv0))); 
+paba: postmaster:00001694:  ereport(ERROR, 
+paba: postmaster:00001695:  (errcode_for_file_access(), 
+paba: postmaster:00001696:  errmsg("could not open directory \"%s\": %m", 
+paba: postmaster:00001697:  pkglib_path), 
+paba: postmaster:00001698:  errSendAlert(true), 
+paba: postmaster:00001699:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.", 
+paba: postmaster:00001700:  my_exec_path))); 
+paba: postmaster:00001723:  ereport(FATAL, 
+paba: postmaster:00001724:  (errcode_for_file_access(), 
+paba: postmaster:00001725:  errmsg("data directory \"%s\" does not exist", 
+paba: postmaster:00001726:  DataDir))); 
+paba: postmaster:00001728:  ereport(FATAL, 
+paba: postmaster:00001729:  (errcode_for_file_access(), 
+paba: postmaster:00001730:  errmsg("could not read permissions of directory \"%s\": %m", 
+paba: postmaster:00001731:  DataDir))); 
+paba: postmaster:00001736:  ereport(FATAL, 
+paba: postmaster:00001737:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001738:  errmsg("specified data directory \"%s\" is not a directory", 
+paba: postmaster:00001739:  DataDir))); 
+paba: postmaster:00001752:  ereport(FATAL, 
+paba: postmaster:00001753:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001754:  errmsg("data directory \"%s\" has wrong ownership", 
+paba: postmaster:00001755:  DataDir), 
+paba: postmaster:00001756:  errhint("The server must be started by the user that owns the data directory."))); 
+paba: postmaster:00001774:  ereport(FATAL, 
+paba: postmaster:00001775:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001776:  errmsg("data directory \"%s\" has group or world access", 
+paba: postmaster:00001777:  DataDir), 
+paba: postmaster:00001778:  errdetail("Permissions should be u=rwx (0700)."))); 
+paba: postmaster:00001968:  elog(FATAL, "silent_mode is not supported under Windows"); 
+paba: postmaster:00002487:  ereport(FATAL, 
+paba: postmaster:00002488:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002489:  errmsg("invalid value for boolean option \"replication\""))); 
+paba: postmaster:00002545:  elog(FATAL, "could not disable timer for authorization timeout"); 
+paba: postmaster:00002553:  elog(FATAL, "could not disable timer for authorization timeout"); 
+paba: postmaster:00002608:  ereport(FATAL, 
+paba: postmaster:00002609:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: postmaster:00002610:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+paba: postmaster:00002611:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+paba: postmaster:00002612:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+paba: postmaster:00002613:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+paba: postmaster:00002614:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+paba: postmaster:00002665:  ereport(FATAL, 
+paba: postmaster:00002666:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002667:  errmsg("option not supported: \"replication\""))); 
+paba: postmaster:00002685:  ereport(FATAL, 
+paba: postmaster:00002686:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paba: postmaster:00002687:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+paba: postmaster:00002713:  ereport(FATAL, 
+paba: postmaster:00002714:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+paba: postmaster:00002715:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+paba: postmaster:00002762:  ereport(FATAL, 
+paba: postmaster:00002763:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002764:  errSendAlert(true), 
+paba: postmaster:00002765:  errOmitLocation(true), 
+paba: postmaster:00002766:  errmsg("GPAgent deprecated."))); 
+paba: postmaster:00002782:  ereport(FATAL, 
+paba: postmaster:00002783:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002784:  errSendAlert(false), 
+paba: postmaster:00002785:  errOmitLocation(true), 
+paba: postmaster:00002786:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
+paba: postmaster:00002789:  ereport(FATAL, 
+paba: postmaster:00002790:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002791:  errSendAlert(false), 
+paba: postmaster:00002792:  errOmitLocation(true), 
+paba: postmaster:00002793:  errmsg("the database system is shutting down"))); 
+paba: postmaster:00002796:  ereport(FATAL, 
+paba: postmaster:00002797:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002798:  errSendAlert(true), 
+paba: postmaster:00002799:  errOmitLocation(true), 
+paba: postmaster:00002800:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
+paba: postmaster:00002803:  ereport(FATAL, 
+paba: postmaster:00002804:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002805:  errSendAlert(true), 
+paba: postmaster:00002806:  errOmitLocation(true), 
+paba: postmaster:00002807:  errmsg("the database system is in mirror or uninitialized mode"))); 
+paba: postmaster:00002810:  ereport(FATAL, 
+paba: postmaster:00002811:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paba: postmaster:00002812:  errSendAlert(true), 
+paba: postmaster:00002813:  errOmitLocation(true), 
+paba: postmaster:00002814:  errmsg("sorry, too many clients already"))); 
+paba: postmaster:00002961:  elog(ERROR, "Can only get postmaster reset status on a primary or mirror segment"); 
+paba: postmaster:00004096:  ereport(WARNING, 
+paba: postmaster:00004097:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00004139:  ereport(LOG, 
+paba: postmaster:00004140:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00004141:  errSendAlert(true), 
+paba: postmaster:00004142:  errOmitLocation(true))); 
+paba: postmaster:00004161:  ereport(LOG, 
+paba: postmaster:00004162:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00004163:  errSendAlert(true), 
+paba: postmaster:00004164:  errOmitLocation(true))); 
+paba: postmaster:00004186:  ereport(LOG, 
+paba: postmaster:00004187:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00004188:  errSendAlert(true), 
+paba: postmaster:00004189:  errOmitLocation(true))); 
+paba: postmaster:00004400:  ereport(LOG, 
+paba: postmaster:00004401:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00004402:  errdetail("%s",version), 
+paba: postmaster:00004403:  errSendAlert(true), 
+paba: postmaster:00004404:  errOmitLocation(true))); 
+paba: postmaster:00004835:  ereport(LOG, 
+paba: postmaster:00004836:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00004907:  elog(WARNING, "filerep peer reset during postmaster reset has failed"); 
+paba: postmaster:00005950:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00006493:  elog(FATAL, "setsid() failed: %m"); 
+paba: postmaster:00006523:  ereport(WARNING, 
+paba: postmaster:00006524:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00006525:  gai_strerror(ret)))); 
+paba: postmaster:00006567:  ereport(FATAL, 
+paba: postmaster:00006568:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006580:  elog(FATAL, "could not set timer for authorization timeout"); 
+paba: postmaster:00006635:  elog(FATAL, "could not disable timer for authorization timeout"); 
+paba: postmaster:00006994:  ereport(ERROR, 
+paba: postmaster:00006995:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006996:  (int) GetLastError()))); 
+paba: postmaster:00007021:  ereport(ERROR, 
+paba: postmaster:00007022:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00007023:  (int) GetLastError()))); 
+paba: postmaster:00007038:  ereport(ERROR, 
+paba: postmaster:00007039:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00007040:  (int) GetLastError()))); 
+paba: postmaster:00007047:  ereport(ERROR, 
+paba: postmaster:00007048:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00007049:  (int) GetLastError()))); 
+paba: postmaster:00007063:  ereport(FATAL, 
+paba: postmaster:00007064:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00007065:  errmsg("out of memory"))); 
+paba: postmaster:00007076:  ereport(FATAL, 
+paba: postmaster:00007077:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00007078:  (int) GetLastError()))); 
+paba: postmaster:00007149:  ereport(FATAL, 
+paba: postmaster:00007150:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00007151:  errmsg("out of memory"))); 
+paba: postmaster:00007157:  elog(FATAL, "invalid subpostmaster invocation"); 
+paba: postmaster:00007927:  ereport(ERROR, 
+paba: postmaster:00007928:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007929:  (int) GetLastError()))); 
+paba: postmaster:00007949:  ereport(ERROR, 
+paba: postmaster:00007950:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007951:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: pabj: primaryxmirrorxmode - ./backend/postmaster/primary_mirror_mode.c
-pabj: primaryxmirrorxmode:00001812:  elog(ERROR, "Invalid state %d", *stateInOut); 
-pabj: primaryxmirrorxmode:00002176:  elog(ERROR, "Request for filerep arguments from local memory made when they do not exist."); 
+pabj: primaryxmirrorxmode:00001802:  elog(ERROR, "Invalid state %d", *stateInOut); 
+pabj: primaryxmirrorxmode:00002182:  elog(ERROR, "Request for filerep arguments from local memory made when they do not exist."); 
 aaaaa GP_IGNORE: saaj: sendalert - ./backend/postmaster/sendalert.c
-saaj: sendalert:00000144:  elog(ERROR,"send_alert_from_chunks only works when CSV logging is enabled"); 
+saaj: sendalert:00000146:  elog(ERROR,"send_alert_from_chunks only works when CSV logging is enabled"); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000183:  elog(ERROR, "Lost Connection to seqserver"); 
 saaj: seqserver:00000209:  elog(ERROR, "Error: seqserver socket closed."); 
@@ -23226,112 +23235,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006469:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006470:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006483:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006484:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006497:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006498:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006528:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006529:  conf->gen.name, str); 
-gaad: guc:00006786:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006803:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006820:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006851:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007707:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007817:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007818:  " in a future release.", name); 
-gaad: guc:00007826:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007827:  name); 
-gaad: guc:00008301:  ereport(ERROR, 
-gaad: guc:00008302:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008303:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008305:  ereport(ERROR, 
-gaad: guc:00008306:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008307:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008341:  ereport(ERROR, 
-gaad: guc:00008342:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008343:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008345:  ereport(ERROR, 
-gaad: guc:00008346:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008347:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008416:  ereport(ERROR, 
-gaad: guc:00008417:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008418:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008425:  ereport(ERROR, 
-gaad: guc:00008426:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008427:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008440:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008487:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008488:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008545:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008571:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008572:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008598:  ereport(ERROR, 
-gaad: guc:00008599:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008600:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008662:  ereport(ERROR, 
-gaad: guc:00008663:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008664:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008983:  ereport(ERROR, 
-gaad: guc:00008984:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008985:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008987:  ereport(ERROR, 
-gaad: guc:00008988:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008989:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009758:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009791:  ereport(FATAL, 
-gaad: guc:00009792:  (errcode_for_file_access(), 
-gaad: guc:00009793:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009794:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009806:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009808:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009810:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009901:  ereport(WARNING, 
-gaad: guc:00009902:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009903:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010097:  ereport(ERROR, 
-gaad: guc:00010098:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010099:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010120:  ereport(ERROR, 
-gaad: guc:00010121:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010122:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010123:  tok))); 
-gaad: guc:00010149:  ereport(ERROR, 
-gaad: guc:00010150:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010151:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010152:  value))); 
-gaad: guc:00010560:  ereport(ERROR, 
-gaad: guc:00010561:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010562:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010636:  ereport(ERROR, 
-gaad: guc:00010637:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010638:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010647:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010657:  ereport(ERROR, 
-gaad: guc:00010658:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010659:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010670:  ereport(ERROR, 
-gaad: guc:00010671:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010672:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010687:  ereport(ERROR, 
-gaad: guc:00010688:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010689:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010690:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010691:  "\"log_dispatch_stats\", " 
-gaad: guc:00010692:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010707:  ereport(ERROR, 
-gaad: guc:00010708:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010709:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010710:  "\"log_statement_stats\", " 
-gaad: guc:00010711:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010712:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010727:  ereport(ERROR, 
-gaad: guc:00010728:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010729:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011126:  elog(ERROR, 
-gaad: guc:00011127:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011128:  show_allow_system_table_mods()); 
+gaad: guc:00006484:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006485:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006498:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006499:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006512:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006513:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006543:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006544:  conf->gen.name, str); 
+gaad: guc:00006801:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006818:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006835:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006866:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007722:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007832:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007833:  " in a future release.", name); 
+gaad: guc:00007841:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007842:  name); 
+gaad: guc:00008316:  ereport(ERROR, 
+gaad: guc:00008317:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008318:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008320:  ereport(ERROR, 
+gaad: guc:00008321:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008322:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008356:  ereport(ERROR, 
+gaad: guc:00008357:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008358:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008360:  ereport(ERROR, 
+gaad: guc:00008361:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008362:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008431:  ereport(ERROR, 
+gaad: guc:00008432:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008433:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008440:  ereport(ERROR, 
+gaad: guc:00008441:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008442:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008455:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008502:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008503:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008560:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008586:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008587:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008613:  ereport(ERROR, 
+gaad: guc:00008614:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008615:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008677:  ereport(ERROR, 
+gaad: guc:00008678:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008679:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008998:  ereport(ERROR, 
+gaad: guc:00008999:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009000:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009002:  ereport(ERROR, 
+gaad: guc:00009003:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009004:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009773:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009806:  ereport(FATAL, 
+gaad: guc:00009807:  (errcode_for_file_access(), 
+gaad: guc:00009808:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009809:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009821:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009823:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009825:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009916:  ereport(WARNING, 
+gaad: guc:00009917:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009918:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010112:  ereport(ERROR, 
+gaad: guc:00010113:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010114:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010135:  ereport(ERROR, 
+gaad: guc:00010136:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010137:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010138:  tok))); 
+gaad: guc:00010164:  ereport(ERROR, 
+gaad: guc:00010165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010166:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010167:  value))); 
+gaad: guc:00010575:  ereport(ERROR, 
+gaad: guc:00010576:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010577:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010651:  ereport(ERROR, 
+gaad: guc:00010652:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010653:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010662:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010672:  ereport(ERROR, 
+gaad: guc:00010673:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010674:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010685:  ereport(ERROR, 
+gaad: guc:00010686:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010687:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010702:  ereport(ERROR, 
+gaad: guc:00010703:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010704:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010705:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010706:  "\"log_dispatch_stats\", " 
+gaad: guc:00010707:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010722:  ereport(ERROR, 
+gaad: guc:00010723:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010724:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010725:  "\"log_statement_stats\", " 
+gaad: guc:00010726:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010727:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010742:  ereport(ERROR, 
+gaad: guc:00010743:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010744:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011141:  elog(ERROR, 
+gaad: guc:00011142:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011143:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -25450,134 +25459,136 @@ mabc: mlipcxaccess:00000072:  errmsg("Interconnect testing through libcdbtest is
 mabc: mlipcxaccess:00000073:  )); 
 mabc: mlipcxaccess:00000174:  elog( NOTICE, "recvd: %d", msgsReceived ); 
 aaaaa GP_IGNORE: raah: regress - ./test/regress/regress.c
-raah: regress:00000388:  elog(ERROR, "funny_dup17: not fired by trigger manager"); 
-raah: regress:00000440:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (insert ...) returned %d", 
-raah: regress:00000441:  when, *level, ret); 
-raah: regress:00000451:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (select ...) returned %d", 
-raah: regress:00000452:  when, *level, ret); 
-raah: regress:00000512:  elog(ERROR, "ttdummy: not fired by trigger manager"); 
-raah: regress:00000514:  elog(ERROR, "ttdummy: cannot process STATEMENT events"); 
-raah: regress:00000516:  elog(ERROR, "ttdummy: must be fired before event"); 
-raah: regress:00000518:  elog(ERROR, "ttdummy: cannot process INSERT event"); 
-raah: regress:00000537:  elog(ERROR, "ttdummy (%s): invalid (!= 2) number of arguments %d", 
-raah: regress:00000538:  relname, trigger->tgnargs); 
-raah: regress:00000548:  elog(ERROR, "ttdummy (%s): there is no attribute %s", relname, args[i]); 
-raah: regress:00000550:  elog(ERROR, "ttdummy (%s): attributes %s and %s must be of abstime type", 
-raah: regress:00000551:  relname, args[0], args[1]); 
-raah: regress:00000556:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
-raah: regress:00000560:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
-raah: regress:00000566:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
-raah: regress:00000569:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
-raah: regress:00000572:  elog(ERROR, "ttdummy (%s): you cannot change %s and/or %s columns (use set_ttdummy)", 
-raah: regress:00000573:  relname, args[0], args[1]); 
-raah: regress:00000593:  elog(ERROR, "ttdummy (%s): SPI_connect returned %d", relname, ret); 
-raah: regress:00000645:  elog(ERROR, "ttdummy (%s): SPI_prepare returned %d", relname, SPI_result); 
-raah: regress:00000649:  elog(ERROR, "ttdummy (%s): SPI_saveplan returned %d", relname, SPI_result); 
-raah: regress:00000657:  elog(ERROR, "ttdummy (%s): SPI_execp returned %d", relname, ret); 
-raah: regress:00000826:  elog(ERROR, "check_primary_key: not fired by trigger manager"); 
-raah: regress:00000831:  elog(ERROR, "check_primary_key: can't process STATEMENT events"); 
-raah: regress:00000840:  elog(ERROR, "check_primary_key: can't process DELETE events"); 
-raah: regress:00000852:  elog(ERROR, "check_primary_key: odd number of arguments should be specified"); 
-raah: regress:00000862:  elog(ERROR, "check_primary_key: SPI_connect returned %d", ret); 
-raah: regress:00000889:  ereport(ERROR, 
-raah: regress:00000890:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-raah: regress:00000891:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
-raah: regress:00000892:  args[i], SPI_getrelname(rel)))); 
-raah: regress:00000935:  elog(ERROR, "check_primary_key: SPI_prepare returned %d", SPI_result); 
-raah: regress:00000944:  elog(ERROR, "check_primary_key: SPI_saveplan returned %d", SPI_result); 
-raah: regress:00000958:  elog(ERROR, "check_primary_key: SPI_execp returned %d", ret); 
-raah: regress:00000964:  ereport(ERROR, 
-raah: regress:00000965:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00000966:  errmsg("tuple references non-existent key"), 
-raah: regress:00000967:  errdetail("Trigger \"%s\" found tuple referencing non-existent key in \"%s\".", trigger->tgname, relname))); 
-raah: regress:00001026:  elog(ERROR, "check_foreign_key: not fired by trigger manager"); 
-raah: regress:00001031:  elog(ERROR, "check_foreign_key: can't process STATEMENT events"); 
-raah: regress:00001036:  elog(ERROR, "check_foreign_key: can't process INSERT events"); 
-raah: regress:00001058:  elog(ERROR, "check_foreign_key: too short %d (< 5) list of arguments", nargs); 
-raah: regress:00001063:  elog(ERROR, "check_foreign_key: %d (< 1) number of references specified", nrefs); 
-raah: regress:00001067:  elog(ERROR, "check_foreign_key: invalid action %s", args[1]); 
-raah: regress:00001073:  elog(ERROR, "check_foreign_key: invalid number of arguments %d for %d references", 
-raah: regress:00001074:  nargs + 2, nrefs); 
-raah: regress:00001082:  elog(ERROR, "check_foreign_key: SPI_connect returned %d", ret); 
-raah: regress:00001106:  elog(ERROR, "%s: check_foreign_key: # of plans changed in meantime", 
-raah: regress:00001107:  trigger->tgname); 
-raah: regress:00001117:  ereport(ERROR, 
-raah: regress:00001118:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-raah: regress:00001119:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
-raah: regress:00001120:  args[i], SPI_getrelname(rel)))); 
-raah: regress:00001149:  elog(ERROR, "check_foreign_key: SPI_getvalue returned %d", SPI_result); 
-raah: regress:00001282:  elog(ERROR, "check_foreign_key: SPI_prepare returned %d", SPI_result); 
-raah: regress:00001292:  elog(ERROR, "check_foreign_key: SPI_saveplan returned %d", SPI_result); 
-raah: regress:00001332:  ereport(ERROR, 
-raah: regress:00001333:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001334:  errmsg("SPI_execp returned %d", ret))); 
-raah: regress:00001341:  ereport(ERROR, 
-raah: regress:00001342:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001343:  errmsg("\"%s\": tuple is referenced in \"%s\"", 
-raah: regress:00001344:  trigger->tgname, relname))); 
-raah: regress:00001349:  elog(NOTICE, "%s: %d tuple(s) of %s are %s", 
-raah: regress:00001350:  trigger->tgname, SPI_processed, relname, 
-raah: regress:00001351:  (action == 'c') ? "deleted" : "set to null"); 
-raah: regress:00001417:  elog(ERROR, "not fired by trigger manager"); 
-raah: regress:00001420:  elog(ERROR, "can't process STATEMENT events"); 
-raah: regress:00001423:  elog(ERROR, "must be fired before event"); 
-raah: regress:00001431:  elog(ERROR, "can't process DELETE events"); 
-raah: regress:00001441:  elog(ERROR, "autoinc (%s): even number gt 0 of arguments was expected", relname); 
-raah: regress:00001456:  ereport(ERROR, 
-raah: regress:00001457:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001458:  errmsg("\"%s\" has no attribute \"%s\"", 
-raah: regress:00001459:  relname, args[i]))); 
-raah: regress:00001462:  ereport(ERROR, 
-raah: regress:00001463:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001464:  errmsg("attribute \"%s\" of \"%s\" must be type INT4", 
-raah: regress:00001465:  args[i], relname))); 
-raah: regress:00001497:  elog(ERROR, "autoinc (%s): %d returned by SPI_modifytuple", 
-raah: regress:00001498:  relname, SPI_result); 
-raah: regress:00001551:  elog(ERROR, "invalid invocation of multiset_example"); 
-raah: regress:00001570:  ereport(ERROR, 
-raah: regress:00001571:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001572:  errmsg("invalid input tuple for function multiset_example"), 
-raah: regress:00001573:  errhint("expected (integer, text) "))); 
-raah: regress:00001623:  ereport(ERROR, 
-raah: regress:00001624:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001625:  errmsg("invalid output tupledesc for function multiset_scalar_tuple"), 
-raah: regress:00001626:  errhint("Expected (integer, text)."))); 
-raah: regress:00001709:  ereport(ERROR, 
-raah: regress:00001710:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raah: regress:00001711:  errmsg("set-valued function called in context that " 
-raah: regress:00001712:  "cannot accept a set"))); 
-raah: regress:00001757:  elog(ERROR, "invalid invocation of multiset_example"); 
-raah: regress:00001785:  ereport(ERROR, 
-raah: regress:00001786:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001787:  errmsg("invalid input tuple for function multiset_example"), 
-raah: regress:00001788:  errhint("expected (integer, text) "))); 
-raah: regress:00001798:  ereport(ERROR, 
-raah: regress:00001799:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001800:  errmsg("invalid output tuple for function multiset_example"), 
-raah: regress:00001801:  errhint("expected (integer, text) "))); 
-raah: regress:00001866:  elog(ERROR, "invalid invocation of sessionize"); 
-raah: regress:00001906:  ereport(ERROR, 
-raah: regress:00001907:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001908:  errmsg("invalid input tuple for function sessionize"), 
-raah: regress:00001909:  errhint("expected (integer, timestamp) "))); 
-raah: regress:00001921:  ereport(ERROR, 
-raah: regress:00001922:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001923:  errmsg("invalid output tuple for function sessionize"), 
-raah: regress:00001924:  errhint("expected (integer, timestamp, integer) "))); 
-raah: regress:00002010:  elog(ERROR, "invalid invocation of describe"); 
-raah: regress:00002047:  elog(ERROR, "invalid invocation of mytransform"); 
-raah: regress:00002119:  elog(ERROR, "invalid invocation of dynamic_describe"); 
-raah: regress:00002180:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
-raah: regress:00002181:  
-raah: regress:00002182:  estate = ExecInitExpr(aexpr, NULL); 
-raah: regress:00002187:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
-raah: regress:00002188:  
-raah: regress:00002189:  /* Non null values only */ 
-raah: regress:00002190:  if (isNull) 
-raah: regress:00002191:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
-raah: regress:00002192:  
-raah: regress:00002193:  avalue = DatumGetInt32(d); 
-raah: regress:00002197:  elog(ERROR, "invalid column position %d", avalue); 
+raah: regress:00000391:  elog(ERROR, "funny_dup17: not fired by trigger manager"); 
+raah: regress:00000443:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (insert ...) returned %d", 
+raah: regress:00000444:  when, *level, ret); 
+raah: regress:00000454:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (select ...) returned %d", 
+raah: regress:00000455:  when, *level, ret); 
+raah: regress:00000515:  elog(ERROR, "ttdummy: not fired by trigger manager"); 
+raah: regress:00000517:  elog(ERROR, "ttdummy: cannot process STATEMENT events"); 
+raah: regress:00000519:  elog(ERROR, "ttdummy: must be fired before event"); 
+raah: regress:00000521:  elog(ERROR, "ttdummy: cannot process INSERT event"); 
+raah: regress:00000540:  elog(ERROR, "ttdummy (%s): invalid (!= 2) number of arguments %d", 
+raah: regress:00000541:  relname, trigger->tgnargs); 
+raah: regress:00000551:  elog(ERROR, "ttdummy (%s): there is no attribute %s", relname, args[i]); 
+raah: regress:00000553:  elog(ERROR, "ttdummy (%s): attributes %s and %s must be of abstime type", 
+raah: regress:00000554:  relname, args[0], args[1]); 
+raah: regress:00000559:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
+raah: regress:00000563:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
+raah: regress:00000569:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
+raah: regress:00000572:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
+raah: regress:00000575:  elog(ERROR, "ttdummy (%s): you cannot change %s and/or %s columns (use set_ttdummy)", 
+raah: regress:00000576:  relname, args[0], args[1]); 
+raah: regress:00000596:  elog(ERROR, "ttdummy (%s): SPI_connect returned %d", relname, ret); 
+raah: regress:00000648:  elog(ERROR, "ttdummy (%s): SPI_prepare returned %d", relname, SPI_result); 
+raah: regress:00000652:  elog(ERROR, "ttdummy (%s): SPI_saveplan returned %d", relname, SPI_result); 
+raah: regress:00000660:  elog(ERROR, "ttdummy (%s): SPI_execp returned %d", relname, ret); 
+raah: regress:00000829:  elog(ERROR, "check_primary_key: not fired by trigger manager"); 
+raah: regress:00000834:  elog(ERROR, "check_primary_key: can't process STATEMENT events"); 
+raah: regress:00000843:  elog(ERROR, "check_primary_key: can't process DELETE events"); 
+raah: regress:00000855:  elog(ERROR, "check_primary_key: odd number of arguments should be specified"); 
+raah: regress:00000865:  elog(ERROR, "check_primary_key: SPI_connect returned %d", ret); 
+raah: regress:00000892:  ereport(ERROR, 
+raah: regress:00000893:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+raah: regress:00000894:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
+raah: regress:00000895:  args[i], SPI_getrelname(rel)))); 
+raah: regress:00000938:  elog(ERROR, "check_primary_key: SPI_prepare returned %d", SPI_result); 
+raah: regress:00000947:  elog(ERROR, "check_primary_key: SPI_saveplan returned %d", SPI_result); 
+raah: regress:00000961:  elog(ERROR, "check_primary_key: SPI_execp returned %d", ret); 
+raah: regress:00000967:  ereport(ERROR, 
+raah: regress:00000968:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00000969:  errmsg("tuple references non-existent key"), 
+raah: regress:00000970:  errdetail("Trigger \"%s\" found tuple referencing non-existent key in \"%s\".", trigger->tgname, relname))); 
+raah: regress:00001029:  elog(ERROR, "check_foreign_key: not fired by trigger manager"); 
+raah: regress:00001034:  elog(ERROR, "check_foreign_key: can't process STATEMENT events"); 
+raah: regress:00001039:  elog(ERROR, "check_foreign_key: can't process INSERT events"); 
+raah: regress:00001061:  elog(ERROR, "check_foreign_key: too short %d (< 5) list of arguments", nargs); 
+raah: regress:00001066:  elog(ERROR, "check_foreign_key: %d (< 1) number of references specified", nrefs); 
+raah: regress:00001070:  elog(ERROR, "check_foreign_key: invalid action %s", args[1]); 
+raah: regress:00001076:  elog(ERROR, "check_foreign_key: invalid number of arguments %d for %d references", 
+raah: regress:00001077:  nargs + 2, nrefs); 
+raah: regress:00001085:  elog(ERROR, "check_foreign_key: SPI_connect returned %d", ret); 
+raah: regress:00001109:  elog(ERROR, "%s: check_foreign_key: # of plans changed in meantime", 
+raah: regress:00001110:  trigger->tgname); 
+raah: regress:00001120:  ereport(ERROR, 
+raah: regress:00001121:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+raah: regress:00001122:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
+raah: regress:00001123:  args[i], SPI_getrelname(rel)))); 
+raah: regress:00001152:  elog(ERROR, "check_foreign_key: SPI_getvalue returned %d", SPI_result); 
+raah: regress:00001285:  elog(ERROR, "check_foreign_key: SPI_prepare returned %d", SPI_result); 
+raah: regress:00001295:  elog(ERROR, "check_foreign_key: SPI_saveplan returned %d", SPI_result); 
+raah: regress:00001335:  ereport(ERROR, 
+raah: regress:00001336:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001337:  errmsg("SPI_execp returned %d", ret))); 
+raah: regress:00001344:  ereport(ERROR, 
+raah: regress:00001345:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001346:  errmsg("\"%s\": tuple is referenced in \"%s\"", 
+raah: regress:00001347:  trigger->tgname, relname))); 
+raah: regress:00001352:  elog(NOTICE, "%s: %d tuple(s) of %s are %s", 
+raah: regress:00001353:  trigger->tgname, SPI_processed, relname, 
+raah: regress:00001354:  (action == 'c') ? "deleted" : "set to null"); 
+raah: regress:00001420:  elog(ERROR, "not fired by trigger manager"); 
+raah: regress:00001423:  elog(ERROR, "can't process STATEMENT events"); 
+raah: regress:00001426:  elog(ERROR, "must be fired before event"); 
+raah: regress:00001434:  elog(ERROR, "can't process DELETE events"); 
+raah: regress:00001444:  elog(ERROR, "autoinc (%s): even number gt 0 of arguments was expected", relname); 
+raah: regress:00001459:  ereport(ERROR, 
+raah: regress:00001460:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001461:  errmsg("\"%s\" has no attribute \"%s\"", 
+raah: regress:00001462:  relname, args[i]))); 
+raah: regress:00001465:  ereport(ERROR, 
+raah: regress:00001466:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001467:  errmsg("attribute \"%s\" of \"%s\" must be type INT4", 
+raah: regress:00001468:  args[i], relname))); 
+raah: regress:00001500:  elog(ERROR, "autoinc (%s): %d returned by SPI_modifytuple", 
+raah: regress:00001501:  relname, SPI_result); 
+raah: regress:00001554:  elog(ERROR, "invalid invocation of multiset_example"); 
+raah: regress:00001573:  ereport(ERROR, 
+raah: regress:00001574:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001575:  errmsg("invalid input tuple for function multiset_example"), 
+raah: regress:00001576:  errhint("expected (integer, text) "))); 
+raah: regress:00001626:  ereport(ERROR, 
+raah: regress:00001627:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001628:  errmsg("invalid output tupledesc for function multiset_scalar_tuple"), 
+raah: regress:00001629:  errhint("Expected (integer, text)."))); 
+raah: regress:00001712:  ereport(ERROR, 
+raah: regress:00001713:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raah: regress:00001714:  errmsg("set-valued function called in context that " 
+raah: regress:00001715:  "cannot accept a set"))); 
+raah: regress:00001760:  elog(ERROR, "invalid invocation of multiset_example"); 
+raah: regress:00001788:  ereport(ERROR, 
+raah: regress:00001789:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001790:  errmsg("invalid input tuple for function multiset_example"), 
+raah: regress:00001791:  errhint("expected (integer, text) "))); 
+raah: regress:00001801:  ereport(ERROR, 
+raah: regress:00001802:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001803:  errmsg("invalid output tuple for function multiset_example"), 
+raah: regress:00001804:  errhint("expected (integer, text) "))); 
+raah: regress:00001869:  elog(ERROR, "invalid invocation of sessionize"); 
+raah: regress:00001909:  ereport(ERROR, 
+raah: regress:00001910:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001911:  errmsg("invalid input tuple for function sessionize"), 
+raah: regress:00001912:  errhint("expected (integer, timestamp) "))); 
+raah: regress:00001924:  ereport(ERROR, 
+raah: regress:00001925:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001926:  errmsg("invalid output tuple for function sessionize"), 
+raah: regress:00001927:  errhint("expected (integer, timestamp, integer) "))); 
+raah: regress:00002013:  elog(ERROR, "invalid invocation of describe"); 
+raah: regress:00002050:  elog(ERROR, "invalid invocation of project"); 
+raah: regress:00002122:  elog(ERROR, "invalid invocation of project_describe"); 
+raah: regress:00002183:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
+raah: regress:00002184:  
+raah: regress:00002185:  estate = ExecInitExpr(aexpr, NULL); 
+raah: regress:00002190:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
+raah: regress:00002191:  
+raah: regress:00002192:  /* Non null values only */ 
+raah: regress:00002193:  if (isNull) 
+raah: regress:00002194:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
+raah: regress:00002195:  
+raah: regress:00002196:  avalue = DatumGetInt32(d); 
+raah: regress:00002200:  elog(ERROR, "invalid column position %d", avalue); 
+raah: regress:00002237:  elog(ERROR, "invalid invocation of userdata_project"); 
+raah: regress:00002285:  elog(ERROR, "invalid invocation of userdata_describe"); 
 aaaaa GP_IGNORE: paae: pgtz - ./timezone/pgtz.c
 paae: pgtz:00001019:  ereport(WARNING, 
 paae: pgtz:00001020:  (errmsg_internal("could not determine current date/time: localtime failed"))); 
