@@ -46,8 +46,9 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
+#include "sendalert_common.h"
+
 #if USE_CONNECTEMC
-#include "emcconnect/api.h"
 extern EmcConnectModeType_t gp_emcconnect_transport;
 #endif
 
