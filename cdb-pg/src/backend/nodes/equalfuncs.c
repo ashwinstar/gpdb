@@ -2124,6 +2124,7 @@ _equalRangeTblEntry(RangeTblEntry *a, RangeTblEntry *b)
 	COMPARE_NODE_FIELD(funcexpr);
 	COMPARE_NODE_FIELD(funccoltypes);
 	COMPARE_NODE_FIELD(funccoltypmods);
+	COMPARE_SCALAR_FIELD(funcuserdata);
 	COMPARE_NODE_FIELD(values_lists);
 	COMPARE_SCALAR_FIELD(jointype);
 	COMPARE_NODE_FIELD(joinaliasvars);

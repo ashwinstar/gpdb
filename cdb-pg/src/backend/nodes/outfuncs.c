@@ -114,6 +114,10 @@
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outBitmapset(str, node->fldname))
 
+/* Write a bytea field */
+#define WRITE_BYTEA_FIELD(fldname) \
+	(_outDatum(str, PointerGetDatum(node->fldname), -1, false))
+
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
@@ -670,7 +674,7 @@ _outWindow(StringInfo str, Window *node)
 }
 
 static void
-_outTableFunctionScan(StringInfo str, Window *node)
+_outTableFunctionScan(StringInfo str, TableFunctionScan *node)
 {
 	WRITE_NODE_TYPE("TABLEFUNCTIONSCAN");
 
@@ -3257,6 +3261,11 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			WRITE_NODE_FIELD(funcexpr);
 			WRITE_NODE_FIELD(funccoltypes);
 			WRITE_NODE_FIELD(funccoltypmods);
+			if (node->funcuserdata)
+			{
+				appendStringInfoLiteral(str, " :funcuserdata ");
+				WRITE_BYTEA_FIELD(funcuserdata);
+			}
 			break;
 		case RTE_VALUES:
 			WRITE_NODE_FIELD(values_lists);

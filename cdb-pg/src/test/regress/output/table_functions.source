@@ -2893,6 +2893,39 @@ ERROR:  invalid column position 25 (regress.c:2197)
 LINE 1: SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
                       ^
 -- ========================
+-- User data exmaple
+-- ========================
+CREATE FUNCTION ud_describe(internal) RETURNS internal
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_describe'
+  LANGUAGE C;
+CREATE FUNCTION ud_project(anytable) RETURNS setof RECORD
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_project'
+  LANGUAGE C
+  WITH (describe = ud_describe);
+SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
+              message               
+------------------------------------
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+ copied data from describe function
+(18 rows)
+
+-- ========================
 -- More negative test cases
 -- ========================
 -- explicit return type not suitable for dynamic type resolution

@@ -1395,6 +1395,7 @@ typedef struct TableFunctionState
 	ReturnSetInfo				 rsinfo;		/* Resultset Context */
 	bool						 is_rowtype;	/* Function returns records */
 	bool						 is_firstcall;
+	bytea						*userdata;		/* bytea given by describe func */
 } TableFunctionState;
 
 

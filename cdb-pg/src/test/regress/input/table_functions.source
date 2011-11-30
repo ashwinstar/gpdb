@@ -915,6 +915,19 @@ SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
 
+-- ========================
+-- User data exmaple
+-- ========================
+CREATE FUNCTION ud_describe(internal) RETURNS internal
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_describe'
+  LANGUAGE C;
+
+CREATE FUNCTION ud_project(anytable) RETURNS setof RECORD
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'userdata_project'
+  LANGUAGE C
+  WITH (describe = ud_describe);
+
+SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
 
 -- ========================
 -- More negative test cases
