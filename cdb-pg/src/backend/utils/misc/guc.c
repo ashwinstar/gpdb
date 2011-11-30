@@ -337,6 +337,7 @@ bool		Debug_filerep_config_print = false;
 bool		Debug_filerep_verify_performance_print = false;
 bool		Debug_filerep_memory_log_flush = false;
 bool		filerep_inject_listener_fault = false;
+bool		filerep_inject_db_startup_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
 bool		gp_crash_recovery_suppress_ao_eof = false;
 bool        gp_keep_all_xlog = false;
@@ -2933,6 +2934,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&filerep_inject_listener_fault,
+		false, NULL, NULL
+	},
+
+	{
+		{"filerep_inject_db_startup_fault", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("inject mirroring fault during database startup"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&filerep_inject_db_startup_fault,
 		false, NULL, NULL
 	},
 

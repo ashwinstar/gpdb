@@ -189,6 +189,7 @@ extern bool Debug_filerep_config_print;
 extern bool Debug_filerep_verify_performance_print;
 extern bool Debug_filerep_memory_log_flush;
 extern bool filerep_inject_listener_fault;
+extern bool filerep_inject_db_startup_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
 extern bool gp_crash_recovery_suppress_ao_eof;
 
