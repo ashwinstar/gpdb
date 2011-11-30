@@ -10296,7 +10296,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 		int32		ptypmod;
 		Oid			restype;
 		int32		restypmod;
-		bool		allsame;
+		bool		allsame, hasnontext;
 		char	   *context;
 
 		Insist(list_length(types) == list_length(typmods));
@@ -10305,6 +10305,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 				   stmt->op == SETOP_INTERSECT ? "INTERSECT" :
 				   "EXCEPT");
 		allsame = true;
+		hasnontext = false;
 		ptype = linitial_oid(types);
 		ptypmod = linitial_int(typmods);
 		forboth (lct2, types, lcm2, typmods)
@@ -10320,7 +10321,41 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 			{
 				/* if any is different, false */
 				allsame = false;
-				break;
+			}
+			/*
+			 * MPP-15619 - backwards compatibility with existing view definitions.
+			 *
+			 * Historically we would cast UNKNOWN to text for most union queries,
+			 * but there are many union cases where this historical behavior
+			 * resulted in unacceptable errors (MPP-11377).
+			 * To handle this we added additional code to resolve to a
+			 * consistent cast for unions, which is generally better and
+			 * handles more cases.  However, in order to deal with backwards
+			 * compatibility we have to deliberately hamstring this code and
+			 * cast UNKNOWN to text if the other colums are STRING_TYPE
+			 * even when some other datatype (such as name) might actually
+			 * be more natural.  This captures the set of views that
+			 * we previously supported prior to the fix for MPP-11377 and
+			 * thus is the set of views that we must not treat differently.
+			 * This might be removed when we are ready to change view definition.
+			 */
+			if (ntype != UNKNOWNOID &&
+				STRING_TYPE != TypeCategory(getBaseType(ntype)))
+				hasnontext = true;
+		}
+
+		/*
+		 * Backward compatibity; we cast UNKNOWN to text
+		 * if the others are STRING_TYPE. See comments above.
+		 */
+		if (!hasnontext)
+		{
+			foreach (lct2, types)
+			{
+				Oid		ntype = lfirst_oid(lct2);
+
+				if (ntype == UNKNOWNOID)
+					lfirst_oid(lct2) = TEXTOID;
 			}
 		}
 
