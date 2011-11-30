@@ -2000,7 +2000,6 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 		case TSDoDatabaseStartup:
 			if (!pmModuleState->haveStartedDatabase)
 			{
-				Assert(!pmModuleState->haveStartedDatabase);
 				elog(getPrimaryMirrorModeDebugLogLevel(false),
 					 "PostmasterPrimaryMirrorTransition: starting database processes");
 				pmModuleState->haveStartedDatabase = true;
@@ -2015,6 +2014,13 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 			{
 				*stateInOut = TSDoneDatabaseStartup;
 				pmModuleState->isDatabaseRunning = true;
+			}
+			if (pmModuleState->segmentState == SegmentStateFault)
+			{
+				/* report mirroring failure */
+				strlcpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
+
+				return PMTransitionError;
 			}
 			return PMTransitionSuccess;
 
