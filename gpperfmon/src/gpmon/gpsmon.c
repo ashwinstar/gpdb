@@ -191,7 +191,7 @@ static void get_pid_metrics(apr_int32_t pid, apr_int32_t tmid, apr_int32_t ssid,
 	sigar_proc_cpu_t cpu;
 	sigar_proc_mem_t mem;
 	sigar_proc_fd_t fd;
-	int newrec = 0;
+	/*int newrec = 0;*/
 	pidrec_t* rec;
 	apr_pool_t* pool = apr_hash_pool_get(gx.pidtab);
 
@@ -211,7 +211,7 @@ static void get_pid_metrics(apr_int32_t pid, apr_int32_t tmid, apr_int32_t ssid,
 	{
 		sigar_proc_exe_t exe;
 
-		newrec = 1;
+		/*newrec = 1;*/
 
 		rec = apr_palloc(pool, sizeof(*rec));
 		CHECKMEM(rec);
@@ -1343,7 +1343,7 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
 
 static void setup_tcp(void)
 {
-	SOCKET sock;
+	SOCKET sock = 0;
 
     struct addrinfo hints;
 	struct addrinfo *addrs, *rp;
@@ -1459,7 +1459,7 @@ static void setup_tcp(void)
 
 static void setup_udp()
 {
-	SOCKET sock;
+	SOCKET sock = 0;
 
     struct addrinfo hints;
 	struct addrinfo *addrs, *rp;
