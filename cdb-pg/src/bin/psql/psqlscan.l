@@ -1554,8 +1554,9 @@ psql_scan_slash_option(PsqlScanState state,
 					error = true;
 				}
 
-				if (PQExpBufferBroken(&output))
+				if (PQExpBufferDataBroken(output))
 				{
+				
 					psql_error("%s: out of memory\n", cmd);
 					error = true;
 				}
