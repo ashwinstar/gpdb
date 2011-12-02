@@ -266,7 +266,7 @@ static void dumpDatabaseDefinitionToDDBoost(void);
 static int cleanupDDSystem(void);
 
 static char *g_pszDDBoostDir = "db_dumps";
-static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
+static ddp_client_info_t cl_info = {DDP_CL_DDP, "Greenplum Database 4.2"};
 
 static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
 static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
