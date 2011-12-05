@@ -1229,35 +1229,21 @@ set
     classid = 'pg_class'::regclass,
     objid = {indexoid}
 where
-    (classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype) =
-    (
-        select  
-            d.classid,
-            d.objid,
-            d.objsubid,
-            d.refclassid,
-            d.refobjid,
-            d.refobjsubid,
-            d.deptype
-        from 
-            pg_depend d
-        where 
-            d.classid = 'pg_constraint'::regclass and
-            d.objid = (
-               select oid
+    classid = 'pg_constraint'::regclass and
+    objid = (
+             select oid
                from pg_constraint
-               where
-                  conrelid = {partoid} and
-                  conname = {quoted_conname} and
-                  contypid = 0 and
-                  contype = {quoted_contype}
-            ) and
-            d.objsubid = 0 and
-            d.refclassid = 'pg_class'::regclass and
-            d.refobjid = {partoid} and
-            d.refobjsubid <> 0 and
-            d.deptype = 'a'
-    );
+              where
+                    conrelid = {partoid} and
+                    conname = {quoted_conname} and
+                    contypid = 0 and
+                    contype = {quoted_contype}
+         ) and
+    objsubid = 0 and
+    refclassid = 'pg_class'::regclass and
+    refobjid = {partoid} and
+    refobjsubid <> 0 and
+    deptype = 'a';
 --Delete constraint {conname} leaving its index {indexid}
 delete 
 from
