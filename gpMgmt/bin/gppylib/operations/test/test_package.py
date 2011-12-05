@@ -213,7 +213,7 @@ class SimpleGppkgTest(unittest.TestCase):
         gppkg_file = self.gppkg_spec.get_filename() 
         run_command("gppkg --install %s" % gppkg_file)
         
-        update_rpm_spec = RPMSpec("test", "1", "1")
+        update_rpm_spec = RPMSpec("test", "1", "2")
         update_gppkg_spec = GppkgSpec("test", "1.1", "4.2")
         update_gppkg_file = BuildGppkg(update_gppkg_spec, update_rpm_spec).run() 
 
@@ -231,7 +231,7 @@ class SimpleGppkgTest(unittest.TestCase):
     @unittest.expectedFailure
     def test03_simple_update_fail(self):
         #This is the file built in test02 
-        rpm_spec = RPMSpec("test", "1", "1")
+        rpm_spec = RPMSpec("test", "1", "2")
         gppkg_spec = GppkgSpec("test", "1.1", "4.2")
         gppkg_file = gppkg_spec.get_filename() 
         run_command("gppkg --install %s" % gppkg_file)
