@@ -38,7 +38,8 @@ except Exception, e:
     errorMsg = "gpload was unable to import The PyGreSQL Python module (pg.py) - %s\n" % str(e)
     sys.stderr.write(str(errorMsg))
     sys.exit(2)
- 
+
+import hashlib
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import platform
 thePlatform = platform.system()
@@ -1123,7 +1124,7 @@ class gpload:
         # Create Temp and External table names. However external table name could 
         # get overwritten with another name later on (see create_external_table_name). 
         self.unique_suffix = '%s_%d'%(datetime.datetime.today().strftime('%Y%m%d_%H%M%S'),os.getpid())
-        self.tempTableName = 'temp_gpload' + self.unique_suffix
+        self.staging_table_name = 'temp_staging_gpload' + self.unique_suffix
         self.extTableName  = 'ext_gpload' + self.unique_suffix
 
         # SQL to run in order to undo our temporary work
@@ -1975,56 +1976,35 @@ class gpload:
         self.log(self.DEBUG, "query used to identify reusable external relations: %s" % sql)
         return sql
 
-    # In order to find out whether we have an existing temp table in the 
-    # catalog which could be reused for this operation we need to make sure
-    # that it has the same column names and types, and same distribution key
+    #
+    # Create a string from the following conditions to reuse staging table:
+    # 1. same target table
+    # 2. same number of columns
+    # 3. same names and types, in the same order
+    # 4. same distribution key (according to columns' names and thier order)
+    #
+    def get_staging_conditions_string(self, target_table_name, staging_cols, distribution_cols):
+			
+        columns_num = len(staging_cols)
+
+        staging_cols_str = '-'.join(map(lambda col:'%s-%s' % (quote(quote_unident(col[0])), quote(col[1])), staging_cols))
+
+        distribution_cols_str = '-'.join([quote(quote_unident(col)) for col in distribution_cols])
+		
+        return '%s:%s:%s:%s' % (target_table_name, columns_num, staging_cols_str, distribution_cols_str)
+
+		
     #
     # This function will return the SQL to run in order to find out whether
-    # such a table exists.
-    # 
-    def get_reuse_temptable_query(self, shortTableName, from_cols, distcols):
-
-        sql = """select attrelid::regclass
-                 from (
-                        select 
-                            attrelid, 
-                            row_number() over (partition by attrelid order by attnum) as attord, 
-                            attnum,
-                            attname,
-                            atttypid::regtype 
-                        from 
-                            pg_attribute
-                            join
-                            pg_class
-                            on (pg_class.oid = attrelid)
-                        where 
-                            relstorage = 'h' and
-                            relkind = 'r' and
-                            relname like 'temp_gpload_reusable_%s_%%' and
-                            pg_class.oid in (select localoid from gp_distribution_policy 
-                                             where attrnums = (select attrnums 
-                                                               from gp_distribution_policy d, pg_class c, pg_namespace n 
-                                                               where d.localoid = c.oid and 
-                                                                     c.relnamespace = n.oid and
-                                                                     n.nspname = '%s' and 
-                                                                     c.relname = '%s')) and
-                            attnum > 0 and
-                            not attisdropped
-                    ) pgattr
-                 group by attrelid
-                 having 
-                    count(*) = %s and 
-                    bool_and(case """ % (shortTableName, quote_unident(self.schema), quote_unident(self.table), len(from_cols))              
-              
-        for i, c in enumerate(from_cols):
-            name = c[0]
-            typ = c[1]
-            sql+= "when attord = %s then atttypid = %s::regtype and attname = %s\n" % (i+1, quote(typ), quote(quote_unident(name)))
-
-        sql+= """else true 
-                 end)
-                 limit 1;"""
-        
+    # we have an existing staging table in the catalog which could be reused for this 
+    # operation, according to the mathod and the encoding conditions.
+    #
+    def get_reuse_staging_table_query(self, encoding_conditions):
+		
+        sql = """SELECT oid::regclass
+                 FROM pg_class
+                 WHERE relname = 'staging_gpload_reusable_%s';""" % (encoding_conditions)
+	    
         self.log(self.DEBUG, "query used to identify reusable temporary relations: %s" % sql)
         return sql
     
@@ -2032,7 +2012,6 @@ class gpload:
     # Create a new external table or find a reusable external table to use for this operation
     #    
     def create_external_table(self):
-        
 
         # extract all control file information and transform it accordingly
         # in order to construct a CREATE EXTERNAL TABLE statement if will be
@@ -2164,7 +2143,7 @@ class gpload:
         
 
         try:
-                self.db.query(sql.encode('utf-8'))
+            self.db.query(sql.encode('utf-8'))
         except Exception, e:
             self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
 
@@ -2173,21 +2152,18 @@ class gpload:
         if self.reuse_tables == False:
             self.cleanupSql.append('drop external table if exists %s'%self.extTableName)
 
+		
     # 
-    # Create a new external table or find a reusable external table to use for this operation
+    # Create a new staging table or find a reusable staging table to use for this operation
     # (only valid for update/merge operations).
     #    
-    def create_temp_table(self):
+    def create_staging_table(self):
                 
         # Do some initial work to extract the update_columns and metadata
-        # that may be needed in order to create or reuse a temp table
-            
-        a = self.getconfig('gpload:output:update_columns', list)
-
+        # that may be needed in order to create or reuse a temp table            
         if not self.from_cols_from_user:
             # don't put values serial columns
-            from_cols = filter(lambda a: a[3] != True,
-                               self.from_columns)
+            from_cols = filter(lambda a: a[3] != True, self.from_columns)
         else:
             from_cols = self.from_columns
 
@@ -2199,70 +2175,58 @@ class gpload:
         if self.getconfig('gpload:output:including_defaults',bool,True):
             including_defaults = " including defaults"
 
+        sql = "SELECT * FROM pg_class WHERE relname LIKE 'temp_gpload_reusable_%%';"
+        resultList = self.db.query(sql.encode('utf-8')).getresult()
+        if len(resultList) > 0:
+            self.log(self.WARN, """found old style reusable tables (named 'temp_gpload_reusable_*') from a previous version.
+                         It is recommended to drop them in order to clear the catalog. This will only need to be done once""")
+		
         # If the 'reuse tables' option was specified we now try to find an
-        # already existing temp table in the catalog which will match
-        # the one that we need to use. It must have identical attributes
-        # and be called 'temp_gpload_reusable_<tbl>_*'
-
-        # MPP-14775 - If this is a 'merge' operation, we don't attempt reusing tables.
-        # get_reuse_temptable_query is not prepared to handle 'merge' cases, in which the yaml
-        # file specifies only a proper subset of the target table's columns; that function
-        # consumes from_cols and dist_cols, whereas the create table ddl for 'merge' below does not.
-        # Thus, the get_reuse_temptable_query would have us reuse a table that we would
-        # not create ourselves. This leads to errors later in the merge operation, in do_method_merge,
-        # where there are assumptions that the temp table had been created "LIKE" the target table.
-        # So, we disable merge + reuse_tables for now.
-        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
-        is_temp_table = 'temp'
-        if method == 'update' and self.reuse_tables == True:
+        # already existing staging table in the catalog which will match
+        # the one that we need to use. It must meet the reuse conditions
+        is_temp_table = 'TEMP '
+        if self.reuse_tables == True:
             is_temp_table = ''
-            tableName = quote_unident(self.table)
+            target_table_name = quote_unident(self.table)
 
-            # MPP-13348
-            shortTableName = shortname(tableName)
-            self.log(self.DEBUG, "create_temp_table: %s shortTableName: %s" % (tableName, shortTableName))
-
-            sql = self.get_reuse_temptable_query(shortTableName, from_cols, distcols)
-            
+            # create a string from all reuse conditions for staging tables and ancode it 
+            conditions_str = self.get_staging_conditions_string(target_table_name, from_cols, distcols)
+            encoding_conditions = hashlib.md5(conditions_str).hexdigest()
+					
+            sql = self.get_reuse_staging_table_query(encoding_conditions)
             resultList = self.db.query(sql.encode('utf-8')).getresult()
-            
+           
             if len(resultList) > 0:
                 
                 # found a temp table to reuse. no need to create one. we're done here.
-                self.tempTableName = (resultList[0])[0]
-                self.log(self.INFO, "reusing temp table %s" % self.tempTableName)
+                self.staging_table_name = (resultList[0])[0]
+                self.log(self.INFO, "reusing staging table %s" % self.staging_table_name)
                 
                 # truncate it so we don't use old data
-                self.do_truncate(self.tempTableName)
+                self.do_truncate(self.staging_table_name)
                 
                 return
         
-            # didn't find an existing temp table suitable for reuse. Format a reusable
+            # didn't find an existing staging table suitable for reuse. Format a reusable
             # name and issue a CREATE TABLE on it (without TEMP!). Hopefully we can use it 
             # next time around
-
-            self.tempTableName = "temp_gpload_reusable_%s_created_%s" % (shortTableName, self.unique_suffix)
-            self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
-        
+            # we no longer need the timestamp, since we will never want to create few
+            # tables with same encoding_conditions
+            self.staging_table_name = "staging_gpload_reusable_%s" % (encoding_conditions)
+            self.log(self.INFO, "did not find a staging table to reuse. creating %s" % self.staging_table_name)
+		
         # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
         # and that is, whether it's a temp table or not. In other words, is_temp_table = '' iff self.reuse_tables == True.
-        if method=='update':
-            # it would be tempting to use LIKE here but we cannot as it
-            # inherits NOT NULL and other constraints from the target table
-            # which might not actually be violated by this update.
-            sql = 'create %s table %s' % (is_temp_table, self.tempTableName)
-            cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
-            sql += "(%s)" % ','.join(cols)
-            sql += " distributed by (%s)" % ', '.join(distcols)
-            self.log(self.LOG, sql)
-        else: # (merge)
-            sql = 'create %s table %s(like %s%s)' % (is_temp_table, self.tempTableName, self.get_qualified_tablename(), including_defaults)
-            self.log(self.DEBUG, sql)
+        sql = 'CREATE %sTABLE %s ' % (is_temp_table, self.staging_table_name)
+        cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
+        sql += "(%s)" % ','.join(cols)
+        sql += " DISTRIBUTED BY (%s)" % ', '.join(distcols)
+        self.log(self.LOG, sql)
 
         if not self.options.D:
             self.db.query(sql.encode('utf-8'))
             if not self.reuse_tables:
-                self.cleanupSql.append('drop table if exists %s' % self.tempTableName)
+                self.cleanupSql.append('DROP TABLE IF EXISTS %s' % self.staging_table_name)
 
 
     def count_errors(self):
@@ -2473,41 +2437,47 @@ class gpload:
         """Load the data in and update an existing table based upon it"""
 
         self.table_supports_update()
-        self.create_temp_table()            
+        self.create_staging_table()            
 
         self.create_external_table()
-        self.do_insert(self.tempTableName)
+        self.do_insert(self.staging_table_name)
         # These rows are inserted temporarily for processing, so set inserted rows back to zero.
         self.rowsInserted = 0
-        self.do_update(self.tempTableName, 0)
+        self.do_update(self.staging_table_name, 0)
 
     def do_method_merge(self):
         """insert data not already in the table, update remaining items"""
         
         self.table_supports_update()
-        self.create_temp_table()        
+        self.create_staging_table()        
         self.create_external_table()
-        self.do_insert(self.tempTableName)
+        self.do_insert(self.staging_table_name)
         self.rowsInserted = 0 # MPP-13024. No rows inserted yet (only to temp table).
-        self.do_update(self.tempTableName, 0)
-        sql = 'insert into %s(' % self.get_qualified_tablename()
+        self.do_update(self.staging_table_name, 0)
+		
+        # insert new rows to the target table
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
-        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % a[0], self.into_columns))
-        sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
-        sql += 'from %s)as from_table '%self.tempTableName
-        sql += 'left outer join %s into_table ' % self.get_qualified_tablename()
-        sql += 'on %s '%' and '.join(match)
-        where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s is null'%x,0)
-        sql += 'where %s '%' and '.join(where)
-        sql += 'and gpload_row_number=1 '
-        sql += ')'
+		
+        cols = filter(lambda a:a[2]!=None, self.into_columns)				
+        sql = 'INSERT INTO %s ' % self.get_qualified_tablename()
+        sql += '(%s) ' % ','.join(map(lambda a:a[0], cols))
+        sql += '(SELECT %s ' % ','.join(map(lambda a:'from_table.%s' % a[0], cols))
+        sql += 'FROM (SELECT *, row_number() OVER (PARTITION BY %s) AS gpload_row_number ' % ','.join(matchColumns)
+        sql += 'FROM %s) AS from_table ' % self.staging_table_name
+        sql += 'LEFT OUTER JOIN %s into_table ' % self.get_qualified_tablename()
+        sql += 'ON %s '%' AND '.join(match)
+        where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s IS NULL'%x,0)
+        sql += 'WHERE %s ' % ' AND '.join(where)
+        sql += 'AND gpload_row_number=1)'
+
         self.log(self.LOG, sql)
         if not self.options.D:
             self.rowsInserted = self.db.query(sql.encode('utf-8'))
+			
 
     def do_truncate(self, tblname):
-        self.log(self.LOG, "Truncate table")
+        self.log(self.LOG, "Truncate table %s" %(tblname))
         if not self.options.D:
             try:
                 truncateSQLtext = "truncate %s" % tblname
@@ -2557,6 +2527,10 @@ class gpload:
             self.do_method_merge()
         else:
             self.control_file_error('unsupported method %s' % method)
+
+        # truncate the staging table to avoid dumping it's content - see MPP-15474
+        if method=='merge' or method=='update':
+            self.do_truncate(self.staging_table_name)
 
         if after:
             self.log(self.LOG, "Post-SQL from user: %s" % after)
