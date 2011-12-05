@@ -449,7 +449,6 @@ HeapTuple
 external_getnext(FileScanDesc scan, ScanDirection direction)
 {
 	HeapTuple	tuple;
-
 	if (scan->fs_noop)
 		return NULL;
 
@@ -466,12 +465,9 @@ external_getnext(FileScanDesc scan, ScanDirection direction)
 	 */
 	if (!scan->fs_file)
 		open_external_readable_source(scan);
-
 	/* Note: no locking manipulations needed */
 	FILEDEBUG_1;
-
 	tuple = externalgettup(scan, direction);
-
 
 	if (tuple == NULL)
 	{
@@ -479,12 +475,10 @@ external_getnext(FileScanDesc scan, ScanDirection direction)
 
 		return NULL;
 	}
-
 	/*
 	 * if we get here it means we have a new current scan tuple
 	 */
 	FILEDEBUG_3;				/* external_getnext returning tuple */
-
 	pgstat_count_heap_getnext(scan->fs_rd);
 
 	return tuple;
@@ -1621,19 +1615,47 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 static void
 open_external_readable_source(FileScanDesc scan)
 {
+
 	extvar_t 	extvar;
 	int 		response_code;
 	const char*	response_string;
+	/* search for custom end of line delimiter */
+	char*  line_delim_str = "";
+	int line_delim_length = -1;
+	char buffer_delim_length [33];
+
+		List* l = scan->fs_pstate->custom_formatter_params;
+	if(l!=NULL){
+		ListCell* lc = l->head;
+			while (lc)
+		{
+			if (pg_strcasecmp(((DefElem *)lc->data.ptr_value)->defname, "line_delim") == 0)
+			{
+				line_delim_str = ((Value*)((DefElem *)lc->data.ptr_value)->arg)->val.str;
+				/*
+			 	 * non printable escape characters is not acceptable by PSQL
+			 	 * Therefore, we didn't use any encoding for processing the data
+			 	 */
+				line_delim_length = strlen(line_delim_str);
+			}
+			if(line_delim_length>=0)
+				break;
+			lc = lc->next;
+		}
+	}
+	sprintf( buffer_delim_length, "%d", line_delim_length );
 
 	/* set up extvar */
 	memset(&extvar, 0, sizeof(extvar));
-	external_set_env_vars(&extvar,
+	external_set_env_vars_ext(&extvar,
 						  scan->fs_uri,
 						  scan->fs_pstate->csv_mode,
 						  scan->fs_pstate->escape,
 						  scan->fs_pstate->quote,
 						  scan->fs_pstate->header_line,
-						  scan->fs_scancounter);
+						  scan->fs_scancounter,
+						  line_delim_str,
+						  buffer_delim_length);
 
     /* actually open the external source */
     scan->fs_file = (FILE*) url_fopen(scan->fs_uri,
@@ -1676,15 +1698,38 @@ open_external_writable_source(ExternalInsertDesc extInsertDesc)
 	int 		response_code;
 	const char*	response_string;
 
+	char*  line_delim_str = "";
+	int line_delim_length = -1;
+	char buffer_delim_length [33];
+
+	List* l = extInsertDesc->ext_pstate->custom_formatter_params;
+	if(l!=NULL)
+	{
+		ListCell* lc = l->head;
+		while (lc)
+		{
+			if (pg_strcasecmp(((DefElem *)lc->data.ptr_value)->defname, "line_delim") == 0)
+			{
+				line_delim_str = ((Value*)((DefElem *)lc->data.ptr_value)->arg)->val.str;
+				line_delim_length = strlen(line_delim_str);
+			}
+			if(line_delim_length>=0)
+				break;
+			lc = lc->next;
+		}
+		snprintf( buffer_delim_length, 33, "%d", line_delim_length );
+	}
 	/* set up extvar */
 	memset(&extvar, 0, sizeof(extvar));
-	external_set_env_vars(&extvar,
+	external_set_env_vars_ext(&extvar,
 						  extInsertDesc->ext_uri,
 						  extInsertDesc->ext_pstate->csv_mode,
 						  extInsertDesc->ext_pstate->escape,
 						  extInsertDesc->ext_pstate->quote,
 						  extInsertDesc->ext_pstate->header_line,
-						  0);
+						  0,
+						  line_delim_str,
+						  buffer_delim_length);
 
     /* actually open the external source */
     extInsertDesc->ext_file = (FILE*) url_fopen(extInsertDesc->ext_uri,
@@ -2291,7 +2336,6 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 
 	token = strtokx2(fmtstr, whitespace, NULL, NULL,
 					0, false, true, encoding);
-
 	if (!iscustom)
 	{
 		if (token)
@@ -2484,7 +2528,6 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 
 			while (key)
 			{
-				
 				/* MPP-14467 - replace meta chars back to original */
 				resetStringInfo(&key_modified);
 				appendStringInfoString(&key_modified, key);
@@ -2494,16 +2537,16 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 								nonstd_backslash, true, true, encoding);
 				if (val)
 				{
-
 					if (pg_strcasecmp(key, "formatter") == 0)
 					{
 						pstate->custom_formatter_name = pstrdup(val);
 						formatter_found = true;
 					}
 					else
-
-					l = lappend(l, makeDefElem(pstrdup(key_modified.data), 
+					{
+						l = lappend(l, makeDefElem(pstrdup(key_modified.data),
 									(Node *)makeString(pstrdup(val))));
+					}
 				}
 				else
 					goto error;
@@ -2544,6 +2587,12 @@ error:
 
 void
 external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter)
+{
+	external_set_env_vars_ext(extvar, uri, csv, escape, quote, header, scancounter, "", "-1");
+}
+
+void
+external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter, char* line_delim_str, char* buffer_delim_length)
 {
 	time_t 		now = time(0);
 	struct tm* 	tm = localtime(&now);
@@ -2612,4 +2661,6 @@ external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char*
  	extvar->GP_HADOOP_CONN_JARDIR  = gp_hadoop_connector_jardir;
  	extvar->GP_HADOOP_CONN_VERSION = gp_hadoop_connector_version;
  	extvar->GP_HADOOP_HOME         = gp_hadoop_home;
+ 	extvar->GP_LINE_DELIM_STR      = line_delim_str;
+ 	extvar->GP_LINE_DELIM_LENGTH   = buffer_delim_length;
 }

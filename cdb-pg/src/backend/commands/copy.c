@@ -5211,8 +5211,7 @@ CopyReadAttributesText(CopyState cstate, bool * __restrict nulls,
 							/* no escape sequence found. it's a lone escape */
 							
 							bool next_is_eol = ((nextc == '\n' && cstate->eol_type == EOL_LF) ||
-											    (nextc == '\r' && (cstate->eol_type == EOL_CR || 
-																   cstate->eol_type == EOL_CRLF)));
+																   cstate->eol_type == EOL_CRLF);
 							
 							if(!next_is_eol)
 							{
@@ -6671,7 +6670,6 @@ void CopyEolStrToType(CopyState cstate)
 	{
 		cstate->eol_type = EOL_CR;
 		cstate->eol_ch[0] = '\r';
-		cstate->eol_ch[1] = '\0';		
 	}
 	else if (pg_strcasecmp(cstate->eol_str, "crlf") == 0)
 	{

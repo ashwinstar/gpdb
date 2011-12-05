@@ -350,13 +350,9 @@ class ValidateSegDiskSpace(Operation):
             conn = dbconn.connect(dburl, utility=True)
             if self.include_dump_tables:
                 for dump_table in self.include_dump_tables:
-                    schema, table = dump_table.split('.')
-                    needed_space += execSQLForSingleton(conn, "select sotdsize/1024 from gp_toolkit.gp_size_of_table_disk where sotdschemaname='%s' and sotdtablename='%s';" % (schema, table))
+                    needed_space += execSQLForSingleton(conn, "SELECT pg_relation_size('%s')/1024;" % dump_table)
             else:
-                needed_space = execSQLForSingleton(conn, "select sodddatsize/1024 from gp_toolkit.gp_size_of_database where sodddatname='%s';" % self.dump_database)
-        except UnexpectedRowsError, e:
-            logger.exception("Disk space queries have failed. Cannot estimate disk space needed for dump.")
-            raise ExceptionNoStackTraceNeeded("Cannot estimate disk space needed for dump. Use -b to override this check.")
+                needed_space = execSQLForSingleton(conn, "SELECT pg_database_size('%s')/1024;" % self.dump_database)
         finally:
             if conn is not None:
                 conn.close()
