@@ -85,11 +85,11 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 				bool doInstrument)
 {
 	QueryDesc  *qd = (QueryDesc *) palloc(sizeof(QueryDesc));
-
+	
 	qd->operation = plannedstmt->commandType;	/* operation */
 	qd->plannedstmt = plannedstmt;		/* plan */
 	qd->utilitystmt = plannedstmt->utilityStmt; /* in case DECLARE CURSOR */
-	qd->sourceText = sourceText;		/* query text */
+	qd->sourceText = pstrdup(sourceText);		/* query text */
 	qd->snapshot = snapshot;	/* snapshot */
 	qd->crosscheck_snapshot = crosscheck_snapshot;		/* RI check snapshot */
 	qd->dest = dest;			/* output dest */
@@ -133,7 +133,7 @@ CreateUtilityQueryDesc(Node *utilitystmt,
 	qd->operation = CMD_UTILITY;	/* operation */
 	qd->plannedstmt = NULL;
 	qd->utilitystmt = utilitystmt;		/* utility command */
-	qd->sourceText = sourceText;		/* query text */
+	qd->sourceText = pstrdup(sourceText);		/* query text */
 	qd->snapshot = snapshot;	/* snapshot */
 	qd->crosscheck_snapshot = InvalidSnapshot;	/* RI check snapshot */
 	qd->dest = dest;			/* output dest */
@@ -159,7 +159,8 @@ FreeQueryDesc(QueryDesc *qdesc)
 {
 	/* Can't be a live query */
 	Assert(qdesc->estate == NULL);
-	/* Only the QueryDesc itself need be freed */
+	/* Only the QueryDesc itself and the sourceText need be freed */
+	pfree((void*) qdesc->sourceText);
 	pfree(qdesc);
 }
 
@@ -802,7 +803,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				}
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);
-				
+
 				if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 						&& Gp_role == GP_ROLE_DISPATCH
 						&& gp_session_id > -1
