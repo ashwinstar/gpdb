@@ -36,7 +36,7 @@ gphdfsdoc:
                    -Dname=hadoop-core-0.20.205.0-gphd \
                    -Drevision=1.1.0.0 \
                    -Dgphdxnet.version=$(gphdver) \
-                   -Dgpxnet.src=gphd-1.1.0.0
+                   -Dgpxnet.src=1.1
 
 	$(TAR) -cf $(gphdver)-javadoc.tar $(gphdver)-javadoc
 
