@@ -18,6 +18,7 @@ try:
     from gppylib.operations import Operation
     from gppylib.operations.utils import RemoteOperation, ParallelOperation
     from gppylib.operations.unix import CheckFile, CheckDir, MakeDir, RemoveFile, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFiles, ListFilesByPattern
+    from gppylib.utils import TableLogger
 
     import yaml   
     from yaml.scanner import ScannerError
@@ -340,29 +341,6 @@ class CleanupDir(Operation):
             return False
         
         return True
-
-class IsRpmInstalled(Operation):
-    '''
-        Returns true if an rpm is installed 
-        False otherwise
-    '''
-    
-    def __init__(self, rpm):
-        self.rpm = rpm
-
-    def execute(self):
-
-        #Remove the '.rpm' extension
-        rpm = self.rpm[:-4]
-     
-        try:
-            cmd_str = 'rpm -q %s --dbpath %s' % (rpm, RPM_DATABASE)
-            LocalCommand(cmd_str).run()
-
-            return True
-
-        except ExecutionError:
-            return False
 
 class IsVersionCompatible(Operation):
     '''
@@ -849,53 +827,46 @@ class UninstallPackage(Operation):
 
 
 
-class QueryGppkg(Operation):
-    '''
-       Query the gppkg and print out information regarding it
-    '''
-
-    def __init__(self, gppkg, query):
-        
-        self.gppkg = gppkg
-        self.query = query
-
+class QueryPackage(Operation):
+    INFO, LIST, ALL = range(3)
+    def __init__(self, query_type, package_path):
+        self.query_type = query_type
+        self.package_path = package_path
     def execute(self):
+        if self.query_type == QueryPackage.INFO:
+            def package_details(p):
+                yield 'Name', p.pkgname
+                yield 'Version', p.version
+                yield 'Architecture', p.architecture
+                yield 'OS', p.os
+                yield 'GPDBVersion', str(p.gpdbversion)
+                yield 'Description', p.description
 
-        gppkg = self.gppkg
+            def print_package_info(package):
+                tabLog = TableLogger()
+                for name, value in package_details( package ):
+                    tabLog.info([name, value])
+                tabLog.outputTable()
 
-        #print out the information about the package
-        if self.query in ['I', '-I', 'info', '--info']:
-            print 'Name: %s' % gppkg.pkgname
-            print 'Version:    %s' % gppkg.version
-            print 'Architecture:    %s' % gppkg.architecture
-            print 'OS:         %s' % gppkg.os
-            print 'GPDBVersion:    %s' % gppkg.gpdbversion
-            print 'Description:    %s' % gppkg.description
-            
-            return 
+            package = Gppkg.from_package_path(self.package_path)
+            print_package_info( package )
 
-        #print out all the dependencies of the package
-        elif self.query in ['R', '-R', 'requires', '--requires']:
-            for deps in gppkg.dependencies:
-                print deps
-            return
-    
-        #print out all the files present in the package
-        elif self.query in ['l', '-l', 'list', '--list']:
-            for cur_file in gppkg.file_list:
-                print cur_file
-            return
-      
-        elif self.query in ['all', '--all']:
+        elif self.query_type == QueryPackage.LIST:
+            package = Gppkg.from_package_path(self.package_path)
+            for file in package.file_list:
+                print file
+        elif self.query_type == QueryPackage.ALL:
             package_name_list = ListPackages().run()
-            for pkg_name in package_name_list:
-                print pkg_name
-
-        #No query option was entered. So just query the RPM database
-        elif IsRpmInstalled(gppkg.main_rpm).run():
-            print '%s is installed.' % gppkg.pkgname
+            for package_name in package_name_list:
+                print package_name
         else:
-            print '%s is not installed.' % gppkg.pkgname
+            package = Gppkg.from_package_path(self.package_path)
+            try:
+                ValidateInstallPackage(package).run()
+            except AlreadyInstalledError:
+                print '%s is installed.' % package.pkgname
+            else:
+                print '%s is not installed.' % package.pkgname
 
 class BuildGppkg(Operation):
     '''
