@@ -18,7 +18,7 @@
     </configurations>
 
     <dependencies>
-      <dependency org="org.apache.hadoop" name="hadoop-core" rev="${hadoop.core.version}"
+      <dependency org="${org}" name="${name}" rev="${revision}"
                   conf="compile->master"/>
       <dependency org="checkstyle" name="checkstyle" rev="${checkstyle.version}"
                   conf="checkstyle->default"/>

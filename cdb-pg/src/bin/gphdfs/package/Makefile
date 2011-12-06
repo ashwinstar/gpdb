@@ -13,7 +13,7 @@ JRE_REL=1
 JRE_DIR=$(RELENG_TOOLS)/jre-$(JRE_VER)
 JRE_RPM=jre-$(JRE_VER)-$(JRE_REL).$(ARCH).rpm
 
-GPHDFS_VER=1.0
+GPHDFS_VER=1.1
 GPHDFS_REL=1
 GPHDFS_RPM=gphdfs-$(GPHDFS_VER)-$(GPHDFS_REL).$(ARCH).rpm
 GPHDFS_GPPKG=gphdfs-$(GPHDFS_VER)-$(OS)-$(ARCH).gppkg
@@ -41,7 +41,7 @@ $(GPHDFS_GPPKG): gppkg/gppkg_spec.yml $(JRE_DIR) $(JRE_RPM) $(GPHDFS_RPM)
 	mkdir gppkg/deps
 	cp $(JRE_RPM) gppkg/deps
 	source $(INSTLOC)/greenplum_path.sh && $(GPMGMT)/bin/gppkg -b gppkg/
-						
+
 clean:
 	rm -rf RPMS SOURCES SRPMS BUILD
 	rm -rf install

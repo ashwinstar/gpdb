@@ -2,8 +2,9 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 ANT=/opt/releng/apache-ant/bin/ant
-gphdver = gphd-xnet-1.0.0.0
-gpmrver = gpmr-xnet-1.0.0.0
+gphdver = gphd-xnet-1.1.0.0
+gpmrver = gpmr-xnet-1.0.0.1
+gpcdh3u2ver = gpcdh3u2-xnet-1.1.0.0
 
 all: gphdfs protocol_formatter
 
@@ -12,12 +13,31 @@ protocol_formatter:
 
 gphdfs:
 	$(ANT) clean
-	$(ANT) dist -Dgphdconn.version=$(gphdver) -Dhadoop.core.version=0.20.2
+	$(ANT) dist -Dorg=emc \
+                -Dname=hadoop-core-0.20.205.0-gphd \
+                -Drevision=1.1.0.0 \
+                -Dgphdxnet.version=$(gphdver) \
+                -Dgpxnet.src=1.1
 	$(ANT) clean
-	$(ANT) dist -Dgphdconn.version=$(gpmrver) -Dhadoop.core.version=0.20.2
-	
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=0.20.2 \
+                -Dgphdxnet.version=$(gpmrver) \
+                -Dgpxnet.src=1.0
+	$(ANT) clean
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=0.20.2-cdh3u2 \
+                -Dgphdxnet.version=$(gpcdh3u2ver) \
+                -Dgpxnet.src=1.1
+
 gphdfsdoc:
-	$(ANT) javadoc -Dgphdconn.version=$(gphdver) -Dhadoop.core.version=0.20.2
+	$(ANT) javadoc -Dorg=emc \
+                   -Dname=hadoop-core-0.20.205.0-gphd \
+                   -Drevision=1.1.0.0 \
+                   -Dgphdxnet.version=$(gphdver) \
+                   -Dgpxnet.src=gphd-1.1.0.0
+
 	$(TAR) -cf $(gphdver)-javadoc.tar $(gphdver)-javadoc
 
 install: all installdirs gphdfsdoc
@@ -39,4 +59,4 @@ clean:
 	$(MAKE) -C src/protocol_formatter clean
 	$(ANT) clean
 	rm -rf $(gphdver)-javadoc
-	rm $(gphdver)-javadoc.tar
+	rm -f $(gphdver)-javadoc.tar
