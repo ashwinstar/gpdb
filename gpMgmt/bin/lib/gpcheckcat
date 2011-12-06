@@ -2034,7 +2034,7 @@ def removeInheritance(seg, db, reloid, rel):
 
 
 def removeIndexConstraint(nspname, relname, constraint):
-    GV.Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s";' % \
+    GV.Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s" CASCADE;' % \
             (nspname, relname, constraint))
 
 def distributeRandomly(rel):
