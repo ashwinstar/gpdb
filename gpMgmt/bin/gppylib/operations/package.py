@@ -862,6 +862,7 @@ class QueryPackage(Operation):
         else:
             package = Gppkg.from_package_path(self.package_path)
             try:
+                ExtractPackage(package).run()
                 ValidateInstallPackage(package).run()
             except AlreadyInstalledError:
                 print '%s is installed.' % package.pkgname
