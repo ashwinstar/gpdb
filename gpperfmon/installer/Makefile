@@ -64,7 +64,6 @@ all:
 	mkdir .tmp/etc
 	mkdir .tmp/lib
 	mkdir .tmp/lib/python
-	mkdir .tmp/docs
 	mkdir .tmp/www
 	mkdir .tmp/www/static
 	mkdir .tmp/www/static/docs
@@ -77,10 +76,7 @@ all:
 	cp -R $(GPMONWS_DIR)/* .tmp/www
 	cp -R $(GPMONUI_DIR)/bin-release/* .tmp/www/static
 	cp -R $(LIGHTY_DIR)/* .tmp
-	if [ -f $(BLD_TOP)/docs/release/pdf/GPPerfmonAdminGuide.pdf ]; then \
-		cp $(BLD_TOP)/docs/release/pdf/GPPerfmonAdminGuide.pdf .tmp/docs; \
-		cp -R $(CONSOLEDOCS_DIR)/* .tmp/www/static/docs; \
-	fi;
+	cp -R $(CONSOLEDOCS_DIR)/* .tmp/www/static/docs
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/bin/openssl .tmp/bin
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/ssl/openssl.cnf .tmp/etc	
 	@if [ "$(PACKAGE_ARCH)" = "OSX-i386" ] ; then \
