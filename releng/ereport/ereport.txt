@@ -1969,39 +1969,45 @@ xaae: xlog:00011032:  ereport(ERROR,
 xaae: xlog:00011033:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 xaae: xlog:00011034:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogxmm - ./backend/access/transam/xlog_mm.c
-xaah: xlogxmm:00000100:  elog(WARNING, "could not unlink %s: %m", path); 
-xaah: xlogxmm:00000183:  elog(ERROR, "could not create directory \"%s\": %m", 
-xaah: xlogxmm:00000184:  path); 
-xaah: xlogxmm:00000241:  elog(ERROR, "Master mirroring hash table for filespaces not initialized"); 
-xaah: xlogxmm:00000248:  elog(ERROR, 
-xaah: xlogxmm:00000249:  "Master mirroring hash table entry for filespace %u not found", 
-xaah: xlogxmm:00000250:  xlrec->filespace); 
-xaah: xlogxmm:00000255:  elog(ERROR, "Master mirroring hash table for tablespaces not initialized"); 
-xaah: xlogxmm:00000262:  elog(ERROR, 
-xaah: xlogxmm:00000263:  "Master mirroring hash table entry for tablespace %u not found", 
-xaah: xlogxmm:00000264:  xlrec->tablespace); 
-xaah: xlogxmm:00000291:  elog(WARNING, "could open open file %s: %m", path); 
-xaah: xlogxmm:00000367:  elog(ERROR, "Unexpected tablespace filespace fetch result: %d", 
-xaah: xlogxmm:00000368:  tablespaceGetFilespaces); 
-xaah: xlogxmm:00000920:  elog(ERROR, "Corrupted filespace hashtable"); 
-xaah: xlogxmm:00000965:  elog(ERROR, "Corrupted tablespace hashtable"); 
-xaah: xlogxmm:00001736:  elog(WARNING,"mmxlog_get_checkpoint_info: The checkpoint at %s appears to be a 4.0 checkpoint", XLogLocationToString(beginLoc)); 
-xaah: xlogxmm:00001830:  elog(ERROR, "bad filespace checkpoint information for entry %d", i); 
-xaah: xlogxmm:00001850:  elog(ERROR, "could not create filespace directory \"%s\": %m", 
-xaah: xlogxmm:00001851:  fmap[i].path2); 
-xaah: xlogxmm:00001873:  elog(ERROR, "bad tablespace checkpoint information for entry %d", i); 
-xaah: xlogxmm:00001881:  elog(ERROR, "cannot find filespace path for filespace OID %u (tablespace %u)", 
-xaah: xlogxmm:00001882:  m->filespaceoid, m->tablespaceoid); 
-xaah: xlogxmm:00001902:  elog(ERROR, "could not create tablespace directory \"%s\": %m", 
-xaah: xlogxmm:00001903:  path); 
-xaah: xlogxmm:00001927:  elog(ERROR, "bad database directory checkpoint information for entry %d", i); 
-xaah: xlogxmm:00001932:  elog(ERROR, "should not have the global tablespace in the database directory entries"); 
-xaah: xlogxmm:00001943:  elog(ERROR, "cannot find filespace OID for tablespace %u", 
-xaah: xlogxmm:00001944:  m->tablespaceoid); 
-xaah: xlogxmm:00001950:  elog(ERROR, "cannot find filespace path for filespace OID %u (tablespace %u)", 
-xaah: xlogxmm:00001951:  filespaceoid, m->tablespaceoid); 
-xaah: xlogxmm:00001973:  elog(ERROR, "could not create database directory \"%s\": %m", 
-xaah: xlogxmm:00001974:  path); 
+xaah: xlogxmm:00000102:  elog(WARNING, "could not unlink %s: %m", path); 
+xaah: xlogxmm:00000146:  elog(ERROR, "The object's path can not be constructed based on the xlog record. " 
+xaah: xlogxmm:00000147:  "The dbid in the xlog record, master %u and mirror %u, does no match the current dbid %u.", 
+xaah: xlogxmm:00000148:  GpIdentity.dbid, xlrec->u.dbid.master, xlrec->u.dbid.mirror); 
+xaah: xlogxmm:00000219:  elog(ERROR, "could not create directory \"%s\": %m", 
+xaah: xlogxmm:00000220:  path); 
+xaah: xlogxmm:00000277:  elog(ERROR, "Master mirroring hash table for filespaces not initialized"); 
+xaah: xlogxmm:00000284:  elog(ERROR, 
+xaah: xlogxmm:00000285:  "Master mirroring hash table entry for filespace %u not found", 
+xaah: xlogxmm:00000286:  xlrec->filespace); 
+xaah: xlogxmm:00000291:  elog(ERROR, "Master mirroring hash table for tablespaces not initialized"); 
+xaah: xlogxmm:00000298:  elog(ERROR, 
+xaah: xlogxmm:00000299:  "Master mirroring hash table entry for tablespace %u not found", 
+xaah: xlogxmm:00000300:  xlrec->tablespace); 
+xaah: xlogxmm:00000327:  elog(WARNING, "could open open file %s: %m", path); 
+xaah: xlogxmm:00000403:  elog(ERROR, "Unexpected tablespace filespace fetch result: %d", 
+xaah: xlogxmm:00000404:  tablespaceGetFilespaces); 
+xaah: xlogxmm:00000461:  elog(ERROR, "The object's path can not be constructed based on the xlog record. " 
+xaah: xlogxmm:00000462:  "The dbid in the xlog record, master %u and mirror %u, does no match the current dbid %u.", 
+xaah: xlogxmm:00000463:  GpIdentity.dbid, xlrec->u.dbid.master, xlrec->u.dbid.mirror); 
+xaah: xlogxmm:00000990:  elog(ERROR, "Corrupted filespace hashtable"); 
+xaah: xlogxmm:00001035:  elog(ERROR, "Corrupted tablespace hashtable"); 
+xaah: xlogxmm:00001806:  elog(WARNING,"mmxlog_get_checkpoint_info: The checkpoint at %s appears to be a 4.0 checkpoint", XLogLocationToString(beginLoc)); 
+xaah: xlogxmm:00001900:  elog(ERROR, "bad filespace checkpoint information for entry %d", i); 
+xaah: xlogxmm:00001920:  elog(ERROR, "could not create filespace directory \"%s\": %m", 
+xaah: xlogxmm:00001921:  fmap[i].path2); 
+xaah: xlogxmm:00001943:  elog(ERROR, "bad tablespace checkpoint information for entry %d", i); 
+xaah: xlogxmm:00001951:  elog(ERROR, "cannot find filespace path for filespace OID %u (tablespace %u)", 
+xaah: xlogxmm:00001952:  m->filespaceoid, m->tablespaceoid); 
+xaah: xlogxmm:00001972:  elog(ERROR, "could not create tablespace directory \"%s\": %m", 
+xaah: xlogxmm:00001973:  path); 
+xaah: xlogxmm:00001997:  elog(ERROR, "bad database directory checkpoint information for entry %d", i); 
+xaah: xlogxmm:00002002:  elog(ERROR, "should not have the global tablespace in the database directory entries"); 
+xaah: xlogxmm:00002013:  elog(ERROR, "cannot find filespace OID for tablespace %u", 
+xaah: xlogxmm:00002014:  m->tablespaceoid); 
+xaah: xlogxmm:00002020:  elog(ERROR, "cannot find filespace path for filespace OID %u (tablespace %u)", 
+xaah: xlogxmm:00002021:  filespaceoid, m->tablespaceoid); 
+xaah: xlogxmm:00002043:  elog(ERROR, "could not create database directory \"%s\": %m", 
+xaah: xlogxmm:00002044:  path); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -2540,11 +2546,11 @@ iaaf: index:00002415:  elog(ERROR, "cache lookup failed for index %u", indexId);
 iaaf: index:00002549:  ereport(ERROR, 
 iaaf: index:00002550:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 iaaf: index:00002551:  errmsg("cannot reindex temporary tables of other sessions"))); 
-iaaf: index:00002577:  ereport(ERROR, 
-iaaf: index:00002578:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-iaaf: index:00002579:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
-iaaf: index:00002580:  RelationGetRelationName(iRel)))); 
-iaaf: index:00002663:  elog(ERROR, "cache lookup failed for index %u", indexId); 
+iaaf: index:00002571:  ereport(ERROR, 
+iaaf: index:00002572:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+iaaf: index:00002573:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
+iaaf: index:00002574:  RelationGetRelationName(iRel)))); 
+iaaf: index:00002657:  elog(ERROR, "cache lookup failed for index %u", indexId); 
 aaaaa GP_IGNORE: naaj: namespace - ./backend/catalog/namespace.c
 naaj: namespace:00000200:  ereport(ERROR, 
 naaj: namespace:00000201:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -12894,188 +12900,191 @@ eabc: execprocnode:00000873:  elog(ERROR, "unrecognized node type: %d", (int) no
 eabc: execprocnode:00001007:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 eabc: execprocnode:00001265:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
-eaai: execqual:00000290:  ereport(ERROR, 
-eaai: execqual:00000291:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-eaai: execqual:00000292:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
-eaai: execqual:00000293:  i, MAXDIM))); 
-eaai: execqual:00000303:  ereport(ERROR, 
-eaai: execqual:00000304:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-eaai: execqual:00000305:  errmsg("array subscript in assignment must not be null"))); 
-eaai: execqual:00000318:  ereport(ERROR, 
-eaai: execqual:00000319:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-eaai: execqual:00000320:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
-eaai: execqual:00000321:  i, MAXDIM))); 
-eaai: execqual:00000331:  ereport(ERROR, 
-eaai: execqual:00000332:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-eaai: execqual:00000333:  errmsg("array subscript in assignment must not be null"))); 
-eaai: execqual:00000340:  elog(ERROR, "upper and lower index lists are not same length"); 
-eaai: execqual:00000442:  elog(ERROR, "no aggregates in this expression context"); 
-eaai: execqual:00000539:  elog(ERROR, "no window functions in this expression context"); 
-eaai: execqual:00000626:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
-eaai: execqual:00000627:  attnum, slot_tupdesc->natts); 
-eaai: execqual:00000635:  ereport(ERROR, 
-eaai: execqual:00000636:  (errmsg("attribute %d has wrong type", attnum), 
-eaai: execqual:00000637:  errdetail("Table has type %s, but query expects %s.", 
-eaai: execqual:00000638:  format_type_be(attr->atttypid), 
-eaai: execqual:00000639:  format_type_be(variable->vartype)))); 
-eaai: execqual:00000693:  ereport(ERROR, 
-eaai: execqual:00000694:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00000695:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execqual:00000696:  errdetail("Table row contains %d attributes, but query expects %d.", 
-eaai: execqual:00000697:  slot_tupdesc->natts, var_tupdesc->natts))); 
-eaai: execqual:00000709:  ereport(ERROR, 
-eaai: execqual:00000710:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00000711:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execqual:00000712:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
-eaai: execqual:00000713:  format_type_be(sattr->atttypid), 
-eaai: execqual:00000714:  i + 1, 
-eaai: execqual:00000715:  format_type_be(vattr->atttypid)))); 
-eaai: execqual:00000719:  ereport(ERROR, 
-eaai: execqual:00000720:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00000721:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execqual:00000722:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
-eaai: execqual:00000723:  i + 1))); 
-eaai: execqual:00000978:  ereport(ERROR, 
-eaai: execqual:00000979:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execqual:00000980:  errmsg("no value found for parameter %d", thisParamId))); 
-eaai: execqual:00001014:  elog(ERROR, "invalid attribute number %d", attrno); 
-eaai: execqual:00001017:  elog(ERROR, "a NULL isNull pointer was passed"); 
-eaai: execqual:00001061:  elog(ERROR, "invalid attribute name"); 
-eaai: execqual:00001064:  elog(ERROR, "a NULL isNull pointer was passed"); 
-eaai: execqual:00001088:  elog(ERROR, "attribute \"%s\" does not exist", attname); 
-eaai: execqual:00001130:  ereport(ERROR, 
-eaai: execqual:00001131:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-eaai: execqual:00001132:  errmsg("cannot pass more than %d arguments to a function", 
-eaai: execqual:00001133:  FUNC_MAX_ARGS))); 
-eaai: execqual:00001308:  ereport(ERROR, 
-eaai: execqual:00001309:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001310:  errmsg("functions and operators can take at most one set argument"))); 
-eaai: execqual:00001344:  ereport(ERROR, 
-eaai: execqual:00001345:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001346:  errmsg("function returning setof record called in " 
-eaai: execqual:00001347:  "context that cannot accept type record"))); 
-eaai: execqual:00001400:  ereport(ERROR, 
-eaai: execqual:00001401:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00001402:  errmsg("function return row and query-specified return row do not match"), 
-eaai: execqual:00001403:  errdetail("Returned row contains %d attributes, but query expects %d.", 
-eaai: execqual:00001404:  src_tupdesc->natts, dst_tupdesc->natts))); 
-eaai: execqual:00001414:  ereport(ERROR, 
-eaai: execqual:00001415:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00001416:  errmsg("function return row and query-specified return row do not match"), 
-eaai: execqual:00001417:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
-eaai: execqual:00001418:  format_type_be(sattr->atttypid), 
-eaai: execqual:00001419:  i + 1, 
-eaai: execqual:00001420:  format_type_be(dattr->atttypid)))); 
-eaai: execqual:00001424:  ereport(ERROR, 
-eaai: execqual:00001425:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00001426:  errmsg("function return row and query-specified return row do not match"), 
-eaai: execqual:00001427:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
-eaai: execqual:00001428:  i + 1))); 
-eaai: execqual:00001518:  ereport(ERROR, 
-eaai: execqual:00001519:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001520:  errmsg("set-valued function called in context that cannot accept a set"))); 
-eaai: execqual:00001563:  ereport(ERROR, 
-eaai: execqual:00001564:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001565:  errmsg("set-valued function called in context that cannot accept a set"))); 
-eaai: execqual:00001649:  ereport(ERROR, 
-eaai: execqual:00001650:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-eaai: execqual:00001651:  errmsg("table-function protocol for materialize mode was not followed"))); 
-eaai: execqual:00001669:  ereport(ERROR, 
-eaai: execqual:00001670:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-eaai: execqual:00001671:  errmsg("unrecognized table-function returnMode: %d", 
-eaai: execqual:00001672:  (int) rsinfo.returnMode))); 
-eaai: execqual:00001889:  ereport(ERROR, 
-eaai: execqual:00001890:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001891:  errmsg("set-valued function called in context that cannot accept a set"))); 
-eaai: execqual:00001972:  ereport(ERROR, 
-eaai: execqual:00001973:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-eaai: execqual:00001974:  errmsg("function returning set of rows cannot return null value"))); 
-eaai: execqual:00002075:  ereport(ERROR, 
-eaai: execqual:00002076:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-eaai: execqual:00002077:  errmsg("table-function protocol for materialize mode was not followed"))); 
-eaai: execqual:00002082:  ereport(ERROR, 
-eaai: execqual:00002083:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-eaai: execqual:00002084:  errmsg("unrecognized table-function returnMode: %d", 
-eaai: execqual:00002085:  (int) rsinfo.returnMode))); 
-eaai: execqual:00002248:  ereport(ERROR, 
-eaai: execqual:00002249:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00002250:  errmsg("IS DISTINCT FROM does not support set arguments"))); 
-eaai: execqual:00002664:  ereport(ERROR, 
-eaai: execqual:00002665:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00002666:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
-eaai: execqual:00003012:  elog(ERROR, "attribute \"%s\" of type %s does not match corresponding attribute of type %s", 
-eaai: execqual:00003013:  attname, 
-eaai: execqual:00003014:  format_type_be(cstate->indesc->tdtypeid), 
-eaai: execqual:00003015:  format_type_be(cstate->outdesc->tdtypeid)); 
-eaai: execqual:00003021:  elog(ERROR, "attribute \"%s\" of type %s does not exist", 
-eaai: execqual:00003022:  attname, 
-eaai: execqual:00003023:  format_type_be(cstate->indesc->tdtypeid)); 
-eaai: execqual:00003283:  ereport(ERROR, 
-eaai: execqual:00003284:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00003285:  errmsg("cannot merge incompatible arrays"), 
-eaai: execqual:00003286:  errdetail("Array with element type %s cannot be " 
-eaai: execqual:00003287:  "included in ARRAY construct with element type %s.", 
-eaai: execqual:00003288:  format_type_be(ARR_ELEMTYPE(array)), 
-eaai: execqual:00003289:  format_type_be(element_type)))); 
-eaai: execqual:00003305:  ereport(ERROR, 
-eaai: execqual:00003306:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-eaai: execqual:00003307:  errmsg("number of array dimensions (%d) exceeds " \ 
-eaai: execqual:00003308:  "the maximum allowed (%d)", ndims, MAXDIM))); 
-eaai: execqual:00003325:  ereport(ERROR, 
-eaai: execqual:00003326:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-eaai: execqual:00003327:  errmsg("multidimensional arrays must have array " 
-eaai: execqual:00003328:  "expressions with matching dimensions"))); 
-eaai: execqual:00003352:  ereport(ERROR, 
-eaai: execqual:00003353:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-eaai: execqual:00003354:  errmsg("multidimensional arrays must have array " 
-eaai: execqual:00003355:  "expressions with matching dimensions"))); 
-eaai: execqual:00003511:  elog(ERROR, "unrecognized RowCompareType: %d", (int) rctype); 
-eaai: execqual:00003674:  ereport(ERROR, 
-eaai: execqual:00003675:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00003676:  errmsg("NULLIF does not support set arguments"))); 
-eaai: execqual:00003784:  elog(ERROR, "unrecognized nulltesttype: %d", 
-eaai: execqual:00003785:  (int) ntest->nulltesttype); 
-eaai: execqual:00003870:  elog(ERROR, "unrecognized booltesttype: %d", 
-eaai: execqual:00003871:  (int) btest->booltesttype); 
-eaai: execqual:00003904:  ereport(ERROR, 
-eaai: execqual:00003905:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execqual:00003906:  errmsg("domain %s does not allow null values", 
-eaai: execqual:00003907:  format_type_be(ctest->resulttype)))); 
-eaai: execqual:00003933:  ereport(ERROR, 
-eaai: execqual:00003934:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execqual:00003935:  errmsg("value for domain %s violates check constraint \"%s\"", 
-eaai: execqual:00003936:  format_type_be(ctest->resulttype), 
-eaai: execqual:00003937:  con->name))); 
-eaai: execqual:00003944:  elog(ERROR, "unrecognized constraint type: %d", 
-eaai: execqual:00003945:  (int) con->constrainttype); 
-eaai: execqual:00004011:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
-eaai: execqual:00004012:  fieldnum, tupDesc->natts); 
-eaai: execqual:00004023:  ereport(ERROR, 
-eaai: execqual:00004024:  (errmsg("attribute %d has wrong type", fieldnum), 
-eaai: execqual:00004025:  errdetail("Table has type %s, but query expects %s.", 
-eaai: execqual:00004026:  format_type_be(attr->atttypid), 
-eaai: execqual:00004027:  format_type_be(fselect->resulttype)))); 
-eaai: execqual:00004278:  ereport(ERROR, 
-eaai: execqual:00004279:  (errcode(ERRCODE_GROUPING_ERROR), 
-eaai: execqual:00004280:  errmsg("aggregate function calls may not be nested"))); 
-eaai: execqual:00004285:  elog(ERROR, "aggref found in non-Agg plan node"); 
-eaai: execqual:00004435:  elog(ERROR, "unrecognized boolop: %d", 
-eaai: execqual:00004436:  (int) boolexpr->boolop); 
-eaai: execqual:00004453:  elog(ERROR, "SubPlan found with no parent plan"); 
-eaai: execqual:00004606:  ereport(ERROR, 
-eaai: execqual:00004607:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00004608:  errmsg("ROW() column has type %s instead of type %s", 
-eaai: execqual:00004609:  format_type_be(exprType((Node *) e)), 
-eaai: execqual:00004610:  format_type_be(attrs[i]->atttypid)))); 
-eaai: execqual:00004736:  ereport(ERROR, 
-eaai: execqual:00004737:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-eaai: execqual:00004738:  errmsg("could not identify a comparison function for type %s", 
-eaai: execqual:00004739:  format_type_be(minmaxexpr->minmaxtype)))); 
-eaai: execqual:00004821:  elog(ERROR, "unrecognized node type: %d", 
-eaai: execqual:00004822:  (int) nodeTag(node)); 
-eaai: execqual:00005075:  ereport(ERROR, 
-eaai: execqual:00005076:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00005077:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00000293:  ereport(ERROR, 
+eaai: execqual:00000294:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+eaai: execqual:00000295:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+eaai: execqual:00000296:  i, MAXDIM))); 
+eaai: execqual:00000306:  ereport(ERROR, 
+eaai: execqual:00000307:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+eaai: execqual:00000308:  errmsg("array subscript in assignment must not be null"))); 
+eaai: execqual:00000321:  ereport(ERROR, 
+eaai: execqual:00000322:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+eaai: execqual:00000323:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+eaai: execqual:00000324:  i, MAXDIM))); 
+eaai: execqual:00000334:  ereport(ERROR, 
+eaai: execqual:00000335:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+eaai: execqual:00000336:  errmsg("array subscript in assignment must not be null"))); 
+eaai: execqual:00000343:  elog(ERROR, "upper and lower index lists are not same length"); 
+eaai: execqual:00000445:  elog(ERROR, "no aggregates in this expression context"); 
+eaai: execqual:00000542:  elog(ERROR, "no window functions in this expression context"); 
+eaai: execqual:00000629:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
+eaai: execqual:00000630:  attnum, slot_tupdesc->natts); 
+eaai: execqual:00000638:  ereport(ERROR, 
+eaai: execqual:00000639:  (errmsg("attribute %d has wrong type", attnum), 
+eaai: execqual:00000640:  errdetail("Table has type %s, but query expects %s.", 
+eaai: execqual:00000641:  format_type_be(attr->atttypid), 
+eaai: execqual:00000642:  format_type_be(variable->vartype)))); 
+eaai: execqual:00000696:  ereport(ERROR, 
+eaai: execqual:00000697:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00000698:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execqual:00000699:  errdetail("Table row contains %d attributes, but query expects %d.", 
+eaai: execqual:00000700:  slot_tupdesc->natts, var_tupdesc->natts))); 
+eaai: execqual:00000712:  ereport(ERROR, 
+eaai: execqual:00000713:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00000714:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execqual:00000715:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+eaai: execqual:00000716:  format_type_be(sattr->atttypid), 
+eaai: execqual:00000717:  i + 1, 
+eaai: execqual:00000718:  format_type_be(vattr->atttypid)))); 
+eaai: execqual:00000722:  ereport(ERROR, 
+eaai: execqual:00000723:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00000724:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execqual:00000725:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
+eaai: execqual:00000726:  i + 1))); 
+eaai: execqual:00000981:  ereport(ERROR, 
+eaai: execqual:00000982:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execqual:00000983:  errmsg("no value found for parameter %d", thisParamId))); 
+eaai: execqual:00001017:  elog(ERROR, "invalid attribute number %d", attrno); 
+eaai: execqual:00001020:  elog(ERROR, "a NULL isNull pointer was passed"); 
+eaai: execqual:00001064:  elog(ERROR, "invalid attribute name"); 
+eaai: execqual:00001067:  elog(ERROR, "a NULL isNull pointer was passed"); 
+eaai: execqual:00001091:  elog(ERROR, "attribute \"%s\" does not exist", attname); 
+eaai: execqual:00001133:  ereport(ERROR, 
+eaai: execqual:00001134:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+eaai: execqual:00001135:  errmsg("cannot pass more than %d arguments to a function", 
+eaai: execqual:00001136:  FUNC_MAX_ARGS))); 
+eaai: execqual:00001311:  ereport(ERROR, 
+eaai: execqual:00001312:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001313:  errmsg("functions and operators can take at most one set argument"))); 
+eaai: execqual:00001347:  ereport(ERROR, 
+eaai: execqual:00001348:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001349:  errmsg("function returning setof record called in " 
+eaai: execqual:00001350:  "context that cannot accept type record"))); 
+eaai: execqual:00001403:  ereport(ERROR, 
+eaai: execqual:00001404:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00001405:  errmsg("function return row and query-specified return row do not match"), 
+eaai: execqual:00001406:  errdetail("Returned row contains %d attributes, but query expects %d.", 
+eaai: execqual:00001407:  src_tupdesc->natts, dst_tupdesc->natts))); 
+eaai: execqual:00001417:  ereport(ERROR, 
+eaai: execqual:00001418:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00001419:  errmsg("function return row and query-specified return row do not match"), 
+eaai: execqual:00001420:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
+eaai: execqual:00001421:  format_type_be(sattr->atttypid), 
+eaai: execqual:00001422:  i + 1, 
+eaai: execqual:00001423:  format_type_be(dattr->atttypid)))); 
+eaai: execqual:00001427:  ereport(ERROR, 
+eaai: execqual:00001428:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00001429:  errmsg("function return row and query-specified return row do not match"), 
+eaai: execqual:00001430:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
+eaai: execqual:00001431:  i + 1))); 
+eaai: execqual:00001521:  ereport(ERROR, 
+eaai: execqual:00001522:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001523:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00001566:  ereport(ERROR, 
+eaai: execqual:00001567:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001568:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00001652:  ereport(ERROR, 
+eaai: execqual:00001653:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00001654:  errmsg("table-function protocol for materialize mode was not followed"))); 
+eaai: execqual:00001672:  ereport(ERROR, 
+eaai: execqual:00001673:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00001674:  errmsg("unrecognized table-function returnMode: %d", 
+eaai: execqual:00001675:  (int) rsinfo.returnMode))); 
+eaai: execqual:00001892:  ereport(ERROR, 
+eaai: execqual:00001893:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001894:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00001975:  ereport(ERROR, 
+eaai: execqual:00001976:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+eaai: execqual:00001977:  errmsg("function returning set of rows cannot return null value"))); 
+eaai: execqual:00002078:  ereport(ERROR, 
+eaai: execqual:00002079:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00002080:  errmsg("table-function protocol for materialize mode was not followed"))); 
+eaai: execqual:00002085:  ereport(ERROR, 
+eaai: execqual:00002086:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00002087:  errmsg("unrecognized table-function returnMode: %d", 
+eaai: execqual:00002088:  (int) rsinfo.returnMode))); 
+eaai: execqual:00002251:  ereport(ERROR, 
+eaai: execqual:00002252:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00002253:  errmsg("IS DISTINCT FROM does not support set arguments"))); 
+eaai: execqual:00002667:  ereport(ERROR, 
+eaai: execqual:00002668:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00002669:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
+eaai: execqual:00003015:  elog(ERROR, "attribute \"%s\" of type %s does not match corresponding attribute of type %s", 
+eaai: execqual:00003016:  attname, 
+eaai: execqual:00003017:  format_type_be(cstate->indesc->tdtypeid), 
+eaai: execqual:00003018:  format_type_be(cstate->outdesc->tdtypeid)); 
+eaai: execqual:00003024:  elog(ERROR, "attribute \"%s\" of type %s does not exist", 
+eaai: execqual:00003025:  attname, 
+eaai: execqual:00003026:  format_type_be(cstate->indesc->tdtypeid)); 
+eaai: execqual:00003286:  ereport(ERROR, 
+eaai: execqual:00003287:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00003288:  errmsg("cannot merge incompatible arrays"), 
+eaai: execqual:00003289:  errdetail("Array with element type %s cannot be " 
+eaai: execqual:00003290:  "included in ARRAY construct with element type %s.", 
+eaai: execqual:00003291:  format_type_be(ARR_ELEMTYPE(array)), 
+eaai: execqual:00003292:  format_type_be(element_type)))); 
+eaai: execqual:00003308:  ereport(ERROR, 
+eaai: execqual:00003309:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+eaai: execqual:00003310:  errmsg("number of array dimensions (%d) exceeds " \ 
+eaai: execqual:00003311:  "the maximum allowed (%d)", ndims, MAXDIM))); 
+eaai: execqual:00003328:  ereport(ERROR, 
+eaai: execqual:00003329:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+eaai: execqual:00003330:  errmsg("multidimensional arrays must have array " 
+eaai: execqual:00003331:  "expressions with matching dimensions"))); 
+eaai: execqual:00003355:  ereport(ERROR, 
+eaai: execqual:00003356:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+eaai: execqual:00003357:  errmsg("multidimensional arrays must have array " 
+eaai: execqual:00003358:  "expressions with matching dimensions"))); 
+eaai: execqual:00003514:  elog(ERROR, "unrecognized RowCompareType: %d", (int) rctype); 
+eaai: execqual:00003677:  ereport(ERROR, 
+eaai: execqual:00003678:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00003679:  errmsg("NULLIF does not support set arguments"))); 
+eaai: execqual:00003787:  elog(ERROR, "unrecognized nulltesttype: %d", 
+eaai: execqual:00003788:  (int) ntest->nulltesttype); 
+eaai: execqual:00003873:  elog(ERROR, "unrecognized booltesttype: %d", 
+eaai: execqual:00003874:  (int) btest->booltesttype); 
+eaai: execqual:00003907:  ereport(ERROR, 
+eaai: execqual:00003908:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execqual:00003909:  errmsg("domain %s does not allow null values", 
+eaai: execqual:00003910:  format_type_be(ctest->resulttype)))); 
+eaai: execqual:00003936:  ereport(ERROR, 
+eaai: execqual:00003937:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execqual:00003938:  errmsg("value for domain %s violates check constraint \"%s\"", 
+eaai: execqual:00003939:  format_type_be(ctest->resulttype), 
+eaai: execqual:00003940:  con->name))); 
+eaai: execqual:00003947:  elog(ERROR, "unrecognized constraint type: %d", 
+eaai: execqual:00003948:  (int) con->constrainttype); 
+eaai: execqual:00004014:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
+eaai: execqual:00004015:  fieldnum, tupDesc->natts); 
+eaai: execqual:00004026:  ereport(ERROR, 
+eaai: execqual:00004027:  (errmsg("attribute %d has wrong type", fieldnum), 
+eaai: execqual:00004028:  errdetail("Table has type %s, but query expects %s.", 
+eaai: execqual:00004029:  format_type_be(attr->atttypid), 
+eaai: execqual:00004030:  format_type_be(fselect->resulttype)))); 
+eaai: execqual:00004281:  ereport(ERROR, 
+eaai: execqual:00004282:  (errcode(ERRCODE_GROUPING_ERROR), 
+eaai: execqual:00004283:  errmsg("aggregate function calls may not be nested"))); 
+eaai: execqual:00004288:  elog(ERROR, "aggref found in non-Agg plan node"); 
+eaai: execqual:00004438:  elog(ERROR, "unrecognized boolop: %d", 
+eaai: execqual:00004439:  (int) boolexpr->boolop); 
+eaai: execqual:00004456:  elog(ERROR, "SubPlan found with no parent plan"); 
+eaai: execqual:00004609:  ereport(ERROR, 
+eaai: execqual:00004610:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00004611:  errmsg("ROW() column has type %s instead of type %s", 
+eaai: execqual:00004612:  format_type_be(exprType((Node *) e)), 
+eaai: execqual:00004613:  format_type_be(attrs[i]->atttypid)))); 
+eaai: execqual:00004739:  ereport(ERROR, 
+eaai: execqual:00004740:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+eaai: execqual:00004741:  errmsg("could not identify a comparison function for type %s", 
+eaai: execqual:00004742:  format_type_be(minmaxexpr->minmaxtype)))); 
+eaai: execqual:00004824:  elog(ERROR, "unrecognized node type: %d", 
+eaai: execqual:00004825:  (int) nodeTag(node)); 
+eaai: execqual:00005078:  ereport(ERROR, 
+eaai: execqual:00005079:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00005080:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00005333:  elog(ERROR, "invalid argument number found during evaluating function argument"); 
+eaai: execqual:00005340:  elog(ERROR, "unable to resolve function argument"); 
+eaai: execqual:00005344:  elog(ERROR, "unable to resolve function argument type"); 
 aaaaa GP_IGNORE: eaba: exectuples - ./backend/executor/execTuples.c
 eaba: exectuples:00000312:  elog(ERROR, "plan requires more slots than are available"); 
 eaba: exectuples:00001501:  elog(ERROR, "Invalid attnum: %d", attnum); 
@@ -14193,36 +14202,36 @@ paaj: prepunion:00001474:  tle->resno, get_rel_name(apprelinfo->parent_reloid));
 paaj: prepunion:00001477:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
 paaj: prepunion:00001478:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
 aaaaa GP_IGNORE: caah: clauses - ./backend/optimizer/util/clauses.c
-caah: clauses:00000428:  ereport(ERROR, 
-caah: clauses:00000429:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caah: clauses:00000430:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
-caah: clauses:00000460:  elog(ERROR, "cache lookup failed for aggregate %u", 
-caah: clauses:00000461:  aggref->aggfnoid); 
-caah: clauses:00000528:  ereport(ERROR, 
-caah: clauses:00000529:  (errcode(ERRCODE_GROUPING_ERROR), 
-caah: clauses:00000530:  errmsg("aggregate function calls may not be nested"))); 
-caah: clauses:00001322:  elog(ERROR, "cannot commute non-binary-operator clause"); 
-caah: clauses:00001327:  elog(ERROR, "could not find commutator for operator %u", 
-caah: clauses:00001328:  clause->opno); 
-caah: clauses:00001356:  elog(ERROR, "expected a RowCompareExpr"); 
-caah: clauses:00001366:  elog(ERROR, "could not find commutator for operator %u", 
-caah: clauses:00001367:  lfirst_oid(l)); 
-caah: clauses:00001389:  elog(ERROR, "unexpected RowCompare type: %d", 
-caah: clauses:00001390:  (int) clause->rctype); 
-caah: clauses:00001923:  elog(ERROR, "unrecognized boolop: %d", 
-caah: clauses:00001924:  (int) expr->boolop); 
-caah: clauses:00002337:  elog(ERROR, "unrecognized nulltesttype: %d", 
-caah: clauses:00002338:  (int) ntest->nulltesttype); 
-caah: clauses:00002389:  elog(ERROR, "unrecognized booltesttype: %d", 
-caah: clauses:00002390:  (int) btest->booltesttype); 
-caah: clauses:00002700:  elog(ERROR, "cache lookup failed for function %u", funcid); 
-caah: clauses:00002916:  elog(ERROR, "null prosrc for function %u", funcid); 
-caah: clauses:00003116:  elog(ERROR, "unexpected paramkind: %d", (int) param->paramkind); 
-caah: clauses:00003118:  elog(ERROR, "invalid paramid: %d", param->paramid); 
-caah: clauses:00003152:  elog(ERROR, "null prosrc"); 
-caah: clauses:00003844:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: clauses:00003845:  errmsg_internal("unrecognized node type: %d", 
-caah: clauses:00003846:  nodeTag(node)) )); 
+caah: clauses:00000427:  ereport(ERROR, 
+caah: clauses:00000428:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caah: clauses:00000429:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
+caah: clauses:00000459:  elog(ERROR, "cache lookup failed for aggregate %u", 
+caah: clauses:00000460:  aggref->aggfnoid); 
+caah: clauses:00000527:  ereport(ERROR, 
+caah: clauses:00000528:  (errcode(ERRCODE_GROUPING_ERROR), 
+caah: clauses:00000529:  errmsg("aggregate function calls may not be nested"))); 
+caah: clauses:00001321:  elog(ERROR, "cannot commute non-binary-operator clause"); 
+caah: clauses:00001326:  elog(ERROR, "could not find commutator for operator %u", 
+caah: clauses:00001327:  clause->opno); 
+caah: clauses:00001355:  elog(ERROR, "expected a RowCompareExpr"); 
+caah: clauses:00001365:  elog(ERROR, "could not find commutator for operator %u", 
+caah: clauses:00001366:  lfirst_oid(l)); 
+caah: clauses:00001388:  elog(ERROR, "unexpected RowCompare type: %d", 
+caah: clauses:00001389:  (int) clause->rctype); 
+caah: clauses:00001922:  elog(ERROR, "unrecognized boolop: %d", 
+caah: clauses:00001923:  (int) expr->boolop); 
+caah: clauses:00002336:  elog(ERROR, "unrecognized nulltesttype: %d", 
+caah: clauses:00002337:  (int) ntest->nulltesttype); 
+caah: clauses:00002388:  elog(ERROR, "unrecognized booltesttype: %d", 
+caah: clauses:00002389:  (int) btest->booltesttype); 
+caah: clauses:00002699:  elog(ERROR, "cache lookup failed for function %u", funcid); 
+caah: clauses:00002915:  elog(ERROR, "null prosrc for function %u", funcid); 
+caah: clauses:00003115:  elog(ERROR, "unexpected paramkind: %d", (int) param->paramkind); 
+caah: clauses:00003117:  elog(ERROR, "invalid paramid: %d", param->paramid); 
+caah: clauses:00003151:  elog(ERROR, "null prosrc"); 
+caah: clauses:00003843:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: clauses:00003844:  errmsg_internal("unrecognized node type: %d", 
+caah: clauses:00003845:  nodeTag(node)) )); 
 aaaaa GP_IGNORE: paai: pathnode - ./backend/optimizer/util/pathnode.c
 paai: pathnode:00000117:  elog(ERROR, "unrecognized pathnode: %d", (int)s->type); 
 paai: pathnode:00000284:  elog(ERROR, "unrecognized path type: %d", (int)path->pathtype); 
@@ -18742,56 +18751,56 @@ paai: postgres:00006125:  (errcode(ERRCODE_PROTOCOL_VIOLATION),
 paai: postgres:00006126:  errmsg("invalid frontend message type %d", 
 paai: postgres:00006127:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
-paag: pquery:00000956:  ereport(ERROR, 
-paag: pquery:00000957:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paag: pquery:00000958:  errmsg("bind message has %d result formats but query has %d columns", 
-paag: pquery:00000959:  nFormats, natts), 
-paag: pquery:00000960:  errOmitLocation(true))); 
-paag: pquery:00001032:  ereport(ERROR, 
-paag: pquery:00001033:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001034:  errmsg("portal \"%s\" cannot be run", portal->name), 
-paag: pquery:00001035:  errOmitLocation(true))); 
-paag: pquery:00001128:  elog(ERROR, "unrecognized portal strategy: %d", 
-paag: pquery:00001129:  (int) portal->strategy); 
-paag: pquery:00001275:  ereport(ERROR, 
-paag: pquery:00001276:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001277:  errmsg("cursor can only scan forward"), 
-paag: pquery:00001278:  errhint("Declare it with SCROLL option to enable backward scan."), 
-paag: pquery:00001279:  errOmitLocation(true))); 
-paag: pquery:00001367:  elog(ERROR, "unsupported portal strategy: %d", 
-paag: pquery:00001368:  (int) portal->strategy); 
-paag: pquery:00001668:  ereport(ERROR, 
-paag: pquery:00001669:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001670:  errmsg("portal \"%s\" cannot be run", portal->name))); 
-paag: pquery:00001717:  elog(ERROR, "unsupported portal strategy"); 
-paag: pquery:00001778:  ereport(ERROR, 
-paag: pquery:00001779:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001780:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001781:  errOmitLocation(true))); 
-paag: pquery:00001794:  ereport(ERROR, 
-paag: pquery:00001795:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001796:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001797:  errOmitLocation(true))); 
-paag: pquery:00001817:  ereport(ERROR, 
-paag: pquery:00001818:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001819:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001820:  errOmitLocation(true))); 
-paag: pquery:00001853:  ereport(ERROR, 
-paag: pquery:00001854:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001855:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001856:  errOmitLocation(true))); 
-paag: pquery:00001868:  ereport(ERROR, 
-paag: pquery:00001869:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001870:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001871:  errOmitLocation(true))); 
-paag: pquery:00001896:  ereport(ERROR, 
-paag: pquery:00001897:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001898:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
-paag: pquery:00001912:  elog(ERROR, "bogus direction"); 
-paag: pquery:00001964:  ereport(ERROR, 
-paag: pquery:00001965:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001966:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001967:  errOmitLocation(true))); 
+paag: pquery:00000957:  ereport(ERROR, 
+paag: pquery:00000958:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paag: pquery:00000959:  errmsg("bind message has %d result formats but query has %d columns", 
+paag: pquery:00000960:  nFormats, natts), 
+paag: pquery:00000961:  errOmitLocation(true))); 
+paag: pquery:00001033:  ereport(ERROR, 
+paag: pquery:00001034:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001035:  errmsg("portal \"%s\" cannot be run", portal->name), 
+paag: pquery:00001036:  errOmitLocation(true))); 
+paag: pquery:00001129:  elog(ERROR, "unrecognized portal strategy: %d", 
+paag: pquery:00001130:  (int) portal->strategy); 
+paag: pquery:00001276:  ereport(ERROR, 
+paag: pquery:00001277:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001278:  errmsg("cursor can only scan forward"), 
+paag: pquery:00001279:  errhint("Declare it with SCROLL option to enable backward scan."), 
+paag: pquery:00001280:  errOmitLocation(true))); 
+paag: pquery:00001368:  elog(ERROR, "unsupported portal strategy: %d", 
+paag: pquery:00001369:  (int) portal->strategy); 
+paag: pquery:00001669:  ereport(ERROR, 
+paag: pquery:00001670:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001671:  errmsg("portal \"%s\" cannot be run", portal->name))); 
+paag: pquery:00001718:  elog(ERROR, "unsupported portal strategy"); 
+paag: pquery:00001779:  ereport(ERROR, 
+paag: pquery:00001780:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001781:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001782:  errOmitLocation(true))); 
+paag: pquery:00001795:  ereport(ERROR, 
+paag: pquery:00001796:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001797:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001798:  errOmitLocation(true))); 
+paag: pquery:00001818:  ereport(ERROR, 
+paag: pquery:00001819:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001820:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001821:  errOmitLocation(true))); 
+paag: pquery:00001854:  ereport(ERROR, 
+paag: pquery:00001855:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001856:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001857:  errOmitLocation(true))); 
+paag: pquery:00001869:  ereport(ERROR, 
+paag: pquery:00001870:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001871:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001872:  errOmitLocation(true))); 
+paag: pquery:00001897:  ereport(ERROR, 
+paag: pquery:00001898:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001899:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
+paag: pquery:00001913:  elog(ERROR, "bogus direction"); 
+paag: pquery:00001965:  ereport(ERROR, 
+paag: pquery:00001966:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001967:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001968:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: uaah: utility - ./backend/tcop/utility.c
 uaah: utility:00000138:  ereport(ERROR, 
 uaah: utility:00000139:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
@@ -25575,20 +25584,11 @@ raah: regress:00001926:  errmsg("invalid output tuple for function sessionize"),
 raah: regress:00001927:  errhint("expected (integer, timestamp, integer) "))); 
 raah: regress:00002013:  elog(ERROR, "invalid invocation of describe"); 
 raah: regress:00002050:  elog(ERROR, "invalid invocation of project"); 
-raah: regress:00002122:  elog(ERROR, "invalid invocation of project_describe"); 
-raah: regress:00002183:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
-raah: regress:00002184:  
-raah: regress:00002185:  estate = ExecInitExpr(aexpr, NULL); 
-raah: regress:00002190:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
-raah: regress:00002191:  
-raah: regress:00002192:  /* Non null values only */ 
-raah: regress:00002193:  if (isNull) 
-raah: regress:00002194:  elog(ERROR, "unable to resolve type for function"); /* improve this error */ 
-raah: regress:00002195:  
-raah: regress:00002196:  avalue = DatumGetInt32(d); 
-raah: regress:00002200:  elog(ERROR, "invalid column position %d", avalue); 
-raah: regress:00002237:  elog(ERROR, "invalid invocation of userdata_project"); 
-raah: regress:00002285:  elog(ERROR, "invalid invocation of userdata_describe"); 
+raah: regress:00002121:  elog(ERROR, "invalid invocation of project_describe"); 
+raah: regress:00002172:  elog(ERROR, "unable to resolve type for function"); 
+raah: regress:00002175:  elog(ERROR, "invalid column position %d", avalue); 
+raah: regress:00002212:  elog(ERROR, "invalid invocation of userdata_project"); 
+raah: regress:00002260:  elog(ERROR, "invalid invocation of userdata_describe"); 
 aaaaa GP_IGNORE: paae: pgtz - ./timezone/pgtz.c
 paae: pgtz:00001019:  ereport(WARNING, 
 paae: pgtz:00001020:  (errmsg_internal("could not determine current date/time: localtime failed"))); 
