@@ -899,6 +899,10 @@ SELECT * FROM project( TABLE( SELECT * FROM history ), 2) order by 1;
 -- Valid operations on results
 SELECT id+1  FROM project( TABLE( SELECT * FROM history ), 1) order by 1;
 SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2) order by 1;
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
+  CASE 1 WHEN 2 THEN 1 ELSE GREATEST(1, COALESCE(1+1)) END);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
+  CASE WHEN 3 IS NOT NULL AND 1 IN (1, 2) THEN floor(NULLIF(2, 3))::int END);
 
 -- ERROR: invalid operations demonstrating different return types
 SELECT extract(day from id) FROM project( TABLE( SELECT * FROM history ), 1);
@@ -910,10 +914,11 @@ SELECT "time" FROM project( TABLE( SELECT * FROM history ), 1);
 
 /* Invalid projection position */
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1+1);  /* not a ConstExpr */
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[2,3])[1]);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1, '')::example_r).a);
 
 -- ========================
 -- User data exmaple

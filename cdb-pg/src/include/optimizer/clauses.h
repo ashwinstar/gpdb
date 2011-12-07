@@ -95,6 +95,8 @@ extern Node *eval_const_expressions(PlannerInfo *root, Node *node);
 
 extern Node *estimate_expression_value(PlannerInfo *root, Node *node);
 
+extern Expr *evaluate_expr(Expr *expr, Oid result_type);
+
 extern Node *expression_tree_mutator(Node *node, Node *(*mutator) (),
 												 void *context);
 
