@@ -2178,8 +2178,8 @@ class gpload:
         sql = "SELECT * FROM pg_class WHERE relname LIKE 'temp_gpload_reusable_%%';"
         resultList = self.db.query(sql.encode('utf-8')).getresult()
         if len(resultList) > 0:
-            self.log(self.WARN, """found old style reusable tables (named 'temp_gpload_reusable_*') from a previous version.
-                         It is recommended to drop them in order to clear the catalog. This will only need to be done once""")
+            self.log(self.WARN, """Old style, reusable tables named "temp_gpload_reusable_*" from a previous versions were found.
+                         Greenplum recommends running "DROP TABLE temp_gpload_reusable_..." on each table. This only needs to be done once.""")
 		
         # If the 'reuse tables' option was specified we now try to find an
         # already existing staging table in the catalog which will match
