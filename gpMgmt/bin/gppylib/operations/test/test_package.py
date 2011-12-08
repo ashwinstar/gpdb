@@ -30,6 +30,11 @@ def clean_up():
     for gppkg in gppkgs:
         run_command("gppkg --remove " + gppkg)
 
+def build_and_check(test_instance, gppkg_spec, rpm_spec, rpm_specs = []):
+    gppkg_file = BuildGppkg(gppkg_spec, rpm_spec, rpm_specs).run()
+    test_instance.assertTrue(check_gppkg_build(gppkg_file, gppkg_spec))
+    return gppkg_file
+
 def check_gppkg_build(gppkg_file, gppkg_spec):
     return (gppkg_file == (gppkg_spec.get_filename()))
 
@@ -140,16 +145,18 @@ class BuildRPM(Operation):
         return self.spec.get_filename() 
 
 class GppkgSpec:
-    def __init__(self, name, version, gpdbversion):
+    def __init__(self, name, version, gpdbversion = GPDB_VERSION, os = OS, arch = ARCH):
         self.name = name 
         self.version = version
         self.gpdbversion = gpdbversion
+        self.os = os
+        self.arch = arch
 
     def get_package_name(self):
         return self.name + '-' + self.version       
 
     def get_filename(self):
-        return self.get_package_name() + '-' + OS + '-' + ARCH + GPPKG_EXTENSION
+        return self.get_package_name() + '-' + self.os + '-' + self.arch + GPPKG_EXTENSION
 
     def __str__(self): 
         gppkg_spec_file = '''
@@ -157,8 +164,8 @@ PkgName: ''' + self.name + '''
 Version: ''' + self.version + '''
 GPDBVersion: ''' + self.gpdbversion + '''
 Description: Temporary Test Package
-OS: ''' + OS + '''
-Architecture: ''' + ARCH
+OS: ''' + self.os + '''
+Architecture: ''' + self.arch 
 
         return gppkg_spec_file
 
@@ -201,20 +208,19 @@ class BuildGppkg(Operation):
             shutil.rmtree(SCRATCH_SPACE)
 
         return self.gppkg_spec.get_filename()
-        
-class SimpleGppkgTest(unittest.TestCase):
+
+class SimpleGppkgTestCases(unittest.TestCase):
     def setUp(self):
         clean_up()
 
         self.rpm_spec = RPMSpec("test", "1", "1")
-        self.gppkg_spec = GppkgSpec("test", "1.0", GPDB_VERSION)
+        self.gppkg_spec = GppkgSpec("test", "1.0")
 
     def tearDown(self):
         clean_up()
 
     def test00_simple_build(self):
-        gppkg_file = BuildGppkg(self.gppkg_spec, self.rpm_spec).run()
-        self.assertTrue(check_gppkg_build(gppkg_file, self.gppkg_spec)) 
+        build_and_check(self, self.gppkg_spec, self.rpm_spec)
 
     def test01_simple_install(self):
         gppkg_file = self.gppkg_spec.get_filename() 
@@ -236,10 +242,8 @@ class SimpleGppkgTest(unittest.TestCase):
         run_command("gppkg --install %s" % gppkg_file)
         
         update_rpm_spec = RPMSpec("test", "1", "2")
-        update_gppkg_spec = GppkgSpec("test", "1.1", GPDB_VERSION)
-        update_gppkg_file = BuildGppkg(update_gppkg_spec, update_rpm_spec).run() 
-
-        self.assertTrue(check_gppkg_build(update_gppkg_file, update_gppkg_spec))
+        update_gppkg_spec = GppkgSpec("test", "1.1")
+        update_gppkg_file = build_and_check(self, update_gppkg_spec, update_rpm_spec)
    
         run_command("gppkg --update %s" % update_gppkg_file) 
 
@@ -250,25 +254,7 @@ class SimpleGppkgTest(unittest.TestCase):
         results = run_command("gppkg -q %s" % update_gppkg_file)
         self.assertTrue(check_gppkg_install(update_gppkg_file))
 
-    def test03_simple_update_fail(self):
-        #This is the file built in test02 
-        rpm_spec = RPMSpec("test", "1", "2")
-        gppkg_spec = GppkgSpec("test", "1.1", GPDB_VERSION)
-        gppkg_file = gppkg_spec.get_filename() 
-        run_command("gppkg --install %s" % gppkg_file)
-
-        #This is the gppkg which was created in test00, and hence has a lower version
-        update_gppkg_file = self.gppkg_spec.get_filename() 
-
-        self.assertRaises(ExecutionError,run_command, "gppkg --update %s" % update_gppkg_file)
-
-        results = run_command("rpm -q %s --dbpath %s" % (rpm_spec.get_package_name(), RPM_DATABASE))
-        self.assertEquals(results, rpm_spec.get_package_name())
-
-        results = run_command("gppkg -q %s" % gppkg_file)
-        self.assertTrue(check_gppkg_install(gppkg_file))
-    
-    def test04_simple_uninstall(self):
+    def test03_simple_uninstall(self):
         gppkg_file = self.gppkg_spec.get_filename()
 
         run_command("gppkg --install %s" % gppkg_file)
@@ -279,31 +265,28 @@ class SimpleGppkgTest(unittest.TestCase):
         
         self.assertEquals(results, [])     
        
-    def test05_help(self):
+    def test04_help(self):
         help_options = ["--help", "-h", "-?"] 
 
         for opt in help_options:
             results = run_command("gppkg " + opt)
             self.assertNotEquals(results, "")
 
-    def test06_version(self):
+    def test05_version(self):
         results = run_command("gppkg --version")
         self.assertNotEquals(results, "")
 
 class QueryTestCases(unittest.TestCase):
     def setUp(self):
         self.rpm_spec1 = RPMSpec("test", "1", "1")    
-        self.gppkg_spec1 = GppkgSpec("test", "1.0", GPDB_VERSION)
+        self.gppkg_spec1 = GppkgSpec("test", "1.0")
  
         self.rpm_spec2 = RPMSpec("test1", "1", "1")
-        self.gppkg_spec2 = GppkgSpec("test1", "1.0", GPDB_VERSION)
+        self.gppkg_spec2 = GppkgSpec("test1", "1.0")
 
     def test00_install(self):
-        gppkg_file1 = BuildGppkg(self.gppkg_spec1, self.rpm_spec1).run()
-        self.assertTrue(check_gppkg_build(gppkg_file1, self.gppkg_spec1))
-      
-        gppkg_file2 = BuildGppkg(self.gppkg_spec2, self.rpm_spec2).run()
-        self.assertTrue(check_gppkg_build(gppkg_file2, self.gppkg_spec2))
+        gppkg_file1 = build_and_check(self, self.gppkg_spec1, self.rpm_spec1)
+        gppkg_file2 = build_and_check(self, self.gppkg_spec2, self.rpm_spec2)
  
         run_command("gppkg --install %s" % gppkg_file1)
         results = run_command("gppkg -q %s" % gppkg_file1)
@@ -361,9 +344,8 @@ class MiscTestCases(unittest.TestCase):
     @unittest.expectedFailure
     def test00_MPP_14671(self):
         rpm_spec = RPMSpec("test", "1", "1")
-        gppkg_spec = GppkgSpec("test", "1.0", GPDB_VERSION)
-        gppkg_file = BuildGppkg(gppkg_spec, rpm_spec).run()
-        self.assertTrue(check_gppkg_build(gppkg_file, gppkg_spec))
+        gppkg_spec = GppkgSpec("test", "1.0")
+        gppkg_file = build_and_check(self, gppkg_spec, rpm_spec)
 
         dummy_file = "dummy-x.y.z-abcd-efgh.gppkg"
         shutil.copy(gppkg_file, dummy_file)
@@ -380,5 +362,94 @@ class MiscTestCases(unittest.TestCase):
         results = run_command("gppkg -q --all")
         self.assertTrue(''.join(gppkg_file.split('-')[:1]) in results)
 
+class SimpleNegativeTestCases(unittest.TestCase):
+    def setUp(self):
+        clean_up()
+        self.rpm_spec = RPMSpec("test", "1", "1")
+        self.gppkg_spec = GppkgSpec("test", "1.0")
+
+    def tearDown(self):
+        clean_up()
+
+    @unittest.expectedFailure
+    def test00_wrong_os(self):
+        os = "abcde"
+        rpm_spec = self.rpm_spec 
+        gppkg_spec = GppkgSpec("test", "1.0", GPDB_VERSION, os)
+        gppkg_file = build_and_check(self, gppkg_spec, rpm_spec) 
+
+        with self.assertRaisesRegexp(ExecutionError , "%s os required. %s os found" % (os, OS)):
+            run_command("gppkg --install %s" % gppkg_file)
+       
+    def test01_wrong_arch(self):
+        arch = "abcde"
+        rpm_spec = self.rpm_spec 
+        gppkg_spec = GppkgSpec("test", "1.0", GPDB_VERSION, OS, arch)
+        gppkg_file = build_and_check(self, gppkg_spec, rpm_spec) 
+
+        with self.assertRaisesRegexp(ExecutionError, "%s Arch required. %s Arch found" % (arch, ARCH)):
+            run_command("gppkg --install %s" % gppkg_file)
+
+    def test02_wrong_gpdbversion(self):
+        gpdb_version = "4.6"
+        rpm_spec = self.rpm_spec 
+        gppkg_spec = GppkgSpec("test", "1.0", gpdb_version)
+        gppkg_file = build_and_check(self, gppkg_spec, rpm_spec)
+
+        with self.assertRaisesRegexp(ExecutionError, "requires Greenplum Database version %s" % gpdb_version):
+            run_command("gppkg --install %s" % gppkg_file)
+
+    def test03_install_twice(self):
+        gppkg_file = build_and_check(self, self.gppkg_spec, self.rpm_spec)
+
+        run_command("gppkg --install %s" % gppkg_file)
+        self.assertTrue(check_gppkg_install(gppkg_file))
+       
+        with self.assertRaisesRegexp(ExecutionError, "%s is already installed" % gppkg_file):
+            run_command("gppkg --install %s" % gppkg_file)
+         
+    @unittest.expectedFailure
+    def test04_update_gppkg_lower(self):
+        #Use gppkg from previous test
+        run_command("gppkg --install %s" % self.gppkg_spec.get_filename())
+        self.assertTrue(check_gppkg_install(self.gppkg_spec.get_filename()))
+
+        #Use gppkg which has a lower version, but the rpm is > the one installed
+        update_rpm_spec = RPMSpec("test", "1", "2")
+        update_gppkg_spec = GppkgSpec("test1", "0.1")
+        update_gppkg_file = build_and_check(self, update_gppkg_spec, update_rpm_spec)
+       
+        with self.assertRaisesRegexp(ExecutionError, "Newer version of %s already installed" % update_gppkg_spec.get_package_name()):
+            run_command("gppkg --update %s" % update_gppkg_file) 
+        #Check that the original package is still installed and not updated
+        self.assertTrue(check_gppkg_install(self.gppkg_spec.get_filename()))
+
+    def test05_update_rpm_lower(self):
+        #Use gppkg from previous test
+        run_command("gppkg --install %s" % self.gppkg_spec.get_filename())
+        self.assertTrue(check_gppkg_install(self.gppkg_spec.get_filename()))
+
+        #Use gppkg with a lower RPM version but gppkg version is > the one installed
+        update_rpm_spec = RPMSpec("test", "1", "0")
+        update_gppkg_spec = GppkgSpec("test1", "1.1") 
+        update_gppkg_file = build_and_check(self, update_gppkg_spec, update_rpm_spec)
+        
+        with self.assertRaisesRegexp(ExecutionError, self.rpm_spec.get_filename()):
+            run_command("gppkg --update %s" % update_gppkg_file)
+        #Check that the original package is still installed and not updated
+        self.assertTrue(check_gppkg_install(self.gppkg_spec.get_filename()))
+        
+    def test06_uninstall_twice(self):
+        #Uses the gppkg from previous test
+        run_command("gppkg --install %s" % self.gppkg_spec.get_filename())
+        self.assertTrue(check_gppkg_install(self.gppkg_spec.get_filename()))
+
+        #Uninstall gppkg 
+        run_command("gppkg --remove %s" % self.gppkg_spec.get_package_name())
+        self.assertTrue(check_gppkg_install(self.gppkg_spec.get_filename(), is_installed = False))
+    
+        with self.assertRaisesRegexp(ExecutionError, "%s has not been installed" % self.gppkg_spec.get_package_name()):
+            run_command("gppkg --remove %s" % self.gppkg_spec.get_package_name())
+        
 if __name__ == "__main__":
     unittest.main()
