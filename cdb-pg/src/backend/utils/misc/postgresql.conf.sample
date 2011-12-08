@@ -486,7 +486,6 @@ max_appendonly_tables = 10000 # Maximum number of append only tables that can
 
 # - Interconnect -
 
-gp_interconnect_setup_timeout = 300s
 #gp_max_packet_size = 8192
 gp_interconnect_type=udp
 
