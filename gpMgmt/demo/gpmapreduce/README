@@ -1,8 +1,8 @@
 **************************************************************************
-ABOUT THE GREENPLUM MAPREDUCE 3.2 DEMOS
+ABOUT THE GREENPLUM MAPREDUCE DEMOS
 **************************************************************************
 
-This package contains 2 example programs of Greenplum MapReduce:
+This package contains two example programs of Greenplum MapReduce:
 
 1. Grep - This Greenplum MapReduce program searches through web access 
           log files and extracts the URL portion of the log.
@@ -45,7 +45,7 @@ NOTE: If the CREATE LANGUAGE command does not succeed because a
       Perl and Python libraries are findable by your runtime linker
       on all hosts in your Greenplum Database array. Greenplum
       provides installer packages for Perl and Python on 
-      http://gpn.greenplum.com if you need them.
+      https://emc.subscribenet.com if you need them.
 
 
 4. On your segment hosts, create a location to put the Greenplum
