@@ -25,6 +25,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
+#include "optimizer/restrictinfo.h"
 #include "parser/parsetree.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
@@ -242,63 +243,6 @@ add_equijoined_keys_to_list(List **ptrToList, RestrictInfo *restrictinfo)
     pfree(item1);
 }                               /* add_equijoined_keys */
 
-/*
- * Given an expression, return true if it is not safe to create a new
- *  version of the expression by replacing checkForNode nodes with
- *  a different node
- *
- * We are conservative on our checks here -- it is meant to handle
- *  cases where a qual is being replicated
- */
-static bool
-qual_may_have_node_replaced_walker(Node *node, Node *checkForNode)
-{
-	if (node == NULL)
-		return false;
-
-    if ( equal(node, checkForNode))
-    {
-        /* safe.  Do not recurse because the caller is going to be replacing
-         *   node with checkForNode
-		 */
-        return false;
-    }
-
-    else if (
-              IsA(node, ArrayExpr) ||
-              IsA(node, BooleanTest) ||
-              IsA(node, BoolExpr) ||
-              IsA(node, CaseExpr) ||
-              IsA(node, CaseWhen) ||
-              IsA(node, CaseTestExpr) ||
-              IsA(node, CoalesceExpr) ||
-              IsA(node, Const)  ||
-              IsA(node, DistinctExpr) ||
-              IsA(node, FuncExpr) || /* for function calls.  caller will check
-                                      * checked volatility already so we can
-                                      * accept the function call
-									  */
-
-              IsA(node, List) || /* this includes IntList and OidList */
-              IsA(node, MinMaxExpr) ||
-              IsA(node, NullIfExpr)  ||
-              IsA(node, NullTest) ||
-              IsA(node, OpExpr) ||
-              IsA(node, ScalarArrayOpExpr)
-
-              )
-    {
-        /* allow...fall-through to check any args */
-    }
-    else
-    {
-        return true;
-    }
-
-    return expression_tree_walker(node,
-            qual_may_have_node_replaced_walker, checkForNode);
-}
-
 /**
  * replace_expression_mutator
  *
@@ -333,25 +277,21 @@ replace_expression_mutator(Node *node, void *context)
 }
 
 /**
- * Does the relation specified by singleRel occur on the nullable side of
- *   an outer join?
- *
- * singleRel should be a singleton
+ * Do relations in qualscope fall on the nullable side of an outer join?
  */
 static bool
-isBelowNullableSideOfOuterJoin( PlannerInfo *root, Relids singleRel)
+isBelowNullableSideOfOuterJoin( PlannerInfo *root, Relids qualscope)
 {
     ListCell *curOuterJoinInfo;
 
-    Assert( bms_membership(singleRel) == BMS_SINGLETON);
     foreach(curOuterJoinInfo, root->oj_info_list)
     {
         OuterJoinInfo * oj = (OuterJoinInfo *) lfirst(curOuterJoinInfo);
-        if (bms_is_subset(singleRel, oj->min_righthand))
+        if (bms_overlap(qualscope, oj->syn_righthand))
             return true;
 
         if (oj->join_type == JOIN_FULL &&
-            bms_is_subset(singleRel, oj->min_lefthand))
+            bms_overlap(qualscope, oj->syn_lefthand))
             return true;
     }
 
@@ -359,210 +299,208 @@ isBelowNullableSideOfOuterJoin( PlannerInfo *root, Relids singleRel)
 }
 
 /**
- * Check every outer join in the planner list of outer joins.
- *
- * Return false if the two relations specified by first and second are
- *   on opposite sides of any outer joins.
- *
- * note: not sure if this is really needed
+ * Given a list of pathkey items, extract out all relevant known clauses.
+ * This is done by finding all relations represented in the pathkey item.
+ * Then, we extract out all the restrictinfos from these relations and find
+ * the additional relations mentioned in these clauses. These restrictinfo
+ * clauses are appended into one big list
+ * Input:
+ * 	root - planner information
+ * 	lpkitems - list of equivalent pathkey items
  */
-static bool
-isCompatibleOuterJoinLocation(PlannerInfo *root, Relids first, Relids second)
+static List *relevant_known_clauses(PlannerInfo *root, List *lpkitems)
 {
-    ListCell *curOuterJoinInfo;
-    foreach(curOuterJoinInfo, root->oj_info_list)
-    {
-        OuterJoinInfo * oj = (OuterJoinInfo *) lfirst(curOuterJoinInfo);
+	/**
+	 * Find all the relevant relids from pathkey list and corresponding restrict
+	 * infos.
+	 */
+	Relids relevant_relids = NULL;
 
-        bool firstIsOnLeftSide = bms_is_subset(first, oj->min_lefthand);
-        bool firstIsOnRightSide = bms_is_subset(first, oj->min_righthand);
-        
-        bool secondIsOnLeftSide = bms_is_subset(second, oj->min_lefthand);
-        bool secondIsOnRightSide = bms_is_subset(second, oj->min_righthand);
+	/**
+	 * First look at pathkey items
+	 */
+	ListCell     *lcpk = NULL;
+	Relids pathkey_relids = NULL;
+	foreach (lcpk, lpkitems)
+	{
+		PathKeyItem *item1 = (PathKeyItem *) lfirst(lcpk);
+		pathkey_relids = bms_union(pathkey_relids, pull_varnos(item1->key));
+	}
 
-        if ( (firstIsOnLeftSide && secondIsOnRightSide) ||
-             (firstIsOnRightSide && secondIsOnLeftSide))
-        {
-            return false;
-        }
-    }
+	relevant_relids = bms_copy(pathkey_relids);
 
-    return true;
+	/**
+	 * Next look the restrictinfos for every relation that has a pathkey entry
+	 * and then extract out these relids as well
+	 */
+	int relid;
+	while ((relid = bms_first_member(pathkey_relids)) >= 0)
+	{
+		RelOptInfo *rel1 = find_base_rel(root, relid);
+
+		List *restrictinfolist = list_union(rel1->baserestrictinfo, rel1->joininfo);
+		List *restrictlistclauses = list_union(
+				extract_actual_clauses(restrictinfolist, true),
+				extract_actual_clauses(restrictinfolist, false)
+		);
+
+		relevant_relids = bms_union(relevant_relids, pull_varnos((Node *) restrictlistclauses));
+	}
+	bms_free(pathkey_relids);
+
+	/**
+	 * Build a list of clauses by iterating over all relevant relations
+	 */
+	List *relevant_clauses = NIL;
+	Relids relevant_relids_c = bms_copy(relevant_relids);
+	while ((relid = bms_first_member(relevant_relids_c)) >= 0)
+	{
+		RelOptInfo *rel1 = find_base_rel(root, relid);
+
+		List *restrictinfolist = list_union(rel1->baserestrictinfo, rel1->joininfo);
+		List *restrictlistclauses = list_union(
+				extract_actual_clauses(restrictinfolist, true),
+				extract_actual_clauses(restrictinfolist, false)
+		);
+		relevant_clauses = list_concat(relevant_clauses, restrictlistclauses);
+	}
+
+	return relevant_clauses;
+}
+
+/**
+ * Generate implied qual
+ * Input:
+ * 	root - planner information
+ * 	relevant_clauses - all previously known clauses
+ * 	old_clause - old clause to infer from
+ * 	old_pk - the pathkey item to be replaced
+ * 	new_pk - new pathkey item replacing it
+ * Output:
+ *  New list of relevant clauses
+ */
+static List *gen_implied_qual(PlannerInfo *root,
+		List *relevant_clauses, /* This list may be modified */
+		Node *old_clause,
+		Node *old_pk,
+		Node *new_pk
+		)
+{
+
+	/* Expression types must match */
+	Assert(exprType(old_pk) == exprType(new_pk)
+			&& exprTypmod(old_pk) == exprTypmod(new_pk));
+
+	/* clone the clause, replacing first node with
+	 *    clone of second
+	 */
+	ReplaceExpressionMutatorReplacement ctx;
+	ctx.replaceThis = old_pk;
+	ctx.withThis = new_pk;
+	ctx.numReplacementsDone = 0;
+	Node *new_clause = (Node*) replace_expression_mutator(
+			(Node*)old_clause, &ctx);
+
+	Relids old_qualscope = pull_varnos(old_clause);
+	Relids new_qualscope = pull_varnos(new_clause);
+
+	bool inferrable = new_qualscope != NULL /* distribute_qual_to_rels doesn't accept pseudoconstants */
+			&& (ctx.numReplacementsDone > 0)
+			&& !list_member(relevant_clauses, new_clause)
+			&& !subexpression_match((Expr *) new_pk, (Expr *) old_clause);
+
+	/**
+	 * No inferences may be performed across an outer join
+	 */
+	inferrable = inferrable
+			&& !isBelowNullableSideOfOuterJoin(root, old_qualscope)
+			&& !isBelowNullableSideOfOuterJoin(root, new_qualscope);
+
+	if (inferrable)
+	{
+		distribute_qual_to_rels(root, new_clause,
+				true, /* is_deduced */
+				true, /* is_deduced_but_not_equijoin */
+				false,
+				new_qualscope, /* qualscope */
+				NULL, /* ojscope */
+				NULL, /* outerjoin_nonnullable */
+				NULL /* local equi join scope */
+		);
+		relevant_clauses = lappend(relevant_clauses, new_clause);
+	}
+
+	return relevant_clauses;
 }
 
 /**
  * Generate all qualifications that are implied by the equivalence specified
- *   by the given equiKeyList (which is in curset).
- *
- * 'initialNumRestrictionsByRelId' the number of baserestrictinfo entries
- *                                 each relation had at the beginning of
- *                                 the generated implied quals phase
+ *   by the given pathkey list
+ * Input:
+ * - root: planner info structure
+ * - lpkitems: list of equivalent pathkey items
  */
 static void
-gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
-      int *initialNumRestrictionsByRelId)
+gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *lpkitems)
 {
-    ListCell     *ptr1;
-    Relids	     *relids;
-    RestrictInfo *restrictinfo;
-    int		  	 i1;
-    int			 nitems = list_length(curset);
+	List *relevant_clauses = relevant_known_clauses(root, lpkitems);
 
-    if ( CdbPathkeyEqualsConstant(curset))
+    /**
+     * For every triple (pkey1, clause, pkey2), we try to replace pkey1 in clause
+     * with pkey2 and add it as an inferred clause since pkey1 = pkey2
+     */
+    ListCell     *lcpk1 = NULL;
+    foreach(lcpk1, lpkitems)
     {
-        /*
-         * Skip this entire equivalance set -- when an equivalence set contains a constant,
-         *  implied equality should transfer over Var=Constant to each relation.  We can not beat
-         *  that by copying over F(Var)
-         *
-         * If there is a constant in the equiv set then it will be at the front, so there
-         *   is no risk of us checking a non-constant one before a constant one.
-         *
-         * See MPP-5478 for a poor plan caused by this problem.
-         */
-        
-        return;
-    }
+    	PathKeyItem *item1 = (PathKeyItem *) lfirst(lcpk1);
+    	Relids relidspk1 = pull_varnos(item1->key);
 
-    /* find the relids for each item in the equivalence set */
-    relids = (Relids *) palloc(nitems * sizeof(Relids));
-    foreach_with_count(ptr1, curset, i1)
-    {
-        PathKeyItem *item1 = (PathKeyItem *) lfirst(ptr1);
-        relids[i1] = pull_varnos(item1->key);
-    }
+    	/**
+    	 * Only look at pathkeys that correspond to a single relation
+    	 */
+    	if ( bms_membership(relidspk1) == BMS_SINGLETON)
+    	{
 
-    foreach_with_count(ptr1, curset, i1)
-    {
-        Oid exprTypeVal;
-        int32 exprTypmodVal;
-        int relId;
-        int restrictIndex;
+    		/**
+    		 * Iterate over all clauses
+    		 */
+    		ListCell   *lcclause = NULL;
+    		foreach(lcclause, relevant_clauses)
+    		{
+    			Node *old_clause = (Node *) lfirst(lcclause);
 
-        RelOptInfo *rel1;
-        List *restrictlist;
-        ListCell   *itm;
-        PathKeyItem *item1;
-        BMS_Membership membership;
+    			/**
+    			 * Is it safe to infer from old_clause?
+    			 */
+    			bool safe_to_infer =
+    					!contain_volatile_functions(old_clause)
+    					&& !contain_subplans(old_clause);
 
-        membership = bms_membership(relids[i1]);
-        if ( membership != BMS_SINGLETON)
-        {
-            /*
-             * Ignore multiple-relation equivalence members
-			 */
-            continue;
-        }
+    			if (safe_to_infer)
+    			{
 
-        item1 = (PathKeyItem *) lfirst(ptr1);
-        exprTypeVal = exprType(item1->key);
-        exprTypmodVal = exprTypmod(item1->key);
+    				ListCell *lcpk2 = NULL;
 
-        relId = bms_singleton_member(relids[i1]);
-        rel1 = find_base_rel(root, relId);
-        restrictlist = rel1->baserestrictinfo;
+    				/* now try to apply to others in the equivalence class */
+    				foreach(lcpk2, lpkitems)
+    				{
+    					PathKeyItem *item2 = (PathKeyItem *) lfirst(lcpk2);;
 
-        /*
-		 * Scan the restrict info, looking for a clause that uses this
-         *      PathKeyItem's Var
-         *
-         * If we find one then we can try to apply it to all other items
-         *      in this equivalence class
-         */
-        foreach_with_count(itm, restrictlist, restrictIndex)
-        {
-            ListCell *ptr2;
-            int i2 = 0;
-            Node *clause;
+    					if (exprType(item1->key) == exprType(item2->key)
+    							&& exprTypmod(item1->key) == exprTypmod(item2->key))
+    					{
 
-            /* don't try to replicated a newly created one */
-            if ( restrictIndex >= initialNumRestrictionsByRelId[relId])
-            {
-                continue;
-            }
-
-            restrictinfo = (RestrictInfo *) lfirst(itm);
-
-            /* walk the restrictInfo, checking that the only non-constant
-             * value it refers to is the node for this equivalence item.
-             *
-             * stable functions are okay to clone...at runtime they will all have same value
-			 */
-            clause = (Node *)restrictinfo->clause;
-            if ( contain_volatile_functions(clause) ||
-                 qual_may_have_node_replaced_walker(
-                         clause, (void *) item1->key))
-            {
-                continue;
-            }
-
-			/* now try to apply to others in the equivalence class */
-            foreach_with_count(ptr2, curset, i2)
-            {
-                BMS_Membership item2Membership;
-                Node *newClause;
-                PathKeyItem *item2;
-                ReplaceExpressionMutatorReplacement repl;
-                bool belowOuterJoin;
-
-                if ( i1 == i2 )
-                {
-                    /* don't copy to qual to self! */
-                    continue;
-                }
-
-                item2Membership = bms_membership(relids[i2]);
-                if ( item2Membership != BMS_SINGLETON)
-                {
-                    /* ignore multiple-relation equivalence
-                     *   members (for const, the entire equivalence set has been skipped by earlier check)
-					 */
-                    continue;
-                }
-
-                if ( ! isCompatibleOuterJoinLocation(root,relids[i1],relids[i2]))
-                {
-                    /* these two relations appear at different points
-                     *   in the outer join structure
-					 */
-                    continue;
-                }
-                item2 = (PathKeyItem *) lfirst(ptr2);
-
-                /* must match type+mod exactly or we won't try to
-                 *   transfer
-				 */
-                if ( exprTypeVal != exprType(item2->key) ||
-                     exprTypmodVal != exprTypmod(item2->key))
-                {
-                    continue;
-                }
-
-                belowOuterJoin = isBelowNullableSideOfOuterJoin(root, relids[i2]);
-
-                /* clone the clause, replacing first node with
-                 *    clone of second
-				 */
-                repl.replaceThis = item1->key;
-                repl.withThis = item2->key;
-                repl.numReplacementsDone = 0;
-                newClause = (Node*) replace_expression_mutator(
-                    (Node*)restrictinfo->clause, &repl);
-
-                distribute_qual_to_rels(root, newClause,
-                                        true, /* is_deduced */
-                                        true, /* is_deduced_but_not_equijoin */
-                                        belowOuterJoin,
-                                        relids[i2], /* qualscope */
-                                        NULL, /* ojscope */
-                                        NULL, /* outerjoin_nonnullable */
-                                        NULL /* local equi join scope */
-                                        );
-            }
-        }
-    }
-
-    pfree(relids);
+    						relevant_clauses = gen_implied_qual(root,
+    								relevant_clauses,
+    								old_clause,
+    								item1->key,
+    								item2->key);
+    					}
+    				} /* foreach lcpk2 */
+    			} /* safe_to_infer */
+    		} /* foreach lcclause */
+    	} /* BMS_SINGLETON */
+    } /* foreach lcpk1 */
 }
 
 /* TODO:
@@ -578,32 +516,16 @@ generate_implied_quals(PlannerInfo *root)
 {
 	ListCell   *cursetlink;
     ListCell *curOuterJoinInfo;
-    int i;
-    int *initialNumRestrictionsByRelId;
 
     if ( ! root->config->gp_enable_predicate_propagation )
         return;
-
-    /* get the initial number of restrictions per relation id */
-    initialNumRestrictionsByRelId = (int *)
-                palloc( root->simple_rel_array_size * sizeof(int));
-    for ( i = 1; i < root->simple_rel_array_size; i++)
-    {
-        if ( root->simple_rel_array[i] &&
-             root->simple_rel_array[i]->baserestrictinfo)
-        {
-            initialNumRestrictionsByRelId[i] =
-                root->simple_rel_array[i]->baserestrictinfo->length;
-        }
-        else initialNumRestrictionsByRelId[i] = 0;
-    }
 
     /* generate using the query-global equi-key-list */
 	foreach(cursetlink, root->equi_key_list)
 	{
 		List *curset = (List *) lfirst(cursetlink);
         gen_implied_quals_for_equi_key_list(
-                root, curset, initialNumRestrictionsByRelId);
+                root, curset);
 	}
 
     /* generate using the local (to nullable side of outer join) equi-key-lists */
@@ -618,13 +540,13 @@ generate_implied_quals(PlannerInfo *root)
         {
             List *curset = (List *) lfirst(cursetlink);
             gen_implied_quals_for_equi_key_list(
-                root, curset, initialNumRestrictionsByRelId);
+                root, curset);
         }
         foreach(cursetlink, oj->right_equi_key_list)
         {
             List *curset = (List *) lfirst(cursetlink);
             gen_implied_quals_for_equi_key_list(
-                root, curset, initialNumRestrictionsByRelId);
+                root, curset);
         }
     }
 }
