@@ -1460,8 +1460,17 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	bool		isTopLevel = false;
 	char		msec_str[32];
 
-    if (Gp_role != GP_ROLE_EXECUTE)
-        gp_command_count++;
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+		increment_command_count();
+		
+		MyProc->queryCommandId = gp_command_count;
+		if (gp_cancel_query_print_log)
+		{
+			elog(NOTICE, "running query (sessionId, commandId): (%d, %d)",
+				 MyProc->mppSessionId, gp_command_count);
+		}
+	}
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -2481,8 +2490,18 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	bool		was_logged = false;
 	char		msec_str[32];
 
-    if (Gp_role != GP_ROLE_EXECUTE)
-        gp_command_count++;
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+        increment_command_count();
+
+		MyProc->queryCommandId = gp_command_count;
+		if (gp_cancel_query_print_log)
+		{
+			elog(NOTICE, "running query (sessionId, commandId): (%d, %d)",
+				 MyProc->mppSessionId, gp_command_count);
+		}
+	}
+	
 
 	/* Adjust destination to tell printtup.c what to do */
 	dest = whereToSendOutput;
@@ -3483,6 +3502,7 @@ ProcessInterrupts(void)
 			 errmsg("terminating connection due to administrator command"),
 			 errSendAlert(false)));
 	}
+
 	if (QueryCancelPending)
 	{
 		elog(LOG,"Process interrupt for 'query cancel pending'.");
@@ -4643,7 +4663,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Simple query stmt: %s.",query_string);
 
 					setupRegularDtxContext();
-					
+
 					exec_simple_query(query_string, NULL, -1);
 
 					send_ready_for_query = true;
