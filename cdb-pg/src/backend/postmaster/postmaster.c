@@ -6605,27 +6605,7 @@ BackendInitialize(Port *port)
 	/*
 	 * Now perform authentication exchange.
 	 */
-
-	/*
-	 *  GPDB: If this is internal communications between segments, the protocol must be 3, and the special flag nibble must be 7.
-	 *  Otherwise, this is not a trusted connection, and must go through normal client authentication
-	 *
-	 *  This is not really secure, but no client that uses normal libpq can fake this... It requires either a custom libpq,
-	 *  or using a program that does it's own wire protocol communications and bypasses libpq.
-	 *
-	 *  The SyncMaster doesn't need authentication, but why is it going through this code, instead of being an AuxilliaryProcess ?
-	 */
-	if (PG_PROTOCOL_MAJOR(port->proto) != 3 || port->proto >> 28 != 7) /* Check for special startup packed that indicates internal communications */
-	{
-		/* Do normal client authentication via pg_hba.conf */
-		ClientAuthentication(port); /* might not return, if failure */
-	}
-	else
-	{
-		/* Just tell the client he is authorized, with no check of pg_hba.conf, and no password required */
-		FakeClientAuthentication(port);
-	}
-
+	ClientAuthentication(port);
 
 	/*
 	 * Done with authentication.  Disable timeout, and prevent SIGTERM/SIGQUIT
