@@ -86,7 +86,7 @@ OPTIONS
  Batch size of remote commands to send to a given host before 
  making a one-second pause. Default is 16. Valid values are 1-128.
  The gpexpand utility issues a number of setup commands that may exceed 
- the host’s maximum threshold for authenticated connections as defined 
+ the host's maximum threshold for authenticated connections as defined 
  by MaxStartups in the SSH daemon configuration. The one-second pause 
  allows authentications to be completed before gpexpand issues any 
  more commands. The default value does not normally need to be changed. 
