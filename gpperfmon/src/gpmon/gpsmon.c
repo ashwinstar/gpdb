@@ -1656,30 +1656,18 @@ static const char* get_and_allocate_hostname()
 {
 	char hname[256] = { 0 };
 
-	if (gx.is_appliance){
-		TR0(("Appliance host detected\n"));
-		char* trimmed_hostname = get_dca_hostname(hname, sizeof(hname));
-		if (trimmed_hostname)
-			gx.hostname = strdup(trimmed_hostname);
-		else
-			gx.hostname = strdup("unknown");
+	if (gethostname(hname, sizeof(hname) - 1))
+	{
+		gx.hostname = strdup("unknown");
+		gpmon_warningx(FLINE, 0, "gethostname failed");
 	}
-	else{
-		TR0(("Non-Appliance host detected\n"));
-		if (gethostname(hname, sizeof(hname) - 1))
-		{
-			gx.hostname = strdup("unknown");
-			gpmon_warningx(FLINE, 0, "gethostname failed");
-		}
-		else
-		{
-			hname[sizeof(hname) - 1] = 0;
-			gx.hostname = strdup(hname);
-		}
+	else
+	{
+		hname[sizeof(hname) - 1] = 0;
+		gx.hostname = strdup(hname);
 	}
 
 	return gx.hostname;
-
 }
 
 static void setup_gx(int port, apr_int64_t signature)
