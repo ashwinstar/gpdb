@@ -100,7 +100,7 @@ typedef struct FileRepRelFileNodeInfo_s
 	uint32 segmentFileNum;
 
 	FileRepVerify_CompareException_e exception;
-	int64  AO_logicalEof;
+	uint64  AO_logicalEof;
 
 } FileRepRelFileNodeInfo_s;
 
@@ -217,7 +217,6 @@ typedef struct FileRepVerify_CompareStats_s
 
 	int totalMismatchesResolved; 
 	int totalFileMismatchesResolved;
-	int totalDirMismatchesResolved;
 
 	int numEnhancedCompares;
 

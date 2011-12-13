@@ -403,7 +403,7 @@ class ValidateResultFile(Operation):
     def execute(self):
         path = os.path.join(self.datadir, "pg_verify", "verification_%s.result" % self.token)
         with open(path, 'r') as f:
-            phrase = f.readline()
+            phrase = f.readline().strip()
         return self.translate.get(phrase, VerificationState.RUNNING)
 
 
