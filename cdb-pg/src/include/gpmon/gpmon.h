@@ -22,6 +22,8 @@ typedef struct gpmon_hello_t gpmon_hello_t;
 typedef struct gpmon_metrics_t gpmon_metrics_t;
 typedef struct gpmon_seginfo_t gpmon_seginfo_t;
 typedef struct gpmon_filerepinfo_t gpmon_filerepinfo_t;
+typedef struct gpmon_fsinfokey_t gpmon_fsinfokey_t;
+typedef struct gpmon_fsinfo_t gpmon_fsinfo_t;
 
 /*
  * this dir sits in $MASTER_DATA_DIRECTORY. always include the
@@ -30,6 +32,8 @@ typedef struct gpmon_filerepinfo_t gpmon_filerepinfo_t;
 #define GPMON_DIR   "./gpperfmon/data/"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
+
+#define GPMON_FSINFO_MAX_PATH 255
 #define GPMON_UNKNOWN "Unknown"
 
 /*
@@ -55,6 +59,25 @@ extern void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket);
 extern void gpmon_send(gpmon_packet_t*);
 extern void gpmon_gettmid(apr_int32_t*);
+
+/* ------------------------------------------------------------------
+         FSINFO
+   ------------------------------------------------------------------ */
+
+struct gpmon_fsinfokey_t 
+{
+	char fsname [GPMON_FSINFO_MAX_PATH];
+	char hostname[NAMEDATALEN];
+};
+
+struct gpmon_fsinfo_t
+{
+	gpmon_fsinfokey_t key;
+	
+	apr_int64_t bytes_used;
+	apr_int64_t bytes_available;
+	apr_int64_t bytes_total;
+};
 
 /* ------------------------------------------------------------------
          METRICS
@@ -332,7 +355,8 @@ enum gpmon_pkttype_t {
     GPMON_PKTTYPE_SEGINFO = 5,
     GPMON_PKTTYPE_FILEREP = 6,
     GPMON_PKTTYPE_QUERY_HOST_METRICS = 7, // query metrics update from a segment such as CPU per query
-
+    GPMON_PKTTYPE_FSINFO = 8,
+    
     GPMON_PKTTYPE_MAX
 };
 
@@ -350,6 +374,7 @@ struct gpmon_packet_t {
 		gpmon_qexec_t   qexec;
 		gpmon_seginfo_t seginfo;
 		gpmon_filerepinfo_t filerepinfo;
+		gpmon_fsinfo_t fsinfo;
     } u;
 };
 

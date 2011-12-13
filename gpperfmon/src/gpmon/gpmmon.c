@@ -459,8 +459,7 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 	
 	if (-1 == (sock = socket(family, SOCK_STREAM, 0)))
 	{
-		e = APR_FROM_OS_ERROR(errno);
-		gpmon_warningx(FLINE, e, "socket()");
+		gpmon_warningx(FLINE, 0, "error %d from socket system call", sock);
 		goto bail;
 	}
 
@@ -469,7 +468,7 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 	if (-1 == connect(sock, sockaddrlive, length))
 	{
 		e = APR_FROM_OS_ERROR(errno);
-		gpmon_warningx(FLINE, e, "connect()");
+		gpmon_warningx(FLINE, e, "connect system call failed");
 		goto bail;
 	}
 
@@ -478,10 +477,16 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 	pkt.pkttype = GPMON_PKTTYPE_HELLO;
 	pkt.u.hello.signature = ax.signature;
 	if (0 != (e = sendpkt(sock, &pkt)))
-	goto bail;
+	{
+		gpmon_warningx(FLINE, 0, "error %d from sendpkt system call", e);
+		goto bail;
+	}
 
 	if (0 != (e = recvpkt(sock, &pkt)))
-	goto bail;
+	{
+		gpmon_warningx(FLINE, 0, "error %d from recvpkt system call", e);
+		goto bail;
+	}
 
 	if (pkt.pkttype != GPMON_PKTTYPE_HELLO)
 	{
@@ -630,7 +635,7 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 				TR1(("connecting to %s (%s:%d)\n", active_hostname, active_ip, ax.port));
 				if (0 != (e = conm_connect(&sock, active_ip, ax.port, ipv6)))
 				{
-					gpmon_warningx(FLINE, e, "cannot connect to %s (%s:%d)",
+					gpmon_warningx(FLINE, 0, "cannot connect to %s (%s:%d)",
 							active_hostname, active_ip, ax.port);
 					continue;
 				}
@@ -665,6 +670,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 
 	if (arg_ && *((int*)arg_) == 1) {
 		snmp_module_params.healthmon_running_separately = 1;
+		TR0(("healthmond will do healthmonitoring, not doing snmp....\n"));
 	} else {
 		snmp_module_params.healthmon_running_separately = 0;
 	}
@@ -1654,11 +1660,14 @@ static void gethostlist()
 		addressinfo_holder_t* addressinfo;
 		int counter = 0;
 
-		TR1(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d)\n", 
+		TR0(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d) (hdm %d) (hdw %d) (dia %d)\n", 
 			ax.hosttab[i].hostname, 
 			ax.hosttab[i].is_master,
 			ax.hosttab[i].data_dir,
-			ax.hosttab[i].address_count));
+			ax.hosttab[i].address_count,
+			ax.hosttab[i].is_hdm,
+			ax.hosttab[i].is_hdw,
+			ax.hosttab[i].is_etl));
 
 		addressinfo = ax.hosttab[i].addressinfo_head;		
 		while (addressinfo)

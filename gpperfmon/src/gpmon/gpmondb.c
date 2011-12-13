@@ -11,6 +11,15 @@
 
 #define GPDB_CONNECTION_STRING "dbname='" GPMON_DB "' user='" GPMON_DBUSER "' connect_timeout='30'"
 
+#ifdef USE_CONNECTEMC
+int find_token_in_config_string(char* buffer, char**result, const char* token);
+#else
+int find_token_in_config_string(char* buffer, char**result, const char* token)
+{
+    return 1;
+}
+#endif
+
 // assumes a valid connection already exists
 static const char* gpdb_exec_only(PGconn* conn, PGresult** pres, const char* query)
 {
@@ -170,7 +179,197 @@ struct hostinfo_holder_t
 	char* datadir;
 	char* hostname;
 	int is_master;
+	int is_hdm;
+	int is_hdw;
+	int is_etl;
 };
+
+
+
+
+void initializeHostInfoDataWithAddress(struct hostinfo_holder_t* holder, char* address, int firstAddress)
+{
+	// USE permenant memory to store this data
+
+	addressinfo_holder_t* aiholder = calloc(1, sizeof(addressinfo_holder_t));
+	CHECKMEM(aiholder);
+
+	aiholder->address = strdup(address);
+	CHECKMEM(aiholder->address);
+
+	if (firstAddress)
+	{
+		holder->addressinfo_head = holder->addressinfo_tail = aiholder;
+	}
+	else
+	{
+		holder->addressinfo_tail->next = aiholder;
+		holder->addressinfo_tail = aiholder;
+	}
+}
+
+// hostType 1 == hdw
+// hostType 2 == hdm
+// hostType 3 == etl
+void initializeHostInfoDataFromDevicesEntry(apr_pool_t* tmp_pool, struct hostinfo_holder_t* holder, char* primary_hostname, char* hostEntry, int hostType)
+{
+	holder->hostname = apr_pstrdup(tmp_pool, primary_hostname);
+	CHECKMEM(holder->hostname);
+
+	holder->datadir = apr_pstrdup(tmp_pool, "/opt/dca/var/gpsmon");
+	CHECKMEM(holder->datadir);
+
+ 	switch(hostType){
+		case 1:
+			holder->is_hdw = 1;
+		break;
+		case 2:
+			holder->is_hdm = 1;
+		break;
+		case 3:
+			holder->is_etl = 1;
+		break;
+	}
+
+	holder->address_count = 0;
+	int firstAddress = 1;
+
+	while(*hostEntry)
+	{	
+		char* location = strchr(hostEntry, ',');
+		if (location)
+			*location = 0;
+
+		initializeHostInfoDataWithAddress(holder, hostEntry, firstAddress);
+		holder->address_count++;
+		if (!location)
+			return; // there were no commas so this is the last address in the hostEntry
+		*location = ',';
+		hostEntry = location+1; 
+		firstAddress = 0;
+	}
+}
+
+
+void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line)
+{
+	if (!line)
+	{
+		gpmon_warningx(FLINE, 0, "Line in devices file is null, skipping");
+		return; 
+	}
+
+	char* host;
+    char* device;
+    char* category;
+	char primary_hostname[64];
+
+	char* location = strchr(line, '#');
+	if (location)
+	{
+		*location = 0;
+		// remove comments from the line
+	}
+
+	if (!line)
+	{
+		gpmon_warningx(FLINE, 0, "Line in devices file is null after removing comments, skipping");
+		return; 
+	}
+
+	// we do these in reverse order so inserting null chars does not prevent finding other tokens
+    if (find_token_in_config_string(line, &host, "Host"))
+	{
+        return;
+	}
+
+    if (find_token_in_config_string(line, &device, "Device"))
+	{
+        return;
+	}
+
+    if (find_token_in_config_string(line, &category, "Category"))
+	{
+        return;
+	}
+
+	int monitored_device = 0;
+	int hostType = 0;
+	if (strcmp(device, "Spidey0001") == 0)
+	{
+		monitored_device = 1;
+		hostType = 1;
+	}
+
+	if (strcmp(device, "Spidey0002") == 0)
+	{
+		monitored_device = 1;
+		hostType = 2;
+	}
+
+	if (strcmp(device, "EtlHost") == 0) 
+	{
+		monitored_device = 1;
+		hostType = 3;
+	}
+
+	// segment host, switch, etc ... we are only adding additional hosts required for performance monitoring
+	if (!monitored_device)
+		return;
+
+	strncpy(primary_hostname, host, sizeof(primary_hostname));
+	primary_hostname[sizeof(primary_hostname) - 1] = 0;
+	location = strchr(primary_hostname, ',');
+	if (location)
+		*location = 0;
+
+	struct hostinfo_holder_t* hostinfo_holder = apr_hash_get(htab, primary_hostname, APR_HASH_KEY_STRING);
+	if (hostinfo_holder) {
+		gpmon_warningx(FLINE, 0, "Host '%s' is duplicated in devices.cnf", primary_hostname);
+		return;
+	}
+	
+	// OK Lets add this record at this point
+	hostinfo_holder = apr_pcalloc(tmp_pool, sizeof(struct hostinfo_holder_t));
+	CHECKMEM(hostinfo_holder);
+
+	apr_hash_set(htab, primary_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
+
+	initializeHostInfoDataFromDevicesEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType);
+}
+
+void get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
+{
+	// open devices.cnf and then start reading the data
+	// populate all relevant hosts: Spidey0001, Spidey0002, EtlHost
+	FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
+	if (!fd)
+	{
+		TR0(("not an appliance ... not reading devices.cnf\n"));
+		return; 
+	}
+	fclose(fd);
+
+	fd = fopen(PATH_TO_APPLAINCE_DEVICES_FILE, "r");
+	if (!fd)
+	{
+		gpmon_warningx(FLINE, 0, "can not read %s, ingoring\n", PATH_TO_APPLAINCE_DEVICES_FILE);
+		return; 
+	}
+
+	char* line;
+	char buffer[1024];
+
+	while (NULL != fgets(buffer, sizeof(buffer), fd))
+	{
+		// remove new line 
+		line = gpmon_trim(buffer);
+		process_line_in_devices_cnf(tmp_pool, htab, line);
+	}
+
+	fclose(fd);
+}
+
 
 void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool)
 {
@@ -267,6 +466,9 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 
 		}
 
+		// if we have any appliance specific hosts such as hadoop nodes add them to the hash table
+		get_appliance_hosts_and_add_to_hosts(pool, htab);
+
 		unique_hosts = apr_hash_count(htab);
 
 		// allocate memory for host list (not freed ever)
@@ -294,6 +496,16 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 			hosts[hostcounter].address_count = hostinfo_holder->address_count;
 			hosts[hostcounter].connection_hostname.current = hosts[hostcounter].addressinfo_head;
 			hosts[hostcounter].snmp_hostname.current = hosts[hostcounter].addressinfo_head;
+
+			if (hostinfo_holder->is_hdm)
+				hosts[hostcounter].is_hdm = 1;
+			
+			if (hostinfo_holder->is_hdw)
+				hosts[hostcounter].is_hdw = 1;
+
+			if (hostinfo_holder->is_etl)
+				hosts[hostcounter].is_etl = 1;
+
 			apr_thread_mutex_create(&hosts[hostcounter].mutex, APR_THREAD_MUTEX_UNNESTED, global_pool); // use the global pool so the mutexes last beyond this function
 
 			hostcounter++;
@@ -619,7 +831,7 @@ static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool, PGconn*
 
 typedef apr_status_t eachtablefunc(const char* tbl, apr_pool_t*, PGconn*);
 
-char* all_tables[] = { "system", "queries", "iterators", "database", "segment", "filerep" };
+char* all_tables[] = { "system", "queries", "iterators", "database", "segment", "filerep", "diskspace" };
 
 apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool, PGconn* conn)
 { 

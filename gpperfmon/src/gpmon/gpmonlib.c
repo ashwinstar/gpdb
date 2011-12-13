@@ -32,103 +32,7 @@ extern apr_thread_mutex_t *logfile_mutex;
 
 apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 {
-	return 0;
-// this should be irrelevant because the mmon process is running on the master which is the same hardware architecture
-#if 0
 	static apr_int64_t last_err_sec = 0;
-
-    if (pkt->magic != GPMON_MAGIC) {
-	int i;
-
-	GPMON_NTOHL(pkt->magic);
-	GPMON_NTOHS(pkt->version);
-	GPMON_NTOHS(pkt->pkttype);
-	switch (pkt->pkttype) {
-	case GPMON_PKTTYPE_HELLO:
-	    {
-		gpmon_hello_t* p = &pkt->u.hello;
-		GPMON_NTOHLL(p->signature);
-		break;
-	    }
-	case GPMON_PKTTYPE_METRICS:
-	    {
-		gpmon_metrics_t* p = &pkt->u.metrics;
-		GPMON_NTOHLL(p->mem.total);
-		GPMON_NTOHLL(p->mem.used);
-		GPMON_NTOHLL(p->mem.actual_used);
-		GPMON_NTOHLL(p->mem.actual_free);
-		GPMON_NTOHLL(p->swap.total);
-		GPMON_NTOHLL(p->swap.used);
-		GPMON_NTOHLL(p->swap.page_in);
-		GPMON_NTOHLL(p->swap.page_out);
-		GPMON_NTOHLL(p->disk.ro_rate);
-		GPMON_NTOHLL(p->disk.wo_rate);
-		GPMON_NTOHLL(p->disk.rb_rate);
-		GPMON_NTOHLL(p->disk.wb_rate);
-		GPMON_NTOHLL(p->net.rp_rate);
-		GPMON_NTOHLL(p->net.wp_rate);
-		GPMON_NTOHLL(p->net.rb_rate);
-		GPMON_NTOHLL(p->net.wb_rate);
-		break;
-	    }
-	case GPMON_PKTTYPE_QLOG:
-	    {
-		gpmon_qlog_t* p = &pkt->u.qlog;
-		GPMON_NTOHL(p->key.tmid);
-		GPMON_NTOHL(p->key.ssid);
-		GPMON_NTOHL(p->key.ccnt);
-		GPMON_NTOHL(p->cost);
-		GPMON_NTOHL(p->tsubmit);
-		GPMON_NTOHL(p->tstart);
-		GPMON_NTOHL(p->tfin);
-		GPMON_NTOHL(p->status);
-		GPMON_NTOHLL(p->rows_out);
-		GPMON_NTOHL(p->_segmax);
-		for (i = 0; i < GPMON_NUM_SEG_CPU; i++)
-		{
-		    GPMON_NTOHL(p->_segcpu[i]);
-		}
-		break;
-	    }
-	case GPMON_PKTTYPE_QEXEC:
-	    {
-		gpmon_qexec_t* p = &pkt->u.qexec;
-		GPMON_NTOHL(p->key.tmid);
-		GPMON_NTOHL(p->key.ssid);
-		GPMON_NTOHS(p->key.ccnt);
-		GPMON_NTOHS(p->key.segid);
-		GPMON_NTOHL(p->key.pid);
-		GPMON_NTOHS(p->key.nid);
-		GPMON_NTOHS(p->key.zero);
-		GPMON_NTOHL(p->pnid);
-		GPMON_NTOHS(p->nodeType);
-		GPMON_NTOHL(p->tstart);
-		GPMON_NTOHL(p->tduration);
-		GPMON_NTOHLL(p->p_mem);
-		GPMON_NTOHLL(p->p_memmax);
-		GPMON_NTOHLL(p->_cpu_elapsed);
-		GPMON_NTOHL(p->_p_metrics.fd_cnt);
-		GPMON_NTOHLL(p->_p_metrics.mem.size);
-		GPMON_NTOHLL(p->_p_metrics.mem.resident);
-		GPMON_NTOHLL(p->_p_metrics.mem.share);
-		GPMON_NTOHLL(p->rowsout);
-		GPMON_NTOHLL(p->rowsout_est);
-		for (i = 0; i < GPMON_QEXEC_M_COUNT; i++) 
-		{
-		    GPMON_NTOHLL(p->measures[i]);
-		}
-		break;
-	    }
-	case GPMON_PKTTYPE_SEGINFO:
-		{
-		gpmon_seginfo_t* p = &pkt->u.seginfo;
-		GPMON_NTOHLL(p->dbid);
-		GPMON_NTOHLL(p->dynamic_memory_used);
-		GPMON_NTOHLL(p->dynamic_memory_available);
-		break;
-		}
-	}
-    }
 
 	if (pkt->magic != GPMON_MAGIC)
 	{
@@ -166,7 +70,6 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
     }
 
     return 0;
-#endif
 }
 
 

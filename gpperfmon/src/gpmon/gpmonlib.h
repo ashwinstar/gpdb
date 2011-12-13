@@ -94,6 +94,7 @@ extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 									apr_int32_t ccnt);
 
 #define PATH_TO_APPLIANCE_VERSION_FILE "/etc/gpdb-appliance-version"
+#define PATH_TO_APPLAINCE_DEVICES_FILE "/opt/dca/etc/healthmond/devices.cnf"
 
 typedef struct addressinfo_holder_t addressinfo_holder_t;
 struct addressinfo_holder_t                                                                        
@@ -134,6 +135,9 @@ struct host_t
 	apr_uint32_t address_count; 
 	char* data_dir;
 	unsigned char is_master; /* 1 if host is the same host where the master runs */ 
+	unsigned char is_hdm; 
+	unsigned char is_hdw; 
+	unsigned char is_etl; 
 	char ever_connected; /* set to non-zero after first connection attempt */
 };
 
