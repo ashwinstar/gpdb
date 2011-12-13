@@ -1,10 +1,3 @@
-%define maindir     %(echo `cd ../../../../..;pwd`)
-%define _topdir     %{maindir}/cdb-pg/src/bin/gphdfs/package
-%define buildarch   %(uname -p) 
-%define buildroot   %{_topdir}/BUILD
-%define __os_install_post %{nil}
-
-BuildRoot:		%{buildroot}
 Summary:        Java  
 License:        Sun License       
 Name:           jre
@@ -14,8 +7,7 @@ Group:          Development/Tools
 Prefix:         /temp
 AutoReq:        no
 AutoProv:       no
-BuildArch:      %{buildarch} 
-Provides:       jre-%{jre_ver}-%{jre_rel}.%{buildarch}.rpm /bin/sh
+Provides:       jre = %{jre_ver}, /bin/sh
 
 %description
 This package provides JRE %{jre_ver}.
