@@ -594,6 +594,9 @@ class InstallPackageLocally(Operation):
     This operation must take a slew of starting conditions and drive the state
     of the local machine towards the ending state, in which the given package is successfully
     installed, the rpm database is sane, and the package resides in the designated archive.
+    To that end, we indiscriminately squash AlreadyInstalledErrors arising from ValidateInstallPackage,
+    because in this context, it's not an exception, but rather an indication of our desired ending
+    conditions.
 
     We must consider the following scenarios and more: package was deleted from archive,
     the main comprising rpm was uninstalled, dependent rpms were removed, the rpm database was
@@ -614,7 +617,14 @@ class InstallPackageLocally(Operation):
         gppkg = Gppkg.from_package_path(current_package_location)
         ExtractPackage(gppkg).run()
 
-        rpm_set = ValidateInstallPackage(gppkg, is_update = self.is_update).run()
+        # squash AlreadyInstalledError here: the caller doesn't ever need to 
+        # know that we didn't have to do anything here
+        try:
+            rpm_set = ValidateInstallPackage(gppkg, is_update = self.is_update).run()
+        except AlreadyInstalledError, e:
+            logger.info(e)
+            return
+
         if rpm_set:
             if self.is_update:
                 rpm_install_command = 'rpm -U %s --dbpath %s --prefix=%s'
@@ -637,18 +647,36 @@ class InstallPackageLocally(Operation):
 
 
 class UninstallPackageLocally(Operation):
-    '''
-        This Operation is invoked as a RemoteOperation. 
-        It uninstalls the gppkg on the remote host.
-    '''
+    """
+    Uninstalls a package on the local host
+
+    This operation must take a slew of starting conditions and drive the state
+    of the local machine towards the ending state, in which the given package is successfully
+    uninstalled, the rpm database is sane, and the package is removed from the archive.
+    To that end, we indiscriminately squash NotInstalledErrors arising from ValidateUninstallPackage,
+    because in this context, it's not an exception, but rather an indication of our desired ending
+    conditions.
+
+    We must consider the following scenarios and more: package was deleted from archive,
+    the main comprising rpm was uninstalled, dependent rpms were removed, the rpm database was
+    corrupted, etc.
+    """
     def __init__(self, package_name):
         self.package_name = package_name
 
     def execute(self): 
+        # TODO: AK: MPP-15737 - we're entirely dependent on the package residing in the archive
         current_package_location = os.path.join(GPPKG_ARCHIVE_PATH, self.package_name)
         gppkg = Gppkg.from_package_path(current_package_location)
 
-        rpm_set = ValidateUninstallPackage(gppkg).run()
+        # squash NotInstalledError here: the caller doesn't ever need to 
+        # know that we didn't have to do anything here
+        try:
+            rpm_set = ValidateUninstallPackage(gppkg).run()
+        except NotInstalledError, e:
+            logger.info(e)
+            return
+
         if rpm_set:
             rpm_uninstall_command = 'rpm -e %s --dbpath %s' % (" ".join(rpm_set), RPM_DATABASE)
             cmd = Command('Uninstalling rpms', rpm_uninstall_command)
@@ -717,6 +745,7 @@ class InstallPackage(Operation):
     def execute(self):
         logger.info('Installing package %s' % self.gppkg.pkg)
 
+        # TODO: AK: MPP-15736 - precheck package state on master
         ExtractPackage(self.gppkg).run()
         ValidateInstallPackage(self.gppkg).run() 
 
@@ -800,6 +829,7 @@ class UninstallPackage(Operation):
     def execute(self):
         logger.info('Uninstalling package %s' % self.gppkg.pkg)
 
+        # TODO: AK: MPP-15736 - precheck package state on master
         ExtractPackage(self.gppkg).run()
         ValidateUninstallPackage(self.gppkg).run()
 
