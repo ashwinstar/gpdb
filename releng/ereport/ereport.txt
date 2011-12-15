@@ -3351,166 +3351,172 @@ cacf: cdbappendonlystoragewrite:00001388:  storageWrite->maxBufferLen,
 cacf: cdbappendonlystoragewrite:00001389:  storageWrite->currentCompleteHeaderLen, 
 cacf: cdbappendonlystoragewrite:00001390:  (storageWrite->isFirstRowNumSet ? "true" : "false")); 
 aaaaa GP_IGNORE: caaj: cdbbackup - ./backend/cdb/cdbbackup.c
-caaj: cdbbackup:00000176:  ereport(ERROR, 
-caaj: cdbbackup:00000177:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000178:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
-caaj: cdbbackup:00000179:  "gpddboost", getenv("PGPATH"), getenv("PATH")), 
-caaj: cdbbackup:00000180:  errhint("Restart the server and try again"))); 
-caaj: cdbbackup:00000259:  ereport(ERROR, 
-caaj: cdbbackup:00000260:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000261:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000270:  ereport(ERROR, 
-caaj: cdbbackup:00000271:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000272:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000306:  ereport(ERROR, 
-caaj: cdbbackup:00000307:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000308:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000312:  elog(ERROR, "\nDDboost filename is NULL\n"); 
-caaj: cdbbackup:00000384:  ereport(ERROR, 
-caaj: cdbbackup:00000385:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000386:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000460:  ereport(ERROR, 
-caaj: cdbbackup:00000461:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000462:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
-caaj: cdbbackup:00000470:  ereport(ERROR, 
-caaj: cdbbackup:00000471:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000472:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
-caaj: cdbbackup:00000473:  "/bin/sh", pszCmdLine))); 
-caaj: cdbbackup:00000564:  ereport(ERROR, 
-caaj: cdbbackup:00000565:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000566:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
-caaj: cdbbackup:00000574:  ereport(ERROR, 
-caaj: cdbbackup:00000575:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000576:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
-caaj: cdbbackup:00000577:  "/bin/sh", pszCmdLine))); 
-caaj: cdbbackup:00000635:  elog(ERROR, "Out of memory\n"); 
-caaj: cdbbackup:00000709:  ereport(ERROR, 
-caaj: cdbbackup:00000710:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00000711:  errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found " 
-caaj: cdbbackup:00000712:  " in directory %s with backup key %s and source dbid key %d", target_dbid, 
-caaj: cdbbackup:00000713:  pszBackupDirectory, pszBackupKey, segid))); 
-caaj: cdbbackup:00000726:  ereport(ERROR, 
-caaj: cdbbackup:00000727:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000728:  errmsg("dump file appears to be compressed. Pass a decompression " 
-caaj: cdbbackup:00000729:  "option to gp_restore to decompress it on the fly"))); 
-caaj: cdbbackup:00000732:  ereport(ERROR, 
-caaj: cdbbackup:00000733:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000734:  errmsg("a decompression cmd line option is used but the dump " 
-caaj: cdbbackup:00000735:  "file does not appear to be compressed."))); 
-caaj: cdbbackup:00000767:  ereport(ERROR, 
-caaj: cdbbackup:00000768:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000769:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
-caaj: cdbbackup:00000782:  ereport(ERROR, 
-caaj: cdbbackup:00000783:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000784:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000793:  ereport(ERROR, 
-caaj: cdbbackup:00000794:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000795:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000845:  ereport(ERROR, 
-caaj: cdbbackup:00000846:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000847:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000884:  ereport(ERROR, 
-caaj: cdbbackup:00000885:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00000886:  errmsg("out of memory"))); 
-caaj: cdbbackup:00000920:  ereport(ERROR, 
-caaj: cdbbackup:00000921:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000922:  errmsg("Error in gp_restore_launch - execl of %s with Command Line %s failed", 
-caaj: cdbbackup:00000923:  "/bin/sh", pszCmdLine))); 
-caaj: cdbbackup:00000983:  ereport(ERROR, 
-caaj: cdbbackup:00000984:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000985:  errmsg("Only status files are currently supported in gp_read_backup_file"))); 
-caaj: cdbbackup:00000992:  ereport(ERROR, 
-caaj: cdbbackup:00000993:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00000994:  errmsg("Invalid filetype %d passed to gp_read_backup_file", fileType))); 
-caaj: cdbbackup:00001001:  ereport(ERROR, 
-caaj: cdbbackup:00001002:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001003:  errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType))); 
-caaj: cdbbackup:00001009:  ereport(ERROR, 
-caaj: cdbbackup:00001010:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001011:  errmsg("Backup File %s Type %d too large to read", pszFileName, fileType))); 
-caaj: cdbbackup:00001018:  ereport(ERROR, 
-caaj: cdbbackup:00001019:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001020:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001026:  ereport(ERROR, 
-caaj: cdbbackup:00001027:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001028:  errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType))); 
-caaj: cdbbackup:00001034:  ereport(ERROR, 
-caaj: cdbbackup:00001035:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001036:  errmsg("Error reading Backup File %s Type %d", pszFileName, fileType))); 
-caaj: cdbbackup:00001109:  ereport(ERROR, 
-caaj: cdbbackup:00001110:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001111:  errmsg("Backup File %s cannot be opened", pszFileName))); 
-caaj: cdbbackup:00001118:  ereport(ERROR, 
-caaj: cdbbackup:00001119:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001120:  errmsg("Error writing Backup File %s", pszFileName))); 
-caaj: cdbbackup:00001274:  ereport(ERROR, 
-caaj: cdbbackup:00001275:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001276:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001288:  ereport(ERROR, 
-caaj: cdbbackup:00001289:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001290:  errmsg("Could not compile regular expression for backup filename matching"))); 
-caaj: cdbbackup:00001298:  ereport(ERROR, 
-caaj: cdbbackup:00001299:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001300:  errmsg("Backup Directory %s does not exist.", pszBackupDirectory))); 
-caaj: cdbbackup:00001305:  ereport(ERROR, 
-caaj: cdbbackup:00001306:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001307:  errmsg("Backup Location %s is not a directory.", pszBackupDirectory))); 
-caaj: cdbbackup:00001313:  ereport(ERROR, 
-caaj: cdbbackup:00001314:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001315:  errmsg("Backup Directory %s cannot be opened for enumerating files.", pszBackupDirectory))); 
-caaj: cdbbackup:00001395:  ereport(ERROR, 
-caaj: cdbbackup:00001396:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001397:  errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
-caaj: cdbbackup:00001403:  ereport(ERROR, 
-caaj: cdbbackup:00001404:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001405:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001459:  ereport(ERROR, 
-caaj: cdbbackup:00001460:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001461:  errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
-caaj: cdbbackup:00001467:  ereport(ERROR, 
-caaj: cdbbackup:00001468:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001469:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001501:  ereport(ERROR, 
-caaj: cdbbackup:00001502:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001503:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001524:  ereport(ERROR, 
-caaj: cdbbackup:00001525:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001526:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
-caaj: cdbbackup:00001527:  pszBackupProgram, getenv("PGPATH"), getenv("PATH")), 
-caaj: cdbbackup:00001528:  errhint("Restart the server and try again"))); 
-caaj: cdbbackup:00001536:  ereport(ERROR, 
-caaj: cdbbackup:00001537:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-caaj: cdbbackup:00001538:  errmsg("%s (compression utility) not found in in PGPATH or " 
-caaj: cdbbackup:00001539:  "PATH (PGPATH: %s *PIPE* PATH: %s)", 
-caaj: cdbbackup:00001540:  pszCompressionProgram, getenv("PGPATH"), getenv("PATH")))); 
-caaj: cdbbackup:00001574:  ereport(ERROR, 
-caaj: cdbbackup:00001575:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001576:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001598:  ereport(ERROR, 
-caaj: cdbbackup:00001599:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001600:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001613:  ereport(ERROR, 
-caaj: cdbbackup:00001614:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001615:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001639:  ereport(ERROR, 
-caaj: cdbbackup:00001640:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001641:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001658:  ereport(ERROR, 
-caaj: cdbbackup:00001659:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001660:  errmsg("out of memory"))); 
-caaj: cdbbackup:00001700:  ereport(ERROR, 
-caaj: cdbbackup:00001701:  (errcode_for_file_access(), 
-caaj: cdbbackup:00001702:  errmsg("could not create backup directory \"%s\": %m", 
-caaj: cdbbackup:00001703:  pszBackupDirectory))); 
-caaj: cdbbackup:00001714:  ereport(ERROR, 
-caaj: cdbbackup:00001715:  (errcode_for_file_access(), 
-caaj: cdbbackup:00001716:  errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory))); 
-caaj: cdbbackup:00001813:  ereport(ERROR, 
-caaj: cdbbackup:00001814:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-caaj: cdbbackup:00001815:  errmsg("Backup FileName based on key %s too long", pszBackupKey))); 
-caaj: cdbbackup:00001821:  ereport(ERROR, 
-caaj: cdbbackup:00001822:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaj: cdbbackup:00001823:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000177:  ereport(ERROR, 
+caaj: cdbbackup:00000178:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000179:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00000180:  "gpddboost", getenv("PGPATH"), getenv("PATH")), 
+caaj: cdbbackup:00000181:  errhint("Restart the server and try again"))); 
+caaj: cdbbackup:00000260:  ereport(ERROR, 
+caaj: cdbbackup:00000261:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000262:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000271:  ereport(ERROR, 
+caaj: cdbbackup:00000272:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000273:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000307:  ereport(ERROR, 
+caaj: cdbbackup:00000308:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000309:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000313:  elog(ERROR, "\nDDboost filename is NULL\n"); 
+caaj: cdbbackup:00000385:  ereport(ERROR, 
+caaj: cdbbackup:00000386:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000387:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000461:  ereport(ERROR, 
+caaj: cdbbackup:00000462:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000463:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
+caaj: cdbbackup:00000471:  ereport(ERROR, 
+caaj: cdbbackup:00000472:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000473:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
+caaj: cdbbackup:00000474:  "/bin/sh", pszCmdLine))); 
+caaj: cdbbackup:00000565:  ereport(ERROR, 
+caaj: cdbbackup:00000566:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000567:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
+caaj: cdbbackup:00000575:  ereport(ERROR, 
+caaj: cdbbackup:00000576:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000577:  errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed", 
+caaj: cdbbackup:00000578:  "/bin/sh", pszCmdLine))); 
+caaj: cdbbackup:00000638:  elog(ERROR, "Out of memory\n"); 
+caaj: cdbbackup:00000710:  ereport(ERROR, 
+caaj: cdbbackup:00000711:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000712:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000721:  ereport(ERROR, 
+caaj: cdbbackup:00000722:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000723:  errmsg("Creating backup directory %s failed with error %d", pszBackupDirectory, err))); 
+caaj: cdbbackup:00000736:  ereport(ERROR, 
+caaj: cdbbackup:00000737:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00000738:  errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found " 
+caaj: cdbbackup:00000739:  " in directory %s with backup key %s and source dbid key %d", target_dbid, 
+caaj: cdbbackup:00000740:  pszBackupDirectory, pszBackupKey, segid))); 
+caaj: cdbbackup:00000753:  ereport(ERROR, 
+caaj: cdbbackup:00000754:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000755:  errmsg("dump file appears to be compressed. Pass a decompression " 
+caaj: cdbbackup:00000756:  "option to gp_restore to decompress it on the fly"))); 
+caaj: cdbbackup:00000759:  ereport(ERROR, 
+caaj: cdbbackup:00000760:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000761:  errmsg("a decompression cmd line option is used but the dump " 
+caaj: cdbbackup:00000762:  "file does not appear to be compressed."))); 
+caaj: cdbbackup:00000794:  ereport(ERROR, 
+caaj: cdbbackup:00000795:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000796:  errmsg("Could not fork a process for backup of database %s", pszDBName))); 
+caaj: cdbbackup:00000809:  ereport(ERROR, 
+caaj: cdbbackup:00000810:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000811:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000820:  ereport(ERROR, 
+caaj: cdbbackup:00000821:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000822:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000872:  ereport(ERROR, 
+caaj: cdbbackup:00000873:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000874:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000911:  ereport(ERROR, 
+caaj: cdbbackup:00000912:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00000913:  errmsg("out of memory"))); 
+caaj: cdbbackup:00000947:  ereport(ERROR, 
+caaj: cdbbackup:00000948:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00000949:  errmsg("Error in gp_restore_launch - execl of %s with Command Line %s failed", 
+caaj: cdbbackup:00000950:  "/bin/sh", pszCmdLine))); 
+caaj: cdbbackup:00001010:  ereport(ERROR, 
+caaj: cdbbackup:00001011:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001012:  errmsg("Only status files are currently supported in gp_read_backup_file"))); 
+caaj: cdbbackup:00001019:  ereport(ERROR, 
+caaj: cdbbackup:00001020:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001021:  errmsg("Invalid filetype %d passed to gp_read_backup_file", fileType))); 
+caaj: cdbbackup:00001028:  ereport(ERROR, 
+caaj: cdbbackup:00001029:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001030:  errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType))); 
+caaj: cdbbackup:00001036:  ereport(ERROR, 
+caaj: cdbbackup:00001037:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001038:  errmsg("Backup File %s Type %d too large to read", pszFileName, fileType))); 
+caaj: cdbbackup:00001045:  ereport(ERROR, 
+caaj: cdbbackup:00001046:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001047:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001053:  ereport(ERROR, 
+caaj: cdbbackup:00001054:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001055:  errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType))); 
+caaj: cdbbackup:00001061:  ereport(ERROR, 
+caaj: cdbbackup:00001062:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001063:  errmsg("Error reading Backup File %s Type %d", pszFileName, fileType))); 
+caaj: cdbbackup:00001136:  ereport(ERROR, 
+caaj: cdbbackup:00001137:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001138:  errmsg("Backup File %s cannot be opened", pszFileName))); 
+caaj: cdbbackup:00001145:  ereport(ERROR, 
+caaj: cdbbackup:00001146:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001147:  errmsg("Error writing Backup File %s", pszFileName))); 
+caaj: cdbbackup:00001301:  ereport(ERROR, 
+caaj: cdbbackup:00001302:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001303:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001315:  ereport(ERROR, 
+caaj: cdbbackup:00001316:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001317:  errmsg("Could not compile regular expression for backup filename matching"))); 
+caaj: cdbbackup:00001325:  ereport(ERROR, 
+caaj: cdbbackup:00001326:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001327:  errmsg("Backup Directory %s does not exist.", pszBackupDirectory))); 
+caaj: cdbbackup:00001332:  ereport(ERROR, 
+caaj: cdbbackup:00001333:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001334:  errmsg("Backup Location %s is not a directory.", pszBackupDirectory))); 
+caaj: cdbbackup:00001340:  ereport(ERROR, 
+caaj: cdbbackup:00001341:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001342:  errmsg("Backup Directory %s cannot be opened for enumerating files.", pszBackupDirectory))); 
+caaj: cdbbackup:00001422:  ereport(ERROR, 
+caaj: cdbbackup:00001423:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001424:  errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
+caaj: cdbbackup:00001430:  ereport(ERROR, 
+caaj: cdbbackup:00001431:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001432:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001486:  ereport(ERROR, 
+caaj: cdbbackup:00001487:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001488:  errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey))); 
+caaj: cdbbackup:00001494:  ereport(ERROR, 
+caaj: cdbbackup:00001495:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001496:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001528:  ereport(ERROR, 
+caaj: cdbbackup:00001529:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001530:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001551:  ereport(ERROR, 
+caaj: cdbbackup:00001552:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001553:  errmsg("%s not found in PGPATH or PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00001554:  pszBackupProgram, getenv("PGPATH"), getenv("PATH")), 
+caaj: cdbbackup:00001555:  errhint("Restart the server and try again"))); 
+caaj: cdbbackup:00001563:  ereport(ERROR, 
+caaj: cdbbackup:00001564:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+caaj: cdbbackup:00001565:  errmsg("%s (compression utility) not found in in PGPATH or " 
+caaj: cdbbackup:00001566:  "PATH (PGPATH: %s *PIPE* PATH: %s)", 
+caaj: cdbbackup:00001567:  pszCompressionProgram, getenv("PGPATH"), getenv("PATH")))); 
+caaj: cdbbackup:00001601:  ereport(ERROR, 
+caaj: cdbbackup:00001602:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001603:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001625:  ereport(ERROR, 
+caaj: cdbbackup:00001626:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001627:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001640:  ereport(ERROR, 
+caaj: cdbbackup:00001641:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001642:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001666:  ereport(ERROR, 
+caaj: cdbbackup:00001667:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001668:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001685:  ereport(ERROR, 
+caaj: cdbbackup:00001686:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001687:  errmsg("out of memory"))); 
+caaj: cdbbackup:00001727:  ereport(ERROR, 
+caaj: cdbbackup:00001728:  (errcode_for_file_access(), 
+caaj: cdbbackup:00001729:  errmsg("could not create backup directory \"%s\": %m", 
+caaj: cdbbackup:00001730:  pszBackupDirectory))); 
+caaj: cdbbackup:00001741:  ereport(ERROR, 
+caaj: cdbbackup:00001742:  (errcode_for_file_access(), 
+caaj: cdbbackup:00001743:  errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory))); 
+caaj: cdbbackup:00001840:  ereport(ERROR, 
+caaj: cdbbackup:00001841:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+caaj: cdbbackup:00001842:  errmsg("Backup FileName based on key %s too long", pszBackupKey))); 
+caaj: cdbbackup:00001848:  ereport(ERROR, 
+caaj: cdbbackup:00001849:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaj: cdbbackup:00001850:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: cabh: cdbbufferedappend - ./backend/cdb/cdbbufferedappend.c
 cabh: cdbbufferedappend:00000151:  ereport(ERROR, (errcode_for_file_access(), 
 cabh: cdbbufferedappend:00000152:  errmsg("unable to get current position in table \"%s\" for file \"%s\" (errcode %d)", 
