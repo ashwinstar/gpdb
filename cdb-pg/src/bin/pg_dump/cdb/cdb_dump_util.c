@@ -921,7 +921,8 @@ _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t
 }
 
 int 
-initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info, char **ddp_su_name)
+initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info, char **ddp_su_name,
+            bool createStorageUnit)
 {
 	int err = DD_ERR_NONE;
 	uint POOL_SIZE = DDBOOST_POOL_SIZE;
@@ -974,11 +975,14 @@ initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_in
                return err;
         }
 
-	err = ddp_create_storage_unit(*ddp_conn, storage_unit_name);
-	if (err != DD_ERR_NONE) {
+    if (createStorageUnit)
+    {
+	    err = ddp_create_storage_unit(*ddp_conn, storage_unit_name);
+	    if (err != DD_ERR_NONE) {
                 mpp_err_msg("ERROR", "ddboost", "ddboost create storage unit failed. Err = %d\n", err);
                 return err;
         }	
+    }
 	
 	return 0;
 }

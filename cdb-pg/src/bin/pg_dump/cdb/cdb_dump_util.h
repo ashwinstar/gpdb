@@ -31,7 +31,7 @@
 extern int  parseDDBoostCredential(char *hostname, char *user, char *password, const char *progName);
 extern void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
 extern int initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info,
-                        char **dd_su_name);
+                        char **dd_su_name, bool createStorageUnit);
 #endif
 
 /* --------------------------------------------------------------------------------------------------

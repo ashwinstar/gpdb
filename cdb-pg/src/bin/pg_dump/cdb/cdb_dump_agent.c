@@ -682,7 +682,7 @@ main(int argc, char **argv)
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
-		ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME);
+		ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME, true);
 		if (ret)
 		{
 			mpp_err_msg(logError, progname, "Error connecting to DDboost. Check parameters\n");
