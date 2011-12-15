@@ -119,7 +119,7 @@ int			gp_fts_probe_retries = 5;
 /*
  * Probe timeout for fts prober.
  */
-int			gp_fts_probe_timeout = 180;
+int			gp_fts_probe_timeout = 20;
 
 /*
  * Polling interval for the fts prober. A scan of the entire system starts
@@ -131,12 +131,12 @@ int			gp_fts_probe_interval=60;
  * Number of threads to use for probe of segments (it is a good idea to have this
  * larger than the number of segments per host.
  */
-int			gp_fts_probe_threadcount=5;
+int			gp_fts_probe_threadcount=16;
 
 /*
  * Controls parallel segment transition (failover).
  */
-bool		gp_fts_transition_parallel = false;
+bool		gp_fts_transition_parallel = true;
 
 /* The number of retries to request a segment state transition. */
 int gp_fts_transition_retries = 5;
