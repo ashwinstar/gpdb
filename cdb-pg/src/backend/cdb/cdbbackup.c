@@ -53,6 +53,7 @@ static int dd_boost_enabled = 0;
 #endif
 
 #define MAX_DDBOOST_BUF_NAME 50
+#define MAX_MKDIR_STRING_LEN 1200
 
 static char *gpDDBoostPg = NULL;
 
@@ -628,6 +629,8 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 #ifdef USE_DDBOOST
 	char       *ddFileName = NULL;
 	char       *dd_boost_buffer_size = NULL;
+        char       *mkdirStr = NULL;
+        int        err = 0;
 	
 	ddFileName = (char*)palloc(MAX_PATH_NAME);
 	if (!ddFileName)
@@ -695,6 +698,30 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
         if (strstr(pszPassThroughParameters,"--dd_boost_enabled") != NULL)
         {
                 dd_boost_enabled = 1;
+                 
+                /* When restoring from DDBoost to a fresh cluster, we will not have the *
+                * db_dumps/<date> directory. This is required to store the status file *
+                * Fix is to create the specified backup directory for every ddboost    *
+                * restore. It a directory already exists, then no side effect is seen  *
+                */
+                mkdirStr = (char*)malloc(MAX_MKDIR_STRING_LEN);
+                if (!mkdirStr)
+                {
+                    ereport(ERROR,
+                     (errcode(ERRCODE_OUT_OF_MEMORY),
+                     errmsg("out of memory")));
+                }
+ 
+                memset(mkdirStr, 0, MAX_MKDIR_STRING_LEN);
+                sprintf(mkdirStr, "mkdir -p %s", pszBackupDirectory);
+                err = system(mkdirStr);
+                free(mkdirStr);
+                if (err)
+                {
+                    ereport(ERROR,
+                        (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+                        errmsg("Creating backup directory %s failed with error %d", pszBackupDirectory, err)));
+                }
         }
 	/* Initialise the DDBoost connection and use it to open the file */
 
