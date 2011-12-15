@@ -30,13 +30,7 @@ where queue_attribute is:
    MIN_COST=float
    PRIORITY={MIN|LOW|MEDIUM|HIGH|MAX}
 
-ALTER RESOURCE QUEUE name WITHOUT ( queue_attribute=value [, ... ] ) 
-where queue_attribute is:
-   ACTIVE_STATEMENTS=integer
-   MEMORY_LIMIT='memory_units'
-   MAX_COST=float
-   COST_OVERCOMMIT={TRUE|FALSE}
-   MIN_COST=float
+ALTER RESOURCE QUEUE name WITHOUT 
 
 </synopsis>
  </refsynopsisdiv>
@@ -45,13 +39,19 @@ where queue_attribute is:
   <title>Description</title>
 
   <para>
-   <command>ALTER RESOURCE QUEUE</command> allows you to change or reset 
-   attributes of a resource queue that was previously created with the 
-   <command>CREATE RESOURCE QUEUE</command> command. To change the roles
-   assigned to a resource queue, use the <command>ALTER ROLE</command>.
-   A resource queue must have either an <literal>ACTIVE_STATEMENTS</literal> 
-   or a <literal>MAX_COST</literal> defined (or it can have both).  
-   You must be a database superuser to use this command.
+   ALTER RESOURCE QUEUE changes the limits of a resource queue. 
+   Only a superuser can alter a resource queue. A resource queue 
+   must have either an ACTIVE_STATEMENTS or a MAX_COST value 
+   (or it can have both). You can also set or reset priority for 
+   a resource queue to control the relative share of available CPU 
+   resources used by queries associated with the queue, or memory 
+   limit of a resource queue to control the amount of memory that 
+   all queries submitted through the queue can consume on a segment host.
+  </para>
+
+  <para>
+  ALTER RESOURCE QUEUE WITHOUT removes any limits on a resource that 
+  were previously set. All queue_attribute settings are disabled.
   </para>
 
   </refsect1>
