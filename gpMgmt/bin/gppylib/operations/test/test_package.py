@@ -538,13 +538,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         #Remove the package from archive
         os.remove(os.path.join(ARCHIVE_PATH, gppkg_file))
        
-        try:
-            self.install(gppkg_file)
-        except:
-            #Add package back to the archive so that following tests
-            #will start from a clean state       
-            shutil.copy(gppkg_file, os.path.join(ARCHIVE_PATH, gppkg_file))
+        self.install(gppkg_file)
 
+    @unittest.expectedFailure
     def test01_delete_package_from_archive_and_uninstall(self):
         #Building off of last test case's state
         #Use gppkg from previous test
@@ -556,8 +552,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
 
         try:
             self.remove(self.gppkg_spec.get_filename())
-        except:
+        except ExecutionError, e:
             shutil.copy(gppkg_file, os.path.join(ARCHIVE_PATH, gppkg_file))
+            self.fail("Execution Error %s" % e)
 
     def test02_delete_rpm_and_install(self):
         #Use gppkg from previous test
@@ -572,12 +569,13 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         
         try:
             self.install(gppkg_file) 
-        except:
+        except ExecutionError, e:
             #Install the rpm 
             with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
                 tf.extract(self.rpm_spec.get_filename())
             run_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME))
             os.remove(self.rpm_spec.get_filename())
+            self.fail("ExecutionError %s" % e)
 
     def test03_install_rpm_and_install(self):
         #Install the rpm 
@@ -595,11 +593,16 @@ class MuckWithInternalsTestCases(GppkgTestCase):
       
         try: 
             self.install(gppkg_file)
-        except:
+        except ExecutionError, e:
             run_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE))
             os.remove(self.rpm_spec.get_filename())
+            self.fail("ExecutionError %s" % e)
 
+    @unittest.expectedFailure
     def test04_delete_package_from_archive_on_segment(self):
+        '''
+            Known issue: MPP-15737
+        '''
         gppkg_file = self.gppkg_spec.get_filename()
         archive_file = os.path.join(ARCHIVE_PATH, gppkg_file)
         self.install(gppkg_file)
@@ -611,11 +614,16 @@ class MuckWithInternalsTestCases(GppkgTestCase):
 
         try:
             self.install(gppkg_file)
-        except:
+        except ExecutionError, e:
             Scp(name = "copy to segment", srcFile = gppkg_file, dstFile = archive_file, srcHost = None, dstHost = segment_host_list[0]).run(validateAfter = True)
+            self.fail("ExecutionError %s" % e)
             
     @skipIfNoStandby()
+    @unittest.expectedFailure
     def test05_delete_package_from_archive_on_standby(self):
+        '''
+            Known issue: MPP-15737
+        '''
         gppkg_file = self.gppkg_spec.get_filename()
         archive_file = os.path.join(ARCHIVE_PATH, gppkg_file)
         self.install(gppkg_file)
@@ -626,8 +634,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
 
         try:
             self.install(gppkg_file)
-        except:
+        except ExecutionError, e:
             Scp(name = "copy to segment", srcFile = gppkg_file, dstFile = archive_file, srcHost = None, dstHost = standby).run(validateAfter = True)
+            self.fail("ExecutionError %s" % e)
 
 if __name__ == "__main__":
     unittest.main()
