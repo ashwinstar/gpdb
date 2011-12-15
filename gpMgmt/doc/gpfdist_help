@@ -41,6 +41,8 @@ than the hosts where Greenplum Database is installed. To install gpfidist
 on another host, simply copy the utility over to that host and add gpfdist 
 to your $PATH.
 
+Note: When using IPv6, always enclose the numeric IP address in brackets.
+
 You can also run gpfdist as a Windows Service. See below for
 details.
 
