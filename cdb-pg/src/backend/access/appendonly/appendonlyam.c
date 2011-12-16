@@ -171,6 +171,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 							scan->aoScanInitContext,
 							scan->usableBlockSize,
 							NameStr(scan->aos_rd->rd_rel->relname),
+							scan->title,
 							&scan->storageAttributes);
 
 		/*
@@ -393,7 +394,7 @@ errdetail_appendonly_insert_block_header(AppendOnlyInsertDesc aoInsertDesc)
 
 	usingChecksum = aoInsertDesc->usingChecksum;
 
-	return errdetail_appendonly_storage_block_header(header, usingChecksum, aoInsertDesc->storageAttributes.version);
+	return errdetail_appendonly_storage_content_header(header, usingChecksum, aoInsertDesc->storageAttributes.version);
 }
 
 /*
@@ -695,7 +696,7 @@ AppendOnlyExecutorReadBlock_GetContents(
 					        "Valid block check error %d, detail '%s'",
 							varBlockCheckError,
 							VarBlockGetCheckErrorStr()),
-					 errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead),
+					 errdetail_appendonly_read_storage_content_header(executorReadBlock->storageRead),
 					 errcontext_appendonly_read_storage_block(executorReadBlock->storageRead)));
 
 		/*
@@ -716,7 +717,7 @@ AppendOnlyExecutorReadBlock_GetContents(
 					 errmsg("Row count %d in append-only storage header does not match VarBlock item count %d",
 							executorReadBlock->rowCount,
 							executorReadBlock->readerItemCount),
-					 errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead),
+					 errdetail_appendonly_read_storage_content_header(executorReadBlock->storageRead),
 					 errcontext_appendonly_read_storage_block(executorReadBlock->storageRead)));
 		}
 
@@ -736,7 +737,7 @@ AppendOnlyExecutorReadBlock_GetContents(
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Row count %d in append-only storage header is not 1 for single row",
 							executorReadBlock->rowCount),
-					 errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead),
+					 errdetail_appendonly_read_storage_content_header(executorReadBlock->storageRead),
 					 errcontext_appendonly_read_storage_block(executorReadBlock->storageRead)));
 		}
 		executorReadBlock->singleRow = executorReadBlock->dataBuffer;
@@ -1266,7 +1267,9 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	if(!aoInsertDesc->shouldCompress)
 	{
 		aoInsertDesc->nonCompressedData =
-			AppendOnlyStorageWrite_GetBuffer(&aoInsertDesc->storageWrite);
+			AppendOnlyStorageWrite_GetBuffer(
+									&aoInsertDesc->storageWrite,
+									AoHeaderKind_SmallContent);
 
 		/*
 		 * Prepare our VarBlock for items.  Leave room for the Append-Only
@@ -1424,6 +1427,7 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 	AppendOnlyStorageAttributes *attr;
 
 	
+	StringInfoData titleBuf;
 
 	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
 	
@@ -1462,6 +1466,11 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 	scan->aos_nkeys = nkeys;
 	scan->aoScanInitContext = CurrentMemoryContext;
 
+	initStringInfo(&titleBuf);
+	appendStringInfo(&titleBuf, "Scan of Append-Only Row-Oriented relation '%s'",
+					 RelationGetRelationName(relation));
+	scan->title = titleBuf.data;
+
 
 	/*
 	 * Fill in Append-Only Storage layer attributes.
@@ -1481,7 +1490,6 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 		attr->compressType = "none";
   attr->compressLevel     = aoentry->compresslevel;
 	attr->checksum			= aoentry->checksum;
-	attr->use32BitAlignment	= true;	   // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
 	attr->version			= aoentry->version;
 
@@ -1500,7 +1508,7 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 	// UNDONE: We are calling the static header length routine here.
 	scan->maxDataLen =
 					scan->usableBlockSize -
-	 				AppendOnlyStorageFormat_HeaderLenNeeded(scan->storageAttributes.checksum);
+	 				AppendOnlyStorageFormat_RegularHeaderLenNeeded(scan->storageAttributes.checksum);
 
 
 	/*
@@ -1590,6 +1598,8 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	pfree(scan->aos_filenamepath);
 
 	pfree(scan->aoEntry);
+
+	pfree(scan->title);
 
 	pfree(scan);
 }
@@ -1889,6 +1899,8 @@ appendonly_fetch_init(
 	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
 	PGFunction *fns = NULL;
 
+	StringInfoData titleBuf;
+
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -1912,6 +1924,11 @@ appendonly_fetch_init(
 	aoFetchDesc->segmentFileName =
 						(char*)palloc(aoFetchDesc->segmentFileNameMaxLen);
 	aoFetchDesc->segmentFileName[0] = '\0';
+
+	initStringInfo(&titleBuf);
+	appendStringInfo(&titleBuf, "Fetch of Append-Only Row-Oriented relation '%s'",
+					 RelationGetRelationName(relation));
+	aoFetchDesc->title = titleBuf.data;
 
 	/*
 	 * Get the pg_appendonly information for this table
@@ -1938,7 +1955,6 @@ appendonly_fetch_init(
 		attr->compressType = "none";
 	attr->compressLevel = aoentry->compresslevel;
 	attr->checksum			= aoentry->checksum;
-	attr->use32BitAlignment = true;    // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
 	attr->version			= aoentry->version;
 
@@ -1962,6 +1978,7 @@ appendonly_fetch_init(
 						aoFetchDesc->initContext,
 						aoFetchDesc->usableBlockSize,
 						NameStr(aoFetchDesc->relation->rd_rel->relname),
+						aoFetchDesc->title,
 						&aoFetchDesc->storageAttributes);
 
 
@@ -2205,6 +2222,7 @@ appendonly_fetch_finish(AppendOnlyFetchDesc aoFetchDesc)
 	pfree(aoFetchDesc->segmentFileName);
 	aoFetchDesc->segmentFileName = NULL;
 
+	pfree(aoFetchDesc->title);
 }
 
 /*
@@ -2229,6 +2247,8 @@ appendonly_insert_init(Relation rel, int segno)
 	size_t 					(*desiredCompressionSize)(size_t input);
 
 	AppendOnlyStorageAttributes *attr;
+
+	StringInfoData titleBuf;
 
 	/*
 	 * Get the pg_appendonly information for this table
@@ -2289,7 +2309,6 @@ appendonly_insert_init(Relation rel, int segno)
 		attr->compressType = "none";
 	attr->compressLevel	= aoentry->compresslevel;
 	attr->checksum			= aoentry->checksum;
-	attr->use32BitAlignment	= true;	   // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
 	attr->version			= aoentry->version;
 
@@ -2334,11 +2353,17 @@ appendonly_insert_init(Relation rel, int segno)
 
 	aoInsertDesc->storageAttributes.overflowSize = desiredOverflowBytes;
 
+	initStringInfo(&titleBuf);
+	appendStringInfo(&titleBuf, "Write of Append-Only Row-Oriented relation '%s'",
+					 RelationGetRelationName(aoInsertDesc->aoi_rel));
+	aoInsertDesc->title = titleBuf.data;
+
 	AppendOnlyStorageWrite_Init(
 						&aoInsertDesc->storageWrite,
 						NULL,
 						aoInsertDesc->usableBlockSize,
-						NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+						RelationGetRelationName(aoInsertDesc->aoi_rel),
+						aoInsertDesc->title,
 						&aoInsertDesc->storageAttributes);
 
 	aoInsertDesc->storageWrite.compression_functions = fns;
@@ -2362,7 +2387,9 @@ appendonly_insert_init(Relation rel, int segno)
 										  1);
 
 	aoInsertDesc->completeHeaderLen =
-		AppendOnlyStorageWrite_CompleteHeaderLen(&aoInsertDesc->storageWrite);
+					AppendOnlyStorageWrite_CompleteHeaderLen(
+										&aoInsertDesc->storageWrite,
+										AoHeaderKind_SmallContent);
 
 	aoInsertDesc->maxDataLen =
 						aoInsertDesc->usableBlockSize -
@@ -2518,7 +2545,7 @@ appendonly_insert_init(Relation rel, int segno)
 	 * If we are at the limit for append-only storage header's row count,
 	 * force this VarBlock to finish.
 	 */
-	if (VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker) >= AOBlockHeader_MaxRowCount)
+	if (VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker) >= AOSmallContentHeader_MaxRowCount)
 		itemPtr = NULL;
 	else
 		itemPtr = VarBlockMakerGetNextItemPtr(&aoInsertDesc->varBlockMaker, itemLen);
@@ -2710,6 +2737,7 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 	AppendOnlyStorageWrite_FinishSession(&aoInsertDesc->storageWrite);
 
 	pfree(aoInsertDesc->aoEntry);
+	pfree(aoInsertDesc->title);
 	pfree(aoInsertDesc);
 }
 

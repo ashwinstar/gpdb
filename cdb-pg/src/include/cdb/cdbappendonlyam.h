@@ -80,7 +80,14 @@ typedef struct AppendOnlyInsertDescData
 	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			tempSpaceLen;
-	
+
+	char						*title;
+				/*
+				 * A phrase that better describes the purpose of the this open.
+				 *
+				 * We manage the storage for this.
+				 */
+
 	/*
 	 * These serve the equivalent purpose of the uppercase constants of the same
 	 * name in tuptoaster.h but here we make these values dynamic.
@@ -174,6 +181,13 @@ typedef struct AppendOnlyScanDescData
 	AppendOnlyStorageAttributes	storageAttributes;
 	AppendOnlyStorageRead		storageRead;
 
+	char						*title;
+				/*
+				 * A phrase that better describes the purpose of the this open.
+				 *
+				 * We manage the storage for this.
+				 */
+
 	AppendOnlyEntry		*aoEntry;
 	
 	/*
@@ -234,6 +248,14 @@ typedef struct AppendOnlyFetchDescData
 
 	AppendOnlyStorageAttributes	storageAttributes;
 	AppendOnlyStorageRead		storageRead;
+
+	char						*title;
+				/*
+				 * A phrase that better describes the purpose of the this open.
+				 *
+				 * We manage the storage for this.
+				 */
+
 
 	int				totalSegfiles;
 	FileSegInfo 	**segmentFileInfo;

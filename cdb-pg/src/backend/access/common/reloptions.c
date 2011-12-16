@@ -477,13 +477,13 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 		}
 		
 		if (compresstype && (pg_strcasecmp(compresstype, "rle_type") == 0) &&
-			(compresslevel != 1))
+			(compresslevel > 4))
 		{
 			if (validate)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("compresslevel=%d is out of range for rle_type "
-								"(should be 1)", compresslevel),
+								"(should be in the range 1 to 4)", compresslevel),
 						 errOmitLocation(true)));
 			
 			compresslevel = setDefaultCompressionLevel(compresstype);
@@ -810,12 +810,12 @@ void validateAppendOnlyRelOptions(bool ao,
 			}
 		}
 		if (comptype && (pg_strcasecmp(comptype, "rle_type") == 0) &&
-			(complevel != 1))
+			(complevel > 4))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("compresslevel=%d is out of range for rle_type "
-							"(should be 1)", complevel)));
+							"(should be in the range 1 to 4)", complevel)));
 		}		
 	}
 

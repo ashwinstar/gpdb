@@ -17,8 +17,8 @@ int32 AppendOnlyStorage_GetUsableBlockSize(int32 configBlockSize)
 {
 	int32 result;
 
-	if (configBlockSize > AOBlockHeader_MaxLength)
-		result = AOBlockHeader_MaxLength;
+	if (configBlockSize > AOSmallContentHeader_MaxLength)
+		result = AOSmallContentHeader_MaxLength;
 	else
 		result = configBlockSize;
 

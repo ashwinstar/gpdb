@@ -14,12 +14,15 @@
 
 #include "access/tupmacs.h"
 #include "access/tuptoaster.h"
+
+#include "catalog/pg_attribute_encoding.h"
 #include "cdb/cdbappendonlyblockdirectory.h"
 #include "cdb/cdbappendonlystoragelayer.h"
 #include "cdb/cdbappendonlystorageread.h"
 #include "cdb/cdbappendonlystoragewrite.h"
 #include "utils/datumstream.h"
 #include "utils/guc.h"
+#include "catalog/pg_compression.h"
 
 typedef enum AOCSBK
 {
@@ -29,264 +32,409 @@ typedef enum AOCSBK
 } AOCSBK;
 
 
-int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
+static void
+datumstreamread_check_large_varlena_integrity(
+										DatumStreamRead *acc,
+										uint8 *buffer,
+										int32 contentLen)
 {
-    Assert(acc && datum && null);
-    Assert(acc->is_reader);
+    struct varlena *va;
 
-    if(acc->has_null && (*acc->nullp & acc->nullbit))
-    {
-        *null = true;
-        return 0;
-    }
-    else
-        *null = false;
+    va = (struct varlena *) buffer;
 
-    if (!acc->byval)
-    {
-        *datum = PointerGetDatum(acc->datump);
-        AssertImply(acc->datumlen < 0, VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTERNAL_D(*datum));
-    }
-    else
-    {
-        if(acc->datumlen == 1)
-            *datum = *(uint8 *) acc->datump;
-        else if(acc->datumlen == 2)
-        {
-            Assert(IsAligned(acc->datump, 2));
-            *datum = *(uint16 *) acc->datump;
-        }
-        else if(acc->datumlen == 4)
-        {
-            Assert(IsAligned(acc->datump, 4));
-            *datum = *(uint32 *) acc->datump;
-        }
-        else if(acc->datumlen == 8)
-        {
-			Assert(IsAligned(acc->datump, 8) || IsAligned(acc->datump, 4));
-            *datum = *(Datum *) acc->datump;
-        }
-        else
-        {
-            Assert(!"A byval type has strange datumlen");
-        }
-    }
-
-    return 0;
-}
-
-extern int datumstream_advance(DatumStream *acc)
-{
-    bool advdatump = true;
-
-    Assert(acc);
-    Assert(acc->is_reader);
-    AssertImply(acc->block, acc->nth <= acc->block->ndatum);
-
-    ++acc->nth;
-    if (acc->nth == 0)
-        return 1;
-
-    /* Advance out of bound */
-    if(!acc->block || acc->nth >= acc->block->ndatum)
-        return 0;
-
-    if(acc->has_null)
-    {
-        if(*acc->nullp & acc->nullbit)
-            advdatump = false;
-
-        acc->nullbit <<= 1;
-        if(acc->nullbit == 0)
-        {
-            ++acc->nullp;
-            acc->nullbit = 1;
-        }
-    }
-
-    if(!advdatump)
-        return 1;
-
-    if(acc->datumlen < 0)
-    {
-        struct varlena *s = (struct varlena *) acc->datump;
-
-        Assert(acc->datumlen == -1);
-        acc->datump += VARSIZE_ANY(s);
-
-        /* Might be zero paddings */
-        if(*acc->datump == 0)
-            acc->datump = (char *) att_align(acc->datump, acc->align);
-
-		Assert((acc->has_null && (*acc->nullp & acc->nullbit))
-			   || VARATT_IS_SHORT_D(PointerGetDatum(acc->datump))
-			   || !VARATT_IS_EXTERNAL_D(PointerGetDatum(acc->datump))
-			);
-   }
-    else
-        acc->datump += acc->datumlen;
-
-    return 1;
-}
-
-static inline void incr_acc_n(DatumStream *acc)
-{
-    acc->nullbit <<= 1;
-
-    if(acc->nullbit == 0)
-    {
-        ++acc->nullp;
-        acc->nullbit = 1;
-    }
-
-    ++acc->nth;
-}
-
-static bool datumstream_has_space(DatumStream *ds, bool null, int32 sz)
-{
-    int32 dssz = (ds->datump - ds->dpbuf);
-
-    if(ds->nth >= MAXDATUM_PER_AOCS_BLOCK)
-        return false;
-
-    if(null || ds->has_null)
+	if (contentLen < VARHDRSZ)
 	{
-		int32 new_nth = ds->nth + 1;
-
-		/* Use size calculation from datumstream_write_block */
-        dssz += MAXALIGN((new_nth+7) >> 3);
+		elog(ERROR, "Large varlena header too small.  Found %d, expected at least %d",
+			 contentLen,
+			 VARHDRSZ);
 	}
 
-    return dssz + sz < ds->maxdatasz;
+	if (VARATT_IS_EXTERNAL(va))
+	{
+		elog(ERROR, "Large varlena has a toast reference but Append-Only Column Store tables do not use toast");
+	}
 }
 
-int datumstream_put(DatumStream *acc, Datum d, bool null)
+
+static void
+datumstreamread_print_large_varlena_info(
+									DatumStreamRead *acc,
+									uint8 *p)
 {
-    Assert(acc && !acc->is_reader);
-    Assert(acc->maxdatasz > 0 && acc->maxdatasz < acc->maxsz);
-
-    if (!datumstream_has_space(acc, null, 0))
-        return -1;
-
-    if(null)
-    {
-        acc->has_null = true;
-        *acc->nullp |= acc->nullbit;
-        incr_acc_n(acc);
-        return 0;
-    }
-
-    /* Varlen */
-    if(acc->datumlen < 0)
-    {
-        int32 sz = 0;
-        char *p = NULL;
-        char c1 = 0;
-        int32 wsz = 0;
-
-        Assert(acc->datumlen == -1);
-
-        /*
-         * XXX Huh?  Repace d?  Who owns the memory?
-         * Hate this, but this is what memtuple and lots of other place do
-         * ...
-         */
-        if(VARATT_IS_EXTERNAL_D(d))
-            d = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(d)));
-
-        if(VARATT_IS_SHORT_D(d))
-        {
-            sz = VARSIZE_SHORT(DatumGetPointer(d));
-            p = DatumGetPointer(d);
-            wsz = sz;
-        }
-        else if(value_type_could_short(d, acc->typid))
-        {
-            sz = VARSIZE_D(d) - VARHDRSZ + VARHDRSZ_SHORT;
-            c1 = VARSIZE_TO_SHORT_D(d);
-            p = VARDATA_D(d);
-            wsz = sz-1;
-        }
-        else
-        {
-            sz = VARSIZE(DatumGetPointer(d));
-            acc->datump = att_align_zero(acc->datump, acc->align);
-            p = DatumGetPointer(d);
-            wsz = sz;
-        }
-
-        if (!datumstream_has_space(acc, false, sz))
-            return -sz;
-
-        if (c1 != 0)
-        {
-            *(acc->datump) = c1;
-            acc->datump += 1;
-        }
-
-        memcpy(acc->datump, p, wsz);
-
-        acc->datump += wsz;
-        incr_acc_n(acc);
-        return sz;
-    }
-
-    /* Fixed len */
-    if (!datumstream_has_space(acc, false, acc->datumlen))
-        return -acc->datumlen;
-
-    if (!acc->byval)
-    {
-        memcpy(acc->datump, DatumGetPointer(d), acc->datumlen);
-        acc->datump += acc->datumlen;
-    }
-    else
-    {
-        switch(acc->datumlen)
-        {
-            case 1:
-                *(acc->datump) = DatumGetChar(d);
-                ++acc->datump;
-                break;
-            case 2:
-                Assert(IsAligned(acc->datump, 2));
-                *(uint16 *) (acc->datump) = DatumGetUInt16(d);
-                acc->datump += 2;
-                break;
-            case 4:
-                Assert(IsAligned(acc->datump, 4));
-                *(uint32 *) (acc->datump) = DatumGetUInt32(d);
-                acc->datump += 4;
-                break;
-            case 8:
-                Assert(IsAligned(acc->datump, 8) || IsAligned(acc->datump, 4));
-                *(Datum *) (acc->datump) = d;
-                acc->datump += 8;
-                break;
-            default:
-                Assert(!"Byval len type has strange length");
-                break;
-        }
-    }
-
-    incr_acc_n(acc);
-    return acc->datumlen;
+	elog(LOG, "Read large varlena <%s>",
+		 VarlenaInfoToString(p));
 }
 
-DatumStream *create_datumstream(char *compName, int32 compLevel, int32 maxsz, 	size_t (*desiredCompSizeFunc)(size_t input),
-		AORelationVersion version, Form_pg_attribute attr, char *relname, bool isreader)
-{
-	int          desiredOverflowBytes = 0;
 
+/*
+ * Error detail and context callback for tracing or errors occurring during reading.
+ */
+static int
+datumstreamread_detail_callback(void *arg)
+{
+	DatumStreamRead *acc = (DatumStreamRead*) arg;
+
+	/*
+	 * Append-Only Storage Read's detail.
+	 */
+	if (acc->need_close_file)
+	{
+		errdetail_appendonly_read_storage_content_header(&acc->ao_read);
+	}
+	return 0;
+}
+
+static int
+datumstreamread_context_callback(void *arg)
+{
+	DatumStreamRead *acc = (DatumStreamRead*) arg;
+
+	/*
+	 * Append-Only Storage Read's context.
+	 */
+	if (acc->need_close_file)
+	{
+		errcontext_appendonly_read_storage_block(&acc->ao_read);
+	}
+	else
+	{
+		errcontext("%s", acc->title);
+	}
+	
+	return 0;
+}
+
+/*
+ * Error detail and context callback for tracing or errors occurring during writing.
+ */
+static int
+datumstreamwrite_detail_callback(void *arg)
+{
+//	DatumStreamWrite *acc = (DatumStreamWrite*) arg;
+
+	/*
+	 * Append-Only Storage Write's detail.
+	 */
+	// UNDONE
+
+	return 0;
+}
+
+static int
+datumstreamwrite_context_callback(void *arg)
+{
+	DatumStreamWrite *acc = (DatumStreamWrite*) arg;
+
+	char *str;
+
+	/*
+	 * Append-Only Storage Write's context.
+	 */
+	if (acc->need_close_file)
+	{
+		str = AppendOnlyStorageWrite_ContextStr(&acc->ao_write);
+		
+		errcontext("%s", str);
+
+		pfree(str);
+	}
+	else
+	{
+		errcontext("%s", acc->title);
+	}
+
+	return 0;
+}
+
+int datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool *null)
+{
+	int result;
+
+	switch (acc->largeObjectState)
+	{
+	case DatumStreamLargeObjectState_None:
+		/*
+		 * Small objects are handled by the DatumStreamBlockRead module.
+		 */
+		result = DatumStreamBlockRead_Get(&acc->blockRead, datum, null);
+
+		return result;
+
+	case DatumStreamLargeObjectState_HaveAoContent:
+		ereport(ERROR,
+				(errmsg("Advance not called on large datum stream object")));
+		return 0;	// Never gets here.
+		
+	case DatumStreamLargeObjectState_PositionAdvanced:
+		acc->largeObjectState = DatumStreamLargeObjectState_Consumed;
+
+		// Fall below to ~_Consumed.
+
+	case DatumStreamLargeObjectState_Consumed:
+		{
+			int32 len;
+
+			len = VARSIZE_ANY(acc->buffer_beginp);
+
+			/*
+			 * It is ok to get the same object more than once.
+			 */
+			if (Debug_datumstream_read_print_varlena_info)
+			{
+				datumstreamread_print_large_varlena_info(
+														acc,
+														acc->buffer_beginp);
+			}
+
+			if (Debug_appendonly_print_scan_tuple)
+			{
+				
+				
+				ereport(LOG,
+				        (errmsg("Datum stream block read is returning large variable-length object "
+							    "(length %d)",
+							    len),
+						 errOmitLocation(true)));
+			}
+
+			*datum = PointerGetDatum(acc->buffer_beginp);
+			*null = false;
+			return len;
+		}
+
+	case DatumStreamLargeObjectState_Exhausted:
+		ereport(ERROR,
+				(errmsg("Get called after large datum stream object already consumed")));
+		return 0;	// Never gets here.
+		
+	default:
+		ereport(FATAL,
+				(errmsg("Unexpected large datum stream state %d", 
+			 			acc->largeObjectState)));
+		return 0;	// Never reaches here.
+	}
+}
+
+int datumstreamread_advance(DatumStreamRead *acc)
+{
+	int result;
+
+	switch (acc->largeObjectState)
+	{
+	case DatumStreamLargeObjectState_None:
+		/*
+		 * Small objects are handled by the DatumStreamBlockRead module.
+		 */
+		result = DatumStreamBlockRead_Advance(&acc->blockRead);
+		
+		return result;
+
+	case DatumStreamLargeObjectState_HaveAoContent:
+		{
+			struct varlena *va;
+			int32 len;
+
+			va = (struct varlena *) acc->buffer_beginp;
+			len = VARSIZE_ANY(va);
+
+			acc->largeObjectState = DatumStreamLargeObjectState_PositionAdvanced;
+			return len;	// Never gets here.
+		}
+				
+	case DatumStreamLargeObjectState_PositionAdvanced:
+	case DatumStreamLargeObjectState_Consumed:
+		/*
+		 * Second advance returns exhaustion.
+		 */
+		acc->largeObjectState = DatumStreamLargeObjectState_Exhausted;
+		return 0;
+
+	case DatumStreamLargeObjectState_Exhausted:
+		ereport(ERROR,
+				(errmsg("Advance called after large datum stream object already consumed")));
+		return 0;	// Never gets here.
+				
+	default:
+		ereport(FATAL,
+				(errmsg("Unexpected large datum stream state %d", 
+			 			acc->largeObjectState)));
+		return 0;	// Never reaches here.
+	}}
+
+int datumstreamread_nth(DatumStreamRead *acc)
+{
+	switch (acc->largeObjectState)
+	{
+	case DatumStreamLargeObjectState_None:
+		/*
+		 * Small objects are handled by the DatumStreamBlockRead module.
+		 */
+		return DatumStreamBlockRead_Nth(&acc->blockRead);
+
+	case DatumStreamLargeObjectState_HaveAoContent:
+		ereport(ERROR,
+				(errmsg("Advance not called on large datum stream object")));
+		return 0;	// Never gets here.
+		
+	case DatumStreamLargeObjectState_PositionAdvanced:
+	case DatumStreamLargeObjectState_Consumed:
+		return 0;
+
+	case DatumStreamLargeObjectState_Exhausted:
+		ereport(ERROR,
+				(errmsg("Nth called after large datum stream object already consumed")));
+		return 0;	// Never gets here.
+		
+	default:
+		ereport(FATAL,
+				(errmsg("Unexpected large datum stream state %d", 
+			 			acc->largeObjectState)));
+		return 0;	// Never reaches here.
+	}
+}
+
+
+int datumstreamwrite_put(
+	DatumStreamWrite 	*acc, 
+	Datum 				d,
+	bool 				null,
+	void				**toFree)
+{
+	return DatumStreamBlockWrite_Put(&acc->blockWrite, d, null, toFree);
+}
+
+int datumstreamwrite_nth(DatumStreamWrite *acc)
+{
+	return DatumStreamBlockWrite_Nth(&acc->blockWrite);
+}
+
+static void init_datumstream_typeinfo(
+	DatumStreamTypeInfo 	*typeInfo,
+	Form_pg_attribute 			attr)
+{
+    typeInfo->datumlen = attr->attlen;
+    typeInfo->typid = attr->atttypid;
+    typeInfo->align = attr->attalign;
+    typeInfo->byval = attr->attbyval;
+}
+
+static void init_datumstream_info(
+	DatumStreamTypeInfo 		*typeInfo,				// OUTPUT
+	DatumStreamVersion			*datumStreamVersion,	// OUTPUT
+	bool						*rle_compression,		// OUTPUT
+	AppendOnlyStorageAttributes	*ao_attr,				// OUTPUT
+	int32						*maxAoBlockSize,		// OUTPUT
+	char 						*compName, 
+	int32 						compLevel, 
+	bool						checksum,
+	int32						safeFSWriteSize,
+	int32 						maxsz,
+	AORelationVersion 			version, 
+	Form_pg_attribute 			attr)
+{
 	AORelationVersion_CheckValid(version);
 
-	DatumStream *acc = palloc0(sizeof(DatumStream));
+	init_datumstream_typeinfo(
+							typeInfo,
+							attr);
 
 	/*
 	 * Adjust maxsz for Append-Only Storage.
 	 */
-	maxsz = AppendOnlyStorage_GetUsableBlockSize(maxsz);
+	*maxAoBlockSize = AppendOnlyStorage_GetUsableBlockSize(maxsz);
 
+	/*
+	 * Assume the folowing unless modified below.
+	 */
+	*rle_compression = false;
+
+	ao_attr->compress = false;
+	ao_attr->compressType = NULL;
+	ao_attr->compressLevel = 0;
+    ao_attr->version = version;
+
+	*datumStreamVersion = DatumStreamVersion_Original;
+
+	/*
+	 * The original version didn't bother to populate these fields...
+	 */
+	ao_attr->checksum = false;
+	ao_attr->safeFSWriteSize = 0;
+
+    if (compName != NULL && pg_strcasecmp(compName, "rle_type") == 0)
+	{
+		/*
+		 * For RLE_TYPE, we do the compression ourselves in this module.
+		 * 
+		 * Optionally, BULK Compression by the AppendOnlyStorage layer may be performed
+		 * as a second compression on the "Access Method" (first) compressed block.
+		 */
+		*datumStreamVersion = DatumStreamVersion_Dense;
+		*rle_compression = true;
+
+		ao_attr->checksum = checksum;
+		ao_attr->safeFSWriteSize = safeFSWriteSize;
+
+		/*
+		 * Use the compresslevel as a kludgy way of specifiying the BULK compression
+		 * to use.
+		 */
+		switch (compLevel)
+		{
+		case 1:
+			ao_attr->compress = false;
+			ao_attr->compressType = "none";
+			ao_attr->compressLevel = 1;
+			break;
+
+		case 2:
+			ao_attr->compress = true;
+			ao_attr->compressType = "zlib";
+			ao_attr->compressLevel = 1;
+			break;
+
+		case 3:
+			ao_attr->compress = true;
+			ao_attr->compressType = "zlib";
+			ao_attr->compressLevel = 5;
+			break;
+
+		case 4:
+			ao_attr->compress = true;
+			ao_attr->compressType = "zlib";
+			ao_attr->compressLevel = 9;
+			break;
+
+		default:
+			ereport(ERROR,
+					(errmsg("Unexpected compresslevel %d", 
+							compLevel)));
+
+		}
+	}
+    else if (compName == NULL || pg_strcasecmp(compName, "none") == 0)
+	{
+		// No bulk compression.
+	}
+	else
+	{
+		/*
+		 * Bulk compression will be used by AppendOnlyStorage{Write|Read} modules.
+		 */
+    	ao_attr->compress = true;
+		ao_attr->compressType = compName;
+		ao_attr->compressLevel = compLevel;
+	
+	}
+}
+
+static void determine_datumstream_compression_overflow(
+													   AppendOnlyStorageAttributes		*ao_attr,
+													   size_t 							(*desiredCompSizeFunc)(size_t input),
+													   int32							maxAoBlockSize)
+{
+	int desiredOverflowBytes = 0;
+	
 	if (desiredCompSizeFunc != NULL)
 	{
 		/*
@@ -294,100 +442,299 @@ DatumStream *create_datumstream(char *compName, int32 compLevel, int32 maxsz, 	s
 		 * space it requires for our block size.
 		 */
 		desiredOverflowBytes =
-			(int)(desiredCompSizeFunc)(maxsz) - maxsz;
+		(int)(desiredCompSizeFunc)(maxAoBlockSize) - maxAoBlockSize;
 		Insist(desiredOverflowBytes >= 0);
 	}
-	acc->ao_attr.overflowSize = desiredOverflowBytes;
+	ao_attr->overflowSize = desiredOverflowBytes;	
+}
 
-	/* datumlen and align not set */
-	acc->datumlen = attr->attlen;
-	acc->typid = attr->atttypid;
-	acc->align = attr->attalign;
-	acc->byval = attr->attbyval;
+DatumStreamWrite *create_datumstreamwrite(
+										  char 				*compName, 
+										  int32 				compLevel, 
+										  bool				checksum,
+										  int32				safeFSWriteSize,
+										  int32 				maxsz,
+										  AORelationVersion 	version,
+										  Form_pg_attribute 	attr, 
+										  char 				*relname,
+										  char				*title)
+{
+    DatumStreamWrite *acc = palloc0(sizeof(DatumStreamWrite));
 
-	/* Data type sepcific compression NYI */
-	acc->compress_option = 0;
+	int32	initialMaxDatumPerBlock;
+	int32	maxDatumPerBlock;
 
-	acc->maxsz = maxsz;
-	acc->is_reader = isreader;
+	PGFunction *compressionFunctions;
+	CompressionState *compressionState;
 
-	if (compName == NULL || pg_strcasecmp(compName, "none") == 0)
-		acc->ao_attr.compress = false;
-	else
-		acc->ao_attr.compress = true;
+	CompressionState *verifyBlockCompressionState;
 
-	acc->ao_attr.compressLevel = compLevel;
-	acc->ao_attr.version = version;
+	init_datumstream_info(
+					&acc->typeInfo,
+					&acc->datumStreamVersion,
+					&acc->rle_want_compression,
+					&acc->ao_attr,
+					&acc->maxAoBlockSize,
+					compName, 
+					compLevel,
+					checksum,
+					safeFSWriteSize,
+					maxsz,
+					version, 
+					attr);
 
-	if (acc->is_reader)
+	compressionFunctions = NULL;
+	compressionState = NULL;
+	verifyBlockCompressionState = NULL;
+	if (acc->ao_attr.compress)
 	{
-		acc->ao_read = palloc0(sizeof(AppendOnlyStorageRead));
-		AppendOnlyStorageRead_Init(acc->ao_read, NULL, maxsz, relname, &acc->ao_attr);
-	}
-	else
-	{
-		acc->ao_write = palloc0(sizeof(AppendOnlyStorageWrite));
-		AppendOnlyStorageWrite_Init(acc->ao_write, NULL, maxsz, relname, &acc->ao_attr);
-
 		/*
-		 * Temporarily set the firstRowNum for the block so that we can
-		 * calculate the correct header length.
+		 * BULK compression.
 		 */
-		AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write, 1);
+		compressionFunctions = get_funcs_for_compression(acc->ao_attr.compressType);
+		if (compressionFunctions != NULL)
+		{
+			TupleDesc td = CreateTupleDesc(1, false, &attr);
+			StorageAttributes sa;
+		
+			sa.comptype = acc->ao_attr.compressType;
+			sa.complevel = acc->ao_attr.compressLevel;
+			sa.blocksize = acc->maxAoBlockSize;
+		
+			compressionState = 
+					callCompressionConstructor(
+								compressionFunctions[COMPRESSION_CONSTRUCTOR], td, &sa, /* compress */ true);
 
-		acc->npbufsz = (MAXDATUM_PER_AOCS_BLOCK + 1) / 8;
-		acc->npbuf = palloc0(acc->npbufsz);
+			determine_datumstream_compression_overflow(
+												&acc->ao_attr,
+												compressionState->desired_sz,
+												acc->maxAoBlockSize);
 
-		acc->dpbufsz = acc->maxsz;
-		acc->dpbuf = palloc0(acc->dpbufsz);
-
-		acc->lobbufsz = 0;
-		acc->lobbuf = NULL;
+			if (gp_appendonly_verify_write_block)
+			{
+				verifyBlockCompressionState = 
+					callCompressionConstructor(
+								compressionFunctions[COMPRESSION_CONSTRUCTOR], td, &sa, /* compress */ false);
+			}
+		}
 	}
 
-	acc->blockFirstRowNum = 1;
+    AppendOnlyStorageWrite_Init(
+					&acc->ao_write, 
+					/* memoryContext */ NULL, 
+					acc->maxAoBlockSize, 
+					relname,
+					title,
+					&acc->ao_attr);
+
+	acc->ao_write.compression_functions = compressionFunctions;
+	acc->ao_write.compressionState = compressionState;
+	acc->ao_write.verifyWriteCompressionState = verifyBlockCompressionState;
+	acc->title = title;
+
+	/*
+	 * Temporarily set the firstRowNum for the block so that we can
+	 * calculate the correct header length.
+	 */
+	AppendOnlyStorageWrite_SetFirstRowNum(&acc->ao_write, 1);
+
+	switch (acc->datumStreamVersion)
+	{
+	case DatumStreamVersion_Original:
+		initialMaxDatumPerBlock = 	MAXDATUM_PER_AOCS_ORIG_BLOCK;
+		maxDatumPerBlock = 			MAXDATUM_PER_AOCS_ORIG_BLOCK;
+
+		acc->maxAoHeaderSize = AoHeader_Size(
+									/* isLong */ false,
+									checksum,
+									/* hasFirstRowNum */ true);
+		break;
+
+	case DatumStreamVersion_Dense:
+		initialMaxDatumPerBlock = 	INITIALDATUM_PER_AOCS_DENSE_BLOCK;
+		maxDatumPerBlock = 			MAXDATUM_PER_AOCS_DENSE_BLOCK;
+
+		acc->maxAoHeaderSize = AoHeader_Size(
+									/* isLong */ true,
+									checksum,
+									/* hasFirstRowNum */ true);
+		break;
+		
+	default:
+		ereport(ERROR,
+				(errmsg("Unexpected datum stream version %d", 
+			 			acc->datumStreamVersion)));
+		initialMaxDatumPerBlock = 0;	// Quiet down compiler.
+		maxDatumPerBlock = 0;
+		break; 	// Never reached.
+	}
+
+	DatumStreamBlockWrite_Init(
+							&acc->blockWrite,
+							&acc->typeInfo,
+							acc->datumStreamVersion,
+							acc->rle_want_compression,
+							initialMaxDatumPerBlock,
+							maxDatumPerBlock,
+							acc->maxAoBlockSize - acc->maxAoHeaderSize,
+							/* errdetailCallback */ datumstreamwrite_detail_callback,
+							/* errdetailArg */ (void*)acc,
+							/* errcontextCallback */ datumstreamwrite_context_callback,
+							/* errcontextArg */ (void*)acc);
+
+    return acc;
+}
+
+DatumStreamRead *create_datumstreamread(
+										char 				*compName, 
+										int32 				compLevel, 
+										bool				checksum,
+										int32				safeFSWriteSize,
+										int32 				maxsz,
+										AORelationVersion 	version,
+										Form_pg_attribute 	attr, 
+										char 				*relname,
+										char				*title)
+{
+    DatumStreamRead *acc = palloc0(sizeof(DatumStreamRead));
+
+	PGFunction *compressionFunctions;
+	CompressionState *compressionState;
 
 	acc->memctxt = CurrentMemoryContext;
 
-	/* Set up current position */
-	acc->nth = 0;
-	acc->has_null = false;
-	acc->nullp = acc->npbuf;
-	acc->nullbit = 1;
-	acc->datump = acc->dpbuf;
+	init_datumstream_info(
+					&acc->typeInfo,
+					&acc->datumStreamVersion,
+					&acc->rle_can_have_compression,
+					&acc->ao_attr,
+					&acc->maxAoBlockSize,
+					compName, 
+					compLevel,
+					checksum,
+					safeFSWriteSize,
+					maxsz,
+					version, 
+					attr);
+
+	compressionFunctions = NULL;
+	compressionState = NULL;
+	if (acc->ao_attr.compress)
+	{
+		/*
+		 * BULK compression.
+		 */
+		compressionFunctions = get_funcs_for_compression(acc->ao_attr.compressType);
+		if (compressionFunctions != NULL)
+		{
+			TupleDesc td = CreateTupleDesc(1, false, &attr);
+			StorageAttributes sa;
+		
+			sa.comptype = acc->ao_attr.compressType;
+			sa.complevel = acc->ao_attr.compressLevel;
+			sa.blocksize = acc->maxAoBlockSize;
+		
+			compressionState = 
+					callCompressionConstructor(
+								compressionFunctions[COMPRESSION_CONSTRUCTOR], td, &sa, false /* compress */);
+
+			determine_datumstream_compression_overflow(
+												&acc->ao_attr,
+												compressionState->desired_sz,
+												acc->maxAoBlockSize);
+		}
+	}
+
+    AppendOnlyStorageRead_Init(
+					&acc->ao_read,
+					/* memoryContext */ NULL, 
+					acc->maxAoBlockSize, 
+					relname, 
+					title,
+					&acc->ao_attr);
+
+	acc->ao_read.compression_functions = compressionFunctions;
+	acc->ao_read.compressionState = compressionState;
+
+	acc->title = title;
+
+    acc->blockFirstRowNum = 1;
+	Assert(acc->blockFileOffset == 0);
+	Assert(acc->blockRowCount == 0);
+
+	DatumStreamBlockRead_Init(
+							&acc->blockRead,
+							&acc->typeInfo,
+							acc->datumStreamVersion,
+							acc->rle_can_have_compression,
+							/* errdetailCallback */ datumstreamread_detail_callback,
+							/* errdetailArg */ (void*)acc,
+							/* errcontextCallback */ datumstreamread_context_callback,
+							/* errcontextArg */ (void*)acc);
+
+	Assert(acc->large_object_buffer == NULL);
+	Assert(acc->large_object_buffer_size == 0);
+
+	Assert(acc->largeObjectState == DatumStreamLargeObjectState_None);
+
+    Assert(acc->eof == 0);
+    Assert(acc->eofUncompress == 0);
+
+	if (Debug_appendonly_print_scan)
+	{
+		if (!acc->ao_attr.compress)
+		{
+			ereport(LOG,
+					(errmsg("Datum stream read %s created with NO bulk compression for %s"
+							"(maximum Append-Only blocksize %d, "
+							"checksum %s)",
+							DatumStreamVersion_String(acc->datumStreamVersion),
+							acc->title,
+							acc->maxAoBlockSize,
+							(acc->ao_attr.checksum ? "true" : "false"))));
+		}
+		else
+		{
+			ereport(LOG,
+					(errmsg("Datum stream read %s created with bulk compression for %s "
+							"(maximum Append-Only blocksize %d, "
+						    "compression type %s, compress level %d, "
+						    "checksum %s)",
+							DatumStreamVersion_String(acc->datumStreamVersion),
+						    acc->title,
+						    acc->maxAoBlockSize,
+						    acc->ao_attr.compressType,
+						    acc->ao_attr.compressLevel,
+						    (acc->ao_attr.checksum ? "true" : "false"))));
+		}
+	}
 
 	return acc;
 }
 
-void destroy_datumstream(DatumStream *ds)
+void destroy_datumstreamwrite(DatumStreamWrite *ds)
 {
-    if (ds->npbuf)
-        pfree(ds->npbuf);
-    if (ds->dpbuf)
-        pfree(ds->dpbuf);
-    if (ds->lobbuf)
-        pfree(ds->lobbuf);
+    DatumStreamBlockWrite_Finish(&ds->blockWrite);
 
-    if (ds->ao_read)
-    {
-        Assert(ds->is_reader);
-        Assert(!ds->ao_write);
-        AppendOnlyStorageRead_FinishSession(ds->ao_read);
-        pfree(ds->ao_read);
-    }
-
-    if (ds->ao_write)
-    {
-        Assert(!ds->is_reader);
-        Assert(!ds->ao_read);
-        AppendOnlyStorageWrite_FinishSession(ds->ao_write);
-        pfree(ds->ao_write);
-    }
+    AppendOnlyStorageWrite_FinishSession(&ds->ao_write);
 
     pfree(ds);
 }
 
-void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncompressed, RelFileNode relFileNode, int32 segmentFileNum)
+void destroy_datumstreamread(DatumStreamRead *ds)
+{
+    DatumStreamBlockRead_Finish(&ds->blockRead);
+
+    if (ds->large_object_buffer)
+        pfree(ds->large_object_buffer);
+
+    AppendOnlyStorageRead_FinishSession(&ds->ao_read);
+
+    pfree(ds);
+}
+
+
+void datumstreamwrite_open_file(DatumStreamWrite *ds, char *fn, int64 eof, int64 eofUncompressed, RelFileNode relFileNode, int32 segmentFileNum)
 {
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
@@ -396,389 +743,506 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
     ds->eofUncompress = eofUncompressed;
 
     if (ds->need_close_file)
-        datumstream_close_file(ds);
+        datumstreamwrite_close_file(ds);
 
-    if (ds->is_reader)
-    {
-        Assert(ds->ao_read && !ds->ao_write);
-        AppendOnlyStorageRead_OpenFile(ds->ao_read, fn, ds->eof);
-    }
-    else
-    {
-        Assert(ds->ao_write && !ds->ao_read);
-
-		/*
-		 * Segment file #0 is created when the Append-Only table is created.
-		 *
-		 * Other ssegment files are created on-demand under transaction.
-		 */
-		if (segmentFileNum > 0 && eof == 0)
-		{
-			AppendOnlyStorageWrite_TransactionCreateFile(
-				ds->ao_write,
-				fn,
-				eof,
-				&relFileNode,
-				segmentFileNum,
-				&persistentTid,
-				&persistentSerialNum);
-		}
-		else
-		{
-			if (!ReadGpRelationNode(
-						relFileNode.relNode,
-						segmentFileNum,
-						&persistentTid,
-						&persistentSerialNum))
-			{
-				elog(ERROR, "Did not find gp_relation_node entry for relfilenode %u, segment file #%d, logical eof " INT64_FORMAT,
-					 relFileNode.relNode,
-					 segmentFileNum,
-					 eof);
-			}
-		}
-
-		/*
-		 * Open the existing file for write.
-		 */
-        AppendOnlyStorageWrite_OpenFile(
-			ds->ao_write,
+	/*
+	 * Segment file #0 is created when the Append-Only table is created.
+	 *
+	 * Other segment files are created on-demand under transaction.
+	 */
+	if (segmentFileNum > 0 && eof == 0)
+	{
+		AppendOnlyStorageWrite_TransactionCreateFile(
+			&ds->ao_write,
 			fn,
 			eof,
-			eofUncompressed,
 			&relFileNode,
 			segmentFileNum,
 			&persistentTid,
-			persistentSerialNum);
-        ds->maxdatasz = ds->maxsz - AppendOnlyStorageWrite_CompleteHeaderLen(ds->ao_write) - sizeof(DatumStreamBlock);
-    }
+			&persistentSerialNum);
+	}
+	else
+	{
+		if (!ReadGpRelationNode(
+					relFileNode.relNode,
+					segmentFileNum,
+					&persistentTid,
+					&persistentSerialNum))
+		{
+			elog(ERROR, "Did not find gp_relation_node entry for relfilenode %u, segment file #%d, logical eof " INT64_FORMAT,
+				 relFileNode.relNode,
+				 segmentFileNum,
+				 eof);
+		}
+	}
+
+	/*
+	 * Open the existing file for write.
+	 */
+    AppendOnlyStorageWrite_OpenFile(
+		&ds->ao_write,
+		fn,
+		eof,
+		eofUncompressed,
+		&relFileNode,
+		segmentFileNum,
+		&persistentTid,
+		persistentSerialNum);
+
+	ds->need_close_file = true;
+}
+
+void datumstreamread_open_file(DatumStreamRead *ds, char *fn, int64 eof, int64 eofUncompressed, RelFileNode relFileNode, int32 segmentFileNum)
+{
+    ds->eof = eof;
+    ds->eofUncompress = eofUncompressed;
+
+    if (ds->need_close_file)
+        datumstreamread_close_file(ds);
+
+    AppendOnlyStorageRead_OpenFile(&ds->ao_read, fn, ds->eof);
 
     ds->need_close_file = true;
 }
 
-void datumstream_close_file(DatumStream *ds)
+void datumstreamwrite_close_file(DatumStreamWrite *ds)
 {
-    if (ds->is_reader)
-    {
-        Assert(ds->ao_read && !ds->ao_write);
-        AppendOnlyStorageRead_CloseFile(ds->ao_read);
-    }
-    else
-    {
-        Assert(ds->ao_write && !ds->ao_read);
-        AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
-			ds->ao_write,
-            &ds->eof,
-            &ds->eofUncompress
-            );
-    }
+    AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
+		&ds->ao_write,
+        &ds->eof,
+        &ds->eofUncompress);
+
+	/*
+	 * Add the access method "compression" saving.
+	 *
+	 * If the savings are negative, then the compresion ratio could fall below 1.0
+	 */
+	ds->eofUncompress += ds->blockWrite.savings;
 
     ds->need_close_file = false;
 }
 
-int64 datumstream_write_block(DatumStream *acc)
+void datumstreamread_close_file(DatumStreamRead *ds)
 {
-    int64 wsize = 0;
-    char *buffer = NULL;
-    char *p = NULL;
-    DatumStreamBlock block;
+    AppendOnlyStorageRead_CloseFile(&ds->ao_read);
 
-    Assert(acc && !acc->is_reader && !acc->ao_read && acc->ao_write);
+    ds->need_close_file = false;
+}
 
-    /* compression NYI */
-    Assert(acc->compress_option == 0);
-
-    /* Nothing to write, this is just no op */
-    if (acc->nth == 0)
-        return 0;
+static int64 datumstreamwrite_block_orig(DatumStreamWrite *acc)
+{
+    int64 writesz = 0;
+    uint8 *buffer = NULL;
+	int32 rowCount;
 
 	/*
 	 * Set the BlockFirstRowNum. Need to set this before
 	 * calling AppendOnlyStorageWrite_GetBuffer.
 	 */
-	AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write,
+	AppendOnlyStorageWrite_SetFirstRowNum(&acc->ao_write,
 										  acc->blockFirstRowNum);
 
-    /* Has to got something to write */
-    /* First fill in header info */
-    buffer = (char *) AppendOnlyStorageWrite_GetBuffer(acc->ao_write);
-    p = buffer;
+	rowCount = DatumStreamBlockWrite_Nth(&acc->blockWrite);
+	Assert(rowCount <= MAXDATUM_PER_AOCS_ORIG_BLOCK);
 
-    /* First write header */
-    block.version = 0;
-    block.flags = acc->has_null ? DSB_HAS_NULLBITMAP : 0;
-    block.ndatum = acc->nth;
+    buffer = AppendOnlyStorageWrite_GetBuffer(
+										&acc->ao_write,
+										AoHeaderKind_SmallContent);
 
-    /* compress null bitmaps */
-    if(!acc->has_null)
-        block.nullsz = 0;
-    else
-        block.nullsz = MAXALIGN((acc->nth+7) >> 3);
-    block.sz = acc->datump - acc->dpbuf;
-
-    memcpy(p, &block, sizeof(DatumStreamBlock));
-    p += sizeof(DatumStreamBlock);
-
-    /* Next write the null bitmap */
-    memcpy(p, acc->npbuf, block.nullsz);
-    p += block.nullsz;
-
-    /* Next write data */
-    memcpy(p, acc->dpbuf, block.sz);
-    p += block.sz;
+	writesz = DatumStreamBlockWrite_Block(
+									&acc->blockWrite,
+									buffer);
 
     /* Write it out */
-    AppendOnlyStorageWrite_FinishBuffer(acc->ao_write,
-            p-buffer,
-            AOCSBK_BLOCK,
-            block.ndatum
-            );
+    AppendOnlyStorageWrite_FinishBuffer(
+								&acc->ao_write,
+					            (int32)writesz,
+					            AOCSBK_BLOCK,
+					            rowCount);
 
-    /* Reset acc after write */
-    acc->nth = 0;
-    acc->has_null = false;
-    acc->nullp = acc->npbuf;
-    memset(acc->npbuf, 0, acc->npbufsz);
-    acc->nullbit = 1;
-    acc->datump = acc->dpbuf;
+    /* Set up our write block information */
+	DatumStreamBlockWrite_GetReady(&acc->blockWrite);
 
-    return wsize;
+    return writesz;
 }
 
-int64 datumstream_write_lob(DatumStream *acc, Datum d)
+static int64 datumstreamwrite_block_dense(DatumStreamWrite *acc)
 {
-    struct varlena *va;
+    int64 writesz = 0;
+    uint8 *buffer = NULL;
+	int32 rowCount;
+	AoHeaderKind	aoHeaderKind;
 
-	if(VARATT_IS_EXTERNAL_D(d))
-	{
-		d = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(d)));
-	}
-
-    va = (struct varlena *) DatumGetPointer(d);
-
-    Assert(acc && !acc->is_reader && !acc->ao_read && acc->ao_write);
-
-	/* Set the BlockFirstRowNum */
-	AppendOnlyStorageWrite_SetFirstRowNum(acc->ao_write,
+	/*
+	 * Set the BlockFirstRowNum. Need to set this before
+	 * calling AppendOnlyStorageWrite_GetBuffer.
+	 */
+	AppendOnlyStorageWrite_SetFirstRowNum(&acc->ao_write,
 										  acc->blockFirstRowNum);
 
-    AppendOnlyStorageWrite_Content(acc->ao_write,
-        (uint8 *) va,
-        VARSIZE_ANY(va),
-        AOCSBK_BLOB,
-        1
-        );
+	rowCount = DatumStreamBlockWrite_Nth(&acc->blockWrite);
 
-    Assert(acc->nth == 0);
-    Assert(acc->has_null == false);
-    Assert(acc->nullp == acc->npbuf);
-    Assert(acc->datump == acc->dpbuf);
+	if (rowCount <= AOSmallContentHeader_MaxRowCount)
+	{
+		aoHeaderKind = AoHeaderKind_SmallContent; 
+	}
+	else if (acc->ao_attr.compress)
+	{
+		aoHeaderKind = AoHeaderKind_BulkDenseContent; 
+	}
+	else
+	{
+		aoHeaderKind = AoHeaderKind_NonBulkDenseContent; 
+	}
+	
+    buffer = AppendOnlyStorageWrite_GetBuffer(
+										&acc->ao_write,
+										aoHeaderKind);
 
-    return VARSIZE_ANY(va);
+	writesz = DatumStreamBlockWrite_Block(
+									&acc->blockWrite,
+									buffer);
+
+    /* Write it out */
+    AppendOnlyStorageWrite_FinishBuffer(
+								&acc->ao_write,
+					            (int32)writesz,
+					            AOCSBK_BLOCK,
+					            rowCount);
+
+    /* Set up our write block information */
+	DatumStreamBlockWrite_GetReady(&acc->blockWrite);
+
+    return writesz;
 }
 
-static bool
-datumstream_read_block_info(DatumStream *acc,
-							int32 *contentLen,
-							int *execBlockKind,
-							int64 *firstRow,
-							int *rowCnt,
-							bool *isLarge,
-							bool *isCompressed)
+int64 datumstreamwrite_block(DatumStreamWrite *acc)
 {
-	bool readOK = false;
+    /* Nothing to write, this is just no op */
+    if (DatumStreamBlockWrite_Nth(&acc->blockWrite) == 0)
+	{
+        return 0;
+	}
 
-    Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
+	switch (acc->datumStreamVersion)
+	{
+	case DatumStreamVersion_Original:
+		return datumstreamwrite_block_orig(acc);
 
-    readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
-            contentLen,
-            execBlockKind,
-            firstRow,
-            rowCnt,
-            isLarge,
-            isCompressed
-            );
+	case DatumStreamVersion_Dense:
+		return datumstreamwrite_block_dense(acc);
 
-	acc->blockFirstRowNum = *firstRow;
-	acc->blockFileOffset = acc->ao_read->current.headerOffsetInFile;
-	acc->blockRowCount = *rowCnt;
-
-	return readOK;
+	default:
+		elog(ERROR, "Unexpected datum stream version %d", 
+			 acc->datumStreamVersion);
+		return 0;	// Never reaches here.
+	}
 }
 
 static void
-datumstream_read_block_content(DatumStream *acc,
-							   int32 contentLen,
-							   int execBlockKind,
-							   int64 firstRow,		/* is expected to be -1 for pre-4.0 blocks */
-							   int rowCnt,
-							   bool isLarge,
-							   bool isCompressed)
+datumstreamwrite_print_large_varlena_info(
+									DatumStreamWrite *acc,
+									uint8 *p)
 {
-    char *buffer = NULL;
+	elog(LOG, "Write large varlena <%s>",
+		 VarlenaInfoToString(p));
+}
 
-    Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
+int64 datumstreamwrite_lob(DatumStreamWrite *acc, Datum d)
+{
+    uint8 *p;
+	int32 varLen;
 
-    if (execBlockKind == AOCSBK_BLOCK)
+    Assert(acc);
+	Assert(acc->datumStreamVersion == DatumStreamVersion_Original ||
+		   acc->datumStreamVersion == DatumStreamVersion_Dense);
+
+    if (acc->typeInfo.datumlen >= 0)
+	{
+		elog(ERROR, "Large object must be variable length objects (varlena)");
+	}
+	/*
+	 * If the datum is toasted  / compressed -- an error.
+	 */
+    if (VARATT_IS_EXTENDED_D(d))
+	{
+		elog(ERROR, "Expected large object / variable length objects (varlena) to be de-toasted and/or de-compressed at this point");
+	}
+
+	/*
+	 * De-Toast Datum
+	 */
+	if (VARATT_IS_EXTERNAL_D(d))
+	{
+		d = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(d)));
+	}	
+	
+    p = (uint8*)DatumGetPointer(d);
+	varLen = VARSIZE_ANY(p);
+
+	if (Debug_datumstream_write_print_large_varlena_info)
+	{
+		datumstreamwrite_print_large_varlena_info(
+												acc,
+												p);
+	}
+
+	/* Set the BlockFirstRowNum */
+	AppendOnlyStorageWrite_SetFirstRowNum(&acc->ao_write,
+										  acc->blockFirstRowNum);
+
+    AppendOnlyStorageWrite_Content(
+								&acc->ao_write,
+						        p,
+						        varLen,
+						        AOCSBK_BLOB,
+						        /* rowCount */ 1);
+
+    return varLen;
+}
+
+static bool
+datumstreamread_block_info(DatumStreamRead *acc)
+{
+	bool readOK = false;
+
+    Assert(acc);
+
+    readOK = AppendOnlyStorageRead_GetBlockInfo(
+											&acc->ao_read,
+											&acc->getBlockInfo.contentLen,
+											&acc->getBlockInfo.execBlockKind,
+											&acc->getBlockInfo.firstRow,
+											&acc->getBlockInfo.rowCnt,
+											&acc->getBlockInfo.isLarge,
+											&acc->getBlockInfo.isCompressed);
+
+	if (!readOK)
+		return false;
+
+	acc->blockFirstRowNum = acc->getBlockInfo.firstRow;
+	acc->blockFileOffset = acc->ao_read.current.headerOffsetInFile;
+	acc->blockRowCount = acc->getBlockInfo.rowCnt;
+
+	if (Debug_appendonly_print_scan)
+		elog(LOG,
+			 "Datum stream read get block typeInfo for table '%s' "
+			 "(contentLen %d, execBlockKind = %d, firstRowNum " INT64_FORMAT ", "
+			 "rowCount %d, isLargeContent %s, isCompressed %s, "
+			 "blockFirstRowNum " INT64_FORMAT ", blockFileOffset " INT64_FORMAT ", blockRowCount %d)",
+			 AppendOnlyStorageRead_RelationName(&acc->ao_read),
+			 acc->getBlockInfo.contentLen,
+			 acc->getBlockInfo.execBlockKind,
+			 acc->getBlockInfo.firstRow,
+			 acc->getBlockInfo.rowCnt,
+			 (acc->getBlockInfo.isLarge ? "true" : "false"),
+			 (acc->getBlockInfo.isCompressed ? "true" : "false"),
+			 acc->blockFirstRowNum,
+			 acc->blockFileOffset,
+			 acc->blockRowCount);
+
+	return true;
+}
+
+static void
+datumstreamread_block_get_ready(DatumStreamRead *acc)
+{
+	/*
+	 * Read header information and setup for reading the datum in the block.
+	 */
+    if (acc->getBlockInfo.execBlockKind == AOCSBK_BLOCK)
     {
-        Assert(!isLarge);
+    	bool	hadToAdjustRowCount;
+		int32	adjustedRowCount;
 
-        if (isCompressed)
+		DatumStreamBlockRead_GetReady(
+								&acc->blockRead,
+								acc->buffer_beginp,
+								acc->getBlockInfo.contentLen,
+								acc->getBlockInfo.firstRow,
+								acc->getBlockInfo.rowCnt,
+								&hadToAdjustRowCount,
+								&adjustedRowCount);
+		if (hadToAdjustRowCount)
+		{
+			acc->blockRowCount = adjustedRowCount;
+		}
+    }
+    else if (acc->getBlockInfo.execBlockKind == AOCSBK_BLOB)
+    {
+		Assert(acc->buffer_beginp == acc->large_object_buffer);
+    }
+	else
+	{
+		elog(ERROR, 
+			 "Unexpected Append-Only Column Store executor kind %d",
+			 acc->getBlockInfo.execBlockKind);
+	}
+}
+
+static void
+datumstreamread_block_content(DatumStreamRead *acc)
+{
+    Assert(acc);
+
+	/*
+	 * Clear out state from previous block.
+	 */
+	DatumStreamBlockRead_Reset(&acc->blockRead);
+
+	acc->largeObjectState = DatumStreamLargeObjectState_None;
+
+	/*
+	 * Read in data.
+	 */
+    if (acc->getBlockInfo.execBlockKind == AOCSBK_BLOCK)
+    {
+        Assert(!acc->getBlockInfo.isLarge);
+
+        if (acc->getBlockInfo.isCompressed)
         {
             /* Compressed, need to decompress to our own buffer.  */
-            if (acc->lobbufsz < contentLen)
+            if (acc->large_object_buffer_size < acc->getBlockInfo.contentLen)
             {
                 MemoryContext oldCtxt;
                 oldCtxt = MemoryContextSwitchTo(acc->memctxt);
 
-                if (acc->lobbuf)
-                    pfree(acc->lobbuf);
+                if (acc->large_object_buffer)
+                    pfree(acc->large_object_buffer);
 
-                acc->lobbufsz = contentLen;
-                acc->lobbuf = palloc(contentLen);
+                acc->large_object_buffer_size = acc->getBlockInfo.contentLen;
+                acc->large_object_buffer = palloc(acc->getBlockInfo.contentLen);
                 MemoryContextSwitchTo(oldCtxt);
             }
 
-            AppendOnlyStorageRead_Content(acc->ao_read,
-                    (uint8 *) acc->lobbuf,
-                    contentLen
-                    );
+            AppendOnlyStorageRead_Content(
+					&acc->ao_read,
+                    (uint8 *) acc->large_object_buffer,
+                    acc->getBlockInfo.contentLen);
 
-            buffer = (char *) acc->lobbuf;
+            acc->buffer_beginp = acc->large_object_buffer;
         }
         else
-            buffer = (char *) AppendOnlyStorageRead_GetBuffer(acc->ao_read);
+		{
+            acc->buffer_beginp = AppendOnlyStorageRead_GetBuffer(&acc->ao_read);
+		}
 
-        acc->block = (DatumStreamBlock *) buffer;
-        buffer += sizeof(DatumStreamBlock);
 
-        /* Set up acc */
-        acc->nth = -1; /* put it before first entry.  Caller will advance */
-        acc->has_null = acc->block->flags & DSB_HAS_NULLBITMAP;
-        acc->nullp = buffer;
-        acc->nullbit = 1;
-        acc->datump = buffer + acc->block->nullsz;
-
-        /*
-         * Pre-4.0 code did not enforce the following assertion.
-         * We identify this exception through firstRow, which is -1
-         * for pre-4.0 blocks (not stored inside the block).
-         */
-        Assert(acc->block->ndatum == rowCnt || firstRow == -1);
-
-        /*
-         * In pre-4.0 blocks, the maximum value of ndatum is
-		 * 32000 while rowCnt cannot exceed 16384, so we set
-		 * rowCnt to ndatum to build the block directory
-		 * consistently.
-		 */
-		if (acc->block->ndatum > rowCnt && firstRow == -1)
-        {
-			rowCnt = acc->block->ndatum;
-			acc->blockRowCount = acc->block->ndatum;
-        }
     }
-    else
+    else if (acc->getBlockInfo.execBlockKind == AOCSBK_BLOB)
     {
-        Assert(execBlockKind == AOCSBK_BLOB);
-        Assert(rowCnt == 1);
+        Assert(acc->getBlockInfo.rowCnt == 1);
+
+		if (acc->typeInfo.datumlen >= 0)
+		{
+			elog(ERROR, "Large object must be variable length objects (varlena)");
+		}
 
 		// NOTE: Do not assert the content is large.  What appears to be large content
 		// NOTE: can compress into one AO storage block.
 
-        acc->block = NULL;
-
-        if (acc->lobbufsz < contentLen)
+        if (acc->large_object_buffer_size < acc->getBlockInfo.contentLen)
         {
             MemoryContext oldCtxt;
             oldCtxt = MemoryContextSwitchTo(acc->memctxt);
 
-            if (acc->lobbuf)
-                pfree(acc->lobbuf);
+            if (acc->large_object_buffer)
+                pfree(acc->large_object_buffer);
 
-            acc->lobbufsz = contentLen;
-            acc->lobbuf = palloc(contentLen);
+            acc->large_object_buffer_size = acc->getBlockInfo.contentLen;
+            acc->large_object_buffer = palloc(acc->getBlockInfo.contentLen);
             MemoryContextSwitchTo(oldCtxt);
         }
 
+        AppendOnlyStorageRead_Content(
+				&acc->ao_read,
+                acc->large_object_buffer,
+                acc->getBlockInfo.contentLen);
 
-        AppendOnlyStorageRead_Content(acc->ao_read,
-                (uint8 *) acc->lobbuf,
-                contentLen
-                );
+		acc->buffer_beginp = acc->large_object_buffer;
+		acc->largeObjectState = DatumStreamLargeObjectState_HaveAoContent;
 
-        acc->nth = -1;
-        acc->has_null = false;
-        acc->datump = acc->lobbuf;
+		if (Debug_datumstream_read_check_large_varlena_integrity)
+		{
+			datumstreamread_check_large_varlena_integrity(
+														acc,
+														acc->buffer_beginp, 
+														acc->getBlockInfo.contentLen);
+		}
     }
+	else
+	{
+		elog(ERROR, 
+			 "Unexpected Append-Only Column Store executor kind %d",
+			 acc->getBlockInfo.execBlockKind);
+	}
+
+	/*
+	 * Unpack the information from the block headers and get ready to read the first datum.
+	 */
+	datumstreamread_block_get_ready(acc);
 }
 
 
-int datumstream_read_block(DatumStream *acc)
+int datumstreamread_block(DatumStreamRead *acc)
 {
-    int32 contentLen = 0;
-    int execBlockKind = 0;
-    int64 firstRow = 0;
-    int rowCnt = 0;
-    bool isLarge = 0;
-    bool isCompressed = 0;
-
     bool readOK = false;
 
-    Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
+    Assert(acc);
 
     acc->blockFirstRowNum += acc->blockRowCount;
 
-    readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
-												&contentLen,
-												&execBlockKind,
-												&firstRow,
-												&rowCnt,
-												&isLarge,
-												&isCompressed);
-    /*
-     * Pre-4.0 blocks do not store firstRowNum, so the returned value
-     * for firstRow is -1. In this case, acc->blockFirstRowNum keeps
-     * its last value, i.e. is incremented by the blockRowCount of the
-     * previous block.
-     */
-    if (firstRow >= 0)
-    {
-    	acc->blockFirstRowNum = firstRow;
-    }
-	acc->blockFileOffset = acc->ao_read->current.headerOffsetInFile;
-	acc->blockRowCount = rowCnt;
-
+    readOK = AppendOnlyStorageRead_GetBlockInfo(&acc->ao_read,
+												&acc->getBlockInfo.contentLen,
+												&acc->getBlockInfo.execBlockKind,
+												&acc->getBlockInfo.firstRow,
+												&acc->getBlockInfo.rowCnt,
+												&acc->getBlockInfo.isLarge,
+												&acc->getBlockInfo.isCompressed);
     if (!readOK)
         return -1;
 
-	datumstream_read_block_content(acc,
-								   contentLen,
-								   execBlockKind,
-								   firstRow,
-								   rowCnt,
-								   isLarge,
-								   isCompressed);
+	/*
+	 * Pre-4.0 blocks do not store firstRowNum, so the returned value
+	 * for firstRow is -1. In this case, acc->blockFirstRowNum keeps
+	 * its last value, i.e. is incremented by the blockRowCount of the
+	 * previous block.
+	 */
+    if (acc->getBlockInfo.firstRow >= 0)
+    {
+    	acc->blockFirstRowNum = acc->getBlockInfo.firstRow;
+    }
+	acc->blockFileOffset = acc->ao_read.current.headerOffsetInFile;
+	acc->blockRowCount = acc->getBlockInfo.rowCnt;
 
-	rowCnt = acc->blockRowCount;	/* rowCnt may be invalid for pre-4.0 blocks */
+	if (Debug_appendonly_print_scan)
+		elog(LOG,
+			 "Datum stream read get block typeInfo for table '%s' "
+			 "(contentLen %d, execBlockKind = %d, firstRowNum " INT64_FORMAT ", "
+			 "rowCount %d, isLargeContent %s, isCompressed %s, "
+			 "blockFirstRowNum " INT64_FORMAT ", blockFileOffset " INT64_FORMAT ", blockRowCount %d)",
+			 AppendOnlyStorageRead_RelationName(&acc->ao_read),
+			 acc->getBlockInfo.contentLen,
+			 acc->getBlockInfo.execBlockKind,
+			 acc->getBlockInfo.firstRow,
+			 acc->getBlockInfo.rowCnt,
+			 (acc->getBlockInfo.isLarge ? "true" : "false"),
+			 (acc->getBlockInfo.isCompressed ? "true" : "false"),
+			 acc->blockFirstRowNum,
+			 acc->blockFileOffset,
+			 acc->blockRowCount);
+	
+	datumstreamread_block_content(acc);
 
     return 0;
 }
 
 void
-datumstream_rewind_block(DatumStream *datumStream)
+datumstreamread_rewind_block(DatumStreamRead *datumStream)
 {
-	datumStream->nth = -1;
-	datumStream->datump = datumStream->lobbuf;
+	DatumStreamBlockRead_Reset(&datumStream->blockRead);
 
-	if (datumStream->block != NULL)
-	{
-		char *buffer = (char *)datumStream->block;
-		buffer += sizeof(DatumStreamBlock);
-		datumStream->nullp = buffer;
-		datumStream->datump = buffer + datumStream->block->nullsz;
-		datumStream->nullbit = 1;
-	}
+	datumstreamread_block_get_ready(datumStream);
 }
 
 /*
@@ -787,48 +1251,41 @@ datumstream_rewind_block(DatumStream *datumStream)
  * Note that the values for rowNumInBlock starts with 0.
  */
 void
-datumstream_find(DatumStream *datumStream,
+datumstreamread_find(DatumStreamRead *datumStream,
 				 int32 rowNumInBlock)
 {
 	/*
 	 * if reading a tuple that is prior to the tuple that the datum stream
 	 * is pointing to now, reset the datum stream pointers.
 	 */
-	if (rowNumInBlock < datumStream->nth)
-		datumstream_rewind_block(datumStream);
+	if (rowNumInBlock < DatumStreamBlockRead_Nth(&datumStream->blockRead))
+		datumstreamread_rewind_block(datumStream);
 
-	Assert(rowNumInBlock >= datumStream->nth ||
-		   datumStream->nth == -1);
+	Assert(rowNumInBlock >= DatumStreamBlockRead_Nth(&datumStream->blockRead) ||
+		   DatumStreamBlockRead_Nth(&datumStream->blockRead) == -1);
 
 	/*
 	 * Find the right row in the block.
 	 */
-	while (rowNumInBlock > datumStream->nth)
+	while (rowNumInBlock > DatumStreamBlockRead_Nth(&datumStream->blockRead))
 	{
 		int status;
 
-		status = datumstream_advance(datumStream);
+		status = datumstreamread_advance(datumStream);
 		Assert(status != 0);
 	}
 
-	Assert(rowNumInBlock == datumStream->nth);
+	Assert(rowNumInBlock == DatumStreamBlockRead_Nth(&datumStream->blockRead));
 }
 
 /*
  * Find the block that contains the given row.
  */
 bool
-datumstream_find_block(DatumStream *datumStream,
+datumstreamread_find_block(DatumStreamRead *datumStream,
 					   DatumStreamFetchDesc datumStreamFetchDesc,
 					   int64 rowNum)
 {
-	int32 contentLen = 0;
-	int execBlockKind = 0;
-	int64 firstRow = 0;
-    int rowCnt = 0;
-    bool isLarge = 0;
-    bool isCompressed = 0;
-
 	Assert(datumStreamFetchDesc->datumStream == datumStream);
 
 	if (datumStreamFetchDesc->scanNextFileOffset >=
@@ -843,42 +1300,33 @@ datumstream_find_block(DatumStream *datumStream,
 		datumStreamFetchDesc->scanNextFileOffset)
 		return false;	// UNDONE: Why does our next scan position go beyond logical EOF?
 
-	Assert(datumStream->is_reader);
-	Assert(datumStream->ao_read && !datumStream->ao_write);
-
 	AppendOnlyStorageRead_SetTemporaryRange(
-		datumStream->ao_read,
+		&datumStream->ao_read,
 		datumStreamFetchDesc->scanNextFileOffset,
 		datumStreamFetchDesc->scanAfterFileOffset);
 
 	while(true)
 	{
-		if (!datumstream_read_block_info(datumStream,
-										 &contentLen,
-										 &execBlockKind,
-										 &firstRow,
-										 &rowCnt,
-										 &isLarge,
-										 &isCompressed))
+		if (!datumstreamread_block_info(datumStream))
 			return false;
 
 		/*
-		 * Update the current block info.
+		 * Update the current block typeInfo.
 		 */
-		const bool isOldBlockFormat = (firstRow == -1);
+		const bool isOldBlockFormat = (datumStream->getBlockInfo.firstRow == -1);
 		datumStreamFetchDesc->currentBlock.have = true;
 		datumStreamFetchDesc->currentBlock.fileOffset =
 			AppendOnlyStorageRead_CurrentHeaderOffsetInFile(
-				datumStream->ao_read);
+				&datumStream->ao_read);
 		datumStreamFetchDesc->currentBlock.overallBlockLen =
-			AppendOnlyStorageRead_OverallBlockLen (datumStream->ao_read);
+			AppendOnlyStorageRead_OverallBlockLen (&datumStream->ao_read);
 		datumStreamFetchDesc->currentBlock.firstRowNum =
-			(!isOldBlockFormat) ? firstRow : datumStreamFetchDesc->scanNextRowNum;
+			(!isOldBlockFormat) ? datumStream->getBlockInfo.firstRow : datumStreamFetchDesc->scanNextRowNum;
 		datumStreamFetchDesc->currentBlock.lastRowNum =
-			datumStreamFetchDesc->currentBlock.firstRowNum + rowCnt - 1;
+			datumStreamFetchDesc->currentBlock.firstRowNum + datumStream->getBlockInfo.rowCnt - 1;
 		datumStreamFetchDesc->currentBlock.isCompressed =
-			isCompressed;
-		datumStreamFetchDesc->currentBlock.isLargeContent = isLarge;
+			datumStream->getBlockInfo.isCompressed;
+		datumStreamFetchDesc->currentBlock.isLargeContent = datumStream->getBlockInfo.isLarge;
 
 		if (rowNum < datumStreamFetchDesc->currentBlock.firstRowNum)
 		{
@@ -894,7 +1342,7 @@ datumstream_find_block(DatumStream *datumStream,
 				datumStreamFetchDesc->currentBlock.overallBlockLen;
 
 			AppendOnlyStorageRead_SetTemporaryRange(
-				datumStream->ao_read,
+				&datumStream->ao_read,
 				beginFileOffset,
 				afterFileOffset);
 
@@ -903,17 +1351,13 @@ datumstream_find_block(DatumStream *datumStream,
 
 		if (isOldBlockFormat)
 		{
+			int32 rowCnt;
+
 			/*
 			 * rowCnt may not be valid for pre-4.0 blocks, we need to
 			 * read the block content to restore the correct value.
 			 */
-			datumstream_read_block_content(datumStream,
-										   contentLen,
-										   execBlockKind,
-										   firstRow,
-										   rowCnt,
-										   isLarge,
-										   isCompressed);
+			datumstreamread_block_content(datumStream);
 
 			rowCnt = datumStream->blockRowCount;
 			datumStreamFetchDesc->currentBlock.lastRowNum =
@@ -928,18 +1372,12 @@ datumstream_find_block(DatumStream *datumStream,
 			 */
 			if (!isOldBlockFormat)
 			{
-				datumstream_read_block_content(datumStream,
-											   contentLen,
-											   execBlockKind,
-											   firstRow,
-											   rowCnt,
-											   isLarge,
-											   isCompressed);
+				datumstreamread_block_content(datumStream);
 			}
 			break;
 		}
 
-		AppendOnlyStorageRead_SkipCurrentBlock(datumStream->ao_read);
+		AppendOnlyStorageRead_SkipCurrentBlock(&datumStream->ao_read);
 	}
 
 	return true;

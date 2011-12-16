@@ -304,6 +304,13 @@ bool		Debug_persistent_bootstrap_print = false;
 bool		Debug_bulk_load_bypass_wal = true;
 bool		Debug_persistent_appendonly_commit_count_print = false;
 bool		Debug_cancel_print = false;
+bool		Debug_datumstream_write_print_small_varlena_info = false;
+bool		Debug_datumstream_write_print_large_varlena_info = false;
+bool		Debug_datumstream_read_check_large_varlena_integrity = false;
+bool		Debug_datumstream_block_read_check_integrity = false;
+bool		Debug_datumstream_block_write_check_integrity = false;
+bool		Debug_datumstream_read_print_varlena_info = false;
+bool		Debug_datumstream_write_use_small_initial_buffers = false;
 
 #define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
 int         verify_checkpoint_interval =
@@ -2507,6 +2514,76 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_cancel_print,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_datumstream_write_print_small_varlena_info", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print datum stream write small varlena information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_datumstream_write_print_small_varlena_info,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_datumstream_write_print_large_varlena_info", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print datum stream write large varlena information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_datumstream_write_print_large_varlena_info,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_datumstream_read_check_large_varlena_integrity", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Check datum stream large object integrity."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_datumstream_read_check_large_varlena_integrity,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_datumstream_block_read_check_integrity", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Check datum stream block read integrity."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_datumstream_block_read_check_integrity,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_datumstream_block_write_check_integrity", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Check datum stream block write integrity."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_datumstream_block_write_check_integrity,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_datumstream_read_print_varlena_info", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print datum stream read varlena information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_datumstream_read_print_varlena_info,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_datumstream_write_use_small_initial_buffers", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Use small datum stream write buffers to stress growing logic."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_datumstream_write_use_small_initial_buffers,
 		false, NULL, NULL
 	},
 	
