@@ -449,7 +449,7 @@ static int32 DatumStreamInt32Compress_Decode(
 	uint8	masked;
 	uint8	lenFieldOnly;
 	int32	len;
-	int32	value;
+	int32	value = 0;
 
 	masked = (buffer[0] & Int32Compress_LenFieldMask);
 	lenFieldOnly = masked >> Int32Compress_LenFieldShift;
