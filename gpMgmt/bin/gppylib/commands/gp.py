@@ -17,6 +17,8 @@ from unix import *
 import pg
 from gppylib import pgconf
 from gppylib.utils import writeLinesToFile, createFromSingleHostFile
+from pg_ctl import PgCtlBackendOptions, PgCtlStart, PgCtlStop
+
 
 logger = get_default_logger()
 
@@ -76,77 +78,45 @@ class PySync(Command):
 
 #-----------------------------------------------
 class MasterStart(Command):
-    def __init__(self, name, dataDir, port, dbid, standby_dbid,
-                 numContentsInCluster, 
-                 wrapper, wrapper_args,
-                 specialMode=None,
-                 restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
-                 max_connections=1, disableMasterMirror=False,
-                 utilityMode=False, ctxt=LOCAL, remoteHost=None
+    def __init__(self, name, dataDir, port, dbid, standby_dbid, numContentsInCluster, 
+                 wrapper, wrapper_args, specialMode=None, restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
+                 max_connections=1, disableMasterMirror=False, utilityMode=False, ctxt=LOCAL, remoteHost=None
                  ):
         self.dataDir=dataDir
         self.port=port
         self.utilityMode=utilityMode
         self.wrapper=wrapper
         self.wrapper_args=wrapper_args
-        if disableMasterMirror:
-            standby="-y"
-        else:
-            standby=""
 
-        if utilityMode:
-            gp_mode_flags=" -c gp_role=utility "
-        else:
-            gp_mode_flags=" -E "
+        # build backend options
+        b = PgCtlBackendOptions(port, dbid, numContentsInCluster)
+        b.set_master(standby_dbid, disableMasterMirror, seqserver=not utilityMode)
+        b.set_utility(utilityMode)
+        b.set_special(specialMode)
+        b.set_restricted(restrictedMode, max_connections)
+
+        # build pg_ctl command
+        c = PgCtlStart(dataDir, b, wrapper, wrapper_args, True, timeout)
         
-        wrapper_string = ""
+        self.cmdStr = str(c)
 
-        if wrapper != None:
-            wrapper_string = "--wrapper=\"%s\"" % wrapper
-
-            if wrapper_args != None:
-                wrapper_string += " --wrapper-args=\"%s\"" % wrapper_args
-
-        cmdfrags=["$GPHOME/bin/pg_ctl %s -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -x %s -C -1 -z %s --silent-mode=true" % \
-                  (wrapper_string, dataDir,dataDir,standby,gp_mode_flags,port,dbid,standby_dbid,numContentsInCluster)]
-
-        assert(specialMode in [None, 'upgrade', 'maintenance'])
-        if specialMode == 'upgrade':
-            cmdfrags.append(" -U")
-        elif specialMode == 'maintenance':
-            cmdfrags.append(" -m")
-
-        if restrictedMode:
-            cmdfrags.append(" -c superuser_reserved_connections=%s" % max_connections)
-
-
-        cmdfrags.append("\" start ")
-
-        cmdStr=" ".join(cmdfrags)
-
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
     @staticmethod
     def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster, 
-              wrapper, wrapper_args,
-              specialMode=None,
-              restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
-              max_connections=1, disableMasterMirror=False,
-              utilityMode=False):
-        cmd=MasterStart(name, dataDir, port, dbid, standbydbid,
-                        numContentsInCluster,
-                        wrapper, wrapper_args, 
-                        specialMode, restrictedMode, timeout,max_connections,
-                        disableMasterMirror,utilityMode)
+              wrapper, wrapper_args, specialMode=None, restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
+              max_connections=1, disableMasterMirror=False, utilityMode=False):
+        cmd=MasterStart(name, dataDir, port, dbid, standbydbid, numContentsInCluster,
+                        wrapper, wrapper_args, specialMode, restrictedMode, timeout,
+                        max_connections, disableMasterMirror, utilityMode)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
 class MasterStop(Command):
-    def __init__(self,name,dataDir,mode='smart',timeout=SEGMENT_TIMEOUT_DEFAULT,
-                 ctxt=LOCAL,remoteHost=None):
-        self.dataDir=dataDir
-        cmdStr="$GPHOME/bin/pg_ctl -w -D %s -m %s -t %s stop" % (dataDir,mode, timeout)
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    def __init__(self,name,dataDir,mode='smart',timeout=SEGMENT_TIMEOUT_DEFAULT, ctxt=LOCAL,remoteHost=None):
+        self.dataDir = dataDir
+        self.cmdStr = str( PgCtlStop(dataDir, mode, True, timeout) )
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
     @staticmethod
     def local(name,dataDir):
@@ -175,46 +145,17 @@ class SegmentStart(Command):
         content = gpdb.getSegmentContentId()
         port    = gpdb.getSegmentPort()
         datadir = gpdb.getSegmentDataDirectory()
-        logfile = os.path.join(datadir, 'pg_log', 'startup.log')
 
-        wrapper_string = ""
-        if wrapper != None:
-            wrapper_string = "--wrapper=\"%s\"" % wrapper
+        # build backend options
+        b = PgCtlBackendOptions(port, dbid, numContentsInCluster)
+        b.set_segment(mirroringMode, content)
+        b.set_utility(utilityMode)
+        b.set_special(specialMode)
 
-            if wrapper_args != None:
-                wrapper_string += " --wrapper-args=\"%s\"" % wrapper_args
+        # build pg_ctl command
+        c = PgCtlStart(datadir, b, wrapper, wrapper_args, not noWait, timeout)
 
-
-        cmdfrags=['$GPHOME/bin/pg_ctl']
-        cmdfrags.append(wrapper_string)
-        cmdfrags.append('-D %s' % datadir)
-        cmdfrags.append('-l %s' % logfile)
-
-
-        if not noWait:
-            cmdfrags.append('-w')
-            cmdfrags.append('-t %d' % timeout)
-
-        portStr = ""
-        if port:
-            portStr = "-p %s" % port
-
-        utilityModeStr = ""
-        if ( utilityMode ):
-            utilityModeStr = "-c gp_role=utility"
-
-        assert(specialMode in [None, 'upgrade', 'maintenance'])
-        specialModeStr = ""
-        if (specialMode == 'upgrade'):
-            specialModeStr = '-U'
-        elif (specialMode == 'maintenance'):
-            specialModeStr = '-m'
-
-        cmdfrags.append("-o '-i %s %s %s --silent-mode=true -M %s -b %s -C %s "
-                        "-z %s' start 2>&1" %
-                        (portStr, specialModeStr, utilityModeStr, mirroringMode, dbid,
-                         content, numContentsInCluster))
-        self.cmdStr=' '.join(cmdfrags)
+        self.cmdStr = str(c) + ' 2>&1'
 
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
@@ -225,9 +166,9 @@ class SegmentStart(Command):
 
     @staticmethod
     def remote(name, remoteHost, gpdb, numContentsInCluster, mirroringMode, utilityMode=False):
-        cmd=SegmentStart(name, gpdb, numContentsInCluster, mirroringMode, utilityMode,
-                         ctxt=REMOTE, remoteHost=remoteHost)
+        cmd=SegmentStart(name, gpdb, numContentsInCluster, mirroringMode, utilityMode, ctxt=REMOTE, remoteHost=remoteHost)
         cmd.run(validateAfter=True)
+
 
 #-----------------------------------------------
 class SendFilerepTransitionMessage(Command):

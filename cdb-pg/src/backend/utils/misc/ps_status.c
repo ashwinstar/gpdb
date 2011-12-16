@@ -77,14 +77,13 @@ bool		update_process_title = true;
 #define PS_USE_NONE
 #endif
 
-
 /* Different systems want the buffer padded differently */
-#if defined(_AIX) || defined(__linux__) || defined(__svr4__) || defined(__darwin__)
+
+#if defined(_AIX) || defined(__linux__) || defined(__svr4__)
 #define PS_PADDING '\0'
 #else
 #define PS_PADDING ' '
 #endif
-
 
 #ifndef PS_USE_CLOBBER_ARGV
 /* all but one options need a buffer to write their ps line in */
@@ -143,7 +142,6 @@ save_ps_display_args(int argc, char **argv)
 	 */
 	{
 		char	   *end_of_area = NULL;
-		char	  **new_environ;
 		int			i;
 
 #if (defined(sun) && !defined(BSD))
@@ -169,43 +167,25 @@ save_ps_display_args(int argc, char **argv)
 #if (defined(sun) && !defined(BSD))
 		ps_argument_size = strlen(argv[0]);
 #endif
-		
-		/*
-		 * check for contiguous environ strings following argv
-		 */
-		for (i = 0; environ[i] != NULL; i++)
-		{
-			if (end_of_area + 1 == environ[i])
-				end_of_area = environ[i] + strlen(environ[i]);
-		}
 
+		/* 
+		 * MPP-14501: only use argv area for status to preserve environment 
+		 *
+		 * Prior to this change, the code here would use all of the memory with
+		 * the initial contents of argv and environ as a buffer for the process
+		 * status line.  However that has the side effect of preventing other
+		 * processes from examining the initial argv/environ of this process.
+		 * Although we aren't concerned about argv, as of MPP-14501 we want
+		 * other processes to be able to read this process's environment to
+		 * detect the presence of the GPKILL environment variable.  So instead
+		 * of using all of the argv+environ area, we instead just use the argv
+		 * area.  We should not have to worry about the argv area on it's own
+		 * being too small to display the status information because it's
+		 * fairly large with all the arguments we pass and if that ever does
+		 * become an issue we can always just have gpstart add more arguments.
+		 */
 		ps_buffer = argv[0];
-
-		last_status_len = ps_buffer_size = end_of_area - argv[0];
-
-		/*
-		 * move the environment out of the way
-		 */
-		new_environ = (char **) malloc((i + 1) * sizeof(char *));
-		if(!new_environ)
-		{
-			write_stderr("Failed to change/set ps status: Out of Memory");
-			exit(1);
-		}
-
-		for (i = 0; environ[i] != NULL; i++)
-		{
-			new_environ[i] = strdup(environ[i]);
-			if(!new_environ[i])
-			{
-				write_stderr("Failed to change/set ps status: Out of Memory");
-				exit(1);
-			}
-		}
-
-
-		new_environ[i] = NULL;
-		environ = new_environ;
+		last_status_len = ps_buffer_size = (end_of_area - ps_buffer);
 	}
 #endif   /* PS_USE_CLOBBER_ARGV */
 
@@ -301,14 +281,30 @@ init_ps_display(const char *username, const char *dbname,
 #endif   /* PS_USE_CHANGE_ARGV */
 
 #ifdef PS_USE_CLOBBER_ARGV
+
+#if defined(__darwin__)
+    /* 
+	 * MPP-14501, keep heuristic ps and other tools appear to use working
+	 */
+	if (ps_buffer_size > save_argc)
+	{
+		last_status_len -= save_argc;
+		ps_buffer_size  -= save_argc;
+		memset(ps_buffer+ps_buffer_size, 0, save_argc);
+		ps_buffer[ps_buffer_size] = PS_PADDING;
+	}
+#endif /* darwin */
+
     {
         int         i;
 
         /* make extra argv slots point at end_of_area (a NUL) */
         for (i = 1; i < save_argc; i++)
-            save_argv[i] = ps_buffer + ps_buffer_size;
+            save_argv[i] = (ps_buffer + ps_buffer_size);
     }
-#endif   /* PS_USE_CLOBBER_ARGV */
+
+
+#endif /* PS_USE_CLOBBER_ARGV */
 
     /*
      * Make fixed prefix of ps display.
@@ -327,9 +323,10 @@ init_ps_display(const char *username, const char *dbname,
     snprintf(ps_buffer, ps_buffer_size,
              "postgres: port %5d, %s %s %s ",
              PostPortNumber, username, dbname, host_info);
-#endif
+#endif /* not PS_USE_SETPROCTITLE */
 
     ps_buffer_fixed_size = strlen(ps_buffer);
+
 	real_act_prefix_size = ps_buffer_fixed_size;
 
     set_ps_display(initial_str, true);
@@ -339,6 +336,14 @@ init_ps_display(const char *username, const char *dbname,
     ps_host_info_size = snprintf(ps_buffer + ps_buffer_fixed_size,
                                  ps_buffer_size - ps_buffer_fixed_size,
                                  "%s ", host_info);
+	
+	/* 
+	 * MPP-14501, don't let a NUL from snprintf mess up our padding
+	 */
+#if defined(__darwin__)
+	ps_buffer[ps_buffer_fixed_size + ps_host_info_size] = PS_PADDING;
+#endif
+
     ps_buffer_fixed_size += ps_host_info_size;
 	real_act_prefix_size = ps_buffer_fixed_size;
 #endif   /* not PS_USE_NONE */

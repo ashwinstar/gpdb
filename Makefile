@@ -1239,6 +1239,9 @@ copylibs : thirdparty-dist
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
 	    echo "Copying python, $(BLD_PYTHON_FILESET), from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
 	    (cd $(BLD_PYTHON) && $(TAR) cf - $(BLD_PYTHON_FILESET)) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
+	    echo "Adjusting python..."; \
+	    mv $(INSTLOC)/ext/python/bin/python $(INSTLOC)/ext/python/bin/python-; \
+	    cp -p $(GPMGMT)/bin/lib/gpkill-python $(INSTLOC)/ext/python/bin/python; \
 	    echo "...DONE"; \
 	else \
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
@@ -1261,6 +1264,8 @@ else
 	cp -rp /System/Library/OpenSSL/openssl.cnf $(INSTLOC)/etc/
 endif
 endif
+	# Copy glider stack trace capture tool
+	-cp -rp $(BLD_THIRDPARTY_BIN_DIR)/glider $(INSTLOC)/sbin/
 
 greenplum_path:
 	mkdir -p $(INSTLOC)

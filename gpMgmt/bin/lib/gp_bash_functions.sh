@@ -2,7 +2,6 @@
 #	Filename:-		gp_bash_functions.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Updated:-		$Date$
 #	Status:-		Released	
 #	Author:-		G L Coombe (Greenplum)
 #	Contact:-		gcoombe@greenplum.com
@@ -155,6 +154,7 @@ VERBOSE=1
 USER_NAME=`id|$AWK '{print $1}'|$CUT -d"(" -f2|$TR -d ')'`
 PROG_NAME=`echo $0 | $TR -d '-'`
 PROG_NAME=`$BASENAME $PROG_NAME`
+PROG_PIDNAME=`echo $$ $PROG_NAME | awk '{printf "%06d %s\n", $1, $2}'`
 CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 
 #******************************************************************************
@@ -335,12 +335,12 @@ LOG_MSG () {
 		fi
 		if [ $VERBOSE ]; then
 				if [ $DEBUG_LEVEL -eq 1 ] || [ $DISPLAY_TXT -eq 1 ];then
-			        $ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" | $TEE -a $LOG_FILE	
+			        $ECHO "${CUR_DATE}:${TIME}:${PROG_PIDNAME}:${CALL_HOST}:${USER_NAME}-$1" | $TEE -a $LOG_FILE	
 				else
-				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
+				$ECHO "${CUR_DATE}:${TIME}:${PROG_PIDNAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
 				fi
 		else
-				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
+				$ECHO "${CUR_DATE}:${TIME}:${PROG_PIDNAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
 		fi
 }
 
