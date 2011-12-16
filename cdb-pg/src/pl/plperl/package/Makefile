@@ -21,6 +21,7 @@ PLPERL_RPM_FLAGS="--define 'plperl_dir $(PLPERL_DIR)' --define 'plperl_ver $(PLP
 PLPERL_RPM=plperl-$(PLPERL_VER)-$(PLPERL_REL).$(ARCH).rpm
 PLPERL_GPPKG=plperl-$(PLPERL_VER)-$(OS)-$(ARCH).gppkg
 
+TARGET_GPPKG=$(PLPERL_GPPKG)
 EXTRA_CLEAN+=$(PERL_RPM) $(PLPERL_RPM) $(PLPERL_GPPKG)
 
 #

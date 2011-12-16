@@ -68,5 +68,8 @@ clean:
 ifdef EXTRA_CLEAN
 	rm -f $(EXTRA_CLEAN)
 endif
+	
+install: $(TARGET_GPPKG)
+	gppkg -i $(TARGET_GPPKG)
 
 .PHONY: install clean

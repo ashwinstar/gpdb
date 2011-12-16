@@ -7,7 +7,7 @@ Group:          Development/Tools
 Prefix:         /temp
 AutoReq:        no
 AutoProv:       no
-Provides:       postgis = ${postgis_ver}
+Provides:       postgis = %{postgis_ver}
 Requires:       geos = %{geos_ver}, proj = %{proj_ver}
 
 %description

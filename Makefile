@@ -1412,13 +1412,13 @@ authlibs:
 
 
 
-GPPKG_TARGETS = \
-	cdb-pg/contrib/pgcrypto/package \
-	cdb-pg/contrib/postgis/package \
-	cdb-pg/src/pl/plr/package \
-	cdb-pg/src/pl/plperl/package \
-	cdb-pg/src/pl/pljava/package \
-	cdb-pg/src/bin/gphdfs/package \
+GPPKG_SOURCES = \
+	cdb-pg/contrib/pgcrypto \
+	cdb-pg/contrib/postgis \
+	cdb-pg/src/pl/plr \
+	cdb-pg/src/pl/plperl \
+	cdb-pg/src/pl/pljava \
+	cdb-pg/src/bin/gphdfs \
 	$(NULL)
 
 ## ----------------------------------------------------------------------
@@ -1434,10 +1434,39 @@ ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
 	@echo "on this platform: $(BLD_ARCH)"
 	@echo ""
 else
-	@for target in $(GPPKG_TARGETS); do \
-		$(MAKE) -C $${target} INSTLOC=$(INSTLOC); \
-		cp $${target}/*.gppkg $(GPPKGINSTLOC); \
-	done || true
+	for source in $(GPPKG_SOURCES); do \
+		$(MAKE) -C $${source}/package INSTLOC=$(INSTLOC); \
+		cp $${source}/package/*.gppkg $(GPPKGINSTLOC); \
+	done
+endif
+endif
+
+INSTALLCHECK_GPPKG_SOURCES = \
+	cdb-pg/contrib/pgcrypto \
+	cdb-pg/contrib/postgis \
+	cdb-pg/src/pl/plperl \
+	cdb-pg/src/pl/plr \
+	$(NULL)
+
+installcheck-gppkg:
+	touch installcheck-gppkg.log
+ifeq "$(findstring gppkg,$(BLD_TARGETS))" ""
+    # ---- build and packaging of gppkgs are currently disabled
+    # ---- set BLD_TARGETS="gppkg" to enable them.
+else
+ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
+	@echo ""
+	@echo "The gppkg build and packaging processes are not supported"
+	@echo "on this platform: $(BLD_ARCH)"
+	@echo ""
+else
+	for source in $(INSTALLCHECK_GPPKG_SOURCES); do \
+		$(MAKE) -C $${source}/package install; \
+	done
+	source $$GPHOME/greenplum_path.sh && gpstop -a && gpstart -a
+	for source in $(INSTALLCHECK_GPPKG_SOURCES); do \
+		source $$GPHOME/greenplum_path.sh && $(MAKE) -C $${source} installcheck >> installcheck-gppkg.log; \
+	done
 endif
 endif
 
