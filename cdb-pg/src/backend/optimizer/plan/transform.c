@@ -292,18 +292,10 @@ static Node *replace_sirvf_tle_expr_mutator(Node *node, void *context)
 	if (!node)
 		return NULL;
 
-	if (IsA(node, FuncExpr))
+	if (IsA(node, FuncExpr)
+			&& is_sirv_funcexpr((FuncExpr *) node))
 	{
-		FuncExpr *fe = (FuncExpr *) node;
-
-		Node *new_expr = (Node *) fe;
-
-		if (is_sirv_funcexpr(fe))
-		{
-			new_expr = (Node *) make_sirvf_subselect(fe);
-		}
-
-		return new_expr;
+		node = (Node *) make_sirvf_subselect((FuncExpr *) node);
 	}
 
 	return expression_tree_mutator(node, replace_sirvf_tle_expr_mutator, context);
