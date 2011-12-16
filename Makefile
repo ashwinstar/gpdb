@@ -1240,7 +1240,7 @@ copylibs : thirdparty-dist
 	    echo "Copying python, $(BLD_PYTHON_FILESET), from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
 	    (cd $(BLD_PYTHON) && $(TAR) cf - $(BLD_PYTHON_FILESET)) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
 	    echo "Adjusting python..."; \
-	    mv $(INSTLOC)/ext/python/bin/python $(INSTLOC)/ext/python/bin/python-; \
+	    mv $(INSTLOC)/ext/python/bin/python $(INSTLOC)/ext/python/bin/gp-python; \
 	    cp -p $(GPMGMT)/bin/lib/gpkill-python $(INSTLOC)/ext/python/bin/python; \
 	    echo "...DONE"; \
 	else \

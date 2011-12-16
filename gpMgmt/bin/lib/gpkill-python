@@ -1,2 +1,2 @@
 #!/bin/bash --noprofile
-exec env GPKILL=CONFIRM python2.6 "$@"
+exec env GPKILL=CONFIRM gp-python "$@"
