@@ -516,9 +516,12 @@ class ValidateUninstallPackage(Operation):
         self.gppkg = gppkg
     def execute(self):
         rpm_list = [self.gppkg.main_rpm] + self.gppkg.dependencies
-        def strip_extension(filename):
-            return os.path.splitext(filename)[0]
-        rpm_set = set([strip_extension(rpm) for rpm in rpm_list])
+        def strip_extension_and_arch(filename):
+            # expecting filename of form %{name}-%{version}-%{release}.%{arch}.rpm
+            rest, ext = os.path.splitext(filename)
+            rest, arch = os.path.splitext(rest)
+            return rest
+        rpm_set = set([strip_extension_and_arch(rpm) for rpm in rpm_list])
         rpm_uninstall_string = ' '.join(rpm_set)
         rpm_uninstall_command = 'rpm --test -e %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
         cmd = Command('Validating rpm uninstallation', rpm_uninstall_command)
@@ -538,30 +541,21 @@ class ValidateUninstallPackage(Operation):
                 # Code path 3 (see docstring)
                 # example stderr:
                 # error: Failed dependencies:
-                #    geos = 3.2.2 is needed by postgis-1.0-1.x86_64
-                logger.error(e.cmd.get_results().stderr)
-
-                # TODO: AK: MPP-15512 - gppkg must be able to handle shared 
-                # dependencies during uninstall.
-                # This will require cross referencing "geos = 3.2.2" with the 
-                # rpm -qp --provides output of the involved rpms to determine
-                # which rpms must remain installed. We cannot assume that 
-                # <name> = <version> will correspond to a <name>-<version>...rpm
-                # that is involved in the given rpm -e --test command.
-                raise
-
-            # Code path 2, possibly (see docstring)
-            # example stderr:
-            #   error: package postgis-1.0-1.x86_64 is not installed
-            #   error: package proj-4.7.0-1.x86_64 is not installed
-            #   error: package geos-3.2.2-1.x86_64 is not installed
-            for line in lines:
-                if 'not installed' in line.lower():
-                    package_name = line.split()[2]
-                    rpm_set.remove(package_name)
-                else:
-                    # This is unexpected, so bubble up the ExecutionError.
-                    raise
+                #    jre = 1.6.0_26 is needed by (installed) gphdfs-1.1-1.x86_64
+                self.resolve_shared_dependencies(rpm_set, lines[1:])
+            else:
+                # Code path 2, possibly (see docstring)
+                # example stderr:
+                #   error: package postgis-1.0-1.x86_64 is not installed
+                #   error: package proj-4.7.0-1.x86_64 is not installed
+                #   error: package geos-3.2.2-1.x86_64 is not installed
+                for line in lines:
+                    if 'not installed' in line.lower():
+                        package_name = line.split()[2]
+                        rpm_set.remove(package_name)
+                    else:
+                        # This is unexpected, so bubble up the ExecutionError.
+                        raise
 
         # MPP-14359 - installation and uninstallation prechecks must also consider
         # the archive. That is, if a partial uninstallation had removed all rpms
@@ -575,13 +569,56 @@ class ValidateUninstallPackage(Operation):
         # Code path 1 (See docstring)
         return rpm_set
 
+    def resolve_shared_dependencies(self, rpm_set, dependency_lines):
+        """
+        This is a very naive resolution to shared dependencies. (See code path #3 in ValidateUninstallPackage.execute)
 
-            
+        Among the rpms we attempt to remove from the system, a subset cannot be 
+        removed during this particular gppkg uninstallation, because their removal would violate
+        the dependency constraints of other rpms that remain in the system; we simply leave these culprit rpm(s) behind.
+        More specifically, the preceding rpm --test -e command has given us the violated *capabilities*. For each *capability*,
+        we query the rpm database with --whatprovides to discern the culprit rpm(s).
+
+        In simpler terms, consider this example:
+            pljava depends on jre, which its gppkg contains
+            gphdfs depends on jre, which its gppkg contains
+            install the gppkgs for both pljava and gphdfs
+            uninstall pljava gppkg 
+            we internally attempt to "rpm -e" the jre rpm, hitting the gphdfs dependency error here involving "jre = 1.6"
+            we determine that the jre rpm is responsible for *providing* "jre = 1.6"
+            so, we ultimately omit the jre rpm from our "rpm -e" and move on
+
+        TODO: AK: A more robust version of this function would ensure that the remaining
+        rpms are, in fact, bound by a remaining gppkg.  We defer this responsibility for now because gppkgs 
+        should not have external dependencies. That is, no package should have requirements on rpms 
+        not contained in its own gppkg distro. So, it's safe to assume that if foo is a culprit rpm, there exists
+        some gppkg bar that internally contains foo. (I realize that, with time, this will not be a scalable requirement 
+        for gppkgs... hence the TODO.)
+
+        @type  rpm_set: set
+        @param rpm_set: rpms being uninstalled, among which there exists an rpm
+                        whose removal violates the dependencies of remaining rpms
+        @type  dependency_lines: list
+        @param dependency_lines: lines produced from the stderr in 
+                                 code path #3 in ValidateUninstallPackage.execute
+                                 ex: ["     jre >= 1.6.0_26 is needed by (installed) gphdfs-1.1-1.x86_64"]
+        """
+        for dependency_line in dependency_lines:
+            violated_capability = dependency_line.split()[0]    # e.g. "jre"
+            cmd = Command('Discerning culprit rpms for %s' % violated_capability,
+                          'rpm -q --whatprovides %s --dbpath %s' % (violated_capability, RPM_DATABASE))
+            cmd.run(validateAfter = True)
+            culprit_rpms = set(cmd.get_results().stdout.splitlines())
+            rpm_set -= culprit_rpms
+
+
+
 class ExtractPackage(Operation):
-    '''
-        Extract the contents of the package into the temp folder
-    '''
+    """
+    Extract the contents of the package into the temp folder
 
+    TODO: AK: Extraction should be implemented as a context manager.
+    """
     def __init__(self, gppkg):
         self.gppkg = gppkg 
 
