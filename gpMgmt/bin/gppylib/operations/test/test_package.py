@@ -16,10 +16,15 @@ from gppylib.commands.unix import Scp
 from gppylib.commands.base import Command, ExecutionError
 from gppylib.operations import Operation
 from gppylib.operations.unix import CheckFile, RemoveRemoteFile
+from gppylib.operations.package import dereference_symlink
 
 OS = platform.system()
 ARCH = platform.machine()
-GPHOME = gp.get_gphome()
+
+# AK: use dereference_symlink when mucking with RPM database for the same reason 
+# it's used in the gppylib.operations.package. For more info, see the function definition.
+GPHOME = dereference_symlink(gp.get_gphome())
+
 ARCHIVE_PATH = os.path.join(GPHOME, 'share/packages/archive')
 RPM_DATABASE = os.path.join(GPHOME, 'share/packages/database') 
 GPPKG_EXTENSION = ".gppkg"
