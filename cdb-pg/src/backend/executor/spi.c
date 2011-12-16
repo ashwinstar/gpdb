@@ -1876,11 +1876,13 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
              * acquire it again.
              */
             if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
-                    !superuser() && 
-                    queryDesc->plannedstmt->planTree &&
-                    queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL 
+                    !superuser()
                )
             {
+				/*
+				 * This is SELECT, so we should have planTree anyway.
+				 */
+				Assert(queryDesc->plannedstmt->planTree);
 
                 /* 
                  * MPP-6421
