@@ -8,7 +8,7 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 
-import os, sys
+import os, sys, copy
 
 import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE, SUPPRESS_HELP
@@ -701,9 +701,16 @@ class GpStart:
         logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
 
         # verify we can connect to the master
+        # MPP-15604 - use bootstrap user during upgrade
         msg = None
+        testurl = self.dburl
+        if is_upgrade_mode:
+            testurl = copy.copy(testurl)
+            testurl.pguser = gp.get_user()
+            logger.info("Testing connection as user %s" % testurl.pguser)
+
         try:
-            masterconn = dbconn.connect(self.dburl, upgrade=is_upgrade_mode)
+            masterconn = dbconn.connect(testurl, upgrade=is_upgrade_mode)
             masterconn.close()
 
         except Exception, e:
