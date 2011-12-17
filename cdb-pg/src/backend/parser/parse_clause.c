@@ -3051,7 +3051,7 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 		/* if tlist item is an UNKNOWN literal, change it to TEXT */
 		if (restype == UNKNOWNOID && resolveUnknown)
 		{
-			Oid		tobe_type;
+			Oid		tobe_type = InvalidOid;
 			int32	tobe_typmod;
 
 			if (pstate->p_setopTypes)
@@ -3063,7 +3063,8 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 				tobe_type = list_nth_oid(pstate->p_setopTypes, idx);
 				tobe_typmod = list_nth_int(pstate->p_setopTypmods, idx);
 			}
-			else
+
+			if (!OidIsValid(tobe_type))
 			{
 				tobe_type = TEXTOID;
 				tobe_typmod = -1;

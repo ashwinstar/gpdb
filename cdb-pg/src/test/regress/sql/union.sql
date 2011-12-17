@@ -178,8 +178,11 @@ select 'b'::information_schema.sql_identifier)a;
   )s2);
 
 -- Yet, we keep behaviors on text-like columns
-create view union_textlike as select 'text' as textlike UNION select rsqname from pg_resqueue;
-select pg_typeof(textlike) from union_textlike;
+select pg_typeof(a) from(select 'foo' a union select 'foo'::name)s;
+select pg_typeof(a) from(select 1 x, 'foo' a union
+    select 1, 'foo' union select 1, 'foo'::name)s;
+select pg_typeof(a) from(select 1 x, 'foo' a union
+    (select 1, 'foo' union select 1, 'foo'::name))s;
 
 CREATE TABLE union_ctas (a, b) AS SELECT 1, 2 UNION SELECT 1, 1 UNION SELECT 1, 1;
 SELECT * FROM union_ctas;

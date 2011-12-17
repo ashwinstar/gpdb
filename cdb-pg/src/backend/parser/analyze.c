@@ -10346,49 +10346,50 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 		}
 
 		/*
-		 * Backward compatibity; we cast UNKNOWN to text
-		 * if the others are STRING_TYPE. See comments above.
+		 * Backward compatibility; Unfortunately, we cannot change
+		 * the old behavior of the part which was working without ERROR,
+		 * mostly for the view definition. See comments above for detail.
+		 * Setting InvalidOid for this column, the column type resolution
+		 * will be falling back to the old process.
 		 */
 		if (!hasnontext)
 		{
-			foreach (lct2, types)
-			{
-				Oid		ntype = lfirst_oid(lct2);
-
-				if (ntype == UNKNOWNOID)
-					lfirst_oid(lct2) = TEXTOID;
-			}
-		}
-
-		/*
-		 * Even if the types are all the same, we resolve the type
-		 * by select_common_type(), which casts domains to base types.
-		 * Ideally, the domain types should be preserved, but to keep
-		 * compatibility with older GPDB views, currently we don't change it.
-		 * This restriction will be solved once upgrade/view issues get clean.
-		 * See MPP-7509 for the issue.
-		 */
-		restype = select_common_type(types, context);
-		/*
-		 * If there's no common type, the last resort is TEXT.
-		 * See also select_common_type().
-		 */
-		if (restype == UNKNOWNOID)
-		{
-			restype = TEXTOID;
+			restype = InvalidOid;
 			restypmod = -1;
 		}
 		else
 		{
 			/*
-			 * Essentially we preserve typmod only when all elements
-			 * are identical, otherwise default (-1).
+			 * Even if the types are all the same, we resolve the type
+			 * by select_common_type(), which casts domains to base types.
+			 * Ideally, the domain types should be preserved, but to keep
+			 * compatibility with older GPDB views, currently we don't change it.
+			 * This restriction will be solved once upgrade/view issues get clean.
+			 * See MPP-7509 for the issue.
 			 */
-			if (allsame)
-				restypmod = ptypmod;
-			else
+			restype = select_common_type(types, context);
+			/*
+			 * If there's no common type, the last resort is TEXT.
+			 * See also select_common_type().
+			 */
+			if (restype == UNKNOWNOID)
+			{
+				restype = TEXTOID;
 				restypmod = -1;
+			}
+			else
+			{
+				/*
+				 * Essentially we preserve typmod only when all elements
+				 * are identical, otherwise default (-1).
+				 */
+				if (allsame)
+					restypmod = ptypmod;
+				else
+					restypmod = -1;
+			}
 		}
+
 		pstate->p_setopTypes = lappend_oid(pstate->p_setopTypes, restype);
 		pstate->p_setopTypmods = lappend_int(pstate->p_setopTypmods, restypmod);
 	}
@@ -10641,7 +10642,11 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 		List	   *lcoltypmods;
 		List	   *rcoltypmods;
 		ListCell   *lct;
+		ListCell   *rct;
+		ListCell   *mct;
 		ListCell   *lcm;
+		ListCell   *rcm;
+		ListCell   *mcm;
 		const char *context;
 
 		context = (stmt->op == SETOP_UNION ? "UNION" :
@@ -10682,10 +10687,44 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 		Assert(pstate->p_setopTypes && pstate->p_setopTypmods);
 		Assert(list_length(pstate->p_setopTypes) ==
 			   list_length(pstate->p_setopTypmods));
-		forboth(lct, pstate->p_setopTypes, lcm, pstate->p_setopTypmods)
+		Assert(list_length(pstate->p_setopTypes) ==
+			   list_length(lcoltypes));
+
+		/* Iterate each column with tree candidates */
+		lct = list_head(lcoltypes);
+		rct = list_head(rcoltypes);
+		lcm = list_head(lcoltypmods);
+		rcm = list_head(rcoltypmods);
+		forboth(mct, pstate->p_setopTypes, mcm, pstate->p_setopTypmods)
 		{
-			op->colTypes = lappend_oid(op->colTypes, lfirst_oid(lct));
-			op->colTypmods = lappend_int(op->colTypmods, lfirst_int(lcm));
+			Oid			lcoltype = lfirst_oid(lct);
+			Oid			rcoltype = lfirst_oid(rct);
+			int32		lcoltypmod = lfirst_int(lcm);
+			int32		rcoltypmod = lfirst_int(rcm);
+			Oid			rescoltype = lfirst_oid(mct);
+			int32		rescoltypmod = lfirst_int(mcm);
+
+			/*
+			 * If the preprocessed coltype is InvalidOid, we fall back
+			 * to the old style type resolution for backward
+			 * compatibility. See transformSetOperationStmt for the reason.
+			 */
+			if (!OidIsValid(rescoltype))
+			{
+				/* select common type, same as CASE et al */
+				rescoltype = select_common_type(
+						list_make2_oid(lcoltype, rcoltype), context);
+				/* if same type and same typmod, use typmod; else default */
+				if (lcoltype == rcoltype && lcoltypmod == rcoltypmod)
+					rescoltypmod = lcoltypmod;
+			}
+			/* Set final decision */
+			op->colTypes = lappend_oid(op->colTypes, rescoltype);
+			op->colTypmods = lappend_int(op->colTypmods, rescoltypmod);
+			lct = lnext(lct);
+			lcm = lnext(lcm);
+			rct = lnext(rct);
+			rcm = lnext(rcm);
 		}
 
 		return (Node *) op;
