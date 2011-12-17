@@ -2905,10 +2905,20 @@ static bool DatumStreamBlockWrite_OrigHasSpace(
     if(dsw->nth + 1 >= dsw->maxDatumPerBlock)
         return false;
 
-    if(null || dsw->has_null)
+	if (null && ! dsw->has_null)
 	{
-        current_Size += MAXALIGN(
-							DatumStreamBitMapWrite_NextSize(&dsw->null_bitmap));
+		/* 
+		 * NullBitMap space has to be calculated since this is first <null> in this AO Content block.
+		 */
+		current_Size += DatumStreamBitMap_Size(dsw->nth + 1);
+	}
+	else
+	{
+		if (null || dsw->has_null)
+		{
+			current_Size += MAXALIGN(
+								DatumStreamBitMapWrite_NextSize(&dsw->null_bitmap));
+		}
 	}
 
 	current_Size += (dsw->datump - dsw->datum_buffer);
