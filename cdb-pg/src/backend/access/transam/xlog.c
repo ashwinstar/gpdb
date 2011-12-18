@@ -1410,6 +1410,16 @@ begin:;
 		if (Debug_print_xlog_relation_change_info_backtrace_skip_issues &&
 			skipIssue)
 		{
+			/* Code for investigating MPP-13909, will be removed as part of the fix */
+			elog(WARNING, 
+				 "ChangeTracking_PrintRelationChangeInfo hang skipIssue %s",
+				 (skipIssue ? "true" : "false"));
+			
+			for (int i=0; i < 24 * 60; i++)
+			{
+				pg_usleep(60000000L); /* 60 sec */
+			}
+			Insist(0);
 			debug_backtrace();
 		}
 	}
