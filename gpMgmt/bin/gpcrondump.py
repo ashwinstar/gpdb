@@ -12,6 +12,10 @@ from datetime import datetime
 import sys
 import socket
 from optparse import Option, OptionGroup, OptionParser, OptionValueError
+from sets import Set
+
+import re
+import stat
 
 try:
     from gppylib import gplog
@@ -22,9 +26,14 @@ try:
     from gppylib.operations import Operation
     from gppylib.operations.dump import DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
+    from gppylib.gparray import GpArray
+    from gppylib.db import dbconn
+    from getpass import getpass
+    
+    
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
-
+ 
 INJECT_ROLLBACK = False
 
 EXECNAME = 'gpcrondump'
@@ -65,13 +74,16 @@ class GpCronDump(Operation):
         self.report_dir = options.report_dir
         self.encoding = options.encoding
         self.output_options = options.output_options
-
+        self.ddboost_host = options.ddboost_host
+        self.ddboost_user = options.ddboost_user
+        self.ddboost_config_remove = options.ddboost_config_remove
+    
         # TODO: if action is 'append', wouldn't you expect a lack of input to result in [], as opposed to None?
         if self.include_dump_tables is None: self.include_dump_tables = []
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
         if self.output_options is None: self.output_options = []
 
-        if not self.clear_dumps_only:
+        if not (self.clear_dumps_only or bool(self.ddboost_host) or bool(self.ddboost_user) or self.ddboost_config_remove):
             if self.dump_databases is not None:
                 self.dump_databases = self.dump_databases.split(",")
             elif 'PGDATABASE' in os.environ:
@@ -92,14 +104,83 @@ class GpCronDump(Operation):
             logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
+        
+    def getGpArray(self):
+        return GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)
+    
+         
+    def getHostSet(self, gparray):
+        hostlist = gparray.get_hostlist(includeMaster=True)
+        hostset = Set(hostlist)
+        return hostset
+
+
+    def validatePassword(self, password):
+        if (not re.search(r'^[a-zA-Z0-9!@#$%^&+=\*\\/\(\)-_~;:\'\"<>\{\}|\?\.\,`"]{,40}$', password)):
+            legal_password_str = """
+            The maximum length of the password is 40 characters.
+            The following password characters are allowed
+            
+                1) Lowercase letters (a-z) 
+                2) Uppercase letters (A-Z) 
+                3) Numbers (0-9)
+                4) Special characters ($, %, #, + and so on). 
+            """
+            raise ExceptionNoStackTraceNeeded(legal_password_str)
+
+
+    def validateUserName(self, userName):
+        if (not re.search(r'^.{,30}$', userName)):
+            legal_username_str = """The maximum length of username is 30 characters  """
+            raise ExceptionNoStackTraceNeeded(legal_username_str)
+
+
+    def writeToFile(self, content, filePathName):
+        f = open(filePathName, 'w')
+        f.write(content)
+        f.close()
+        os.chmod(filePathName, stat.S_IREAD | stat.S_IWRITE)
+
+    def scpToHosts(self, hostset, credentials):
+        filePathName = os.path.expanduser("~") + "/.ddconfig"
+        self.writeToFile(credentials, filePathName)
+        for host in hostset:
+            cmdline = 'scp ' + filePathName + ' $USER@' + host + ':~'
+            if (os.system(cmdline) == 0):
+                logger.info(".ddconfig delivered successfully to %s " % host)
+            else:
+                logger.warn("problem delivering the .ddconfig file to %s " % host)
+                logger.warn("cmd: %s " % cmdline)
 
     def execute(self):
+        if (bool(self.ddboost_host) or bool(self.ddboost_user)):
+            if (bool(self.ddboost_host) and bool(self.ddboost_user) and (self.dump_databases is None) and (not self.clear_dumps_only)):
+                self.validateUserName(userName = self.ddboost_user)
+                hostset = self.getHostSet(self.getGpArray())
+                p = getpass()
+                self.validatePassword(password = p)
+                credentials = self.ddboost_host + "\n"  + self.ddboost_user + "\n" + p
+                self.scpToHosts(hostset, credentials)
+                return 0;
+            elif (bool(self.ddboost_host) and bool(self.ddboost_user)):
+                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
+            else:
+                raise ExceptionNoStackTraceNeeded('For DDBoost config, both options are required --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>.')
+        
+        if (self.ddboost_config_remove):
+            if (self.ddboost_config_remove and (self.dump_databases is None) and (not self.clear_dumps_only)):
+                hostset = self.getHostSet(self.getGpArray())
+                self.scpToHosts(hostset, '')
+                return 0;
+            else:
+                raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
+            
         if self.clear_dumps_only:
             DeleteOldestDumps(master_datadir = self.master_datadir,
                               master_port = self.master_port,
                               ddboost = self.ddboost).run()
             return
-
+        
         if self.post_script is not None:
             self._validate_run_program()
 
@@ -452,18 +533,27 @@ def create_parser():
                      help="Use SESSION AUTHORIZATION commands instead of ALTER OWNER commands.")
     addTo.add_option('--rsyncable', const='--rsyncable', action='append_const', dest='output_options',
                      help="Pass the --rsyncable option to gzip, if compression is being used.")
-
+    
     # TODO: Dead options. Remove eventually.
     addTo.add_option('-i', action='store_true', dest='bypass_cluster_check', default=False, help="No longer supported.")
     addTo.add_option('-p', action='store_true', dest='dump_primaries', default=True, help="No longer supported.")  
     addTo.add_option('-w', dest='backup_set', help="No longer supported.")
+   
 
     parser.add_option_group(addTo)
 
     ddOpt = OptionGroup(parser, "DDBoost")
     ddOpt.add_option('--ddboost', dest='ddboost', help="Dump to DDBoost using ~/.ddconfig", action="store_true", default=False)
     parser.add_option_group(ddOpt)
-
+   
+    #DDBoostConfig options
+    ddConfigOpt = OptionGroup(parser, "DDBoostConfig")
+    ddConfigOpt.add_option('--ddboost-host', dest='ddboost_host', help="Configuration of ddboost hostname.", action='store', default=None)
+    ddConfigOpt.add_option('--ddboost-user', dest='ddboost_user', help="Configuration of ddboost user.", action="store", default=None)
+    ddConfigOpt.add_option('--ddboost-config-remove', dest='ddboost_config_remove', help="Remove ~/.ddconfig file.", action="store_true", default=False)
+    parser.add_option_group(ddConfigOpt)
+    
+    
     parser.setHelp([
     """
 Crontab entry (example):
@@ -485,9 +575,6 @@ will be displayed.
     return parser
 
 if __name__ == '__main__':
-    sys.argv[0] = EXECNAME		    # for cli_help
-    mainOptions = {
-        "pidfilename" : GPCRONDUMP_PID_FILE,
-        "programNameOverride" : EXECNAME
-        }							# for logger
-    simple_main(create_parser, GpCronDump, mainOptions)
+    sys.argv[0] = EXECNAME                                                              # for cli_help
+    simple_main(create_parser, GpCronDump, { "pidfilename" : GPCRONDUMP_PID_FILE,
+                                             "programNameOverride" : EXECNAME })        # for logger
