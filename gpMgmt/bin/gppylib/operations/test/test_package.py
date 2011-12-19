@@ -13,10 +13,10 @@ from gppylib.gparray import GpArray
 from contextlib import closing
 from gppylib.commands import gp
 from gppylib.commands.unix import Scp
-from gppylib.commands.base import Command, ExecutionError
+from gppylib.commands.base import Command, ExecutionError, REMOTE
 from gppylib.operations import Operation
 from gppylib.operations.unix import CheckFile, RemoveRemoteFile
-from gppylib.operations.package import dereference_symlink
+from gppylib.operations.package import dereference_symlink, GpScp
 
 OS = platform.system()
 ARCH = platform.machine()
@@ -75,6 +75,20 @@ def remove_timestamp(result):
 def run_command(cmd_str):
     cmd = Command("Local Command", cmd_str)
     cmd.run(validateAfter = True)
+    results = cmd.get_results()
+    
+    if results.rc != 0:
+        return results.stderr.strip()
+    else:
+        return results.stdout.strip()
+
+def run_remote_command(cmd_str, host):
+    cmd = Command(name = "remote command",
+                  cmdStr = cmd_str,
+                  ctxt = REMOTE,
+                  remoteHost = host)
+    cmd.run(validateAfter = True)
+    
     results = cmd.get_results()
     
     if results.rc != 0:
@@ -547,6 +561,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
 
     @unittest.expectedFailure
     def test01_delete_package_from_archive_and_uninstall(self):
+        '''
+            Known issue: MPP-15737
+        '''
         #Building off of last test case's state
         #Use gppkg from previous test
         gppkg_file = self.gppkg_spec.get_filename()
@@ -572,17 +589,22 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         with self.assertRaisesRegexp(ExecutionError, "%s is not installed" % self.rpm_spec.get_package_name()):
             run_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE))
         
-        try:
-            self.install(gppkg_file) 
-        except ExecutionError, e:
-            #Install the rpm 
-            with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
-                tf.extract(self.rpm_spec.get_filename())
-            run_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME))
-            os.remove(self.rpm_spec.get_filename())
-            self.fail("ExecutionError %s" % e)
+        self.install(gppkg_file) 
 
-    def test03_install_rpm_and_install(self):
+    def test03_delete_rpm_and_uninstall(self):
+        #Use gppkg from previous test
+        gppkg_file = self.gppkg_spec.get_filename()
+        self.install(gppkg_file)
+    
+        #Uninstall the RPM
+        run_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE))
+        
+        with self.assertRaisesRegexp(ExecutionError, "%s is not installed" % self.rpm_spec.get_package_name()):
+            run_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE))
+        
+        self.remove(gppkg_file) 
+
+    def test04_install_rpm_and_install(self):
         #Install the rpm 
         with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
             tf.extract(self.rpm_spec.get_filename())
@@ -591,41 +613,221 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         run_command("rpm --install %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME))  
         
         results = run_command("rpm -q %s --dbpath %s" %(self.rpm_spec.get_package_name(), RPM_DATABASE))
-        self.assertRegexpMatches(results, self.rpm_spec.get_package_name())
+        self.assertEquals(results, self.rpm_spec.get_package_name())
+        
+        #Use gppkg from previous test
+        gppkg_file = self.gppkg_spec.get_filename()
+      
+        self.install(gppkg_file)
+
+    @unittest.expectedFailure
+    def test05_install_rpm_and_uninstall(self):
+        #Install the rpm 
+        with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+            tf.extract(self.rpm_spec.get_filename())
+          
+        #Install rpm 
+        run_command("rpm --install %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME))  
+        
+        results = run_command("rpm -q %s --dbpath %s" %(self.rpm_spec.get_package_name(), RPM_DATABASE))
+        self.assertEquals(results, self.rpm_spec.get_package_name())
         
         #Use gppkg from previous test
         gppkg_file = self.gppkg_spec.get_filename()
       
         try: 
-            self.install(gppkg_file)
+            self.remove(gppkg_file)
         except ExecutionError, e:
             run_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE))
             os.remove(self.rpm_spec.get_filename())
             self.fail("ExecutionError %s" % e)
 
     @unittest.expectedFailure
-    def test04_delete_package_from_archive_on_segment(self):
-        '''
-            Known issue: MPP-15737
-        '''
+    def test06_delete_package_from_archive_on_segment_and_install(self):
         gppkg_file = self.gppkg_spec.get_filename()
         archive_file = os.path.join(ARCHIVE_PATH, gppkg_file)
         self.install(gppkg_file)
 
         #Remove package from archive
-        segment_host_list = get_host_list()[1]
-        self.assertTrue(len(segment_host_list) > 0) 
-        RemoveRemoteFile(archive_file ,segment_host_list[0])
+        host_list = get_host_list()[1]
+        self.assertTrue(len(host_list) > 0) 
+        host = host_list[0]
+        RemoveRemoteFile(archive_file ,host).run()
 
         try:
             self.install(gppkg_file)
         except ExecutionError, e:
-            Scp(name = "copy to segment", srcFile = gppkg_file, dstFile = archive_file, srcHost = None, dstHost = segment_host_list[0]).run(validateAfter = True)
+            Scp(name = "copy gppkg to segment",
+                srcFile = gppkg_file, 
+                dstFile = archive_file, 
+                srcHost = None,
+                dstHost = host).run(validateAfter = True)
             self.fail("ExecutionError %s" % e)
-            
-    @skipIfNoStandby()
+           
+    @unittest.expectedFailure 
+    def test07_delete_package_from_archive_on_segment_and_uninstall(self):
+        gppkg_file = self.gppkg_spec.get_filename()
+        archive_file = os.path.join(ARCHIVE_PATH, gppkg_file)
+        self.install(gppkg_file)
+
+        #Remove package from archive
+        host_list = get_host_list()[1]
+        self.assertTrue(len(host_list) > 0) 
+        host = host_list[0]
+        RemoveRemoteFile(archive_file ,host).run()
+
+        try:
+            self.remove(gppkg_file)
+        except ExecutionError, e:
+            Scp(name = "copy rpm to segment", 
+                srcFile = self.gppkg_spec.get_filename(), 
+                dstFile = os.path.join(ARCHIVE_PATH, self.gppkg_spec.get_filename()), 
+                srcHost = None,
+                dstHost = host).run(validateAfter = True)
+            self.fail("ExecutionError = %s" % str(e))
+
     @unittest.expectedFailure
-    def test05_delete_package_from_archive_on_standby(self):
+    def test08_uninstall_rpm_on_segments_and_install(self):
+        #Use gppkg from previous test
+        gppkg_file = self.gppkg_spec.get_filename()
+        self.install(gppkg_file)
+   
+        host_list = get_host_list()[1]
+        self.assertTrue(len(host_list) > 0) 
+        host = host_list[0]
+ 
+        #Uninstall the RPM
+        run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+        
+        with self.assertRaisesRegexp(ExecutionError, "%s is not installed" % self.rpm_spec.get_package_name()):
+                run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+        
+        try:
+            self.install(gppkg_file) 
+        except ExecutionError, e:
+            #Install the rpm 
+            with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+                tf.extract(self.rpm_spec.get_filename())
+            Scp(name = "copy rpm to segment", 
+                srcFile = self.rpm_spec.get_filename(), 
+                dstFile = self.rpm_spec.get_filename(), 
+                srcHost = None,
+                dstHost = host).run(validateAfter = True)
+            run_remote_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME), host)
+            os.remove(self.rpm_spec.get_filename())
+            RemoveRemoteFile(self.rpm_spec.get_filename(), host).run()
+            self.fail("ExecutionError %s" % e)
+
+    def test09_uninstall_rpm_on_segments_and_uninstall(self):
+        #Use gppkg from previous test
+        gppkg_file = self.gppkg_spec.get_filename()
+        self.install(gppkg_file)
+   
+        host_list = get_host_list()[1]
+        self.assertTrue(len(host_list) > 0) 
+        host = host_list[0]
+ 
+        #Uninstall the RPM
+        run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+        
+        with self.assertRaisesRegexp(ExecutionError, "%s is not installed" % self.rpm_spec.get_package_name()):
+            run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+        
+        self.remove(gppkg_file) 
+
+    def test10_install_rpm_on_segments_and_install(self):
+        gppkg_file = self.gppkg_spec.get_filename()
+ 
+        host_list = get_host_list()[1]
+        self.assertTrue(len(host_list) > 0) 
+        host = host_list[0]
+ 
+        #Install the rpm 
+        with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+            tf.extract(self.rpm_spec.get_filename())
+        Scp(name = "copy rpm to segment", 
+            srcFile = self.rpm_spec.get_filename(), 
+            dstFile = self.rpm_spec.get_filename(), 
+            srcHost = None, 
+            dstHost = host).run(validateAfter = True)
+        run_remote_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME), host)
+        results = run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+        self.assertEquals(results, self.rpm_spec.get_package_name())
+
+        self.install(gppkg_file) 
+
+    @unittest.expectedFailure
+    def test11_install_rpm_on_segments_and_uninstall(self):
+        gppkg_file = self.gppkg_spec.get_filename()
+        
+        host_list = get_host_list()[1]
+        self.assertTrue(len(host_list) > 0) 
+        host = host_list[0]
+
+        #Install the rpm
+        with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+            tf.extract(self.rpm_spec.get_filename())
+        Scp(name = "copy rpm to segment",
+              srcFile = self.rpm_spec.get_filename(),
+              dstFile = self.rpm_spec.get_filename(), 
+              srcHost = None,
+              dstHost = host).run(validateAfter = True)
+        run_remote_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME), host)
+        results = run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+        self.assertEquals(results, self.rpm_spec.get_package_name())
+
+        try:
+            self.remove(gppkg_file)
+        except ExecutionError, e:
+            run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+            os.remove(self.rpm_spec.get_filename())
+            RemoveRemoteFile(self.rpm_spec.get_filename(), host).run()
+            self.fail("ExecutionError %s" % e)
+
+    def test12_clean(self):
+        gppkg_file = self.gppkg_spec.get_filename()
+
+        host_list = get_host_list()[1]
+        self.assertTrue(len(host_list) > 0)
+        host = host_list[0]
+
+        #Install the gppkg
+        self.install(gppkg_file)
+
+        #Uninstall package on one host
+        run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
+        RemoveRemoteFile(os.path.join(ARCHIVE_PATH, gppkg_file), host).run() 
+
+        run_command("gppkg --clean")
+        
+        self.assertTrue(self.check_install(gppkg_file))
+
+
+@skipIfNoStandby()
+class MuckWithInternalsOnStandby(GppkgTestCase):            
+    @unittest.expectedFailure
+    def test01_delete_package_from_archive_on_standby_and_install(self):
+        #gppkg_file = self.gppkg_spec.get_filename()
+        gppkg_file = self.build(self.gppkg_spec, self.rpm_spec)
+        archive_file = os.path.join(ARCHIVE_PATH, gppkg_file)
+        self.install(gppkg_file)
+
+        #Remove package from standby
+        standby = get_host_list()[0] 
+        RemoveRemoteFile(os.path.join(ARCHIVE_PATH, gppkg_file), standby).run()
+
+        try:
+            self.install(gppkg_file)
+        except ExecutionError, e:
+            Scp(name = "copy gppkg to standby",
+                srcFile = gppkg_file,
+                dstFile = archive_file,
+                srcHost = None,
+                dstHost = standby).run(validateAfter = True)
+            self.fail("ExecutionError %s" % e)
+
+    @unittest.expectedFailure
+    def test02_delete_package_from_archive_on_standby_and_uninstall(self):
         '''
             Known issue: MPP-15737
         '''
@@ -638,9 +840,106 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         RemoveRemoteFile(os.path.join(ARCHIVE_PATH, gppkg_file), standby).run()
 
         try:
-            self.install(gppkg_file)
+            self.remove(gppkg_file)
         except ExecutionError, e:
-            Scp(name = "copy to segment", srcFile = gppkg_file, dstFile = archive_file, srcHost = None, dstHost = standby).run(validateAfter = True)
+            GpScp(source_path = gppkg_file,
+                  target_path = archive_file,
+                  host_list = get_host_list()[1]).run()
+            Scp(name = "copy gppkg to standby",
+                srcFile = gppkg_file,
+                dstFile = archive_file, 
+                srcHost = None, 
+                dstHost = standby).run(validateAfter = True)
+            self.fail("ExecutionError %s" % e)
+
+    @unittest.expectedFailure
+    def test03_uninstall_rpm_on_standby_and_install(self):
+        #Use gppkg from previous test
+        gppkg_file = self.gppkg_spec.get_filename()
+        self.install(gppkg_file)
+   
+        standby = get_host_list()[0]
+ 
+        #Uninstall the RPM
+        run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), standby)
+        
+        with self.assertRaisesRegexp(ExecutionError, "%s is not installed" % self.rpm_spec.get_package_name()):
+                run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), standby)
+        
+        try:
+            self.install(gppkg_file) 
+        except ExecutionError, e:
+            #Install the rpm 
+            with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+                tf.extract(self.rpm_spec.get_filename())
+            Scp(name = "copy rpm to standby", 
+                source_path = self.rpm_spec.get_filename(), 
+                target_path = self.rpm_spec.get_filename(), 
+                srcHost = None,
+                dstHost = standby).run(validateAfter = True)
+            run_remote_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME), standby)
+            os.remove(self.rpm_spec.get_filename())
+            RemoveRemoteFile(self.rpm_spec.get_filename(), standby).run()
+            self.fail("ExecutionError %s" % e)
+
+    def test04_uninstall_rpm_on_standby_and_uninstall(self):
+        #Use gppkg from previous test
+        gppkg_file = self.gppkg_spec.get_filename()
+        self.install(gppkg_file)
+   
+        standby = get_host_list()[0]
+ 
+        #Uninstall the RPM
+        run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), standby)
+        
+        with self.assertRaisesRegexp(ExecutionError, "%s is not installed" % self.rpm_spec.get_package_name()):
+            run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), standby)
+        
+        self.remove(gppkg_file) 
+
+    def test05_install_rpm_on_standby_and_install(self):
+        gppkg_file = self.gppkg_spec.get_filename()
+ 
+        standby = get_host_list()[0]
+ 
+        #Install the rpm 
+        with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+            tf.extract(self.rpm_spec.get_filename())
+        Scp(name = "copy the rpm to standby",
+            srcFile = self.rpm_spec.get_filename(),
+            dstFile = self.rpm_spec.get_filename(), 
+            srcHost = None, 
+            dstHost = standby).run(validateAfter = True)
+        run_remote_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME), standby)
+        results = run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), standby)
+        self.assertEquals(results, self.rpm_spec.get_package_name())
+
+        self.install(gppkg_file) 
+
+    @unittest.expectedFailure
+    def test06_install_rpm_on_standby_and_uninstall(self):
+        gppkg_file = self.gppkg_spec.get_filename()
+        
+        standby = get_host_list()[0]
+
+        #Install the rpm
+        with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+            tf.extract(self.rpm_spec.get_filename())
+        Scp(name = "copy rpm to standby",
+            srcFile = self.rpm_spec.get_filename(),
+            dstFile = self.rpm_spec.get_filename(), 
+            srcHost = None,
+            dstHost = standby).run(validateAfter = True)
+        run_remote_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), RPM_DATABASE, GPHOME), standby)
+        results = run_remote_command("rpm -q %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), standby)
+        self.assertEquals(results, self.rpm_spec.get_package_name())
+
+        try:
+            self.remove(gppkg_file)
+        except ExecutionError, e:
+            run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), standby)
+            os.remove(self.rpm_spec.get_filename())
+            RemoveRemoteFile(self.rpm_spec.get_filename(), standby).run()
             self.fail("ExecutionError %s" % e)
 
 if __name__ == "__main__":
