@@ -32,7 +32,7 @@
  * checking to resist against tampering.
  */
 static int
-get_provider(R_PROV **provider)
+get_provider(R_PROV **provider, R_LIB_CTX *lib_ctx)
 {
 	int ret = R_ERROR_NONE;
 	const R_FEATURE *features[] = {&R_FIPS140_FEATURE_no_default_ecdrbg,
@@ -58,8 +58,9 @@ get_provider(R_PROV **provider)
 
 	/* could be a security issue, make sure we log it */
 	if (ret != R_ERROR_NONE)
-		elog(LOG, "failed to load RSA BSAFE FIPS-140 library in %s: %d",
-			 libpath, ret);
+		elog(LOG, "failed to load RSA BSAFE FIPS-140 library in %s: %s",
+			 libpath,
+			 R_LIB_CTX_get_error_string(lib_ctx, R_RES_MOD_ID_LIBRARY, ret));
 
 	return ret;
 }
@@ -106,7 +107,7 @@ rsa_bsafe_sha_256_digest(const char *str, char *digest)
     /*************************************************************************
      * Step 1a. Get and add the provider of cryptographic implementations.
      *************************************************************************/
-    ret = get_provider(&provider);
+    ret = get_provider(&provider, lib_ctx);
     if (ret != R_ERROR_NONE)
     {
 		/* see LOG messages in get_provider() */
