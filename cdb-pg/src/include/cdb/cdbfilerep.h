@@ -873,6 +873,7 @@ typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s
 	uint32          numChildrenInBatch;
 	bool            startOver;
 	bool            finalBatch;
+	bool            directoryExists;
 
 } FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s;
 
