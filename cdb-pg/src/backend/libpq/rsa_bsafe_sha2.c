@@ -58,7 +58,8 @@ get_provider(R_PROV **provider)
 
 	/* could be a security issue, make sure we log it */
 	if (ret != R_ERROR_NONE)
-		elog(LOG, "failed to load RSA BSAFE FIPS-140 library");
+		elog(LOG, "failed to load RSA BSAFE FIPS-140 library in %s: %d",
+			 libpath, ret);
 
 	return ret;
 }
