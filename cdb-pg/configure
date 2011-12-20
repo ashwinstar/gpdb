@@ -691,6 +691,7 @@ with_perl
 with_tcl
 enable_thread_safety
 INCLUDES
+enable_ddboost
 enable_connectemc
 enable_email
 enable_gphdfs
@@ -800,6 +801,7 @@ enable_snmp
 enable_gphdfs
 enable_email
 enable_connectemc
+enable_ddboost
 enable_thread_safety
 enable_thread_safety_force
 with_tcl
@@ -1469,6 +1471,7 @@ build with coverage testing instrumentation
   --enable-gphdfs        enables GPHDFS support
   --enable-email        enable email alerts
   --enable-connectemc     enable connect emc support
+  --enable-ddboost     enable connect emc support
   --disable-thread-safety  Do not make client libraries thread-safe
   --enable-thread-safety-force  force thread-safety despite thread test failure
   --disable-largefile     omit support for large files
@@ -4972,6 +4975,39 @@ fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: checking whether to build with connectemc... $enable_connectemc" >&5
 $as_echo "checking whether to build with connectemc... $enable_connectemc" >&6; }
+
+
+#
+# --enable-ddboost enables DD Boost support
+#
+
+pgac_args="$pgac_args enable_ddboost"
+
+# Check whether --enable-ddboost was given.
+if test "${enable_ddboost+set}" = set; then :
+  enableval=$enable_ddboost;
+  case $enableval in
+    yes)
+
+$as_echo "#define USE_DDBOOST 1" >>confdefs.h
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      as_fn_error "no argument expected for --enable-ddboost option" "$LINENO" 5
+      ;;
+  esac
+
+else
+  enable_ddboost=no
+
+fi
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_ddboost" >&5
+$as_echo "$enable_ddboost" >&6; }
 
 
 #
