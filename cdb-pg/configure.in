@@ -535,15 +535,6 @@ AC_MSG_RESULT([checking whether to build with connectemc... $enable_connectemc])
 AC_SUBST(enable_connectemc)
 
 #
-# --enable-ddboost enables DD Boost support
-#
-PGAC_ARG_BOOL(enable, ddboost, no,  [  --enable-ddboost     enable connect emc support],
-              [AC_DEFINE([USE_DDBOOST], 1,
-                         [Define to 1 to build with connect emc alert capabilities. (--enable-ddboost)])])
-AC_MSG_RESULT([$enable_ddboost])
-AC_SUBST(enable_ddboost)
-
-#
 # Include directories
 #
 ac_save_IFS=$IFS
