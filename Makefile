@@ -1185,7 +1185,15 @@ endif
 
 libcopy=(cd $(1) && $(TAR) cf - $(2)) | (cd $(3) && $(TAR) xvf -)$(check_pipe_for_errors)
 
-copylibs : thirdparty-dist
+.PHONY: copy-rsa-bsafe-libs
+
+copy-rsa-bsafe-libs:
+	if [ -f $(BLD_THIRDPARTY_LIB_DIR)/libcryptocme.sig ]; then \
+		cp -fp $(BLD_THIRDPARTY_LIB_DIR)/libcryptocme.s* $(INSTLOC)/lib/; \
+		cp -fp $(BLD_THIRDPARTY_LIB_DIR)/libccme_* $(INSTLOC)/lib/; \
+	fi
+
+copylibs : thirdparty-dist copy-rsa-bsafe-libs
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
 	if [ `uname -s` = 'Darwin' ] ; then \
 	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \

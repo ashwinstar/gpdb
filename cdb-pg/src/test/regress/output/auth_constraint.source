@@ -714,7 +714,7 @@ CREATE ROLE abc;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ALTER ROLE abc DENY DAY 0 DENY DAY 1;
 ALTER ROLE abc DROP DENY FOR DAY 2;
-ERROR:  cannot find matching DENY rules for "abc" (user.c:2599)
+ERROR:  cannot find matching DENY rules for "abc" (user.c:2551)
 DROP ROLE abc;
 ---
 --- ALTER ROLE w/ multiple deny and drop specifications
@@ -937,15 +937,15 @@ RESET allow_system_table_mods;
 --- Superuser testing across CREATE ROLE, ALTER ROLE, and trigger
 ---
 create role abc superuser deny day 1;
-ERROR:  cannot create superuser with DENY rules (user.c:553)
+ERROR:  cannot create superuser with DENY rules (user.c:558)
 create role abc superuser;
 alter role abc deny day 1;
-ERROR:  cannot alter superuser with DENY rules (user.c:1112)
+ERROR:  cannot alter superuser with DENY rules (user.c:1119)
 drop role abc;
 create role abc;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 alter role abc superuser deny day 1;
-ERROR:  cannot alter superuser with DENY rules (user.c:1112)
+ERROR:  cannot alter superuser with DENY rules (user.c:1119)
 drop role abc;
 create role abc deny day 1;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
