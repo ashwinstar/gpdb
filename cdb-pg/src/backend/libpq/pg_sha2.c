@@ -18,6 +18,20 @@
 #include "libpq/password_hash.h"
 #include "libpq/pg_sha2.h"
 
+/* RSA BSAFE only supports 10.6 */
+#if defined(__darwin__)
+#include <AvailabilityMacros.h>
+
+#if !defined(MAC_OS_X_VERSION_10_6)
+	#undef HAVE_RSA_BSAFE_FIPS
+#else
+	#if MAC_OS_X_VERSION_MAX_ALLOWED != MAC_OS_X_VERSION_10_6
+		#undef HAVE_RSA_BSAFE_FIPS
+	#endif
+#endif
+
+#endif /* __darwin__ */
+
 #ifdef HAVE_RSA_BSAFE_FIPS
 #include "libpq/rsa_bsafe_sha2.h"
 #endif
