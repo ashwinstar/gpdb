@@ -12330,311 +12330,311 @@ taai: typecmds:00002640:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 taai: typecmds:00002641:  errmsg("type array bounds cannot be specified when setting " 
 taai: typecmds:00002642:  "DEFAULT ENCODING"))); 
 aaaaa GP_IGNORE: uaae: user - ./backend/commands/user.c
-uaae: user:00000185:  ereport(ERROR, 
-uaae: user:00000186:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000187:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000197:  ereport(NOTICE, 
-uaae: user:00000198:  (errmsg("SYSID can no longer be specified"))); 
-uaae: user:00000203:  ereport(ERROR, 
-uaae: user:00000204:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000205:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000211:  ereport(ERROR, 
-uaae: user:00000212:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000213:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000219:  ereport(ERROR, 
-uaae: user:00000220:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000221:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000227:  ereport(ERROR, 
-uaae: user:00000228:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000229:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000235:  ereport(ERROR, 
-uaae: user:00000236:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000237:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000243:  ereport(ERROR, 
-uaae: user:00000244:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000245:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000251:  ereport(ERROR, 
-uaae: user:00000252:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000253:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000259:  ereport(ERROR, 
-uaae: user:00000260:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000261:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000267:  ereport(ERROR, 
-uaae: user:00000268:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000269:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000275:  ereport(ERROR, 
-uaae: user:00000276:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000277:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000283:  ereport(ERROR, 
-uaae: user:00000284:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000285:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000315:  elog(ERROR, "option \"%s\" not recognized", 
-uaae: user:00000316:  defel->defname); 
-uaae: user:00000352:  ereport(NOTICE, 
-uaae: user:00000353:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00000354:  errmsg("resource queue required -- " 
-uaae: user:00000355:  "using default resource queue \"%s\"", 
-uaae: user:00000356:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
-uaae: user:00000366:  ereport(ERROR, 
-uaae: user:00000367:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000368:  errmsg("must be superuser to create superusers"))); 
-uaae: user:00000373:  ereport(ERROR, 
-uaae: user:00000374:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000375:  errmsg("permission denied to create role"))); 
-uaae: user:00000380:  ereport(ERROR, 
-uaae: user:00000381:  (errcode(ERRCODE_RESERVED_NAME), 
-uaae: user:00000382:  errmsg("role name \"%s\" is reserved", 
-uaae: user:00000383:  stmt->role))); 
-uaae: user:00000396:  ereport(ERROR, 
-uaae: user:00000397:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-uaae: user:00000398:  errmsg("role \"%s\" already exists", 
-uaae: user:00000399:  stmt->role))); 
-uaae: user:00000440:  elog(ERROR, "password encryption failed"); 
-uaae: user:00000463:  ereport(ERROR, 
-uaae: user:00000464:  (errcode(ERRCODE_RESERVED_NAME), 
-uaae: user:00000465:  errmsg("resource queue name \"%s\" is reserved", 
-uaae: user:00000466:  resqueue), 
-uaae: user:00000467:  errOmitLocation(true))); 
-uaae: user:00000471:  ereport(ERROR, 
-uaae: user:00000472:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00000473:  errmsg("resource queue \"%s\" does not exist", 
-uaae: user:00000474:  resqueue), 
-uaae: user:00000475:  errOmitLocation(true))); 
-uaae: user:00000486:  ereport(WARNING, 
-uaae: user:00000487:  (errmsg("resource scheduling is disabled"), 
-uaae: user:00000488:  errhint("To enable set resource_scheduler=on"), 
-uaae: user:00000489:  errOmitLocation(true))); 
-uaae: user:00000552:  ereport(ERROR, 
-uaae: user:00000553:  (errmsg("cannot create superuser with DENY rules"))); 
-uaae: user:00000666:  ereport(ERROR, 
-uaae: user:00000667:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000668:  errmsg("conflicting or redundant options"), 
-uaae: user:00000669:  errOmitLocation(true))); 
-uaae: user:00000681:  ereport(ERROR, 
-uaae: user:00000682:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000683:  errmsg("conflicting or redundant options"), 
-uaae: user:00000684:  errOmitLocation(true))); 
-uaae: user:00000691:  ereport(ERROR, 
-uaae: user:00000692:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000693:  errmsg("conflicting or redundant options"), 
-uaae: user:00000694:  errOmitLocation(true))); 
-uaae: user:00000701:  ereport(ERROR, 
-uaae: user:00000702:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000703:  errmsg("conflicting or redundant options"), 
-uaae: user:00000704:  errOmitLocation(true))); 
-uaae: user:00000711:  ereport(ERROR, 
-uaae: user:00000712:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000713:  errmsg("conflicting or redundant options"), 
-uaae: user:00000714:  errOmitLocation(true))); 
-uaae: user:00000721:  ereport(ERROR, 
-uaae: user:00000722:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000723:  errmsg("conflicting or redundant options"), 
-uaae: user:00000724:  errOmitLocation(true))); 
-uaae: user:00000731:  ereport(ERROR, 
-uaae: user:00000732:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000733:  errmsg("conflicting or redundant options"), 
-uaae: user:00000734:  errOmitLocation(true))); 
-uaae: user:00000742:  ereport(ERROR, 
-uaae: user:00000743:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000744:  errmsg("conflicting or redundant options"), 
-uaae: user:00000745:  errOmitLocation(true))); 
-uaae: user:00000752:  ereport(ERROR, 
-uaae: user:00000753:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000754:  errmsg("conflicting or redundant options"), 
-uaae: user:00000755:  errOmitLocation(true))); 
-uaae: user:00000762:  ereport(ERROR, 
-uaae: user:00000763:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000764:  errmsg("conflicting or redundant options"), 
-uaae: user:00000765:  errOmitLocation(true))); 
-uaae: user:00000808:  elog(ERROR, "option \"%s\" not recognized", 
-uaae: user:00000809:  defel->defname); 
-uaae: user:00000843:  ereport(ERROR, 
-uaae: user:00000844:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00000845:  errmsg("role \"%s\" does not exist", stmt->role))); 
-uaae: user:00000859:  ereport(ERROR, 
-uaae: user:00000860:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000861:  errmsg("must be superuser to alter superusers"))); 
-uaae: user:00000878:  ereport(ERROR, 
-uaae: user:00000879:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000880:  errmsg("permission denied"), 
-uaae: user:00000881:  errOmitLocation(true))); 
-uaae: user:00000950:  elog(ERROR, "password encryption failed"); 
-uaae: user:00001032:  ereport(NOTICE, 
-uaae: user:00001033:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00001034:  errmsg("resource queue required -- " 
-uaae: user:00001035:  "using default resource queue \"%s\"", 
-uaae: user:00001036:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
-uaae: user:00001050:  ereport(ERROR, 
-uaae: user:00001051:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001052:  errmsg("resource queue \"%s\" does not exist", 
-uaae: user:00001053:  resqueue), 
-uaae: user:00001054:  errOmitLocation(true))); 
-uaae: user:00001066:  ereport(WARNING, 
-uaae: user:00001067:  (errmsg("resource scheduling is disabled"), 
-uaae: user:00001068:  errhint("To enable set resource_scheduler=on"), 
-uaae: user:00001069:  errOmitLocation(true))); 
-uaae: user:00001111:  ereport(ERROR, 
-uaae: user:00001112:  (errmsg("cannot alter superuser with DENY rules"))); 
-uaae: user:00001129:  ereport(ERROR, 
-uaae: user:00001130:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001131:  errmsg("conflicting or redundant options"), 
-uaae: user:00001132:  errhint("DENY and DROP DENY cannot be used in the same ALTER ROLE statement."))); 
-uaae: user:00001196:  ereport(ERROR, 
-uaae: user:00001197:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001198:  errmsg("role \"%s\" does not exist", stmt->role), 
-uaae: user:00001199:  errOmitLocation(true))); 
-uaae: user:00001208:  ereport(ERROR, 
-uaae: user:00001209:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001210:  errmsg("must be superuser to alter superusers"), 
-uaae: user:00001211:  errOmitLocation(true))); 
-uaae: user:00001217:  ereport(ERROR, 
-uaae: user:00001218:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001219:  errmsg("permission denied"), 
-uaae: user:00001220:  errOmitLocation(true))); 
-uaae: user:00001296:  ereport(ERROR, 
-uaae: user:00001297:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001298:  errmsg("permission denied to drop role"), 
-uaae: user:00001299:  errOmitLocation(true))); 
-uaae: user:00001325:  ereport(ERROR, 
-uaae: user:00001326:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001327:  errmsg("role \"%s\" does not exist", role), 
-uaae: user:00001328:  errOmitLocation(true))); 
-uaae: user:00001332:  ereport(NOTICE, 
-uaae: user:00001333:  (errmsg("role \"%s\" does not exist, skipping", 
-uaae: user:00001334:  role), 
+uaae: user:00000187:  ereport(ERROR, 
+uaae: user:00000188:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000189:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000199:  ereport(NOTICE, 
+uaae: user:00000200:  (errmsg("SYSID can no longer be specified"))); 
+uaae: user:00000205:  ereport(ERROR, 
+uaae: user:00000206:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000207:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000213:  ereport(ERROR, 
+uaae: user:00000214:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000215:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000221:  ereport(ERROR, 
+uaae: user:00000222:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000223:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000229:  ereport(ERROR, 
+uaae: user:00000230:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000231:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000237:  ereport(ERROR, 
+uaae: user:00000238:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000239:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000245:  ereport(ERROR, 
+uaae: user:00000246:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000247:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000253:  ereport(ERROR, 
+uaae: user:00000254:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000255:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000261:  ereport(ERROR, 
+uaae: user:00000262:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000263:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000269:  ereport(ERROR, 
+uaae: user:00000270:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000271:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000277:  ereport(ERROR, 
+uaae: user:00000278:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000279:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000285:  ereport(ERROR, 
+uaae: user:00000286:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000287:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000317:  elog(ERROR, "option \"%s\" not recognized", 
+uaae: user:00000318:  defel->defname); 
+uaae: user:00000354:  ereport(NOTICE, 
+uaae: user:00000355:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00000356:  errmsg("resource queue required -- " 
+uaae: user:00000357:  "using default resource queue \"%s\"", 
+uaae: user:00000358:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
+uaae: user:00000368:  ereport(ERROR, 
+uaae: user:00000369:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000370:  errmsg("must be superuser to create superusers"))); 
+uaae: user:00000375:  ereport(ERROR, 
+uaae: user:00000376:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000377:  errmsg("permission denied to create role"))); 
+uaae: user:00000382:  ereport(ERROR, 
+uaae: user:00000383:  (errcode(ERRCODE_RESERVED_NAME), 
+uaae: user:00000384:  errmsg("role name \"%s\" is reserved", 
+uaae: user:00000385:  stmt->role))); 
+uaae: user:00000398:  ereport(ERROR, 
+uaae: user:00000399:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+uaae: user:00000400:  errmsg("role \"%s\" already exists", 
+uaae: user:00000401:  stmt->role))); 
+uaae: user:00000443:  elog(ERROR, "password encryption failed"); 
+uaae: user:00000468:  ereport(ERROR, 
+uaae: user:00000469:  (errcode(ERRCODE_RESERVED_NAME), 
+uaae: user:00000470:  errmsg("resource queue name \"%s\" is reserved", 
+uaae: user:00000471:  resqueue), 
+uaae: user:00000472:  errOmitLocation(true))); 
+uaae: user:00000476:  ereport(ERROR, 
+uaae: user:00000477:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00000478:  errmsg("resource queue \"%s\" does not exist", 
+uaae: user:00000479:  resqueue), 
+uaae: user:00000480:  errOmitLocation(true))); 
+uaae: user:00000491:  ereport(WARNING, 
+uaae: user:00000492:  (errmsg("resource scheduling is disabled"), 
+uaae: user:00000493:  errhint("To enable set resource_scheduler=on"), 
+uaae: user:00000494:  errOmitLocation(true))); 
+uaae: user:00000557:  ereport(ERROR, 
+uaae: user:00000558:  (errmsg("cannot create superuser with DENY rules"))); 
+uaae: user:00000671:  ereport(ERROR, 
+uaae: user:00000672:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000673:  errmsg("conflicting or redundant options"), 
+uaae: user:00000674:  errOmitLocation(true))); 
+uaae: user:00000686:  ereport(ERROR, 
+uaae: user:00000687:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000688:  errmsg("conflicting or redundant options"), 
+uaae: user:00000689:  errOmitLocation(true))); 
+uaae: user:00000696:  ereport(ERROR, 
+uaae: user:00000697:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000698:  errmsg("conflicting or redundant options"), 
+uaae: user:00000699:  errOmitLocation(true))); 
+uaae: user:00000706:  ereport(ERROR, 
+uaae: user:00000707:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000708:  errmsg("conflicting or redundant options"), 
+uaae: user:00000709:  errOmitLocation(true))); 
+uaae: user:00000716:  ereport(ERROR, 
+uaae: user:00000717:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000718:  errmsg("conflicting or redundant options"), 
+uaae: user:00000719:  errOmitLocation(true))); 
+uaae: user:00000726:  ereport(ERROR, 
+uaae: user:00000727:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000728:  errmsg("conflicting or redundant options"), 
+uaae: user:00000729:  errOmitLocation(true))); 
+uaae: user:00000736:  ereport(ERROR, 
+uaae: user:00000737:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000738:  errmsg("conflicting or redundant options"), 
+uaae: user:00000739:  errOmitLocation(true))); 
+uaae: user:00000747:  ereport(ERROR, 
+uaae: user:00000748:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000749:  errmsg("conflicting or redundant options"), 
+uaae: user:00000750:  errOmitLocation(true))); 
+uaae: user:00000757:  ereport(ERROR, 
+uaae: user:00000758:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000759:  errmsg("conflicting or redundant options"), 
+uaae: user:00000760:  errOmitLocation(true))); 
+uaae: user:00000767:  ereport(ERROR, 
+uaae: user:00000768:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000769:  errmsg("conflicting or redundant options"), 
+uaae: user:00000770:  errOmitLocation(true))); 
+uaae: user:00000813:  elog(ERROR, "option \"%s\" not recognized", 
+uaae: user:00000814:  defel->defname); 
+uaae: user:00000848:  ereport(ERROR, 
+uaae: user:00000849:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00000850:  errmsg("role \"%s\" does not exist", stmt->role))); 
+uaae: user:00000864:  ereport(ERROR, 
+uaae: user:00000865:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000866:  errmsg("must be superuser to alter superusers"))); 
+uaae: user:00000883:  ereport(ERROR, 
+uaae: user:00000884:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000885:  errmsg("permission denied"), 
+uaae: user:00000886:  errOmitLocation(true))); 
+uaae: user:00000956:  elog(ERROR, "password encryption failed"); 
+uaae: user:00001039:  ereport(NOTICE, 
+uaae: user:00001040:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00001041:  errmsg("resource queue required -- " 
+uaae: user:00001042:  "using default resource queue \"%s\"", 
+uaae: user:00001043:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
+uaae: user:00001057:  ereport(ERROR, 
+uaae: user:00001058:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001059:  errmsg("resource queue \"%s\" does not exist", 
+uaae: user:00001060:  resqueue), 
+uaae: user:00001061:  errOmitLocation(true))); 
+uaae: user:00001073:  ereport(WARNING, 
+uaae: user:00001074:  (errmsg("resource scheduling is disabled"), 
+uaae: user:00001075:  errhint("To enable set resource_scheduler=on"), 
+uaae: user:00001076:  errOmitLocation(true))); 
+uaae: user:00001118:  ereport(ERROR, 
+uaae: user:00001119:  (errmsg("cannot alter superuser with DENY rules"))); 
+uaae: user:00001136:  ereport(ERROR, 
+uaae: user:00001137:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00001138:  errmsg("conflicting or redundant options"), 
+uaae: user:00001139:  errhint("DENY and DROP DENY cannot be used in the same ALTER ROLE statement."))); 
+uaae: user:00001203:  ereport(ERROR, 
+uaae: user:00001204:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001205:  errmsg("role \"%s\" does not exist", stmt->role), 
+uaae: user:00001206:  errOmitLocation(true))); 
+uaae: user:00001215:  ereport(ERROR, 
+uaae: user:00001216:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001217:  errmsg("must be superuser to alter superusers"), 
+uaae: user:00001218:  errOmitLocation(true))); 
+uaae: user:00001224:  ereport(ERROR, 
+uaae: user:00001225:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001226:  errmsg("permission denied"), 
+uaae: user:00001227:  errOmitLocation(true))); 
+uaae: user:00001303:  ereport(ERROR, 
+uaae: user:00001304:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001305:  errmsg("permission denied to drop role"), 
+uaae: user:00001306:  errOmitLocation(true))); 
+uaae: user:00001332:  ereport(ERROR, 
+uaae: user:00001333:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001334:  errmsg("role \"%s\" does not exist", role), 
 uaae: user:00001335:  errOmitLocation(true))); 
-uaae: user:00001344:  ereport(ERROR, 
-uaae: user:00001345:  (errcode(ERRCODE_OBJECT_IN_USE), 
-uaae: user:00001346:  errmsg("current user cannot be dropped"), 
-uaae: user:00001347:  errOmitLocation(true))); 
-uaae: user:00001349:  ereport(ERROR, 
-uaae: user:00001350:  (errcode(ERRCODE_OBJECT_IN_USE), 
-uaae: user:00001351:  errmsg("current user cannot be dropped"), 
-uaae: user:00001352:  errOmitLocation(true))); 
-uaae: user:00001354:  ereport(ERROR, 
-uaae: user:00001355:  (errcode(ERRCODE_OBJECT_IN_USE), 
-uaae: user:00001356:  errmsg("session user cannot be dropped"), 
-uaae: user:00001357:  errOmitLocation(true))); 
-uaae: user:00001366:  ereport(ERROR, 
-uaae: user:00001367:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001368:  errmsg("must be superuser to drop superusers"))); 
-uaae: user:00001378:  ereport(ERROR, 
-uaae: user:00001379:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-uaae: user:00001380:  errmsg("role \"%s\" cannot be dropped because some objects depend on it", 
-uaae: user:00001381:  role), 
-uaae: user:00001382:  errdetail("%s", detail), 
-uaae: user:00001383:  errOmitLocation(true))); 
-uaae: user:00001498:  ereport(ERROR, 
-uaae: user:00001499:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001500:  errmsg("role \"%s\" does not exist", oldname), 
-uaae: user:00001501:  errOmitLocation(true))); 
-uaae: user:00001514:  ereport(ERROR, 
-uaae: user:00001515:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00001516:  errmsg("session user cannot be renamed"))); 
-uaae: user:00001518:  ereport(ERROR, 
-uaae: user:00001519:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00001520:  errmsg("current user cannot be renamed"))); 
-uaae: user:00001526:  ereport(ERROR, 
-uaae: user:00001527:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-uaae: user:00001528:  errmsg("role \"%s\" already exists", newname))); 
-uaae: user:00001532:  ereport(ERROR, 
-uaae: user:00001533:  (errcode(ERRCODE_RESERVED_NAME), 
-uaae: user:00001534:  errmsg("role name \"%s\" is reserved", 
-uaae: user:00001535:  newname))); 
-uaae: user:00001543:  ereport(ERROR, 
-uaae: user:00001544:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001545:  errmsg("must be superuser to rename superusers"))); 
+uaae: user:00001339:  ereport(NOTICE, 
+uaae: user:00001340:  (errmsg("role \"%s\" does not exist, skipping", 
+uaae: user:00001341:  role), 
+uaae: user:00001342:  errOmitLocation(true))); 
+uaae: user:00001351:  ereport(ERROR, 
+uaae: user:00001352:  (errcode(ERRCODE_OBJECT_IN_USE), 
+uaae: user:00001353:  errmsg("current user cannot be dropped"), 
+uaae: user:00001354:  errOmitLocation(true))); 
+uaae: user:00001356:  ereport(ERROR, 
+uaae: user:00001357:  (errcode(ERRCODE_OBJECT_IN_USE), 
+uaae: user:00001358:  errmsg("current user cannot be dropped"), 
+uaae: user:00001359:  errOmitLocation(true))); 
+uaae: user:00001361:  ereport(ERROR, 
+uaae: user:00001362:  (errcode(ERRCODE_OBJECT_IN_USE), 
+uaae: user:00001363:  errmsg("session user cannot be dropped"), 
+uaae: user:00001364:  errOmitLocation(true))); 
+uaae: user:00001373:  ereport(ERROR, 
+uaae: user:00001374:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001375:  errmsg("must be superuser to drop superusers"))); 
+uaae: user:00001385:  ereport(ERROR, 
+uaae: user:00001386:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+uaae: user:00001387:  errmsg("role \"%s\" cannot be dropped because some objects depend on it", 
+uaae: user:00001388:  role), 
+uaae: user:00001389:  errdetail("%s", detail), 
+uaae: user:00001390:  errOmitLocation(true))); 
+uaae: user:00001505:  ereport(ERROR, 
+uaae: user:00001506:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001507:  errmsg("role \"%s\" does not exist", oldname), 
+uaae: user:00001508:  errOmitLocation(true))); 
+uaae: user:00001521:  ereport(ERROR, 
+uaae: user:00001522:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00001523:  errmsg("session user cannot be renamed"))); 
+uaae: user:00001525:  ereport(ERROR, 
+uaae: user:00001526:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00001527:  errmsg("current user cannot be renamed"))); 
+uaae: user:00001533:  ereport(ERROR, 
+uaae: user:00001534:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+uaae: user:00001535:  errmsg("role \"%s\" already exists", newname))); 
+uaae: user:00001539:  ereport(ERROR, 
+uaae: user:00001540:  (errcode(ERRCODE_RESERVED_NAME), 
+uaae: user:00001541:  errmsg("role name \"%s\" is reserved", 
+uaae: user:00001542:  newname))); 
 uaae: user:00001550:  ereport(ERROR, 
 uaae: user:00001551:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001552:  errmsg("permission denied to rename role"))); 
-uaae: user:00001573:  ereport(NOTICE, 
-uaae: user:00001574:  (errmsg("MD5 password cleared because of role rename"))); 
-uaae: user:00001697:  ereport(ERROR, 
-uaae: user:00001698:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001699:  errmsg("permission denied to drop objects"), 
-uaae: user:00001700:  errOmitLocation(true))); 
-uaae: user:00001730:  ereport(ERROR, 
-uaae: user:00001731:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001732:  errmsg("permission denied to reassign objects"), 
-uaae: user:00001733:  errOmitLocation(true))); 
-uaae: user:00001740:  ereport(ERROR, 
-uaae: user:00001741:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001742:  errmsg("permission denied to reassign objects"), 
-uaae: user:00001743:  errOmitLocation(true))); 
-uaae: user:00001811:  ereport(ERROR, 
-uaae: user:00001812:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001813:  errmsg("must be superuser to alter superusers"))); 
-uaae: user:00001819:  ereport(ERROR, 
-uaae: user:00001820:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001821:  errmsg("must have admin option on role \"%s\"", 
-uaae: user:00001822:  rolename))); 
-uaae: user:00001827:  ereport(ERROR, 
-uaae: user:00001828:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001829:  errmsg("must be superuser to set grantor"))); 
-uaae: user:00001852:  ereport(ERROR, 
-uaae: user:00001853:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
-uaae: user:00001854:  (errmsg("role \"%s\" is a member of role \"%s\"", 
-uaae: user:00001855:  rolename, membername)))); 
-uaae: user:00001870:  ereport(NOTICE, 
-uaae: user:00001871:  (errmsg("role \"%s\" is already a member of role \"%s\"", 
-uaae: user:00001872:  membername, rolename))); 
-uaae: user:00001935:  ereport(ERROR, 
-uaae: user:00001936:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001937:  errmsg("invalid [NO]CREATEEXTTABLE option \"%s\"", keyword))); 
-uaae: user:00001955:  ereport(ERROR, 
-uaae: user:00001956:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001957:  errmsg("invalid %s value \"%s\"", key, val))); 
-uaae: user:00001962:  ereport(WARNING, 
-uaae: user:00001963:  (errmsg("GRANT/REVOKE on gphdfs is deprecated"), 
-uaae: user:00001964:  errhint("Issue the GRANT or REVOKE on the protocol itself"), 
-uaae: user:00001965:  errOmitLocation(true))); 
-uaae: user:00001970:  ereport(ERROR, 
-uaae: user:00001971:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001972:  errmsg("invalid %s value \"%s\"", key, val))); 
-uaae: user:00002004:  ereport(ERROR, 
-uaae: user:00002005:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002006:  errmsg("invalid [NO]CREATEEXTTABLE specification. too many values"))); 
-uaae: user:00002066:  ereport(ERROR, 
-uaae: user:00002067:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002068:  errmsg("redundant option for \"%s\"", genpair->key1))); 
-uaae: user:00002155:  ereport(ERROR, 
-uaae: user:00002156:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002157:  errmsg("invalid CREATEEXTTABLE specification. writable http external tables do not exist"))); 
-uaae: user:00002223:  ereport(ERROR, 
-uaae: user:00002224:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002225:  errmsg("invalid NOCREATEEXTTABLE specification. writable http external tables do not exist"))); 
-uaae: user:00002231:  ereport(ERROR, 
-uaae: user:00002232:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002233:  errmsg("conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE"))); 
-uaae: user:00002273:  ereport(ERROR, 
-uaae: user:00002274:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00002275:  errmsg("must be superuser to alter superusers"))); 
-uaae: user:00002281:  ereport(ERROR, 
-uaae: user:00002282:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00002283:  errmsg("must have admin option on role \"%s\"", 
-uaae: user:00002284:  rolename))); 
-uaae: user:00002305:  ereport(WARNING, 
-uaae: user:00002306:  (errmsg("role \"%s\" is not a member of role \"%s\"", 
-uaae: user:00002307:  membername, rolename))); 
-uaae: user:00002381:  ereport(ERROR, 
-uaae: user:00002382:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002383:  errmsg("time interval must not wrap around"))); 
-uaae: user:00002401:  ereport(ERROR, 
-uaae: user:00002402:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002403:  errmsg("numeric day of week must be between 0 and 6"))); 
-uaae: user:00002413:  ereport(ERROR, 
-uaae: user:00002414:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002415:  errmsg("invalid weekday name \"%s\"", target), 
-uaae: user:00002416:  errhint("Day of week must be one of 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'."))); 
-uaae: user:00002524:  ereport(NOTICE, 
-uaae: user:00002525:  (errmsg("dropping DENY rule for \"%s\" between %s %s and %s %s", 
-uaae: user:00002526:  rolename, 
-uaae: user:00002527:  daysofweek[existing->start.day], 
-uaae: user:00002528:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))), 
-uaae: user:00002529:  daysofweek[existing->end.day], 
-uaae: user:00002530:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time)))))); 
-uaae: user:00002543:  ereport(ERROR, 
-uaae: user:00002544:  (errmsg("cannot find matching DENY rules for \"%s\"", rolename))); 
+uaae: user:00001552:  errmsg("must be superuser to rename superusers"))); 
+uaae: user:00001557:  ereport(ERROR, 
+uaae: user:00001558:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001559:  errmsg("permission denied to rename role"))); 
+uaae: user:00001580:  ereport(NOTICE, 
+uaae: user:00001581:  (errmsg("MD5 password cleared because of role rename"))); 
+uaae: user:00001704:  ereport(ERROR, 
+uaae: user:00001705:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001706:  errmsg("permission denied to drop objects"), 
+uaae: user:00001707:  errOmitLocation(true))); 
+uaae: user:00001737:  ereport(ERROR, 
+uaae: user:00001738:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001739:  errmsg("permission denied to reassign objects"), 
+uaae: user:00001740:  errOmitLocation(true))); 
+uaae: user:00001747:  ereport(ERROR, 
+uaae: user:00001748:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001749:  errmsg("permission denied to reassign objects"), 
+uaae: user:00001750:  errOmitLocation(true))); 
+uaae: user:00001818:  ereport(ERROR, 
+uaae: user:00001819:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001820:  errmsg("must be superuser to alter superusers"))); 
+uaae: user:00001826:  ereport(ERROR, 
+uaae: user:00001827:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001828:  errmsg("must have admin option on role \"%s\"", 
+uaae: user:00001829:  rolename))); 
+uaae: user:00001834:  ereport(ERROR, 
+uaae: user:00001835:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001836:  errmsg("must be superuser to set grantor"))); 
+uaae: user:00001859:  ereport(ERROR, 
+uaae: user:00001860:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
+uaae: user:00001861:  (errmsg("role \"%s\" is a member of role \"%s\"", 
+uaae: user:00001862:  rolename, membername)))); 
+uaae: user:00001877:  ereport(NOTICE, 
+uaae: user:00001878:  (errmsg("role \"%s\" is already a member of role \"%s\"", 
+uaae: user:00001879:  membername, rolename))); 
+uaae: user:00001942:  ereport(ERROR, 
+uaae: user:00001943:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00001944:  errmsg("invalid [NO]CREATEEXTTABLE option \"%s\"", keyword))); 
+uaae: user:00001962:  ereport(ERROR, 
+uaae: user:00001963:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00001964:  errmsg("invalid %s value \"%s\"", key, val))); 
+uaae: user:00001969:  ereport(WARNING, 
+uaae: user:00001970:  (errmsg("GRANT/REVOKE on gphdfs is deprecated"), 
+uaae: user:00001971:  errhint("Issue the GRANT or REVOKE on the protocol itself"), 
+uaae: user:00001972:  errOmitLocation(true))); 
+uaae: user:00001977:  ereport(ERROR, 
+uaae: user:00001978:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00001979:  errmsg("invalid %s value \"%s\"", key, val))); 
+uaae: user:00002011:  ereport(ERROR, 
+uaae: user:00002012:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002013:  errmsg("invalid [NO]CREATEEXTTABLE specification. too many values"))); 
+uaae: user:00002073:  ereport(ERROR, 
+uaae: user:00002074:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002075:  errmsg("redundant option for \"%s\"", genpair->key1))); 
+uaae: user:00002162:  ereport(ERROR, 
+uaae: user:00002163:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002164:  errmsg("invalid CREATEEXTTABLE specification. writable http external tables do not exist"))); 
+uaae: user:00002230:  ereport(ERROR, 
+uaae: user:00002231:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002232:  errmsg("invalid NOCREATEEXTTABLE specification. writable http external tables do not exist"))); 
+uaae: user:00002238:  ereport(ERROR, 
+uaae: user:00002239:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002240:  errmsg("conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE"))); 
+uaae: user:00002280:  ereport(ERROR, 
+uaae: user:00002281:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00002282:  errmsg("must be superuser to alter superusers"))); 
+uaae: user:00002288:  ereport(ERROR, 
+uaae: user:00002289:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00002290:  errmsg("must have admin option on role \"%s\"", 
+uaae: user:00002291:  rolename))); 
+uaae: user:00002312:  ereport(WARNING, 
+uaae: user:00002313:  (errmsg("role \"%s\" is not a member of role \"%s\"", 
+uaae: user:00002314:  membername, rolename))); 
+uaae: user:00002388:  ereport(ERROR, 
+uaae: user:00002389:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002390:  errmsg("time interval must not wrap around"))); 
+uaae: user:00002408:  ereport(ERROR, 
+uaae: user:00002409:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002410:  errmsg("numeric day of week must be between 0 and 6"))); 
+uaae: user:00002420:  ereport(ERROR, 
+uaae: user:00002421:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002422:  errmsg("invalid weekday name \"%s\"", target), 
+uaae: user:00002423:  errhint("Day of week must be one of 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'."))); 
+uaae: user:00002531:  ereport(NOTICE, 
+uaae: user:00002532:  (errmsg("dropping DENY rule for \"%s\" between %s %s and %s %s", 
+uaae: user:00002533:  rolename, 
+uaae: user:00002534:  daysofweek[existing->start.day], 
+uaae: user:00002535:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))), 
+uaae: user:00002536:  daysofweek[existing->end.day], 
+uaae: user:00002537:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time)))))); 
+uaae: user:00002550:  ereport(ERROR, 
+uaae: user:00002551:  (errmsg("cannot find matching DENY rules for \"%s\"", rolename))); 
 aaaaa GP_IGNORE: vaag: vacuum - ./backend/commands/vacuum.c
 vaag: vacuum:00000367:  ereport(NOTICE, 
 vaag: vacuum:00000368:  (errcode(ERRCODE_WARNING), 
@@ -13812,12 +13812,27 @@ baaj: bexsecure:00000837:  ROOT_CERT_FILE)));
 baaj: bexsecure:00000846:  ereport(FATAL, 
 baaj: bexsecure:00000847:  (errmsg("could not load root certificate file \"%s\": %s", 
 baaj: bexsecure:00000848:  ROOT_CERT_FILE, SSLerrmessage()))); 
+aaaaa GP_IGNORE: caaf: crypt - ./backend/libpq/crypt.c
+caaf: crypt:00000040:  elog(ERROR, 
+caaf: crypt:00000041:  "unknown password hash algorithm number %d", 
+caaf: crypt:00000042:  password_hash_algorithm); 
+caaf: crypt:00000102:  ereport(FATAL, 
+caaf: crypt:00000103:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+caaf: crypt:00000104:  errmsg("MD5 authentication is not supported with " 
+caaf: crypt:00000105:  "SHA256 hashed passwords"), 
+caaf: crypt:00000106:  errhint("Set an alternative authentication method " 
+caaf: crypt:00000107:  "for this role in pg_hba.conf"))); 
 aaaaa GP_IGNORE: haad: hba - ./backend/libpq/hba.c
 haad: hba:00001829:  elog(FATAL, "bad data in flat pg_database file"); 
 haad: hba:00001833:  elog(FATAL, "bad data in flat pg_database file"); 
 haad: hba:00001837:  elog(FATAL, "bad data in flat pg_database file"); 
 haad: hba:00001841:  elog(FATAL, "bad data in flat pg_database file"); 
 haad: hba:00001845:  elog(FATAL, "bad data in flat pg_database file"); 
+aaaaa GP_IGNORE: paaj: pgxshatwo - ./backend/libpq/pg_sha2.c
+paaj: pgxshatwo:00000070:  ereport(ERROR, 
+paaj: pgxshatwo:00000071:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paaj: pgxshatwo:00000072:  errmsg("FIPS certified SHA-256 is not supported on " 
+paaj: pgxshatwo:00000073:  "this platform"))); 
 aaaaa GP_IGNORE: paag: pqcomm - ./backend/libpq/pqcomm.c
 paag: pqcomm:00000544:  elog(WARNING, "configuration item unix_socket_group is not supported on this platform"); 
 paag: pqcomm:00000795:  elog(WARNING, "segment state transition requested while waiting to read data from socket"); 
@@ -23859,112 +23874,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006574:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006575:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006588:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006589:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006602:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006603:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006633:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006634:  conf->gen.name, str); 
-gaad: guc:00006891:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006908:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006925:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006956:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007812:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007922:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007923:  " in a future release.", name); 
-gaad: guc:00007931:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007932:  name); 
-gaad: guc:00008406:  ereport(ERROR, 
-gaad: guc:00008407:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008408:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008410:  ereport(ERROR, 
-gaad: guc:00008411:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008412:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008446:  ereport(ERROR, 
-gaad: guc:00008447:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008448:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008450:  ereport(ERROR, 
-gaad: guc:00008451:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008452:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008521:  ereport(ERROR, 
-gaad: guc:00008522:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008523:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008530:  ereport(ERROR, 
-gaad: guc:00008531:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008532:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008545:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008592:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008593:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008650:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008676:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008677:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008703:  ereport(ERROR, 
-gaad: guc:00008704:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008705:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008767:  ereport(ERROR, 
-gaad: guc:00008768:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008769:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009088:  ereport(ERROR, 
-gaad: guc:00009089:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009090:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009092:  ereport(ERROR, 
-gaad: guc:00009093:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009094:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009863:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009896:  ereport(FATAL, 
-gaad: guc:00009897:  (errcode_for_file_access(), 
-gaad: guc:00009898:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009899:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009911:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009913:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009915:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010006:  ereport(WARNING, 
-gaad: guc:00010007:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010008:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010202:  ereport(ERROR, 
-gaad: guc:00010203:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010204:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010225:  ereport(ERROR, 
-gaad: guc:00010226:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010227:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010228:  tok))); 
-gaad: guc:00010254:  ereport(ERROR, 
-gaad: guc:00010255:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010256:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010257:  value))); 
-gaad: guc:00010665:  ereport(ERROR, 
-gaad: guc:00010666:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010667:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010741:  ereport(ERROR, 
-gaad: guc:00010742:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010743:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010752:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010762:  ereport(ERROR, 
-gaad: guc:00010763:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010764:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010775:  ereport(ERROR, 
-gaad: guc:00010776:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010777:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010792:  ereport(ERROR, 
-gaad: guc:00010793:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010794:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010795:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010796:  "\"log_dispatch_stats\", " 
-gaad: guc:00010797:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010812:  ereport(ERROR, 
-gaad: guc:00010813:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010814:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010815:  "\"log_statement_stats\", " 
-gaad: guc:00010816:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010817:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010832:  ereport(ERROR, 
-gaad: guc:00010833:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010834:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011231:  elog(ERROR, 
-gaad: guc:00011232:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011233:  show_allow_system_table_mods()); 
+gaad: guc:00006592:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006593:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006606:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006607:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006620:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006621:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006651:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006652:  conf->gen.name, str); 
+gaad: guc:00006909:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006926:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006943:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006974:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007830:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007940:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007941:  " in a future release.", name); 
+gaad: guc:00007949:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007950:  name); 
+gaad: guc:00008424:  ereport(ERROR, 
+gaad: guc:00008425:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008426:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008428:  ereport(ERROR, 
+gaad: guc:00008429:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008430:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008464:  ereport(ERROR, 
+gaad: guc:00008465:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008466:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008468:  ereport(ERROR, 
+gaad: guc:00008469:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008470:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008539:  ereport(ERROR, 
+gaad: guc:00008540:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008541:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008548:  ereport(ERROR, 
+gaad: guc:00008549:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008550:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008563:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008610:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008611:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008668:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008694:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008695:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008721:  ereport(ERROR, 
+gaad: guc:00008722:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008723:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008785:  ereport(ERROR, 
+gaad: guc:00008786:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008787:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009106:  ereport(ERROR, 
+gaad: guc:00009107:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009108:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009110:  ereport(ERROR, 
+gaad: guc:00009111:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009112:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009881:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009914:  ereport(FATAL, 
+gaad: guc:00009915:  (errcode_for_file_access(), 
+gaad: guc:00009916:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009917:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009929:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009931:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009933:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010024:  ereport(WARNING, 
+gaad: guc:00010025:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010026:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010220:  ereport(ERROR, 
+gaad: guc:00010221:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010222:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010243:  ereport(ERROR, 
+gaad: guc:00010244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010245:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010246:  tok))); 
+gaad: guc:00010272:  ereport(ERROR, 
+gaad: guc:00010273:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010274:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010275:  value))); 
+gaad: guc:00010707:  ereport(ERROR, 
+gaad: guc:00010708:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010709:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010783:  ereport(ERROR, 
+gaad: guc:00010784:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010785:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010794:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010804:  ereport(ERROR, 
+gaad: guc:00010805:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010806:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010817:  ereport(ERROR, 
+gaad: guc:00010818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010819:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010834:  ereport(ERROR, 
+gaad: guc:00010835:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010836:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010837:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010838:  "\"log_dispatch_stats\", " 
+gaad: guc:00010839:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010854:  ereport(ERROR, 
+gaad: guc:00010855:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010856:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010857:  "\"log_statement_stats\", " 
+gaad: guc:00010858:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010859:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010874:  ereport(ERROR, 
+gaad: guc:00010875:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010876:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011273:  elog(ERROR, 
+gaad: guc:00011274:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011275:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
