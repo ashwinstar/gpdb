@@ -920,7 +920,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			sprintf(pszCmdLine, "%s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
 				bkPg, pszKeyParm, dd_boost_buffer_size, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
 				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>" : "2", pszStatusFileName);
+				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
 		}
 		else
 		{
