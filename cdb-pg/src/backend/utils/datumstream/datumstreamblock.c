@@ -2749,7 +2749,24 @@ static void DatumStreamBlockWrite_MakeNullBitMapSpace(
 	}
 	else
 	{
-		Assert(DatumStreamBitMapWrite_Count(&dsw->null_bitmap) == oldNullBitCount);
+#ifdef USE_ASSERT_CHECKING
+		if (DatumStreamBitMapWrite_Count(&dsw->null_bitmap) != oldNullBitCount)
+		{
+			pg_usleep(120 * 1000000L);
+			ereport(ERROR,
+					(errmsg("Datum stream write %s block problem growing NULL bit-map buffer "
+							 "(current logical row count %d, physical datum count %d, "
+							 "null bit-map count %d, old NULL bit-map count %d)",
+							 DatumStreamVersion_String(dsw->datumStreamVersion),
+							 dsw->nth + 1,
+							 dsw->physical_datum_count,
+							 DatumStreamBitMapWrite_Count(&dsw->null_bitmap),
+							 oldNullBitCount),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockwrite(dsw),
+					 errcontext_datumstreamblockwrite(dsw)));
+		}
+#endif
 		newNullBitMapSize = DatumStreamBitMapWrite_NextSize(&dsw->null_bitmap);
 	}
 
@@ -2792,9 +2809,10 @@ static void DatumStreamBlockWrite_MakeNullBitMapSpace(
 			if (!dsw->rle_has_compression)
 			{
 				ereport(LOG,
-						(errmsg("Datum stream write Dense block grew NULL bit-map buffer "
+						(errmsg("Datum stream write %s block grew NULL bit-map buffer "
 								 "(current logical row count %d, physical datum count %d, "
 								 "null bit-map count %d, null bit-map ON count %d, null bit-map size %d, null bit-map max size %d)",
+								 DatumStreamVersion_String(dsw->datumStreamVersion),
 								 dsw->nth + 1,
 								 dsw->physical_datum_count,
 								 DatumStreamBitMapWrite_Count(&dsw->null_bitmap),
@@ -2808,11 +2826,12 @@ static void DatumStreamBlockWrite_MakeNullBitMapSpace(
 			else
 			{
 				ereport(LOG,
-						(errmsg("Datum stream write Dense block formatted RLE_TYPE block grew NULL bit-map buffer "
+						(errmsg("Datum stream write %s block formatted RLE_TYPE block grew NULL bit-map buffer "
 								 "(current logical row count %d, physical datum count %d, "
 								 "null bit-map count %d, null bit-map ON count %d, null bit-map size %d, null bit-map max size %d, "
 								 "compression bit-map count %d, compression bit-map ON count %d, compression bit-map size %d, "
 								 "repeat counts count %d, repeat count size %d)",
+								 DatumStreamVersion_String(dsw->datumStreamVersion),
 								 dsw->nth + 1,
 								 dsw->physical_datum_count,
 								 DatumStreamBitMapWrite_Count(&dsw->null_bitmap),
@@ -2864,11 +2883,12 @@ static void DatumStreamBlockWrite_MakeNullBitMapSpace(
 			else
 			{
 				ereport(LOG,
-						(errmsg("Datum stream write Dense block formatted RLE_TYPE block zero fill out NULL bit-map "
+						(errmsg("Datum stream write %s block formatted RLE_TYPE block zero fill out NULL bit-map "
 								 "(current logical row count %d, old NULL bit-map count %d, physical datum count %d, "
 								 "null bit-map count %d, null bit-map size %d, "
 								 "compression bit-map count %d, compression bit-map ON count %d, compression bit-map size %d, "
 								 "repeat counts count %d, repeat count size %d)",
+								 DatumStreamVersion_String(dsw->datumStreamVersion),
 								 dsw->nth + 1,
 								 oldNullBitCount,
 								 dsw->physical_datum_count,
@@ -2890,8 +2910,6 @@ static void DatumStreamBlockWrite_MakeNullBitMapSpace(
 		Assert(dsw->nth > 0);
 		Assert(DatumStreamBitMapWrite_Count(&dsw->null_bitmap) == oldNullBitCount);
 	}
-
-
 
 }
 
@@ -3890,8 +3908,6 @@ static int DatumStreamBlockWrite_PutDense(
 		else
 		{
 			oldNullBitCount = dsw->rle_null_bitmap_count;
-
-			dsw->rle_null_bitmap_count++;
 		}
 
 		DatumStreamBlockWrite_MakeNullBitMapSpace(dsw, oldNullBitCount);
