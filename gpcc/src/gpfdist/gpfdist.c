@@ -51,6 +51,10 @@
 
 #endif
 
+#include <openssl/ssl.h>
+#include <openssl/rand.h>
+#include <openssl/err.h>
+
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
 struct blockhdr_t
@@ -75,6 +79,14 @@ struct block_t
 int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
+
+/* SSL additions */
+#define SSL_RENEGOTIATE_TIMEOUT_SEC	(600) /* 10 minutes */
+const char* const CertificateFilename = "server.crt";
+const char* const PrivateKeyFilename = "server.key";
+const char* const TrustedCaFilename = "root.crt";
+static SSL_CTX *initialize_ctx(void);
+/* SSL end */
 
 /**************
 
@@ -151,7 +163,8 @@ static struct
 	int			z; /* listen queue size (hidden option currently for debuging) */
 	const char* c; /* config file */
 	struct transform* trlist; /* transforms from config file */
-} opt = { 8080, 8080, 0, 0, ".", 0,0, -1, 5, 0, 32768, 0, 256, 0, 0 };
+	const char* ssl; /* path to certificates in case we use gpfdist with ssl */
+} opt = { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -239,6 +252,8 @@ static struct
 	apr_int64_t 	read_bytes;
 	apr_int64_t 	total_bytes;
 	int 			total_sessions;
+	BIO 			*bio_err;	/* for SSL */
+	SSL_CTX 		*server_ctx;/* for SSL */
 } gcb;
 
 /*  A session */
@@ -303,9 +318,15 @@ struct request_t
 		int 	dbufmax; 	/* size of dbuf[] */
 	} in;
 
-	block_t outblock; /* next block to send out */
+	block_t	outblock;	/* next block to send out */
 	char*           line_delim_str;
 	int             line_delim_length;
+	
+	/* SSL related */
+	BIO			*io;		/* for the i.o. */
+	BIO			*sbio;		/* for the accept */
+	BIO			*ssl_bio;
+	SSL			*ssl;
 };
 
 /* send gp-proto==1 ctl info */
@@ -331,6 +352,14 @@ static int request_set_transform(request_t *r);
 #endif
 static void handle_post_request(request_t *r, int header_end);
 static void handle_get_request(request_t *r);
+
+static int gpfdist_socket_send(const request_t *r, const void *buf, const size_t buflen);
+static int gpfdist_SSL_send(const request_t *r, const void *buf, const size_t buflen);
+static int (*gpfdist_send)(const request_t *r, const void *buf, const size_t buflen); /* function pointer */
+static int gpfdist_socket_receive(const request_t *r, void *buf, const size_t buflen);
+static int gpfdist_SSL_receive(const request_t *r, void *buf, const size_t buflen);
+static int (*gpfdist_receive)(const request_t *r, void *buf, const size_t buflen); /* function pointer */
+static void free_SSL_resources(const request_t *r);
 
 /* Print usage */
 static void usage_error(const char* msg, int print_usage)
@@ -362,7 +391,7 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>]"
+						"usage: gpfdist [--ssl <certificates_directory>] [-d <directory>] [-p <http(s)_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>]"
 #ifdef GPFXDIST
 					    "[-c file]"
 #endif
@@ -371,11 +400,12 @@ static void usage_error(const char* msg, int print_usage)
 						"        -?, --help : print this screen\n"
 						"        -v         : verbose mode\n"
 						"        -V         : more verbose\n"
-						"        -p port    : port to serve HTTP, default is 8080\n"
+						"        -p port    : port to serve HTTP(S), default is 8080\n"
 						"        -d dir     : serve files under the specified directory,  default is '.'\n"
 						"        -l logfn   : log filename\n"
-					    "        -t tm      : timeout in seconds \n"
+						"        -t tm      : timeout in seconds \n"
 						"        -m maxlen  : max data row length expected, in bytes. default is 32768\n"
+						"        --ssl dir  : start HTTPS server. Use the certificates from the specified directory\n"
 #ifdef GPFXDIST
 					    "        -c file    : configuration file for transformations\n"
 #endif
@@ -415,11 +445,12 @@ static void parse_command_line(int argc, const char* const argv[],
 
 	static const apr_getopt_option_t option[] =
 	{
+	/* long-option, short-option, has-arg flag, description */
 	{ "help", '?', 0, "print help screen" },
 	{ NULL, 'V', 0, "very verbose" },
 	{ NULL, 'v', 0, "verbose mode" },
-	{ NULL, 'p', 1, "which port to serve HTTP" },
-	{ NULL, 'P', 1, "last port of range of ports to serve HTTP" },
+	{ NULL, 'p', 1, "which port to serve HTTP(S)" },
+	{ NULL, 'P', 1, "last port of range of ports to serve HTTP(S)" },
 	{ NULL, 'd', 1, "serve files under this directory" },
 	{ NULL, 'f', 1, "internal - force file to be given file name" },
 	{ NULL, 'b', 1, "internal - bind to ip4 address" },
@@ -432,6 +463,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 'm', 1, "max data row length expected" },
 	{ NULL, 'S', 0, "use O_SYNC when opening files for write" },
 	{ NULL, 'z', 1, "internal - queue size for listen call" },
+	{ "ssl", 257, 1, "ssl - certificates files under this directory" },
 #ifdef GPFXDIST
 	{ NULL, 'c', 1, "transform configuration file" },
 #endif
@@ -502,6 +534,9 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 'c':
 			opt.c = arg;
 			break;
+		case 257:
+			opt.ssl = arg;
+			break;
 		case 256:
 			print_version();
 			break;
@@ -540,7 +575,8 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: cannot run under root (/) directory", 0);
+			usage_error("Security Error:  You cannot specify the root" + 
+						" directory (/) as the source files directory.", 0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -574,8 +610,8 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: cannot run under root (/) directory",
-						0);
+			usage_error("Security Error: You cannot specify the root" + 
+						" directory (/) as the log file directory.", 0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -595,6 +631,32 @@ static void parse_command_line(int argc, const char* const argv[],
 		}
 		fclose(f);
 
+	}
+
+	/* validate opt.ssl */
+	if (opt.ssl)
+	{
+		char* p = gstring_trim(apr_pstrdup(pool, opt.ssl));
+
+		/* collapse // */
+		while (p[0] == '/' && p[1] == '/')
+			p++;
+
+		/* disallow / */
+		if (0 == strcmp(p, "/"))
+			usage_error("Security Error: You cannot specify the root" + 
+						" directory (/) as the certificates directory", 0);
+
+		/* strip ending / */
+		while (p[0] && p[strlen(p) - 1] == '/')
+			p[strlen(p) - 1] = 0;
+		opt.ssl = p;
+
+		/* check that the dir exists */
+		if ( (0 != apr_filepath_set(opt.ssl, pool)) || (0 != apr_filepath_get(&p, APR_FILEPATH_NATIVE, pool)) )
+			usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
+				"Please specify a valid directory for --ssl switch", opt.ssl), 0);
+		opt.ssl = p;
 	}
 
 #ifdef GPFXDIST
@@ -634,7 +696,7 @@ static void http_error(request_t* r, int code, const char* msg)
 		"Cache-Control: no-cache\r\n"
 		"Connection: close\r\n\r\n", code, msg);
 
-	send(r->sock, buf, n, 0);
+	gpfdist_send(r, buf, n);
 }
 
 /* send an empty response */
@@ -648,7 +710,7 @@ static void http_empty(request_t* r)
 		"Cache-Control: no-cache\r\n"
 		"Connection: close\r\n\r\n";
 	gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	send(r->sock, buf, sizeof buf - 1, 0);
+	gpfdist_send(r, buf, sizeof buf -1);
 }
 
 /* send a Continue response */
@@ -658,7 +720,7 @@ static void http_continue(request_t* r)
 
 	gprint("%s %s %s - Continue\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 
-	send(r->sock, buf, sizeof buf - 1, 0);
+	gpfdist_send(r, buf, sizeof buf -1);
 }
 
 
@@ -679,7 +741,7 @@ static apr_status_t http_ok(request_t* r)
 	if (n >= sizeof(buf) - 1)
 		gfatal(FLINE, "internal error - buffer overflow during http_ok");
 
-	m = send(r->sock, buf, n, 0);
+	m = gpfdist_send(r, buf, n);
 	if (m != n)
 	{
 		gprint("%s - socket error\n", r->peer);
@@ -719,7 +781,7 @@ static apr_status_t send_gpfdist_status(request_t* r)
 	if (n >= sizeof buf - 1)
 		gfatal(FLINE, "internal error - buffer overflow during send_gpfdist_status");
 
-	m = send(r->sock, buf, n, 0);
+	m = gpfdist_send(r, buf, n);
 
 	if (m != n)
 	{
@@ -802,11 +864,14 @@ static void request_end(request_t* r, int error, const char* errmsg)
 	closesocket(r->sock);
 	r->sock = -1;
 	apr_pool_destroy(r->pool);
+
+	/* Release SSL related memory */
+	free_SSL_resources(r);
 }
 
-static int local_send(int fd, const char* buf, int buflen)
+static int local_send(request_t *r, const char* buf, int buflen)
 {
-	int n = send(fd, buf, buflen, 0);
+	int n = gpfdist_send(r, buf, buflen);
 
 	if (n < 0)
 	{
@@ -823,13 +888,13 @@ static int local_send(int fd, const char* buf, int buflen)
 	return n;
 }
 
-static int local_sendall(int fd, const char* buf, int buflen)
+static int local_sendall(request_t* r, const char* buf, int buflen)
 {
 	int oldlen = buflen;
 
 	while (buflen)
 	{
-		int i = local_send(fd, buf, buflen);
+		int i = local_send(r, buf, buflen);
 
 		if (i < 0)
 			return i;
@@ -853,7 +918,8 @@ static int local_sendall(int fd, const char* buf, int buflen)
  * this function creates and sends the meta info according to the passed in
  * arguments. It does not send the block itself (bytes 5-X).
  */
-static int gp1_send_header(request_t*r, char letter, int length)
+static int
+gp1_send_header(request_t*r, char letter, int length)
 {
 	char 		hdr[5];
 	const char*	p = hdr;
@@ -863,14 +929,15 @@ static int gp1_send_header(request_t*r, char letter, int length)
 
 	memcpy(hdr + 1, &length, 4);
 
-	return local_sendall(r->sock, p, 5) < 0 ? -1 : 0;
+	return local_sendall(r, p, 5) < 0 ? -1 : 0;
 }
 
 /*
  * Send a message to the client to indicate EOF - no more data. This is done
  * by sending a 'D' message type (Data) with length 0.
  */
-static void gp1_send_eof(request_t* r)
+static void
+gp1_send_eof(request_t* r)
 {
 	if (!gp1_send_header(r, 'D', 0))
 		TR(("[%d] sent EOF\n", r->sock));
@@ -879,11 +946,12 @@ static void gp1_send_eof(request_t* r)
 /*
  * Send an error message to the client, using the 'E' message type.
  */
-static void gp1_send_errmsg(request_t* r, const char* errmsg)
+static void 
+gp1_send_errmsg(request_t* r, const char* errmsg)
 {
 	apr_int32_t len = strlen(errmsg);
 	if (!gp1_send_header(r, 'E', len))
-		local_sendall(r->sock, errmsg, len);
+		local_sendall(r, errmsg, len);
 }
 
 #ifdef GPFXDIST
@@ -900,9 +968,9 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
 	{
 		if (nbytes > 0)
 		{
-			if (! gp1_send_header(r, 'E', nbytes)) 
+			if (! gp1_send_header(r, 'E', nbytes))
 			{
-				local_sendall(r->sock, buf, nbytes);
+				local_sendall(r, buf, nbytes);
 				TR(("[%d] request sent %"APR_SIZE_T_FMT" stderr bytes to server\n", r->sock, nbytes));
 			}
 		}
@@ -1361,7 +1429,7 @@ static void do_write(int fd, short event, void* arg)
 
 			if (n > 0)
 			{
-				n = local_send(fd, datablock->hdr.hbyte + datablock->hdr.hbot, n);
+				n = local_send(r, datablock->hdr.hbyte + datablock->hdr.hbot, n);
 				if (n < 0)
 				{
 					if (errno == EPIPE || errno == ECONNRESET)
@@ -1384,7 +1452,7 @@ static void do_write(int fd, short event, void* arg)
 		 * write out the block data
 		 */
 		n = datablock->top - datablock->bot;
-		n = local_send(fd, datablock->data + datablock->bot, n);
+		n = local_send(r, datablock->data + datablock->bot, n);
 		if (n < 0)
 		{
 			/*
@@ -1441,6 +1509,22 @@ static void do_read_request(int fd, short event, void* arg)
 		return;
 	}
 
+	/* Execute only once */
+	if (!r->io && !r->ssl_bio && opt.ssl)
+	{
+		r->io = BIO_new(BIO_f_buffer());
+		r->ssl_bio = BIO_new(BIO_f_ssl());
+		BIO_set_ssl(r->ssl_bio, r->ssl, BIO_CLOSE);
+		BIO_push(r->io, r->ssl_bio);
+
+		/* Set the renegotiate timeout in seconds. 	*/
+		/* When the renegotiate timeout elapses the */
+		/* session is automatically renegotiated	*/
+		BIO_set_ssl_renegotiate_timeout(r->ssl_bio, SSL_RENEGOTIATE_TIMEOUT_SEC);
+
+		gprint("Using SSL\n");
+	}
+
 	/* how many bytes left in the header buf */
 	n = r->in.hbufmax - r->in.hbuftop;
 	if (n <= 0)
@@ -1451,7 +1535,7 @@ static void do_read_request(int fd, short event, void* arg)
 	}
 
 	/* read into header buf */
-	n = recv(r->sock, r->in.hbuf + r->in.hbuftop, n, 0);
+	n = gpfdist_receive(r, r->in.hbuf + r->in.hbuftop, n);
 
 	if (n < 0)
 	{
@@ -1601,6 +1685,9 @@ static void do_accept(int fd, short event, void* arg)
 	apr_pool_t* 		pool;
 	int 				on = 1;
 	struct linger		linger;
+	BIO 				*sbio = NULL;	/* only for SSL */
+	SSL 				*ssl = NULL;	/* only for SSL */
+	int 				rd;				/* only for SSL */
 
 	/* do the accept */
 	if ((sock = accept(fd, (struct sockaddr*) &a, &len)) < 0)
@@ -1608,7 +1695,29 @@ static void do_accept(int fd, short event, void* arg)
 		gwarning(FLINE, "accept failed");
 		goto failure;
 	}
+	if (opt.ssl)
+	{
+		sbio = BIO_new_socket(sock, BIO_NOCLOSE);
+		ssl = SSL_new(gcb.server_ctx);
+		SSL_set_bio(ssl, sbio, sbio);
+		if ( (rd = SSL_accept(ssl) <= 0) )
+		{
+			gwarning(FLINE, "SSL accept failed");
+			if (opt.v)
+			{
+				ERR_print_errors(gcb.bio_err);
+			}
+			/* Close the socket that was allocated by accept 			*/
+			/* We also must perform this, in case that a user 			*/
+			/* accidentaly connected via gpfdist, instead of gpfdits	*/
+			closesocket(sock);
 
+			BIO_ssl_shutdown(sbio);
+			SSL_free(ssl);
+
+			return;
+		}
+	}
 	/* set to non-blocking, and close-on-exec */
 #ifdef WIN32
 	{
@@ -1651,6 +1760,8 @@ static void do_accept(int fd, short event, void* arg)
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
 	r->is_final = 0;	/* initialize */
+	r->ssl = ssl;
+	r->sbio = sbio;
 
 	{
 		char host[128];
@@ -1661,6 +1772,7 @@ static void do_accept(int fd, short event, void* arg)
 				);
 		r->peer = apr_psprintf(r->pool, "%s", host);
 	}
+
 
 	/* set up for callback when socket ready for reading the http request */
 	if (setup_read(r))
@@ -1723,7 +1835,9 @@ static int setup_read(request_t* r)
 		return (event_add(&r->ev, &r->tm));
 	}
 }
-static void print_listening_address(struct addrinfo *rp)
+
+static void
+print_listening_address(struct addrinfo *rp)
 {	
 	char stradd[200] = {0};	
 	
@@ -1761,40 +1875,42 @@ static void print_listening_address(struct addrinfo *rp)
  * Search linked list (head) for first element with family (first_family).
  * Moves first matching element to head of the list.
  */
-static struct addrinfo* rearrange_addrs(struct addrinfo *head, int first_family)
+static struct
+addrinfo* rearrange_addrs(struct addrinfo *head, int first_family)
 {
-	struct addrinfo* iter; 
+	struct addrinfo* iter;
 	struct addrinfo* new_head = head;
 	struct addrinfo* holder = NULL;
-	
+
 	if (head->ai_family == first_family)
 		return head;
-	
+
 	for (iter = head; iter != NULL && iter->ai_next != NULL; iter = iter->ai_next)
 	{
 		if ( iter->ai_next->ai_family == first_family )
 		{
 			holder = iter->ai_next;
-			iter->ai_next = iter->ai_next->ai_next; 
-			/* 
-			 * we don't break here since if there are more addrinfo structure that belong to first_family 
+			iter->ai_next = iter->ai_next->ai_next;
+			/*
+			 * we don't break here since if there are more addrinfo structure that belong to first_family
 			 * in the list, we want to remove them all and keep only one in the holder.
 			 * and then we will put the holder in the front
 			 */
 		}
 	}
-	
+
 	if ( holder != NULL )
 	{
 		holder->ai_next = new_head;
 		new_head = holder;
 	}
-	
+
 	return new_head;
-	
 }
 
-static void print_addrinfo_list(struct addrinfo *head)
+
+static void
+print_addrinfo_list(struct addrinfo *head)
 {
 	struct addrinfo *iter;
 	for (iter = head; iter != NULL; iter = iter->ai_next)
@@ -1804,7 +1920,8 @@ static void print_addrinfo_list(struct addrinfo *head)
 }
 
 /* Create HTTP port and start to receive request */
-static void http_setup(void)
+static void
+http_setup(void)
 {
 	SOCKET f;
 	int on = 1;
@@ -1816,6 +1933,20 @@ static void http_setup(void)
 
 	char service[32];
 	const char *hostaddr = NULL;
+
+	if (opt.ssl)
+	{
+		/* Build our SSL context*/
+		gcb.server_ctx 	= initialize_ctx();
+		gpfdist_send 	= gpfdist_SSL_send;
+		gpfdist_receive = gpfdist_SSL_receive;
+	}
+	else
+	{
+		gcb.server_ctx 	= NULL;
+		gpfdist_send 	= gpfdist_socket_send;
+		gpfdist_receive = gpfdist_socket_receive;
+	}
 
 	gcb.listen_sock_count = 0;
 	if (opt.b != NULL && strlen(opt.b) > 1)
@@ -1835,7 +1966,7 @@ static void http_setup(void)
 		hints.ai_socktype = SOCK_STREAM; /* tcp socket */
 		hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
 		hints.ai_protocol = 0;			/* Any protocol */
-		
+
 		s = getaddrinfo(hostaddr, service, &hints, &addrs);
 		if (s != 0)
 #if (!defined(WIN32)) || defined(gai_strerror)
@@ -1844,11 +1975,12 @@ static void http_setup(void)
 			/* Broken mingw header file from old version of mingw doesn't have gai_strerror */
 			gfatal(FLINE,"getaddrinfo says %d",s);
 #endif
-		
+
 		addrs = rearrange_addrs(addrs, AF_INET6);
+
 		gprint("Before opening listening sockets - following listening sockets are available:\n");
 		print_addrinfo_list(addrs);
-
+		
 		/*
 		 * getaddrinfo() returns a list of address structures,
 		 * one for each valid address and family we can use.
@@ -1875,7 +2007,7 @@ static void http_setup(void)
 				gwarning(FLINE, "Creating the socket failed\n");
 				continue;
 			}
-
+			
 #ifndef WIN32
 			if (fcntl(f, F_SETFD, 1) == -1)
 				gfatal(FLINE, "cannot create socket - fcntl(F_SETFD) failed");
@@ -1904,7 +2036,7 @@ static void http_setup(void)
 			if (bind(f, rp->ai_addr, rp->ai_addrlen) != 0)
 			{
 				gwarning(FLINE, "bind function failed\n");
-
+			
 				/* failed on bind, maybe this address family isn't supported */
 				close(f);
 				continue;
@@ -1924,7 +2056,7 @@ static void http_setup(void)
 				continue;
 			}
 			gcb.listen_socks[gcb.listen_sock_count++] = f;
-			
+
 			gprint("Opening listening socket succeeded\n");
 		}
 
@@ -1946,7 +2078,6 @@ static void http_setup(void)
 		opt.p++;
 	}
 
-
 	for (i = 0; i < gcb.listen_sock_count; i++)
 	{
 		/* when this socket is ready, do accept */
@@ -1962,10 +2093,10 @@ static void http_setup(void)
 			gfatal(FLINE, "cannot set up event on listen socket: %s",
 						   strerror(errno));
 	}
-
 }
 
-void process_signal(int sig)
+void
+process_signal(int sig)
 {
 	if (sig == SIGINT || sig == SIGTERM)
 	{
@@ -1981,8 +2112,8 @@ void process_signal(int sig)
 }
 
 
-static gnet_request_t *gnet_parse_request(const char* buf, int* len,
-										  apr_pool_t* pool)
+static gnet_request_t*
+gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 {
 	int n = *len;
 	int empty, completed;
@@ -2304,7 +2435,7 @@ static void handle_post_request(request_t *r, int header_end)
 			want = r->in.davailable;
 
 		/* read from socket into data buf */
-		n = recv(r->sock, r->in.dbuf + r->in.dbuftop, want, 0);
+		n = gpfdist_receive(r, r->in.dbuf + r->in.dbuftop, want);
 
 		if (n < 0)
 		{
@@ -2652,7 +2783,7 @@ static int request_set_transform(request_t *r)
 	 * we prepare a temporary file to hold it.	when the request is
 	 * done we'll forward the output as error messages.
 	 */
-	if (transform_stderr_server(tr)) 
+	if (transform_stderr_server(tr))
 	{
 		apr_pool_t*	 mp = r->pool;
 		apr_file_t*	 f = NULL;
@@ -2734,7 +2865,11 @@ int gpfdist_init(int argc, const char* const argv[])
 	event_init();
 	http_setup();
 
-	printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
+	if (opt.ssl)
+		printf("Serving HTTPS on port %d, directory %s\n", opt.p, opt.d);
+	else
+		printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
+
 	fflush(stdout);
 
 	/* redirect stderr and stdout to log */
@@ -3047,3 +3182,164 @@ void ControlHandler(DWORD request)
 	do_set_srv_status(SERVICE_RUNNING, 0);
 }
 #endif
+
+#define find_max(a,b) ((a) >= (b) ? (a) : (b))
+
+static SSL_CTX *initialize_ctx(void)
+{
+	int			stringSize;
+	char 		*fileName, slash;
+	SSL_CTX 	*ctx;
+
+	if (!gcb.bio_err){
+		/* Global system initialization*/
+		SSL_library_init();
+		SSL_load_error_strings();
+		/* An error write context */
+		gcb.bio_err=BIO_new_fp(stderr, BIO_NOCLOSE);
+	}
+
+	/* Create our context*/
+	ctx = SSL_CTX_new( TLSv1_server_method() );
+
+	/* Generate random seed */
+	if ( RAND_poll() == 0 )
+		gfatal(FLINE,"Can't generate random seed for SSL");
+
+	/* The size of the string will consist of the path and the filename (the longest one) */
+	// +1 for the '/' charachter (/filename)
+	// +1 for the \0,
+	stringSize = find_max( strlen(CertificateFilename), find_max(strlen(PrivateKeyFilename),strlen(TrustedCaFilename)) ) + strlen(opt.ssl) + 2;
+	/* Allocate the memory for the file name */
+	fileName = (char *) calloc( (stringSize), sizeof(char) );
+	if ( fileName == NULL )
+	{
+		gfatal (FLINE,"Unable to allocate memory for SSL initialization");
+	}
+
+#ifdef WIN32
+	slash = '\\';
+#else
+	slash = '/';
+#endif
+
+	/* Copy the path + the filename */
+	snprintf(fileName,stringSize,"%s%c%s",opt.ssl,slash,CertificateFilename);
+
+	/* Load our keys and certificates*/
+	if (!(SSL_CTX_use_certificate_chain_file(ctx,fileName)))
+	{
+		free(fileName);
+		gfatal(FLINE,"Unable to load the certificate from file: \"%s\"", fileName);
+	}
+	else
+	{
+		if ( opt.v )
+		{
+			gprint("The certificate was successfully loaded from \"%s\"\n",fileName);
+		}
+	}
+
+	/* Copy the path + the filename */
+	snprintf(fileName,stringSize,"%s%c%s",opt.ssl,slash,PrivateKeyFilename);
+
+	if (!(SSL_CTX_use_PrivateKey_file(ctx,fileName,SSL_FILETYPE_PEM)))
+	{
+		free(fileName);
+		gfatal (FLINE,"Unable to load the private key from file: \"%s\"", fileName);
+	}
+	else
+	{
+		if ( opt.v )
+		{
+			gprint("The private key was successfully loaded from \"%s\"\n",fileName);
+		}
+	}
+
+	/* Copy the path + the filename */
+	snprintf(fileName,stringSize,"%s%c%s",opt.ssl,slash,TrustedCaFilename);
+
+	/* Load the CAs we trust*/
+	if (!(SSL_CTX_load_verify_locations(ctx, fileName,0)))
+	{
+		free(fileName);
+		gfatal (FLINE,"Unable to to load CA from file: \"%s\"", fileName);
+	}
+	else
+	{
+		if ( opt.v )
+		{
+			gprint("The CA file successfully loaded from \"%s\"\n",fileName);
+		}
+	}
+
+	/* Set the verification flags for ctx 	*/
+	/* We always require client certificate	*/
+	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, 0);
+
+	free(fileName);
+	return ctx;
+}
+
+/*
+ * gpfdist_socket_send
+ *
+ * Sends the requested buf, of size buflen to the network
+ * via appropriate socket
+ */
+static int gpfdist_socket_send(const request_t *r, const void *buf, const size_t buflen)
+{
+	return send(r->sock, buf, buflen, 0);
+}
+
+/*
+ * gpfdist_SSL_send
+ *
+ * Sends the requested buf, of size len to the network via SSL
+ */
+static int gpfdist_SSL_send(const request_t *r, const void *buf, const size_t buflen)
+{
+	int n;
+
+	n = BIO_write(r->io, buf, buflen);
+	if( BIO_flush(r->io) > 0 )
+		return n;
+	else
+		return -1;
+}
+
+/*
+ * gpfdist_socket_receive
+ *
+ * read from a socket
+ */
+static int gpfdist_socket_receive(const request_t *r, void *buf, const size_t buflen)
+{
+	return ( recv(r->sock, buf, buflen, 0) );
+}
+
+/*
+ * gpfdist_SSL_receive
+ *
+ * read from an SSL socket
+ */
+static int gpfdist_SSL_receive(const request_t *r, void *buf, const size_t buflen)
+{
+	return ( BIO_read(r->io, buf, buflen) );
+	/* todo: add error checks here */
+}
+
+/*
+ * free_SSL_resources
+ *
+ * Frees all SSL resources that were allocated per request r
+ */
+static void free_SSL_resources(const request_t *r)
+{
+	BIO_ssl_shutdown(r->sbio);
+	BIO_vfree(r->io);
+	BIO_vfree(r->sbio);
+	//BIO_vfree(r->ssl_bio);
+	SSL_free(r->ssl);
+
+}

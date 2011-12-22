@@ -81,6 +81,8 @@ valid_tokens = {
     "local_hostname": {'parse_children': False, 'parent': "source"},
     "port_range": {'parse_children': False, 'parent': "source"},
     "file": {'parse_children': False, 'parent': "source"},
+    "ssl": {'parse_children': False, 'parent': "source"},
+    "certificates_path": {'parse_children': False, 'parent': "source"},
     "columns": {'parse_children': False, 'parent': "input"},
     "transform": {'parse_children': True, 'parent': "input"},
     "transform_config": {'parse_children': True, 'parent': "input"},
@@ -1556,6 +1558,30 @@ class gpload:
         return fragment
 
 
+    def gpfdist_ssl(self, popenList):
+        """
+        Adds gpfdist --ssl option to popenList when ssl option specified as true in YAML file.
+
+        @param popenList: gpfdist options (updated)
+        """
+        ssl = self.getconfig('gpload:input:source:ssl',bool, False)
+        certificates_path = self.getconfig('gpload:input:source:certificates_path', unicode, None)
+
+        if ssl and certificates_path:
+            dir_exists = os.path.isdir(certificates_path)
+            if dir_exists == False:
+                self.log(self.ERROR, "could not access CERTIFICATES_PATH directory: %s" % certificates_path)			
+
+            popenList.append('--ssl')
+            popenList.append(certificates_path)
+
+        else:
+            if ssl:
+                self.control_file_error("CERTIFICATES_PATH is required when SSL is specified as true")
+            elif certificates_path:    # ssl=false (or not specified) and certificates_path is specified
+                self.control_file_error("CERTIFICATES_PATH is specified while SSL is not specified as true")
+
+
     def start_gpfdists(self):
         """
         Start gpfdist daemon(s)
@@ -1591,6 +1617,7 @@ class gpload:
 
             # build gpfdist parameters
             popenList = ['gpfdist']
+            self.gpfdist_ssl(popenList)
             self.gpfdist_port_options(name, availablePorts, popenList)
             file = self.gpfdist_filenames(name, popenList)
             self.gpfdist_timeout_options(popenList)
@@ -1630,7 +1657,6 @@ class gpload:
                 self.log(self.ERROR, "could not run %s: %s" % \
                                 (' '.join(popenList), str(e)))
 
-
             """ 
             Reading from stderr and stdout on a Popen object can result in a dead lock if done at the same time.
             Create a lock to share when reading stderr and stdout from gpfdist. 
@@ -1652,7 +1678,7 @@ class gpload:
 
                 line = line.strip('\n')
                 self.log(self.LOG,'gpfdist says: ' + line)
-                if line.startswith('Serving HTTP on port '):
+                if (line.startswith('Serving HTTP on port ') or line.startswith('Serving HTTPS on port ')):
                     port = int(line[21:line.index(',')])
                     break
 
@@ -1665,6 +1691,12 @@ class gpload:
             t.start()
             self.threads.append(t)
 
+            ssl = self.getconfig('gpload:input:source:ssl', bool, False)
+            if ssl:
+                protocol = 'gpfdists'
+            else:
+                protocol = 'gpfdist'
+
             for l in local_hostname:
                 if type(l) != str and type(l) != unicode:
                     self.control_file_error(name + ":local_hostname must be a YAML sequence of strings")
@@ -1675,7 +1707,7 @@ class gpload:
                 # MPP-13617
                 if ':' in l:
                     l = '[' + l + ']'
-                self.locations.append('gpfdist://%s:%d%s%s%s' % (l, port, sep, '%20'.join(file), fragment))
+                self.locations.append('%s://%s:%d%s%s%s' % (protocol, l, port, sep, '%20'.join(file), fragment))
         if not found_source:
             self.control_file_error("configuration file must contain source definition")
 
@@ -2017,8 +2049,7 @@ class gpload:
         # in order to construct a CREATE EXTERNAL TABLE statement if will be
         # needed later on
         
-        self.error_table = self.getconfig('gpload:input:error_table', unicode,
-                                          None)
+        self.error_table = self.getconfig('gpload:input:error_table', unicode, None)
         formatType = self.getconfig('gpload:input:format', unicode, 'text').lower()
         formatOpts = ""
         locationStr = ','.join(map(quote,self.locations))

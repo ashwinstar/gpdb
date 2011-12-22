@@ -75,7 +75,8 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 	 */
 	if (strcasecmp(protocolName, "file") == 0 ||
 		strcasecmp(protocolName, "http") == 0 ||
-		strcasecmp(protocolName, "gpfdist") == 0)
+		strcasecmp(protocolName, "gpfdist") == 0 ||
+		strcasecmp(protocolName, "gpfdists") == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),

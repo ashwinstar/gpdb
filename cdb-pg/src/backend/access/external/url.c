@@ -62,6 +62,37 @@
 
 #define HOST_NAME_SIZE 100
 
+/*
+ * SSL support GUCs - should be added soon. Until then we will use stubs
+ * 
+ *  SSL Params
+ *	extssl_protocol  CURL_SSLVERSION_TLSv1 				
+ *  extssl_cipher 	 TLS_RSA_WITH_AES_128_CBC_SHA
+ *  extssl_verifycert 	1
+ *  extssl_verifyhost 	2 										
+ *  extssl_cert 		"gpfdists/client.crt"
+ *  extssl_key 			"gpfdists/client.key"
+ *  extssl_pass 		"?" 										
+ *  extssl_crl 			NULL 									
+ *  Misc Params
+ *  extssl_libcurldebug 1 	
+ */
+
+static int extssl_protocol  = CURL_SSLVERSION_TLSv1; 
+const char* extssl_cipher = "AES128-SHA";
+static int extssl_verifycert = 1;
+static int extssl_verifyhost = 2;
+const char* extssl_cert = "gpfdists/client.crt";
+const char* extssl_key = "gpfdists/client.key";
+const char* extssl_ca = "gpfdists/root.crt";
+const char* extssl_pass = NULL;
+const char* extssl_crl = NULL;
+static int extssl_libcurldebug = 1;
+char extssl_key_full[MAXPGPATH] = {0};
+char extssl_cer_full[MAXPGPATH] = {0};
+char extssl_cas_full[MAXPGPATH] = {0};
+
+
 static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, size_t errlen);
 static const char *getSignalNameFromCode(int signo);
 static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
@@ -743,6 +774,18 @@ url_has_ipv6_format (char *url)
 	return is6;
 }
 
+static int
+is_file_exists(const char* filename)
+{
+	FILE* file;
+    if ((file = fopen(filename, "r")) > 0)
+    {
+        fclose(file);
+        return 1;
+    }
+    return 0;
+}
+
 /*
  * url_fopen
  *
@@ -827,14 +870,14 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			return NULL;
 		}
     }
-    else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url))
+    else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url) || IS_GPFDISTS_URI(url))
     {
 		int sz;
 
 		bool is_ipv6 = url_has_ipv6_format(file->url);
 		
 		sz = make_url(file->url, 0, is_ipv6);
-		
+
         file->type = CFTYPE_CURL; /* marked as URL */
 
 		if (sz < 0)
@@ -845,21 +888,47 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			elog(ERROR, "illegal URL: %s", url_cpy);
 		}
 
-		file->u.curl.curl_url = palloc(sz);
-		memset(file->u.curl.curl_url, 0, sz);
-		file->u.curl.for_write = forwrite;
-		
-		make_url(file->url, file->u.curl.curl_url, is_ipv6);
-		/*
-		 * We need to call is_url_ipv6 for the case where inside make_url function
-		 * a domain name was transformed to an IPv6 address.
-		 */
-		if ( !is_ipv6 )
-			is_ipv6 = url_has_ipv6_format( file->u.curl.curl_url);
-
-		if (IS_GPFDIST_URI(file->u.curl.curl_url))
+		if (!IS_GPFDISTS_URI(url))
 		{
-			/* replace gpfdist:// with http:// */
+			file->u.curl.curl_url = palloc(sz);
+			memset(file->u.curl.curl_url, 0, sz);
+			file->u.curl.for_write = forwrite;
+			
+			make_url(file->url, file->u.curl.curl_url, is_ipv6);
+			/*
+			 * We need to call is_url_ipv6 for the case where inside make_url function
+			 * a domain name was transformed to an IPv6 address.
+			 */
+			if ( !is_ipv6 )
+				is_ipv6 = url_has_ipv6_format(file->u.curl.curl_url);	
+		}
+		else
+		{
+			/*
+			 * SSL support addition
+			 * 
+			 * negotiation will fail if verifyhost is on, so we *must*
+			 * not reoslve the hostname in this case. I have decided
+			 * to not resolve it anyway and let libcurl do the work.
+			 */
+			char* tmp_resolved;
+			int url_len = strlen(file->url);
+			file->u.curl.curl_url = palloc0(url_len + 1);
+			memcpy(file->u.curl.curl_url, file->url, url_len);
+			file->u.curl.for_write = forwrite;
+			
+			tmp_resolved = palloc0(sz);
+			make_url(file->url, tmp_resolved, is_ipv6);
+			
+			/* keep the same ipv6 logic here */
+			if ( !is_ipv6 )
+				is_ipv6 = url_has_ipv6_format(tmp_resolved);
+		}
+		
+		if (IS_GPFDIST_URI(file->u.curl.curl_url) || IS_GPFDISTS_URI(file->u.curl.curl_url))
+		{
+			/* replace gpfdist:// with http:// or gpfdists:// with https://
+			 * by overriding 'dist' with 'http' */
 			file->u.curl.curl_url += 3;
 			memcpy(file->u.curl.curl_url, "http", 4);
 			pstate->header_line = 0;
@@ -872,6 +941,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			elog(ERROR, "internal error: curl_easy_init failed");
 		}
 
+		set_httpheader(file, "X-GP-LINE-DELIM-STR", ev->GP_LINE_DELIM_STR);
+		set_httpheader(file, "X-GP-LINE-DELIM-LENGTH", ev->GP_LINE_DELIM_LENGTH);
 
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
@@ -1023,7 +1094,132 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 					 e, curl_easy_strerror(e));
 			}
 		}
+						
+		/*
+		 * SSL configuration
+		 */
+		if (IS_GPFDISTS_URI(url))
+		{
+			Insist(PointerIsValid(DataDir));
+			elog(LOG,"trying to load certificates from %s", DataDir);
+			
+			/* cert is stored PEM coded in file... */
+			if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLCERTTYPE, "PEM")))
+			{
+				url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLCERTTYPE error (%d - %s)",
+					 e, curl_easy_strerror(e));
+			}
 
+		  	/* set the cert for client authentication */
+		  	if (extssl_cert != NULL)
+		  	{
+		  		memset(extssl_cer_full, 0, MAXPGPATH);
+		  		snprintf(extssl_cer_full, MAXPGPATH, "%s/%s", DataDir, extssl_cert);
+				
+				if (!is_file_exists(extssl_cer_full))
+					elog(ERROR, "file %s doesn't exists", extssl_cer_full);
+							   
+		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLCERT, extssl_cer_full)))
+		  		{
+					url_fclose(file, false, pstate->cur_relname);
+					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)",
+						 e, curl_easy_strerror(e));
+				}
+		  	}
+
+		  	/* set the key passphrase */
+		  	if (extssl_pass != NULL)
+		  	{
+		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_KEYPASSWD, extssl_pass)))
+		  		{
+					url_fclose(file, false, pstate->cur_relname);
+					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_KEYPASSWD error (%d - %s)",
+						 e, curl_easy_strerror(e));
+				}
+		  	}
+
+		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLKEYTYPE,"PEM")))
+		  	{
+				url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEYTYPE error (%d - %s)",
+					 e, curl_easy_strerror(e));
+			}
+
+		  	/* set the private key (file or ID in engine) */
+		  	if (extssl_key != NULL)
+		  	{
+		  		memset(extssl_key_full, 0, MAXPGPATH);
+		  		snprintf(extssl_key_full, MAXPGPATH, "%s/%s", DataDir,extssl_key);
+				
+				if (!is_file_exists(extssl_key_full))
+					elog(ERROR, "file %s doesn't exists", extssl_cer_full);
+				
+		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLKEY, extssl_key_full)))
+		  		{
+					url_fclose(file, false, pstate->cur_relname);
+					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)",
+						 e, curl_easy_strerror(e));
+				}
+		  	}
+
+		  	/* set the file with the certs vaildating the server */
+		  	if (extssl_ca != NULL)
+		  	{
+		  		memset(extssl_cas_full, 0, MAXPGPATH);
+		  		snprintf(extssl_cas_full, MAXPGPATH, "%s/%s", DataDir, extssl_ca);
+				
+				if (!is_file_exists(extssl_cas_full))
+					elog(ERROR, "file %s doesn't exists", extssl_cer_full);
+				
+		  		if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_CAINFO, extssl_cas_full)))
+		  		{
+					url_fclose(file, false, pstate->cur_relname);
+					elog(ERROR, "internal error: curl_easy_setopt CURLOPT_CAINFO error (%d - %s)",
+						 e, curl_easy_strerror(e));
+				}
+		  	}
+
+		  	/* set cert verification */
+		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSL_VERIFYPEER, (long)extssl_verifycert)))
+		  	{
+		  		url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYPEER error (%d - %s)",
+					 e, curl_easy_strerror(e));
+		  	}
+			
+			/* set host verification */
+		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSL_VERIFYHOST, (long)extssl_verifyhost)))
+		  	{
+				url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYHOST error (%d - %s)",
+					 e, curl_easy_strerror(e));
+			}
+			/* set ciphersuite */
+		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSL_CIPHER_LIST, extssl_cipher)))
+		  	{
+				url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_CIPHER_LIST error (%d - %s)",
+					 e, curl_easy_strerror(e));
+			}
+			/* set protocol */
+		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLVERSION, extssl_protocol)))
+		  	{
+				url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLVERSION error (%d - %s)",
+					 e, curl_easy_strerror(e));
+			}
+		  	/* set debug */
+		  	if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, (long)extssl_libcurldebug)))
+		  	{
+		  		if (extssl_libcurldebug)
+		  		{
+		  			elog(INFO, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)",
+		  					e, curl_easy_strerror(e));
+		  		}
+			}
+		}
+        
         /* 
          * lets check our connection.
          * start the fetch if we're SELECTing (GET request), or write an

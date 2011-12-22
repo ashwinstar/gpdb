@@ -38,7 +38,12 @@ export LDFLAGS=$(BLD_CFLAGS)
 SHELL=bash
 OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
-OPENSSL=openssl-0.9.8h
+OPENSSL=openssl-0.9.8r
+ifeq "$(BLD_ARCH)" "win32"
+OPENSSL_LIBS=-leay32 $(BLD_THIRDPARTY_LIB_DIR)/ssleay32.a
+else
+OPENSSL_LIBS=-lssl -lcrypto
+endif
 GP_VERSION:=$(shell cat $(GPCC)/../VERSION)
 
 # flag to include/exclude gpfdist transformation support
@@ -93,7 +98,7 @@ ifeq "$(BLD_ARCH)" "win32"
 	  $(GPFDISTFILES_EXTRA)
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
-	  $(GPFDISTFILES) $(GPFDISTOBJS_EXTRA) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+	  $(GPFDISTFILES) $(GPFDISTOBJS_EXTRA) $(APRLIBS) -levent $(OPENSSL_LIBS) -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 else
 	for file in $(GPFDISTFILES); do \
 	    (cd src/gpfdist/ && \
@@ -101,7 +106,7 @@ else
 	done
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
-	  $(GPFDISTOBJSFILES) $(GPFDISTOBJS_EXTRA) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+	  $(GPFDISTOBJSFILES) $(GPFDISTOBJS_EXTRA) $(APRLIBS) -levent $(OPENSSL_LIBS) -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 endif
 	mkdir -p build/bin
 	cp -f src/gpfdist/gpfdist$(EXT_EXE) build/bin/
@@ -132,7 +137,7 @@ mkgp:
 mkgpma: mklibgpcc mklibchubby
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -I../build/include \
-		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lchubby -lssl -lcrypto $(APULIBS) $(APRLIBS))
+		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lchubby $(OPENSSL_LIBS) $(APULIBS) $(APRLIBS))
 	@mkdir -p build/bin
 	@cp -f src/gpma/gpma build/bin/
 
@@ -140,7 +145,7 @@ mkgpma: mklibgpcc mklibchubby
 mkgpha: mklibgpcc
 	@echo --- gpha -----------------------------------------------------
 	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv -lssl -lcrypto)
+		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv $(OPENSSL_LIBS))
 	@mkdir -p build/bin
 	@cp -f src/gpha/gpha build/bin/
 
@@ -162,7 +167,7 @@ mklibgpcc: mkext
 mktest: mklibgpcc
 	@echo --- test ------------------------------------------------------	
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
-			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent -lresolv)
+			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent $(OPENSSL_LIBS) -lresolv)
 
 mkext: mkdir
 	$(MAKE) -C ext

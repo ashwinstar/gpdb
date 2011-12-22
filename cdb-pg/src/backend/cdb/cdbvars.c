@@ -74,9 +74,9 @@ bool		Debug_print_plannedstmt;	/* Shall we log the final planned statement? */
 
 bool		gp_external_enable_exec = true; /* allow ext tables with EXECUTE */
 
-bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist for non-su */
+bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist/gpfdists for non-su */
 
-int			gp_external_max_segs;      /* max segdbs per gpfdist URI */
+int			gp_external_max_segs;      /* max segdbs per gpfdist/gpfdists URI */
 
 int			gp_safefswritesize;  /* set for safe AO writes in non-mature fs */
 

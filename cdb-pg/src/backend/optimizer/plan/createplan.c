@@ -1123,7 +1123,7 @@ create_aocsscan_plan(CreatePlanContext *ctx, Path *best_path,
  *                      and one only primary segdb.
  *   - 'http' protocol: each location (URI of http server) gets mapped to one 
  *                      and one only primary segdb.
- *   - 'gpfdist' protocol: all locations (URI of gpfdist client) are mapped 
+ *   - 'gpfdist' and 'gpfdists' protocols: all locations (URI of gpfdist/gpfdists client) are mapped 
  *                      to all primary segdbs. If there are less URIs than
  *                      segdbs (usually the case) the URIs are duplicated
  *                      so that there will be one for each segdb. However, if
@@ -1166,7 +1166,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	bool			found_match = false;
 	bool			done = false;
 
-	/* gpfdist or EXECUTE specific variables */
+	/* gpfdist, gpfdists or EXECUTE specific variables */
 	int				total_to_skip = 0;
 	int				max_participants_allowed = 0;
 	int			num_segs_participating = 0;
@@ -1274,10 +1274,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * relationship. The only difference between them is that file:// URI must 
 	 * be assigned to a segdb on a host that is local to that URI.
 	 *
-	 * 2) segment mapping for tables with LOCATION gpfdist:// or custom protocol
+	 * 2) segment mapping for tables with LOCATION gpfdist://, gpfdists:// or custom protocol
 	 *
 	 * This protocol is more complicated - in here we usually duplicate the user
-	 * supplied gpfdist:// URIs until there is one available to every segdb. 
+	 * supplied gpfdist:// (or gpfdists://) URIs until there is one available to every segdb. 
 	 * However, in some cases (as determined by gp_external_max_segs GUC) we
 	 * don't want to use *all* segdbs but instead figure out how many and pick
 	 * them randomly (this is mainly for better performance and resource mgmt).
@@ -1395,12 +1395,14 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 	}
 	/* (2) */
-	else if(using_location && (uri->protocol == URI_GPFDIST || uri->protocol == URI_CUSTOM))
+	else if(using_location && (uri->protocol == URI_GPFDIST || 
+							   uri->protocol == URI_GPFDISTS || 
+							   uri->protocol == URI_CUSTOM))
 	{
 		/*
-		 * Re-write the location list for GPFDIST before mapping to segments.
+		 * Re-write the location list for GPFDIST or GPFDISTS before mapping to segments.
 		 *
-		 * If we happen to be dealing with URI's with the 'gpfdist' protocol
+		 * If we happen to be dealing with URI's with the 'gpfdist' (or 'gpfdists') protocol
 		 * we do an extra step here. 
 		 *
 		 * (*) We modify the locationlist so that every
@@ -1439,7 +1441,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 			elog(NOTICE, "External scan %s will utilize %d out "
 				 "of %d segment databases", 
-				 (uri->protocol == URI_GPFDIST ? "from gpfdist server" : "using custom protocol"),
+				 (uri->protocol == URI_GPFDIST ? "from gpfdist(s) server" : "using custom protocol"),
 				 num_segs_participating,
 				 total_primaries);
 		}
@@ -1538,11 +1540,11 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				}
 			}
 
-			/* We failed to find a segdb for this gpfdist URI */
+			/* We failed to find a segdb for this gpfdist(s) URI */
 			if(!found_match)
 			{
 				/* should never happen */
-				elog(LOG, "external tables gpfdist allocation error. "
+				elog(LOG, "external tables gpfdist(s) allocation error. "
 					 "total_primaries: %d, num_segs_participating %d "
 					 "max_participants_allowed %d, total_to_skip %d",
 					 total_primaries, num_segs_participating,
@@ -1551,7 +1553,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
 						 errmsg("Internal error in createplan for external tables"
-								" when trying to assign segments for gpfdist")));
+								" when trying to assign segments for gpfdist(s)")));
 			}		
 		}
 
