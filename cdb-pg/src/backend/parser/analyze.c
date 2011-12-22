@@ -3385,13 +3385,18 @@ fillin_encoding(List *list)
 {
 	bool foundCompressType = false;
 	bool foundCompressTypeNone = false;
-	bool foundCompressLevel = false;
+	char *cmplevel = NULL;
 	bool foundBlockSize = false;
 	char *arg;
 	DefElem *e1 = makeDefElem("compresstype", (Node *) makeString("none"));
-	DefElem *e2 = makeDefElem("compresslevel", (Node *) makeInteger(0));  /* compress level 0 */
-	DefElem *e2b = makeDefElem("compresslevel", (Node *) makeInteger(1)); /* compress level 1 */
-	DefElem *e3 = makeDefElem("blocksize", (Node *) makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
+	DefElem *e2 = makeDefElem("compresslevel",
+							  (Node *) makeInteger(0));  /* compress level 0 */
+	DefElem *e2b = makeDefElem("compresslevel",
+							   (Node *) makeInteger(1)); /* compress level 1 */
+	DefElem *e3 = makeDefElem("blocksize",
+						(Node *)makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
+	DefElem *zlibComp = makeDefElem("compresstype",
+									(Node *)makeString("zlib"));
 	List *retList = list;
 	ListCell *lc;
 
@@ -3407,20 +3412,35 @@ fillin_encoding(List *list)
 				foundCompressTypeNone = true;
 		}
 		else if (pg_strcasecmp("compresslevel", el->defname) == 0)
-			foundCompressLevel = true;
+		{
+			cmplevel = defGetString(el);
+		}
 		else if (pg_strcasecmp("blocksize", el->defname) == 0)
 			foundBlockSize = true;
 	}
 
 	if (foundCompressType == false)
-		retList = lappend(retList, e1);
-	if (foundCompressLevel == false)
+	{
+		/*
+		 * We actually support "compresslevel=N" and default the compression
+		 * type to zlib (see default_reloptions()). There's no pleasant way to
+		 * factor out the common code. We only add zlib compression for non-zero
+		 * N in compresslevel=N (we check if N is meaningful to zlib later).
+		*/
+		if (cmplevel && strcmp(cmplevel, "0") != 0)
+			retList = lappend(retList, zlibComp);
+		else
+			retList = lappend(retList, e1);
+	}
+
+	if (!cmplevel)
 	{
 		if (foundCompressType == false || foundCompressTypeNone == true)
 			retList = lappend(retList, e2);   /* no compress type => compresslevel = 0 */
 		else
 			retList = lappend(retList, e2b);  /* compress type, but no compress level => compress level = 1 */
 	}
+
 	if (foundBlockSize == false)
 		retList = lappend(retList, e3);
 
