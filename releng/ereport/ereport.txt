@@ -555,124 +555,147 @@ faag: fileam:00002641:  ereport(ERROR,
 faag: fileam:00002642:  (errcode_for_file_access(), 
 faag: fileam:00002643:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
-uaad: url:00000159:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
-uaad: url:00000188:  //elog(NOTICE, "write_callback %d", nbytes); 
-uaad: url:00000214:  elog(ERROR, "out of memory (curl write_callback)"); 
-uaad: url:00000219:  // elog(NOTICE, "max now at %d", n); 
-uaad: url:00000275:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
-uaad: url:00000276:  errmsg("connection with gpfdist failed for %s. " 
-uaad: url:00000277:  "effective url: %s. %s", file->url, effective_url, 
-uaad: url:00000278:  (oserrno != 0 ? connmsg : "")), 
-uaad: url:00000279:  errOmitLocation(true))); 
-uaad: url:00000290:  elog(ERROR, "http response code %ld from gpfdist (%s): %s", 
-uaad: url:00000291:  response_code, file->url, 
-uaad: url:00000292:  file->u.curl.http_response ? file->u.curl.http_response : "?"); 
-uaad: url:00000321:  /* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d", 
-uaad: url:00000322:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
-uaad: url:00000341:  elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)", 
-uaad: url:00000342:  e, curl_easy_strerror(e)); 
-uaad: url:00000355:  elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)", 
-uaad: url:00000356:  maxfd, errno, strerror(errno)); 
-uaad: url:00000370:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
-uaad: url:00000371:  e, curl_easy_strerror(e)); 
-uaad: url:00000375:  /* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d", 
-uaad: url:00000376:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
-uaad: url:00000392:  elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value); 
-uaad: url:00000531:  elog(ERROR, "illegal url '%s'", url); 
-uaad: url:00000554:  ereport(ERROR, 
-uaad: url:00000555:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-uaad: url:00000556:  errmsg("<port> substring size must not exceed %d characters", 8))); 
-uaad: url:00000578:  ereport(ERROR, 
-uaad: url:00000579:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-uaad: url:00000580:  errmsg("<port> substring size must not exceed %d characters", 8))); 
-uaad: url:00000589:  ereport(ERROR, 
-uaad: url:00000590:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-uaad: url:00000591:  errmsg("<port> substring must contain only digits"))); 
-uaad: url:00000595:  elog(ERROR, "hostname too long for url '%s'", url); 
-uaad: url:00000682:  elog(ERROR, "out of memory"); 
-uaad: url:00000721:  ereport(ERROR, 
-uaad: url:00000722:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-uaad: url:00000723:  errmsg("cannot start external table command: %m"), 
-uaad: url:00000724:  errdetail("Command: %s", cmd), 
-uaad: url:00000725:  errOmitLocation(true))); 
-uaad: url:00000783:  elog(ERROR, "out of memory"); 
-uaad: url:00000803:  elog(ERROR, "External Table error opening file: '%s', invalid " 
-uaad: url:00000804:  "file path", url); 
-uaad: url:00000845:  elog(ERROR, "illegal URL: %s", url_cpy); 
-uaad: url:00000872:  elog(ERROR, "internal error: curl_easy_init failed"); 
-uaad: url:00000879:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
-uaad: url:00000880:  e, curl_easy_strerror(e)); 
-uaad: url:00000885:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
-uaad: url:00000886:  e, curl_easy_strerror(e)); 
-uaad: url:00000892:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
-uaad: url:00000893:  e, curl_easy_strerror(e)); 
-uaad: url:00000899:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
-uaad: url:00000900:  e, curl_easy_strerror(e)); 
-uaad: url:00000906:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
-uaad: url:00000907:  e, curl_easy_strerror(e)); 
-uaad: url:00000913:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
-uaad: url:00000914:  e, curl_easy_strerror(e)); 
-uaad: url:00000924:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
-uaad: url:00000925:  e, curl_easy_strerror(e)); 
-uaad: url:00000953:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00000963:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00000981:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00000996:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
-uaad: url:00001004:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
-uaad: url:00001005:  e, curl_easy_strerror(e)); 
-uaad: url:00001013:  elog(ERROR, "internal error: curl_multi_init failed"); 
-uaad: url:00001022:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
-uaad: url:00001023:  e, curl_easy_strerror(e)); 
-uaad: url:00001041:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
-uaad: url:00001042:  e, curl_easy_strerror(e)); 
-uaad: url:00001054:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001055:  e, curl_easy_strerror(e)); 
-uaad: url:00001062:  elog(ERROR, "error: %s", 
-uaad: url:00001063:  curl_easy_strerror(e)); 
-uaad: url:00001255:  ereport(ERROR, 
-uaad: url:00001256:  (errcode(ERRCODE_INTERNAL_ERROR), 
-uaad: url:00001257:  errmsg_internal("external table type not implemented: %d", type))); 
-uaad: url:00001398:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
-uaad: url:00001404:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
-uaad: url:00001418:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
-uaad: url:00001419:  type, len); 
-uaad: url:00001423:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
-uaad: url:00001424:  curl->in.bot, curl->in.top); 
-uaad: url:00001445:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
-uaad: url:00001450:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
-uaad: url:00001465:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
-uaad: url:00001470:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001499:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
-uaad: url:00001504:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001520:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
-uaad: url:00001525:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001547:  // elog(NOTICE, "D %d", curl->block.datalen); 
-uaad: url:00001551:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
-uaad: url:00001568:  elog(ERROR, "gpfdist server closed connection.\n"); 
-uaad: url:00001577:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
-uaad: url:00001602:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001603:  e, curl_easy_strerror(e)); 
-uaad: url:00001607:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
-uaad: url:00001608:  e, curl_easy_strerror(e)); 
-uaad: url:00001612:  elog(ERROR, "%s error (%d - %s)", 
-uaad: url:00001613:  file->u.curl.curl_url, 
-uaad: url:00001614:  e, curl_easy_strerror(e)); 
-uaad: url:00001618:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
-uaad: url:00001619:  file->u.curl.curl_url, response_code, response_string); 
-uaad: url:00001635:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
-uaad: url:00001636:  file->u.curl.curl_url, 
-uaad: url:00001637:  e, curl_easy_strerror(e)); 
-uaad: url:00001643:  elog(ERROR, "%s error: %s", 
-uaad: url:00001644:  file->u.curl.curl_url, 
-uaad: url:00001645:  curl_easy_strerror(e)); 
-uaad: url:00001660:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001671:  //elog(NOTICE, "curl_fread %d bytes", n); 
-uaad: url:00001686:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001732:  elog(ERROR, "out of memory (curl_fwrite)"); 
-uaad: url:00001817:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00001857:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00001911:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
-uaad: url:00002302:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+uaad: url:00000190:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
+uaad: url:00000219:  //elog(NOTICE, "write_callback %d", nbytes); 
+uaad: url:00000245:  elog(ERROR, "out of memory (curl write_callback)"); 
+uaad: url:00000250:  // elog(NOTICE, "max now at %d", n); 
+uaad: url:00000306:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
+uaad: url:00000307:  errmsg("connection with gpfdist failed for %s. " 
+uaad: url:00000308:  "effective url: %s. %s", file->url, effective_url, 
+uaad: url:00000309:  (oserrno != 0 ? connmsg : "")), 
+uaad: url:00000310:  errOmitLocation(true))); 
+uaad: url:00000321:  elog(ERROR, "http response code %ld from gpfdist (%s): %s", 
+uaad: url:00000322:  response_code, file->url, 
+uaad: url:00000323:  file->u.curl.http_response ? file->u.curl.http_response : "?"); 
+uaad: url:00000352:  /* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d", 
+uaad: url:00000353:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
+uaad: url:00000372:  elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)", 
+uaad: url:00000373:  e, curl_easy_strerror(e)); 
+uaad: url:00000386:  elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)", 
+uaad: url:00000387:  maxfd, errno, strerror(errno)); 
+uaad: url:00000401:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+uaad: url:00000402:  e, curl_easy_strerror(e)); 
+uaad: url:00000406:  /* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d", 
+uaad: url:00000407:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
+uaad: url:00000423:  elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value); 
+uaad: url:00000562:  elog(ERROR, "illegal url '%s'", url); 
+uaad: url:00000585:  ereport(ERROR, 
+uaad: url:00000586:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000587:  errmsg("<port> substring size must not exceed %d characters", 8))); 
+uaad: url:00000609:  ereport(ERROR, 
+uaad: url:00000610:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000611:  errmsg("<port> substring size must not exceed %d characters", 8))); 
+uaad: url:00000620:  ereport(ERROR, 
+uaad: url:00000621:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000622:  errmsg("<port> substring must contain only digits"))); 
+uaad: url:00000626:  elog(ERROR, "hostname too long for url '%s'", url); 
+uaad: url:00000713:  elog(ERROR, "out of memory"); 
+uaad: url:00000752:  ereport(ERROR, 
+uaad: url:00000753:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+uaad: url:00000754:  errmsg("cannot start external table command: %m"), 
+uaad: url:00000755:  errdetail("Command: %s", cmd), 
+uaad: url:00000756:  errOmitLocation(true))); 
+uaad: url:00000826:  elog(ERROR, "out of memory"); 
+uaad: url:00000846:  elog(ERROR, "External Table error opening file: '%s', invalid " 
+uaad: url:00000847:  "file path", url); 
+uaad: url:00000888:  elog(ERROR, "illegal URL: %s", url_cpy); 
+uaad: url:00000941:  elog(ERROR, "internal error: curl_easy_init failed"); 
+uaad: url:00000950:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
+uaad: url:00000951:  e, curl_easy_strerror(e)); 
+uaad: url:00000956:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
+uaad: url:00000957:  e, curl_easy_strerror(e)); 
+uaad: url:00000963:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
+uaad: url:00000964:  e, curl_easy_strerror(e)); 
+uaad: url:00000970:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
+uaad: url:00000971:  e, curl_easy_strerror(e)); 
+uaad: url:00000977:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
+uaad: url:00000978:  e, curl_easy_strerror(e)); 
+uaad: url:00000984:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
+uaad: url:00000985:  e, curl_easy_strerror(e)); 
+uaad: url:00000995:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
+uaad: url:00000996:  e, curl_easy_strerror(e)); 
+uaad: url:00001024:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001034:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001052:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001067:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
+uaad: url:00001075:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
+uaad: url:00001076:  e, curl_easy_strerror(e)); 
+uaad: url:00001084:  elog(ERROR, "internal error: curl_multi_init failed"); 
+uaad: url:00001093:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
+uaad: url:00001094:  e, curl_easy_strerror(e)); 
+uaad: url:00001110:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLCERTTYPE error (%d - %s)", 
+uaad: url:00001111:  e, curl_easy_strerror(e)); 
+uaad: url:00001121:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001126:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00001127:  e, curl_easy_strerror(e)); 
+uaad: url:00001137:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_KEYPASSWD error (%d - %s)", 
+uaad: url:00001138:  e, curl_easy_strerror(e)); 
+uaad: url:00001145:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEYTYPE error (%d - %s)", 
+uaad: url:00001146:  e, curl_easy_strerror(e)); 
+uaad: url:00001156:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001161:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00001162:  e, curl_easy_strerror(e)); 
+uaad: url:00001173:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001178:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_CAINFO error (%d - %s)", 
+uaad: url:00001179:  e, curl_easy_strerror(e)); 
+uaad: url:00001187:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYPEER error (%d - %s)", 
+uaad: url:00001188:  e, curl_easy_strerror(e)); 
+uaad: url:00001195:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYHOST error (%d - %s)", 
+uaad: url:00001196:  e, curl_easy_strerror(e)); 
+uaad: url:00001202:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_CIPHER_LIST error (%d - %s)", 
+uaad: url:00001203:  e, curl_easy_strerror(e)); 
+uaad: url:00001209:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLVERSION error (%d - %s)", 
+uaad: url:00001210:  e, curl_easy_strerror(e)); 
+uaad: url:00001237:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+uaad: url:00001238:  e, curl_easy_strerror(e)); 
+uaad: url:00001250:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001251:  e, curl_easy_strerror(e)); 
+uaad: url:00001258:  elog(ERROR, "error: %s", 
+uaad: url:00001259:  curl_easy_strerror(e)); 
+uaad: url:00001451:  ereport(ERROR, 
+uaad: url:00001452:  (errcode(ERRCODE_INTERNAL_ERROR), 
+uaad: url:00001453:  errmsg_internal("external table type not implemented: %d", type))); 
+uaad: url:00001594:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
+uaad: url:00001600:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
+uaad: url:00001614:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
+uaad: url:00001615:  type, len); 
+uaad: url:00001619:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
+uaad: url:00001620:  curl->in.bot, curl->in.top); 
+uaad: url:00001641:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
+uaad: url:00001646:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
+uaad: url:00001661:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
+uaad: url:00001666:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001695:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
+uaad: url:00001700:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001716:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
+uaad: url:00001721:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001743:  // elog(NOTICE, "D %d", curl->block.datalen); 
+uaad: url:00001747:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
+uaad: url:00001764:  elog(ERROR, "gpfdist server closed connection.\n"); 
+uaad: url:00001773:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
+uaad: url:00001798:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001799:  e, curl_easy_strerror(e)); 
+uaad: url:00001803:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
+uaad: url:00001804:  e, curl_easy_strerror(e)); 
+uaad: url:00001808:  elog(ERROR, "%s error (%d - %s)", 
+uaad: url:00001809:  file->u.curl.curl_url, 
+uaad: url:00001810:  e, curl_easy_strerror(e)); 
+uaad: url:00001814:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
+uaad: url:00001815:  file->u.curl.curl_url, response_code, response_string); 
+uaad: url:00001831:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
+uaad: url:00001832:  file->u.curl.curl_url, 
+uaad: url:00001833:  e, curl_easy_strerror(e)); 
+uaad: url:00001839:  elog(ERROR, "%s error: %s", 
+uaad: url:00001840:  file->u.curl.curl_url, 
+uaad: url:00001841:  curl_easy_strerror(e)); 
+uaad: url:00001856:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001867:  //elog(NOTICE, "curl_fread %d bytes", n); 
+uaad: url:00001882:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001928:  elog(ERROR, "out of memory (curl_fwrite)"); 
+uaad: url:00002013:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00002053:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00002107:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
+uaad: url:00002498:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
 aaaaa GP_IGNORE: gabc: ginarrayproc - ./backend/access/gin/ginarrayproc.c
 gabc: ginarrayproc:00000028:  ereport(ERROR, \ 
 gabc: ginarrayproc:00000029:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \ 
@@ -2815,55 +2838,55 @@ paaj: pgxdepend:00000210:  getObjectDescription(&objAddr))));
 aaaaa GP_IGNORE: pabe: pgxextprotocol - ./backend/catalog/pg_extprotocol.c
 pabe: pgxextprotocol:00000067:  elog(ERROR, "no protocol name supplied"); 
 pabe: pgxextprotocol:00000070:  elog(ERROR, "protocol must have at least one of readfunc or writefunc"); 
-pabe: pgxextprotocol:00000080:  ereport(ERROR, 
-pabe: pgxextprotocol:00000081:  (errcode(ERRCODE_RESERVED_NAME), 
-pabe: pgxextprotocol:00000082:  errmsg("protocol \"%s\" already exists", 
-pabe: pgxextprotocol:00000083:  protocolName), 
-pabe: pgxextprotocol:00000084:  errhint("pick a different protocol name"))); 
-pabe: pgxextprotocol:00000202:  elog(ERROR, "protocol %u could not be found", protOid); 
-pabe: pgxextprotocol:00000247:  ereport(ERROR, 
-pabe: pgxextprotocol:00000248:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-pabe: pgxextprotocol:00000249:  errmsg("function %s does not exist", 
-pabe: pgxextprotocol:00000250:  func_signature_string(fnName, nargs, inputTypes)), 
-pabe: pgxextprotocol:00000251:  errOmitLocation(true))); 
-pabe: pgxextprotocol:00000254:  ereport(ERROR, 
-pabe: pgxextprotocol:00000255:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-pabe: pgxextprotocol:00000256:  errmsg("Invalid protocol function"), 
-pabe: pgxextprotocol:00000257:  errdetail("Protocol functions cannot return sets."), 
-pabe: pgxextprotocol:00000258:  errOmitLocation(true))); 
-pabe: pgxextprotocol:00000261:  ereport(ERROR, 
-pabe: pgxextprotocol:00000262:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-pabe: pgxextprotocol:00000263:  errmsg("%s protocol function %s must return %s", 
-pabe: pgxextprotocol:00000264:  func_type_to_name(fntype), 
-pabe: pgxextprotocol:00000265:  func_signature_string(fnName, nargs, inputTypes), 
-pabe: pgxextprotocol:00000266:  (fntype == EXTPTC_FUNC_VALIDATOR ? "void" : "an integer")), 
-pabe: pgxextprotocol:00000267:  errOmitLocation(true))); 
-pabe: pgxextprotocol:00000270:  ereport(ERROR, 
-pabe: pgxextprotocol:00000271:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-pabe: pgxextprotocol:00000272:  errmsg("%s protocol function %s is declared IMMUTABLE", 
-pabe: pgxextprotocol:00000273:  func_type_to_name(fntype), 
-pabe: pgxextprotocol:00000274:  func_signature_string(fnName, nargs, inputTypes)), 
-pabe: pgxextprotocol:00000275:  errhint("PROTOCOL functions must be declared STABLE or VOLATILE"), 
-pabe: pgxextprotocol:00000276:  errOmitLocation(true))); 
-pabe: pgxextprotocol:00000332:  ereport(ERROR, 
-pabe: pgxextprotocol:00000333:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000334:  errmsg("protocol \"%s\" does not exist", 
-pabe: pgxextprotocol:00000335:  prot_name))); 
-pabe: pgxextprotocol:00000345:  ereport(ERROR, 
-pabe: pgxextprotocol:00000346:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000347:  errmsg("protocol '%s' has no %s function defined", 
-pabe: pgxextprotocol:00000348:  prot_name, func_type_to_name(prot_type)))); 
-pabe: pgxextprotocol:00000403:  ereport(ERROR, 
-pabe: pgxextprotocol:00000404:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000405:  errmsg("protocol \"%s\" does not exist", 
-pabe: pgxextprotocol:00000406:  prot_name))); 
-pabe: pgxextprotocol:00000448:  elog(ERROR, "protocol %u could not be found", protOid); 
-pabe: pgxextprotocol:00000460:  ereport(ERROR, 
-pabe: pgxextprotocol:00000461:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000462:  errmsg("internal error: protocol '%u' has no name defined", 
-pabe: pgxextprotocol:00000463:  protOid))); 
-pabe: pgxextprotocol:00000482:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_name"); 
-pabe: pgxextprotocol:00000498:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum"); 
+pabe: pgxextprotocol:00000081:  ereport(ERROR, 
+pabe: pgxextprotocol:00000082:  (errcode(ERRCODE_RESERVED_NAME), 
+pabe: pgxextprotocol:00000083:  errmsg("protocol \"%s\" already exists", 
+pabe: pgxextprotocol:00000084:  protocolName), 
+pabe: pgxextprotocol:00000085:  errhint("pick a different protocol name"))); 
+pabe: pgxextprotocol:00000203:  elog(ERROR, "protocol %u could not be found", protOid); 
+pabe: pgxextprotocol:00000248:  ereport(ERROR, 
+pabe: pgxextprotocol:00000249:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+pabe: pgxextprotocol:00000250:  errmsg("function %s does not exist", 
+pabe: pgxextprotocol:00000251:  func_signature_string(fnName, nargs, inputTypes)), 
+pabe: pgxextprotocol:00000252:  errOmitLocation(true))); 
+pabe: pgxextprotocol:00000255:  ereport(ERROR, 
+pabe: pgxextprotocol:00000256:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+pabe: pgxextprotocol:00000257:  errmsg("Invalid protocol function"), 
+pabe: pgxextprotocol:00000258:  errdetail("Protocol functions cannot return sets."), 
+pabe: pgxextprotocol:00000259:  errOmitLocation(true))); 
+pabe: pgxextprotocol:00000262:  ereport(ERROR, 
+pabe: pgxextprotocol:00000263:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+pabe: pgxextprotocol:00000264:  errmsg("%s protocol function %s must return %s", 
+pabe: pgxextprotocol:00000265:  func_type_to_name(fntype), 
+pabe: pgxextprotocol:00000266:  func_signature_string(fnName, nargs, inputTypes), 
+pabe: pgxextprotocol:00000267:  (fntype == EXTPTC_FUNC_VALIDATOR ? "void" : "an integer")), 
+pabe: pgxextprotocol:00000268:  errOmitLocation(true))); 
+pabe: pgxextprotocol:00000271:  ereport(ERROR, 
+pabe: pgxextprotocol:00000272:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+pabe: pgxextprotocol:00000273:  errmsg("%s protocol function %s is declared IMMUTABLE", 
+pabe: pgxextprotocol:00000274:  func_type_to_name(fntype), 
+pabe: pgxextprotocol:00000275:  func_signature_string(fnName, nargs, inputTypes)), 
+pabe: pgxextprotocol:00000276:  errhint("PROTOCOL functions must be declared STABLE or VOLATILE"), 
+pabe: pgxextprotocol:00000277:  errOmitLocation(true))); 
+pabe: pgxextprotocol:00000333:  ereport(ERROR, 
+pabe: pgxextprotocol:00000334:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000335:  errmsg("protocol \"%s\" does not exist", 
+pabe: pgxextprotocol:00000336:  prot_name))); 
+pabe: pgxextprotocol:00000346:  ereport(ERROR, 
+pabe: pgxextprotocol:00000347:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000348:  errmsg("protocol '%s' has no %s function defined", 
+pabe: pgxextprotocol:00000349:  prot_name, func_type_to_name(prot_type)))); 
+pabe: pgxextprotocol:00000404:  ereport(ERROR, 
+pabe: pgxextprotocol:00000405:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000406:  errmsg("protocol \"%s\" does not exist", 
+pabe: pgxextprotocol:00000407:  prot_name))); 
+pabe: pgxextprotocol:00000449:  elog(ERROR, "protocol %u could not be found", protOid); 
+pabe: pgxextprotocol:00000461:  ereport(ERROR, 
+pabe: pgxextprotocol:00000462:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000463:  errmsg("internal error: protocol '%u' has no name defined", 
+pabe: pgxextprotocol:00000464:  protOid))); 
+pabe: pgxextprotocol:00000483:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_name"); 
+pabe: pgxextprotocol:00000499:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum"); 
 aaaaa GP_IGNORE: pabb: pgxexttable - ./backend/catalog/pg_exttable.c
 pabb: pgxexttable:00000171:  ereport(ERROR, 
 pabb: pgxexttable:00000172:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -10249,11 +10272,11 @@ taaj: tablecmds:00001007:  errmsg("role \"%s\" does not exist (in DefineExternal
 taaj: tablecmds:00001008:  GetUserNameFromId(userid)))); 
 taaj: tablecmds:00001016:  ereport(ERROR, 
 taaj: tablecmds:00001017:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taaj: tablecmds:00001018:  errmsg("permission denied: no privilege to create a writable gpfdist external table"), 
+taaj: tablecmds:00001018:  errmsg("permission denied: no privilege to create a writable gpfdist(s) external table"), 
 taaj: tablecmds:00001019:  errOmitLocation(true))); 
 taaj: tablecmds:00001027:  ereport(ERROR, 
 taaj: tablecmds:00001028:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taaj: tablecmds:00001029:  errmsg("permission denied: no privilege to create a readable gpfdist external table"), 
+taaj: tablecmds:00001029:  errmsg("permission denied: no privilege to create a readable gpfdist(s) external table"), 
 taaj: tablecmds:00001030:  errOmitLocation(true))); 
 taaj: tablecmds:00001039:  ereport(ERROR, 
 taaj: tablecmds:00001040:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -11685,117 +11708,117 @@ taaj: tablecmds:00016835:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 taaj: tablecmds:00016836:  errmsg("location uri \"%s\" appears more than once", 
 taaj: tablecmds:00016837:  uri1), 
 taaj: tablecmds:00016838:  errOmitLocation(true))); 
-taaj: tablecmds:00016895:  ereport(ERROR, 
-taaj: tablecmds:00016896:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016897:  errmsg("GPHDFS can only have one location list"), 
-taaj: tablecmds:00016898:  errhint("Combine multiple HDFS files into a single file"), 
-taaj: tablecmds:00016899:  errOmitLocation(true))); 
-taaj: tablecmds:00016931:  ereport(ERROR, 
-taaj: tablecmds:00016932:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016933:  errmsg("URI protocols must be the same for all data sources"), 
-taaj: tablecmds:00016934:  errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"), 
-taaj: tablecmds:00016935:  errOmitLocation(true))); 
-taaj: tablecmds:00016940:  ereport(ERROR, 
-taaj: tablecmds:00016941:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016942:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
-taaj: tablecmds:00016943:  errhint("Use CREATE EXTERNAL TABLE instead."), 
-taaj: tablecmds:00016944:  errOmitLocation(true))); 
-taaj: tablecmds:00016947:  ereport(ERROR, 
-taaj: tablecmds:00016948:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016949:  errmsg("http URI\'s can only be used in an external web table"), 
-taaj: tablecmds:00016950:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
-taaj: tablecmds:00016951:  errOmitLocation(true))); 
-taaj: tablecmds:00016954:  ereport(ERROR, 
-taaj: tablecmds:00016955:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00016956:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
-taaj: tablecmds:00016957:  (uri->protocol == URI_HTTP ? "http" : "file")), 
-taaj: tablecmds:00016958:  errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."), 
-taaj: tablecmds:00016959:  errOmitLocation(true))); 
-taaj: tablecmds:00016962:  ereport(ERROR, 
-taaj: tablecmds:00016963:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016964:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
-taaj: tablecmds:00016965:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00016966:  errhint("Specify the explicit path and file name to write into."))); 
-taaj: tablecmds:00016969:  ereport(ERROR, 
-taaj: tablecmds:00016970:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00016971:  errmsg("Unsupported use of a directory name in a writable gpfdist external table : " 
-taaj: tablecmds:00016972:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00016973:  errhint("Specify the explicit path and file name to write into."), 
-taaj: tablecmds:00016974:  errOmitLocation(true))); 
-taaj: tablecmds:00017025:  ereport(ERROR, 
-taaj: tablecmds:00017026:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017027:  errmsg("ON clause must not have more than one element."), 
-taaj: tablecmds:00017028:  errOmitLocation(true))); 
-taaj: tablecmds:00017071:  ereport(ERROR, 
-taaj: tablecmds:00017072:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-taaj: tablecmds:00017073:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
-taaj: tablecmds:00017074:  errOmitLocation(true))); 
-taaj: tablecmds:00017114:  ereport(ERROR, 
-taaj: tablecmds:00017115:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017116:  errmsg("unsupported format '%s'", formatname), 
-taaj: tablecmds:00017117:  errhint("available formats are \"text\", \"csv\", or \"custom\""), 
-taaj: tablecmds:00017118:  errOmitLocation(true))); 
-taaj: tablecmds:00017162:  ereport(ERROR, 
-taaj: tablecmds:00017163:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017164:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017165:  errOmitLocation(true))); 
-taaj: tablecmds:00017171:  ereport(ERROR, 
-taaj: tablecmds:00017172:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017173:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017174:  errOmitLocation(true))); 
-taaj: tablecmds:00017180:  ereport(ERROR, 
-taaj: tablecmds:00017181:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017182:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017183:  errOmitLocation(true))); 
-taaj: tablecmds:00017189:  ereport(ERROR, 
-taaj: tablecmds:00017190:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017191:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017192:  errOmitLocation(true))); 
-taaj: tablecmds:00017198:  ereport(ERROR, 
-taaj: tablecmds:00017199:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017200:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017201:  errOmitLocation(true))); 
-taaj: tablecmds:00017207:  ereport(ERROR, 
-taaj: tablecmds:00017208:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017209:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017210:  errOmitLocation(true))); 
-taaj: tablecmds:00017217:  ereport(ERROR, 
-taaj: tablecmds:00017218:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017219:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017220:  errOmitLocation(true))); 
-taaj: tablecmds:00017227:  ereport(ERROR, 
-taaj: tablecmds:00017228:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017229:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017230:  errOmitLocation(true))); 
-taaj: tablecmds:00017236:  ereport(ERROR, 
-taaj: tablecmds:00017237:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017238:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017239:  errOmitLocation(true))); 
-taaj: tablecmds:00017244:  ereport(ERROR, 
-taaj: tablecmds:00017245:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017246:  errmsg("formatter option only valid for custom formatters"), 
-taaj: tablecmds:00017247:  errOmitLocation(true))); 
-taaj: tablecmds:00017250:  elog(ERROR, "option \"%s\" not recognized", 
-taaj: tablecmds:00017251:  defel->defname); 
-taaj: tablecmds:00017404:  ereport(ERROR, 
-taaj: tablecmds:00017405:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017406:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00017407:  errOmitLocation(true))); 
-taaj: tablecmds:00017421:  ereport(ERROR, 
-taaj: tablecmds:00017422:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017423:  errmsg("format options must be less than %d bytes in size", maxlen), 
-taaj: tablecmds:00017424:  errOmitLocation(true))); 
-taaj: tablecmds:00017428:  ereport(ERROR, 
-taaj: tablecmds:00017429:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00017430:  errmsg("no formatter function specified"), 
-taaj: tablecmds:00017431:  errOmitLocation(true))); 
-taaj: tablecmds:00017475:  ereport(ERROR, 
-taaj: tablecmds:00017476:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00017477:  errmsg("cannot exchange HASH partition%s " 
-taaj: tablecmds:00017478:  "of relation \"%s\"", prule->partIdStr, 
-taaj: tablecmds:00017479:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00017664:  elog(ERROR, "validator function %u returned NULL", 
-taaj: tablecmds:00017665:  fcinfo.flinfo->fn_oid); 
+taaj: tablecmds:00016898:  ereport(ERROR, 
+taaj: tablecmds:00016899:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016900:  errmsg("GPHDFS can only have one location list"), 
+taaj: tablecmds:00016901:  errhint("Combine multiple HDFS files into a single file"), 
+taaj: tablecmds:00016902:  errOmitLocation(true))); 
+taaj: tablecmds:00016934:  ereport(ERROR, 
+taaj: tablecmds:00016935:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016936:  errmsg("URI protocols must be the same for all data sources"), 
+taaj: tablecmds:00016937:  errhint("Available protocols are 'http', 'file', 'gphdfs', 'gpfdist' and 'gpfdists'"), 
+taaj: tablecmds:00016938:  errOmitLocation(true))); 
+taaj: tablecmds:00016943:  ereport(ERROR, 
+taaj: tablecmds:00016944:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016945:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
+taaj: tablecmds:00016946:  errhint("Use CREATE EXTERNAL TABLE instead."), 
+taaj: tablecmds:00016947:  errOmitLocation(true))); 
+taaj: tablecmds:00016950:  ereport(ERROR, 
+taaj: tablecmds:00016951:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016952:  errmsg("http URI\'s can only be used in an external web table"), 
+taaj: tablecmds:00016953:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
+taaj: tablecmds:00016954:  errOmitLocation(true))); 
+taaj: tablecmds:00016957:  ereport(ERROR, 
+taaj: tablecmds:00016958:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00016959:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
+taaj: tablecmds:00016960:  (uri->protocol == URI_HTTP ? "http" : "file")), 
+taaj: tablecmds:00016961:  errhint("Writable external tables may use \'gpfdist\', \'gpfdists\' or \'gphdfs\' URIs only."), 
+taaj: tablecmds:00016962:  errOmitLocation(true))); 
+taaj: tablecmds:00016965:  ereport(ERROR, 
+taaj: tablecmds:00016966:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016967:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
+taaj: tablecmds:00016968:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00016969:  errhint("Specify the explicit path and file name to write into."))); 
+taaj: tablecmds:00016972:  ereport(ERROR, 
+taaj: tablecmds:00016973:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00016974:  errmsg("Unsupported use of a directory name in a writable gpfdist(s) external table : " 
+taaj: tablecmds:00016975:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00016976:  errhint("Specify the explicit path and file name to write into."), 
+taaj: tablecmds:00016977:  errOmitLocation(true))); 
+taaj: tablecmds:00017028:  ereport(ERROR, 
+taaj: tablecmds:00017029:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017030:  errmsg("ON clause must not have more than one element."), 
+taaj: tablecmds:00017031:  errOmitLocation(true))); 
+taaj: tablecmds:00017074:  ereport(ERROR, 
+taaj: tablecmds:00017075:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+taaj: tablecmds:00017076:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
+taaj: tablecmds:00017077:  errOmitLocation(true))); 
+taaj: tablecmds:00017117:  ereport(ERROR, 
+taaj: tablecmds:00017118:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017119:  errmsg("unsupported format '%s'", formatname), 
+taaj: tablecmds:00017120:  errhint("available formats are \"text\", \"csv\", or \"custom\""), 
+taaj: tablecmds:00017121:  errOmitLocation(true))); 
+taaj: tablecmds:00017165:  ereport(ERROR, 
+taaj: tablecmds:00017166:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017167:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017168:  errOmitLocation(true))); 
+taaj: tablecmds:00017174:  ereport(ERROR, 
+taaj: tablecmds:00017175:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017176:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017177:  errOmitLocation(true))); 
+taaj: tablecmds:00017183:  ereport(ERROR, 
+taaj: tablecmds:00017184:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017185:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017186:  errOmitLocation(true))); 
+taaj: tablecmds:00017192:  ereport(ERROR, 
+taaj: tablecmds:00017193:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017194:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017195:  errOmitLocation(true))); 
+taaj: tablecmds:00017201:  ereport(ERROR, 
+taaj: tablecmds:00017202:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017203:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017204:  errOmitLocation(true))); 
+taaj: tablecmds:00017210:  ereport(ERROR, 
+taaj: tablecmds:00017211:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017212:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017213:  errOmitLocation(true))); 
+taaj: tablecmds:00017220:  ereport(ERROR, 
+taaj: tablecmds:00017221:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017222:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017223:  errOmitLocation(true))); 
+taaj: tablecmds:00017230:  ereport(ERROR, 
+taaj: tablecmds:00017231:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017232:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017233:  errOmitLocation(true))); 
+taaj: tablecmds:00017239:  ereport(ERROR, 
+taaj: tablecmds:00017240:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017241:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017242:  errOmitLocation(true))); 
+taaj: tablecmds:00017247:  ereport(ERROR, 
+taaj: tablecmds:00017248:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017249:  errmsg("formatter option only valid for custom formatters"), 
+taaj: tablecmds:00017250:  errOmitLocation(true))); 
+taaj: tablecmds:00017253:  elog(ERROR, "option \"%s\" not recognized", 
+taaj: tablecmds:00017254:  defel->defname); 
+taaj: tablecmds:00017407:  ereport(ERROR, 
+taaj: tablecmds:00017408:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017409:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00017410:  errOmitLocation(true))); 
+taaj: tablecmds:00017424:  ereport(ERROR, 
+taaj: tablecmds:00017425:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017426:  errmsg("format options must be less than %d bytes in size", maxlen), 
+taaj: tablecmds:00017427:  errOmitLocation(true))); 
+taaj: tablecmds:00017431:  ereport(ERROR, 
+taaj: tablecmds:00017432:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00017433:  errmsg("no formatter function specified"), 
+taaj: tablecmds:00017434:  errOmitLocation(true))); 
+taaj: tablecmds:00017478:  ereport(ERROR, 
+taaj: tablecmds:00017479:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00017480:  errmsg("cannot exchange HASH partition%s " 
+taaj: tablecmds:00017481:  "of relation \"%s\"", prule->partIdStr, 
+taaj: tablecmds:00017482:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00017667:  elog(ERROR, "validator function %u returned NULL", 
+taaj: tablecmds:00017668:  fcinfo.flinfo->fn_oid); 
 aaaaa GP_IGNORE: taba: tablespace - ./backend/commands/tablespace.c
 taba: tablespace:00000117:  ereport(ERROR, 
 taba: tablespace:00000118:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -12593,53 +12616,53 @@ uaae: user:00001969:  ereport(WARNING,
 uaae: user:00001970:  (errmsg("GRANT/REVOKE on gphdfs is deprecated"), 
 uaae: user:00001971:  errhint("Issue the GRANT or REVOKE on the protocol itself"), 
 uaae: user:00001972:  errOmitLocation(true))); 
-uaae: user:00001977:  ereport(ERROR, 
-uaae: user:00001978:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001979:  errmsg("invalid %s value \"%s\"", key, val))); 
-uaae: user:00002011:  ereport(ERROR, 
-uaae: user:00002012:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002013:  errmsg("invalid [NO]CREATEEXTTABLE specification. too many values"))); 
-uaae: user:00002073:  ereport(ERROR, 
-uaae: user:00002074:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002075:  errmsg("redundant option for \"%s\"", genpair->key1))); 
-uaae: user:00002162:  ereport(ERROR, 
-uaae: user:00002163:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002164:  errmsg("invalid CREATEEXTTABLE specification. writable http external tables do not exist"))); 
-uaae: user:00002230:  ereport(ERROR, 
-uaae: user:00002231:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002232:  errmsg("invalid NOCREATEEXTTABLE specification. writable http external tables do not exist"))); 
-uaae: user:00002238:  ereport(ERROR, 
-uaae: user:00002239:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002240:  errmsg("conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE"))); 
-uaae: user:00002280:  ereport(ERROR, 
-uaae: user:00002281:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00002282:  errmsg("must be superuser to alter superusers"))); 
-uaae: user:00002288:  ereport(ERROR, 
-uaae: user:00002289:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00002290:  errmsg("must have admin option on role \"%s\"", 
-uaae: user:00002291:  rolename))); 
-uaae: user:00002312:  ereport(WARNING, 
-uaae: user:00002313:  (errmsg("role \"%s\" is not a member of role \"%s\"", 
-uaae: user:00002314:  membername, rolename))); 
-uaae: user:00002388:  ereport(ERROR, 
-uaae: user:00002389:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002390:  errmsg("time interval must not wrap around"))); 
-uaae: user:00002408:  ereport(ERROR, 
-uaae: user:00002409:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002410:  errmsg("numeric day of week must be between 0 and 6"))); 
-uaae: user:00002420:  ereport(ERROR, 
-uaae: user:00002421:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002422:  errmsg("invalid weekday name \"%s\"", target), 
-uaae: user:00002423:  errhint("Day of week must be one of 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'."))); 
-uaae: user:00002531:  ereport(NOTICE, 
-uaae: user:00002532:  (errmsg("dropping DENY rule for \"%s\" between %s %s and %s %s", 
-uaae: user:00002533:  rolename, 
-uaae: user:00002534:  daysofweek[existing->start.day], 
-uaae: user:00002535:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))), 
-uaae: user:00002536:  daysofweek[existing->end.day], 
-uaae: user:00002537:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time)))))); 
-uaae: user:00002550:  ereport(ERROR, 
-uaae: user:00002551:  (errmsg("cannot find matching DENY rules for \"%s\"", rolename))); 
+uaae: user:00001978:  ereport(ERROR, 
+uaae: user:00001979:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00001980:  errmsg("invalid %s value \"%s\"", key, val))); 
+uaae: user:00002012:  ereport(ERROR, 
+uaae: user:00002013:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002014:  errmsg("invalid [NO]CREATEEXTTABLE specification. too many values"))); 
+uaae: user:00002074:  ereport(ERROR, 
+uaae: user:00002075:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002076:  errmsg("redundant option for \"%s\"", genpair->key1))); 
+uaae: user:00002165:  ereport(ERROR, 
+uaae: user:00002166:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002167:  errmsg("invalid CREATEEXTTABLE specification. writable http external tables do not exist"))); 
+uaae: user:00002235:  ereport(ERROR, 
+uaae: user:00002236:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002237:  errmsg("invalid NOCREATEEXTTABLE specification. writable http external tables do not exist"))); 
+uaae: user:00002243:  ereport(ERROR, 
+uaae: user:00002244:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002245:  errmsg("conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE"))); 
+uaae: user:00002285:  ereport(ERROR, 
+uaae: user:00002286:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00002287:  errmsg("must be superuser to alter superusers"))); 
+uaae: user:00002293:  ereport(ERROR, 
+uaae: user:00002294:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00002295:  errmsg("must have admin option on role \"%s\"", 
+uaae: user:00002296:  rolename))); 
+uaae: user:00002317:  ereport(WARNING, 
+uaae: user:00002318:  (errmsg("role \"%s\" is not a member of role \"%s\"", 
+uaae: user:00002319:  membername, rolename))); 
+uaae: user:00002393:  ereport(ERROR, 
+uaae: user:00002394:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002395:  errmsg("time interval must not wrap around"))); 
+uaae: user:00002413:  ereport(ERROR, 
+uaae: user:00002414:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002415:  errmsg("numeric day of week must be between 0 and 6"))); 
+uaae: user:00002425:  ereport(ERROR, 
+uaae: user:00002426:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002427:  errmsg("invalid weekday name \"%s\"", target), 
+uaae: user:00002428:  errhint("Day of week must be one of 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'."))); 
+uaae: user:00002536:  ereport(NOTICE, 
+uaae: user:00002537:  (errmsg("dropping DENY rule for \"%s\" between %s %s and %s %s", 
+uaae: user:00002538:  rolename, 
+uaae: user:00002539:  daysofweek[existing->start.day], 
+uaae: user:00002540:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))), 
+uaae: user:00002541:  daysofweek[existing->end.day], 
+uaae: user:00002542:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time)))))); 
+uaae: user:00002555:  ereport(ERROR, 
+uaae: user:00002556:  (errmsg("cannot find matching DENY rules for \"%s\"", rolename))); 
 aaaaa GP_IGNORE: vaag: vacuum - ./backend/commands/vacuum.c
 vaag: vacuum:00000367:  ereport(NOTICE, 
 vaag: vacuum:00000368:  (errcode(ERRCODE_WARNING), 
@@ -14062,57 +14085,57 @@ caba: createplan:00001387:  errmsg("Could not assign a segment database for \"%s
 caba: createplan:00001388:  "There are more URIs than total primary segment " 
 caba: createplan:00001389:  "databases", uri_str), 
 caba: createplan:00001390:  errOmitLocation(true))); 
-caba: createplan:00001440:  elog(NOTICE, "External scan %s will utilize %d out " 
-caba: createplan:00001441:  "of %d segment databases", 
-caba: createplan:00001442:  (uri->protocol == URI_GPFDIST ? "from gpfdist server" : "using custom protocol"), 
-caba: createplan:00001443:  num_segs_participating, 
-caba: createplan:00001444:  total_primaries); 
-caba: createplan:00001448:  ereport(ERROR, 
-caba: createplan:00001449:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001450:  errmsg("There are more external files (URLs) than primary " 
-caba: createplan:00001451:  "segments that can read them. Found %d URLs and " 
-caba: createplan:00001452:  "%d primary segments.",list_length(rel->locationlist), 
-caba: createplan:00001453:  num_segs_participating), 
-caba: createplan:00001454:  errOmitLocation(true))); 
-caba: createplan:00001478:  elog(ERROR, "External scan location list failed building distribution."); 
-caba: createplan:00001551:  ereport(ERROR, 
-caba: createplan:00001552:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001553:  errmsg("Internal error in createplan for external tables" 
-caba: createplan:00001554:  " when trying to assign segments for gpfdist"))); 
-caba: createplan:00001665:  ereport(ERROR, 
-caba: createplan:00001666:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001667:  errmsg("Could not assign a segment database for " 
-caba: createplan:00001668:  "command \"%s\". No valid primary segment was " 
-caba: createplan:00001669:  "found in the requested host name \"%s\" ", 
-caba: createplan:00001670:  command, hostname), 
-caba: createplan:00001671:  errOmitLocation(true))); 
-caba: createplan:00001692:  ereport(ERROR, 
-caba: createplan:00001693:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001694:  errmsg("Could not assign a segment database for " 
-caba: createplan:00001695:  "command \"%s\". The requested segment id " 
-caba: createplan:00001696:  "%d is not a valid primary segment or doesn't " 
-caba: createplan:00001697:  "exist in the database", command, target_segid), 
-caba: createplan:00001698:  errOmitLocation(true))); 
-caba: createplan:00001707:  ereport(ERROR, 
-caba: createplan:00001708:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001709:  errmsg("Table defined with EXECUTE ON %d but there " 
-caba: createplan:00001710:  "are only %d valid primary segments in the " 
-caba: createplan:00001711:  "database.", num_segs_to_use, total_primaries))); 
-caba: createplan:00001742:  ereport(ERROR, 
-caba: createplan:00001743:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001744:  errmsg("Internal error in createplan for external tables: " 
-caba: createplan:00001745:  "got invalid ON clause code %s", on_clause))); 
-caba: createplan:00001764:  ereport(ERROR, 
-caba: createplan:00001765:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001766:  errmsg("Internal error in createplan for external tables"))); 
-caba: createplan:00002365:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
-caba: createplan:00003063:  elog(ERROR, "indexqual clause is not binary opclause"); 
-caba: createplan:00003134:  elog(ERROR, "unsupported indexqual type: %d", 
-caba: createplan:00003135:  (int) nodeTag(clause)); 
-caba: createplan:00003209:  elog(ERROR, "too few entries in indexprs list"); 
-caba: createplan:00003228:  elog(ERROR, "node is not an index attribute"); 
-caba: createplan:00004034:  elog(ERROR, "could not find pathkey item to sort"); 
-caba: createplan:00004506:  elog(ERROR, "Planner committed to impossible hash aggregate."); 
+caba: createplan:00001442:  elog(NOTICE, "External scan %s will utilize %d out " 
+caba: createplan:00001443:  "of %d segment databases", 
+caba: createplan:00001444:  (uri->protocol == URI_GPFDIST ? "from gpfdist(s) server" : "using custom protocol"), 
+caba: createplan:00001445:  num_segs_participating, 
+caba: createplan:00001446:  total_primaries); 
+caba: createplan:00001450:  ereport(ERROR, 
+caba: createplan:00001451:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001452:  errmsg("There are more external files (URLs) than primary " 
+caba: createplan:00001453:  "segments that can read them. Found %d URLs and " 
+caba: createplan:00001454:  "%d primary segments.",list_length(rel->locationlist), 
+caba: createplan:00001455:  num_segs_participating), 
+caba: createplan:00001456:  errOmitLocation(true))); 
+caba: createplan:00001480:  elog(ERROR, "External scan location list failed building distribution."); 
+caba: createplan:00001553:  ereport(ERROR, 
+caba: createplan:00001554:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001555:  errmsg("Internal error in createplan for external tables" 
+caba: createplan:00001556:  " when trying to assign segments for gpfdist(s)"))); 
+caba: createplan:00001667:  ereport(ERROR, 
+caba: createplan:00001668:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001669:  errmsg("Could not assign a segment database for " 
+caba: createplan:00001670:  "command \"%s\". No valid primary segment was " 
+caba: createplan:00001671:  "found in the requested host name \"%s\" ", 
+caba: createplan:00001672:  command, hostname), 
+caba: createplan:00001673:  errOmitLocation(true))); 
+caba: createplan:00001694:  ereport(ERROR, 
+caba: createplan:00001695:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001696:  errmsg("Could not assign a segment database for " 
+caba: createplan:00001697:  "command \"%s\". The requested segment id " 
+caba: createplan:00001698:  "%d is not a valid primary segment or doesn't " 
+caba: createplan:00001699:  "exist in the database", command, target_segid), 
+caba: createplan:00001700:  errOmitLocation(true))); 
+caba: createplan:00001709:  ereport(ERROR, 
+caba: createplan:00001710:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001711:  errmsg("Table defined with EXECUTE ON %d but there " 
+caba: createplan:00001712:  "are only %d valid primary segments in the " 
+caba: createplan:00001713:  "database.", num_segs_to_use, total_primaries))); 
+caba: createplan:00001744:  ereport(ERROR, 
+caba: createplan:00001745:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001746:  errmsg("Internal error in createplan for external tables: " 
+caba: createplan:00001747:  "got invalid ON clause code %s", on_clause))); 
+caba: createplan:00001766:  ereport(ERROR, 
+caba: createplan:00001767:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001768:  errmsg("Internal error in createplan for external tables"))); 
+caba: createplan:00002367:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
+caba: createplan:00003065:  elog(ERROR, "indexqual clause is not binary opclause"); 
+caba: createplan:00003136:  elog(ERROR, "unsupported indexqual type: %d", 
+caba: createplan:00003137:  (int) nodeTag(clause)); 
+caba: createplan:00003211:  elog(ERROR, "too few entries in indexprs list"); 
+caba: createplan:00003230:  elog(ERROR, "node is not an index attribute"); 
+caba: createplan:00004036:  elog(ERROR, "could not find pathkey item to sort"); 
+caba: createplan:00004508:  elog(ERROR, "Planner committed to impossible hash aggregate."); 
 aaaaa GP_IGNORE: iaaj: initsplan - ./backend/optimizer/plan/initsplan.c
 iaaj: initsplan:00000108:  elog(ERROR, "unrecognized node type: %d", 
 iaaj: initsplan:00000109:  (int) nodeTag(jtnode)); 
@@ -24005,26 +24028,26 @@ aaaaa GP_IGNORE: taaj: testutils - ./backend/utils/misc/testutils.c
 taaj: testutils:00000046:  elog(ERROR, "Time slicer: Failed to retrieve user time"); 
 taaj: testutils:00000075:  elog(ERROR, "Time slicer: Failed to retrieve user time"); 
 aaaaa GP_IGNORE: uaaj: uriparser - ./backend/utils/misc/uriparser.c
-uaaj: uriparser:00000066:  ereport(ERROR, 
-uaaj: uriparser:00000067:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaaj: uriparser:00000068:  errmsg("invalid URI \'%s\' : undefined structure", uri_str), 
-uaaj: uriparser:00000069:  errOmitLocation(true))); 
-uaaj: uriparser:00000084:  ereport(ERROR, 
-uaaj: uriparser:00000085:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaaj: uriparser:00000086:  errmsg("invalid URI \'%s\' : undefined protocol", uri_str), 
-uaaj: uriparser:00000087:  errOmitLocation(true))); 
-uaaj: uriparser:00000092:  ereport(ERROR, 
-uaaj: uriparser:00000093:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaaj: uriparser:00000094:  errmsg("invalid URI \'%s\' : missing host name and path", uri_str), 
-uaaj: uriparser:00000095:  errOmitLocation(true))); 
-uaaj: uriparser:00000121:  ereport(ERROR, 
-uaaj: uriparser:00000122:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaaj: uriparser:00000123:  errmsg("invalid URI \'%s\' : missing host name or path", uri_str), 
-uaaj: uriparser:00000124:  errOmitLocation(true))); 
-uaaj: uriparser:00000198:  ereport(ERROR, 
-uaaj: uriparser:00000199:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaaj: uriparser:00000200:  errmsg("invalid URI \'%s\' : missing path", uri_str), 
-uaaj: uriparser:00000201:  errOmitLocation(true))); 
+uaaj: uriparser:00000072:  ereport(ERROR, 
+uaaj: uriparser:00000073:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaaj: uriparser:00000074:  errmsg("invalid URI \'%s\' : undefined structure", uri_str), 
+uaaj: uriparser:00000075:  errOmitLocation(true))); 
+uaaj: uriparser:00000090:  ereport(ERROR, 
+uaaj: uriparser:00000091:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaaj: uriparser:00000092:  errmsg("invalid URI \'%s\' : undefined protocol", uri_str), 
+uaaj: uriparser:00000093:  errOmitLocation(true))); 
+uaaj: uriparser:00000098:  ereport(ERROR, 
+uaaj: uriparser:00000099:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaaj: uriparser:00000100:  errmsg("invalid URI \'%s\' : missing host name and path", uri_str), 
+uaaj: uriparser:00000101:  errOmitLocation(true))); 
+uaaj: uriparser:00000127:  ereport(ERROR, 
+uaaj: uriparser:00000128:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaaj: uriparser:00000129:  errmsg("invalid URI \'%s\' : missing host name or path", uri_str), 
+uaaj: uriparser:00000130:  errOmitLocation(true))); 
+uaaj: uriparser:00000204:  ereport(ERROR, 
+uaaj: uriparser:00000205:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaaj: uriparser:00000206:  errmsg("invalid URI \'%s\' : missing path", uri_str), 
+uaaj: uriparser:00000207:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: aaae: aset - ./backend/utils/mmgr/aset.c
 aaae: aset:00000642:  elog(ERROR,"palloc called from thread (OS-X pthread_sigmask is broken: MPP-4923)"); 
 aaae: aset:00000644:  elog(ERROR,"palloc called from thread"); 
