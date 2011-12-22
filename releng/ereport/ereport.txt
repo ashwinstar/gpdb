@@ -23122,60 +23122,72 @@ dabg: datumstreamblock:00002731:  dsw->typeInfo->datumlen),
 dabg: datumstreamblock:00002732:  errOmitLocation(false), 
 dabg: datumstreamblock:00002733:  errdetail_datumstreamblockwrite(dsw), 
 dabg: datumstreamblock:00002734:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004146:  elog(ERROR, "Last data item size %d doesn't match type datum length %d", 
-dabg: datumstreamblock:00004147:  dsw->rle_last_item_size, 
-dabg: datumstreamblock:00004148:  dsw->typeInfo->datumlen); 
-dabg: datumstreamblock:00004180:  ereport(FATAL, 
-dabg: datumstreamblock:00004181:  (errmsg("fixed length type has strange length %d", 
-dabg: datumstreamblock:00004182:  dsw->typeInfo->datumlen), 
-dabg: datumstreamblock:00004183:  errOmitLocation(false), 
-dabg: datumstreamblock:00004184:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004185:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004265:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00004276:  ereport(FATAL, 
-dabg: datumstreamblock:00004277:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00004278:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00004279:  errOmitLocation(false), 
-dabg: datumstreamblock:00004280:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004281:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004289:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00004298:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00004343:  ereport(FATAL, 
-dabg: datumstreamblock:00004344:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00004345:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00004346:  errOmitLocation(false), 
-dabg: datumstreamblock:00004347:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004348:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004627:  ereport(ERROR, 
-dabg: datumstreamblock:00004628:  (errmsg("Formatted datum stream write metasize size different (expected %d, found " INT64_FORMAT ")", 
-dabg: datumstreamblock:00004629:  metadataSize, 
-dabg: datumstreamblock:00004630:  formattedMetadataSize), 
-dabg: datumstreamblock:00004631:  errOmitLocation(false), 
-dabg: datumstreamblock:00004632:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004633:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004648:  ereport(ERROR, 
-dabg: datumstreamblock:00004649:  (errmsg("Formatted datum stream MAXALIGN metadata size %d + physical datum size %d (total %d) would exceed maximum data blocksize %d)", 
-dabg: datumstreamblock:00004650:  metadataMaxAlignSize, 
-dabg: datumstreamblock:00004651:  dense.physical_data_size, 
-dabg: datumstreamblock:00004652:  metadataMaxAlignSize + dense.physical_data_size, 
-dabg: datumstreamblock:00004653:  dsw->maxDataBlockSize), 
-dabg: datumstreamblock:00004654:  errOmitLocation(false), 
-dabg: datumstreamblock:00004655:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004656:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004805:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00004816:  ereport(FATAL, 
-dabg: datumstreamblock:00004817:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00004818:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00004819:  errOmitLocation(false), 
-dabg: datumstreamblock:00004820:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004821:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004970:  ereport(FATAL, 
-dabg: datumstreamblock:00004971:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00004972:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00004973:  errOmitLocation(false), 
-dabg: datumstreamblock:00004974:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004975:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004989:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00002756:  ereport(ERROR, 
+dabg: datumstreamblock:00002757:  (errmsg("Datum stream write %s block problem growing NULL bit-map buffer " 
+dabg: datumstreamblock:00002758:  "(current logical row count %d, physical datum count %d, " 
+dabg: datumstreamblock:00002759:  "null bit-map count %d, old NULL bit-map count %d)", 
+dabg: datumstreamblock:00002760:  DatumStreamVersion_String(dsw->datumStreamVersion), 
+dabg: datumstreamblock:00002761:  dsw->nth + 1, 
+dabg: datumstreamblock:00002762:  dsw->physical_datum_count, 
+dabg: datumstreamblock:00002763:  DatumStreamBitMapWrite_Count(&dsw->null_bitmap), 
+dabg: datumstreamblock:00002764:  oldNullBitCount), 
+dabg: datumstreamblock:00002765:  errOmitLocation(true), 
+dabg: datumstreamblock:00002766:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00002767:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00004162:  elog(ERROR, "Last data item size %d doesn't match type datum length %d", 
+dabg: datumstreamblock:00004163:  dsw->rle_last_item_size, 
+dabg: datumstreamblock:00004164:  dsw->typeInfo->datumlen); 
+dabg: datumstreamblock:00004196:  ereport(FATAL, 
+dabg: datumstreamblock:00004197:  (errmsg("fixed length type has strange length %d", 
+dabg: datumstreamblock:00004198:  dsw->typeInfo->datumlen), 
+dabg: datumstreamblock:00004199:  errOmitLocation(false), 
+dabg: datumstreamblock:00004200:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00004201:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00004281:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00004292:  ereport(FATAL, 
+dabg: datumstreamblock:00004293:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00004294:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00004295:  errOmitLocation(false), 
+dabg: datumstreamblock:00004296:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00004297:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00004305:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00004314:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00004359:  ereport(FATAL, 
+dabg: datumstreamblock:00004360:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00004361:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00004362:  errOmitLocation(false), 
+dabg: datumstreamblock:00004363:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00004364:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00004643:  ereport(ERROR, 
+dabg: datumstreamblock:00004644:  (errmsg("Formatted datum stream write metasize size different (expected %d, found " INT64_FORMAT ")", 
+dabg: datumstreamblock:00004645:  metadataSize, 
+dabg: datumstreamblock:00004646:  formattedMetadataSize), 
+dabg: datumstreamblock:00004647:  errOmitLocation(false), 
+dabg: datumstreamblock:00004648:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00004649:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00004664:  ereport(ERROR, 
+dabg: datumstreamblock:00004665:  (errmsg("Formatted datum stream MAXALIGN metadata size %d + physical datum size %d (total %d) would exceed maximum data blocksize %d)", 
+dabg: datumstreamblock:00004666:  metadataMaxAlignSize, 
+dabg: datumstreamblock:00004667:  dense.physical_data_size, 
+dabg: datumstreamblock:00004668:  metadataMaxAlignSize + dense.physical_data_size, 
+dabg: datumstreamblock:00004669:  dsw->maxDataBlockSize), 
+dabg: datumstreamblock:00004670:  errOmitLocation(false), 
+dabg: datumstreamblock:00004671:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00004672:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00004821:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00004832:  ereport(FATAL, 
+dabg: datumstreamblock:00004833:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00004834:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00004835:  errOmitLocation(false), 
+dabg: datumstreamblock:00004836:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00004837:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00004986:  ereport(FATAL, 
+dabg: datumstreamblock:00004987:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00004988:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00004989:  errOmitLocation(false), 
+dabg: datumstreamblock:00004990:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00004991:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00005005:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
 aaaaa GP_IGNORE: eaae: elog - ./backend/utils/error/elog.c
 eaae: elog:00000191:  ereport(ERROR, (errmsg_internal("errstart was not called"))); \ 
 eaae: elog:00000192:  } \ 
