@@ -32,6 +32,21 @@ SCRATCH_SPACE = os.path.join(tempfile.gettempdir(), getpass.getuser())
 GPDB_VERSION = "4.2"
 MASTER_PORT = os.getenv("PGPORT")
 
+def requiresSpecialGphome():
+    gp_home = os.getenv('GPHOME')
+    if not gp_home.endswith('/.'):
+        if os.path.split(gp_home)[1] == "greenplum-db":
+            return unittest.skip("cannot create symlink")
+
+    try:
+        tmp_dir = os.path.join(os.path.dirname(GPHOME), "tmp")
+        os.mkdir(tmp_dir)
+        os.rmdir(tmp_dir)
+    except OSError, e:
+       return unittest.skip("cannot create symlink") 
+
+    return lambda o: o
+
 def skipIfNoStandby():
     standby = get_host_list()[0]
     if standby is None:
@@ -249,11 +264,11 @@ class GppkgTestCase(unittest.TestCase):
    
     @classmethod 
     def setUpClass(self):
-        self.built_packages = set()
+        self.extra_clean = set()
     
     @classmethod
     def tearDownClass(self):
-        for gppkg in self.built_packages:
+        for gppkg in self.extra_clean:
             os.remove(gppkg)
 
     def cleanup(self):
@@ -266,7 +281,7 @@ class GppkgTestCase(unittest.TestCase):
     def build(self, gppkg_spec, rpm_spec, dep_rpm_specs = []):
         gppkg_file = BuildGppkg(gppkg_spec, rpm_spec, dep_rpm_specs).run()
         self.assertTrue(self._check_build(gppkg_file, gppkg_spec))
-        self.built_packages.add(gppkg_file)
+        self.extra_clean.add(gppkg_file)
         return gppkg_file
         
     def _check_build(self, gppkg_file, gppkg_spec):
@@ -405,13 +420,11 @@ class QueryTestCases(GppkgTestCase):
 class MiscTestCases(GppkgTestCase):
     @unittest.expectedFailure
     def test00_MPP_14671(self):
-        rpm_spec = RPMSpec("test", "1", "1")
-        gppkg_spec = GppkgSpec("test", "1.0")
         gppkg_file = self.build(self.gppkg_spec, self.rpm_spec)
 
         dummy_file = "dummy-x.y.z-abcd-efgh.gppkg"
         shutil.copy(gppkg_file, dummy_file)
-        self.built_packages.add(dummy_file)
+        self.extra_clean.add(dummy_file)
 
         self.install(dummy_file)
         self.assertTrue(os.path.exists(os.path.join(GPHOME, 'share', 'packages', 'archive', dummy_file)))
@@ -424,6 +437,69 @@ class MiscTestCases(GppkgTestCase):
         results = run_command("gppkg -q --all")
         self.assertTrue(''.join(gppkg_file.split('-')[:1]) in results)
 
+@requiresSpecialGphome()
+class SymLinkTestCase(GppkgTestCase):
+    '''
+        Test for MPP 15429
+    '''
+    def setUp(self):
+        super(SymLinkTestCase, self).setUp()
+        self.gp_home = GPHOME
+        self.gp_home_symlink = os.path.join(os.path.dirname(self.gp_home), "greenplum-db")
+
+        self.segment_host_list = get_host_list()[1]
+        self.standby = get_host_list()[0]
+        assert len(self.segment_host_list) > 0 
+     
+        link_command = "cd $GPHOME/..; ln -s $GPHOME greenplum-db"
+        #If we are using symlinks, then sourcing the 
+        #greenplum_path.sh will set gphome to <symlink_path>/.
+        #Otherwise, the gphome will not contain a /.
+        if not self.gp_home.endswith('/.'):
+            for host in self.segment_host_list:
+                run_remote_command(link_command, host)
+            if self.standby is not None:
+                run_remote_command(link_command, self.standby)
+            run_command(link_command)
+    
+    def tearDown(self):
+        unlink_command = "cd $GPHOME/..; rm -rf greenplum-db"
+        if not self.gp_home.endswith('/.'):
+            for host in self.segment_host_list:
+                run_remote_command(unlink_command, host)
+            if self.standby is not None:
+                run_remote_command(unlink_command, self.standby)
+            run_command(unlink_command)
+
+    def test00_gppkg_normalized_symlink_path(self):
+        gppkg_file = self.build(self.gppkg_spec, self.rpm_spec)
+        self.install(gppkg_file)
+        self.remove(gppkg_file)
+
+    def test01_gppkg_with_symlink_path(self):
+        os.environ['GPHOME'] = self.gp_home_symlink
+        gppkg_file = self.gppkg_spec.get_filename()
+        self.install(gppkg_file)
+        self.remove(gppkg_file)
+        os.environ['GPHOME'] = self.gp_home
+    
+    def test02_rpm_with_symlink_path(self):
+        os.environ['GPHOME'] = self.gp_home_symlink
+
+        try:
+            with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
+                tf.extract(self.rpm_spec.get_filename())
+            self.extra_clean.add(self.rpm_spec.get_filename())
+
+            symlink_rpm_database = os.path.join(self.gp_home_symlink, "share/packages/database")
+            run_command("rpm -i %s --dbpath %s --prefix=%s" % (self.rpm_spec.get_filename(), symlink_rpm_database, self.gp_home_symlink))
+            run_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), symlink_rpm_database))
+
+            self.assertFalse(os.path.islink(self.gp_home_symlink))
+
+        finally:
+            os.environ['GPHOME'] = self.gp_home
+ 
 class SimpleNegativeTestCases(GppkgTestCase):
     @unittest.expectedFailure
     def test00_wrong_os(self):
@@ -649,9 +725,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         self.install(gppkg_file)
 
         #Remove package from archive
-        host_list = get_host_list()[1]
-        self.assertTrue(len(host_list) > 0) 
-        host = host_list[0]
+        segment_host_list = get_host_list()[1]
+        self.assertTrue(len(segment_host_list) > 0) 
+        host = segment_host_list[0]
         RemoveRemoteFile(archive_file ,host).run()
 
         try:
@@ -671,9 +747,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         self.install(gppkg_file)
 
         #Remove package from archive
-        host_list = get_host_list()[1]
-        self.assertTrue(len(host_list) > 0) 
-        host = host_list[0]
+        segment_host_list = get_host_list()[1]
+        self.assertTrue(len(segment_host_list) > 0) 
+        host = segment_host_list[0]
         RemoveRemoteFile(archive_file ,host).run()
 
         try:
@@ -692,9 +768,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         gppkg_file = self.gppkg_spec.get_filename()
         self.install(gppkg_file)
    
-        host_list = get_host_list()[1]
-        self.assertTrue(len(host_list) > 0) 
-        host = host_list[0]
+        segment_host_list = get_host_list()[1]
+        self.assertTrue(len(segment_host_list) > 0) 
+        host = segment_host_list[0]
  
         #Uninstall the RPM
         run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
@@ -723,9 +799,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
         gppkg_file = self.gppkg_spec.get_filename()
         self.install(gppkg_file)
    
-        host_list = get_host_list()[1]
-        self.assertTrue(len(host_list) > 0) 
-        host = host_list[0]
+        segment_host_list = get_host_list()[1]
+        self.assertTrue(len(segment_host_list) > 0) 
+        host = segment_host_list[0]
  
         #Uninstall the RPM
         run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
@@ -738,9 +814,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
     def test10_install_rpm_on_segments_and_install(self):
         gppkg_file = self.gppkg_spec.get_filename()
  
-        host_list = get_host_list()[1]
-        self.assertTrue(len(host_list) > 0) 
-        host = host_list[0]
+        segment_host_list = get_host_list()[1]
+        self.assertTrue(len(segment_host_list) > 0) 
+        host = segment_host_list[0]
  
         #Install the rpm 
         with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
@@ -760,9 +836,9 @@ class MuckWithInternalsTestCases(GppkgTestCase):
     def test11_install_rpm_on_segments_and_uninstall(self):
         gppkg_file = self.gppkg_spec.get_filename()
         
-        host_list = get_host_list()[1]
-        self.assertTrue(len(host_list) > 0) 
-        host = host_list[0]
+        segment_host_list = get_host_list()[1]
+        self.assertTrue(len(segment_host_list) > 0) 
+        host = segment_host_list[0]
 
         #Install the rpm
         with closing(tarfile.open(self.gppkg_spec.get_filename())) as tf:
@@ -783,25 +859,6 @@ class MuckWithInternalsTestCases(GppkgTestCase):
             os.remove(self.rpm_spec.get_filename())
             RemoveRemoteFile(self.rpm_spec.get_filename(), host).run()
             self.fail("ExecutionError %s" % e)
-
-    def test12_clean(self):
-        gppkg_file = self.gppkg_spec.get_filename()
-
-        host_list = get_host_list()[1]
-        self.assertTrue(len(host_list) > 0)
-        host = host_list[0]
-
-        #Install the gppkg
-        self.install(gppkg_file)
-
-        #Uninstall package on one host
-        run_remote_command("rpm -e %s --dbpath %s" % (self.rpm_spec.get_package_name(), RPM_DATABASE), host)
-        RemoveRemoteFile(os.path.join(ARCHIVE_PATH, gppkg_file), host).run() 
-
-        run_command("gppkg --clean")
-        
-        self.assertTrue(self.check_install(gppkg_file))
-
 
 @skipIfNoStandby()
 class MuckWithInternalsOnStandby(GppkgTestCase):            
