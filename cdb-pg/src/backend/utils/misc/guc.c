@@ -350,6 +350,7 @@ bool		filerep_inject_listener_fault = false;
 bool		filerep_inject_db_startup_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
 bool		gp_crash_recovery_suppress_ao_eof = false;
+bool		gp_watch_visibility_in_action = false;
 bool        gp_keep_all_xlog = false;
 int 		ddboost_buf_size = 512*1024;
 
@@ -3054,7 +3055,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_crash_recovery_suppress_ao_eof,
 		false, NULL, NULL
 	},
-
+	
+	{
+		{"gp_watch_visibility_in_action", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Trace detailed information about heap tuple visibility"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_watch_visibility_in_action,
+		false, NULL, NULL
+	},
+			
 	{
 		{"gp_encoding_check_locale_compatibility", PGC_POSTMASTER, CLIENT_CONN_LOCALE,
 					gettext_noop("Enable check for compatibility of encoding and locale in createdb"),

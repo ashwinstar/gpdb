@@ -1645,8 +1645,8 @@ IndexBuildHeapScan(Relation heapRelation,
 			
 			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-			switch (HeapTupleSatisfiesVacuum(heapTuple->t_data, OldestXmin,
-											 scan->rs_cbuf, true))
+			switch (HeapTupleSatisfiesVacuum(heapRelation, &heapTuple->t_self, heapTuple->t_data, OldestXmin,
+											 scan->rs_cbuf, true, "IndexBuildHeapScan"))
 			{
 				case HEAPTUPLE_DEAD:
 					/* Definitely dead, we can ignore it */
@@ -2355,7 +2355,7 @@ validate_index_heapscan(Relation heapRelation,
 				/* must hold a buffer lock to call HeapTupleSatisfiesNow */
 				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-				if (HeapTupleSatisfiesNow(scan->rs_rd, heapTuple->t_data, scan->rs_cbuf))
+				if (HeapTupleSatisfiesNow(scan->rs_rd, &heapTuple->t_self, heapTuple->t_data, scan->rs_cbuf, "validate_index_heapscan"))
 					check_unique = true;
 				else
 					check_unique = false;

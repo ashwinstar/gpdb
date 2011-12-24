@@ -120,9 +120,9 @@ pgrowlocks(PG_FUNCTION_ARGS)
 		/* must hold a buffer lock to call HeapTupleSatisfiesUpdate */
 		LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-		if (HeapTupleSatisfiesUpdate(rel, tuple->t_data,
+		if (HeapTupleSatisfiesUpdate(rel, &tuple->t_self, tuple->t_data,
 									 GetCurrentCommandId(/*false*/),
-									 scan->rs_cbuf) == HeapTupleBeingUpdated)
+									 scan->rs_cbuf, "pgrowlocks") == HeapTupleBeingUpdated)
 		{
 
 			char	  **values;

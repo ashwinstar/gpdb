@@ -253,17 +253,7 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 				loctup.t_len = ItemIdGetLength(lpp);
 				ItemPointerSet(&(loctup.t_self), page, lineoff);
 
-				valid = HeapTupleSatisfiesVisibility(scan->rs_rd, &loctup, snapshot, buffer);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-				elog(LOG, "VISIBILITY(%s) %s %s",
-				     (valid ? "true" : "false"),
-	     		     RelationGetRelationName(scan->rs_rd),
-				     WatchVisibilityInActionString(
-				     			page,
-				     			lineoff,
-				     			&loctup,
-				     			snapshot));
-#endif
+				valid = HeapTupleSatisfiesVisibility(scan->rs_rd, &loctup, snapshot, buffer, "heapgetpage");
 				if (valid)
 				{
 					t_xmax = HeapTupleHeaderGetXmax(loctup.t_data);
@@ -474,47 +464,12 @@ heapgettup(HeapScanDesc scan,
 				valid = HeapTupleSatisfiesVisibility(scan->rs_rd,
 													 tuple,
 													 snapshot,
-													 scan->rs_cbuf);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-//				if (gp_watch_visibility_in_action)
-				{
-					bool keyMatches = true;
+													 scan->rs_cbuf,
+													 "heapgettup");
 
-					/*
-					 * Always test the key reguardless if it is visible.
-					 */
-					if (key != NULL)
-						HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
-									nkeys, key, keyMatches);
-
-					/*
-					 * Log when the key matches.
-					 */
-					if (keyMatches)
-					{
-						elog(LOG, "VISIBILITY(%s) %s %s",
-						     (valid ? "true" : "false"),
-			     		     RelationGetRelationName(scan->rs_rd),
-						     WatchVisibilityInActionString(page,lineoff,tuple,snapshot));
-					}
-
-					if (valid && !keyMatches)
-						valid = false;
-				}
-//				else
-//				{
-//					/*
-//					 * Normal path copied from below...
-//					 */
-//					if (valid && key != NULL)
-//						HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
-//									nkeys, key, valid);
-//				}
-#else
 				if (valid && key != NULL)
 					HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
 								nkeys, key, valid);
-#endif
 
 				if (valid)
 				{
@@ -1824,18 +1779,7 @@ heap_release_fetch(Relation relation,
 	/*
 	 * check time qualification of tuple, then release lock
 	 */
-	valid = HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer);
-
-#ifdef WATCH_VISIBILITY_IN_ACTION
-	elog(LOG, "VISIBILITY(%s) %s %s",
-	     (valid ? "true" : "false"),
-	     RelationGetRelationName(relation),
-	     WatchVisibilityInActionString(
-	     			ItemPointerGetBlockNumber(tid),
-	     			offnum,
-	     			tuple,
-	     			snapshot));
-#endif
+	valid = HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer, "heap_release_fetch");
 
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 	
@@ -1987,17 +1931,7 @@ heap_get_latest_tid(Relation relation,
 		 * Check time qualification of tuple; if visible, set it as the new
 		 * result candidate.
 		 */
-		valid = HeapTupleSatisfiesVisibility(relation, &tp, snapshot, buffer);
-#ifdef WATCH_VISIBILITY_IN_ACTION
-		elog(LOG, "VISIBILITY(%s) %s %s",
-		     (valid ? "true" : "false"),
-		     RelationGetRelationName(relation),
-		     WatchVisibilityInActionString(
-		     			ItemPointerGetBlockNumber(&ctid),
-		     			offnum,
-		     			&tp,
-		     			snapshot));
-#endif
+		valid = HeapTupleSatisfiesVisibility(relation, &tp, snapshot, buffer, "heap_get_latest_tid");
 		if (valid)
 			*tid = ctid;
 
@@ -2396,7 +2330,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	tp.t_self = *tid;
 
 l1:
-	result = HeapTupleSatisfiesUpdate(relation, tp.t_data, cid, buffer);
+	result = HeapTupleSatisfiesUpdate(relation, &tp.t_self, tp.t_data, cid, buffer, "heap_delete");
 
 	if (result == HeapTupleInvisible)
 	{
@@ -2520,7 +2454,7 @@ l1:
 	if (crosscheck != InvalidSnapshot && result == HeapTupleMayBeUpdated)
 	{
 		/* Perform additional check for serializable RI updates */
-		if (!HeapTupleSatisfiesSnapshot(relation, tp.t_data, crosscheck, buffer))
+		if (!HeapTupleSatisfiesSnapshot(relation, &tp.t_self, tp.t_data, crosscheck, buffer, "heap_delete"))
 			result = HeapTupleUpdated;
 	}
 
@@ -2728,7 +2662,7 @@ heap_update_internal(Relation relation, ItemPointer otid, HeapTuple newtup,
 	 */
 
 l2:
-	result = HeapTupleSatisfiesUpdate(relation, oldtup.t_data, cid, buffer);
+	result = HeapTupleSatisfiesUpdate(relation, &oldtup.t_self, oldtup.t_data, cid, buffer, "heap_update_internal");
 
 	if (result == HeapTupleInvisible)
 	{
@@ -2851,7 +2785,7 @@ l2:
 	if (crosscheck != InvalidSnapshot && result == HeapTupleMayBeUpdated)
 	{
 		/* Perform additional check for serializable RI updates */
-		if (!HeapTupleSatisfiesSnapshot(relation, oldtup.t_data, crosscheck, buffer))
+		if (!HeapTupleSatisfiesSnapshot(relation, &oldtup.t_self, oldtup.t_data, crosscheck, buffer, "heap_update_internal"))
 			result = HeapTupleUpdated;
 	}
 
@@ -3318,7 +3252,7 @@ heap_lock_tuple(Relation relation, HeapTuple tuple, Buffer *buffer,
 	tuple->t_len = ItemIdGetLength(lp);
 
 l3:
-	result = HeapTupleSatisfiesUpdate(relation, tuple->t_data, cid, *buffer);
+	result = HeapTupleSatisfiesUpdate(relation, &tuple->t_self, tuple->t_data, cid, *buffer, "heap_lock_tuple");
 
 	if (result == HeapTupleInvisible)
 	{

@@ -438,7 +438,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 
 			tupgone = false;
 
-			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf, false))
+			switch (HeapTupleSatisfiesVacuum(onerel, &tuple.t_self, tuple.t_data, OldestXmin, buf, false, "lazy_scan_heap"))
 			{
 				case HEAPTUPLE_DEAD:
 					tupgone = true;		/* we can delete the tuple */

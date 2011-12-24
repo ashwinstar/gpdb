@@ -131,23 +131,23 @@ extern volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
  *   bits.  If it is null, we ignore the gp_disable_tuple_hints GUC.
  *
  */
-#define HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer) \
+#define HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer, caller) \
 ((snapshot) == SnapshotNow ? \
-	HeapTupleSatisfiesNow(relation, (tuple)->t_data, buffer) \
+	HeapTupleSatisfiesNow(relation, &((tuple)->t_self), (tuple)->t_data, buffer, caller) \
 : \
 	((snapshot) == SnapshotSelf ? \
-		HeapTupleSatisfiesItself(relation, (tuple)->t_data, buffer) \
+		HeapTupleSatisfiesItself(relation, &((tuple)->t_self), (tuple)->t_data, buffer, caller) \
 	: \
 		((snapshot) == SnapshotAny ? \
 			true \
 		: \
 			((snapshot) == SnapshotToast ? \
-				HeapTupleSatisfiesToast(relation, (tuple)->t_data, buffer) \
+				HeapTupleSatisfiesToast(relation, &((tuple)->t_self), (tuple)->t_data, buffer, caller) \
 			: \
 				((snapshot) == SnapshotDirty ? \
-					HeapTupleSatisfiesDirty(relation, (tuple)->t_data, buffer) \
+					HeapTupleSatisfiesDirty(relation, &((tuple)->t_self), (tuple)->t_data, buffer, caller) \
 				: \
-					HeapTupleSatisfiesSnapshot(relation, (tuple)->t_data, snapshot, buffer) \
+					HeapTupleSatisfiesSnapshot(relation, &((tuple)->t_self), (tuple)->t_data, snapshot, buffer, caller) \
 				) \
 			) \
 		) \
@@ -283,6 +283,133 @@ extern uint8 WatchVisibilityFlags[WATCH_VISIBILITY_BYTE_LEN];
 		WatchVisibilityXminCurrent[0] = '\0'; \
 		WatchVisibilityXmaxCurrent[0] = '\0';
 
+#define WATCH_VISIBILITY_RELATION_QUALIFIES(relation) \
+		(relation == NULL || ((relation)->rd_node.relNode <= 16000))
+
+#define WATCH_VISIBILITY_BOOL_TRACE(relation,tid,tuple,visibilityProc,caller,result) \
+		if (gp_watch_visibility_in_action && \
+			WATCH_VISIBILITY_RELATION_QUALIFIES(relation)) \
+		{ \
+			if (relation != NULL) \
+			{ \
+				elog(LOG, "VISIBILITY(%s) %u/%u/%u '%s' %s ('%s', '%s')", \
+					 (result ? "true" : "false"), \
+					 relation->rd_node.spcNode, \
+					 relation->rd_node.dbNode, \
+					 relation->rd_node.relNode, \
+					 RelationGetRelationName(relation), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												NULL), \
+					 visibilityProc, \
+					 caller); \
+			} \
+			else \
+		 	{ \
+				elog(LOG, "VISIBILITY(%s) %s ('%s', '%s')", \
+					 (result ? "true" : "false"), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												NULL), \
+					 visibilityProc, \
+					 caller); \
+		 	} \
+		}
+#define WATCH_VISIBILITY_SNAPSHOT_TRACE(relation,tid,tuple,snapshot,visibilityProc,caller,result) \
+		if (gp_watch_visibility_in_action && \
+			WATCH_VISIBILITY_RELATION_QUALIFIES(relation)) \
+		{ \
+			if (relation != NULL) \
+			{ \
+				elog(LOG, "VISIBILITY(%s) %u/%u/%u '%s' %s ('%s', '%s')", \
+					 (result ? "true" : "false"), \
+					 relation->rd_node.spcNode, \
+					 relation->rd_node.dbNode, \
+					 relation->rd_node.relNode, \
+					 RelationGetRelationName(relation), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												snapshot), \
+					 visibilityProc, \
+					 caller); \
+			} \
+			else \
+			{ \
+				elog(LOG, "VISIBILITY(%s) %s ('%s', '%s')", \
+					 (result ? "true" : "false"), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												snapshot), \
+					 visibilityProc, \
+					 caller); \
+			} \
+		}
+#define WATCH_VISIBILITY_UPDATE_TRACE(relation,tid,tuple,visibilityProc,caller,result) \
+		if (gp_watch_visibility_in_action && \
+			WATCH_VISIBILITY_RELATION_QUALIFIES(relation)) \
+		{ \
+			if (relation != NULL) \
+			{ \
+				elog(LOG, "VISIBILITY(%s) %u/%u/%u '%s' %s ('%s', '%s')", \
+					 HeapTupleSatisfiesUpdate_String(result), \
+					 relation->rd_node.spcNode, \
+					 relation->rd_node.dbNode, \
+					 relation->rd_node.relNode, \
+					 RelationGetRelationName(relation), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												NULL), \
+					 visibilityProc, \
+					 caller); \
+			} \
+			else \
+			{ \
+				elog(LOG, "VISIBILITY(%s) %s ('%s', '%s')", \
+					 HeapTupleSatisfiesUpdate_String(result), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												NULL), \
+					 visibilityProc, \
+					 caller); \
+			} \
+		}
+#define WATCH_VISIBILITY_VACUUM_TRACE(relation,tid,tuple,visibilityProc,caller,result) \
+		if (gp_watch_visibility_in_action && \
+			WATCH_VISIBILITY_RELATION_QUALIFIES(relation)) \
+		{ \
+			if (relation != NULL) \
+			{ \
+				elog(LOG, "VISIBILITY(%s) %u/%u/%u '%s' %s ('%s', '%s')", \
+					 HeapTupleSatisfiesVacuum_String(result), \
+					 relation->rd_node.spcNode, \
+					 relation->rd_node.dbNode, \
+					 relation->rd_node.relNode, \
+					 RelationGetRelationName(relation), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												NULL), \
+					 visibilityProc, \
+					 caller); \
+			} \
+			else \
+			{ \
+				elog(LOG, "VISIBILITY(%s) %s ('%s', '%s')", \
+					 HeapTupleSatisfiesVacuum_String(result), \
+					 WatchVisibilityInActionString( \
+					 							tid, \
+												tuple, \
+												NULL), \
+					 visibilityProc, \
+					 caller); \
+			} \
+		}
 #define WATCH_VISIBILITY_ADD(nth) \
 { \
 	int evalNth = (nth); \
@@ -300,15 +427,18 @@ extern uint8 WatchVisibilityFlags[WATCH_VISIBILITY_BYTE_LEN];
 }
 
 extern char* WatchVisibilityInActionString(
-		BlockNumber 	page,
-		OffsetNumber 	lineoff,
-		HeapTuple		tuple,
+		ItemPointer 	tid,
+		HeapTupleHeader tupleHeader,
 		Snapshot		snapshot);
 
 extern bool WatchVisibilityAllZeros(void);
 
 #else
 #define WATCH_VISIBILITY_CLEAR()
+#define WATCH_VISIBILITY_BOOL_TRACE(relation,tid,tuple,visibilityProc,caller,result)
+#define WATCH_VISIBILITY_SNAPSHOT_TRACE(relation,tid,tuple,snapshot,visibilityProc,caller,result)
+#define WATCH_VISIBILITY_UPDATE_TRACE(relation,tid,tuple,visibilityProc,caller,result)
+#define WATCH_VISIBILITY_VACUUM_TRACE(relation,tid,tuple,visibilityProc,caller,result)
 #define WATCH_VISIBILITY_ADD(nth)
 #define WATCH_VISIBILITY_ADDPAIR(nth,is_xmax)
 #endif
@@ -363,18 +493,19 @@ extern void lookupSharedSnapshot(char *lookerDescription, char *creatorDescripti
 extern void dumpSharedLocalSnapshot_forCursor(void);
 extern void readSharedLocalSnapshot_forCursor(Snapshot snapshot);
 
-extern bool HeapTupleSatisfiesItself(Relation relation, HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesDirty(Relation relation, HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesToast(Relation relation, HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple,
-						   Snapshot snapshot, Buffer buffer);
-extern HTSU_Result HeapTupleSatisfiesUpdate(Relation relation, HeapTupleHeader tuple,
-						 CommandId curcid, Buffer buffer);
-extern HTSV_Result HeapTupleSatisfiesVacuum(HeapTupleHeader tuple,
+extern bool HeapTupleSatisfiesItself(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller);
+extern bool HeapTupleSatisfiesNow(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller);
+extern bool HeapTupleSatisfiesDirty(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller);
+extern bool HeapTupleSatisfiesToast(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller);
+extern bool HeapTupleSatisfiesSnapshot(Relation relation, ItemPointer tid, HeapTupleHeader tuple,
+						   Snapshot snapshot, Buffer buffer, char *caller);
+extern HTSU_Result HeapTupleSatisfiesUpdate(Relation relation, ItemPointer tid, HeapTupleHeader tuple,
+						 CommandId curcid, Buffer buffer, char *caller);
+extern char *HeapTupleSatisfiesUpdate_String(HTSU_Result result);
+extern HTSV_Result HeapTupleSatisfiesVacuum(Relation relation, ItemPointer tid, HeapTupleHeader tuple,
 					    TransactionId OldestXmin, Buffer buffer, 
-					    bool vacuumFull);
-
+					    bool vacuumFull, char *caller);
+extern char *HeapTupleSatisfiesVacuum_String(HTSV_Result result);
 extern Snapshot GetTransactionSnapshot(void);
 extern Snapshot GetLatestSnapshot(void);
 extern Snapshot CopySnapshot(Snapshot snapshot);

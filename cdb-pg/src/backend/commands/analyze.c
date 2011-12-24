@@ -2448,7 +2448,7 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 					targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 					targtuple.t_len = ItemIdGetLength(itemid);
 
-					if(!HeapTupleSatisfiesVisibility(rel, &targtuple, SnapshotNow, targbuffer))
+					if(!HeapTupleSatisfiesVisibility(rel, &targtuple, SnapshotNow, targbuffer, "gp_statistics_estimate_reltuples_relpages_heap"))
 					{
 						nrowsdead += 1;
 					}

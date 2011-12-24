@@ -924,8 +924,8 @@ static char WatchVisibilityXmaxCurrent[2000];
  *			(Xmax != my-transaction &&			the row was deleted by another transaction
  *			 Xmax is not committed)))			that has not been committed
  */
-bool
-HeapTupleSatisfiesItself(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+static bool
+HeapTupleSatisfiesItself_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -1157,6 +1157,18 @@ HeapTupleSatisfiesItself(Relation relation, HeapTupleHeader tuple, Buffer buffer
 	return false;
 }
 
+bool
+HeapTupleSatisfiesItself(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
+{
+	bool result;
+
+	result = HeapTupleSatisfiesItself_Internal(relation, tuple, buffer);
+
+	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesItself", caller, result);
+
+	return result;
+}
+
 /*
  * HeapTupleSatisfiesNow
  *		True iff heap tuple is valid "now".
@@ -1198,8 +1210,8 @@ HeapTupleSatisfiesItself(Relation relation, HeapTupleHeader tuple, Buffer buffer
  *		the serializability guarantees we provide don't extend to xacts
  *		that do catalog accesses.  this is unfortunate, but not critical.
  */
-bool
-HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+static bool
+HeapTupleSatisfiesNow_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -1459,6 +1471,18 @@ HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 	return false;
 }
 
+bool
+HeapTupleSatisfiesNow(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
+{
+	bool result;
+
+	result = HeapTupleSatisfiesNow_Internal(relation, tuple, buffer);
+
+	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesNow", caller, result);
+
+	return result;
+}
+
 /*
  * HeapTupleSatisfiesToast
  *		True iff heap tuple is valid as a TOAST row.
@@ -1473,8 +1497,8 @@ HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer)
  * Among other things, this means you can't do UPDATEs of rows in a TOAST
  * table.
  */
-bool
-HeapTupleSatisfiesToast(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+static bool
+HeapTupleSatisfiesToast_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -1561,6 +1585,18 @@ HeapTupleSatisfiesToast(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 	return true;
 }
 
+bool
+HeapTupleSatisfiesToast(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
+{
+	bool result;
+
+	result = HeapTupleSatisfiesToast_Internal(relation, tuple, buffer);
+
+	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesToast", caller, result);
+
+	return result;
+}
+
 /*
  * HeapTupleSatisfiesUpdate
  *
@@ -1588,8 +1624,8 @@ HeapTupleSatisfiesToast(Relation relation, HeapTupleHeader tuple, Buffer buffer)
  *	MultiXact includes the current transaction.  Callers that want to
  *	distinguish that case must test for it themselves.)
  */
-HTSU_Result
-HeapTupleSatisfiesUpdate(Relation relation, HeapTupleHeader tuple, CommandId curcid,
+static HTSU_Result
+HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, CommandId curcid,
 						 Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
@@ -1856,6 +1892,33 @@ HeapTupleSatisfiesUpdate(Relation relation, HeapTupleHeader tuple, CommandId cur
 	return HeapTupleUpdated;	/* updated by other */
 }
 
+HTSU_Result
+HeapTupleSatisfiesUpdate(Relation relation, ItemPointer tid, HeapTupleHeader tuple, CommandId curcid,
+						 Buffer buffer, char *caller)
+{
+	HTSU_Result result;
+
+	result = HeapTupleSatisfiesUpdate_Internal(relation, tuple, curcid, buffer);
+
+	WATCH_VISIBILITY_UPDATE_TRACE(relation, tid, tuple, "HeapTupleSatisfiesUpdate", caller, result);
+
+	return result;
+}
+
+char *
+HeapTupleSatisfiesUpdate_String(HTSU_Result result)
+{
+	switch (result)
+	{
+	case HeapTupleMayBeUpdated:	return "Heap tuple may be updated";
+	case HeapTupleInvisible:	return "Heap tuple invisible";
+	case HeapTupleSelfUpdated:	return "Heap tuple self updated";
+	case HeapTupleUpdated:		return "Heap tuple updated";
+	case HeapTupleBeingUpdated:	return "Heap tuple being updated";
+	default:					return "Heap tuple unknown";
+	}
+}
+
 /*
  * HeapTupleSatisfiesDirty
  *		True iff heap tuple is valid including effects of open transactions.
@@ -1875,8 +1938,8 @@ HeapTupleSatisfiesUpdate(Relation relation, HeapTupleHeader tuple, CommandId cur
  * committed dead; or to xmin if that transaction is still in progress.
  * Similarly for SnapshotDirty->xmax.
  */
-bool
-HeapTupleSatisfiesDirty(Relation relation, HeapTupleHeader tuple, Buffer buffer)
+static bool
+HeapTupleSatisfiesDirty_Internal(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
 
@@ -2113,6 +2176,18 @@ HeapTupleSatisfiesDirty(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 	return false;				/* updated by other */
 }
 
+bool
+HeapTupleSatisfiesDirty(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Buffer buffer, char *caller)
+{
+	bool result;
+
+	result = HeapTupleSatisfiesDirty_Internal(relation, tuple, buffer);
+
+	WATCH_VISIBILITY_BOOL_TRACE(relation, tid, tuple, "HeapTupleSatisfiesDirty", caller, result);
+
+	return result;
+}
+
 /*
  * HeapTupleSatisfiesSnapshot
  *		True iff heap tuple is valid for the given snapshot.
@@ -2134,8 +2209,8 @@ HeapTupleSatisfiesDirty(Relation relation, HeapTupleHeader tuple, Buffer buffer)
  * basis of the true state of the transaction, even if we then pretend we
  * can't see it.)
  */
-bool
-HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot snapshot,
+static bool
+HeapTupleSatisfiesSnapshot_Internal(Relation relation, HeapTupleHeader tuple, Snapshot snapshot,
 						   Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
@@ -2435,6 +2510,18 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
 	return false;
 }
 
+bool
+HeapTupleSatisfiesSnapshot(Relation relation, ItemPointer tid, HeapTupleHeader tuple, Snapshot snapshot,
+						   Buffer buffer, char *caller)
+{
+	bool result;
+
+	result = HeapTupleSatisfiesSnapshot_Internal(relation, tuple, snapshot, buffer);
+
+	WATCH_VISIBILITY_SNAPSHOT_TRACE(relation, tid, tuple, snapshot, "HeapTupleSatisfiesSnapshot", caller, result);
+
+	return result;
+}
 
 /*
  * HeapTupleSatisfiesVacuum
@@ -2448,8 +2535,8 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
  * still be visible to some open transaction, so we can't remove them,
  * even if we see that the deleting transaction has committed.
  */
-HTSV_Result
-HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
+static HTSV_Result
+HeapTupleSatisfiesVacuum_Internal(HeapTupleHeader tuple, TransactionId OldestXmin,
 						 Buffer buffer, bool vacuumFull)
 {
 	WATCH_VISIBILITY_CLEAR();
@@ -2539,7 +2626,7 @@ HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 		}
 		else if (TransactionIdIsInProgress(HeapTupleHeaderGetXmin(tuple)))
 		{
-			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XID_IN_PROGRESS);
+			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_IN_PROGRESS);
 			
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
 			{
@@ -2715,6 +2802,33 @@ HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 
 	/* Otherwise, it's dead and removable */
 	return HEAPTUPLE_DEAD;
+}
+
+HTSV_Result
+HeapTupleSatisfiesVacuum(Relation relation, ItemPointer tid, HeapTupleHeader tuple, TransactionId OldestXmin,
+						 Buffer buffer, bool vacuumFull, char *caller)
+{
+	HTSV_Result result;
+
+	result = HeapTupleSatisfiesVacuum_Internal(tuple, OldestXmin, buffer, vacuumFull);
+
+	WATCH_VISIBILITY_VACUUM_TRACE(relation, tid, tuple, "HeapTupleSatisfiesVacuum", caller, result);
+
+	return result;
+}
+
+char *
+HeapTupleSatisfiesVacuum_String(HTSV_Result result)
+{
+	switch (result)
+	{
+	case HEAPTUPLE_DEAD:				return "Heap tuple dead";
+	case HEAPTUPLE_LIVE:				return "Heap tuple live";
+	case HEAPTUPLE_RECENTLY_DEAD:		return "Heap tuple recently dead";
+	case HEAPTUPLE_INSERT_IN_PROGRESS:	return "Heap tuple insert in progress";
+	case HEAPTUPLE_DELETE_IN_PROGRESS:	return "Heap tuple delete in progress";
+	default:							return "Heap tuple unknown";
+	}
 }
 
 /*
@@ -3241,9 +3355,8 @@ static char WatchVisibilityBuffer[2000];
 
 char *
 WatchVisibilityInActionString(
-	BlockNumber 	page,
-	OffsetNumber 	lineoff,
-	HeapTuple		tuple,
+	ItemPointer		tid,
+	HeapTupleHeader	tupleHeader,
 	Snapshot		snapshot)
 {
 	int b;
@@ -3257,7 +3370,9 @@ WatchVisibilityInActionString(
 	char *snapshotStr = NULL;
 	bool atLeastOne = false;
 
-	if (snapshot == SnapshotNow)
+	if (snapshot == NULL)
+		snapshotStr = NULL;
+	else if (snapshot == SnapshotNow)
 		snapshotStr = "SnapshotNow";
 	else if (snapshot == SnapshotSelf)
 		snapshotStr = "SnapshotSelf";
@@ -3273,6 +3388,8 @@ WatchVisibilityInActionString(
 			snapshotStr = "LatestSnapshot";
 		else if (snapshot == SerializableSnapshot)
 			snapshotStr = "SerializableSnapshot";
+		else if (snapshot == ActiveSnapshot)
+			snapshotStr = "ActiveSnapshot";
 		else
 			snapshotStr = "OtherSnapshot";
 
@@ -3288,11 +3405,20 @@ WatchVisibilityInActionString(
 		}
 	}
 
-	count += sprintf(&WatchVisibilityBuffer[count],"(%u,%u)", page, lineoff);
-	count += sprintf(&WatchVisibilityBuffer[count]," xmin %u, xmax %u, %s: ",
-		             HeapTupleHeaderGetXmin(tuple->t_data),
-		             HeapTupleHeaderGetXmax(tuple->t_data),
-		             snapshotStr);
+	count += sprintf(&WatchVisibilityBuffer[count],"TID %s", ItemPointerToString(tid));
+	count += sprintf(&WatchVisibilityBuffer[count]," CTID %s", ItemPointerToString(&tupleHeader->t_ctid));
+	count += sprintf(&WatchVisibilityBuffer[count]," xmin %u, xmax %u",
+		             HeapTupleHeaderGetXmin(tupleHeader),
+		             HeapTupleHeaderGetXmax(tupleHeader));
+	if (snapshot != NULL)
+	{
+		count += sprintf(&WatchVisibilityBuffer[count]," %s: ",
+		             	 snapshotStr);
+	}
+	else
+	{
+		count += sprintf(&WatchVisibilityBuffer[count],": ");
+	}
 
 	if (WatchVisibilityAllZeros())
 	{
