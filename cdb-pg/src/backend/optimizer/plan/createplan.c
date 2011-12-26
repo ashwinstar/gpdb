@@ -1429,8 +1429,18 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		num_segs_participating = total_primaries;
 
 		/* max num of segs that are allowed to participate in the operation */
-		max_participants_allowed = list_length(rel->locationlist) * 
-			gp_external_max_segs;
+		if ((uri->protocol == URI_GPFDIST) || (uri->protocol == URI_GPFDISTS)){
+			max_participants_allowed = list_length(rel->locationlist) *
+					gp_external_max_segs;
+		} else {
+			/* for custom protocol, set max_participants_allowed to num_segs_participating
+			 * so that assignment to segments will use all available segments */
+			max_participants_allowed = num_segs_participating;
+		}
+
+		elog(DEBUG5,
+			 "num_segs_participating = %d. max_participants_allowed = %d. locations number = %d",
+			 num_segs_participating, max_participants_allowed, list_length(rel->locationlist));
 
 		/* see (**) above */
 		if(num_segs_participating > max_participants_allowed)
@@ -1492,7 +1502,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		foreach(c, modifiedloclist)
 		{
 			const char	*uri_str = (char *) strVal(lfirst(c));
-
 			uri = ParseExternalTableUri(uri_str);
 
 			found_candidate = false;
@@ -1533,7 +1542,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					{
 						/* segdb not taken yet. assign this URI to this segdb */
 						segdb_file_map[segind] = pstrdup(uri_str);
-						found_match = true;					
+						found_match = true;
 					}
 
 					/* too bad. this segdb already has an external source assigned */
