@@ -1123,7 +1123,7 @@ create_aocsscan_plan(CreatePlanContext *ctx, Path *best_path,
  *                      and one only primary segdb.
  *   - 'http' protocol: each location (URI of http server) gets mapped to one 
  *                      and one only primary segdb.
- *   - 'gpfdist' and 'gpfdists' protocols: all locations (URI of gpfdist/gpfdists client) are mapped 
+ *   - 'gpfdist' and 'gpfdists' protocols: all locations (URI of gpfdist(s) client) are mapped
  *                      to all primary segdbs. If there are less URIs than
  *                      segdbs (usually the case) the URIs are duplicated
  *                      so that there will be one for each segdb. However, if
@@ -1166,7 +1166,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	bool			found_match = false;
 	bool			done = false;
 
-	/* gpfdist, gpfdists or EXECUTE specific variables */
+	/* gpfdist(s) or EXECUTE specific variables */
 	int				total_to_skip = 0;
 	int				max_participants_allowed = 0;
 	int			num_segs_participating = 0;
@@ -1274,10 +1274,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * relationship. The only difference between them is that file:// URI must 
 	 * be assigned to a segdb on a host that is local to that URI.
 	 *
-	 * 2) segment mapping for tables with LOCATION gpfdist://, gpfdists:// or custom protocol
+	 * 2) segment mapping for tables with LOCATION gpfdist(s):// or custom protocol
 	 *
 	 * This protocol is more complicated - in here we usually duplicate the user
-	 * supplied gpfdist:// (or gpfdists://) URIs until there is one available to every segdb. 
+	 * supplied gpfdist(s):// URIs until there is one available to every segdb.
 	 * However, in some cases (as determined by gp_external_max_segs GUC) we
 	 * don't want to use *all* segdbs but instead figure out how many and pick
 	 * them randomly (this is mainly for better performance and resource mgmt).
@@ -1432,14 +1432,16 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		if ((uri->protocol == URI_GPFDIST) || (uri->protocol == URI_GPFDISTS)){
 			max_participants_allowed = list_length(rel->locationlist) *
 					gp_external_max_segs;
-		} else {
+		}
+		else
+		{
 			/* for custom protocol, set max_participants_allowed to num_segs_participating
 			 * so that assignment to segments will use all available segments */
 			max_participants_allowed = num_segs_participating;
 		}
 
 		elog(DEBUG5,
-			 "num_segs_participating = %d. max_participants_allowed = %d. locations number = %d",
+			 "num_segs_participating = %d. max_participants_allowed = %d. number of URIs = %d",
 			 num_segs_participating, max_participants_allowed, list_length(rel->locationlist));
 
 		/* see (**) above */
