@@ -358,13 +358,10 @@ class ValidateSegDiskSpace(Operation):
                 conn.close()
         if self.compress:
             needed_space = needed_space / COMPRESSION_FACTOR
-
-        cmd = Command('Querying free disk space',
-                      'df -k %s' % self.datadir)
-        cmd.run()
-        lines = cmd.get_results().stdout.split('\n')
-        columns = lines[1].split()
-        free_space = int(columns[3])
+        
+        # get free available space
+        stat_res = os.statvfs(self.datadir);
+        free_space = (stat_res.f_bavail * stat_res.f_frsize) / 1024
 
         if free_space == 0 or (free_space - needed_space) / free_space < self.free_space_percent / 100:
             logger.error("Disk space: [Need: %dK, Free %dK]" % (needed_space, free_space))
