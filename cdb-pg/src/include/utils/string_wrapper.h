@@ -29,7 +29,7 @@ int gp_strcoll(const char *left, const char *right)
 
 	if ( errno != 0 )
 	{
-		if ( errno == EINVAL || EILSEQ)
+		if ( errno == EINVAL || errno == EILSEQ)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
@@ -106,7 +106,7 @@ size_t gp_strxfrm(char *dst, const char *src, size_t n)
 		char * tmp_dst = (char *) palloc(dst_len + 1);
 
 		result = strxfrm(tmp_dst, src, dst_len + 1);
-		Assert(result == dst_len);
+		Assert(result <= dst_len);
 
 		/* return a n-character null terminated string */
 		memcpy(dst, tmp_dst, n-1);
