@@ -80,6 +80,7 @@ int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
 
+void base16_decode(char* encoded, char* raw );
 /* SSL additions */
 #define SSL_RENEGOTIATE_TIMEOUT_SEC	(600) /* 10 minutes */
 const char* const CertificateFilename = "server.crt";
@@ -2599,6 +2600,19 @@ static int request_validate(request_t *r)
 	return 0;
 }
 
+void base16_decode(char* encoded, char* raw ) {
+         char *encoded_bytes = encoded;
+         char* raw_bytes = raw;
+         char buf[3];
+         char *endp;
+         while ( encoded_bytes[0] ) {
+                 memcpy ( buf, encoded_bytes, 2 );
+                 buf[2] = '\0';
+                 *(raw_bytes++) = strtoul ( buf, &endp, 16 );
+                 encoded_bytes += 2;
+         }
+}
+
 /*
  * request_parse_gp_headers
  *
@@ -2634,8 +2648,11 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->totalsegs = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-SEGMENT-ID", r->in.req->hname[i]))
 			r->segid = atoi(r->in.req->hvalue[i]);
-		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i]))
-			r->line_delim_str = r->in.req->hvalue[i];
+		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i])){
+			char *decoded_delim = (char*)(malloc(strlen(r->in.req->hvalue[i])/2+1));
+			base16_decode(r->in.req->hvalue[i] ,decoded_delim);
+			r->line_delim_str = decoded_delim;
+		}
 		else if (0 == strcmp("X-GP-LINE-DELIM-LENGTH", r->in.req->hname[i]))
 			r->line_delim_length = atoi(r->in.req->hvalue[i]);
 #ifdef GPFXDIST
