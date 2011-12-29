@@ -57,7 +57,7 @@ class RestoreDatabase(Operation):
 
         restore_line = self._build_restore_line(restore_timestamp, restore_db, compress, self.master_port, self.ddboost)
         logger.info(restore_line)
-        Command('Invoking gp_restore', restore_line).run()
+        Command('Invoking gp_restore', restore_line).run(validateAfter=True)
 
         if not self.no_analyze:
             self._analyze(restore_db, self.master_port)

@@ -52,7 +52,7 @@ class GpdbRestore(Operation):
             raise ProgramArgumentValidationException("Only supply one of -t, -b, -R, or -s.")
 
         if options.list_tables and options.db_timestamp is None:
-            raise ProgramArgumentValidationException("Need to suppy -t <timestamp> for -L option")
+            raise ProgramArgumentValidationException("Need to supply -t <timestamp> for -L option")
 
         if options.masterDataDirectory is None:
             options.masterDataDirectory = gp.get_masterdatadir()
