@@ -216,8 +216,11 @@ class GpdbRestore(Operation):
         logger.info("--------------------------------------------------------------------")
         logger.info("List of database tables for dump file with time stamp %s" % self.db_timestamp)
         logger.info("--------------------------------------------------------------------")
-        for schema, table, owner in dump_tables:
-            logger.info("Table %s.%s Owner %s" % (schema, table, owner))
+        external_table_print = {}
+        external_table_print[True] = "External "
+        external_table_print[False] = ""
+        for is_external, schema, table, owner in dump_tables:
+            logger.info("%sTable %s.%s Owner %s" % (external_table_print[is_external], schema, table, owner))
         logger.info("--------------------------------------------------------------------")
 
     def _gather_info(self):

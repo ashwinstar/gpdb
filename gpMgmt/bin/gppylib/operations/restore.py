@@ -806,8 +806,18 @@ class GetDumpTables(Operation):
                             table = table[: table.index(" (")]
                     else:
                         table = table[: table.index(" FROM stdin;")]
-                    table = table.rstrip()  
-                    ret.append( (schema, table, owner) )
+                    table = table.rstrip() 
+                    # is_external = false
+                    ret.append( (False , schema, table, owner) )
+                # get external table from dump line:
+                # -- Name: tablename; Type: EXTERNAL TABLE; Schema: public; Owner: ownername; Tablespace:
+                elif line.startswith("-- Name: ") and line.find("Type: EXTERNAL TABLE;") != -1:
+                    table = line[line.index("Name: ") + 6 : line.index("; Type")]
+                    table = table.rstrip()
+                    owner = line[line.index("Owner: ") + 7 : line.index("; Tablespace")]
+                    owner = owner.rstrip()
+                    ret.append( (True, schema, table, owner) )
+                    
             return ret
         else: 
             f = None
@@ -842,7 +852,16 @@ class GetDumpTables(Operation):
                         else:
                             table = table[: table.index(" FROM stdin;")]
                         table = table.rstrip()
-                        ret.append( (schema, table, owner) )
+                        # is_external = false
+                        ret.append( (False, schema, table, owner) )
+                    # get external table from dump line:
+                    # -- Name: tablename; Type: EXTERNAL TABLE; Schema: public; Owner: ownername; Tablespace:
+                    elif line.startswith("-- Name: ") and line.find("Type: EXTERNAL TABLE;") != -1:
+                        table = line[line.index("Name: ") + 6 : line.index("; Type")]
+                        table = table.rstrip()
+                        owner = line[line.index("Owner: ") + 7 : line.index("; Tablespace")]
+                        owner = owner.rstrip()
+                        ret.append( (True, schema, table, owner) )
             finally:
                 if f is not None:
                     f.close()
