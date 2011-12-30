@@ -1183,7 +1183,7 @@ agg_retrieve_direct(AggState *aggstate)
 		/* Process the remaining tuples in the new group. */
 		if (aggstate->has_partial_agg || aggstate->grp_firstTuple != NULL)
 		{
-			int outer_grouping = input_grouping;
+			uint64 outer_grouping = input_grouping;
 
 			if (!aggstate->has_partial_agg)
 			{
@@ -1274,7 +1274,7 @@ agg_retrieve_direct(AggState *aggstate)
 						bool tuple_match;
 						int match_numcols;
 
-						int outer_grouping =
+						uint64 outer_grouping =
 							tuple_grouping(outerslot, node->numCols-node->numNullCols,
 										   input_grouping, input_has_grouping,
 										   (node->numCols-node->numNullCols) > 0 ?
