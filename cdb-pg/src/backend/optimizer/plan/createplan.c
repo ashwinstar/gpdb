@@ -1437,6 +1437,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		{
 			/* for custom protocol, set max_participants_allowed to num_segs_participating
 			 * so that assignment to segments will use all available segments */
+			Assert(uri->protocol == URI_CUSTOM);
 			max_participants_allowed = num_segs_participating;
 		}
 
