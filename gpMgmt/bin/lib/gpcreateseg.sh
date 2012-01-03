@@ -181,15 +181,19 @@ PROCESS_QE () {
     if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
 	for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 	do
-	    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
-	    PARA_EXIT $? "Update $PG_HBA for master IP address ${MASTER_IP}"
+	    # MPP-15889
+	    CIDR_MASTER_IP=$(GET_CIDRADDR $MASTER_IP)
+	    $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${CIDR_MASTER_IP}	trust >> ${GP_DIR}/$PG_HBA"
+	    PARA_EXIT $? "Update $PG_HBA for master IP address ${CIDR_MASTER_IP}"
 	done
 	if [ x"" != x"$STANDBY_HOSTNAME" ];then
 	    LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
 	    for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 	    do
-		$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
-		PARA_EXIT $? "Update $PG_HBA for master standby address ${STANDBY_IP}"
+	        # MPP-15889
+	        CIDR_STANDBY_IP=$(GET_CIDRADDR $STANDBY_IP)
+		$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${CIDR_STANDBY_IP}	trust >> ${GP_DIR}/$PG_HBA"
+		PARA_EXIT $? "Update $PG_HBA for master standby address ${CIDR_STANDBY_IP}"
 	    done
 	fi
     fi
@@ -198,14 +202,18 @@ PROCESS_QE () {
     SEGMENT_IPV4_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2"`)
     for ADDR in "${SEGMENT_IPV4_LOCAL_ADDRESS_ALL[@]}"
     do
-        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $ADDR/32       trust >> ${GP_DIR}/$PG_HBA"
+	# MPP-15889
+	CIDR_ADDR=$(GET_CIDRADDR $ADDR)
+        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $CIDR_ADDR      trust >> ${GP_DIR}/$PG_HBA"
     done
 
     # Add all local IPV6 addresses
     SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \\$2}' |$CUT -d'/' -f1"`)
     for ADDR in "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
     do
-	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
+	# MPP-15889
+	CIDR_ADDR=$(GET_CIDRADDR $ADDR)
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $CIDR_ADDR      trust >> ${GP_DIR}/$PG_HBA"
     done
     
     if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then

@@ -363,7 +363,8 @@ class GPInitSegment():
             m = ip_re.search(line)
             if m:
                 ip = m.group(1)
-                pg_hba.write('host all all %s/32 trust\n' % ip)
+                cidr_suffix = '/128' if ':' in ip else '/32' # MPP-15889
+                pg_hba.write('host all all %s%s trust\n' % (ip, cidr_suffix))
 
         pg_hba.close()
 
