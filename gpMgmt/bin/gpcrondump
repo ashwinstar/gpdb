@@ -13,4 +13,4 @@ fi
 # MPP-15405
 export GPKILL=CONFIRM
 
-gpcrondump.py $*
+exec gpcrondump.py $*
