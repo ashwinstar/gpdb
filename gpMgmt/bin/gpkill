@@ -47,7 +47,7 @@ class GpKillMain(YamlMain):
         -v: Verbose Mode - include verbose debugging information
       Check Options:
         --check: 
-          help: Only check pid to verify it is a GPDB process
+          help: Only returns status 0 if pid may be killed without gpkill, status 1 otherwise.
           action: store_const
           dest: scenario
           const: Check Process
@@ -210,9 +210,9 @@ class GpKillMain(YamlMain):
 
         # the process has GPKILL in the environment.
         # if it's set to NEVER then user shouldn't kill this process
-
+        # exit after we've captured troubleshooting
         if gpkill == 'NEVER':
-            raise Exit(1,'disallowed', call_support=True)
+            return
 
         # GPKILL is set to something other than 'NEVER' (i.e. STUCK or CONFIRM)
         # if we're just checking on the process we're done.
@@ -237,6 +237,7 @@ class GpKillMain(YamlMain):
     #
 
     def troubleshoot_process(self):
+        ""
 
         # use glider to capture the stack of the target process.
         # we run it from a shell with an explicit ulimit to prevent
@@ -258,8 +259,16 @@ class GpKillMain(YamlMain):
 
 
     def confirm(self):
-        pid = self.pid
-        msg = self.errmsg('confirm', locals())
+        ""
+        pid    = self.pid
+        gpkill = self.gpkill
+        msg    = self.errmsg('confirm', locals())
+
+        # the process has GPKILL in the environment.
+        # if it's set to NEVER then user shouldn't kill this process
+
+        if gpkill == 'NEVER':
+            raise Exit(1,'disallowed', call_support=True)
 
         # ask once if they want to kill the process
         #
@@ -269,6 +278,7 @@ class GpKillMain(YamlMain):
 
 
     def kill_process(self):
+        ""
         pid = self.pid
 
         # now try to terminate the process, first trying with
