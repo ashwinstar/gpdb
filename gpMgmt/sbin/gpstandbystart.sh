@@ -13,6 +13,9 @@ if [ -e $DATADIR/pg_log/startup.log ]; then
     touch $DATADIR/pg_log/startup.log
 fi
 
+# MPP-15405
+export GPKILL=NEVER
+
 #
 # start syncmaster
 #
