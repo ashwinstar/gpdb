@@ -87,6 +87,8 @@ const char* const CertificateFilename = "server.crt";
 const char* const PrivateKeyFilename = "server.key";
 const char* const TrustedCaFilename = "root.crt";
 static SSL_CTX *initialize_ctx(void);
+static void handle_ssl_error(SOCKET sock, BIO *sbio, SSL *ssl);
+static void flush_ssl_buffer(int fd, short event, void* arg);
 /* SSL end */
 
 /**************
@@ -361,6 +363,8 @@ static int gpfdist_socket_receive(const request_t *r, void *buf, const size_t bu
 static int gpfdist_SSL_receive(const request_t *r, void *buf, const size_t buflen);
 static int (*gpfdist_receive)(const request_t *r, void *buf, const size_t buflen); /* function pointer */
 static void free_SSL_resources(const request_t *r);
+static void setup_flush_ssl_buffer(request_t* r);
+static void request_cleanup(request_t *r);
 
 /* Print usage */
 static void usage_error(const char* msg, int print_usage)
@@ -860,13 +864,15 @@ static void request_end(request_t* r, int error, const char* errmsg)
 		session_detach(r);
 	}
 
-	event_del(&r->ev);
-	shutdown(r->sock, SHUT_WR | SHUT_RD);
-	closesocket(r->sock);
-	r->sock = -1;
-	apr_pool_destroy(r->pool);
-	/* Release SSL related memory */
-	free_SSL_resources(r);
+	/* If we still have data in the buffer - flush it */
+	if ( opt.ssl )
+	{
+		flush_ssl_buffer(r->sock, 0, r);
+	}
+	else
+	{
+		request_cleanup(r);
+	}
 }
 
 static int local_send(request_t *r, const char* buf, int buflen)
@@ -882,6 +888,10 @@ static int local_send(request_t *r, const char* buf, int buflen)
 		int e = errno;
 		int ok = (e == EINTR || e == EAGAIN);
 #endif
+		if ( e == EPIPE )
+		{
+			gprint(FLINE,"gpfdist_send failed - the connection was terminated by the client (%d)\n",e);
+		}
 		return ok ? 0 : -1;
 	}
 
@@ -1510,7 +1520,7 @@ static void do_read_request(int fd, short event, void* arg)
 	}
 
 	/* Execute only once */
-	if (!r->io && !r->ssl_bio && opt.ssl)
+	if (opt.ssl && !r->io && !r->ssl_bio)
 	{
 		r->io = BIO_new(BIO_f_buffer());
 		r->ssl_bio = BIO_new(BIO_f_ssl());
@@ -1521,8 +1531,6 @@ static void do_read_request(int fd, short event, void* arg)
 		/* When the renegotiate timeout elapses the */
 		/* session is automatically renegotiated	*/
 		BIO_set_ssl_renegotiate_timeout(r->ssl_bio, SSL_RENEGOTIATE_TIMEOUT_SEC);
-
-		gprint("Using SSL\n");
 	}
 
 	/* how many bytes left in the header buf */
@@ -1702,21 +1710,15 @@ static void do_accept(int fd, short event, void* arg)
 		SSL_set_bio(ssl, sbio, sbio);
 		if ( (rd = SSL_accept(ssl) <= 0) )
 		{
-			gwarning(FLINE, "SSL accept failed");
-			if (opt.v)
-			{
-				ERR_print_errors(gcb.bio_err);
-			}
+			handle_ssl_error(sock, sbio, ssl);
 			/* Close the socket that was allocated by accept 			*/
 			/* We also must perform this, in case that a user 			*/
 			/* accidentaly connected via gpfdist, instead of gpfdits	*/
 			closesocket(sock);
-
-			BIO_ssl_shutdown(sbio);
-			SSL_free(ssl);
-
 			return;
 		}
+
+		gprint("[%d] Using SSL\n", (int)sock);
 	}
 	/* set to non-blocking, and close-on-exec */
 #ifdef WIN32
@@ -1728,12 +1730,20 @@ static void do_accept(int fd, short event, void* arg)
 	if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1)
 	{
 		gwarning(FLINE, "fcntl(F_SETFL, O_NONBLOCK) failed");
+		if ( opt.ssl )
+		{
+			handle_ssl_error(sock, sbio, ssl);
+		}
 		closesocket(sock);
 		goto failure;
 	}
 	if (fcntl(sock, F_SETFD, 1) == -1)
 	{
 		gwarning(FLINE, "fcntl(F_SETFD) failed");
+		if ( opt.ssl )
+		{
+			handle_ssl_error(sock, sbio, ssl);
+		}
 		closesocket(sock);
 		goto failure;
 	}
@@ -3248,7 +3258,6 @@ static SSL_CTX *initialize_ctx(void)
 	/* Load our keys and certificates*/
 	if (!(SSL_CTX_use_certificate_chain_file(ctx,fileName)))
 	{
-		free(fileName);
 		gfatal(FLINE,"Unable to load the certificate from file: \"%s\"", fileName);
 	}
 	else
@@ -3264,7 +3273,6 @@ static SSL_CTX *initialize_ctx(void)
 
 	if (!(SSL_CTX_use_PrivateKey_file(ctx,fileName,SSL_FILETYPE_PEM)))
 	{
-		free(fileName);
 		gfatal (FLINE,"Unable to load the private key from file: \"%s\"", fileName);
 	}
 	else
@@ -3281,7 +3289,6 @@ static SSL_CTX *initialize_ctx(void)
 	/* Load the CAs we trust*/
 	if (!(SSL_CTX_load_verify_locations(ctx, fileName,0)))
 	{
-		free(fileName);
 		gfatal (FLINE,"Unable to to load CA from file: \"%s\"", fileName);
 	}
 	else
@@ -3296,9 +3303,15 @@ static SSL_CTX *initialize_ctx(void)
 	/* We always require client certificate	*/
 	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, 0);
 
+	/* Consider using these - experinments on Mac showed no improvement,
+	 * but perhaps it will on other platforms, or when opt.m is very big
+	 */
+	//SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY | SSL_MODE_ENABLE_PARTIAL_WRITE);
+
 	free(fileName);
 	return ctx;
 }
+
 
 /*
  * gpfdist_socket_send
@@ -3311,6 +3324,7 @@ static int gpfdist_socket_send(const request_t *r, const void *buf, const size_t
 	return send(r->sock, buf, buflen, 0);
 }
 
+
 /*
  * gpfdist_SSL_send
  *
@@ -3318,14 +3332,45 @@ static int gpfdist_socket_send(const request_t *r, const void *buf, const size_t
  */
 static int gpfdist_SSL_send(const request_t *r, const void *buf, const size_t buflen)
 {
-	int n;
 
-	n = BIO_write(r->io, buf, buflen);
-	if( BIO_flush(r->io) > 0 )
-		return n;
-	else
-		return -1;
+	/* Write the data to socket */
+	int n = BIO_write(r->io, buf, buflen);
+	/* Try to flush */
+	(void)BIO_flush(r->io);
+
+	/* If we could not write to BIO */
+	if ( n < 0)
+	{
+		/* If BIO indicates retry => we should retry later, this is not an error */
+		if ( BIO_should_retry(r->io) > 1 )
+		{
+			/* Do not indicate error */
+			n = 0;
+		}
+		else
+		{
+			/* If errno == 0 => this is not a real error */
+			if ( errno == 0 )
+			{
+				/* Do not indicate error */
+				n = 0;
+			}
+			else
+			{
+				/* If errno == EPIPE, it means that the client has closed the connection   	*/
+				/* This error will be handled in the calling function, do not print it here	*/
+				if (errno != EPIPE)
+				{
+					gwarning(FLINE, "Error during SSL gpfdist_send (Error = %d. errno = %d)", SSL_get_error(r->ssl,n), (int)errno);
+					ERR_print_errors(gcb.bio_err);
+				}
+			}
+		}
+	}
+
+	return n;
 }
+
 
 /*
  * gpfdist_socket_receive
@@ -3337,6 +3382,7 @@ static int gpfdist_socket_receive(const request_t *r, void *buf, const size_t bu
 	return ( recv(r->sock, buf, buflen, 0) );
 }
 
+
 /*
  * gpfdist_SSL_receive
  *
@@ -3347,6 +3393,7 @@ static int gpfdist_SSL_receive(const request_t *r, void *buf, const size_t bufle
 	return ( BIO_read(r->io, buf, buflen) );
 	/* todo: add error checks here */
 }
+
 
 /*
  * free_SSL_resources
@@ -3361,4 +3408,83 @@ static void free_SSL_resources(const request_t *r)
 	//BIO_vfree(r->ssl_bio);
 	SSL_free(r->ssl);
 
+}
+
+
+/*
+ * handle_ssl_error
+ *
+ * Frees SSL resources that were allocated during do_accept
+ */
+static void handle_ssl_error(SOCKET sock, BIO *sbio, SSL *ssl)
+{
+	gwarning(FLINE, "SSL accept failed");
+	if (opt.v)
+	{
+		ERR_print_errors(gcb.bio_err);
+	}
+
+	BIO_ssl_shutdown(sbio);
+	SSL_free(ssl);
+}
+
+/*
+ * flush_ssl_buffer
+ *
+ * Flush all the data that is still pending in the current buffer
+ */
+static void flush_ssl_buffer(int fd, short event, void* arg)
+{
+	request_t* r = (request_t*)arg;
+
+	(void)BIO_flush(r->io);
+
+	if ( event & EV_TIMEOUT )
+	{
+		gwarning(FLINE,"Buffer flush timeout");
+		return;
+	}
+
+	if ( BIO_wpending(r->io) )
+	{
+		setup_flush_ssl_buffer(r);
+	}
+	else
+	{
+		/* Clean up request resources */
+		request_cleanup(r);
+
+		/* Release SSL related memory */
+		free_SSL_resources(r);
+	}
+}
+
+
+/*
+ * setup_flush_ssl_buffer
+ *
+ * Create event that will call to 'flush_ssl_buffer', with 5 seconds timeout
+ */
+static void setup_flush_ssl_buffer(request_t* r)
+{
+	event_del(&r->ev);
+	event_set(&r->ev, r->sock, EV_WRITE, flush_ssl_buffer, r);
+	r->tm.tv_sec  = 5;
+	r->tm.tv_usec = 0;
+	(void)event_add(&r->ev, &r->tm);
+}
+
+
+/*
+ * request_cleanup
+ *
+ * Cleanup request related resources
+ */
+static void request_cleanup(request_t *r)
+{
+	event_del(&r->ev);
+	shutdown(r->sock, SHUT_WR | SHUT_RD);
+	closesocket(r->sock);
+	r->sock = -1;
+	apr_pool_destroy(r->pool);
 }
