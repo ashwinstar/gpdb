@@ -911,7 +911,16 @@ void
 CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 					   bool cancelUnfinishedWork)
 {
-	CdbCheckDispatchResultInt(ds, NULL, NULL, cancelUnfinishedWork);
+	PG_TRY();
+	{
+		CdbCheckDispatchResultInt(ds, NULL, NULL, cancelUnfinishedWork);
+	}
+	PG_CATCH();
+	{
+		cdbdisp_clearGangActiveFlag(ds);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	cdbdisp_clearGangActiveFlag(ds);
 	
