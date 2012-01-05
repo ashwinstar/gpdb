@@ -380,7 +380,7 @@ class GppkgTestCase(unittest.TestCase):
         
         @param gppkg_filename: The name of the gppkg file
         @type gppkg_filename: str
-        @return: True if the gppkg was installed successfuly
+        @return: True if the gppkg was installed successfully
                  False otherwise
         @rtype: bool
         """
@@ -466,8 +466,6 @@ class GppkgTestCase(unittest.TestCase):
         @param host: Remote host 
         @type host: str
         """
-        if host is None:
-            return
         results = run_remote_command("rpm -q %s --dbpath %s" % (rpm_package_name, RPM_DATABASE), host)
         assert results == rpm_package_name
 
@@ -480,8 +478,6 @@ class GppkgTestCase(unittest.TestCase):
         @param host: Remote host 
         @type host: str
         """
-        if host is None:
-            return
         with self.assertRaisesRegexp(ExecutionError, "%s is not installed" % rpm_package_name):
             results = run_remote_command("rpm -q %s --dbpath %s" % (rpm_package_name, RPM_DATABASE), host)
         
@@ -1196,12 +1192,10 @@ class MuckWithInternalsTestCase(GppkgTestCase):
         try:
             self.remove(gppkg_file)
         except ExecutionError, e:
-            Scp(name = "copy rpm to segment", 
-                srcFile = self.alpha_spec.get_filename(), 
-                dstFile = os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), 
-                srcHost = None,
-                dstHost = host).run(validateAfter = True)
-            self.fail("ExecutionError = %s" % str(e))
+            GpScp(source_path = gppkg_file,
+                  target_path = archive_file,
+                  host_list = segment_host_list).run()
+            self.fail("ExecutionError %s" % str(e))
 
     @unittest.expectedFailure
     def test08_uninstall_rpm_on_segments_and_install(self):
@@ -1455,8 +1449,9 @@ class CleanGppkgTestCase(GppkgTestCase):
         cluster_host_list = [standby] + [host for host in segment_host_list]        
 
         for host in cluster_host_list:
-            self.check_remote_rpm_uninstall(self.A_spec.get_package_name(), host)
-            assert not CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
+            if host is not None:
+                self.check_remote_rpm_uninstall(self.A_spec.get_package_name(), host)
+                assert not CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
 
     def test03_no_package_on_master(self):
         """
@@ -1475,8 +1470,9 @@ class CleanGppkgTestCase(GppkgTestCase):
         cluster_host_list = [standby] + [host for host in segment_host_list]
        
         for host in cluster_host_list:
-            self.check_remote_rpm_uninstall(self.A_spec.get_package_name(), host)
-            assert not CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
+            if host is not None:
+                self.check_remote_rpm_uninstall(self.A_spec.get_package_name(), host)
+                assert not CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
 
     def test04_no_package_on_segment(self):
         """
