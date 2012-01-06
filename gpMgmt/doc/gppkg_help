@@ -10,8 +10,13 @@ SYNOPSIS
 
 gppkg [-i <package>| -u <package> | -r <name-version> | -c] 
 [-d <master_data_directory>] [-a] [-v]
+
 gppkg --migrate <GPHOME_1> <GPHOME_2> [-a] [-v]
+
+gppkg [-q | --query] query_option
+
 gppkg -? | --help | -h
+
 gppkg --version
 
 *****************************************************
@@ -78,6 +83,26 @@ from the installation directory to which packages
 are being migrated. That is, GPHOME_2 must match 
 the $GPHOME from which the currently executing 
 gppkg is being run. 
+
+-q | --query query_option
+
+Provides information specified by query_option about the 
+installed packages. Only one query_option can be specified 
+at a time. The following table lists the possible values 
+for query_option.<package_file> is the name of a package.
+
+query_option	        Returns
+------------              -------
+
+<package_file>	        Whether the specified package is installed.
+
+--info <package_file>     The name, version, and other information 
+                          about the specified package.
+
+--list <package_file>	  The file contents of the specified package.
+
+--all	                    List of all installed packages.
+
 
 -r <name>-<version> | --remove=<name>-<version>
 Removes the specified package.
