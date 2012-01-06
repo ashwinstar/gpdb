@@ -459,101 +459,101 @@ taah: tupdesc:00000552:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 taah: tupdesc:00000553:  errmsg("column \"%s\" cannot be declared SETOF", 
 taah: tupdesc:00000554:  attname))); 
 aaaaa GP_IGNORE: faag: fileam - ./backend/access/external/fileam.c
-faag: fileam:00000543:  ereport(ERROR, 
-faag: fileam:00000544:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00000545:  errmsg("External table has more URLs then available primary " 
-faag: fileam:00000546:  "segments that can write into them"))); 
-faag: fileam:00000553:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
-faag: fileam:00000554:  } 
-faag: fileam:00000555:  
-faag: fileam:00000556:  /* 
-faag: fileam:00000557:  * Allocate and init our structure that keeps track of data parsing state 
-faag: fileam:00000558:  */ 
-faag: fileam:00000559:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
-faag: fileam:00000667:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
-faag: fileam:00000833:  ereport(ERROR, \ 
-faag: fileam:00000834:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
-faag: fileam:00000835:  (errmsg("%s", finalmsg) \ 
-faag: fileam:00000836:  ),errOmitLocation(true))); \ 
-faag: fileam:00000837: } 
-faag: fileam:00000838:  
-faag: fileam:00000839: /* 
-faag: fileam:00000840:  * parse_next_line 
-faag: fileam:00000841:  * 
-faag: fileam:00000842:  * Given a buffer of data, extract the next data line from it and parse it 
-faag: fileam:00000843:  * to attributes according to the data format specifications. 
-faag: fileam:00000844:  * 
-faag: fileam:00000845:  * Returns: 
-faag: fileam:00000846:  * LINE_OK - line parsed successfully. 
-faag: fileam:00000847:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
-faag: fileam:00000848:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
-faag: fileam:00000849:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
-faag: fileam:00000850:  */ 
-faag: fileam:00000851: static DataLineStatus parse_next_line(FileScanDesc scan) 
-faag: fileam:00000852: { 
-faag: fileam:00000853:  CopyState pstate = scan->fs_pstate; 
-faag: fileam:00001084:  elog(ERROR, "header line in custom format is not yet supported"); 
-faag: fileam:00001181:  elog(ERROR, "unsupported formatter notification (%d)", 
-faag: fileam:00001182:  formatter->fmt_notification); 
-faag: fileam:00001279:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001280:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001281:  formatter_name, 
-faag: fileam:00001282:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001283:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001284:  errOmitLocation(true))); 
-faag: fileam:00001288:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001289:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001290:  formatter_name, 
-faag: fileam:00001291:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001292:  errOmitLocation(true))); 
-faag: fileam:00001296:  ereport(ERROR, 
-faag: fileam:00001297:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faag: fileam:00001298:  errmsg("formatter function %s is not declared STABLE.", 
-faag: fileam:00001299:  formatter_name), 
-faag: fileam:00001300:  errOmitLocation(true))); 
-faag: fileam:00001385:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001386:  errmsg("The specified error table for this " 
-faag: fileam:00001387:  "external table doesn't appear to " 
-faag: fileam:00001388:  "exist in the database. It may have " 
-faag: fileam:00001389:  "been dropped."), 
-faag: fileam:00001390:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001451:  ereport(ERROR, 
-faag: fileam:00001452:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001453:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001670:  ereport(ERROR, 
-faag: fileam:00001671:  (errcode_for_file_access(), 
-faag: fileam:00001672:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001673:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001674:  errOmitLocation(true))); 
-faag: fileam:00001744:  ereport(ERROR, 
-faag: fileam:00001745:  (errcode_for_file_access(), 
-faag: fileam:00001746:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001747:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001806:  ereport(ERROR, 
-faag: fileam:00001807:  (errcode_for_file_access(), 
-faag: fileam:00001808:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001830:  ereport(ERROR, 
-faag: fileam:00001831:  (errcode_for_file_access(), 
-faag: fileam:00001832:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
-faag: fileam:00001833:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001956:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001958:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001964:  elog(NOTICE,"%s",a); 
-faag: fileam:00002561:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002562:  errmsg("external table internal parse error: " 
-faag: fileam:00002563:  "no formatter function name found"))); 
-faag: fileam:00002569:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002570:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002571:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
-faag: fileam:00002578:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002579:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002580:  token))); 
-faag: fileam:00002582:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002583:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002584:  "line"))); 
-faag: fileam:00002641:  ereport(ERROR, 
-faag: fileam:00002642:  (errcode_for_file_access(), 
-faag: fileam:00002643:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00000544:  ereport(ERROR, 
+faag: fileam:00000545:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00000546:  errmsg("External table has more URLs then available primary " 
+faag: fileam:00000547:  "segments that can write into them"))); 
+faag: fileam:00000554:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
+faag: fileam:00000555:  } 
+faag: fileam:00000556:  
+faag: fileam:00000557:  /* 
+faag: fileam:00000558:  * Allocate and init our structure that keeps track of data parsing state 
+faag: fileam:00000559:  */ 
+faag: fileam:00000560:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
+faag: fileam:00000668:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+faag: fileam:00000834:  ereport(ERROR, \ 
+faag: fileam:00000835:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
+faag: fileam:00000836:  (errmsg("%s", finalmsg) \ 
+faag: fileam:00000837:  ),errOmitLocation(true))); \ 
+faag: fileam:00000838: } 
+faag: fileam:00000839:  
+faag: fileam:00000840: /* 
+faag: fileam:00000841:  * parse_next_line 
+faag: fileam:00000842:  * 
+faag: fileam:00000843:  * Given a buffer of data, extract the next data line from it and parse it 
+faag: fileam:00000844:  * to attributes according to the data format specifications. 
+faag: fileam:00000845:  * 
+faag: fileam:00000846:  * Returns: 
+faag: fileam:00000847:  * LINE_OK - line parsed successfully. 
+faag: fileam:00000848:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+faag: fileam:00000849:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+faag: fileam:00000850:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+faag: fileam:00000851:  */ 
+faag: fileam:00000852: static DataLineStatus parse_next_line(FileScanDesc scan) 
+faag: fileam:00000853: { 
+faag: fileam:00000854:  CopyState pstate = scan->fs_pstate; 
+faag: fileam:00001085:  elog(ERROR, "header line in custom format is not yet supported"); 
+faag: fileam:00001182:  elog(ERROR, "unsupported formatter notification (%d)", 
+faag: fileam:00001183:  formatter->fmt_notification); 
+faag: fileam:00001280:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001281:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001282:  formatter_name, 
+faag: fileam:00001283:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001284:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001285:  errOmitLocation(true))); 
+faag: fileam:00001289:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001290:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001291:  formatter_name, 
+faag: fileam:00001292:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001293:  errOmitLocation(true))); 
+faag: fileam:00001297:  ereport(ERROR, 
+faag: fileam:00001298:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faag: fileam:00001299:  errmsg("formatter function %s is not declared STABLE.", 
+faag: fileam:00001300:  formatter_name), 
+faag: fileam:00001301:  errOmitLocation(true))); 
+faag: fileam:00001386:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001387:  errmsg("The specified error table for this " 
+faag: fileam:00001388:  "external table doesn't appear to " 
+faag: fileam:00001389:  "exist in the database. It may have " 
+faag: fileam:00001390:  "been dropped."), 
+faag: fileam:00001391:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001452:  ereport(ERROR, 
+faag: fileam:00001453:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001454:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001671:  ereport(ERROR, 
+faag: fileam:00001672:  (errcode_for_file_access(), 
+faag: fileam:00001673:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001674:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001675:  errOmitLocation(true))); 
+faag: fileam:00001745:  ereport(ERROR, 
+faag: fileam:00001746:  (errcode_for_file_access(), 
+faag: fileam:00001747:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001748:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001807:  ereport(ERROR, 
+faag: fileam:00001808:  (errcode_for_file_access(), 
+faag: fileam:00001809:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001831:  ereport(ERROR, 
+faag: fileam:00001832:  (errcode_for_file_access(), 
+faag: fileam:00001833:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
+faag: fileam:00001834:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00001957:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001959:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001965:  elog(NOTICE,"%s",a); 
+faag: fileam:00002562:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002563:  errmsg("external table internal parse error: " 
+faag: fileam:00002564:  "no formatter function name found"))); 
+faag: fileam:00002570:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002571:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002572:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002579:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002580:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002581:  token))); 
+faag: fileam:00002583:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002584:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002585:  "line"))); 
+faag: fileam:00002652:  ereport(ERROR, 
+faag: fileam:00002653:  (errcode_for_file_access(), 
+faag: fileam:00002654:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000190:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000219:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -866,113 +866,113 @@ haag: heapam:00000205:  ereport(ERROR,
 haag: heapam:00000206:  (errcode(ERRCODE_INTERNAL_ERROR), 
 haag: heapam:00000207:  errmsg("page number mismatch, expect %d, but got %d", 
 haag: heapam:00000208:  page, scan->rs_rahead[ri].block))); 
-haag: heapam:00000880:  elog(ERROR, "could not open relation with OID %u", relationId); 
-haag: heapam:00000928:  ereport(ERROR, 
-haag: heapam:00000929:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00000930:  errmsg("could not obtain lock on relation \"%s\"", 
-haag: heapam:00000931:  relname))); 
-haag: heapam:00000955:  elog(ERROR, "could not open relation with OID %u", relationId); 
-haag: heapam:00001027:  elog(ERROR, "relation \"%s\" concurrently updated", 
-haag: heapam:00001028:  RelationGetRelationName(rel)); 
-haag: heapam:00001048:  elog(ERROR, "could not open relation with OID %u", relid); 
+haag: heapam:00000835:  elog(ERROR, "could not open relation with OID %u", relationId); 
+haag: heapam:00000883:  ereport(ERROR, 
+haag: heapam:00000884:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00000885:  errmsg("could not obtain lock on relation \"%s\"", 
+haag: heapam:00000886:  relname))); 
+haag: heapam:00000910:  elog(ERROR, "could not open relation with OID %u", relationId); 
+haag: heapam:00000982:  elog(ERROR, "relation \"%s\" concurrently updated", 
+haag: heapam:00000983:  RelationGetRelationName(rel)); 
+haag: heapam:00001003:  elog(ERROR, "could not open relation with OID %u", relid); 
+haag: heapam:00001030:  ereport(ERROR, 
+haag: heapam:00001031:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001032:  errmsg("relation \"%s.%s\" does not exist", 
+haag: heapam:00001033:  relation->schemaname, relation->relname), 
+haag: heapam:00001034:  errOmitLocation(true))); 
+haag: heapam:00001038:  ereport(ERROR, 
+haag: heapam:00001039:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001040:  errmsg("relation \"%s\" does not exist", 
+haag: heapam:00001041:  relation->relname), 
+haag: heapam:00001042:  errOmitLocation(true))); 
 haag: heapam:00001075:  ereport(ERROR, 
-haag: heapam:00001076:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-haag: heapam:00001077:  errmsg("relation \"%s.%s\" does not exist", 
-haag: heapam:00001078:  relation->schemaname, relation->relname), 
-haag: heapam:00001079:  errOmitLocation(true))); 
-haag: heapam:00001083:  ereport(ERROR, 
-haag: heapam:00001084:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-haag: heapam:00001085:  errmsg("relation \"%s\" does not exist", 
-haag: heapam:00001086:  relation->relname), 
-haag: heapam:00001087:  errOmitLocation(true))); 
-haag: heapam:00001120:  ereport(ERROR, 
-haag: heapam:00001121:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00001122:  errmsg("could not obtain lock on relation \"%s\"", 
-haag: heapam:00001123:  relname))); 
-haag: heapam:00001125:  ereport(ERROR, 
-haag: heapam:00001126:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00001127:  errmsg("could not obtain lock on relation with OID %u", 
-haag: heapam:00001128:  relationId))); 
-haag: heapam:00001136:  elog(ERROR, "could not open relation with OID %u", relationId); 
-haag: heapam:00001182:  ereport(ERROR, 
-haag: heapam:00001183:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-haag: heapam:00001184:  errmsg("relation \"%s.%s\" does not exist", 
-haag: heapam:00001185:  relation->schemaname, relation->relname), 
-haag: heapam:00001186:  errOmitLocation(true))); 
-haag: heapam:00001190:  ereport(ERROR, 
-haag: heapam:00001191:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-haag: heapam:00001192:  errmsg("relation \"%s\" does not exist", 
-haag: heapam:00001193:  relation->relname), 
-haag: heapam:00001194:  errOmitLocation(true))); 
-haag: heapam:00001281:  ereport(ERROR, 
-haag: heapam:00001282:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001283:  errmsg("\"%s\" is an index", 
-haag: heapam:00001284:  RelationGetRelationName(r)))); 
-haag: heapam:00001286:  ereport(ERROR, 
-haag: heapam:00001287:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001288:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00001289:  RelationGetRelationName(r)))); 
-haag: heapam:00001311:  ereport(ERROR, 
-haag: heapam:00001312:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001313:  errmsg("\"%s\" is an index", 
-haag: heapam:00001314:  RelationGetRelationName(r)))); 
-haag: heapam:00001316:  ereport(ERROR, 
-haag: heapam:00001317:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001318:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00001319:  RelationGetRelationName(r)))); 
-haag: heapam:00001339:  ereport(ERROR, 
-haag: heapam:00001340:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001341:  errmsg("\"%s\" is an index", 
-haag: heapam:00001342:  RelationGetRelationName(r)))); 
-haag: heapam:00001344:  ereport(ERROR, 
-haag: heapam:00001345:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001346:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00001347:  RelationGetRelationName(r)))); 
-haag: heapam:00001369:  ereport(ERROR, 
-haag: heapam:00001370:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001371:  errmsg("\"%s\" is an index", 
-haag: heapam:00001372:  RelationGetRelationName(r)))); 
-haag: heapam:00001374:  ereport(ERROR, 
-haag: heapam:00001375:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001376:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00001377:  RelationGetRelationName(r)))); 
-haag: heapam:00001595:  ereport(ERROR, 
-haag: heapam:00001596:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haag: heapam:00001597:  errmsg("illegal value in tdatacnt"))); 
-haag: heapam:00001906:  elog(ERROR, "block number %u is out of range for relation \"%s\"", 
-haag: heapam:00001907:  blk, RelationGetRelationName(relation)); 
-haag: heapam:00002157:  elog(ERROR, "tuple has oid, but schema does not"); 
-haag: heapam:00002377:  ereport(ERROR, 
-haag: heapam:00002378:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002379:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002380:  errOmitLocation(true))); 
-haag: heapam:00002408:  elog(ERROR, "attempted to delete invisible tuple"); 
-haag: heapam:00002657:  elog(ERROR, "tuple already updated by self"); 
-haag: heapam:00002665:  elog(ERROR, "tuple concurrently updated"); 
-haag: heapam:00002669:  elog(ERROR, "unrecognized heap_delete status: %u", result); 
-haag: heapam:00002705:  ereport(ERROR, 
-haag: heapam:00002706:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002707:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002708:  errOmitLocation(true))); 
-haag: heapam:00002739:  elog(ERROR, "attempted to update invisible tuple"); 
-haag: heapam:00003199:  elog(ERROR, "tuple already updated by self"); 
-haag: heapam:00003207:  elog(ERROR, "tuple concurrently updated"); 
-haag: heapam:00003211:  elog(ERROR, "unrecognized heap_update status: %u", result); 
-haag: heapam:00003330:  elog(ERROR, "attempted to lock invisible tuple"); 
-haag: heapam:00003385:  ereport(ERROR, 
-haag: heapam:00003386:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003387:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003388:  RelationGetRelationName(relation)))); 
-haag: heapam:00003425:  ereport(ERROR, 
-haag: heapam:00003426:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003427:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003428:  RelationGetRelationName(relation)))); 
-haag: heapam:00003468:  ereport(ERROR, 
-haag: heapam:00003469:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003470:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003471:  RelationGetRelationName(relation)))); 
-haag: heapam:00003776:  elog(ERROR, "heap_inplace_update: invalid lp"); 
-haag: heapam:00003783:  elog(ERROR, "heap_inplace_update: wrong tuple length"); 
+haag: heapam:00001076:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00001077:  errmsg("could not obtain lock on relation \"%s\"", 
+haag: heapam:00001078:  relname))); 
+haag: heapam:00001080:  ereport(ERROR, 
+haag: heapam:00001081:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00001082:  errmsg("could not obtain lock on relation with OID %u", 
+haag: heapam:00001083:  relationId))); 
+haag: heapam:00001091:  elog(ERROR, "could not open relation with OID %u", relationId); 
+haag: heapam:00001137:  ereport(ERROR, 
+haag: heapam:00001138:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001139:  errmsg("relation \"%s.%s\" does not exist", 
+haag: heapam:00001140:  relation->schemaname, relation->relname), 
+haag: heapam:00001141:  errOmitLocation(true))); 
+haag: heapam:00001145:  ereport(ERROR, 
+haag: heapam:00001146:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001147:  errmsg("relation \"%s\" does not exist", 
+haag: heapam:00001148:  relation->relname), 
+haag: heapam:00001149:  errOmitLocation(true))); 
+haag: heapam:00001236:  ereport(ERROR, 
+haag: heapam:00001237:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001238:  errmsg("\"%s\" is an index", 
+haag: heapam:00001239:  RelationGetRelationName(r)))); 
+haag: heapam:00001241:  ereport(ERROR, 
+haag: heapam:00001242:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001243:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001244:  RelationGetRelationName(r)))); 
+haag: heapam:00001266:  ereport(ERROR, 
+haag: heapam:00001267:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001268:  errmsg("\"%s\" is an index", 
+haag: heapam:00001269:  RelationGetRelationName(r)))); 
+haag: heapam:00001271:  ereport(ERROR, 
+haag: heapam:00001272:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001273:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001274:  RelationGetRelationName(r)))); 
+haag: heapam:00001294:  ereport(ERROR, 
+haag: heapam:00001295:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001296:  errmsg("\"%s\" is an index", 
+haag: heapam:00001297:  RelationGetRelationName(r)))); 
+haag: heapam:00001299:  ereport(ERROR, 
+haag: heapam:00001300:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001301:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001302:  RelationGetRelationName(r)))); 
+haag: heapam:00001324:  ereport(ERROR, 
+haag: heapam:00001325:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001326:  errmsg("\"%s\" is an index", 
+haag: heapam:00001327:  RelationGetRelationName(r)))); 
+haag: heapam:00001329:  ereport(ERROR, 
+haag: heapam:00001330:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001331:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001332:  RelationGetRelationName(r)))); 
+haag: heapam:00001550:  ereport(ERROR, 
+haag: heapam:00001551:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haag: heapam:00001552:  errmsg("illegal value in tdatacnt"))); 
+haag: heapam:00001850:  elog(ERROR, "block number %u is out of range for relation \"%s\"", 
+haag: heapam:00001851:  blk, RelationGetRelationName(relation)); 
+haag: heapam:00002091:  elog(ERROR, "tuple has oid, but schema does not"); 
+haag: heapam:00002311:  ereport(ERROR, 
+haag: heapam:00002312:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002313:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002314:  errOmitLocation(true))); 
+haag: heapam:00002342:  elog(ERROR, "attempted to delete invisible tuple"); 
+haag: heapam:00002591:  elog(ERROR, "tuple already updated by self"); 
+haag: heapam:00002599:  elog(ERROR, "tuple concurrently updated"); 
+haag: heapam:00002603:  elog(ERROR, "unrecognized heap_delete status: %u", result); 
+haag: heapam:00002639:  ereport(ERROR, 
+haag: heapam:00002640:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002641:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002642:  errOmitLocation(true))); 
+haag: heapam:00002673:  elog(ERROR, "attempted to update invisible tuple"); 
+haag: heapam:00003133:  elog(ERROR, "tuple already updated by self"); 
+haag: heapam:00003141:  elog(ERROR, "tuple concurrently updated"); 
+haag: heapam:00003145:  elog(ERROR, "unrecognized heap_update status: %u", result); 
+haag: heapam:00003264:  elog(ERROR, "attempted to lock invisible tuple"); 
+haag: heapam:00003319:  ereport(ERROR, 
+haag: heapam:00003320:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003321:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003322:  RelationGetRelationName(relation)))); 
+haag: heapam:00003359:  ereport(ERROR, 
+haag: heapam:00003360:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003361:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003362:  RelationGetRelationName(relation)))); 
+haag: heapam:00003402:  ereport(ERROR, 
+haag: heapam:00003403:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003404:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003405:  RelationGetRelationName(relation)))); 
+haag: heapam:00003710:  elog(ERROR, "heap_inplace_update: invalid lp"); 
+haag: heapam:00003717:  elog(ERROR, "heap_inplace_update: wrong tuple length"); 
 aaaaa GP_IGNORE: haad: hio - ./backend/access/heap/hio.c
 haad: hio:00000125:  ereport(ERROR, 
 haad: hio:00000126:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -2529,54 +2529,54 @@ haae: heap:00003228:  errOmitLocation(true)));
 haae: heap:00003356:  elog(ERROR, "could not find tuple for relation %u", 
 haae: heap:00003357:  RelationGetRelid(relation)); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
-iaaf: index:00000186:  elog(ERROR, "invalid column number %d", atnum); 
-iaaf: index:00000217:  elog(ERROR, "too few entries in indexprs list"); 
-iaaf: index:00000235:  elog(ERROR, "cache lookup failed for type %u", keyType); 
-iaaf: index:00000270:  elog(ERROR, "cache lookup failed for opclass %u", 
-iaaf: index:00000271:  classObjectId[i]); 
-iaaf: index:00000282:  elog(ERROR, "cache lookup failed for type %u", keyType); 
-iaaf: index:00000553:  elog(ERROR, "must index at least one column"); 
-iaaf: index:00000558:  ereport(ERROR, 
-iaaf: index:00000559:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-iaaf: index:00000560:  errmsg("user-defined indexes on system catalog tables are not supported"))); 
-iaaf: index:00000568:  ereport(ERROR, 
-iaaf: index:00000569:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-iaaf: index:00000570:  errmsg("concurrent index creation on system catalog tables is not supported"))); 
-iaaf: index:00000578:  ereport(ERROR, 
-iaaf: index:00000579:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-iaaf: index:00000580:  errmsg("shared indexes cannot be created after initdb"))); 
-iaaf: index:00000583:  ereport(ERROR, 
-iaaf: index:00000584:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-iaaf: index:00000585:  errmsg("relation \"%s\" already exists", 
-iaaf: index:00000586:  indexRelationName))); 
-iaaf: index:00000771:  elog(ERROR, "constraint must be PRIMARY or UNIQUE"); 
-iaaf: index:00000777:  elog(ERROR, "constraints can't have index expressions"); 
-iaaf: index:00001021:  elog(ERROR, "cache lookup failed for index %u", indexId); 
-iaaf: index:00001092:  elog(ERROR, "invalid indnatts %d for index %u", 
-iaaf: index:00001093:  numKeys, RelationGetRelid(index)); 
-iaaf: index:00001176:  elog(ERROR, "wrong number of index expressions"); 
-iaaf: index:00001188:  elog(ERROR, "wrong number of index expressions"); 
-iaaf: index:00001292:  elog(ERROR, "could not find tuple for relation %u", relid); 
-iaaf: index:00001687:  elog(ERROR, "concurrent insert in progress"); 
-iaaf: index:00001709:  elog(ERROR, "concurrent delete in progress"); 
-iaaf: index:00001714:  elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result"); 
-iaaf: index:00001822:  ereport(ERROR, 
-iaaf: index:00001823:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-iaaf: index:00001824:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
-iaaf: index:00001825:  "before creating an index concurrently in an appendonly table."))); 
-iaaf: index:00001975:  ereport(ERROR, 
-iaaf: index:00001976:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-iaaf: index:00001977:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
-iaaf: index:00001978:  "before creating an index concurrently in an appendonly table."))); 
-iaaf: index:00002415:  elog(ERROR, "cache lookup failed for index %u", indexId); 
-iaaf: index:00002549:  ereport(ERROR, 
-iaaf: index:00002550:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-iaaf: index:00002551:  errmsg("cannot reindex temporary tables of other sessions"))); 
-iaaf: index:00002571:  ereport(ERROR, 
-iaaf: index:00002572:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-iaaf: index:00002573:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
-iaaf: index:00002574:  RelationGetRelationName(iRel)))); 
-iaaf: index:00002657:  elog(ERROR, "cache lookup failed for index %u", indexId); 
+iaaf: index:00000185:  elog(ERROR, "invalid column number %d", atnum); 
+iaaf: index:00000216:  elog(ERROR, "too few entries in indexprs list"); 
+iaaf: index:00000234:  elog(ERROR, "cache lookup failed for type %u", keyType); 
+iaaf: index:00000269:  elog(ERROR, "cache lookup failed for opclass %u", 
+iaaf: index:00000270:  classObjectId[i]); 
+iaaf: index:00000281:  elog(ERROR, "cache lookup failed for type %u", keyType); 
+iaaf: index:00000552:  elog(ERROR, "must index at least one column"); 
+iaaf: index:00000557:  ereport(ERROR, 
+iaaf: index:00000558:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+iaaf: index:00000559:  errmsg("user-defined indexes on system catalog tables are not supported"))); 
+iaaf: index:00000567:  ereport(ERROR, 
+iaaf: index:00000568:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+iaaf: index:00000569:  errmsg("concurrent index creation on system catalog tables is not supported"))); 
+iaaf: index:00000577:  ereport(ERROR, 
+iaaf: index:00000578:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+iaaf: index:00000579:  errmsg("shared indexes cannot be created after initdb"))); 
+iaaf: index:00000582:  ereport(ERROR, 
+iaaf: index:00000583:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+iaaf: index:00000584:  errmsg("relation \"%s\" already exists", 
+iaaf: index:00000585:  indexRelationName))); 
+iaaf: index:00000770:  elog(ERROR, "constraint must be PRIMARY or UNIQUE"); 
+iaaf: index:00000776:  elog(ERROR, "constraints can't have index expressions"); 
+iaaf: index:00001020:  elog(ERROR, "cache lookup failed for index %u", indexId); 
+iaaf: index:00001091:  elog(ERROR, "invalid indnatts %d for index %u", 
+iaaf: index:00001092:  numKeys, RelationGetRelid(index)); 
+iaaf: index:00001175:  elog(ERROR, "wrong number of index expressions"); 
+iaaf: index:00001187:  elog(ERROR, "wrong number of index expressions"); 
+iaaf: index:00001291:  elog(ERROR, "could not find tuple for relation %u", relid); 
+iaaf: index:00001686:  elog(ERROR, "concurrent insert in progress"); 
+iaaf: index:00001708:  elog(ERROR, "concurrent delete in progress"); 
+iaaf: index:00001713:  elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result"); 
+iaaf: index:00001821:  ereport(ERROR, 
+iaaf: index:00001822:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+iaaf: index:00001823:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
+iaaf: index:00001824:  "before creating an index concurrently in an appendonly table."))); 
+iaaf: index:00001974:  ereport(ERROR, 
+iaaf: index:00001975:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+iaaf: index:00001976:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
+iaaf: index:00001977:  "before creating an index concurrently in an appendonly table."))); 
+iaaf: index:00002414:  elog(ERROR, "cache lookup failed for index %u", indexId); 
+iaaf: index:00002548:  ereport(ERROR, 
+iaaf: index:00002549:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+iaaf: index:00002550:  errmsg("cannot reindex temporary tables of other sessions"))); 
+iaaf: index:00002570:  ereport(ERROR, 
+iaaf: index:00002571:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+iaaf: index:00002572:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
+iaaf: index:00002573:  RelationGetRelationName(iRel)))); 
+iaaf: index:00002656:  elog(ERROR, "cache lookup failed for index %u", indexId); 
 aaaaa GP_IGNORE: naaj: namespace - ./backend/catalog/namespace.c
 naaj: namespace:00000200:  ereport(ERROR, 
 naaj: namespace:00000201:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -3816,66 +3816,66 @@ caah: cdbdisp:00000707:  errmsg("could not create thread %d of %d", i + 1, newTh
 caah: cdbdisp:00000708:  errdetail("pthread_create() failed with err %d", pthread_err))); 
 caah: cdbdisp:00000873:  elog(FATAL, "Unrecognized MPP dispatch command type: %d", 
 caah: cdbdisp:00000874:  (int) mppDispatchCommandType); 
-caah: cdbdisp:00000990:  elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (%lu) of %d (returned %d attempting to join to %lu)", 
-caah: cdbdisp:00000991:  i + 1, 
-caah: cdbdisp:00000992: #ifndef _WIN32 
-caah: cdbdisp:00000993:  (unsigned long) pParms->thread, 
-caah: cdbdisp:00000994: #else 
-caah: cdbdisp:00000995:  (unsigned long) pParms->thread.p, 
-caah: cdbdisp:00000996: #endif 
-caah: cdbdisp:00000997:  ds->dispatchThreads->threadCount, pthread_err, (unsigned long)mythread()); 
-caah: cdbdisp:00001108:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caah: cdbdisp:00001109:  errmsg("cdbdisp_returnResults failed: out of memory"))); 
-caah: cdbdisp:00001451:  ereport(ERROR, (errcode(errorcode), 
-caah: cdbdisp:00001452:  errOmitLocation(true), 
-caah: cdbdisp:00001453:  errmsg("%s", buf.data))); 
-caah: cdbdisp:00003034:  elog(ERROR, "cache lookup failed for function %u", funcid); 
-caah: cdbdisp:00003418:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbdisp:00003419:  errmsg_internal("Unable to dispatch plan."))); 
-caah: cdbdisp:00003472:  * the caller's error catcher via ereport(ERROR,...). Otherwise this 
-caah: cdbdisp:00003473:  * function returns normally and errors are not reported until later. 
-caah: cdbdisp:00003474:  * 
-caah: cdbdisp:00003475:  * If cancelOnError is false, the plan is to be dispatched as fully as 
-caah: cdbdisp:00003476:  * possible and the QEs allowed to proceed regardless of cancellation 
-caah: cdbdisp:00003477:  * requests, errors or connection failures from other QEs, etc. 
-caah: cdbdisp:00003478:  * 
-caah: cdbdisp:00003479:  * The CdbDispatchResults objects allocated for the plan are returned 
-caah: cdbdisp:00003480:  * in *pPrimaryResults. The caller, after calling 
-caah: cdbdisp:00003481:  * CdbCheckDispatchResult(), can examine the CdbDispatchResults 
-caah: cdbdisp:00003482:  * objects, can keep them as long as needed, and ultimately must free 
-caah: cdbdisp:00003483:  * them with cdbdisp_destroyDispatchResults() prior to deallocation of 
-caah: cdbdisp:00003484:  * the caller's memory context. Callers should use PG_TRY/PG_CATCH to 
-caah: cdbdisp:00003485:  * ensure proper cleanup. 
-caah: cdbdisp:00003486:  * 
-caah: cdbdisp:00003487:  * To wait for completion, check for errors, and clean up, it is 
-caah: cdbdisp:00003488:  * suggested that the caller use cdbdisp_finishCommand(). 
-caah: cdbdisp:00003489:  * 
-caah: cdbdisp:00003490:  * Note that the slice tree dispatched is the one specified in the EState 
-caah: cdbdisp:00003491:  * of the argument QueryDesc as es_cur__slice. 
-caah: cdbdisp:00003492:  * 
-caah: cdbdisp:00003493:  * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
-caah: cdbdisp:00003494:  * containing the values of any initplans required by the slice to be run. 
-caah: cdbdisp:00003495:  * (This is handled by calls to addRemoteExecParamsToParamList() from the 
-caah: cdbdisp:00003496:  * functions preprocess_initplans() and ExecutorRun().) 
-caah: cdbdisp:00003497:  * 
-caah: cdbdisp:00003498:  * Each QE receives its assignment as a message of type 'M' in PostgresMain(). 
-caah: cdbdisp:00003499:  * The message is deserialized and processed by exec_mpp_query() in postgres.c. 
-caah: cdbdisp:00003500:  */ 
-caah: cdbdisp:00003501: void 
-caah: cdbdisp:00003502: cdbdisp_dispatchPlan(struct QueryDesc *queryDesc, 
-caah: cdbdisp:00003503:  bool planRequiresTxn, 
-caah: cdbdisp:00003504:  bool cancelOnError, 
-caah: cdbdisp:00003505:  struct CdbDispatcherState *ds) 
-caah: cdbdisp:00003506: { 
-caah: cdbdisp:00003507:  char *splan, 
-caah: cdbdisp:00003508:  *ssliceinfo, 
-caah: cdbdisp:00003509:  *sparams; 
-caah: cdbdisp:00004117:  elog(FATAL, "Unexpected distribute transaction context: '%s'", 
-caah: cdbdisp:00004118:  DtxContextToString(DistributedTransactionContext)); 
-caah: cdbdisp:00004121:  elog(FATAL, "Unrecognized DTX transaction context: %d", 
-caah: cdbdisp:00004122:  (int)DistributedTransactionContext); 
-caah: cdbdisp:00004271:  elog(FATAL, "Unrecognized MPP dispatch command type: %d", 
-caah: cdbdisp:00004272:  (int) pParms->mppDispatchCommandType); 
+caah: cdbdisp:00000999:  elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (%lu) of %d (returned %d attempting to join to %lu)", 
+caah: cdbdisp:00001000:  i + 1, 
+caah: cdbdisp:00001001: #ifndef _WIN32 
+caah: cdbdisp:00001002:  (unsigned long) pParms->thread, 
+caah: cdbdisp:00001003: #else 
+caah: cdbdisp:00001004:  (unsigned long) pParms->thread.p, 
+caah: cdbdisp:00001005: #endif 
+caah: cdbdisp:00001006:  ds->dispatchThreads->threadCount, pthread_err, (unsigned long)mythread()); 
+caah: cdbdisp:00001117:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caah: cdbdisp:00001118:  errmsg("cdbdisp_returnResults failed: out of memory"))); 
+caah: cdbdisp:00001460:  ereport(ERROR, (errcode(errorcode), 
+caah: cdbdisp:00001461:  errOmitLocation(true), 
+caah: cdbdisp:00001462:  errmsg("%s", buf.data))); 
+caah: cdbdisp:00003043:  elog(ERROR, "cache lookup failed for function %u", funcid); 
+caah: cdbdisp:00003427:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbdisp:00003428:  errmsg_internal("Unable to dispatch plan."))); 
+caah: cdbdisp:00003481:  * the caller's error catcher via ereport(ERROR,...). Otherwise this 
+caah: cdbdisp:00003482:  * function returns normally and errors are not reported until later. 
+caah: cdbdisp:00003483:  * 
+caah: cdbdisp:00003484:  * If cancelOnError is false, the plan is to be dispatched as fully as 
+caah: cdbdisp:00003485:  * possible and the QEs allowed to proceed regardless of cancellation 
+caah: cdbdisp:00003486:  * requests, errors or connection failures from other QEs, etc. 
+caah: cdbdisp:00003487:  * 
+caah: cdbdisp:00003488:  * The CdbDispatchResults objects allocated for the plan are returned 
+caah: cdbdisp:00003489:  * in *pPrimaryResults. The caller, after calling 
+caah: cdbdisp:00003490:  * CdbCheckDispatchResult(), can examine the CdbDispatchResults 
+caah: cdbdisp:00003491:  * objects, can keep them as long as needed, and ultimately must free 
+caah: cdbdisp:00003492:  * them with cdbdisp_destroyDispatchResults() prior to deallocation of 
+caah: cdbdisp:00003493:  * the caller's memory context. Callers should use PG_TRY/PG_CATCH to 
+caah: cdbdisp:00003494:  * ensure proper cleanup. 
+caah: cdbdisp:00003495:  * 
+caah: cdbdisp:00003496:  * To wait for completion, check for errors, and clean up, it is 
+caah: cdbdisp:00003497:  * suggested that the caller use cdbdisp_finishCommand(). 
+caah: cdbdisp:00003498:  * 
+caah: cdbdisp:00003499:  * Note that the slice tree dispatched is the one specified in the EState 
+caah: cdbdisp:00003500:  * of the argument QueryDesc as es_cur__slice. 
+caah: cdbdisp:00003501:  * 
+caah: cdbdisp:00003502:  * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
+caah: cdbdisp:00003503:  * containing the values of any initplans required by the slice to be run. 
+caah: cdbdisp:00003504:  * (This is handled by calls to addRemoteExecParamsToParamList() from the 
+caah: cdbdisp:00003505:  * functions preprocess_initplans() and ExecutorRun().) 
+caah: cdbdisp:00003506:  * 
+caah: cdbdisp:00003507:  * Each QE receives its assignment as a message of type 'M' in PostgresMain(). 
+caah: cdbdisp:00003508:  * The message is deserialized and processed by exec_mpp_query() in postgres.c. 
+caah: cdbdisp:00003509:  */ 
+caah: cdbdisp:00003510: void 
+caah: cdbdisp:00003511: cdbdisp_dispatchPlan(struct QueryDesc *queryDesc, 
+caah: cdbdisp:00003512:  bool planRequiresTxn, 
+caah: cdbdisp:00003513:  bool cancelOnError, 
+caah: cdbdisp:00003514:  struct CdbDispatcherState *ds) 
+caah: cdbdisp:00003515: { 
+caah: cdbdisp:00003516:  char *splan, 
+caah: cdbdisp:00003517:  *ssliceinfo, 
+caah: cdbdisp:00003518:  *sparams; 
+caah: cdbdisp:00004126:  elog(FATAL, "Unexpected distribute transaction context: '%s'", 
+caah: cdbdisp:00004127:  DtxContextToString(DistributedTransactionContext)); 
+caah: cdbdisp:00004130:  elog(FATAL, "Unrecognized DTX transaction context: %d", 
+caah: cdbdisp:00004131:  (int)DistributedTransactionContext); 
+caah: cdbdisp:00004280:  elog(FATAL, "Unrecognized MPP dispatch command type: %d", 
+caah: cdbdisp:00004281:  (int) pParms->mppDispatchCommandType); 
 aaaaa GP_IGNORE: cabh: cdbdispatchresult - ./backend/cdb/cdbdispatchresult.c
 cabh: cdbdispatchresult:00000109:  /* caller is responsible for cleanup -- can't elog(ERROR, ...) from here. */ 
 cabh: cdbdispatchresult:00000110:  return NULL; 
@@ -5572,184 +5572,184 @@ cabg: cdbfilerepverify:00007554:  "could not allocate memory to run verification
 cabg: cdbfilerepverify:00007555:  "verification aborted", 
 cabg: cdbfilerepverify:00007556:  request->logControl.logOptions.token), 
 cabg: cdbfilerepverify:00007557:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007639:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007640:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007641:  "maximum restarts exceeded when comparing directory contents for '%s' run verification token '%s' " 
-cabg: cdbfilerepverify:00007642:  "verification aborted", 
-cabg: cdbfilerepverify:00007643:  primaryDirectoryName, 
-cabg: cdbfilerepverify:00007644:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007645:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007900:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007901:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007902:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007903:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007904:  "verification aborted", 
-cabg: cdbfilerepverify:00007905:  primaryFilename, 
-cabg: cdbfilerepverify:00007906:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007907:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007927:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007928:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007929:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007930:  "could not stat file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007931:  "verification aborted", 
-cabg: cdbfilerepverify:00007932:  primaryFilename, 
-cabg: cdbfilerepverify:00007933:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007934:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007941:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007942:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007943:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007944:  "not a regular file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007945:  "verification aborted", 
-cabg: cdbfilerepverify:00007946:  primaryFilename, 
-cabg: cdbfilerepverify:00007947:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007948:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007970:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007971:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007972:  "could not allocate memory for file '%s' to run verification token '%s' " 
-cabg: cdbfilerepverify:00007973:  "verification aborted", 
-cabg: cdbfilerepverify:00007974:  primaryFilename, 
-cabg: cdbfilerepverify:00007975:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007976:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007984:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007985:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007986:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007987:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007988:  "verification aborted", 
-cabg: cdbfilerepverify:00007989:  primaryFilename, 
-cabg: cdbfilerepverify:00007990:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007991:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008172:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008173:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008174:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008175:  "response from mirror is empty file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008176:  "verification aborted", 
-cabg: cdbfilerepverify:00008177:  primaryFilename, 
-cabg: cdbfilerepverify:00008178:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008179:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008230:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008231:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008232:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008233:  "invalid buffer pool page file '%s' blkno '%d' " 
-cabg: cdbfilerepverify:00008234:  "verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008235:  "verification aborted", 
-cabg: cdbfilerepverify:00008236:  primaryFilename, 
-cabg: cdbfilerepverify:00008237:  blkno, 
-cabg: cdbfilerepverify:00008238:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008239:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008250:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008251:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008252:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008253:  "could not read file '%s' offset '" INT64_FORMAT "' length requested '" INT64_FORMAT "' " 
-cabg: cdbfilerepverify:00008254:  "length read '" INT64_FORMAT "' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008255:  "verification aborted", 
-cabg: cdbfilerepverify:00008256:  primaryFilename, 
-cabg: cdbfilerepverify:00008257:  fileOffset, 
-cabg: cdbfilerepverify:00008258:  dataLengthLocal, 
-cabg: cdbfilerepverify:00008259:  bytesRead, 
-cabg: cdbfilerepverify:00008260:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008261:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008599:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008600:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008601:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008602:  "response from mirror is empty file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008603:  "verification aborted", 
-cabg: cdbfilerepverify:00008604:  primaryFilename, 
-cabg: cdbfilerepverify:00008605:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008606:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008804:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008805:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008806:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008807:  "could not compare verification type '%s' : %m " 
-cabg: cdbfilerepverify:00008808:  "verification aborted", 
-cabg: cdbfilerepverify:00008809:  FileRepOperationVerificationTypeToString[fileRepMessageHeader->fileRepOperationDescription.verify.type]), 
-cabg: cdbfilerepverify:00008810:  errhint("run gpverify"), 
-cabg: cdbfilerepverify:00008811:  FileRep_errdetail( 
-cabg: cdbfilerepverify:00008812:  fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepverify:00008813:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepverify:00008814:  fileRepMessageHeader->fileRepOperation, 
-cabg: cdbfilerepverify:00008815:  fileRepMessageHeader->messageCount), 
-cabg: cdbfilerepverify:00008816:  FileRep_errcontext())); 
-cabg: cdbfilerepverify:00008922:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008923:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008924:  "could not compute summary for relation file '%s' " 
-cabg: cdbfilerepverify:00008925:  "verification aborted", 
-cabg: cdbfilerepverify:00008926:  relpath(relfilenodeTable[row].relFileNode)), 
-cabg: cdbfilerepverify:00008927:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00009000:  ereport(WARNING, 
-cabg: cdbfilerepverify:00009001:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00009002:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00009003:  "could not stat file '%s' : %m " 
-cabg: cdbfilerepverify:00009004:  "verification aborted", 
-cabg: cdbfilerepverify:00009005:  relpath(relfilenodeTable[row].relFileNode)), 
-cabg: cdbfilerepverify:00009006:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00009826:  ereport(WARNING, 
-cabg: cdbfilerepverify:00009827:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00009828:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00009829:  "could not read directory '%s' : %m " 
-cabg: cdbfilerepverify:00009830:  "verification aborted", 
-cabg: cdbfilerepverify:00009831:  currentDirectoryName), 
-cabg: cdbfilerepverify:00009832:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00009892:  ereport(WARNING, 
-cabg: cdbfilerepverify:00009893:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00009894:  errmsg("could not stat file '%s/%s' : %m", 
-cabg: cdbfilerepverify:00009895:  child_path, 
-cabg: cdbfilerepverify:00009896:  de->d_name), 
-cabg: cdbfilerepverify:00009897:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010023:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010024:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010025:  "could not parse file '%s' " 
-cabg: cdbfilerepverify:00010026:  "verification aborted", 
-cabg: cdbfilerepverify:00010027:  child_path), 
-cabg: cdbfilerepverify:00010028:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010418:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010419:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010420:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010421:  "could not stat file '%s' : %m " 
-cabg: cdbfilerepverify:00010422:  "verification aborted", 
-cabg: cdbfilerepverify:00010423:  primaryBaseDir), 
-cabg: cdbfilerepverify:00010424:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010433:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010434:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010435:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010436:  "not a directory '%s' : %m " 
-cabg: cdbfilerepverify:00010437:  "verification aborted", 
-cabg: cdbfilerepverify:00010438:  primaryBaseDir), 
-cabg: cdbfilerepverify:00010439:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010470:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010471:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010472:  "could not parse file '%s' " 
-cabg: cdbfilerepverify:00010473:  "verification aborted", 
-cabg: cdbfilerepverify:00010474:  primaryBaseDir), 
-cabg: cdbfilerepverify:00010475:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010541:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010542:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010543:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010544:  "could not stat file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00010545:  "verification aborted", 
-cabg: cdbfilerepverify:00010546:  fileName, 
-cabg: cdbfilerepverify:00010547:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00010548:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010563:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010564:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010565:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010566:  "not a regular file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00010567:  "verification aborted", 
-cabg: cdbfilerepverify:00010568:  fileName, 
-cabg: cdbfilerepverify:00010569:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00010570:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010582:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010583:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010584:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010585:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00010586:  "verification aborted", 
-cabg: cdbfilerepverify:00010587:  fileName, 
-cabg: cdbfilerepverify:00010588:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00010589:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00011336:  ereport(WARNING, 
-cabg: cdbfilerepverify:00011337:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00011338:  "could not allocate memory to run verification " 
-cabg: cdbfilerepverify:00011339:  "verification aborted"), 
-cabg: cdbfilerepverify:00011340:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007641:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007642:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007643:  "maximum restarts exceeded when comparing directory contents for '%s' run verification token '%s' " 
+cabg: cdbfilerepverify:00007644:  "verification aborted", 
+cabg: cdbfilerepverify:00007645:  primaryDirectoryName, 
+cabg: cdbfilerepverify:00007646:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007647:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007902:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007903:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007904:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007905:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007906:  "verification aborted", 
+cabg: cdbfilerepverify:00007907:  primaryFilename, 
+cabg: cdbfilerepverify:00007908:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007909:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007929:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007930:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007931:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007932:  "could not stat file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007933:  "verification aborted", 
+cabg: cdbfilerepverify:00007934:  primaryFilename, 
+cabg: cdbfilerepverify:00007935:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007936:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007943:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007944:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007945:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007946:  "not a regular file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007947:  "verification aborted", 
+cabg: cdbfilerepverify:00007948:  primaryFilename, 
+cabg: cdbfilerepverify:00007949:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007950:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007972:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007973:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007974:  "could not allocate memory for file '%s' to run verification token '%s' " 
+cabg: cdbfilerepverify:00007975:  "verification aborted", 
+cabg: cdbfilerepverify:00007976:  primaryFilename, 
+cabg: cdbfilerepverify:00007977:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007978:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007986:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007987:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007988:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007989:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007990:  "verification aborted", 
+cabg: cdbfilerepverify:00007991:  primaryFilename, 
+cabg: cdbfilerepverify:00007992:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007993:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008174:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008175:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008176:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008177:  "response from mirror is empty file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008178:  "verification aborted", 
+cabg: cdbfilerepverify:00008179:  primaryFilename, 
+cabg: cdbfilerepverify:00008180:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008181:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008232:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008233:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008234:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008235:  "invalid buffer pool page file '%s' blkno '%d' " 
+cabg: cdbfilerepverify:00008236:  "verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008237:  "verification aborted", 
+cabg: cdbfilerepverify:00008238:  primaryFilename, 
+cabg: cdbfilerepverify:00008239:  blkno, 
+cabg: cdbfilerepverify:00008240:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008241:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008252:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008253:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008254:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008255:  "could not read file '%s' offset '" INT64_FORMAT "' length requested '" INT64_FORMAT "' " 
+cabg: cdbfilerepverify:00008256:  "length read '" INT64_FORMAT "' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008257:  "verification aborted", 
+cabg: cdbfilerepverify:00008258:  primaryFilename, 
+cabg: cdbfilerepverify:00008259:  fileOffset, 
+cabg: cdbfilerepverify:00008260:  dataLengthLocal, 
+cabg: cdbfilerepverify:00008261:  bytesRead, 
+cabg: cdbfilerepverify:00008262:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008263:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008601:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008602:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008603:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008604:  "response from mirror is empty file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008605:  "verification aborted", 
+cabg: cdbfilerepverify:00008606:  primaryFilename, 
+cabg: cdbfilerepverify:00008607:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008608:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008806:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008807:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008808:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008809:  "could not compare verification type '%s' : %m " 
+cabg: cdbfilerepverify:00008810:  "verification aborted", 
+cabg: cdbfilerepverify:00008811:  FileRepOperationVerificationTypeToString[fileRepMessageHeader->fileRepOperationDescription.verify.type]), 
+cabg: cdbfilerepverify:00008812:  errhint("run gpverify"), 
+cabg: cdbfilerepverify:00008813:  FileRep_errdetail( 
+cabg: cdbfilerepverify:00008814:  fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepverify:00008815:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepverify:00008816:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepverify:00008817:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepverify:00008818:  FileRep_errcontext())); 
+cabg: cdbfilerepverify:00008924:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008925:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008926:  "could not compute summary for relation file '%s' " 
+cabg: cdbfilerepverify:00008927:  "verification aborted", 
+cabg: cdbfilerepverify:00008928:  relpath(relfilenodeTable[row].relFileNode)), 
+cabg: cdbfilerepverify:00008929:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00009002:  ereport(WARNING, 
+cabg: cdbfilerepverify:00009003:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00009004:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00009005:  "could not stat file '%s' : %m " 
+cabg: cdbfilerepverify:00009006:  "verification aborted", 
+cabg: cdbfilerepverify:00009007:  relpath(relfilenodeTable[row].relFileNode)), 
+cabg: cdbfilerepverify:00009008:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00009828:  ereport(WARNING, 
+cabg: cdbfilerepverify:00009829:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00009830:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00009831:  "could not read directory '%s' : %m " 
+cabg: cdbfilerepverify:00009832:  "verification aborted", 
+cabg: cdbfilerepverify:00009833:  currentDirectoryName), 
+cabg: cdbfilerepverify:00009834:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00009894:  ereport(WARNING, 
+cabg: cdbfilerepverify:00009895:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00009896:  errmsg("could not stat file '%s/%s' : %m", 
+cabg: cdbfilerepverify:00009897:  child_path, 
+cabg: cdbfilerepverify:00009898:  de->d_name), 
+cabg: cdbfilerepverify:00009899:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010025:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010026:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010027:  "could not parse file '%s' " 
+cabg: cdbfilerepverify:00010028:  "verification aborted", 
+cabg: cdbfilerepverify:00010029:  child_path), 
+cabg: cdbfilerepverify:00010030:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010420:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010421:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010422:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010423:  "could not stat file '%s' : %m " 
+cabg: cdbfilerepverify:00010424:  "verification aborted", 
+cabg: cdbfilerepverify:00010425:  primaryBaseDir), 
+cabg: cdbfilerepverify:00010426:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010435:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010436:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010437:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010438:  "not a directory '%s' : %m " 
+cabg: cdbfilerepverify:00010439:  "verification aborted", 
+cabg: cdbfilerepverify:00010440:  primaryBaseDir), 
+cabg: cdbfilerepverify:00010441:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010472:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010473:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010474:  "could not parse file '%s' " 
+cabg: cdbfilerepverify:00010475:  "verification aborted", 
+cabg: cdbfilerepverify:00010476:  primaryBaseDir), 
+cabg: cdbfilerepverify:00010477:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010543:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010544:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010545:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010546:  "could not stat file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00010547:  "verification aborted", 
+cabg: cdbfilerepverify:00010548:  fileName, 
+cabg: cdbfilerepverify:00010549:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00010550:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010565:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010566:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010567:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010568:  "not a regular file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00010569:  "verification aborted", 
+cabg: cdbfilerepverify:00010570:  fileName, 
+cabg: cdbfilerepverify:00010571:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00010572:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010584:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010585:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010586:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010587:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00010588:  "verification aborted", 
+cabg: cdbfilerepverify:00010589:  fileName, 
+cabg: cdbfilerepverify:00010590:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00010591:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00011338:  ereport(WARNING, 
+cabg: cdbfilerepverify:00011339:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00011340:  "could not allocate memory to run verification " 
+cabg: cdbfilerepverify:00011341:  "verification aborted"), 
+cabg: cdbfilerepverify:00011342:  errhint("run gpverify"))); 
 aaaaa GP_IGNORE: caag: cdbfts - ./backend/cdb/cdbfts.c
 caag: cdbfts:00000085:  elog(FATAL, "FTS: could not initialize fault tolerance manager share memory"); 
 caag: cdbfts:00000243:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
@@ -9587,34 +9587,37 @@ iaaj: indexcmds:00001177:  errmsg("there are multiple default operator classes f
 iaaj: indexcmds:00001178:  format_type_be(type_id)))); 
 iaaj: indexcmds:00001355:  elog(ERROR, "cache lookup failed for index %u", indexoid); 
 iaaj: indexcmds:00001395:  elog(ERROR, "cache lookup failed for index %u", indexoid); 
-iaaj: indexcmds:00001434:  elog(ERROR, "index \"%s\" does not exist", relation->relname); 
-iaaj: indexcmds:00001438:  ereport(ERROR, 
-iaaj: indexcmds:00001439:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-iaaj: indexcmds:00001440:  errmsg("\"%s\" is not an index", 
-iaaj: indexcmds:00001441:  relation->relname))); 
-iaaj: indexcmds:00001470:  elog(ERROR, "cache lookup failed for relation %u", indOid); 
-iaaj: indexcmds:00001473:  ereport(ERROR, 
-iaaj: indexcmds:00001474:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-iaaj: indexcmds:00001475:  errmsg("\"%s\" is not an index", 
-iaaj: indexcmds:00001476:  stmt->relation->relname))); 
-iaaj: indexcmds:00001542:  elog(ERROR, "cache lookup failed for relation %u", heapOid); 
-iaaj: indexcmds:00001546:  ereport(ERROR, 
-iaaj: indexcmds:00001547:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-iaaj: indexcmds:00001548:  errmsg("\"%s\" is not a table", 
-iaaj: indexcmds:00001549:  stmt->relation->relname))); 
-iaaj: indexcmds:00001558:  ereport(ERROR, 
-iaaj: indexcmds:00001559:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-iaaj: indexcmds:00001560:  errmsg("shared table \"%s\" can only be reindexed in stand-alone mode", 
-iaaj: indexcmds:00001561:  stmt->relation->relname))); 
-iaaj: indexcmds:00001569:  ereport(NOTICE, 
-iaaj: indexcmds:00001570:  (errmsg("table \"%s\" has no indexes", 
+iaaj: indexcmds:00001435:  elog(ERROR, "index \"%s\" does not exist", relation->relname); 
+iaaj: indexcmds:00001439:  ereport(ERROR, 
+iaaj: indexcmds:00001440:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+iaaj: indexcmds:00001441:  errmsg("\"%s\" is not an index", 
+iaaj: indexcmds:00001442:  relation->relname))); 
+iaaj: indexcmds:00001456:  ereport(WARNING, 
+iaaj: indexcmds:00001457:  (errmsg("only dropped the specified index"), 
+iaaj: indexcmds:00001458:  errhint("If desired, explicitly drop indexes on child parts."))); 
+iaaj: indexcmds:00001480:  elog(ERROR, "cache lookup failed for relation %u", indOid); 
+iaaj: indexcmds:00001483:  ereport(ERROR, 
+iaaj: indexcmds:00001484:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+iaaj: indexcmds:00001485:  errmsg("\"%s\" is not an index", 
+iaaj: indexcmds:00001486:  stmt->relation->relname))); 
+iaaj: indexcmds:00001552:  elog(ERROR, "cache lookup failed for relation %u", heapOid); 
+iaaj: indexcmds:00001556:  ereport(ERROR, 
+iaaj: indexcmds:00001557:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+iaaj: indexcmds:00001558:  errmsg("\"%s\" is not a table", 
+iaaj: indexcmds:00001559:  stmt->relation->relname))); 
+iaaj: indexcmds:00001568:  ereport(ERROR, 
+iaaj: indexcmds:00001569:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+iaaj: indexcmds:00001570:  errmsg("shared table \"%s\" can only be reindexed in stand-alone mode", 
 iaaj: indexcmds:00001571:  stmt->relation->relname))); 
-iaaj: indexcmds:00001599:  ereport(ERROR, 
-iaaj: indexcmds:00001600:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-iaaj: indexcmds:00001601:  errmsg("can only reindex the currently open database"))); 
-iaaj: indexcmds:00001696:  ereport(NOTICE, 
-iaaj: indexcmds:00001697:  (errmsg("table \"%s\" was reindexed", 
-iaaj: indexcmds:00001698:  get_rel_name(relid)))); 
+iaaj: indexcmds:00001579:  ereport(NOTICE, 
+iaaj: indexcmds:00001580:  (errmsg("table \"%s\" has no indexes", 
+iaaj: indexcmds:00001581:  stmt->relation->relname))); 
+iaaj: indexcmds:00001609:  ereport(ERROR, 
+iaaj: indexcmds:00001610:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+iaaj: indexcmds:00001611:  errmsg("can only reindex the currently open database"))); 
+iaaj: indexcmds:00001706:  ereport(NOTICE, 
+iaaj: indexcmds:00001707:  (errmsg("table \"%s\" was reindexed", 
+iaaj: indexcmds:00001708:  get_rel_name(relid)))); 
 aaaaa GP_IGNORE: laai: lockcmds - ./backend/commands/lockcmds.c
 laai: lockcmds:00000071:  ereport(ERROR, 
 laai: lockcmds:00000072:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
@@ -12695,37 +12698,37 @@ vaag: vacuum:00001716:  elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result"
 vaag: vacuum:00002118:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
 vaag: vacuum:00002120:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
 vaag: vacuum:00002127:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00002297:  elog(ERROR, "updated tuple is already HEAP_MOVED_OFF"); 
-vaag: vacuum:00002403:  elog(ERROR, "parent itemid marked as unused"); 
-vaag: vacuum:00002601:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
-vaag: vacuum:00002603:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
-vaag: vacuum:00002605:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00002818:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
-vaag: vacuum:00002820:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
-vaag: vacuum:00002822:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00003230:  elog(ERROR, "HEAP_MOVED_OFF/HEAP_MOVED_IN was expected"); 
-vaag: vacuum:00003232:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00003416:  ereport(WARNING, 
-vaag: vacuum:00003417:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003418:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003419:  stats->num_index_tuples, num_tuples), 
-vaag: vacuum:00003420:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00003488:  ereport(WARNING, 
-vaag: vacuum:00003489:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003490:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003491:  stats->num_index_tuples, num_tuples + keep_tuples), 
-vaag: vacuum:00003492:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00004048:  ereport(WARNING, 
-vaag: vacuum:00004049:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
-vaag: vacuum:00004050:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00004061:  ereport(WARNING, 
-vaag: vacuum:00004062:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
-vaag: vacuum:00004063:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00004208:  ereport(ERROR, 
-vaag: vacuum:00004209:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
-vaag: vacuum:00004210:  "Please either increase your maintenance_work_mem or " 
-vaag: vacuum:00004211:  "drop the bitmap index and try again.", 
-vaag: vacuum:00004212:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00002300:  elog(ERROR, "updated tuple is already HEAP_MOVED_OFF"); 
+vaag: vacuum:00002406:  elog(ERROR, "parent itemid marked as unused"); 
+vaag: vacuum:00002604:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
+vaag: vacuum:00002606:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
+vaag: vacuum:00002608:  elog(ERROR, "invalid XVAC in tuple header"); 
+vaag: vacuum:00002821:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
+vaag: vacuum:00002823:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
+vaag: vacuum:00002825:  elog(ERROR, "invalid XVAC in tuple header"); 
+vaag: vacuum:00003233:  elog(ERROR, "HEAP_MOVED_OFF/HEAP_MOVED_IN was expected"); 
+vaag: vacuum:00003235:  elog(ERROR, "invalid XVAC in tuple header"); 
+vaag: vacuum:00003419:  ereport(WARNING, 
+vaag: vacuum:00003420:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003421:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003422:  stats->num_index_tuples, num_tuples), 
+vaag: vacuum:00003423:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00003491:  ereport(WARNING, 
+vaag: vacuum:00003492:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003493:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003494:  stats->num_index_tuples, num_tuples + keep_tuples), 
+vaag: vacuum:00003495:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00004051:  ereport(WARNING, 
+vaag: vacuum:00004052:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
+vaag: vacuum:00004053:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00004064:  ereport(WARNING, 
+vaag: vacuum:00004065:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
+vaag: vacuum:00004066:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00004211:  ereport(ERROR, 
+vaag: vacuum:00004212:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
+vaag: vacuum:00004213:  "Please either increase your maintenance_work_mem or " 
+vaag: vacuum:00004214:  "drop the bitmap index and try again.", 
+vaag: vacuum:00004215:  RelationGetRelationName(onerel)))); 
 aaaaa GP_IGNORE: vaba: vacuumlazy - ./backend/commands/vacuumlazy.c
 vaba: vacuumlazy:00000383:  ereport(WARNING, 
 vaba: vacuumlazy:00000384:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
@@ -13904,15 +13907,15 @@ baaj: bitmapset:00000674:  elog(ERROR, "negative bitmapset member not allowed");
 aaaaa GP_IGNORE: caaj: copyfuncs - ./backend/nodes/copyfuncs.c
 caaj: copyfuncs:00002051:  elog(ERROR, "unrecognized node type: %d", 
 caaj: copyfuncs:00002052:  (int) from->val.type); 
-caaj: copyfuncs:00003932:  elog(ERROR, "unrecognized node type: %d", 
-caaj: copyfuncs:00003933:  (int) from->type); 
-caaj: copyfuncs:00004694:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from)); 
+caaj: copyfuncs:00003933:  elog(ERROR, "unrecognized node type: %d", 
+caaj: copyfuncs:00003934:  (int) from->type); 
+caaj: copyfuncs:00004695:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from)); 
 aaaaa GP_IGNORE: eaba: equalfuncs - ./backend/nodes/equalfuncs.c
-eaba: equalfuncs:00002350:  elog(ERROR, "unrecognized list node type: %d", 
-eaba: equalfuncs:00002351:  (int) a->type); 
-eaba: equalfuncs:00002387:  elog(ERROR, "unrecognized node type: %d", (int) a->type); 
-eaba: equalfuncs:00002995:  elog(ERROR, "unrecognized node type: %d", 
-eaba: equalfuncs:00002996:  (int) nodeTag(a)); 
+eaba: equalfuncs:00002351:  elog(ERROR, "unrecognized list node type: %d", 
+eaba: equalfuncs:00002352:  (int) a->type); 
+eaba: equalfuncs:00002388:  elog(ERROR, "unrecognized node type: %d", (int) a->type); 
+eaba: equalfuncs:00002996:  elog(ERROR, "unrecognized node type: %d", 
+eaba: equalfuncs:00002997:  (int) nodeTag(a)); 
 aaaaa GP_IGNORE: laae: list - ./backend/nodes/list.c
 laae: list:00000328:  elog(ERROR, "cannot list_concat() a list to itself"); 
 aaaaa GP_IGNORE: oaah: outfast - ./backend/nodes/outfast.c
@@ -13924,10 +13927,10 @@ oaah: outfast:00004157:  (int) nodeTag(obj));
 aaaaa GP_IGNORE: oaai: outfuncs - ./backend/nodes/outfuncs.c
 oaai: outfuncs:00000200:  elog(ERROR, "unrecognized list node type: %d", 
 oaai: outfuncs:00000201:  (int) node->type); 
-oaai: outfuncs:00003280:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
-oaai: outfuncs:00003379:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
-oaai: outfuncs:00004498:  elog(WARNING, "could not dump unrecognized node type: %d", 
-oaai: outfuncs:00004499:  (int) nodeTag(obj)); 
+oaai: outfuncs:00003281:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
+oaai: outfuncs:00003380:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
+oaai: outfuncs:00004499:  elog(WARNING, "could not dump unrecognized node type: %d", 
+oaai: outfuncs:00004500:  (int) nodeTag(obj)); 
 aaaaa GP_IGNORE: raae: read - ./backend/nodes/read.c
 raae: read:00000329:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 raae: read:00000330:  errmsg("This operation requires a feature " 
@@ -14085,57 +14088,57 @@ caba: createplan:00001387:  errmsg("Could not assign a segment database for \"%s
 caba: createplan:00001388:  "There are more URIs than total primary segment " 
 caba: createplan:00001389:  "databases", uri_str), 
 caba: createplan:00001390:  errOmitLocation(true))); 
-caba: createplan:00001442:  elog(NOTICE, "External scan %s will utilize %d out " 
-caba: createplan:00001443:  "of %d segment databases", 
-caba: createplan:00001444:  (uri->protocol == URI_GPFDIST ? "from gpfdist(s) server" : "using custom protocol"), 
-caba: createplan:00001445:  num_segs_participating, 
-caba: createplan:00001446:  total_primaries); 
-caba: createplan:00001450:  ereport(ERROR, 
-caba: createplan:00001451:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001452:  errmsg("There are more external files (URLs) than primary " 
-caba: createplan:00001453:  "segments that can read them. Found %d URLs and " 
-caba: createplan:00001454:  "%d primary segments.",list_length(rel->locationlist), 
-caba: createplan:00001455:  num_segs_participating), 
-caba: createplan:00001456:  errOmitLocation(true))); 
-caba: createplan:00001480:  elog(ERROR, "External scan location list failed building distribution."); 
-caba: createplan:00001553:  ereport(ERROR, 
-caba: createplan:00001554:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001555:  errmsg("Internal error in createplan for external tables" 
-caba: createplan:00001556:  " when trying to assign segments for gpfdist(s)"))); 
-caba: createplan:00001667:  ereport(ERROR, 
-caba: createplan:00001668:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001669:  errmsg("Could not assign a segment database for " 
-caba: createplan:00001670:  "command \"%s\". No valid primary segment was " 
-caba: createplan:00001671:  "found in the requested host name \"%s\" ", 
-caba: createplan:00001672:  command, hostname), 
-caba: createplan:00001673:  errOmitLocation(true))); 
-caba: createplan:00001694:  ereport(ERROR, 
-caba: createplan:00001695:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001696:  errmsg("Could not assign a segment database for " 
-caba: createplan:00001697:  "command \"%s\". The requested segment id " 
-caba: createplan:00001698:  "%d is not a valid primary segment or doesn't " 
-caba: createplan:00001699:  "exist in the database", command, target_segid), 
-caba: createplan:00001700:  errOmitLocation(true))); 
-caba: createplan:00001709:  ereport(ERROR, 
-caba: createplan:00001710:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001711:  errmsg("Table defined with EXECUTE ON %d but there " 
-caba: createplan:00001712:  "are only %d valid primary segments in the " 
-caba: createplan:00001713:  "database.", num_segs_to_use, total_primaries))); 
-caba: createplan:00001744:  ereport(ERROR, 
-caba: createplan:00001745:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001746:  errmsg("Internal error in createplan for external tables: " 
-caba: createplan:00001747:  "got invalid ON clause code %s", on_clause))); 
-caba: createplan:00001766:  ereport(ERROR, 
-caba: createplan:00001767:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001768:  errmsg("Internal error in createplan for external tables"))); 
-caba: createplan:00002367:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
-caba: createplan:00003065:  elog(ERROR, "indexqual clause is not binary opclause"); 
-caba: createplan:00003136:  elog(ERROR, "unsupported indexqual type: %d", 
-caba: createplan:00003137:  (int) nodeTag(clause)); 
-caba: createplan:00003211:  elog(ERROR, "too few entries in indexprs list"); 
-caba: createplan:00003230:  elog(ERROR, "node is not an index attribute"); 
-caba: createplan:00004036:  elog(ERROR, "could not find pathkey item to sort"); 
-caba: createplan:00004508:  elog(ERROR, "Planner committed to impossible hash aggregate."); 
+caba: createplan:00001455:  elog(NOTICE, "External scan %s will utilize %d out " 
+caba: createplan:00001456:  "of %d segment databases", 
+caba: createplan:00001457:  (uri->protocol == URI_GPFDIST ? "from gpfdist(s) server" : "using custom protocol"), 
+caba: createplan:00001458:  num_segs_participating, 
+caba: createplan:00001459:  total_primaries); 
+caba: createplan:00001463:  ereport(ERROR, 
+caba: createplan:00001464:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001465:  errmsg("There are more external files (URLs) than primary " 
+caba: createplan:00001466:  "segments that can read them. Found %d URLs and " 
+caba: createplan:00001467:  "%d primary segments.",list_length(rel->locationlist), 
+caba: createplan:00001468:  num_segs_participating), 
+caba: createplan:00001469:  errOmitLocation(true))); 
+caba: createplan:00001493:  elog(ERROR, "External scan location list failed building distribution."); 
+caba: createplan:00001565:  ereport(ERROR, 
+caba: createplan:00001566:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001567:  errmsg("Internal error in createplan for external tables" 
+caba: createplan:00001568:  " when trying to assign segments for gpfdist(s)"))); 
+caba: createplan:00001679:  ereport(ERROR, 
+caba: createplan:00001680:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001681:  errmsg("Could not assign a segment database for " 
+caba: createplan:00001682:  "command \"%s\". No valid primary segment was " 
+caba: createplan:00001683:  "found in the requested host name \"%s\" ", 
+caba: createplan:00001684:  command, hostname), 
+caba: createplan:00001685:  errOmitLocation(true))); 
+caba: createplan:00001706:  ereport(ERROR, 
+caba: createplan:00001707:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001708:  errmsg("Could not assign a segment database for " 
+caba: createplan:00001709:  "command \"%s\". The requested segment id " 
+caba: createplan:00001710:  "%d is not a valid primary segment or doesn't " 
+caba: createplan:00001711:  "exist in the database", command, target_segid), 
+caba: createplan:00001712:  errOmitLocation(true))); 
+caba: createplan:00001721:  ereport(ERROR, 
+caba: createplan:00001722:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001723:  errmsg("Table defined with EXECUTE ON %d but there " 
+caba: createplan:00001724:  "are only %d valid primary segments in the " 
+caba: createplan:00001725:  "database.", num_segs_to_use, total_primaries))); 
+caba: createplan:00001756:  ereport(ERROR, 
+caba: createplan:00001757:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001758:  errmsg("Internal error in createplan for external tables: " 
+caba: createplan:00001759:  "got invalid ON clause code %s", on_clause))); 
+caba: createplan:00001778:  ereport(ERROR, 
+caba: createplan:00001779:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001780:  errmsg("Internal error in createplan for external tables"))); 
+caba: createplan:00002379:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
+caba: createplan:00003077:  elog(ERROR, "indexqual clause is not binary opclause"); 
+caba: createplan:00003148:  elog(ERROR, "unsupported indexqual type: %d", 
+caba: createplan:00003149:  (int) nodeTag(clause)); 
+caba: createplan:00003223:  elog(ERROR, "too few entries in indexprs list"); 
+caba: createplan:00003242:  elog(ERROR, "node is not an index attribute"); 
+caba: createplan:00004048:  elog(ERROR, "could not find pathkey item to sort"); 
+caba: createplan:00004520:  elog(ERROR, "Planner committed to impossible hash aggregate."); 
 aaaaa GP_IGNORE: iaaj: initsplan - ./backend/optimizer/plan/initsplan.c
 iaaj: initsplan:00000108:  elog(ERROR, "unrecognized node type: %d", 
 iaaj: initsplan:00000109:  (int) nodeTag(jtnode)); 
@@ -23914,112 +23917,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006593:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006594:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006607:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006608:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006621:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006622:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006652:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006653:  conf->gen.name, str); 
-gaad: guc:00006910:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006927:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006944:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006975:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007831:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007941:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007942:  " in a future release.", name); 
-gaad: guc:00007950:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007951:  name); 
-gaad: guc:00008425:  ereport(ERROR, 
-gaad: guc:00008426:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008427:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008429:  ereport(ERROR, 
-gaad: guc:00008430:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008431:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008465:  ereport(ERROR, 
-gaad: guc:00008466:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008467:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008469:  ereport(ERROR, 
-gaad: guc:00008470:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008471:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008540:  ereport(ERROR, 
-gaad: guc:00008541:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008542:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008549:  ereport(ERROR, 
-gaad: guc:00008550:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008551:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008564:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008611:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008612:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008669:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008695:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008696:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008722:  ereport(ERROR, 
-gaad: guc:00008723:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008724:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008786:  ereport(ERROR, 
-gaad: guc:00008787:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008788:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009107:  ereport(ERROR, 
-gaad: guc:00009108:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009109:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009111:  ereport(ERROR, 
-gaad: guc:00009112:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009113:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009882:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009915:  ereport(FATAL, 
-gaad: guc:00009916:  (errcode_for_file_access(), 
-gaad: guc:00009917:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009918:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009930:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009932:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009934:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010025:  ereport(WARNING, 
-gaad: guc:00010026:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010027:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010221:  ereport(ERROR, 
-gaad: guc:00010222:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010223:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010244:  ereport(ERROR, 
-gaad: guc:00010245:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010246:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010247:  tok))); 
-gaad: guc:00010273:  ereport(ERROR, 
-gaad: guc:00010274:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010275:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010276:  value))); 
-gaad: guc:00010708:  ereport(ERROR, 
-gaad: guc:00010709:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010710:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010784:  ereport(ERROR, 
-gaad: guc:00010785:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010786:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010795:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010805:  ereport(ERROR, 
-gaad: guc:00010806:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010807:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010818:  ereport(ERROR, 
-gaad: guc:00010819:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010820:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010835:  ereport(ERROR, 
-gaad: guc:00010836:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010837:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010838:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010839:  "\"log_dispatch_stats\", " 
-gaad: guc:00010840:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010855:  ereport(ERROR, 
-gaad: guc:00010856:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010857:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010858:  "\"log_statement_stats\", " 
-gaad: guc:00010859:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010860:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010875:  ereport(ERROR, 
-gaad: guc:00010876:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010877:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011274:  elog(ERROR, 
-gaad: guc:00011275:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011276:  show_allow_system_table_mods()); 
+gaad: guc:00006604:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006605:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006618:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006619:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006632:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006633:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006663:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006664:  conf->gen.name, str); 
+gaad: guc:00006921:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006938:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006955:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006986:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007842:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007952:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007953:  " in a future release.", name); 
+gaad: guc:00007961:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007962:  name); 
+gaad: guc:00008436:  ereport(ERROR, 
+gaad: guc:00008437:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008438:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008440:  ereport(ERROR, 
+gaad: guc:00008441:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008442:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008476:  ereport(ERROR, 
+gaad: guc:00008477:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008478:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008480:  ereport(ERROR, 
+gaad: guc:00008481:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008482:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008551:  ereport(ERROR, 
+gaad: guc:00008552:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008553:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008560:  ereport(ERROR, 
+gaad: guc:00008561:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008562:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008575:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008622:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008623:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008680:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008706:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008707:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008733:  ereport(ERROR, 
+gaad: guc:00008734:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008735:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008797:  ereport(ERROR, 
+gaad: guc:00008798:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008799:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009118:  ereport(ERROR, 
+gaad: guc:00009119:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009120:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009122:  ereport(ERROR, 
+gaad: guc:00009123:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009124:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009893:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009926:  ereport(FATAL, 
+gaad: guc:00009927:  (errcode_for_file_access(), 
+gaad: guc:00009928:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009929:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009941:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009943:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009945:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010036:  ereport(WARNING, 
+gaad: guc:00010037:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010038:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010232:  ereport(ERROR, 
+gaad: guc:00010233:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010234:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010255:  ereport(ERROR, 
+gaad: guc:00010256:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010257:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010258:  tok))); 
+gaad: guc:00010284:  ereport(ERROR, 
+gaad: guc:00010285:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010286:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010287:  value))); 
+gaad: guc:00010719:  ereport(ERROR, 
+gaad: guc:00010720:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010721:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010795:  ereport(ERROR, 
+gaad: guc:00010796:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010797:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010806:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010816:  ereport(ERROR, 
+gaad: guc:00010817:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010818:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010829:  ereport(ERROR, 
+gaad: guc:00010830:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010831:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010846:  ereport(ERROR, 
+gaad: guc:00010847:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010848:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010849:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010850:  "\"log_dispatch_stats\", " 
+gaad: guc:00010851:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010866:  ereport(ERROR, 
+gaad: guc:00010867:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010868:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010869:  "\"log_statement_stats\", " 
+gaad: guc:00010870:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010871:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010886:  ereport(ERROR, 
+gaad: guc:00010887:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010888:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011285:  elog(ERROR, 
+gaad: guc:00011286:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011287:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -24463,15 +24466,15 @@ taaf: tqual:00000726:  elog(ERROR, "Cursor snapshot: failed to read size");
 taaf: tqual:00000738:  elog(ERROR, "Cursor snapshot: failed to seek."); 
 taaf: tqual:00000741:  elog(ERROR, "Cursor snapshot: failed to read content"); 
 taaf: tqual:00000752:  elog(ERROR, "cursor snapshot failed sanity %u != %u", (unsigned int)sanity, (unsigned int)count); 
-taaf: tqual:00002360:  elog(ERROR, "no snapshot has been set"); 
-taaf: tqual:00002682:  elog(FATAL, "Unrecognized distributed committed test result: %d", 
-taaf: tqual:00002683:  (int) distributedSnapshotCommitted); 
-taaf: tqual:00003352:  elog(ERROR, "Unrecognized tuple transaction status: %d", 
-taaf: tqual:00003353:  (int) tupleVisibilitySummary->xmaxStatus); 
-taaf: tqual:00003361:  elog(ERROR, "Unrecognized tuple transaction status: %d", 
-taaf: tqual:00003362:  (int) tupleVisibilitySummary->xminStatus); 
-taaf: tqual:00003406:  elog(ERROR, "Unrecognized tuple transaction status: %d", 
-taaf: tqual:00003407:  (int) status); 
+taaf: tqual:00002888:  elog(ERROR, "no snapshot has been set"); 
+taaf: tqual:00003210:  elog(FATAL, "Unrecognized distributed committed test result: %d", 
+taaf: tqual:00003211:  (int) distributedSnapshotCommitted); 
+taaf: tqual:00003901:  elog(ERROR, "Unrecognized tuple transaction status: %d", 
+taaf: tqual:00003902:  (int) tupleVisibilitySummary->xmaxStatus); 
+taaf: tqual:00003910:  elog(ERROR, "Unrecognized tuple transaction status: %d", 
+taaf: tqual:00003911:  (int) tupleVisibilitySummary->xminStatus); 
+taaf: tqual:00003955:  elog(ERROR, "Unrecognized tuple transaction status: %d", 
+taaf: tqual:00003956:  (int) status); 
 aaaaa GP_IGNORE: gabf: gphdfsformatter - ./bin/gphdfs/src/protocol_formatter/gphdfsformatter.c
 gabf: gphdfsformatter:00000206:  default: ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
 gabf: gphdfsformatter:00000207:  errmsg("Ill-formatted record: unknown Java Enum Ordinal (%d)", enumType), 
