@@ -8,8 +8,9 @@ SYNOPSIS
 *****************************************************
 
 gp_dump [-a | -s] [-c] [-d] [-D] [-n <schema>] [-o] [-O] 
-[-t <table_name>] [-x] [-h <hostname>] [-p <port>] [-U <username>] 
-[-W] [-i] [-v] [--gp-c] [--gp-d=<backup_directory>] 
+[-t <table_name>] [-T table_name] [-x] [-h <hostname>] 
+[-p <port>] [-U <username>] [-W] [-i] [-v] 
+[--gp-c] [--gp-d=<backup_directory>] 
 [--gp-r=<reportfile>] [--gp-s=a|p] <database_name> 
 
 gp_dump -? | -h | --help
