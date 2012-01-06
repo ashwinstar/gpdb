@@ -32,7 +32,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_class
-   with (bootstrap=true, relid=1259)
+   with (camelcase=Relation, bootstrap=true, relid=1259)
    (
    relname         name      ,
    relnamespace    oid       ,

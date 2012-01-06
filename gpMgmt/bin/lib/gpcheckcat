@@ -341,6 +341,23 @@ class execThread(Thread):
             self.error = e
     
 
+def processThread(threads):
+    batch = []
+    for th in threads:
+        logger.debug('waiting on thread %s' % th.getName())
+        th.join()
+        if th.error:
+            setError(ERROR_NOREPAIR)
+            myprint("%s:%d:%s : %s" % 
+                     (th.cfg['hostname'],
+                      th.cfg['port'],
+                      th.cfg['datadir'],
+                      str(th.error)))
+        else:
+            batch.append([th.cfg, th.curs])
+    return batch
+
+
 #############
 def connect2run(qry, col=None):
     logger.debug('%s' % qry)
@@ -362,31 +379,14 @@ def connect2run(qry, col=None):
 
         # we don't want too much going on at once
         if (i % GV.opt['-B']) == 0:
-            for th in threads:
-                logger.debug('waiting on thread %s' % th.getName())
-                th.join()
-                batch.append([th.cfg, th.curs])
-
+            # process this batch of threads
+            batch.extend(processThread(threads))
             threads = []
 
         i += 1
 
-    for th in threads:
-        logger.debug('waiting on thread %s' % th.getName())
-        th.join()
-
-        # XXX - this is not a good way to report the error due to the way that
-        # this function is usually called - the error gets reported before the
-        # test message and the test reports as "passing".
-        if th.error:
-            setError(ERROR_NOREPAIR)
-            myprint("%s:%d:%s : %s" % 
-                         (th.cfg['hostname'],
-                          th.cfg['port'],
-                          th.cfg['datadir'],
-                          str(th.error)))
-        else:
-            batch.append([th.cfg, th.curs])
+    # process the rest of threads
+    batch.extend(processThread(threads))
 
     err = []
     for [cfg, curs] in batch:
@@ -2941,7 +2941,7 @@ def checkTableForeignKey(cat):
     # skip tables without fkey
     if len(fkeylist) <= 0:
         return
-    if len(cat.getPrimaryKey()) <= 0:
+    if len(pkeylist) <= 0:
         return
 
     # skip these master-only tables
@@ -2960,25 +2960,14 @@ def checkTableForeignKey(cat):
         if re.match("only", GV.opt['-S'], re.I) and not isShared:
             return
  
-    # primary key lists
-    cat1pkeys = []
-    pkeys     = []
-
-    # build array of catalog primary keys (with aliases) and
-    # primary key alias list
-    for pk in pkeylist:
-        cat1pkeys.append('cat1.' + pk + ' as %s_%s' % (catname,pk))
-        pkeys.append('%s_%s' % (catname,pk))
-
     logger.info('Building %d queries to check FK constraint on table %s' % (len(fkeylist),catname))
     for fkeydef in fkeylist:
-        castedFkey  = [c+autoCast.get(coltypes[c],'') for c in fkeydef.getColumns()]
-        fkeystr     = ', '.join(castedFkey)
-        cat1fkeystr = 'cat1.' + ', cat1.'.join(fkeydef.getColumns())
-        pkeystr     = ', '.join(fkeydef.getPKey())
-        pkcatname   = fkeydef.getPkeyTableName()
+        pkcatname      = fkeydef.getPkeyTableName()
+        pklist         = fkeydef.getPKey()
+        fklist         = fkeydef.getColumns()
+        casted_fklist  = [c+autoCast.get(coltypes[c],'') for c in fklist]
 
-        qry = fkQuery(catname, pkcatname, fkeystr, pkeystr, pkeys, cat1pkeys)
+        qry = fkQuery(catname, pkeylist, casted_fklist, pkcatname, pklist)
        
         # Execute the query
         try:
@@ -2988,21 +2977,21 @@ def checkTableForeignKey(cat):
 
             if nrows == 0:
                 logger.info('[OK] Foreign key check for %s(%s) referencing %s(%s)'%
-                            (catname, fkeystr, pkcatname, pkeystr))
+                            (catname, ','.join(fklist), pkcatname, ','.join(pklist)))
             else:
                 GV.testStatus = False
                 setError(ERROR_NOREPAIR)
                 GV.foreignKeyStatus = False
                 logger.info('[FAIL] Foreign key check for %s(%s) referencing %s(%s)'%
-                            (catname, fkeystr, pkcatname, pkeystr))
+                            (catname, ','.join(fklist), pkcatname, ','.join(pklist)))
                 logger.error('  %s has %d issue(s): entry has NULL reference of %s(%s)'% 
-                            (catname, nrows, pkcatname, pkeystr))
+                            (catname, nrows, pkcatname, '.'.join(pklist)))
 
                 fields = curs.listfields()
                 log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
                 for row in curs.getresult():
                     log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
-                processForeignKeyResult(catname, pkcatname, fields, curs.getresult())
+                processForeignKeyResult(catname, len(fklist), pkcatname, fields, curs.getresult())
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -3013,40 +3002,100 @@ def checkTableForeignKey(cat):
 
 
 #-------------------------------------------------------------------------------
-def fkQuery(catname, pkcatname, fkeystr, pkeystr, pkeys, cat1pkeys):
+def fkQuery(fktab_name, fktab_pklist, casted_fklist, pktab_name, pktab_pklist):
+
+    '''
+    SAMPLE QUERY: pg_attrdef(adrelid,adnum) references pg_attribute(attrelid,attnum)
+
+    SELECT pg_attrdef_adrelid, pg_attrdef_adnum, pg_attribute_attrelid, pg_attribute_attnum,
+           array_agg(gp_segment_id order by gp_segment_id) as segids
+    FROM (
+          SELECT cat1.gp_segment_id, 
+                 cat1.adrelid AS pg_attrdef_adrelid, cat1.adnum AS pg_attrdef_adnum, 
+                 cat1.adrelid AS pg_attribute_attrelid, cat1.adnum AS pg_attribute_attnum
+          FROM
+              gp_dist_random('pg_attrdef') cat1 LEFT OUTER JOIN
+              gp_dist_random('pg_attribute') cat2
+              ON (cat1.gp_segment_id = cat2.gp_segment_id AND
+                  cat1.adrelid = cat2.attrelid AND cat1.adnum = cat2.attnum )
+          WHERE cat2.attrelid IS NULL AND cat2.attnum IS NULL
+            AND cat1.adrelid != 0 AND cat1.adnum != 0
+          UNION ALL
+          SELECT -1 as gp_segment_id, 
+                 cat1.adrelid AS pg_attrdef_adrelid, cat1.adnum AS pg_attrdef_adnum, 
+                 cat1.adrelid AS pg_attribute_attrelid, cat1.adnum AS pg_attribute_attnum
+          FROM
+              pg_attrdef cat1 LEFT OUTER JOIN
+              pg_attribute cat2
+              ON (cat1.gp_segment_id = cat2.gp_segment_id AND
+                  cat1.adrelid = cat2.attrelid AND cat1.adnum = cat2.attnum )
+          WHERE cat2.attrelid IS NULL AND cat2.attnum IS NULL
+            AND cat1.adrelid != 0 AND cat1.adnum != 0
+          ORDER BY pg_attrdef_adrelid, pg_attrdef_adnum, gp_segment_id
+    ) allresults
+    GROUP BY pg_attrdef_adrelid, pg_attrdef_adnum, pg_attribute_attrelid, pg_attribute_attnum
+    '''
+
+    # fktab_pk_alias            --> pg_attrdef_adrelid, pg_attrdef_adnum
+    # pktab_pk_alias            --> pg_attribute_attrelid, pg_attribute_attnum 
+    # cat1_pk_as_fktab_pk_alias --> cat1.adrelid AS pg_attrdef_adrelid, cat1.adnum AS pg_attrdef_adnum
+    # cat1_fk_as_pktab_pk_alias --> cat1.adrelid AS pg_attribute_attrelid, cat1.adnum AS pg_attribute_attnum
+    # cat1_fk_not_zero          --> cat1.adrelid != 0 AND cat1.adnum != 0
+    # cat2_pk_is_null           --> cat2.attrelid IS NULL AND cat2.attnum IS NULL
+    # cat1_fk_equal_cat2_pk     --> cat1.adrelid = cat2.attrelid AND cat1.adnum = cat2.attnum
+
+    assert(len(pktab_pklist) == len(casted_fklist))
+
+    cat1_fk_equal_cat2_pk     = ''
+    cat1_fk_as_pktab_pk_alias = ''
+    for i in range(len(pktab_pklist)):
+        if cat1_fk_as_pktab_pk_alias != '':
+            cat1_fk_equal_cat2_pk     += ' AND '
+            cat1_fk_as_pktab_pk_alias += ', '
+        cat1_fk_equal_cat2_pk     += 'cat1.%s = cat2.%s' % (casted_fklist[i], pktab_pklist[i])
+        cat1_fk_as_pktab_pk_alias += 'cat1.%s AS %s_%s'  % (casted_fklist[i], pktab_name, pktab_pklist[i])
+
+    fktab_pk_alias            = ', '.join(['%s_%s' % (fktab_name,pk) for pk in fktab_pklist])
+    pktab_pk_alias            = ', '.join(['%s_%s' % (pktab_name,pk) for pk in pktab_pklist])
+    cat1_pk_as_fktab_pk_alias = ', '.join(['cat1.%s AS %s_%s' % (pk,fktab_name,pk) for pk in fktab_pklist])
+
+    cat2_pk_is_null  = ' AND '.join(['cat2.%s IS NULL' % pk for pk in pktab_pklist])
+    cat1_fk_not_zero = ' AND '.join(['cat1.%s != 0' % fk for fk in casted_fklist])  
 
     qry = """
-          SELECT {primary_key_alias}, {cat2_dot_pk},
+          SELECT {fktab_pk_alias}, {pktab_pk_alias},
                  array_agg(gp_segment_id order by gp_segment_id) as segids
           FROM (
-                SELECT cat1.gp_segment_id, {cat1_dot_pk}, cat1.{FK1} as {cat2_dot_pk} 
+                SELECT cat1.gp_segment_id, {cat1_pk_as_fktab_pk_alias}, {cat1_fk_as_pktab_pk_alias}
                 FROM
-                    gp_dist_random('{CATALOG1}') cat1 LEFT OUTER JOIN
-                    gp_dist_random('{CATALOG2}') cat2
+                    gp_dist_random('{fktab_name}') cat1 LEFT OUTER JOIN
+                    gp_dist_random('{pktab_name}') cat2
                     ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-                        cat1.{FK1} = cat2.{PK2} )
-                WHERE cat2.{PK2} is NULL
-                  AND cat1.{FK1} != 0
+                        {cat1_fk_equal_cat2_pk} )
+                WHERE {cat2_pk_is_null}
+                  AND {cat1_fk_not_zero}
                 UNION ALL
-                SELECT -1 as gp_segment_id, {cat1_dot_pk}, cat1.{FK1} as {cat2_dot_pk} 
+                SELECT -1 as gp_segment_id, {cat1_pk_as_fktab_pk_alias}, {cat1_fk_as_pktab_pk_alias}
                 FROM
-                    {CATALOG1} cat1 LEFT OUTER JOIN
-                    {CATALOG2} cat2
+                    {fktab_name} cat1 LEFT OUTER JOIN
+                    {pktab_name} cat2
                     ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-                        cat1.{FK1} = cat2.{PK2} )
-                WHERE cat2.{PK2} is NULL
-                  AND cat1.{FK1} != 0
-                ORDER BY {primary_key_alias}, gp_segment_id
+                        {cat1_fk_equal_cat2_pk} )
+                WHERE {cat2_pk_is_null}
+                  AND {cat1_fk_not_zero}
+                ORDER BY {fktab_pk_alias}, gp_segment_id
           ) allresults
-          GROUP BY {primary_key_alias}, {cat2_dot_pk}
-          """.format(FK1      = fkeystr,
-                     PK2      = pkeystr,
-                     CATALOG1 = catname,
-                     CATALOG2 = pkcatname,
-                     cat1_dot_pk = ', '.join(cat1pkeys) ,
-                     cat2_dot_pk = '%s_%s' % (pkcatname,pkeystr),
-                     primary_key_alias    = ', '.join(pkeys))
-
+          GROUP BY {fktab_pk_alias}, {pktab_pk_alias}
+          """.format(fktab_pk_alias            = fktab_pk_alias,
+                     pktab_pk_alias            = pktab_pk_alias,
+                     cat1_pk_as_fktab_pk_alias = cat1_pk_as_fktab_pk_alias,
+                     cat1_fk_as_pktab_pk_alias = cat1_fk_as_pktab_pk_alias,
+                     fktab_name                = fktab_name,
+                     pktab_name                = pktab_name,
+                     cat2_pk_is_null           = cat2_pk_is_null,
+                     cat1_fk_not_zero          = cat1_fk_not_zero,
+                     cat1_fk_equal_cat2_pk     = cat1_fk_equal_cat2_pk)
+                     
     return qry
 
 
@@ -4135,31 +4184,36 @@ def processInconsistentEntryResult(catname, pknames, colname, allValues):
 
 
 #-------------------------------------------------------------------------------
-def processForeignKeyResult(catname, pkcatname, colname, allValues):
+def processForeignKeyResult(catname, fklen, pkcatname, colname, allValues):
     
     '''
     colname:    pg_class_relname | pg_class_relnamespace | pg_type_oid | segids
     allValues:            test11 | 2200 | 17389 | {-1,0,1,2,3}
                            test4 | 2200 | 17077 | {-1,0,1,2,3}
+
+    colname:	pg_attrdef_adrelid | pg_attrdef_adnum | pg_attribute_attrelid | pg_attribute_attnum | segids
+    allValues:			   1262477 | 2 | 1262477 | 2 | {-1}
+ 						   1265066 | 2 | 1265066 | 2 | {-1}
+
     '''
 
     gpObjName = pkcatname
-    gpColName = colname[-2].rsplit('_',1)[1]
+    gpColName = colname[-(fklen+1)].rsplit('_',1)[1]
     fkeytab  = catname
-    fkeylist = [name.rsplit('_',1)[1] for name in colname[:-2]]
+    fkeylist = [name.rsplit('_',1)[1] for name in colname[:-(fklen+1)]]
 
-    # This catname may not be a GPObject (e.g. pg_attribute)
+    # This pkcatname may not be a GPObject (e.g. pg_attribute)
     #    1. pg_attrdef(adrelid) referencing pg_attribute(attrelid)
     #    2. pg_rewrite(ev_class) referencing pg_attribute(attrelid)
     if pkcatname in TableMainColumn:
-        if gpColName == TableMainColumn[catname][0]:
-            gpObjName = TableMainColumn[catname][1]
+        if gpColName == TableMainColumn[pkcatname][0]:
+            gpObjName = TableMainColumn[pkcatname][1]
 
     # Process each row
     for row in allValues:
         rowObjName = gpObjName
         segids = row[-1]
-        oid = row[len(colname)-2]
+        oid = row[len(colname)-(fklen+1)]
         # Build fkeys dict: used to find oid of pg_class
         fkeys = dict((n,row[colname.index(fkeytab+'_'+n)]) for n in fkeylist)
         issue = CatForeignKeyIssue(pkcatname, {gpColName: oid}, segids, catname, fkeys)

@@ -25,7 +25,7 @@
    create index on pg_attribute_encoding(attrelid) with (indexid=3236, CamelCase=AttributeEncodingAttrelid);
    create unique index on pg_attribute_encoding(attrelid, attnum) with (indexid=3237, CamelCase=AttributeEncodingAttrelidAttnum);
 
-   alter table pg_attribute_encoding add fk attrelid on pg_attribute(attrelid);
+   alter table pg_attribute_encoding add fk (attrelid,attnum) on pg_attribute(attrelid,attnum);
 
    TIDYCAT_ENDDEF
 */
