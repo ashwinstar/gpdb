@@ -1723,7 +1723,7 @@ static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
     if(dsr->has_null)
     {
 		DatumStreamBitMapRead_Next(&dsr->null_bitmap);
-		Assert(!DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
+		Assert(DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
 
         if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 		{
@@ -1873,7 +1873,7 @@ static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		if(dsr->has_null)
 		{
 			DatumStreamBitMapRead_Next(&dsr->null_bitmap);
-			Assert(!DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
+			Assert(DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
 		
 			if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
 			{
