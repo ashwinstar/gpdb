@@ -700,15 +700,16 @@ static inline double l2norm_sdata_values_double(SparseData sdata)
 	double accum=0.;
 	char *ix = sdata->index->data;
 	double *vals = (double *)sdata->vals->data;
-	int64 run_length;
+	int64 run_length,run_length_accum=0;
 
 	for (int i=0;i<sdata->unique_value_count;i++)
 	{
 		run_length = compword_to_int8(ix);
+		run_length_accum += run_length;
 		accum += (vals[i]*vals[i])*run_length;
 		ix+=int8compstoragesize(ix);
 	}
-	accum = sqrt(accum);
+	accum = sqrt(accum/((double) run_length_accum));
 	return (accum);
 }
 static inline double l1norm_sdata_values_double(SparseData sdata)
@@ -716,15 +717,62 @@ static inline double l1norm_sdata_values_double(SparseData sdata)
 	double accum=0.;
 	char *ix = sdata->index->data;
 	double *vals = (double *)sdata->vals->data;
-	int64 run_length;
+	int64 run_length,run_length_accum=0;
 
 	for (int i=0;i<sdata->unique_value_count;i++)
 	{
 		run_length = compword_to_int8(ix);
+		run_length_accum += run_length;
 		accum += ABS(vals[i])*run_length;
 		ix+=int8compstoragesize(ix);
 	}
+	accum /= ((double) run_length_accum);
 	return (accum);
+}
+static inline double min_sdata_values_double(SparseData sdata)
+{
+	char *ix = sdata->index->data;
+	double *vals = (double *)sdata->vals->data;
+	double min = *vals;
+
+	for (int i=0;i<sdata->unique_value_count;i++)
+	{
+		min  = MIN(vals[i],min);;
+		ix+=int8compstoragesize(ix);
+	}
+	return (min);
+}
+static inline double max_sdata_values_double(SparseData sdata)
+{
+	char *ix = sdata->index->data;
+	double *vals = (double *)sdata->vals->data;
+	double max = *vals;
+
+	for (int i=0;i<sdata->unique_value_count;i++)
+	{
+		max  = MAX(vals[i],max);;
+		ix+=int8compstoragesize(ix);
+	}
+	return (max);
+}
+static inline int64 nelem_sdata(SparseData sdata)
+{
+	char *ix = sdata->index->data;
+	int64 run_length,run_length_accum=0;
+
+	/*
+	 * Ultimately this function should count only values that are not NVP
+	 * Then - we'll need the values to compute the count
+	 */
+	double *vals = (double *)sdata->vals->data;
+	int64 count=0;
+
+	for (int i=0;i<sdata->unique_value_count;i++)
+	{
+		count += compword_to_int8(ix);
+		ix+=int8compstoragesize(ix);
+	}
+	return (count);
 }
 
 /*------------------------------------------------------------------------------

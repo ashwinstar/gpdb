@@ -509,6 +509,45 @@ svec_log(PG_FUNCTION_ARGS)
 
 }
 
+PG_FUNCTION_INFO_V1( svec_min );
+
+Datum
+svec_min(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	SparseData sdata  = sdata_from_svec(svec);
+	double min;
+	min = min_sdata_values_double(sdata);
+
+	PG_RETURN_FLOAT8(min);
+}
+
+PG_FUNCTION_INFO_V1( svec_max );
+
+Datum
+svec_max(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	SparseData sdata  = sdata_from_svec(svec);
+	double max;
+	max = max_sdata_values_double(sdata);
+
+	PG_RETURN_FLOAT8(max);
+}
+
+PG_FUNCTION_INFO_V1( svec_nelements );
+
+Datum
+svec_nelements(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	SparseData sdata  = sdata_from_svec(svec);
+	int64 nelem;
+	nelem = nelem_sdata(sdata);
+
+	PG_RETURN_INT64(nelem);
+}
+
 /*
  * Cast from int2,int4,int8,float4,float8 scalar to SvecType
  */
