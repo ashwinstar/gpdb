@@ -579,38 +579,6 @@ expression_returns_set_walker(Node *node, void *context)
 		/* else fall through to check args */
 	}
 
-	/* Avoid recursion for some cases that can't return a set */
-	if (IsA(node, Aggref))
-		return false;
-	if (IsA(node, Grouping))
-		return false;
-	if (IsA(node, GroupId))
-		return false;
-	if (IsA(node, WindowRef))
-		return false;
-	if (IsA(node, DistinctExpr))
-		return false;
-	if (IsA(node, ScalarArrayOpExpr))
-		return false;
-	if (IsA(node, BoolExpr))
-		return false;
-	if (IsA(node, SubLink))
-		return false;
-	if (IsA(node, SubPlan))
-		return false;
-	if (IsA(node, ArrayExpr))
-		return false;
-	if (IsA(node, RowExpr))
-		return false;
-	if (IsA(node, RowCompareExpr))
-		return false;
-	if (IsA(node, CoalesceExpr))
-		return false;
-	if (IsA(node, MinMaxExpr))
-		return false;
-	if (IsA(node, NullIfExpr))
-		return false;
-
 	return expression_tree_walker(node, expression_returns_set_walker,
 								  context);
 }
@@ -646,6 +614,8 @@ contain_subplans_walker(Node *node, void *context)
 		return true;			/* abort the tree traversal and return true */
 	return expression_tree_walker(node, contain_subplans_walker, context);
 }
+
+
 
 
 /*****************************************************************************
