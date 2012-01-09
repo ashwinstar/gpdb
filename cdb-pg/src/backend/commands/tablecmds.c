@@ -262,8 +262,9 @@ static void add_column_datatype_dependency(Oid relid, int32 attnum, Oid typid);
 static void ATExecDropNotNull(Relation rel, const char *colName);
 static void ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 				 const char *colName);
+static void ATPrepColumnDefault(Relation rel, bool recurse, AlterTableCmd *cmd);
 static void ATExecColumnDefault(Relation rel, const char *colName,
-					Node *newDefault);
+					ColumnDef *newDefault);
 static void ATPrepSetStatistics(Relation rel, const char *colName,
 					Node *flagValue);
 static void ATExecSetStatistics(Relation rel, const char *colName,
@@ -438,16 +439,13 @@ DefineRelation_int(CreateStmt *stmt,
 {
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
-	List	   *schema = stmt->tableElts;
 	Oid			relationId = InvalidOid;
 	Oid			tablespaceId;
 	Relation	rel;
 	TupleDesc	descriptor;
-	List	   *inheritOids;
 	List	   *old_constraints;
 	bool		localHasOids;
-	int			parentOidCount;
-	List	   *rawDefaults;
+	List	   *colDefaults;
 	Datum		reloptions;
 	ListCell   *listptr;
 	AttrNumber	attnum;
@@ -590,35 +588,35 @@ DefineRelation_int(CreateStmt *stmt,
 	/*
 	 * Look up inheritance ancestors and generate relation schema, including
 	 * inherited attributes. Update the offsets of the distribution attributes
-	 * in GpPolicy if necessary.
+	 * in GpPolicy if necessary. Save result to stmt->tableElts and dispatch to
+	 * QEs.
 	 */
 	isPartitioned = stmt->partitionBy ? true : false;
-	schema = MergeAttributes(schema, stmt->inhRelations,
-							 stmt->relation->istemp, isPartitioned,
-							 &inheritOids, &old_constraints, &parentOidCount, stmt->policy);
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+		stmt->tableElts = MergeAttributes(stmt->tableElts, stmt->inhRelations,
+							 	 	 	  stmt->relation->istemp, isPartitioned,
+							 	 	 	  &stmt->inhOids, &old_constraints,
+							 	 	 	  &stmt->parentOidCount, stmt->policy);
 
 	/*
 	 * Create a relation descriptor from the relation schema and create the
-	 * relation.  Note that in this stage only inherited (pre-cooked) defaults
-	 * and constraints will be included into the new relation.
-	 * (BuildDescForRelation takes care of the inherited defaults, but we have
-	 * to copy inherited constraints here.)
+	 * relation.  Inherited (pre-cooked) defaults and constraints will not be
+	 * included into the new relation in heap_create_with_catalog. Instead, we
+	 * add them along with raw defaults and constraints, so that we can specify
+	 * pg_attrdef and pg_constraint oid to use on segments.
 	 */
-	descriptor = BuildDescForRelation(schema);
+	descriptor = BuildDescForRelation(stmt->tableElts);
 
 	localHasOids = interpretOidsOption(stmt->options);
-	descriptor->tdhasoid = (localHasOids || parentOidCount > 0);
+	descriptor->tdhasoid = (localHasOids || stmt->parentOidCount > 0);
 
 	/*
 	 * old_constraints: pre-cooked constraints from CREATE TABLE ... INHERIT ...
 	 * stmt->constraints: might have some pre-cooked constraints passed by analyze.c,
 	 * 		due to LIKE tab INCLUDING CONSTRAINTS
-	 *
-	 * We no longer add these cooked constraints during heap_create_with_catalog.
-	 * Instead, we add them along with raw constraints so that we can specify
-	 * pg_constraint oid to use on segments.
 	 */
-	if (old_constraints)
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+			&& old_constraints)
 	{
 		/* deal with constraints from MergeAttributes */
 		foreach(listptr, old_constraints)
@@ -779,7 +777,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  tablespaceId==GLOBALTABLESPACE_OID,
 										  localHasOids,
 										  /* bufferPoolBulkLoad */ false,
-										  parentOidCount,
+										  stmt->parentOidCount,
 										  stmt->oncommit,
                                           stmt->policy,  /*CDB*/
                                           reloptions,
@@ -789,7 +787,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  &persistentTid,
 										  &persistentSerialNum);
 
-	StoreCatalogInheritance(relationId, inheritOids);
+	StoreCatalogInheritance(relationId, stmt->inhOids);
 
 	/*
 	 * We must bump the command counter to make the newly-created relation
@@ -821,43 +819,33 @@ DefineRelation_int(CreateStmt *stmt,
 	rel->rd_createDebugPersistentSerialNum = persistentSerialNum;
 
 	/*
-	 * Now add any newly specified column default values and CHECK constraints
-	 * to the new relation.  These are passed to us in the form of raw
-	 * parsetrees; we need to transform them to executable expression trees
-	 * before they can be added. The most convenient way to do that is to
-	 * apply the parser's transformExpr routine, but transformExpr doesn't
-	 * work unless we have a pre-existing relation. So, the transformation has
-	 * to be postponed to this final step of CREATE TABLE.
+	 * Now add any specified column default values and CHECK constraints
+	 * to the new relation.  These are passed to us in the form of raw or cooked
+	 * parsetrees; we need to transform them if they are raw to executable
+	 * expression trees before they can be added. The most convenient way to do
+	 * that is to apply the parser's transformExpr routine, but transformExpr
+	 * doesn't work unless we have a pre-existing relation. So, the
+	 * transformation has to be postponed to this final step of CREATE TABLE.
 	 *
 	 * First, scan schema to find new column defaults.
 	 */
-	rawDefaults = NIL;
+	colDefaults = NIL;
 	attnum = 0;
 
-	foreach(listptr, schema)
+	foreach(listptr, stmt->tableElts)
 	{
 		ColumnDef  *colDef = lfirst(listptr);
 
-		attnum++;
-
-		if (colDef->raw_default != NULL)
-		{
-			RawColumnDefault *rawEnt;
-
-			Assert(colDef->cooked_default == NULL);
-
-			rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
-			rawEnt->attnum = attnum;
-			rawEnt->raw_default = colDef->raw_default;
-			rawDefaults = lappend(rawDefaults, rawEnt);
-		}
+		colDef->attnum = ++attnum;
+		if (colDef->raw_default != NULL || colDef->cooked_default != NULL)
+			colDefaults = lappend(colDefaults, colDef);
 	}
 
 	/*
 	 * Parse and add the defaults/constraints, if any.
 	 */
-	if (rawDefaults || stmt->constraints)
-		AddRelationConstraints(rel, rawDefaults, stmt->constraints);
+	if (colDefaults || stmt->constraints)
+		AddRelationConstraints(rel, colDefaults, stmt->constraints);
 
 	if (stmt->attr_encodings)
 		AddRelationAttributeEncodings(rel, stmt->attr_encodings);
@@ -3835,6 +3823,7 @@ ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 			{
 				/* FOREIGN and EXTERNAL tables doesn't support the following AT */
 				case AT_ColumnDefault:
+				case AT_ColumnDefaultRecurse:
 				case AT_DropNotNull:
 				case AT_SetNotNull:
 				case AT_SetStatistics:
@@ -4236,9 +4225,19 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 */
 			ATSimplePermissions(rel, true);
 			ATPartitionCheck(cmd->subtype, rel, false, recursing);
-			ATSimpleRecursion(wqueue, rel, cmd, recurse);
-			/* No command-specific prep needed */
-			pass = cmd->def ? AT_PASS_ADD_CONSTR : AT_PASS_DROP;
+			ATPrepColumnDefault(rel, recurse, cmd);
+			pass = ((ColumnDef *)(cmd->def))->raw_default ?
+					AT_PASS_ADD_CONSTR : AT_PASS_DROP;
+			break;
+		case AT_ColumnDefaultRecurse:	/* ALTER COLUMN DEFAULT */
+			ATSimplePermissions(rel, true);
+			/*
+			 * This is an internal Alter Table command to add default into child
+			 * tables. Therefore, no need to do ATPartitionCheck.
+			 */
+			ATPrepColumnDefault(rel, recurse, cmd);
+			pass = ((ColumnDef *)(cmd->def))->raw_default ?
+					AT_PASS_ADD_CONSTR : AT_PASS_DROP;
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
 			ATSimplePermissions(rel, false);
@@ -5466,7 +5465,8 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *rel, AlterTableCmd *cm
 			ATExecAddColumn(tab, *rel, (ColumnDef *) cmd->def);
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
-			ATExecColumnDefault(*rel, cmd->name, cmd->def);
+		case AT_ColumnDefaultRecurse:
+			ATExecColumnDefault(rel, cmd->name, (ColumnDef *) cmd->def);
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
 			ATExecDropNotNull(*rel, cmd->name);
@@ -7131,7 +7131,7 @@ ATPrepAddColumn(Relation rel, bool recurse, AlterTableCmd *cmd)
 			ats->cmds = list_make1(atc);
 			ats->relkind = OBJECT_TABLE;
 
-			heap_close(childrel, AccessShareLock);
+			heap_close(childrel, NoLock);
 
 			ProcessUtility((Node *)ats,
 							synthetic_sql,
@@ -7368,17 +7368,12 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 */
 	if (colDef->raw_default)
 	{
-		RawColumnDefault *rawEnt;
-
-		rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
-		rawEnt->attnum = attribute->attnum;
-		rawEnt->raw_default = copyObject(colDef->raw_default);
-
+		colDef->attnum = attribute->attnum;
 		/*
 		 * This function is intended for CREATE TABLE, so it processes a
 		 * _list_ of defaults, but we just do one.
 		 */
-		AddRelationConstraints(rel, list_make1(rawEnt), NIL);
+		AddRelationConstraints(rel, list_make1(colDef), NIL);
 
 		/* Make the additional catalog changes visible */
 		CommandCounterIncrement();
@@ -7709,10 +7704,85 @@ ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 
 /*
  * ALTER TABLE ALTER COLUMN SET/DROP DEFAULT
+ *
+ * ATPrepColumnDefault: Find child relations
+ * 	and create synthetic Alter Table Alter Column Set Default query
+ * 	to add default to them.
  */
 static void
+ATPrepColumnDefault(Relation rel, bool recurse, AlterTableCmd *cmd)
+{
+	/*
+	 * If we are told not to recurse, there had better not be any child
+	 * tables; else the addition would put them out of step.
+	 */
+	if (!recurse && find_inheritance_children(RelationGetRelid(rel)) != NIL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Column default of relation \"%s\" must be added to its child relation(s)",
+						 RelationGetRelationName(rel))));
+	}
+	/*
+	 * We are the master and the table has child(ren):
+	 * 		internally create and execute new AlterTableStmt(s) on child(ren)
+	 * 		before dispatching the original AlterTableStmt
+	 * This is to ensure that pg_attrdef oid is consistent across segments for
+	 * 		ALTER TABLE ... ALTER COLUMN ... SET DEFAULT ...
+	 * If we are in utility mode, we also need add column default to child(ren).
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+	{
+		/*
+		 * Recurse to add column default to child classes.
+		 */
+		List		*children;
+		ListCell	*lchild;
+
+		children = find_inheritance_children(RelationGetRelid(rel));
+		DestReceiver *dest = None_Receiver;
+		foreach(lchild, children)
+		{
+			Oid 			childrelid = lfirst_oid(lchild);
+			Relation 		childrel;
+
+			RangeVar 		*rv;
+			AlterTableCmd 	*atc;
+			AlterTableStmt 	*ats;
+
+			if (childrelid == RelationGetRelid(rel))
+				continue;
+
+			childrel = heap_open(childrelid, AccessShareLock);
+			CheckTableNotInUse(childrel, "ALTER TABLE");
+
+			/* Recurse to child */
+			atc = copyObject(cmd);
+			atc->subtype = AT_ColumnDefaultRecurse;
+
+			rv = makeRangeVar(get_namespace_name(RelationGetNamespace(childrel)),
+							  get_rel_name(childrelid), -1);
+
+			ats = makeNode(AlterTableStmt);
+			ats->relation = rv;
+			ats->cmds = list_make1(atc);
+			ats->relkind = OBJECT_TABLE;
+
+			heap_close(childrel, NoLock);
+
+			ProcessUtility((Node *)ats,
+							synthetic_sql,
+							NULL,
+							false, /* not top level */
+							dest,
+							NULL);
+		}
+	}
+}
+
+static void
 ATExecColumnDefault(Relation rel, const char *colName,
-					Node *newDefault)
+					ColumnDef *colDef)
 {
 	AttrNumber	attnum;
 
@@ -7741,20 +7811,16 @@ ATExecColumnDefault(Relation rel, const char *colName,
 	 */
 	RemoveAttrDefault(RelationGetRelid(rel), attnum, DROP_RESTRICT, false);
 
-	if (newDefault)
+	if (colDef->raw_default)
 	{
 		/* SET DEFAULT */
-		RawColumnDefault *rawEnt;
-
-		rawEnt = (RawColumnDefault *) palloc(sizeof(RawColumnDefault));
-		rawEnt->attnum = attnum;
-		rawEnt->raw_default = newDefault;
+		colDef->attnum = attnum;
 
 		/*
 		 * This function is intended for CREATE TABLE, so it processes a
 		 * _list_ of defaults, but we just do one.
 		 */
-		AddRelationConstraints(rel, list_make1(rawEnt), NIL);
+		AddRelationConstraints(rel, list_make1(colDef), NIL);
 	}
 
 	/* MPP-6929: metadata tracking */
@@ -10058,6 +10124,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	 */
 	if (defaultexpr)
 	{
+		Oid adoid;
+
 		/* Must make new row visible since it will be updated again */
 		CommandCounterIncrement();
 
@@ -10065,9 +10133,10 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 		 * We use RESTRICT here for safety, but at present we do not expect
 		 * anything to depend on the default.
 		 */
-		RemoveAttrDefault(RelationGetRelid(rel), attnum, DROP_RESTRICT, true);
+		adoid = RemoveAttrDefault(RelationGetRelid(rel), attnum,
+								  DROP_RESTRICT, true);
 
-		StoreAttrDefault(rel, attnum, nodeToString(defaultexpr));
+		StoreAttrDefault(rel, attnum, defaultexpr, adoid);
 	}
 
 	/* Cleanup */
@@ -18489,6 +18558,7 @@ char *alterTableCmdString(AlterTableType subtype)
 			break;
 			
 		case AT_ColumnDefault: /* alter column default */
+		case AT_ColumnDefaultRecurse:
 			cmdstring = pstrdup("alter a column default of");
 			break;
 			

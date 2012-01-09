@@ -2025,6 +2025,8 @@ _readColumnDef(void)
 	READ_INT_FIELD(inhcount);
 	READ_BOOL_FIELD(is_local);
 	READ_BOOL_FIELD(is_not_null);
+	READ_INT_FIELD(attnum);
+	READ_OID_FIELD(default_oid);
 	READ_NODE_FIELD(raw_default);
 	READ_BOOL_FIELD(default_is_null);
 	READ_STRING_FIELD(cooked_default);
@@ -2157,6 +2159,8 @@ _readCreateStmt(void)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(tableElts);
 	READ_NODE_FIELD(inhRelations);
+	READ_NODE_FIELD(inhOids);
+	READ_INT_FIELD(parentOidCount);
 	READ_NODE_FIELD(constraints);
 
 	READ_NODE_FIELD(options);

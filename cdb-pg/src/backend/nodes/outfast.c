@@ -1946,6 +1946,8 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(tableElts);
 	WRITE_NODE_FIELD(inhRelations);
+	WRITE_NODE_FIELD(inhOids);
+	WRITE_INT_FIELD(parentOidCount);
 	WRITE_NODE_FIELD(constraints);
 	WRITE_NODE_FIELD(options);
 	WRITE_ENUM_FIELD(oncommit, OnCommitAction);
@@ -2986,6 +2988,8 @@ _outColumnDef(StringInfo str, ColumnDef *node)
 	WRITE_INT_FIELD(inhcount);
 	WRITE_BOOL_FIELD(is_local);
 	WRITE_BOOL_FIELD(is_not_null);
+	WRITE_INT_FIELD(attnum);
+	WRITE_OID_FIELD(default_oid);
 	WRITE_NODE_FIELD(raw_default);
 	WRITE_BOOL_FIELD(default_is_null);
 	WRITE_STRING_FIELD(cooked_default);
