@@ -2423,111 +2423,123 @@ haae: heap:00000556:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 haae: heap:00000557:  errmsg("column \"%s\" has pseudo-type %s", 
 haae: heap:00000558:  attname, format_type_be(atttypid)), 
 haae: heap:00000559:  errOmitLocation(true))); 
-haae: heap:00001348:  ereport(ERROR, 
-haae: heap:00001349:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haae: heap:00001350:  errmsg( 
-haae: heap:00001351:  "OIDS=TRUE is not allowed on tables that " 
-haae: heap:00001352:  "use column-oriented storage. Use OIDS=FALSE" 
-haae: heap:00001353:  ), 
-haae: heap:00001354:  errOmitLocation(true))); 
-haae: heap:00001356:  ereport(NOTICE, 
-haae: heap:00001357:  (errmsg( 
-haae: heap:00001358:  "OIDS=TRUE is not recommended for user-created " 
-haae: heap:00001359:  "tables. Use OIDS=FALSE to prevent wrap-around " 
-haae: heap:00001360:  "of the OID counter" 
-haae: heap:00001361:  ), 
-haae: heap:00001362:  errOmitLocation(true))); 
-haae: heap:00001368:  ereport(ERROR, 
-haae: heap:00001369:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-haae: heap:00001370:  errmsg("relation \"%s\" already exists", relname), 
-haae: heap:00001371:  errOmitLocation(true))); 
-haae: heap:00001771:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-haae: heap:00001836:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
-haae: heap:00001837:  RelationGetRelid(relation), 
-haae: heap:00001838:  relation->rd_rel->relfilenode, 
-haae: heap:00001839:  segmentFileNum); 
-haae: heap:00001881:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00001882:  attnum, relid); 
-haae: heap:00001990:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
-haae: heap:00001991:  relid, attnum); 
-haae: heap:00002027:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
-haae: heap:00002049:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002050:  myattnum, myrelid); 
-haae: heap:00002360:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002361:  attnum, RelationGetRelid(rel)); 
-haae: heap:00002641:  ereport(ERROR, 
-haae: heap:00002642:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002643:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
-haae: heap:00002644:  ccname, RelationGetRelationName(rel)), 
-haae: heap:00002645:  errOmitLocation(true))); 
-haae: heap:00002652:  ereport(ERROR, 
-haae: heap:00002653:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002654:  errmsg("check constraint \"%s\" already exists", 
-haae: heap:00002655:  ccname), 
-haae: heap:00002656:  errOmitLocation(true))); 
-haae: heap:00002745:  ereport(ERROR, 
-haae: heap:00002746:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002747:  errmsg("only table \"%s\" can be referenced in check constraint", 
-haae: heap:00002748:  relname), errOmitLocation(true))); 
-haae: heap:00002753:  ereport(ERROR, 
-haae: heap:00002754:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002755:  errmsg("cannot use subquery in check constraint"), 
-haae: heap:00002756:  errOmitLocation(true))); 
-haae: heap:00002758:  ereport(ERROR, 
-haae: heap:00002759:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002760:  errmsg("cannot use aggregate function in check constraint"), 
-haae: heap:00002761:  errOmitLocation(true))); 
-haae: heap:00002763:  ereport(ERROR, 
-haae: heap:00002764:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002765:  errmsg("cannot use window function in check constraint"), 
-haae: heap:00002766:  errOmitLocation(true))); 
-haae: heap:00002794:  elog(ERROR, "cache lookup failed for relation %u", 
-haae: heap:00002795:  RelationGetRelid(rel)); 
-haae: heap:00002849:  ereport(ERROR, 
-haae: heap:00002850:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002851:  errmsg("cannot use column references in default expression"))); 
-haae: heap:00002857:  ereport(ERROR, 
-haae: heap:00002858:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002859:  errmsg("default expression must not return a set"), 
-haae: heap:00002860:  errOmitLocation(true))); 
-haae: heap:00002866:  ereport(ERROR, 
-haae: heap:00002867:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002868:  errmsg("cannot use subquery in default expression"), 
-haae: heap:00002869:  errOmitLocation(true))); 
-haae: heap:00002871:  ereport(ERROR, 
-haae: heap:00002872:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002873:  errmsg("cannot use aggregate function in default expression"), 
-haae: heap:00002874:  errOmitLocation(true))); 
-haae: heap:00002876:  ereport(ERROR, 
-haae: heap:00002877:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002878:  errmsg("cannot use window function in default expression"), 
-haae: heap:00002879:  errOmitLocation(true))); 
-haae: heap:00002895:  ereport(ERROR, 
-haae: heap:00002896:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002897:  errmsg("column \"%s\" is of type %s" 
-haae: heap:00002898:  " but default expression is of type %s", 
-haae: heap:00002899:  attname, 
-haae: heap:00002900:  format_type_be(atttypid), 
-haae: heap:00002901:  format_type_be(type_id)), 
-haae: heap:00002902:  errhint("You will need to rewrite or cast the expression."), 
-haae: heap:00002903:  errOmitLocation(true))); 
-haae: heap:00003213:  ereport(ERROR, 
-haae: heap:00003214:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003215:  errmsg("unsupported ON COMMIT and foreign key combination"), 
-haae: heap:00003216:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
-haae: heap:00003217:  relname2, relname), 
-haae: heap:00003218:  errOmitLocation(true))); 
-haae: heap:00003220:  ereport(ERROR, 
-haae: heap:00003221:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003222:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
-haae: heap:00003223:  errdetail("Table \"%s\" references \"%s\".", 
-haae: heap:00003224:  relname2, relname), 
-haae: heap:00003225:  errhint("Truncate table \"%s\" at the same time, " 
-haae: heap:00003226:  "or use TRUNCATE ... CASCADE.", 
-haae: heap:00003227:  relname2), 
-haae: heap:00003228:  errOmitLocation(true))); 
-haae: heap:00003356:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003357:  RelationGetRelid(relation)); 
+haae: heap:00001168:  elog(ERROR, 
+haae: heap:00001169:  "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
+haae: heap:00001170:  relationId, 
+haae: heap:00001171:  relname, 
+haae: heap:00001172:  relfilenode, 
+haae: heap:00001173:  segmentFileNum, 
+haae: heap:00001174:  persistentSerialNum); 
+haae: heap:00001230:  elog(ERROR, 
+haae: heap:00001231:  "Updating with invalid TID (0,0), relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
+haae: heap:00001232:  relfilenode, 
+haae: heap:00001233:  segmentFileNum, 
+haae: heap:00001234:  persistentSerialNum); 
+haae: heap:00001371:  ereport(ERROR, 
+haae: heap:00001372:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haae: heap:00001373:  errmsg( 
+haae: heap:00001374:  "OIDS=TRUE is not allowed on tables that " 
+haae: heap:00001375:  "use column-oriented storage. Use OIDS=FALSE" 
+haae: heap:00001376:  ), 
+haae: heap:00001377:  errOmitLocation(true))); 
+haae: heap:00001379:  ereport(NOTICE, 
+haae: heap:00001380:  (errmsg( 
+haae: heap:00001381:  "OIDS=TRUE is not recommended for user-created " 
+haae: heap:00001382:  "tables. Use OIDS=FALSE to prevent wrap-around " 
+haae: heap:00001383:  "of the OID counter" 
+haae: heap:00001384:  ), 
+haae: heap:00001385:  errOmitLocation(true))); 
+haae: heap:00001391:  ereport(ERROR, 
+haae: heap:00001392:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+haae: heap:00001393:  errmsg("relation \"%s\" already exists", relname), 
+haae: heap:00001394:  errOmitLocation(true))); 
+haae: heap:00001794:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+haae: heap:00001859:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
+haae: heap:00001860:  RelationGetRelid(relation), 
+haae: heap:00001861:  relation->rd_rel->relfilenode, 
+haae: heap:00001862:  segmentFileNum); 
+haae: heap:00001904:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00001905:  attnum, relid); 
+haae: heap:00002013:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
+haae: heap:00002014:  relid, attnum); 
+haae: heap:00002050:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
+haae: heap:00002072:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002073:  myattnum, myrelid); 
+haae: heap:00002383:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002384:  attnum, RelationGetRelid(rel)); 
+haae: heap:00002664:  ereport(ERROR, 
+haae: heap:00002665:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002666:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
+haae: heap:00002667:  ccname, RelationGetRelationName(rel)), 
+haae: heap:00002668:  errOmitLocation(true))); 
+haae: heap:00002675:  ereport(ERROR, 
+haae: heap:00002676:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002677:  errmsg("check constraint \"%s\" already exists", 
+haae: heap:00002678:  ccname), 
+haae: heap:00002679:  errOmitLocation(true))); 
+haae: heap:00002768:  ereport(ERROR, 
+haae: heap:00002769:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002770:  errmsg("only table \"%s\" can be referenced in check constraint", 
+haae: heap:00002771:  relname), errOmitLocation(true))); 
+haae: heap:00002776:  ereport(ERROR, 
+haae: heap:00002777:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002778:  errmsg("cannot use subquery in check constraint"), 
+haae: heap:00002779:  errOmitLocation(true))); 
+haae: heap:00002781:  ereport(ERROR, 
+haae: heap:00002782:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002783:  errmsg("cannot use aggregate function in check constraint"), 
+haae: heap:00002784:  errOmitLocation(true))); 
+haae: heap:00002786:  ereport(ERROR, 
+haae: heap:00002787:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002788:  errmsg("cannot use window function in check constraint"), 
+haae: heap:00002789:  errOmitLocation(true))); 
+haae: heap:00002817:  elog(ERROR, "cache lookup failed for relation %u", 
+haae: heap:00002818:  RelationGetRelid(rel)); 
+haae: heap:00002872:  ereport(ERROR, 
+haae: heap:00002873:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002874:  errmsg("cannot use column references in default expression"))); 
+haae: heap:00002880:  ereport(ERROR, 
+haae: heap:00002881:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002882:  errmsg("default expression must not return a set"), 
+haae: heap:00002883:  errOmitLocation(true))); 
+haae: heap:00002889:  ereport(ERROR, 
+haae: heap:00002890:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002891:  errmsg("cannot use subquery in default expression"), 
+haae: heap:00002892:  errOmitLocation(true))); 
+haae: heap:00002894:  ereport(ERROR, 
+haae: heap:00002895:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002896:  errmsg("cannot use aggregate function in default expression"), 
+haae: heap:00002897:  errOmitLocation(true))); 
+haae: heap:00002899:  ereport(ERROR, 
+haae: heap:00002900:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002901:  errmsg("cannot use window function in default expression"), 
+haae: heap:00002902:  errOmitLocation(true))); 
+haae: heap:00002918:  ereport(ERROR, 
+haae: heap:00002919:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002920:  errmsg("column \"%s\" is of type %s" 
+haae: heap:00002921:  " but default expression is of type %s", 
+haae: heap:00002922:  attname, 
+haae: heap:00002923:  format_type_be(atttypid), 
+haae: heap:00002924:  format_type_be(type_id)), 
+haae: heap:00002925:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002926:  errOmitLocation(true))); 
+haae: heap:00003236:  ereport(ERROR, 
+haae: heap:00003237:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003238:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+haae: heap:00003239:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
+haae: heap:00003240:  relname2, relname), 
+haae: heap:00003241:  errOmitLocation(true))); 
+haae: heap:00003243:  ereport(ERROR, 
+haae: heap:00003244:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003245:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+haae: heap:00003246:  errdetail("Table \"%s\" references \"%s\".", 
+haae: heap:00003247:  relname2, relname), 
+haae: heap:00003248:  errhint("Truncate table \"%s\" at the same time, " 
+haae: heap:00003249:  "or use TRUNCATE ... CASCADE.", 
+haae: heap:00003250:  relname2), 
+haae: heap:00003251:  errOmitLocation(true))); 
+haae: heap:00003379:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003380:  RelationGetRelid(relation)); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000185:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000216:  elog(ERROR, "too few entries in indexprs list"); 
@@ -13997,19 +14009,19 @@ aaai: allpaths:00000440:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 aaai: allpaths:00000441:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
 aaai: allpaths:00001042:  elog(ERROR, "unrecognized joinlist node type: %d", 
 aaai: allpaths:00001043:  (int) nodeTag(jlnode)); 
-aaai: allpaths:00001362:  elog(ERROR, "unrecognized node type: %d", 
-aaai: allpaths:00001363:  (int) nodeTag(setOp)); 
-aaai: allpaths:00001391:  elog(ERROR, "wrong number of tlist entries"); 
-aaai: allpaths:00001397:  elog(ERROR, "wrong number of tlist entries"); 
-aaai: allpaths:00001597:  elog(ERROR, "unrecognized node type: %d", 
-aaai: allpaths:00001598:  (int) nodeTag(setOp)); 
-aaai: allpaths:00001615:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
-aaai: allpaths:00001616:  errmsg("Query requires a feature that has been disabled " 
-aaai: allpaths:00001617:  "by a configuration setting."), 
-aaai: allpaths:00001618:  errdetail("Could not devise a query plan for the given query."), 
-aaai: allpaths:00001619:  errhint("Current settings: %s", buf.data) 
-aaai: allpaths:00001620:  )); 
-aaai: allpaths:00001622:  elog(ERROR, "Could not devise a query plan for the given query."); 
+aaai: allpaths:00001366:  elog(ERROR, "unrecognized node type: %d", 
+aaai: allpaths:00001367:  (int) nodeTag(setOp)); 
+aaai: allpaths:00001395:  elog(ERROR, "wrong number of tlist entries"); 
+aaai: allpaths:00001401:  elog(ERROR, "wrong number of tlist entries"); 
+aaai: allpaths:00001601:  elog(ERROR, "unrecognized node type: %d", 
+aaai: allpaths:00001602:  (int) nodeTag(setOp)); 
+aaai: allpaths:00001619:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
+aaai: allpaths:00001620:  errmsg("Query requires a feature that has been disabled " 
+aaai: allpaths:00001621:  "by a configuration setting."), 
+aaai: allpaths:00001622:  errdetail("Could not devise a query plan for the given query."), 
+aaai: allpaths:00001623:  errhint("Current settings: %s", buf.data) 
+aaai: allpaths:00001624:  )); 
+aaai: allpaths:00001626:  elog(ERROR, "Could not devise a query plan for the given query."); 
 aaaaa GP_IGNORE: caai: costsize - ./backend/optimizer/path/costsize.c
 caai: costsize:00000600:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
 caai: costsize:00000949:  elog(ERROR, "unrecognized node type: %d", nodeTag(path)); 
@@ -14335,28 +14347,28 @@ caah: clauses:00000460:  aggref->aggfnoid);
 caah: clauses:00000527:  ereport(ERROR, 
 caah: clauses:00000528:  (errcode(ERRCODE_GROUPING_ERROR), 
 caah: clauses:00000529:  errmsg("aggregate function calls may not be nested"))); 
-caah: clauses:00001321:  elog(ERROR, "cannot commute non-binary-operator clause"); 
-caah: clauses:00001326:  elog(ERROR, "could not find commutator for operator %u", 
-caah: clauses:00001327:  clause->opno); 
-caah: clauses:00001355:  elog(ERROR, "expected a RowCompareExpr"); 
-caah: clauses:00001365:  elog(ERROR, "could not find commutator for operator %u", 
-caah: clauses:00001366:  lfirst_oid(l)); 
-caah: clauses:00001388:  elog(ERROR, "unexpected RowCompare type: %d", 
-caah: clauses:00001389:  (int) clause->rctype); 
-caah: clauses:00001922:  elog(ERROR, "unrecognized boolop: %d", 
-caah: clauses:00001923:  (int) expr->boolop); 
-caah: clauses:00002336:  elog(ERROR, "unrecognized nulltesttype: %d", 
-caah: clauses:00002337:  (int) ntest->nulltesttype); 
-caah: clauses:00002388:  elog(ERROR, "unrecognized booltesttype: %d", 
-caah: clauses:00002389:  (int) btest->booltesttype); 
-caah: clauses:00002699:  elog(ERROR, "cache lookup failed for function %u", funcid); 
-caah: clauses:00002915:  elog(ERROR, "null prosrc for function %u", funcid); 
-caah: clauses:00003115:  elog(ERROR, "unexpected paramkind: %d", (int) param->paramkind); 
-caah: clauses:00003117:  elog(ERROR, "invalid paramid: %d", param->paramid); 
-caah: clauses:00003151:  elog(ERROR, "null prosrc"); 
-caah: clauses:00003843:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: clauses:00003844:  errmsg_internal("unrecognized node type: %d", 
-caah: clauses:00003845:  nodeTag(node)) )); 
+caah: clauses:00001291:  elog(ERROR, "cannot commute non-binary-operator clause"); 
+caah: clauses:00001296:  elog(ERROR, "could not find commutator for operator %u", 
+caah: clauses:00001297:  clause->opno); 
+caah: clauses:00001325:  elog(ERROR, "expected a RowCompareExpr"); 
+caah: clauses:00001335:  elog(ERROR, "could not find commutator for operator %u", 
+caah: clauses:00001336:  lfirst_oid(l)); 
+caah: clauses:00001358:  elog(ERROR, "unexpected RowCompare type: %d", 
+caah: clauses:00001359:  (int) clause->rctype); 
+caah: clauses:00001892:  elog(ERROR, "unrecognized boolop: %d", 
+caah: clauses:00001893:  (int) expr->boolop); 
+caah: clauses:00002306:  elog(ERROR, "unrecognized nulltesttype: %d", 
+caah: clauses:00002307:  (int) ntest->nulltesttype); 
+caah: clauses:00002358:  elog(ERROR, "unrecognized booltesttype: %d", 
+caah: clauses:00002359:  (int) btest->booltesttype); 
+caah: clauses:00002669:  elog(ERROR, "cache lookup failed for function %u", funcid); 
+caah: clauses:00002885:  elog(ERROR, "null prosrc for function %u", funcid); 
+caah: clauses:00003085:  elog(ERROR, "unexpected paramkind: %d", (int) param->paramkind); 
+caah: clauses:00003087:  elog(ERROR, "invalid paramid: %d", param->paramid); 
+caah: clauses:00003121:  elog(ERROR, "null prosrc"); 
+caah: clauses:00003813:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: clauses:00003814:  errmsg_internal("unrecognized node type: %d", 
+caah: clauses:00003815:  nodeTag(node)) )); 
 aaaaa GP_IGNORE: paai: pathnode - ./backend/optimizer/util/pathnode.c
 paai: pathnode:00000117:  elog(ERROR, "unrecognized pathnode: %d", (int)s->type); 
 paai: pathnode:00000284:  elog(ERROR, "unrecognized path type: %d", (int)path->pathtype); 
@@ -23975,112 +23987,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006604:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006605:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006618:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006619:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006632:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006633:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006663:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006664:  conf->gen.name, str); 
-gaad: guc:00006921:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006938:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006955:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006986:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007842:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007952:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007953:  " in a future release.", name); 
-gaad: guc:00007961:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007962:  name); 
-gaad: guc:00008436:  ereport(ERROR, 
-gaad: guc:00008437:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008438:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008440:  ereport(ERROR, 
-gaad: guc:00008441:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008442:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008476:  ereport(ERROR, 
-gaad: guc:00008477:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008478:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008480:  ereport(ERROR, 
-gaad: guc:00008481:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008482:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008551:  ereport(ERROR, 
-gaad: guc:00008552:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008553:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008560:  ereport(ERROR, 
-gaad: guc:00008561:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008562:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008575:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008622:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008623:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008680:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008706:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008707:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008733:  ereport(ERROR, 
-gaad: guc:00008734:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008735:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008797:  ereport(ERROR, 
-gaad: guc:00008798:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008799:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009118:  ereport(ERROR, 
-gaad: guc:00009119:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009120:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009122:  ereport(ERROR, 
-gaad: guc:00009123:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009124:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009893:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009926:  ereport(FATAL, 
-gaad: guc:00009927:  (errcode_for_file_access(), 
-gaad: guc:00009928:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009929:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009941:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009943:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009945:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010036:  ereport(WARNING, 
-gaad: guc:00010037:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010038:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010232:  ereport(ERROR, 
-gaad: guc:00010233:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010234:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010255:  ereport(ERROR, 
-gaad: guc:00010256:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010257:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010258:  tok))); 
-gaad: guc:00010284:  ereport(ERROR, 
-gaad: guc:00010285:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010286:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010287:  value))); 
-gaad: guc:00010719:  ereport(ERROR, 
-gaad: guc:00010720:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010721:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010795:  ereport(ERROR, 
-gaad: guc:00010796:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010797:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010806:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010816:  ereport(ERROR, 
-gaad: guc:00010817:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010818:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010829:  ereport(ERROR, 
-gaad: guc:00010830:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010831:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010846:  ereport(ERROR, 
-gaad: guc:00010847:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010848:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010849:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010850:  "\"log_dispatch_stats\", " 
-gaad: guc:00010851:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010866:  ereport(ERROR, 
-gaad: guc:00010867:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010868:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010869:  "\"log_statement_stats\", " 
-gaad: guc:00010870:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010871:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010886:  ereport(ERROR, 
-gaad: guc:00010887:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010888:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011285:  elog(ERROR, 
-gaad: guc:00011286:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011287:  show_allow_system_table_mods()); 
+gaad: guc:00006615:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006616:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006629:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006630:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006643:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006644:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006674:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006675:  conf->gen.name, str); 
+gaad: guc:00006932:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006949:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006966:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006997:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007853:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007963:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007964:  " in a future release.", name); 
+gaad: guc:00007972:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007973:  name); 
+gaad: guc:00008447:  ereport(ERROR, 
+gaad: guc:00008448:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008449:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008451:  ereport(ERROR, 
+gaad: guc:00008452:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008453:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008487:  ereport(ERROR, 
+gaad: guc:00008488:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008489:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008491:  ereport(ERROR, 
+gaad: guc:00008492:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008493:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008562:  ereport(ERROR, 
+gaad: guc:00008563:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008564:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008571:  ereport(ERROR, 
+gaad: guc:00008572:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008573:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008586:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008633:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008634:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008691:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008717:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008718:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008744:  ereport(ERROR, 
+gaad: guc:00008745:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008746:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008808:  ereport(ERROR, 
+gaad: guc:00008809:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008810:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009129:  ereport(ERROR, 
+gaad: guc:00009130:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009131:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009133:  ereport(ERROR, 
+gaad: guc:00009134:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009135:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009904:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009937:  ereport(FATAL, 
+gaad: guc:00009938:  (errcode_for_file_access(), 
+gaad: guc:00009939:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009940:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009952:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009954:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009956:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010047:  ereport(WARNING, 
+gaad: guc:00010048:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010049:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010243:  ereport(ERROR, 
+gaad: guc:00010244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010245:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010266:  ereport(ERROR, 
+gaad: guc:00010267:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010268:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010269:  tok))); 
+gaad: guc:00010295:  ereport(ERROR, 
+gaad: guc:00010296:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010297:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010298:  value))); 
+gaad: guc:00010730:  ereport(ERROR, 
+gaad: guc:00010731:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010732:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010806:  ereport(ERROR, 
+gaad: guc:00010807:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010808:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010817:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010827:  ereport(ERROR, 
+gaad: guc:00010828:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010829:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010840:  ereport(ERROR, 
+gaad: guc:00010841:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010842:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010857:  ereport(ERROR, 
+gaad: guc:00010858:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010859:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010860:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010861:  "\"log_dispatch_stats\", " 
+gaad: guc:00010862:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010877:  ereport(ERROR, 
+gaad: guc:00010878:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010879:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010880:  "\"log_statement_stats\", " 
+gaad: guc:00010881:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010882:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010897:  ereport(ERROR, 
+gaad: guc:00010898:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010899:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011296:  elog(ERROR, 
+gaad: guc:00011297:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011298:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
