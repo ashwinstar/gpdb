@@ -109,7 +109,7 @@ class GpVerifyProgram(Operation):
             logger.info('---------------------------')
             logger.info('Token:    %s' % entry['vertoken'])
             logger.info('Type:     %s' % VerificationType.lookup[entry['vertype']])
-            logger.info('Content:  %s' % (entry['vercontent'] if entry['vercontent'] > 0 else "ALL"))
+            logger.info('Content:  %s' % (entry['vercontent'] if entry['vercontent'] >= 0 else "ALL"))
             logger.info('Started:  %s' % entry['verstarttime'])
             logger.info('State:    %s' % VerificationState.lookup[entry['verstate']])
             if entry['verdone']:
