@@ -9605,8 +9605,8 @@ iaaj: indexcmds:00001440:  (errcode(ERRCODE_WRONG_OBJECT_TYPE),
 iaaj: indexcmds:00001441:  errmsg("\"%s\" is not an index", 
 iaaj: indexcmds:00001442:  relation->relname))); 
 iaaj: indexcmds:00001456:  ereport(WARNING, 
-iaaj: indexcmds:00001457:  (errmsg("only dropped the specified index"), 
-iaaj: indexcmds:00001458:  errhint("If desired, explicitly drop indexes on child parts."))); 
+iaaj: indexcmds:00001457:  (errmsg("Only dropped the index \"%s\"", relation->relname), 
+iaaj: indexcmds:00001458:  errhint("To drop other indexes on child parts, drop each one explicitly."))); 
 iaaj: indexcmds:00001480:  elog(ERROR, "cache lookup failed for relation %u", indOid); 
 iaaj: indexcmds:00001483:  ereport(ERROR, 
 iaaj: indexcmds:00001484:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
