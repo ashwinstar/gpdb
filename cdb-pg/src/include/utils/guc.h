@@ -199,6 +199,7 @@ extern bool filerep_inject_listener_fault;
 extern bool filerep_inject_db_startup_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
 extern bool gp_crash_recovery_suppress_ao_eof;
+extern bool Debug_check_for_invalid_persistent_tid;
 extern bool gp_watch_visibility_in_action;
 
 extern bool gp_upgrade_mode;

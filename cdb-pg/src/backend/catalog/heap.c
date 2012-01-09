@@ -1161,6 +1161,18 @@ InsertGpRelationNodeTuple(
 	bool		nulls[Natts_gp_relation_node];
 	HeapTuple	tuple;
 
+	if (Debug_check_for_invalid_persistent_tid &&
+		!Persistent_BeforePersistenceWork() &&
+		PersistentStore_IsZeroTid(persistentTid))
+	{	
+		elog(ERROR, 
+			 "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
+			 relationId,
+			 relname,
+			 relfilenode,
+			 segmentFileNum,
+			 persistentSerialNum);
+	}
 
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
@@ -1210,6 +1222,17 @@ UpdateGpRelationNodeTuple(
 	bool		repl_null[Natts_gp_relation_node];
 	bool		repl_repl[Natts_gp_relation_node];
 	HeapTuple	newtuple;
+
+	if (Debug_check_for_invalid_persistent_tid &&
+		!Persistent_BeforePersistenceWork() &&
+		PersistentStore_IsZeroTid(persistentTid))
+	{	
+		elog(ERROR, 
+			 "Updating with invalid TID (0,0), relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
+			 relfilenode,
+			 segmentFileNum,
+			 persistentSerialNum);
+	}
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
