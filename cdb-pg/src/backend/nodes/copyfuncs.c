@@ -2196,6 +2196,8 @@ _copyColumnDef(ColumnDef *from)
 	COPY_SCALAR_FIELD(inhcount);
 	COPY_SCALAR_FIELD(is_local);
 	COPY_SCALAR_FIELD(is_not_null);
+	COPY_SCALAR_FIELD(attnum);
+	COPY_SCALAR_FIELD(default_oid);
 	COPY_NODE_FIELD(raw_default);
 	COPY_STRING_FIELD(cooked_default);
 	COPY_NODE_FIELD(constraints);
@@ -2595,6 +2597,8 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_NODE_FIELD(relation);
 	COPY_NODE_FIELD(tableElts);
 	COPY_NODE_FIELD(inhRelations);
+	COPY_NODE_FIELD(inhOids);
+	COPY_SCALAR_FIELD(parentOidCount);
 	COPY_NODE_FIELD(constraints);
 	COPY_NODE_FIELD(options);
 	COPY_SCALAR_FIELD(oncommit);

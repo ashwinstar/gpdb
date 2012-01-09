@@ -1032,6 +1032,8 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(tableElts);
 	COMPARE_NODE_FIELD(inhRelations);
+	COMPARE_NODE_FIELD(inhOids);
+	COMPARE_SCALAR_FIELD(parentOidCount);
 	COMPARE_NODE_FIELD(constraints);
 	COMPARE_NODE_FIELD(options);
 	COMPARE_SCALAR_FIELD(oncommit);
@@ -2075,6 +2077,8 @@ _equalColumnDef(ColumnDef *a, ColumnDef *b)
 	COMPARE_SCALAR_FIELD(inhcount);
 	COMPARE_SCALAR_FIELD(is_local);
 	COMPARE_SCALAR_FIELD(is_not_null);
+	COMPARE_SCALAR_FIELD(attnum);
+	COMPARE_SCALAR_FIELD(default_oid);
 	COMPARE_NODE_FIELD(raw_default);
 	COMPARE_STRING_FIELD(cooked_default);
 	COMPARE_NODE_FIELD(constraints);

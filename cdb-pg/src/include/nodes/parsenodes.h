@@ -460,6 +460,8 @@ typedef struct ColumnDef
 	int			inhcount;		/* number of times column is inherited */
 	bool		is_local;		/* column has local (non-inherited) def'n */
 	bool		is_not_null;	/* NOT NULL constraint specified? */
+	AttrNumber	attnum;			/* attribute number */
+	Oid			default_oid;	/* attrdef oid */
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
 	char	   *cooked_default; /* nodeToString representation */
 	List	   *constraints;	/* other constraints on column */
@@ -1124,6 +1126,7 @@ typedef enum AlterTableType
 	AT_AddColumn,				/* add column */
 	AT_AddColumnRecurse,		/* internal to commands/tablecmds.c */
 	AT_ColumnDefault,			/* alter column default */
+	AT_ColumnDefaultRecurse,	/* internal to commands/tablecmds.c */
 	AT_DropNotNull,				/* alter column drop not null */
 	AT_SetNotNull,				/* alter column set not null */
 	AT_SetStatistics,			/* alter column statistics */
@@ -1381,6 +1384,8 @@ typedef struct CreateStmt
 	List	   *tableElts;		/* column definitions (list of ColumnDef) */
 	List	   *inhRelations;	/* relations to inherit from (list of
 								 * inhRelation) */
+	List	   *inhOids;		/* list relations Oids to inherit from */
+	int			parentOidCount; /* count of parent with OIDs */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */

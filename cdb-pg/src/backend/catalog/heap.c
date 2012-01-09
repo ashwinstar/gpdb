@@ -109,7 +109,6 @@ static Oid StoreRelCheck(Relation rel, char *ccname, char *ccbin, Oid conoid);
 static Node* cookConstraint (ParseState *pstate,
 							 Node 		*raw_constraint,
 							 char		*relname);
-static void StoreConstraints(Relation rel, TupleDesc tupdesc);
 static List *insert_ordered_unique_oid(List *list, Oid datum);
 
 /* ----------------------------------------------------------------
@@ -1569,13 +1568,10 @@ heap_create_with_catalog(const char *relname,
 	}
 
 	/*
-	 * Store any supplied constraints and defaults.
-	 *
-	 * NB: this may do a CommandCounterIncrement and rebuild the relcache
-	 * entry, so the relation must be valid and self-consistent at this point.
-	 * In particular, there are not yet constraints and defaults anywhere.
+	 * We used to store pre-cooked constraints and defaults here.
+	 * We now store them along with raw constraints and defaults to ensure that
+	 * 	we have oid of pg_constraint and pg_attrdef consistent across segments
 	 */
-	StoreConstraints(new_rel_desc, tupdesc);
 
 	/*
 	 * If there's a special on-commit action, remember it
@@ -1963,12 +1959,14 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 }
 
 /*
- *		RemoveAttrDefault
+ * RemoveAttrDefault
  *
- * If the specified relation/attribute has a default, remove it.
- * (If no default, raise error if complain is true, else return quietly.)
+ * If the specified relation/attribute has a default, remove it and return its
+ * old pg_attrdef.oid. The caller can use this oid for the new default if it
+ * needs to create another one. If no default, raise error if complain is true,
+ * else return InvalidOid.
  */
-void
+Oid
 RemoveAttrDefault(Oid relid, AttrNumber attnum,
 				  DropBehavior behavior, bool complain)
 {
@@ -1977,7 +1975,13 @@ RemoveAttrDefault(Oid relid, AttrNumber attnum,
 	SysScanDesc scan;
 	HeapTuple	tuple;
 	bool		found = false;
+	Oid			adoid = InvalidOid;
 
+	/*
+	 * select *
+	 * from pg_attrdef
+	 * where adrelid = :relid and adnum = :attnum
+	 */
 	attrdef_rel = heap_open(AttrDefaultRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&scankeys[0],
@@ -2004,6 +2008,7 @@ RemoveAttrDefault(Oid relid, AttrNumber attnum,
 		performDeletion(&object, behavior);
 
 		found = true;
+		adoid = object.objectId;
 	}
 
 	systable_endscan(scan);
@@ -2012,6 +2017,8 @@ RemoveAttrDefault(Oid relid, AttrNumber attnum,
 	if (complain && !found)
 		elog(ERROR, "could not find attrdef tuple for relation %u attnum %d",
 			 relid, attnum);
+
+	return adoid;
 }
 
 /*
@@ -2314,10 +2321,9 @@ heap_drop_with_catalog(Oid relid)
  * Store a default expression for column attnum of relation rel.
  * The expression must be presented as a nodeToString() string.
  */
-void
-StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
+Oid
+StoreAttrDefault(Relation rel, AttrNumber attnum, Node *expr, Oid attrdefOid)
 {
-	Node	   *expr;
 	char	   *adsrc;
 	Relation	adrel;
 	HeapTuple	tuple;
@@ -2326,14 +2332,8 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 	Relation	attrrel;
 	HeapTuple	atttup;
 	Form_pg_attribute attStruct;
-	Oid			attrdefOid;
 	ObjectAddress colobject,
 				defobject;
-
-	/*
-	 * Need to construct source equivalent of given node-string.
-	 */
-	expr = stringToNode(adbin);
 
 	/*
 	 * Also deparse it to form the mostly-obsolete adsrc field.
@@ -2348,12 +2348,16 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 	 */
 	values[Anum_pg_attrdef_adrelid - 1] = RelationGetRelid(rel);
 	values[Anum_pg_attrdef_adnum - 1] = attnum;
-	values[Anum_pg_attrdef_adbin - 1] = CStringGetTextDatum(adbin);
+	values[Anum_pg_attrdef_adbin - 1] = CStringGetTextDatum(nodeToString(expr));
 	values[Anum_pg_attrdef_adsrc - 1] = CStringGetTextDatum(adsrc);
 
 	adrel = heap_open(AttrDefaultRelationId, RowExclusiveLock);
 
 	tuple = heap_form_tuple(adrel->rd_att, values, nulls);
+
+	/* force tuple to have the desired OID */
+	if (OidIsValid(attrdefOid))
+		HeapTupleSetOid(tuple, attrdefOid);
 	attrdefOid = simple_heap_insert(adrel, tuple);
 
 	CatalogUpdateIndexes(adrel, tuple);
@@ -2407,6 +2411,8 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
 	 * Record dependencies on objects used in the expression, too.
 	 */
 	recordDependencyOnExpr(&defobject, expr, NIL, DEPENDENCY_NORMAL);
+
+	return attrdefOid;
 }
 
 /*
@@ -2501,50 +2507,19 @@ StoreRelCheck(Relation rel, char *ccname, char *ccbin, Oid conOid)
 }
 
 /*
- * Store defaults and constraints passed in via the tuple constraint struct.
- *
- * NOTE: only pre-cooked expressions will be passed this way, which is to
- * say expressions inherited from an existing relation.  Newly parsed
- * expressions can be added later, by direct calls to StoreAttrDefault
- * and StoreRelCheck (see AddRelationRawConstraints()).
- */
-static void
-StoreConstraints(Relation rel, TupleDesc tupdesc)
-{
-	TupleConstr *constr = tupdesc->constr;
-	int			i;
-
-	if (!constr)
-		return;					/* nothing to do */
-
-	/*
-	 * Deparsing of constraint expressions will fail unless the just-created
-	 * pg_attribute tuples for this relation are made visible.	So, bump the
-	 * command counter.  CAUTION: this will cause a relcache entry rebuild.
-	 */
-	CommandCounterIncrement();
-
-	for (i = 0; i < constr->num_defval; i++)
-		StoreAttrDefault(rel, constr->defval[i].adnum,
-						 constr->defval[i].adbin);
-}
-
-
-/*
  * AddRelationConstraints
  *
  * Add both raw (not-yet-transformed) and cooked column default expressions and/or
- * constraint check expressions to an existing relation.  This is defined to do both
+ * constraint check expressions to an existing relation. This is defined to do both
  * for efficiency in DefineRelation, but of course you can do just one or
  * the other by passing empty lists.
  *
  * rel: relation to be modified
- * rawColDefaults: list of RawColumnDefault structures
+ * colDefaults: list of ColumnDef nodes
  * constraints: list of Constraint nodes
  *
- * All entries in rawColDefaults will be processed.  Entries in rawConstraints
- * will be processed only if they are CONSTR_CHECK type and contain a "raw"
- * expression.
+ * All entries in colDefaults will be processed.  Entries in constraints
+ * will be processed only if they are CONSTR_CHECK type.
  *
  * Returns a list of CookedConstraint nodes that shows the cooked form of
  * the default and constraint expressions added to the relation.
@@ -2556,7 +2531,7 @@ StoreConstraints(Relation rel, TupleDesc tupdesc)
  */
 List *
 AddRelationConstraints(Relation rel,
-						  List *rawColDefaults,
+						  List *colDefaults,
 						  List *constraints)
 {
 	List	   *cookedConstraints = NIL;
@@ -2596,16 +2571,27 @@ AddRelationConstraints(Relation rel,
 	/*
 	 * Process column default expressions.
 	 */
-	foreach(cell, rawColDefaults)
+	foreach(cell, colDefaults)
 	{
-		RawColumnDefault *colDef = (RawColumnDefault *) lfirst(cell);
+		ColumnDef  *colDef = (ColumnDef *) lfirst(cell);
+
 		Form_pg_attribute atp = rel->rd_att->attrs[colDef->attnum - 1];
 
-		expr = cookDefault(pstate, colDef->raw_default,
-						   atp->atttypid, atp->atttypmod,
-						   NameStr(atp->attname));
+		if (colDef->raw_default != NULL)
+		{
+			Insist (colDef->cooked_default == NULL);
+			expr = cookDefault(pstate, colDef->raw_default,
+							   atp->atttypid, atp->atttypmod,
+							   NameStr(atp->attname));
+		}
+		else
+		{
+			Insist (colDef->cooked_default != NULL);
+			expr = stringToNode(colDef->cooked_default);
+		}
 
-		StoreAttrDefault(rel, colDef->attnum, nodeToString(expr));
+		colDef->default_oid = StoreAttrDefault(rel, colDef->attnum,
+											   expr, colDef->default_oid);
 
 		cooked = (CookedConstraint *) palloc(sizeof(CookedConstraint));
 		cooked->contype = CONSTR_DEFAULT;
