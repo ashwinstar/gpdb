@@ -32,27 +32,6 @@ SCRATCH_SPACE = os.path.join(tempfile.gettempdir(), getpass.getuser())
 GPDB_VERSION = "4.2"
 MASTER_PORT = os.getenv("PGPORT")
 
-def requiresSpecialGphome():
-    """
-    A decorator which skips a unit test if GPHOME is 
-    named as "greenplum-db" or if a symlink cannot be 
-    created due to write permissions.
-    """
-    
-    gp_home = os.getenv('GPHOME')
-    if not gp_home.endswith('/.'):
-        if os.path.split(gp_home)[1] == "greenplum-db":
-            return unittest.skip("cannot create symlink")
-
-    try:
-        tmp_dir = os.path.join(os.path.dirname(GPHOME), "tmp")
-        os.mkdir(tmp_dir)
-        os.rmdir(tmp_dir)
-    except OSError, e:
-       return unittest.skip("cannot create symlink") 
-
-    return lambda o: o
-
 def skipIfNoStandby():
     """
     A decorator which skips a unit test if a standby
@@ -679,81 +658,6 @@ class MiscTestCase(GppkgTestCase):
         results = run_command("gppkg -q --all")
         assert ''.join(gppkg_file.split('-')[:1]) in results
 
-@requiresSpecialGphome()
-class SymLinkTestCase(GppkgTestCase):
-    """Tests to cover MPP-15429."""
-    def setUp(self):
-        super(SymLinkTestCase, self).setUp()
-        self.gp_home = GPHOME
-        self.gp_home_symlink = os.path.join(os.path.dirname(self.gp_home), "greenplum-db")
-
-        self.segment_host_list = get_host_list()[1]
-        self.standby = get_host_list()[0]
-        assert len(self.segment_host_list) > 0 
-     
-        link_command = "cd $GPHOME/..; ln -s $GPHOME greenplum-db"
-        self.symlink_operation(link_command)
- 
-    def tearDown(self):
-        unlink_command = "cd $GPHOME/..; rm -rf greenplum-db"
-        self.symlink_operation(unlink_command)
- 
-    def symlink_operation(self, command):
-        #If we are using symlinks, then sourcing the 
-        #greenplum_path.sh will set gphome to <symlink_path>/.
-        #Otherwise, the gphome will not contain a /.
-        if not self.gp_home.endswith('/.'):
-            for host in self.segment_host_list:
-                run_remote_command(command, host)
-            if self.standby is not None:
-                run_remote_command(command, self.standby)
-            run_command(command)
-
-    def test00_gppkg_dereferenced_symlink_path(self):
-        """     
-        This test case makes use of the dereferenced symlink path in order 
-        to ensure that the rpm does not mess up the symlink path.
-        If the GPHOME is a symlink, and we try to uninstall an rpm against
-        an rpm database which uses the symlinked GPHOME, rpm tries to remove
-        the symlink directory and all its contents. The system becomes unusable
-        after this. This problem does not occur when we use a normal path 
-        instead of a symlink while specifying the rpm database.  
-        """
-        gppkg_file = self.build(self.alpha_spec, self.A_spec)
-        self.install(gppkg_file)
-        self.remove(gppkg_file)
-
-    def test01_gppkg_with_symlink_path(self):
-        """
-        This test installs a gppkg and then tries to uninstall 
-        the gppkg against a symlink.
-        """
-        os.environ['GPHOME'] = self.gp_home_symlink
-        gppkg_file = self.alpha_spec.get_filename()
-        self.install(gppkg_file)
-        self.remove(gppkg_file)
-        os.environ['GPHOME'] = self.gp_home
-    
-    def test02_rpm_with_symlink_path(self):
-        """
-        This test tries to install an rpm and then tries to uninstall 
-        the rpm against a symlink.
-        """
-        os.environ['GPHOME'] = self.gp_home_symlink
-
-        try:
-            with closing(tarfile.open(self.alpha_spec.get_filename())) as tf:
-                tf.extract(self.A_spec.get_filename())
-            self.extra_clean.add(self.A_spec.get_filename())
-
-            symlink_rpm_database = os.path.join(self.gp_home_symlink, "share/packages/database")
-            self.install_rpm(self.A_spec.get_filename(), symlink_rpm_database, self.gp_home_symlink)
-            self.uninstall_rpm(self.A_spec.get_filename())
-            assert not os.path.islink(self.gp_home_symlink)
-
-        finally:
-            os.environ['GPHOME'] = self.gp_home
- 
 class SimpleNegativeTestCase(GppkgTestCase):
     @unittest.expectedFailure
     def test00_wrong_os(self):
