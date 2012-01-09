@@ -1454,8 +1454,8 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	if ( pstat == PART_STATUS_ROOT || pstat == PART_STATUS_INTERIOR )
 	{
 		ereport(WARNING,
-				(errmsg("only dropped the specified index"),
-				 errhint("If desired, explicitly drop indexes on child parts.")));
+				(errmsg("Only dropped the index \"%s\"", relation->relname),
+				 errhint("To drop other indexes on child parts, drop each one explicitly.")));
 	}
 }
 
