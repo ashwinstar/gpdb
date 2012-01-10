@@ -1437,6 +1437,7 @@ static int errcontext_datumstreamblockread_callback(
 	return errcontext_datumstreamblockread(dsr);
 }
 
+#ifdef USE_ASSERT_CHECKING
 static void DatumStreamBlockRead_CheckDenseGetInvariant(
 	DatumStreamBlockRead 	*dsr) 
 {
@@ -1550,6 +1551,7 @@ static void DatumStreamBlockRead_CheckDenseGetInvariant(
 		}
 	}
 }
+#endif
 
 static void DatumStreamBlockRead_GetVarlena(
 	DatumStreamBlockRead 	*dsr, 
@@ -2823,6 +2825,7 @@ static int errcontext_datumstreamblockwrite_callback(
 	return errcontext_datumstreamblockwrite(dsw);
 }
 
+#ifdef USE_ASSERT_CHECKING
 /*
  * DatumStreamBlockWrite routines.
  */
@@ -2954,6 +2957,7 @@ static void DatumStreamBlockWrite_CheckDenseInvariant(
 		}
 	}
 }
+#endif
 
 static void
 DatumStreamBlockWrite_PrintInputVarlenaInfo(
