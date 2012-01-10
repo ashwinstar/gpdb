@@ -183,14 +183,16 @@ typedef struct DatumStreamBlockWrite
 
     uint8* datump;		/* pointer to datum */
 
+	int32	always_null_bitmap_count;
+
 	/* RLE_TYPE variables */
 	bool 	rle_has_compression;
-
-	int32	rle_null_bitmap_count;
 
 	uint8	*rle_last_item;
 	int32	rle_last_item_size;
 	bool	rle_last_item_is_repeated;
+
+	int32	rle_total_repeat_items_written;
 
 	DatumStreamBitMapWrite	rle_compress_bitmap;
 
@@ -293,6 +295,8 @@ typedef struct DatumStreamBlockRead
 	int32	rle_repeatcounts_index;
 	bool	rle_in_repeated_item;
 	int32	rle_repeated_item_count;
+
+	int32	rle_total_repeat_items_read;
 } DatumStreamBlockRead;
 
 extern char *DatumStreamVersion_String(DatumStreamVersion datumStreamVersion);
