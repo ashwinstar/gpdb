@@ -555,147 +555,150 @@ faag: fileam:00002652:  ereport(ERROR,
 faag: fileam:00002653:  (errcode_for_file_access(), 
 faag: fileam:00002654:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
-uaad: url:00000190:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
-uaad: url:00000219:  //elog(NOTICE, "write_callback %d", nbytes); 
-uaad: url:00000245:  elog(ERROR, "out of memory (curl write_callback)"); 
-uaad: url:00000250:  // elog(NOTICE, "max now at %d", n); 
-uaad: url:00000306:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
-uaad: url:00000307:  errmsg("connection with gpfdist failed for %s. " 
-uaad: url:00000308:  "effective url: %s. %s", file->url, effective_url, 
-uaad: url:00000309:  (oserrno != 0 ? connmsg : "")), 
-uaad: url:00000310:  errOmitLocation(true))); 
-uaad: url:00000321:  elog(ERROR, "http response code %ld from gpfdist (%s): %s", 
-uaad: url:00000322:  response_code, file->url, 
-uaad: url:00000323:  file->u.curl.http_response ? file->u.curl.http_response : "?"); 
-uaad: url:00000352:  /* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d", 
-uaad: url:00000353:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
-uaad: url:00000372:  elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)", 
-uaad: url:00000373:  e, curl_easy_strerror(e)); 
-uaad: url:00000386:  elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)", 
-uaad: url:00000387:  maxfd, errno, strerror(errno)); 
-uaad: url:00000401:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
-uaad: url:00000402:  e, curl_easy_strerror(e)); 
-uaad: url:00000406:  /* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d", 
-uaad: url:00000407:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
-uaad: url:00000423:  elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value); 
-uaad: url:00000562:  elog(ERROR, "illegal url '%s'", url); 
-uaad: url:00000585:  ereport(ERROR, 
-uaad: url:00000586:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-uaad: url:00000587:  errmsg("<port> substring size must not exceed %d characters", 8))); 
-uaad: url:00000609:  ereport(ERROR, 
-uaad: url:00000610:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-uaad: url:00000611:  errmsg("<port> substring size must not exceed %d characters", 8))); 
-uaad: url:00000620:  ereport(ERROR, 
-uaad: url:00000621:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-uaad: url:00000622:  errmsg("<port> substring must contain only digits"))); 
-uaad: url:00000626:  elog(ERROR, "hostname too long for url '%s'", url); 
-uaad: url:00000713:  elog(ERROR, "out of memory"); 
-uaad: url:00000752:  ereport(ERROR, 
-uaad: url:00000753:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-uaad: url:00000754:  errmsg("cannot start external table command: %m"), 
-uaad: url:00000755:  errdetail("Command: %s", cmd), 
-uaad: url:00000756:  errOmitLocation(true))); 
-uaad: url:00000826:  elog(ERROR, "out of memory"); 
-uaad: url:00000846:  elog(ERROR, "External Table error opening file: '%s', invalid " 
-uaad: url:00000847:  "file path", url); 
-uaad: url:00000888:  elog(ERROR, "illegal URL: %s", url_cpy); 
-uaad: url:00000941:  elog(ERROR, "internal error: curl_easy_init failed"); 
-uaad: url:00000950:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
-uaad: url:00000951:  e, curl_easy_strerror(e)); 
-uaad: url:00000956:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
-uaad: url:00000957:  e, curl_easy_strerror(e)); 
-uaad: url:00000963:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
-uaad: url:00000964:  e, curl_easy_strerror(e)); 
-uaad: url:00000970:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
-uaad: url:00000971:  e, curl_easy_strerror(e)); 
-uaad: url:00000977:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
-uaad: url:00000978:  e, curl_easy_strerror(e)); 
-uaad: url:00000984:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
-uaad: url:00000985:  e, curl_easy_strerror(e)); 
-uaad: url:00000995:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
-uaad: url:00000996:  e, curl_easy_strerror(e)); 
-uaad: url:00001024:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00001034:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00001052:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00001067:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
-uaad: url:00001075:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
-uaad: url:00001076:  e, curl_easy_strerror(e)); 
-uaad: url:00001084:  elog(ERROR, "internal error: curl_multi_init failed"); 
-uaad: url:00001093:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
-uaad: url:00001094:  e, curl_easy_strerror(e)); 
-uaad: url:00001110:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLCERTTYPE error (%d - %s)", 
-uaad: url:00001111:  e, curl_easy_strerror(e)); 
-uaad: url:00001121:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
-uaad: url:00001126:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00000194:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
+uaad: url:00000223:  //elog(NOTICE, "write_callback %d", nbytes); 
+uaad: url:00000249:  elog(ERROR, "out of memory (curl write_callback)"); 
+uaad: url:00000254:  // elog(NOTICE, "max now at %d", n); 
+uaad: url:00000310:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
+uaad: url:00000311:  errmsg("connection with gpfdist failed for %s. " 
+uaad: url:00000312:  "effective url: %s. %s\n%s", file->url, effective_url, 
+uaad: url:00000313:  (oserrno != 0 ? connmsg : ""), 
+uaad: url:00000314:  (curl_Error_Buffer[0] != '\0' ? curl_Error_Buffer : "")), 
+uaad: url:00000315:  errOmitLocation(true))); 
+uaad: url:00000326:  elog(ERROR, "http response code %ld from gpfdist (%s): %s", 
+uaad: url:00000327:  response_code, file->url, 
+uaad: url:00000328:  file->u.curl.http_response ? file->u.curl.http_response : "?"); 
+uaad: url:00000357:  /* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d", 
+uaad: url:00000358:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
+uaad: url:00000377:  elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)", 
+uaad: url:00000378:  e, curl_easy_strerror(e)); 
+uaad: url:00000391:  elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)", 
+uaad: url:00000392:  maxfd, errno, strerror(errno)); 
+uaad: url:00000406:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+uaad: url:00000407:  e, curl_easy_strerror(e)); 
+uaad: url:00000411:  /* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d", 
+uaad: url:00000412:  file->u.curl.still_running, curl->in.bot, curl->in.top, want); 
+uaad: url:00000428:  elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value); 
+uaad: url:00000567:  elog(ERROR, "illegal url '%s'", url); 
+uaad: url:00000590:  ereport(ERROR, 
+uaad: url:00000591:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000592:  errmsg("<port> substring size must not exceed %d characters", 8))); 
+uaad: url:00000614:  ereport(ERROR, 
+uaad: url:00000615:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000616:  errmsg("<port> substring size must not exceed %d characters", 8))); 
+uaad: url:00000625:  ereport(ERROR, 
+uaad: url:00000626:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+uaad: url:00000627:  errmsg("<port> substring must contain only digits"))); 
+uaad: url:00000631:  elog(ERROR, "hostname too long for url '%s'", url); 
+uaad: url:00000718:  elog(ERROR, "out of memory"); 
+uaad: url:00000757:  ereport(ERROR, 
+uaad: url:00000758:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+uaad: url:00000759:  errmsg("cannot start external table command: %m"), 
+uaad: url:00000760:  errdetail("Command: %s", cmd), 
+uaad: url:00000761:  errOmitLocation(true))); 
+uaad: url:00000831:  elog(ERROR, "out of memory"); 
+uaad: url:00000854:  elog(ERROR, "External Table error opening file: '%s', invalid " 
+uaad: url:00000855:  "file path", url); 
+uaad: url:00000896:  elog(ERROR, "illegal URL: %s", url_cpy); 
+uaad: url:00000949:  elog(ERROR, "internal error: curl_easy_init failed"); 
+uaad: url:00000958:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
+uaad: url:00000959:  e, curl_easy_strerror(e)); 
+uaad: url:00000964:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
+uaad: url:00000965:  e, curl_easy_strerror(e)); 
+uaad: url:00000971:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
+uaad: url:00000972:  e, curl_easy_strerror(e)); 
+uaad: url:00000978:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
+uaad: url:00000979:  e, curl_easy_strerror(e)); 
+uaad: url:00000985:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
+uaad: url:00000986:  e, curl_easy_strerror(e)); 
+uaad: url:00000992:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
+uaad: url:00000993:  e, curl_easy_strerror(e)); 
+uaad: url:00001003:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
+uaad: url:00001004:  e, curl_easy_strerror(e)); 
+uaad: url:00001032:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001042:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001060:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001075:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
+uaad: url:00001083:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
+uaad: url:00001084:  e, curl_easy_strerror(e)); 
+uaad: url:00001092:  elog(ERROR, "internal error: curl_multi_init failed"); 
+uaad: url:00001101:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
+uaad: url:00001102:  e, curl_easy_strerror(e)); 
+uaad: url:00001118:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_ERRORBUFFER error (%d - %s)", 
+uaad: url:00001119:  e, curl_easy_strerror(e)); 
+uaad: url:00001126:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLCERTTYPE error (%d - %s)", 
 uaad: url:00001127:  e, curl_easy_strerror(e)); 
-uaad: url:00001137:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_KEYPASSWD error (%d - %s)", 
-uaad: url:00001138:  e, curl_easy_strerror(e)); 
-uaad: url:00001145:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEYTYPE error (%d - %s)", 
-uaad: url:00001146:  e, curl_easy_strerror(e)); 
-uaad: url:00001156:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
-uaad: url:00001161:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00001137:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001142:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00001143:  e, curl_easy_strerror(e)); 
+uaad: url:00001153:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_KEYPASSWD error (%d - %s)", 
+uaad: url:00001154:  e, curl_easy_strerror(e)); 
+uaad: url:00001161:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEYTYPE error (%d - %s)", 
 uaad: url:00001162:  e, curl_easy_strerror(e)); 
-uaad: url:00001173:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
-uaad: url:00001178:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_CAINFO error (%d - %s)", 
-uaad: url:00001179:  e, curl_easy_strerror(e)); 
-uaad: url:00001187:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYPEER error (%d - %s)", 
-uaad: url:00001188:  e, curl_easy_strerror(e)); 
-uaad: url:00001195:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYHOST error (%d - %s)", 
-uaad: url:00001196:  e, curl_easy_strerror(e)); 
-uaad: url:00001202:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_CIPHER_LIST error (%d - %s)", 
-uaad: url:00001203:  e, curl_easy_strerror(e)); 
-uaad: url:00001209:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLVERSION error (%d - %s)", 
-uaad: url:00001210:  e, curl_easy_strerror(e)); 
-uaad: url:00001237:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
-uaad: url:00001238:  e, curl_easy_strerror(e)); 
-uaad: url:00001250:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001251:  e, curl_easy_strerror(e)); 
-uaad: url:00001258:  elog(ERROR, "error: %s", 
-uaad: url:00001259:  curl_easy_strerror(e)); 
-uaad: url:00001451:  ereport(ERROR, 
-uaad: url:00001452:  (errcode(ERRCODE_INTERNAL_ERROR), 
-uaad: url:00001453:  errmsg_internal("external table type not implemented: %d", type))); 
-uaad: url:00001594:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
-uaad: url:00001600:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
-uaad: url:00001614:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
-uaad: url:00001615:  type, len); 
-uaad: url:00001619:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
-uaad: url:00001620:  curl->in.bot, curl->in.top); 
-uaad: url:00001641:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
-uaad: url:00001646:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
-uaad: url:00001661:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
-uaad: url:00001666:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001695:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
-uaad: url:00001700:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001716:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
-uaad: url:00001721:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001743:  // elog(NOTICE, "D %d", curl->block.datalen); 
-uaad: url:00001747:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
-uaad: url:00001764:  elog(ERROR, "gpfdist server closed connection.\n"); 
-uaad: url:00001773:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
-uaad: url:00001798:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001799:  e, curl_easy_strerror(e)); 
-uaad: url:00001803:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
-uaad: url:00001804:  e, curl_easy_strerror(e)); 
-uaad: url:00001808:  elog(ERROR, "%s error (%d - %s)", 
-uaad: url:00001809:  file->u.curl.curl_url, 
-uaad: url:00001810:  e, curl_easy_strerror(e)); 
-uaad: url:00001814:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
-uaad: url:00001815:  file->u.curl.curl_url, response_code, response_string); 
-uaad: url:00001831:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
-uaad: url:00001832:  file->u.curl.curl_url, 
-uaad: url:00001833:  e, curl_easy_strerror(e)); 
-uaad: url:00001839:  elog(ERROR, "%s error: %s", 
-uaad: url:00001840:  file->u.curl.curl_url, 
-uaad: url:00001841:  curl_easy_strerror(e)); 
-uaad: url:00001856:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001867:  //elog(NOTICE, "curl_fread %d bytes", n); 
-uaad: url:00001882:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001928:  elog(ERROR, "out of memory (curl_fwrite)"); 
-uaad: url:00002013:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00002053:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00002107:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
-uaad: url:00002498:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+uaad: url:00001172:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001177:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00001178:  e, curl_easy_strerror(e)); 
+uaad: url:00001189:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001194:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_CAINFO error (%d - %s)", 
+uaad: url:00001195:  e, curl_easy_strerror(e)); 
+uaad: url:00001203:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYPEER error (%d - %s)", 
+uaad: url:00001204:  e, curl_easy_strerror(e)); 
+uaad: url:00001211:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYHOST error (%d - %s)", 
+uaad: url:00001212:  e, curl_easy_strerror(e)); 
+uaad: url:00001218:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_CIPHER_LIST error (%d - %s)", 
+uaad: url:00001219:  e, curl_easy_strerror(e)); 
+uaad: url:00001225:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLVERSION error (%d - %s)", 
+uaad: url:00001226:  e, curl_easy_strerror(e)); 
+uaad: url:00001253:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+uaad: url:00001254:  e, curl_easy_strerror(e)); 
+uaad: url:00001266:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001267:  e, curl_easy_strerror(e)); 
+uaad: url:00001274:  elog(ERROR, "error: %s", 
+uaad: url:00001275:  curl_easy_strerror(e)); 
+uaad: url:00001467:  ereport(ERROR, 
+uaad: url:00001468:  (errcode(ERRCODE_INTERNAL_ERROR), 
+uaad: url:00001469:  errmsg_internal("external table type not implemented: %d", type))); 
+uaad: url:00001610:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
+uaad: url:00001616:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
+uaad: url:00001630:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
+uaad: url:00001631:  type, len); 
+uaad: url:00001635:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
+uaad: url:00001636:  curl->in.bot, curl->in.top); 
+uaad: url:00001657:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
+uaad: url:00001662:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
+uaad: url:00001677:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
+uaad: url:00001682:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001711:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
+uaad: url:00001716:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001732:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
+uaad: url:00001737:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001759:  // elog(NOTICE, "D %d", curl->block.datalen); 
+uaad: url:00001763:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
+uaad: url:00001780:  elog(ERROR, "gpfdist server closed connection.\n"); 
+uaad: url:00001789:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
+uaad: url:00001814:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001815:  e, curl_easy_strerror(e)); 
+uaad: url:00001819:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
+uaad: url:00001820:  e, curl_easy_strerror(e)); 
+uaad: url:00001824:  elog(ERROR, "%s error (%d - %s)", 
+uaad: url:00001825:  file->u.curl.curl_url, 
+uaad: url:00001826:  e, curl_easy_strerror(e)); 
+uaad: url:00001830:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
+uaad: url:00001831:  file->u.curl.curl_url, response_code, response_string); 
+uaad: url:00001847:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
+uaad: url:00001848:  file->u.curl.curl_url, 
+uaad: url:00001849:  e, curl_easy_strerror(e)); 
+uaad: url:00001855:  elog(ERROR, "%s error: %s", 
+uaad: url:00001856:  file->u.curl.curl_url, 
+uaad: url:00001857:  curl_easy_strerror(e)); 
+uaad: url:00001872:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001883:  //elog(NOTICE, "curl_fread %d bytes", n); 
+uaad: url:00001898:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001944:  elog(ERROR, "out of memory (curl_fwrite)"); 
+uaad: url:00002029:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00002069:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00002123:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
+uaad: url:00002514:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
 aaaaa GP_IGNORE: gabc: ginarrayproc - ./backend/access/gin/ginarrayproc.c
 gabc: ginarrayproc:00000028:  ereport(ERROR, \ 
 gabc: ginarrayproc:00000029:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \ 
