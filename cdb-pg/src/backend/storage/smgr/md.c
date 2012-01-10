@@ -1577,13 +1577,18 @@ mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 		return InvalidBlockNumber;		/* mdnblocks failed */
 	if (nblocks > curnblk)
 		return InvalidBlockNumber;		/* bogus request */
-	if (nblocks == curnblk)
+	/*
+	 * Resync issues truncate to mirror only. In that case on primary nblocks will be always identical to curnblock
+	 * since nblocks is allocated while holding LockRelationForResyncExtension.
+	 */
+	if (nblocks == curnblk && ! FileRepPrimary_IsResyncWorker())
 		return nblocks;			/* no work */
 
 	v = mdopen(reln, false);
 
 #ifndef LET_OS_MANAGE_FILESIZE
 	priorblocks = 0;
+	
 	while (v != NULL)
 	{
 		MdMirVec    *ov = v;
