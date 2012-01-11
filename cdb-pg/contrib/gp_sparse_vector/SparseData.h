@@ -824,7 +824,7 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 
 	while (1)
 	{
-//		printf("i,j,left_nxt,right_nxt,nextpos=%d,%d,%d,%d,%d\n",i,j,nextpos,left_nxt,right_nxt);
+		//elog(NOTICE,"i,j,left_nxt,right_nxt,nextpos=%d,%d,%d,%d,%d\n",i,j,nextpos,left_nxt,right_nxt);
 		switch (operation)
 		{
 			case 0:
@@ -859,9 +859,9 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 			memcpy(last_new_value,new_value,width);
 		}
 		tot_run_length += (nextpos-lastpos);
-//		printf("New_value,runlength = %f,%d\n",new_value,nextpos-lastpos);
+		//elog(NOTICE,"New_value,runlength = %f,%d\n",*((double *)new_value),nextpos-lastpos);
 		if ((left_nxt==right_nxt)&&(left_nxt==(left->total_value_count))) {
-//			printf("STOPPING: i,j,left_nxt,right_nxt,nextpos=%d,%d,%d,%d,%d\n",i,j,nextpos,left_nxt,right_nxt);
+			//elog(NOTICE,"STOPPING: i,j,left_nxt,right_nxt,nextpos=%d,%d,%d,%d,%d\n",i,j,nextpos,left_nxt,right_nxt);
 			break;
 		} else if (left_nxt==right_nxt) {
 			i++;j++;
@@ -883,7 +883,7 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 		right_nxt=right_run_length+right_lst;
 		lastpos=nextpos;
 		nextpos = MIN(left_nxt,right_nxt);
-//		printf("nextpos,leftmax = %d,%d\n",nextpos,left->total_value_count);
+		//elog(NOTICE,"nextpos,leftmax = %d,%d\n",nextpos,left->total_value_count);
 	}
 
 	/*

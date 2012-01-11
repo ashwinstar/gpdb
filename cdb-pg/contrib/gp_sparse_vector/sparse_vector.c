@@ -284,7 +284,7 @@ SvecType *svec_from_sparsedata(SparseData sdata,bool trim)
 	SET_VARSIZE(result,size);
 	serializeSparseData(SVEC_SDATAPTR(result),sdata);
 	result->dimension = sdata->total_value_count;
-	if (result->dimension==1) result->dimension=-1; //Scalar
+	if (result->dimension==1) result->dimension=-1; //Mark this as a scalar
 	return (result);
 }
 

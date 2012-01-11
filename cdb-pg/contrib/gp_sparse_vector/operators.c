@@ -341,6 +341,7 @@ svec_plus(PG_FUNCTION_ARGS)
 	SvecType *svec1 = PG_GETARG_SVECTYPE_P(0);
 	SvecType *svec2 = PG_GETARG_SVECTYPE_P(1);
 	check_dimension(svec1,svec2,"svec_plus");
+	//LAL-this-helped-debug-the-pivot-bug printout_svec(svec1,"svec_plus",false);
 	SvecType *result = op_svec_by_svec_internal(1,svec1,svec2);
 	PG_RETURN_SVECTYPE_P(result);
 }
@@ -1165,6 +1166,9 @@ svec_pivot(PG_FUNCTION_ARGS)
 			sdata->index->cursor = len;
 		}
 	}
+
+	svec->dimension = sdata->total_value_count;
+	if (svec->dimension==1) svec->dimension=-1; //Mark svec this as a scalar
 
 	PG_RETURN_SVECTYPE_P(svec);
 }

@@ -3,7 +3,7 @@ ifeq "$(CC)" "icc"
 	USE_ICC = 1
 endif
 
-override CFLAGS+=-std=gnu99
+override CFLAGS+=-std=c99 -O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer -g -finline-limit=1800
 
 MODULE_big = gp_svec
 #Removed the installation SQL file from normal installation
