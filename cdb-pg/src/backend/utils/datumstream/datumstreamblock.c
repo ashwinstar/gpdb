@@ -3276,20 +3276,58 @@ static bool DatumStreamBlockWrite_OrigHasSpace(
 	bool 					null, 
 	int32 					sz)
 {
-    int32 current_Size = sizeof(DatumStreamBlock_Orig);
+    int32 headerSize;
+	int32 nullSize;
+	int32 currentDataSize;
+
+	int32 newTotalSize;
+
+	bool result;
 
     if(dsw->nth + 1 >= dsw->maxDatumPerBlock)
         return false;
 
+	headerSize = sizeof(DatumStreamBlock_Orig);
 	if (null || dsw->has_null)
 	{
-		current_Size += MAXALIGN(
-							DatumStreamBitMap_Size(dsw->always_null_bitmap_count + 1));
+		nullSize = MAXALIGN(DatumStreamBitMap_Size(dsw->always_null_bitmap_count + 1));
+	}
+	else
+	{
+		nullSize = 0;
 	}
 
-	current_Size += (dsw->datump - dsw->datum_buffer);
+	currentDataSize = (dsw->datump - dsw->datum_buffer);
 
-    return current_Size + sz < dsw->maxDataBlockSize;
+	newTotalSize = (headerSize + nullSize + currentDataSize + sz);
+    result = (newTotalSize < dsw->maxDataBlockSize);
+
+	if (Debug_appendonly_print_insert_tuple)
+	{
+		ereport(LOG,
+				(errmsg("Datum stream block write checking Original new item space for "
+						 "(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
+						 "headerSize %d, nullSize %d, current dataSize %d, "
+						 "new total size %d, "
+						 "maxdatasz %d, "
+						 "result %s)",
+						 dsw->nth,
+						 sz,
+						 dsw->datump,
+						 (int64)(dsw->datump - dsw->datum_buffer),
+						 dsw->physical_datum_count,
+						 headerSize,
+						 nullSize,
+						 currentDataSize,
+						 newTotalSize,
+						 dsw->maxDataBlockSize,
+						 (result ? "true" : "false")),
+				 errOmitLocation(true),
+				 errdetail_datumstreamblockwrite(dsw),
+				 errcontext_datumstreamblockwrite(dsw)));
+	}
+
+	return result;
 }
 
 static int DatumStreamBlockWrite_PutOrig(
