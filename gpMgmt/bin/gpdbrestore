@@ -238,7 +238,8 @@ class GpdbRestore(Operation):
         (restore_timestamp, restore_db, compress) = (None, None, None)
         if self.db_timestamp is not None:
             (restore_timestamp, restore_db, compress) = ValidateTimestamp(master_datadir = self.master_datadir, 
-                                                                          candidate_timestamp = self.db_timestamp).run()
+                                                                          candidate_timestamp = self.db_timestamp,
+                                                                            ddboost = self.ddboost).run()
         elif self.db_date_dir is not None:
             (restore_timestamp, restore_db, compress) = self._validate_db_date_dir()
         elif self.db_host_path is not None:
