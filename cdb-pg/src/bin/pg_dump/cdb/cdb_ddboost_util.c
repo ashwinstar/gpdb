@@ -85,11 +85,11 @@ struct ddboost_options
 	char *to_file;
 	char *deleteDir;
 	char *deleteFile;
-    char *listDirFull;
 	struct schemaTableList *tableList;
 	char *database;
 	char *syncFilesFromTimestamp;
 	bool listDir;
+    bool listDirFull;
 	bool copyFromDDBoost;	
 	bool copyToDDBoost;
         bool copy;
@@ -307,6 +307,12 @@ main(int argc, char **argv)
 
     if (dd_options->listDirFull)
     {
+		if (!dd_options->directory)
+		{
+			mpp_err_msg(logError, progname, "Directory not specified for listDir\n");
+			goto cleanup;
+		}
+
         failCount = listDirectoryFull(dd_options, ddp_conn);
         goto cleanup;
     }
@@ -444,7 +450,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"sync", no_argument, NULL, 15},
 		{"write-file-from-stdin", no_argument, NULL, 16},
 		{"dd_boost_buf_size", required_argument, NULL, 18},
-		{"ls", required_argument, NULL, 19},
+		{"ls", no_argument, NULL, 19},
         {"syncTimestamp", required_argument, NULL, 20},
         {"rename", no_argument, NULL, 21},
         {"copy", no_argument, NULL, 22},
@@ -586,7 +592,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				break;
             case 19:
                 /* Long listing of directories */
-				dd_options->listDirFull = Safe_strdup(optarg);
+				dd_options->listDirFull = true;
                 break;
             case 20:
                 dd_options->syncFilesFromTimestamp = Safe_strdup(optarg);;
@@ -2599,7 +2605,7 @@ createDbdumpsDir(char *filePath)
 
 int listDirectoryFull(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 {
-    char *ddboostDir = strdup(dd_options->listDirFull);
+    char *ddboostDir = Safe_strdup(dd_options->directory);
     int err = 0;
     ddp_path_t path1 = {0};
     ddp_path dd_file_path = {0};
