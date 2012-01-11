@@ -35,6 +35,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable> (
     [ , DEFAULT = <replaceable class="parameter">default</replaceable> ]
     [ , ELEMENT = <replaceable class="parameter">element</replaceable> ]
     [ , DELIMITER = <replaceable class="parameter">delimiter</replaceable> ]
+    [, COMPRESSTYPE = compression_type]
+    [, COMPRESSLEVEL = compression_level]
+    [, BLOCKSIZE= blocksize]
 )
 
 CREATE TYPE <replaceable class="parameter">name</replaceable>
@@ -421,6 +424,43 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">compression_type</replaceable></term>
+    <listitem>
+     <para>
+      One of the following: ZLIB, QUICKLZ , RLE_TYPE, or NONE.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">compression_level</replaceable></term>
+    <listitem>
+     <para>
+      Values between 0 and 9.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">blocksize</replaceable></term>
+    <listitem>
+     <para>
+      8192 – 2097152
+      The value must be a multiple of 8192. The default is 32768.
+     </para>
+     <para>
+       For more information on the compression and blocksize parameters, see the
+       "Storage Directives for Column-level Compression" in the Greenplum
+       Database Administrator Guide.
+     </para>
+    </listitem>
+   </varlistentry>
+  
+
+
+
   </variablelist>
  </refsect1>
 

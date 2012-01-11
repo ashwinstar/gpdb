@@ -121,14 +121,18 @@ where storage_parameter is:
    BLOCKSIZE={8192-2097152}
    ORIENTATION={COLUMN|ROW}
    COMPRESSTYPE={ZLIB|QUICKLZ|RLE_TYPE|NONE}
-   COMPRESSLEVEL={1-9 | 1}
+   COMPRESSLEVEL={0-9}
    FILLFACTOR={10-100}
    OIDS[=TRUE|FALSE]
 
 where storage_directive is:
    COMPRESSTYPE={ZLIB | QUICKLZ | RLE_TYPE | NONE} 
- | COMPRESSLEVEL={1-9 | 1} 
+ | COMPRESSLEVEL={0-9} 
  | BLOCKSIZE={8192-2097152}
+
+Where column_reference_storage_directive is:
+COLUMN column_name ENCODING ( storage_directive [, ... ] ), ...  |
+DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 
 </synopsis>
  </refsynopsisdiv>
