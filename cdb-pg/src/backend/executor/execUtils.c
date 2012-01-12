@@ -2084,6 +2084,25 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	estate = queryDesc->estate;
 
 	/*
+	 * If this query is being canceled, record that when the gpperfmon
+	 * is enabled.
+	 */
+	if (gp_enable_gpperfmon &&
+		Gp_role == GP_ROLE_DISPATCH &&
+		queryDesc->gpmon_pkt &&
+		QueryCancelCleanup)
+	{			
+		gpmon_qlog_query_canceling(queryDesc->gpmon_pkt);
+
+		if (gp_cancel_query_print_log)
+		{
+			elog(LOG, "canceling query (%d, %d)",
+				 queryDesc->gpmon_pkt->u.qlog.key.ssid,
+				 queryDesc->gpmon_pkt->u.qlog.key.ccnt);
+		}
+	}
+
+	/*
 	 * Request any commands still executing on qExecs to stop.
 	 * Wait for them to finish and clean up the dispatching structures.
 	 * Replace current error info with QE error info if more interesting.

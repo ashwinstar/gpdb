@@ -223,6 +223,7 @@ const char* gpmon_qlog_status_string(int gpmon_qlog_status)
     case GPMON_QLOG_STATUS_START: return "start";
     case GPMON_QLOG_STATUS_DONE: return "done";
     case GPMON_QLOG_STATUS_ERROR: return "abort";
+    case GPMON_QLOG_STATUS_CANCELING: return "canceling";
     }
     return "unknown";
 }
@@ -300,7 +301,6 @@ apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 		fclose(fp);
 		return GPMON_QLOG_STATUS_INVALID;
 	}
-
 	fscanf(fp, "%d", &status);
 	fclose(fp);
 	return status;

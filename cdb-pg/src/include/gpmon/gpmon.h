@@ -57,6 +57,7 @@ extern void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket,
 extern void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket);
+extern void gpmon_qlog_query_canceling(gpmon_packet_t *gpmonPacket);
 extern void gpmon_send(gpmon_packet_t*);
 extern void gpmon_gettmid(apr_int32_t*);
 
@@ -147,6 +148,7 @@ struct gpmon_proc_metrics_t {
 #define GPMON_QLOG_STATUS_START    2
 #define GPMON_QLOG_STATUS_DONE     3
 #define GPMON_QLOG_STATUS_ERROR    4
+#define GPMON_QLOG_STATUS_CANCELING 5
 
 #define GPMON_NUM_SEG_CPU 10
 

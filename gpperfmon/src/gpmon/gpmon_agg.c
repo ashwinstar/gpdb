@@ -377,6 +377,7 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	status = get_query_status(dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt);
 	if (dp->last_updated_generation < newagg->generation - 1
             && status != GPMON_QLOG_STATUS_SUBMIT
+            && status != GPMON_QLOG_STATUS_CANCELING
             && status != GPMON_QLOG_STATUS_START) {
 	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n",
@@ -681,6 +682,7 @@ apr_status_t agg_dump(agg_t* agg)
 			switch (qdnode->qlog.status)
 			{
 			case GPMON_QLOG_STATUS_START:
+			case GPMON_QLOG_STATUS_CANCELING:
 				dbmetrics.queries_running++;
 				break;
 			case GPMON_QLOG_STATUS_SUBMIT:
