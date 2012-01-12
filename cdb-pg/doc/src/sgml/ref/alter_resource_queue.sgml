@@ -30,7 +30,17 @@ where queue_attribute is:
    MIN_COST=float
    PRIORITY={MIN|LOW|MEDIUM|HIGH|MAX}
 
-ALTER RESOURCE QUEUE name WITHOUT 
+ALTER RESOURCE QUEUE name WITHOUT ( queue_attribute=value [, ... ] ) 
+where queue_attribute is:
+   ACTIVE_STATEMENTS
+   MEMORY_LIMIT
+   MAX_COST
+   COST_OVERCOMMIT
+   MIN_COST
+
+   Note: A resource queue must have either an ACTIVE_STATEMENTS 
+   or a MAX_COST value. Do not remove both these queue_attributes 
+   from a resource queue.
 
 </synopsis>
  </refsynopsisdiv>
@@ -50,8 +60,11 @@ ALTER RESOURCE QUEUE name WITHOUT
   </para>
 
   <para>
-  ALTER RESOURCE QUEUE WITHOUT removes any limits on a resource that 
-  were previously set. All queue_attribute settings are disabled.
+   ALTER RESOURCE QUEUE WITHOUT removes the specified limits on 
+   a resource that were previously set. A resource queue must have 
+   either an ACTIVE_STATEMENTS or a MAX_COST value. Do not remove both 
+   these queue_attributes from a resource queue.
+
   </para>
 
   </refsect1>
@@ -215,6 +228,15 @@ ALTER RESOURCE QUEUE powerusers WITH (COSTLIMIT=-1.0);
 ALTER RESOURCE QUEUE myqueue WITH (ACTIVE_STATEMENTS=30, MAX_COST=5000.00);
 </programlisting>
   </para>
+
+  <para>
+   Remove the MAX_COST and MEMORY_LIMIT limits from a resource queue:
+<programlisting>
+ALTER RESOURCE QUEUE myqueue WITHOUT (MAX_COST, MEMORY_LIMIT);
+</programlisting>
+  </para>
+
+
  </refsect1>
  
  <refsect1>
