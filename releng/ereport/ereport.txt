@@ -2395,154 +2395,168 @@ gabd: gpxpersistent:00000490:  locationLen);
 gabd: gpxpersistent:00000666:  elog(ERROR, "Unexpected persistent file-system object type: %d", 
 gabd: gpxpersistent:00000667:  fsObjType); 
 aaaaa GP_IGNORE: haae: heap - ./backend/catalog/heap.c
-haae: heap:00000196:  elog(ERROR, "invalid system attribute number %d", attno); 
 haae: heap:00000198:  elog(ERROR, "invalid system attribute number %d", attno); 
-haae: heap:00000266:  ereport(ERROR, 
-haae: heap:00000267:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-haae: heap:00000268:  errmsg("permission denied to create \"%s.%s\"", 
-haae: heap:00000269:  get_namespace_name(relnamespace), relname), 
-haae: heap:00000270:  errdetail("System catalog modifications are currently disallowed."), 
-haae: heap:00000271:  errOmitLocation(true))); 
-haae: heap:00000472:  ereport(ERROR, 
-haae: heap:00000473:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
-haae: heap:00000474:  errmsg("tables can have at most %d columns", 
-haae: heap:00000475:  MaxHeapAttributeNumber))); 
-haae: heap:00000489:  ereport(ERROR, 
-haae: heap:00000490:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-haae: heap:00000491:  errmsg("column name \"%s\" conflicts with a system column name", 
-haae: heap:00000492:  NameStr(tupdesc->attrs[i]->attname)))); 
-haae: heap:00000505:  ereport(ERROR, 
-haae: heap:00000506:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-haae: heap:00000507:  errmsg("column name \"%s\" is duplicated", 
-haae: heap:00000508:  NameStr(tupdesc->attrs[j]->attname)), 
-haae: heap:00000509:  errOmitLocation(true))); 
-haae: heap:00000545:  ereport(WARNING, 
-haae: heap:00000546:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-haae: heap:00000547:  errmsg("column \"%s\" has type \"unknown\"", attname), 
-haae: heap:00000548:  errdetail("Proceeding with relation creation anyway."), 
-haae: heap:00000549:  errOmitLocation(true))); 
-haae: heap:00000554:  ereport(ERROR, 
-haae: heap:00000555:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-haae: heap:00000556:  errmsg("column \"%s\" has pseudo-type %s", 
-haae: heap:00000557:  attname, format_type_be(atttypid)), 
-haae: heap:00000558:  errOmitLocation(true))); 
-haae: heap:00001167:  elog(ERROR, 
-haae: heap:00001168:  "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
-haae: heap:00001169:  relationId, 
-haae: heap:00001170:  relname, 
-haae: heap:00001171:  relfilenode, 
-haae: heap:00001172:  segmentFileNum, 
-haae: heap:00001173:  persistentSerialNum); 
-haae: heap:00001229:  elog(ERROR, 
-haae: heap:00001230:  "Updating with invalid TID (0,0), relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
-haae: heap:00001231:  relfilenode, 
-haae: heap:00001232:  segmentFileNum, 
-haae: heap:00001233:  persistentSerialNum); 
-haae: heap:00001370:  ereport(ERROR, 
-haae: heap:00001371:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haae: heap:00001372:  errmsg( 
-haae: heap:00001373:  "OIDS=TRUE is not allowed on tables that " 
-haae: heap:00001374:  "use column-oriented storage. Use OIDS=FALSE" 
-haae: heap:00001375:  ), 
-haae: heap:00001376:  errOmitLocation(true))); 
-haae: heap:00001378:  ereport(NOTICE, 
-haae: heap:00001379:  (errmsg( 
-haae: heap:00001380:  "OIDS=TRUE is not recommended for user-created " 
-haae: heap:00001381:  "tables. Use OIDS=FALSE to prevent wrap-around " 
-haae: heap:00001382:  "of the OID counter" 
-haae: heap:00001383:  ), 
-haae: heap:00001384:  errOmitLocation(true))); 
-haae: heap:00001390:  ereport(ERROR, 
-haae: heap:00001391:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-haae: heap:00001392:  errmsg("relation \"%s\" already exists", relname), 
-haae: heap:00001393:  errOmitLocation(true))); 
-haae: heap:00001790:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-haae: heap:00001855:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
-haae: heap:00001856:  RelationGetRelid(relation), 
-haae: heap:00001857:  relation->rd_rel->relfilenode, 
-haae: heap:00001858:  segmentFileNum); 
-haae: heap:00001900:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00001901:  attnum, relid); 
-haae: heap:00002018:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
-haae: heap:00002019:  relid, attnum); 
-haae: heap:00002057:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
-haae: heap:00002079:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002080:  myattnum, myrelid); 
-haae: heap:00002387:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002388:  attnum, RelationGetRelid(rel)); 
-haae: heap:00002650:  ereport(ERROR, 
-haae: heap:00002651:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002652:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
-haae: heap:00002653:  ccname, RelationGetRelationName(rel)), 
-haae: heap:00002654:  errOmitLocation(true))); 
-haae: heap:00002661:  ereport(ERROR, 
-haae: heap:00002662:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002663:  errmsg("check constraint \"%s\" already exists", 
-haae: heap:00002664:  ccname), 
-haae: heap:00002665:  errOmitLocation(true))); 
-haae: heap:00002754:  ereport(ERROR, 
-haae: heap:00002755:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002756:  errmsg("only table \"%s\" can be referenced in check constraint", 
-haae: heap:00002757:  relname), errOmitLocation(true))); 
-haae: heap:00002762:  ereport(ERROR, 
-haae: heap:00002763:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002764:  errmsg("cannot use subquery in check constraint"), 
-haae: heap:00002765:  errOmitLocation(true))); 
-haae: heap:00002767:  ereport(ERROR, 
-haae: heap:00002768:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002769:  errmsg("cannot use aggregate function in check constraint"), 
-haae: heap:00002770:  errOmitLocation(true))); 
-haae: heap:00002772:  ereport(ERROR, 
-haae: heap:00002773:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002774:  errmsg("cannot use window function in check constraint"), 
-haae: heap:00002775:  errOmitLocation(true))); 
-haae: heap:00002803:  elog(ERROR, "cache lookup failed for relation %u", 
-haae: heap:00002804:  RelationGetRelid(rel)); 
-haae: heap:00002858:  ereport(ERROR, 
-haae: heap:00002859:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002860:  errmsg("cannot use column references in default expression"))); 
-haae: heap:00002866:  ereport(ERROR, 
-haae: heap:00002867:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002868:  errmsg("default expression must not return a set"), 
-haae: heap:00002869:  errOmitLocation(true))); 
-haae: heap:00002875:  ereport(ERROR, 
-haae: heap:00002876:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002877:  errmsg("cannot use subquery in default expression"), 
-haae: heap:00002878:  errOmitLocation(true))); 
-haae: heap:00002880:  ereport(ERROR, 
-haae: heap:00002881:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002882:  errmsg("cannot use aggregate function in default expression"), 
-haae: heap:00002883:  errOmitLocation(true))); 
-haae: heap:00002885:  ereport(ERROR, 
-haae: heap:00002886:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002887:  errmsg("cannot use window function in default expression"), 
-haae: heap:00002888:  errOmitLocation(true))); 
-haae: heap:00002904:  ereport(ERROR, 
-haae: heap:00002905:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002906:  errmsg("column \"%s\" is of type %s" 
-haae: heap:00002907:  " but default expression is of type %s", 
-haae: heap:00002908:  attname, 
-haae: heap:00002909:  format_type_be(atttypid), 
-haae: heap:00002910:  format_type_be(type_id)), 
-haae: heap:00002911:  errhint("You will need to rewrite or cast the expression."), 
-haae: heap:00002912:  errOmitLocation(true))); 
-haae: heap:00003222:  ereport(ERROR, 
-haae: heap:00003223:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003224:  errmsg("unsupported ON COMMIT and foreign key combination"), 
-haae: heap:00003225:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
-haae: heap:00003226:  relname2, relname), 
-haae: heap:00003227:  errOmitLocation(true))); 
-haae: heap:00003229:  ereport(ERROR, 
-haae: heap:00003230:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003231:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
-haae: heap:00003232:  errdetail("Table \"%s\" references \"%s\".", 
-haae: heap:00003233:  relname2, relname), 
-haae: heap:00003234:  errhint("Truncate table \"%s\" at the same time, " 
-haae: heap:00003235:  "or use TRUNCATE ... CASCADE.", 
-haae: heap:00003236:  relname2), 
-haae: heap:00003237:  errOmitLocation(true))); 
-haae: heap:00003366:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003367:  RelationGetRelid(relation)); 
+haae: heap:00000200:  elog(ERROR, "invalid system attribute number %d", attno); 
+haae: heap:00000268:  ereport(ERROR, 
+haae: heap:00000269:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+haae: heap:00000270:  errmsg("permission denied to create \"%s.%s\"", 
+haae: heap:00000271:  get_namespace_name(relnamespace), relname), 
+haae: heap:00000272:  errdetail("System catalog modifications are currently disallowed."), 
+haae: heap:00000273:  errOmitLocation(true))); 
+haae: heap:00000416:  elog(ERROR, 
+haae: heap:00000417:  "setNewRelfilenodeCommon has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+haae: heap:00000418:  rel->rd_node.spcNode, 
+haae: heap:00000419:  rel->rd_node.dbNode, 
+haae: heap:00000420:  rel->rd_node.relNode, 
+haae: heap:00000421:  NameStr(rel->rd_rel->relname), 
+haae: heap:00000422:  rel->rd_segfile0_relationnodeinfo.persistentSerialNum); 
+haae: heap:00000487:  ereport(ERROR, 
+haae: heap:00000488:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
+haae: heap:00000489:  errmsg("tables can have at most %d columns", 
+haae: heap:00000490:  MaxHeapAttributeNumber))); 
+haae: heap:00000504:  ereport(ERROR, 
+haae: heap:00000505:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+haae: heap:00000506:  errmsg("column name \"%s\" conflicts with a system column name", 
+haae: heap:00000507:  NameStr(tupdesc->attrs[i]->attname)))); 
+haae: heap:00000520:  ereport(ERROR, 
+haae: heap:00000521:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+haae: heap:00000522:  errmsg("column name \"%s\" is duplicated", 
+haae: heap:00000523:  NameStr(tupdesc->attrs[j]->attname)), 
+haae: heap:00000524:  errOmitLocation(true))); 
+haae: heap:00000560:  ereport(WARNING, 
+haae: heap:00000561:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+haae: heap:00000562:  errmsg("column \"%s\" has type \"unknown\"", attname), 
+haae: heap:00000563:  errdetail("Proceeding with relation creation anyway."), 
+haae: heap:00000564:  errOmitLocation(true))); 
+haae: heap:00000569:  ereport(ERROR, 
+haae: heap:00000570:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+haae: heap:00000571:  errmsg("column \"%s\" has pseudo-type %s", 
+haae: heap:00000572:  attname, format_type_be(atttypid)), 
+haae: heap:00000573:  errOmitLocation(true))); 
+haae: heap:00001182:  elog(ERROR, 
+haae: heap:00001183:  "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
+haae: heap:00001184:  relationId, 
+haae: heap:00001185:  relname, 
+haae: heap:00001186:  relfilenode, 
+haae: heap:00001187:  segmentFileNum, 
+haae: heap:00001188:  persistentSerialNum); 
+haae: heap:00001244:  elog(ERROR, 
+haae: heap:00001245:  "Updating with invalid TID (0,0) in relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
+haae: heap:00001246:  relfilenode, 
+haae: heap:00001247:  segmentFileNum, 
+haae: heap:00001248:  persistentSerialNum); 
+haae: heap:00001385:  ereport(ERROR, 
+haae: heap:00001386:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haae: heap:00001387:  errmsg( 
+haae: heap:00001388:  "OIDS=TRUE is not allowed on tables that " 
+haae: heap:00001389:  "use column-oriented storage. Use OIDS=FALSE" 
+haae: heap:00001390:  ), 
+haae: heap:00001391:  errOmitLocation(true))); 
+haae: heap:00001393:  ereport(NOTICE, 
+haae: heap:00001394:  (errmsg( 
+haae: heap:00001395:  "OIDS=TRUE is not recommended for user-created " 
+haae: heap:00001396:  "tables. Use OIDS=FALSE to prevent wrap-around " 
+haae: heap:00001397:  "of the OID counter" 
+haae: heap:00001398:  ), 
+haae: heap:00001399:  errOmitLocation(true))); 
+haae: heap:00001405:  ereport(ERROR, 
+haae: heap:00001406:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+haae: heap:00001407:  errmsg("relation \"%s\" already exists", relname), 
+haae: heap:00001408:  errOmitLocation(true))); 
+haae: heap:00001805:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+haae: heap:00001870:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
+haae: heap:00001871:  RelationGetRelid(relation), 
+haae: heap:00001872:  relation->rd_rel->relfilenode, 
+haae: heap:00001873:  segmentFileNum); 
+haae: heap:00001915:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00001916:  attnum, relid); 
+haae: heap:00002033:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
+haae: heap:00002034:  relid, attnum); 
+haae: heap:00002072:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
+haae: heap:00002094:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002095:  myattnum, myrelid); 
+haae: heap:00002402:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002403:  attnum, RelationGetRelid(rel)); 
+haae: heap:00002665:  ereport(ERROR, 
+haae: heap:00002666:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002667:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
+haae: heap:00002668:  ccname, RelationGetRelationName(rel)), 
+haae: heap:00002669:  errOmitLocation(true))); 
+haae: heap:00002676:  ereport(ERROR, 
+haae: heap:00002677:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002678:  errmsg("check constraint \"%s\" already exists", 
+haae: heap:00002679:  ccname), 
+haae: heap:00002680:  errOmitLocation(true))); 
+haae: heap:00002769:  ereport(ERROR, 
+haae: heap:00002770:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002771:  errmsg("only table \"%s\" can be referenced in check constraint", 
+haae: heap:00002772:  relname), errOmitLocation(true))); 
+haae: heap:00002777:  ereport(ERROR, 
+haae: heap:00002778:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002779:  errmsg("cannot use subquery in check constraint"), 
+haae: heap:00002780:  errOmitLocation(true))); 
+haae: heap:00002782:  ereport(ERROR, 
+haae: heap:00002783:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002784:  errmsg("cannot use aggregate function in check constraint"), 
+haae: heap:00002785:  errOmitLocation(true))); 
+haae: heap:00002787:  ereport(ERROR, 
+haae: heap:00002788:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002789:  errmsg("cannot use window function in check constraint"), 
+haae: heap:00002790:  errOmitLocation(true))); 
+haae: heap:00002818:  elog(ERROR, "cache lookup failed for relation %u", 
+haae: heap:00002819:  RelationGetRelid(rel)); 
+haae: heap:00002873:  ereport(ERROR, 
+haae: heap:00002874:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002875:  errmsg("cannot use column references in default expression"))); 
+haae: heap:00002881:  ereport(ERROR, 
+haae: heap:00002882:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002883:  errmsg("default expression must not return a set"), 
+haae: heap:00002884:  errOmitLocation(true))); 
+haae: heap:00002890:  ereport(ERROR, 
+haae: heap:00002891:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002892:  errmsg("cannot use subquery in default expression"), 
+haae: heap:00002893:  errOmitLocation(true))); 
+haae: heap:00002895:  ereport(ERROR, 
+haae: heap:00002896:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002897:  errmsg("cannot use aggregate function in default expression"), 
+haae: heap:00002898:  errOmitLocation(true))); 
+haae: heap:00002900:  ereport(ERROR, 
+haae: heap:00002901:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002902:  errmsg("cannot use window function in default expression"), 
+haae: heap:00002903:  errOmitLocation(true))); 
+haae: heap:00002919:  ereport(ERROR, 
+haae: heap:00002920:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002921:  errmsg("column \"%s\" is of type %s" 
+haae: heap:00002922:  " but default expression is of type %s", 
+haae: heap:00002923:  attname, 
+haae: heap:00002924:  format_type_be(atttypid), 
+haae: heap:00002925:  format_type_be(type_id)), 
+haae: heap:00002926:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002927:  errOmitLocation(true))); 
+haae: heap:00003237:  ereport(ERROR, 
+haae: heap:00003238:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003239:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+haae: heap:00003240:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
+haae: heap:00003241:  relname2, relname), 
+haae: heap:00003242:  errOmitLocation(true))); 
+haae: heap:00003244:  ereport(ERROR, 
+haae: heap:00003245:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003246:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+haae: heap:00003247:  errdetail("Table \"%s\" references \"%s\".", 
+haae: heap:00003248:  relname2, relname), 
+haae: heap:00003249:  errhint("Truncate table \"%s\" at the same time, " 
+haae: heap:00003250:  "or use TRUNCATE ... CASCADE.", 
+haae: heap:00003251:  relname2), 
+haae: heap:00003252:  errOmitLocation(true))); 
+haae: heap:00003381:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003382:  RelationGetRelid(relation)); 
+haae: heap:00003439:  elog(ERROR, 
+haae: heap:00003440:  "setNewRelfilenodeCommon has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+haae: heap:00003441:  newrnode.spcNode, 
+haae: heap:00003442:  newrnode.dbNode, 
+haae: heap:00003443:  newrnode.relNode, 
+haae: heap:00003444:  NameStr(relation->rd_rel->relname), 
+haae: heap:00003445:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000185:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000216:  elog(ERROR, "too few entries in indexprs list"); 
@@ -10139,115 +10153,122 @@ saai: sequence:00000324:  elog(ERROR, "Cound not find persistent information for
 saai: sequence:00000325:  rel->rd_node.spcNode, 
 saai: sequence:00000326:  rel->rd_node.dbNode, 
 saai: sequence:00000327:  rel->rd_node.relNode); 
-saai: sequence:00000840:  ereport(ERROR, 
-saai: sequence:00000841:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00000842:  errmsg("permission denied for sequence %s", 
-saai: sequence:00000843:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001086:  ereport(ERROR, 
-saai: sequence:00001087:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-saai: sequence:00001088:  errmsg("currval() not supported"))); 
-saai: sequence:00001096:  ereport(ERROR, 
-saai: sequence:00001097:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00001098:  errmsg("permission denied for sequence %s", 
-saai: sequence:00001099:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001102:  ereport(ERROR, 
-saai: sequence:00001103:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001104:  errmsg("currval of sequence \"%s\" is not yet defined in this session", 
-saai: sequence:00001105:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001123:  ereport(ERROR, 
-saai: sequence:00001124:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-saai: sequence:00001125:  errmsg("lastval() not supported"))); 
-saai: sequence:00001129:  ereport(ERROR, 
-saai: sequence:00001130:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001131:  errmsg("lastval is not yet defined in this session"))); 
-saai: sequence:00001137:  ereport(ERROR, 
-saai: sequence:00001138:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001139:  errmsg("lastval is not yet defined in this session"))); 
-saai: sequence:00001148:  ereport(ERROR, 
-saai: sequence:00001149:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00001150:  errmsg("permission denied for sequence %s", 
-saai: sequence:00001151:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001184:  ereport(ERROR, 
-saai: sequence:00001185:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-saai: sequence:00001186:  errmsg("setval() not supported in this context"))); 
-saai: sequence:00001193:  ereport(ERROR, 
-saai: sequence:00001194:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00001195:  errmsg("permission denied for sequence %s", 
-saai: sequence:00001196:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001215:  ereport(ERROR, 
-saai: sequence:00001216:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-saai: sequence:00001217:  errmsg("setval: value %s is out of bounds for sequence \"%s\" (%s..%s)", 
-saai: sequence:00001218:  bufv, RelationGetRelationName(seqrel), 
-saai: sequence:00001219:  bufm, bufx))); 
-saai: sequence:00001388:  ereport(ERROR, 
-saai: sequence:00001389:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-saai: sequence:00001390:  errmsg("out of memory"))); 
-saai: sequence:00001405:  ereport(ERROR, 
-saai: sequence:00001406:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-saai: sequence:00001407:  errmsg("\"%s\" is not a sequence", 
-saai: sequence:00001408:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001434:  elog(ERROR, "bad magic number in sequence \"%s\": %08X", 
-saai: sequence:00001435:  RelationGetRelationName(rel), sm->magic); 
-saai: sequence:00001475:  ereport(ERROR, 
-saai: sequence:00001476:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001477:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00000349:  elog(ERROR, 
+saai: sequence:00000350:  "Sequence_FetchGpRelationNodeForXLog has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+saai: sequence:00000351:  rel->rd_node.spcNode, 
+saai: sequence:00000352:  rel->rd_node.dbNode, 
+saai: sequence:00000353:  rel->rd_node.relNode, 
+saai: sequence:00000354:  NameStr(rel->rd_rel->relname), 
+saai: sequence:00000355:  rel->rd_segfile0_relationnodeinfo.persistentSerialNum); 
+saai: sequence:00000853:  ereport(ERROR, 
+saai: sequence:00000854:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00000855:  errmsg("permission denied for sequence %s", 
+saai: sequence:00000856:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001099:  ereport(ERROR, 
+saai: sequence:00001100:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+saai: sequence:00001101:  errmsg("currval() not supported"))); 
+saai: sequence:00001109:  ereport(ERROR, 
+saai: sequence:00001110:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00001111:  errmsg("permission denied for sequence %s", 
+saai: sequence:00001112:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001115:  ereport(ERROR, 
+saai: sequence:00001116:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001117:  errmsg("currval of sequence \"%s\" is not yet defined in this session", 
+saai: sequence:00001118:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001136:  ereport(ERROR, 
+saai: sequence:00001137:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+saai: sequence:00001138:  errmsg("lastval() not supported"))); 
+saai: sequence:00001142:  ereport(ERROR, 
+saai: sequence:00001143:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001144:  errmsg("lastval is not yet defined in this session"))); 
+saai: sequence:00001150:  ereport(ERROR, 
+saai: sequence:00001151:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001152:  errmsg("lastval is not yet defined in this session"))); 
+saai: sequence:00001161:  ereport(ERROR, 
+saai: sequence:00001162:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00001163:  errmsg("permission denied for sequence %s", 
+saai: sequence:00001164:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001197:  ereport(ERROR, 
+saai: sequence:00001198:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+saai: sequence:00001199:  errmsg("setval() not supported in this context"))); 
+saai: sequence:00001206:  ereport(ERROR, 
+saai: sequence:00001207:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00001208:  errmsg("permission denied for sequence %s", 
+saai: sequence:00001209:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001228:  ereport(ERROR, 
+saai: sequence:00001229:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+saai: sequence:00001230:  errmsg("setval: value %s is out of bounds for sequence \"%s\" (%s..%s)", 
+saai: sequence:00001231:  bufv, RelationGetRelationName(seqrel), 
+saai: sequence:00001232:  bufm, bufx))); 
+saai: sequence:00001401:  ereport(ERROR, 
+saai: sequence:00001402:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+saai: sequence:00001403:  errmsg("out of memory"))); 
+saai: sequence:00001418:  ereport(ERROR, 
+saai: sequence:00001419:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+saai: sequence:00001420:  errmsg("\"%s\" is not a sequence", 
+saai: sequence:00001421:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001447:  elog(ERROR, "bad magic number in sequence \"%s\": %08X", 
+saai: sequence:00001448:  RelationGetRelationName(rel), sm->magic); 
 saai: sequence:00001488:  ereport(ERROR, 
 saai: sequence:00001489:  (errcode(ERRCODE_SYNTAX_ERROR), 
 saai: sequence:00001490:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001496:  ereport(ERROR, 
-saai: sequence:00001497:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001498:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001504:  ereport(ERROR, 
-saai: sequence:00001505:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001506:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001512:  ereport(ERROR, 
-saai: sequence:00001513:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001514:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001520:  ereport(ERROR, 
-saai: sequence:00001521:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001522:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001528:  ereport(ERROR, 
-saai: sequence:00001529:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001530:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001534:  elog(ERROR, "option \"%s\" not recognized", 
-saai: sequence:00001535:  defel->defname); 
-saai: sequence:00001543:  ereport(ERROR, 
-saai: sequence:00001544:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001545:  errmsg("INCREMENT must not be zero"))); 
-saai: sequence:00001589:  ereport(ERROR, 
-saai: sequence:00001590:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001591:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
-saai: sequence:00001592:  bufm, bufx))); 
-saai: sequence:00001620:  ereport(ERROR, 
-saai: sequence:00001621:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001622:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
-saai: sequence:00001623:  bufs, bufm))); 
-saai: sequence:00001632:  ereport(ERROR, 
-saai: sequence:00001633:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001634:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
-saai: sequence:00001635:  bufs, bufm))); 
-saai: sequence:00001647:  ereport(ERROR, 
-saai: sequence:00001648:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001649:  errmsg("CACHE (%s) must be greater than zero", 
-saai: sequence:00001650:  buf))); 
-saai: sequence:00001678:  ereport(ERROR, 
-saai: sequence:00001679:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001680:  errmsg("invalid OWNED BY option"), 
-saai: sequence:00001681:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
-saai: sequence:00001701:  ereport(ERROR, 
-saai: sequence:00001702:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-saai: sequence:00001703:  errmsg("referenced relation \"%s\" is not a table", 
-saai: sequence:00001704:  RelationGetRelationName(tablerel)))); 
-saai: sequence:00001708:  ereport(ERROR, 
-saai: sequence:00001709:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001710:  errmsg("sequence must have same owner as table it is linked to"))); 
-saai: sequence:00001712:  ereport(ERROR, 
-saai: sequence:00001713:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001714:  errmsg("sequence must be in same schema as table it is linked to"))); 
-saai: sequence:00001719:  ereport(ERROR, 
-saai: sequence:00001720:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-saai: sequence:00001721:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-saai: sequence:00001722:  attrname, RelationGetRelationName(tablerel)))); 
+saai: sequence:00001501:  ereport(ERROR, 
+saai: sequence:00001502:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001503:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001509:  ereport(ERROR, 
+saai: sequence:00001510:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001511:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001517:  ereport(ERROR, 
+saai: sequence:00001518:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001519:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001525:  ereport(ERROR, 
+saai: sequence:00001526:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001527:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001533:  ereport(ERROR, 
+saai: sequence:00001534:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001535:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001541:  ereport(ERROR, 
+saai: sequence:00001542:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001543:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001547:  elog(ERROR, "option \"%s\" not recognized", 
+saai: sequence:00001548:  defel->defname); 
+saai: sequence:00001556:  ereport(ERROR, 
+saai: sequence:00001557:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001558:  errmsg("INCREMENT must not be zero"))); 
+saai: sequence:00001602:  ereport(ERROR, 
+saai: sequence:00001603:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001604:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
+saai: sequence:00001605:  bufm, bufx))); 
+saai: sequence:00001633:  ereport(ERROR, 
+saai: sequence:00001634:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001635:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
+saai: sequence:00001636:  bufs, bufm))); 
+saai: sequence:00001645:  ereport(ERROR, 
+saai: sequence:00001646:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001647:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
+saai: sequence:00001648:  bufs, bufm))); 
+saai: sequence:00001660:  ereport(ERROR, 
+saai: sequence:00001661:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001662:  errmsg("CACHE (%s) must be greater than zero", 
+saai: sequence:00001663:  buf))); 
+saai: sequence:00001691:  ereport(ERROR, 
+saai: sequence:00001692:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001693:  errmsg("invalid OWNED BY option"), 
+saai: sequence:00001694:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
+saai: sequence:00001714:  ereport(ERROR, 
+saai: sequence:00001715:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+saai: sequence:00001716:  errmsg("referenced relation \"%s\" is not a table", 
+saai: sequence:00001717:  RelationGetRelationName(tablerel)))); 
+saai: sequence:00001721:  ereport(ERROR, 
+saai: sequence:00001722:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001723:  errmsg("sequence must have same owner as table it is linked to"))); 
+saai: sequence:00001725:  ereport(ERROR, 
+saai: sequence:00001726:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001727:  errmsg("sequence must be in same schema as table it is linked to"))); 
+saai: sequence:00001732:  ereport(ERROR, 
+saai: sequence:00001733:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+saai: sequence:00001734:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+saai: sequence:00001735:  attrname, RelationGetRelationName(tablerel)))); 
 aaaaa GP_IGNORE: taaj: tablecmds - ./backend/commands/tablecmds.c
 taaj: tablecmds:00000419:  * via ereport(ERROR,...) if unsuccessful. 
 taaj: tablecmds:00000420:  */ 
@@ -13218,7 +13239,7 @@ aaaaa GP_IGNORE: eaba: exectuples - ./backend/executor/execTuples.c
 eaba: exectuples:00000312:  elog(ERROR, "plan requires more slots than are available"); 
 eaba: exectuples:00001501:  elog(ERROR, "Invalid attnum: %d", attnum); 
 aaaaa GP_IGNORE: eaaj: executils - ./backend/executor/execUtils.c
-eaaj: executils:00002340:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eaaj: executils:00002350:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 aaaaa GP_IGNORE: faaj: functions - ./backend/executor/functions.c
 faaj: functions:00000133:  elog(ERROR, "function cannot execute on segment because it issues a non-SELECT statement"); 
 faaj: functions:00000151:  elog(ERROR, "function cannot execute on segment because it accesses relation \"%s.%s\"", 
@@ -22611,72 +22632,79 @@ raai: relcache:00000369:  elog(FATAL, "Mismatch in node tuple for gp_relation_no
 raai: relcache:00000370:  gpRelationNodeScan->relationId, 
 raai: relcache:00000371:  gpRelationNodeScan->relfilenode, 
 raai: relcache:00000372:  actualRelationNode); 
-raai: relcache:00000551:  elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u", 
-raai: relcache:00000552:  relation->rd_rel->relname.data, 
-raai: relcache:00000553:  relation->rd_id, 
-raai: relcache:00000554:  relation->rd_node.relNode); 
-raai: relcache:00000576:  elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)", 
-raai: relcache:00000577:  countInThisBackend, 
-raai: relcache:00000578:  relation->rd_node.spcNode, 
-raai: relcache:00000579:  relation->rd_node.dbNode, 
-raai: relcache:00000580:  relation->rd_node.relNode, 
-raai: relcache:00000581:  deep); 
-raai: relcache:00000797:  elog(ERROR, "invalid attribute number %d for %s", 
-raai: relcache:00000798:  attp->attnum, RelationGetRelationName(relation)); 
-raai: relcache:00000831:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
-raai: relcache:00000832:  need, RelationGetRelid(relation)); 
-raai: relcache:00001287:  elog(ERROR, "cache lookup failed for index %u", 
-raai: relcache:00001288:  RelationGetRelid(relation)); 
-raai: relcache:00001314:  elog(ERROR, "cache lookup failed for access method %u", 
-raai: relcache:00001315:  relation->rd_rel->relam); 
-raai: relcache:00001323:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
-raai: relcache:00001324:  RelationGetRelid(relation)); 
-raai: relcache:00001420:  elog(ERROR, "bogus pg_index tuple"); 
-raai: relcache:00001552:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
-raai: relcache:00001553:  amopform->amopstrategy, operatorClassOid); 
-raai: relcache:00001586:  elog(ERROR, "invalid amproc number %d for opclass %u", 
-raai: relcache:00001587:  amprocform->amprocnum, operatorClassOid); 
-raai: relcache:00001856:  elog(ERROR, 
-raai: relcache:00001857:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
-raai: relcache:00001858:  rel->rd_node.spcNode, 
-raai: relcache:00001859:  rel->rd_node.dbNode, 
-raai: relcache:00001860:  rel->rd_node.relNode, 
-raai: relcache:00001861:  rel->rd_refcnt); 
-raai: relcache:00001936:  elog(ERROR, "could not find pg_class tuple for index %u", 
-raai: relcache:00001937:  RelationGetRelid(relation)); 
-raai: relcache:00002135:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
-raai: relcache:00002249:  elog(ERROR, "relation %u is still open", rid); 
-raai: relcache:00002622:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
-raai: relcache:00002623:  relname, relid); 
-raai: relcache:00002937:  elog(FATAL, "cache lookup failed for relation %u", 
-raai: relcache:00002938:  RelationGetRelid(relation)); 
-raai: relcache:00002967:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
-raai: relcache:00002968:  RelationGetRelationName(relation)); 
-raai: relcache:00003155:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
-raai: relcache:00003156:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003157:  RelationGetRelationName(relation)); 
-raai: relcache:00003165:  elog(WARNING, "null adbin for attr %s of rel %s", 
-raai: relcache:00003166:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003167:  RelationGetRelationName(relation)); 
-raai: relcache:00003175:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
-raai: relcache:00003176:  adform->adnum, RelationGetRelationName(relation)); 
-raai: relcache:00003183:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
-raai: relcache:00003184:  ndef - found, RelationGetRelationName(relation)); 
-raai: relcache:00003221:  elog(ERROR, "unexpected constraint record found for rel %s", 
-raai: relcache:00003222:  RelationGetRelationName(relation)); 
-raai: relcache:00003232:  elog(ERROR, "null conbin for rel %s", 
-raai: relcache:00003233:  RelationGetRelationName(relation)); 
-raai: relcache:00003244:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
-raai: relcache:00003245:  ncheck - found, RelationGetRelationName(relation)); 
-raai: relcache:00003978:  ereport(WARNING, 
-raai: relcache:00003979:  (errcode_for_file_access(), 
-raai: relcache:00003980:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00003981:  tempfilename), 
-raai: relcache:00003982:  errdetail("Continuing anyway, but there's something wrong."))); 
-raai: relcache:00003992:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004056:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004106:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004108:  elog(FATAL, "could not write init file"); 
+raai: relcache:00000552:  elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u", 
+raai: relcache:00000553:  relation->rd_rel->relname.data, 
+raai: relcache:00000554:  relation->rd_id, 
+raai: relcache:00000555:  relation->rd_node.relNode); 
+raai: relcache:00000562:  elog(ERROR, 
+raai: relcache:00000563:  "RelationFetchSegFile0GpRelationNode has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+raai: relcache:00000564:  relation->rd_node.spcNode, 
+raai: relcache:00000565:  relation->rd_node.dbNode, 
+raai: relcache:00000566:  relation->rd_node.relNode, 
+raai: relcache:00000567:  NameStr(relation->rd_rel->relname), 
+raai: relcache:00000568:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
+raai: relcache:00000590:  elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)", 
+raai: relcache:00000591:  countInThisBackend, 
+raai: relcache:00000592:  relation->rd_node.spcNode, 
+raai: relcache:00000593:  relation->rd_node.dbNode, 
+raai: relcache:00000594:  relation->rd_node.relNode, 
+raai: relcache:00000595:  deep); 
+raai: relcache:00000812:  elog(ERROR, "invalid attribute number %d for %s", 
+raai: relcache:00000813:  attp->attnum, RelationGetRelationName(relation)); 
+raai: relcache:00000846:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
+raai: relcache:00000847:  need, RelationGetRelid(relation)); 
+raai: relcache:00001302:  elog(ERROR, "cache lookup failed for index %u", 
+raai: relcache:00001303:  RelationGetRelid(relation)); 
+raai: relcache:00001329:  elog(ERROR, "cache lookup failed for access method %u", 
+raai: relcache:00001330:  relation->rd_rel->relam); 
+raai: relcache:00001338:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
+raai: relcache:00001339:  RelationGetRelid(relation)); 
+raai: relcache:00001435:  elog(ERROR, "bogus pg_index tuple"); 
+raai: relcache:00001567:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
+raai: relcache:00001568:  amopform->amopstrategy, operatorClassOid); 
+raai: relcache:00001601:  elog(ERROR, "invalid amproc number %d for opclass %u", 
+raai: relcache:00001602:  amprocform->amprocnum, operatorClassOid); 
+raai: relcache:00001872:  elog(ERROR, 
+raai: relcache:00001873:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
+raai: relcache:00001874:  rel->rd_node.spcNode, 
+raai: relcache:00001875:  rel->rd_node.dbNode, 
+raai: relcache:00001876:  rel->rd_node.relNode, 
+raai: relcache:00001877:  rel->rd_refcnt); 
+raai: relcache:00001952:  elog(ERROR, "could not find pg_class tuple for index %u", 
+raai: relcache:00001953:  RelationGetRelid(relation)); 
+raai: relcache:00002151:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
+raai: relcache:00002265:  elog(ERROR, "relation %u is still open", rid); 
+raai: relcache:00002638:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
+raai: relcache:00002639:  relname, relid); 
+raai: relcache:00002954:  elog(FATAL, "cache lookup failed for relation %u", 
+raai: relcache:00002955:  RelationGetRelid(relation)); 
+raai: relcache:00002984:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
+raai: relcache:00002985:  RelationGetRelationName(relation)); 
+raai: relcache:00003172:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
+raai: relcache:00003173:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003174:  RelationGetRelationName(relation)); 
+raai: relcache:00003182:  elog(WARNING, "null adbin for attr %s of rel %s", 
+raai: relcache:00003183:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003184:  RelationGetRelationName(relation)); 
+raai: relcache:00003192:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
+raai: relcache:00003193:  adform->adnum, RelationGetRelationName(relation)); 
+raai: relcache:00003200:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
+raai: relcache:00003201:  ndef - found, RelationGetRelationName(relation)); 
+raai: relcache:00003238:  elog(ERROR, "unexpected constraint record found for rel %s", 
+raai: relcache:00003239:  RelationGetRelationName(relation)); 
+raai: relcache:00003249:  elog(ERROR, "null conbin for rel %s", 
+raai: relcache:00003250:  RelationGetRelationName(relation)); 
+raai: relcache:00003261:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
+raai: relcache:00003262:  ncheck - found, RelationGetRelationName(relation)); 
+raai: relcache:00003995:  ereport(WARNING, 
+raai: relcache:00003996:  (errcode_for_file_access(), 
+raai: relcache:00003997:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00003998:  tempfilename), 
+raai: relcache:00003999:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00004009:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004073:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004123:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004125:  elog(FATAL, "could not write init file"); 
 aaaaa GP_IGNORE: saai: syscache - ./backend/utils/cache/syscache.c
 saai: syscache:00000595:  elog(ERROR, "could not initialize cache %u (%d)", 
 saai: syscache:00000596:  cacheinfo[cacheId].reloid, cacheId); 
@@ -24117,112 +24145,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006615:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006616:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006629:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006630:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006643:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006644:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006674:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006675:  conf->gen.name, str); 
-gaad: guc:00006932:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006949:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006966:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006997:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007853:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007963:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007964:  " in a future release.", name); 
-gaad: guc:00007972:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007973:  name); 
-gaad: guc:00008447:  ereport(ERROR, 
-gaad: guc:00008448:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008449:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008451:  ereport(ERROR, 
-gaad: guc:00008452:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008453:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008487:  ereport(ERROR, 
-gaad: guc:00008488:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008489:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008491:  ereport(ERROR, 
-gaad: guc:00008492:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008493:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008562:  ereport(ERROR, 
-gaad: guc:00008563:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008564:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008571:  ereport(ERROR, 
-gaad: guc:00008572:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008573:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008586:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008633:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008634:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008691:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008717:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008718:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008744:  ereport(ERROR, 
-gaad: guc:00008745:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008746:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008808:  ereport(ERROR, 
-gaad: guc:00008809:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008810:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009129:  ereport(ERROR, 
-gaad: guc:00009130:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009131:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009133:  ereport(ERROR, 
-gaad: guc:00009134:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009135:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009904:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009937:  ereport(FATAL, 
-gaad: guc:00009938:  (errcode_for_file_access(), 
-gaad: guc:00009939:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009940:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009952:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009954:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009956:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010047:  ereport(WARNING, 
-gaad: guc:00010048:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010049:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010243:  ereport(ERROR, 
-gaad: guc:00010244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010245:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010266:  ereport(ERROR, 
-gaad: guc:00010267:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010268:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010269:  tok))); 
-gaad: guc:00010295:  ereport(ERROR, 
-gaad: guc:00010296:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010297:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010298:  value))); 
-gaad: guc:00010730:  ereport(ERROR, 
-gaad: guc:00010731:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010732:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010806:  ereport(ERROR, 
-gaad: guc:00010807:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010808:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010817:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010827:  ereport(ERROR, 
-gaad: guc:00010828:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010829:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010840:  ereport(ERROR, 
-gaad: guc:00010841:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010842:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010857:  ereport(ERROR, 
-gaad: guc:00010858:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010859:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010860:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010861:  "\"log_dispatch_stats\", " 
-gaad: guc:00010862:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010877:  ereport(ERROR, 
-gaad: guc:00010878:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010879:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010880:  "\"log_statement_stats\", " 
-gaad: guc:00010881:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010882:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010897:  ereport(ERROR, 
-gaad: guc:00010898:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010899:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011296:  elog(ERROR, 
-gaad: guc:00011297:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011298:  show_allow_system_table_mods()); 
+gaad: guc:00006626:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006627:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006640:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006641:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006654:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006655:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006685:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006686:  conf->gen.name, str); 
+gaad: guc:00006943:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006960:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006977:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007008:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007864:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007974:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007975:  " in a future release.", name); 
+gaad: guc:00007983:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007984:  name); 
+gaad: guc:00008458:  ereport(ERROR, 
+gaad: guc:00008459:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008460:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008462:  ereport(ERROR, 
+gaad: guc:00008463:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008464:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008498:  ereport(ERROR, 
+gaad: guc:00008499:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008500:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008502:  ereport(ERROR, 
+gaad: guc:00008503:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008504:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008573:  ereport(ERROR, 
+gaad: guc:00008574:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008575:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008582:  ereport(ERROR, 
+gaad: guc:00008583:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008584:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008597:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008644:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008645:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008702:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008728:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008729:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008755:  ereport(ERROR, 
+gaad: guc:00008756:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008757:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008819:  ereport(ERROR, 
+gaad: guc:00008820:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008821:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009140:  ereport(ERROR, 
+gaad: guc:00009141:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009142:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009144:  ereport(ERROR, 
+gaad: guc:00009145:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009146:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009915:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009948:  ereport(FATAL, 
+gaad: guc:00009949:  (errcode_for_file_access(), 
+gaad: guc:00009950:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009951:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009963:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009965:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009967:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010058:  ereport(WARNING, 
+gaad: guc:00010059:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010060:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010254:  ereport(ERROR, 
+gaad: guc:00010255:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010256:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010277:  ereport(ERROR, 
+gaad: guc:00010278:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010279:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010280:  tok))); 
+gaad: guc:00010306:  ereport(ERROR, 
+gaad: guc:00010307:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010308:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010309:  value))); 
+gaad: guc:00010741:  ereport(ERROR, 
+gaad: guc:00010742:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010743:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010817:  ereport(ERROR, 
+gaad: guc:00010818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010819:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010828:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010838:  ereport(ERROR, 
+gaad: guc:00010839:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010840:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010851:  ereport(ERROR, 
+gaad: guc:00010852:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010853:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010868:  ereport(ERROR, 
+gaad: guc:00010869:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010870:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010871:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010872:  "\"log_dispatch_stats\", " 
+gaad: guc:00010873:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010888:  ereport(ERROR, 
+gaad: guc:00010889:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010890:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010891:  "\"log_statement_stats\", " 
+gaad: guc:00010892:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010893:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010908:  ereport(ERROR, 
+gaad: guc:00010909:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010910:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011307:  elog(ERROR, 
+gaad: guc:00011308:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011309:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
