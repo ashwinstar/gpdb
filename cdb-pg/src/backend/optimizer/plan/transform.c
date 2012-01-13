@@ -353,26 +353,68 @@ static bool safe_to_replace_sirvf_tle(Query *query)
 
 
 /**
- * Is it safe to replace rte's in this query? If every range table entry is a
- * non-set returning function, this should be safe.
+ * Does a query return utmost single row?
  */
-static bool safe_to_replace_sirvf_rte(Query *query)
+static bool single_row_query(Query *query)
 {
+	/**
+	 * If targetlist has a SRF, then no guarantee
+	 */
+	if (expression_returns_set( (Node *) query->targetList))
+	{
+		return false;
+	}
+
+	/**
+	 * Every range table entry must return utmost one row.
+	 */
 	ListCell *lcrte = NULL;
 	foreach (lcrte, query->rtable)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lcrte);
-		if (rte->rtekind != RTE_FUNCTION)
+
+		switch(rte->rtekind)
 		{
-			return false;
-		}
-		FuncExpr *fe = (FuncExpr *) rte->funcexpr;
-		if (fe->funcretset)
-		{
-			return false;
+			case RTE_FUNCTION:
+			{
+				FuncExpr *fe = (FuncExpr *) rte->funcexpr;
+				if (fe->funcretset)
+				{
+					/* SRF in FROM clause */
+					return false;
+				}
+				break;
+			}
+			case RTE_SUBQUERY:
+			{
+				Query *sq = (Query *) rte->subquery;
+				/**
+				 * Recurse into subquery to see if it returns
+				 * utmost one row.
+				 */
+				if (!single_row_query(sq))
+				{
+					return false;
+				}
+				break;
+			}
+			default:
+			{
+				return false;
+			}
 		}
 	}
+
 	return true;
+}
+
+/**
+ * Is it safe to replace rte's in this query? This is the
+ * case if the query returns utmost one row.
+ */
+static bool safe_to_replace_sirvf_rte(Query *query)
+{
+	return single_row_query(query);
 }
 
 /**
