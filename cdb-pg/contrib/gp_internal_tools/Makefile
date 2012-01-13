@@ -1,5 +1,5 @@
-MODULE_big = gp_aoseg_history
-OBJS       = gp_aoseg_history.o
+MODULE_big = gp_ao_co_diagnostics
+OBJS       = gp_ao_co_diagnostics.o
 
 PG_CPPFLAGS = -I$(libpq_srcdir)
 
