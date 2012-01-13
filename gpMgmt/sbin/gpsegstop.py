@@ -74,7 +74,8 @@ class GpSegStop:
             datadir, port = db.split(':')[0:2]
 
             cmd = gp.SegmentStop('segment shutdown', datadir, mode=self.mode, timeout=self.timeout)
-            res = cmd.run().get_results()
+            cmd.run()
+            res = cmd.get_results()
             if res.rc == 0:
                 
                 # MPP-15208
