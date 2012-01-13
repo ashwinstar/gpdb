@@ -802,6 +802,7 @@ def update_gpdbid_file(options, array):
         cmd = gp.GpCreateDBIdFile('update gp_dbid file',
                                   standby_datadir,
                                   standby_dbid,
+                                  verbose=logging_is_verbose(),
                                   ctxt=base.REMOTE,
                                   remoteHost=options.standby_host)
 
@@ -870,7 +871,7 @@ try:
     # Turn on debug logging if needed
     if options.debug:
         enable_verbose_logging()
-    elif options.quiet:
+    if options.quiet:
         quiet_stdout_logging()
 
     # Kick off the work
