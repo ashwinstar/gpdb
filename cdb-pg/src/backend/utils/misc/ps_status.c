@@ -93,7 +93,6 @@ static const size_t ps_buffer_size = PS_BUFFER_SIZE;
 #else							/* PS_USE_CLOBBER_ARGV */
 static char *ps_buffer;			/* will point to argv area */
 static size_t ps_buffer_size;	/* space determined at run time */
-static size_t last_status_len;  /* use to minimize length of clobber */
 #endif   /* PS_USE_CLOBBER_ARGV */
 
 static size_t ps_buffer_fixed_size;		/* size of the constant prefix */
@@ -185,7 +184,7 @@ save_ps_display_args(int argc, char **argv)
 		 * become an issue we can always just have gpstart add more arguments.
 		 */
 		ps_buffer = argv[0];
-		last_status_len = ps_buffer_size = (end_of_area - ps_buffer);
+		ps_buffer_size = (end_of_area - ps_buffer);
 	}
 #endif   /* PS_USE_CLOBBER_ARGV */
 
@@ -288,7 +287,6 @@ init_ps_display(const char *username, const char *dbname,
 	 */
 	if (ps_buffer_size > save_argc)
 	{
-		last_status_len -= save_argc;
 		ps_buffer_size  -= save_argc;
 		memset(ps_buffer+ps_buffer_size, 0, save_argc);
 		ps_buffer[ps_buffer_size] = PS_PADDING;
@@ -352,6 +350,41 @@ init_ps_display(const char *username, const char *dbname,
 
 
 /*
+ * MPP-15163
+ * Search environment area for GPSESSID variable and overwrite it with gp_session_id.
+ * gpdebug uses GPSESSID to identify orphaned processes by looking for processes with
+ * a GPSESSID value not present in "select sess_id from pg_stat_activity".
+ */
+static void
+set_gpsessid()
+{
+	int i;
+	for (i = 0; environ[i] != NULL; i++)
+	{
+		if (strncmp(environ[i], "GPSESSID=0000000000", 19) == 0)
+		{
+			snprintf(environ[i], 20, "GPSESSID=%010d", gp_session_id);
+			break;
+		}
+	}
+}
+
+static void
+set_gpkill()
+{
+	int i;
+	for (i = 0; environ[i] != NULL; i++)
+	{
+		if (strncmp(environ[i], "GPKILL=NEVER", 12) == 0)
+		{
+			snprintf(environ[i], 13, "GPKILL=STUCK");
+			break;
+		}
+	}
+}
+
+
+/*
  * Call this to update the ps status display to a fixed prefix plus an
  * indication of what you're currently doing passed in the argument.
  */
@@ -385,7 +418,11 @@ set_ps_display(const char *activity, bool force)
 
     /* Add client session's global id. */
     if (gp_session_id > 0)
+    {
         cp += snprintf(cp, ep-cp, "con%d ", gp_session_id);
+        set_gpsessid();
+        set_gpkill();
+    }
 
     /* Add host and port.  (Not very useful for qExecs, so skip.) */
     if (Gp_role != GP_ROLE_EXECUTE &&
@@ -456,9 +493,8 @@ set_ps_display(const char *activity, bool force)
 		}
 #endif
 
-		if (last_status_len > buflen)
-			MemSet(ps_buffer + buflen, PS_PADDING, last_status_len - buflen);
-		last_status_len = buflen;
+		if (buflen < ps_buffer_size)
+			MemSet(ps_buffer + buflen, PS_PADDING, ps_buffer_size - buflen);
     }
 #endif   /* PS_USE_CLOBBER_ARGV */
 

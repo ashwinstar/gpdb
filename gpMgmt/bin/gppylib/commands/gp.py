@@ -6,7 +6,7 @@
 """
 TODO: docs!
 """
-import os, pickle, base64
+import os, pickle, base64, time
 
 from gppylib.gplog import *
 from gppylib.db import dbconn
@@ -17,7 +17,6 @@ from unix import *
 import pg
 from gppylib import pgconf
 from gppylib.utils import writeLinesToFile, createFromSingleHostFile
-from pg_ctl import PgCtlBackendOptions, PgCtlStart, PgCtlStop
 
 
 logger = get_default_logger()
@@ -77,8 +76,241 @@ class PySync(Command):
 
 
 #-----------------------------------------------
+
+class CmdArgs(list):
+    """
+    Conceptually this is a list of an executable path and executable options 
+    built in a structured manner with a canonical string representation suitable 
+    for execution via a shell.
+
+    Examples
+    --------
+
+    >>> str(CmdArgs(['foo']).set_verbose(True))
+    'foo -v'
+    >>> str(CmdArgs(['foo']).set_verbose(False).set_wait_timeout(True,600))
+    'foo -w -t 600'
+
+    """
+
+    def __init__(self, l):
+        list.__init__(self, l)
+
+    def __str__(self):
+        return " ".join(self)
+
+    def set_verbose(self, verbose):
+        """
+        @param verbose - true if verbose output desired
+        """
+        if verbose: self.append("-v")
+        return self
+
+    def set_wrapper(self, wrapper, args):
+        """
+        @param wrapper - wrapper executable ultimately passed to pg_ctl
+        @param args - wrapper arguments ultimately passed to pg_ctl
+        """
+        if wrapper:
+            self.append("--wrapper=\"%s\"" % wrapper)
+            if args:
+                self.append("--wrapper-args=\"%s\"" % args)
+        return self
+
+    def set_wait_timeout(self, wait, timeout):
+        """
+        @param wait: true if should wait until operation completes
+        @param timeout: number of seconds to wait before giving up
+        """
+        if wait: 
+            self.append("-w")
+        if timeout: 
+            self.append("-t")
+            self.append(str(timeout))
+        return self
+
+    def set_segments(self, segments):
+        """
+        The reduces the command line length of the gpsegstart.py and other 
+        commands. There are shell limitations to the length and if there are a 
+        large number of segments and filespaces this limit can be exceeded. 
+        Since filespaces are not used by our callers, we remove all but one of them.
+
+        @param segments - segments (from GpArray.getSegmentsByHostName)
+        """
+        for seg in segments:
+            cfg_array = repr(seg).split('|')[0:-1]
+            self.append("-D '%s'" % ('|'.join(cfg_array) + '|'))
+        return self
+
+
+
+class PgCtlBackendOptions(CmdArgs):
+    """
+    List of options suitable for use with the -o option of pg_ctl.
+    Used by MasterStart, SegmentStart to format the backend options 
+    string passed via pg_ctl -o
+
+    Examples
+    --------
+
+    >>> str(PgCtlBackendOptions(5432, 1, 2))
+    '-p 5432 -b 1 -z 2 --silent-mode=true'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_master(2, False, False))
+    '-p 5432 -b 1 -z 2 --silent-mode=true -i -M master -C -1 -x 2'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_master(2, False, True))
+    '-p 5432 -b 1 -z 2 --silent-mode=true -i -M master -C -1 -x 2 -E'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_segment('mirror', 1))
+    '-p 5432 -b 1 -z 2 --silent-mode=true -i -M mirror -C 1'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_special('upgrade'))
+    '-p 5432 -b 1 -z 2 --silent-mode=true -U'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_special('maintenance'))
+    '-p 5432 -b 1 -z 2 --silent-mode=true -m'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_utility(True))
+    '-p 5432 -b 1 -z 2 --silent-mode=true -c gp_role=utility'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_utility(False))
+    '-p 5432 -b 1 -z 2 --silent-mode=true'
+    >>> str(PgCtlBackendOptions(5432, 1, 2).set_restricted(True,1))
+    '-p 5432 -b 1 -z 2 --silent-mode=true -c superuser_reserved_connections=1'
+    >>> 
+
+    """
+
+    def __init__(self, port, dbid, numcids):
+        """
+        @param port: backend port
+        @param dbid: backed dbid 
+        @param numcids: total number of content ids in cluster
+        """
+        CmdArgs.__init__(self, [
+            "-p", str(port),
+            "-b", str(dbid),
+            "-z", str(numcids),
+            "--silent-mode=true"
+        ])
+
+    #
+    # master/segment-specific options
+    #
+
+    def set_master(self, standby_dbid, disable, seqserver):
+        """
+        @param standby_dbid: standby dbid
+        @param disable: start without master mirroring?
+        @param seqserver: start with seqserver?
+        """
+        self.extend(["-i", "-M", "master", "-C", "-1", "-x", str(standby_dbid)])
+        if disable: self.append("-y")
+        if seqserver: self.append("-E")
+        return self
+
+    def set_segment(self, mode, content):
+        """
+        @param mode: mirroring mode
+        @param content: content id
+        """
+        self.extend(["-i", "-M", str(mode), "-C", str(content)])
+        return self
+
+    #
+    # startup mode options
+    #
+
+    def set_special(self, special):
+        """
+        @param special: special mode (none, 'upgrade' or 'maintenance')
+        """
+        opt = {None:None, 'upgrade':'-U', 'maintenance':'-m'}[special]
+        if opt: self.append(opt)
+        return self
+
+    def set_utility(self, utility):
+        """
+        @param utility: true if starting in utility mode
+        """
+        if utility: self.append("-c gp_role=utility")
+        return self
+
+    def set_restricted(self, restricted, max_connections):
+        """
+        @param restricted: true if restricting connections
+        @param max_connections: connection limit
+        """
+        if restricted:  self.append("-c superuser_reserved_connections=%s" % max_connections)
+        return self
+
+
+class PgCtlStartArgs(CmdArgs):
+    """
+    Used by MasterStart, SegmentStart to format the pg_ctl command
+    to start a backend postmaster.
+
+    Examples
+    --------
+
+    >>> a = PgCtlStartArgs("/data1/master/gpseg-1", str(PgCtlBackendOptions(5432, 1, 2)), 123, None, None, True, 600)
+    >>> str(a).split(' ') #doctest: +NORMALIZE_WHITESPACE
+    ['env', 'GPKILL=NEVER', 'GPERA=123', '$GPHOME/bin/pg_ctl', '-D', '/data1/master/gpseg-1', '-l', 
+     '/data1/master/gpseg-1/pg_log/startup.log', '-w', '-t', '600', 
+     '-o', '"', '-p', '5432', '-b', '1', '-z', '2', '--silent-mode=true', '"', 'start']
+    """
+
+    def __init__(self, datadir, backend, era, wrapper, args, wait, timeout=None):
+        """
+        @param datadir: database data directory
+        @param backend: backend options string from PgCtlBackendOptions
+        @param era: gpdb master execution era
+        @param wrapper: wrapper executable for pg_ctl
+        @param args: wrapper arguments for pg_ctl
+        @param wait: true if pg_ctl should wait until backend starts completely
+        @param timeout: number of seconds to wait before giving up
+        """
+
+        CmdArgs.__init__(self, [
+            "env",			# variables examined by gpkill/gpdebug/etc
+            "GPSESSID=0000000000", 	# <- overwritten with gp_session_id to help identify orphans
+            "GPKILL=NEVER",		# <- indicates gpkill should not allow kill for this process
+            "GPERA=%s" % str(era),	# <- master era used to help identify orphans
+            "$GPHOME/bin/pg_ctl",
+            "-D", str(datadir),
+            "-l", "%s/pg_log/startup.log" % datadir,
+        ])
+        self.set_wrapper(wrapper, args)
+        self.set_wait_timeout(wait, timeout)
+        self.extend([
+            "-o", "\"", str(backend), "\"",
+            "start"
+        ])
+
+
+class PgCtlStopArgs(CmdArgs):
+    """
+    Used by MasterStop, SegmentStop to format the pg_ctl command
+    to stop a backend postmaster
+
+    >>> str(PgCtlStopArgs("/data1/master/gpseg-1", "smart", True, 600))
+    '$GPHOME/bin/pg_ctl -D /data1/master/gpseg-1 -m smart -w -t 600 stop'
+
+    """
+
+    def __init__(self, datadir, mode, wait, timeout):
+        """
+        @param datadir: database data directory
+        @param mode: shutdown mode (smart, fast, immediate)
+        @param wait: true if pg_ctlshould wait for backend to stop
+        @param timeout: number of seconds to wait before giving up
+        """
+        CmdArgs.__init__(self, [
+            "$GPHOME/bin/pg_ctl",
+            "-D", str(datadir),
+            "-m", str(mode),
+        ])
+        self.set_wait_timeout(wait, timeout)
+        self.append("stop")
+
+
 class MasterStart(Command):
-    def __init__(self, name, dataDir, port, dbid, standby_dbid, numContentsInCluster, 
+    def __init__(self, name, dataDir, port, dbid, standby_dbid, numContentsInCluster, era,
                  wrapper, wrapper_args, specialMode=None, restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  max_connections=1, disableMasterMirror=False, utilityMode=False, ctxt=LOCAL, remoteHost=None
                  ):
@@ -96,17 +328,16 @@ class MasterStart(Command):
         b.set_restricted(restrictedMode, max_connections)
 
         # build pg_ctl command
-        c = PgCtlStart(dataDir, b, wrapper, wrapper_args, True, timeout)
-        
+        c = PgCtlStartArgs(dataDir, b, era, wrapper, wrapper_args, True, timeout)
         self.cmdStr = str(c)
 
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
     @staticmethod
-    def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster, 
+    def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster, era,
               wrapper, wrapper_args, specialMode=None, restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
               max_connections=1, disableMasterMirror=False, utilityMode=False):
-        cmd=MasterStart(name, dataDir, port, dbid, standbydbid, numContentsInCluster,
+        cmd=MasterStart(name, dataDir, port, dbid, standbydbid, numContentsInCluster, era,
                         wrapper, wrapper_args, specialMode, restrictedMode, timeout,
                         max_connections, disableMasterMirror, utilityMode)
         cmd.run(validateAfter=True)
@@ -115,7 +346,7 @@ class MasterStart(Command):
 class MasterStop(Command):
     def __init__(self,name,dataDir,mode='smart',timeout=SEGMENT_TIMEOUT_DEFAULT, ctxt=LOCAL,remoteHost=None):
         self.dataDir = dataDir
-        self.cmdStr = str( PgCtlStop(dataDir, mode, True, timeout) )
+        self.cmdStr = str( PgCtlStopArgs(dataDir, mode, True, timeout) )
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
     @staticmethod
@@ -132,7 +363,7 @@ class SegmentStart(Command):
     all of the segments on a specified GpHost.
     """
 
-    def __init__(self, name, gpdb, numContentsInCluster, mirroringMode,
+    def __init__(self, name, gpdb, numContentsInCluster, era, mirrormode,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None,
                  noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  specialMode=None, wrapper=None, wrapper_args=None):
@@ -148,25 +379,24 @@ class SegmentStart(Command):
 
         # build backend options
         b = PgCtlBackendOptions(port, dbid, numContentsInCluster)
-        b.set_segment(mirroringMode, content)
+        b.set_segment(mirrormode, content)
         b.set_utility(utilityMode)
         b.set_special(specialMode)
 
         # build pg_ctl command
-        c = PgCtlStart(datadir, b, wrapper, wrapper_args, not noWait, timeout)
-
+        c = PgCtlStartArgs(datadir, b, era, wrapper, wrapper_args, not noWait, timeout)
         self.cmdStr = str(c) + ' 2>&1'
 
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
     @staticmethod
-    def local(name, gpdb, numContentsInCluster, mirroringMode, utilityMode=False):
-        cmd=SegmentStart(name, gpdb, numContentsInCluster, mirroringMode, utilityMode)
+    def local(name, gpdb, numContentsInCluster, era, mirrormode, utilityMode=False):
+        cmd=SegmentStart(name, gpdb, numContentsInCluster, era, mirrormode, utilityMode)
         cmd.run(validateAfter=True)
 
     @staticmethod
-    def remote(name, remoteHost, gpdb, numContentsInCluster, mirroringMode, utilityMode=False):
-        cmd=SegmentStart(name, gpdb, numContentsInCluster, mirroringMode, utilityMode, ctxt=REMOTE, remoteHost=remoteHost)
+    def remote(name, remoteHost, gpdb, numContentsInCluster, era, mirrormode, utilityMode=False):
+        cmd=SegmentStart(name, gpdb, numContentsInCluster, era, mirrormode, utilityMode, ctxt=REMOTE, remoteHost=remoteHost)
         cmd.run(validateAfter=True)
 
 
@@ -325,38 +555,42 @@ class SendFilerepVerifyMessage(Command):
 class SegmentStop(Command):
     def __init__(self, name, dataDir,mode='smart', nowait=False, ctxt=LOCAL, 
                  remoteHost=None, timeout=SEGMENT_TIMEOUT_DEFAULT):
-        cmdfrags=['$GPHOME/bin/pg_ctl stop -D %s -m %s' % (dataDir,mode)]
-        if not nowait:
-            cmdfrags.append('-w')
-            cmdfrags.append('-t %d' % timeout)
-        cmdStr=' '.join(cmdfrags)
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+        self.cmdStr = str( PgCtlStopArgs(dataDir, mode, not nowait, timeout) )
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
     @staticmethod
     def local(name, dataDir,mode='smart'):
         cmd=SegmentStop(name, dataDir,mode)
         cmd.run(validateAfter=True)
+        return cmd
 
     @staticmethod
     def remote(name, hostname, dataDir, mode='smart'):
         cmd=SegmentStop(name, dataDir, mode, ctxt=REMOTE, remoteHost=hostname)
         cmd.run(validateAfter=True)
+        return cmd
 
-def getSegmentsReprArgWithoutFilespaces(segments):
-    dirlist=[]
-    for seg in segments:
-        # The following strip of the filespaces is to reduce the command
-        # line length of the gpsegstart.py and other commands.  There are shell
-        # limitations to the length, and if there are a large number of segments
-        # and filespaces, this limit can be exceeded.
-        # Since filespaces are not used by callers of this fn, we can remove all but one of them.
+#-----------------------------------------------
+class SegmentIsShutDown(Command):
+    """
+    Get the pg_controldata status, and check that it says 'shut down'
+    """
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
+        cmdStr = "$GPHOME/bin/pg_controldata %s" % directory
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
-        cfg_array = repr(seg).split('|')[0:-1]
+    def is_shutdown(self):
+        for key, value in self.results.split_stdout():
+            if key == 'Database cluster state':
+                return value.strip() == 'shut down'
+        return False
 
-        dirlist.append("-D '%s'" % ('|'.join(cfg_array) + '|'))
+    @staticmethod
+    def local(name,directory):
+        cmd=SegmentIsShutDown(name,directory)
+        cmd.run(validateAfter=True)
 
-    dirstr=" ".join(dirlist)
-    return dirstr
 
 #
 # list of valid segment statuses that can be requested
@@ -399,6 +633,26 @@ SEGMENT_STATUS__HAS_LOCKFILE = "__hasLockFile"
 #
 SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE = "__hasPostmasterPidFile"
 
+class GpGetStatusUsingTransitionArgs(CmdArgs):
+    """
+    Examples
+    --------
+
+    >>> str(GpGetStatusUsingTransitionArgs([],'request'))
+    '$GPHOME/sbin/gpgetstatususingtransition.py -s request'
+    """
+
+    def __init__(self, segments, status_request):
+        """
+        @param status_request
+        """
+        CmdArgs.__init__(self, [
+            "$GPHOME/sbin/gpgetstatususingtransition.py",
+            "-s", str(status_request)
+        ])
+        self.set_segments(segments)
+
+
 class GpGetSegmentStatusValues(Command):
     """
     Fetch status values for segments on a host
@@ -416,21 +670,11 @@ class GpGetSegmentStatusValues(Command):
         # clone the list
         self.dblist = [x for x in segments]
 
-        # Since filespaces are not used for checking transition status, we can remove all but one of them.
-        dirStr = getSegmentsReprArgWithoutFilespaces(segments)
-
-        if verbose:
-            setVerbose="-v"
-        else:
-            setVerbose=""
-
-        args = [
-                "$GPHOME/sbin/gpgetstatususingtransition.py",
-                setVerbose,
-                "-s %s" % ":".join(statusRequestArr),
-                dirStr
-                ]
-        cmdStr = " ".join(args)
+        # build gpgetstatususingtransition commadn
+        status_request = ":".join(statusRequestArr)
+        c = GpGetStatusUsingTransitionArgs(segments, status_request)
+        c.set_verbose(verbose)
+        cmdStr = str(c)
 
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
@@ -468,61 +712,82 @@ SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED = 9
 SEGSTART_ERROR_PING_FAILED = 10 # not actually done inside GpSegStartCmd, done instead by caller
 SEGSTART_ERROR_OTHER = 1000
     
+
+class GpSegStartArgs(CmdArgs):
+    """
+    Examples
+    --------
+
+    >>> str(GpSegStartArgs('en_US.utf-8:en_US.utf-8:en_US.utf-8', 'mirrorless', 'gpversion', 1, 123, 600))
+    "$GPHOME/sbin/gpsegstart.py -C en_US.utf-8:en_US.utf-8:en_US.utf-8 -M mirrorless -V 'gpversion' -n 1 --era 123 -t 600"
+    """
+
+    def __init__(self, collation, mirrormode, gpversion, num_cids, era, timeout):
+        """
+        @param collation - string built from ":".join([lc_collate, lc_monetary, lc_numeric])
+        @param mirrormode - mirror start mode (START_AS_PRIMARY_OR_MIRROR or START_AS_MIRRORLESS)
+        @param gpversion - version (from postgres --gp-version)
+        @param num_cids - number content ids
+        @param era - master era
+        @param timeout - seconds to wait before giving up
+        """
+        CmdArgs.__init__(self, [
+            "$GPHOME/sbin/gpsegstart.py",
+            "-C", str(collation),
+            "-M", str(mirrormode),
+            "-V '%s'" % gpversion,
+            "-n", str(num_cids),
+            "--era", str(era),
+            "-t", str(timeout)
+        ])
+
+    def set_special(self, special):
+        """
+        @param special - special mode
+        """
+        assert(special in [None, 'upgrade', 'maintenance'])
+        if special: 
+            self.append("-U")
+            self.append(special)
+        return self
+
+    def set_transition(self, data):
+        """
+        @param data - pickled transition data
+        """
+        if data is not None:
+            self.append("-p")
+            self.append(data)
+        return self
+
+
+
 class GpSegStartCmd(Command):
-    def __init__(self, name, gphome, segments, collatelist, gpversion,
-                 mirroringMode, numContentsInCluster, timeout=SEGMENT_TIMEOUT_DEFAULT, 
-                 verbose=False,ctxt=LOCAL, remoteHost=None, pickledTransitionData=None,
+    def __init__(self, name, gphome, segments, collation, gpversion,
+                 mirrormode, numContentsInCluster, era,
+                 timeout=SEGMENT_TIMEOUT_DEFAULT, verbose=False, 
+                 ctxt=LOCAL, remoteHost=None, pickledTransitionData=None,
                  specialMode=None, wrapper=None, wrapper_args=None):
 
-        # Referenced by calling code, create a clone
+        # Referenced by calling code (in operations/startSegments.py), create a clone
         self.dblist = [x for x in segments]
 
-        # Since filespaces are not used for checking transition status, we can remove all but one of them.
-        dirstr=getSegmentsReprArgWithoutFilespaces(segments)
-        
-        colstr=":".join(collatelist)
-        if verbose:
-            setverbose="-v"
-        else:
-            setverbose=""
+        # build gpsegstart command string
+        c = GpSegStartArgs(collation, mirrormode, gpversion, numContentsInCluster, era, timeout)
+        c.set_verbose(verbose)
+        c.set_special(specialMode)
+        c.set_transition(pickledTransitionData)
+        c.set_wrapper(wrapper, wrapper_args)
+        c.set_segments(segments)
 
-        args = [
-                "$GPHOME/sbin/gpsegstart.py",
-                setverbose,
-                "-C %s" % colstr,
-                "-M %s" % mirroringMode,
-                "-V '%s'" % gpversion,
-                "-n %s" % numContentsInCluster,
-                "-t %d" % timeout
-                ]
-
-        # gpsegstart.py: takes "-U specialMode" for upgrade or maintenance mode 
-        assert(specialMode in [None, 'upgrade', 'maintenance'])
-        if specialMode is not None:
-            args.append("-U %s" % specialMode)
-
-        if pickledTransitionData is not None:
-            args.append("-p")
-            args.append(pickledTransitionData)
-        
-        wrapper_string = ""
-        if wrapper != None:
-            wrapper_string = "--wrapper=\"%s\"" % wrapper
-
-            if wrapper_args != None:
-                wrapper_string += " --wrapper-args=\"%s\"" % wrapper_args
-        args.append(wrapper_string);
-            
-        args.append(dirstr)
-
-        cmdStr= " ".join(args)
-
+        cmdStr = str(c)
         logger.debug(cmdStr)
 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
+
 class GpSegChangeMirrorModeCmd(Command):
-    def __init__(self, name, gphome, collatelist, gpversion, dbs, targetMode,
+    def __init__(self, name, gphome, collation, gpversion, dbs, targetMode,
                  pickledParams, verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dbs
@@ -533,7 +798,7 @@ class GpSegChangeMirrorModeCmd(Command):
             self.dirlist.append(datadir + ':' + str(port))
 
         dirstr=" -D ".join(self.dirlist)
-        colstr=":".join(collatelist)
+        colstr=":".join(collation)
         if verbose:
             setverbose=" -v "
         else:
@@ -912,16 +1177,10 @@ class GpCatVersionDirectory(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     def get_version(self):
-        # We got the whole pg_controldata, need to sift through
-        # that looking for the catalog version number
-        data = {}
-        for line in self.results.stdout.split('\n'):
-            try:
-                (key, value) = line.split(':', 1)
-                data[key] = value.strip()
-            except:
-                pass
-        return data['Catalog version number']
+        "sift through pg_controldata looking for the catalog version number"
+        for key, value in self.results.split_stdout():
+            if key == 'Catalog version number':
+                return value.strip()
 
     @staticmethod
     def local(name,directory):
@@ -1050,6 +1309,9 @@ def get_masterdatadir():
         raise GpError("Environment Variable MASTER_DATA_DIRECTORY not set!")
     return master_datadir
 
+######
+def get_masterport(datadir):
+    return pgconf.readfile(os.path.join(datadir, 'postgresql.conf')).int('port')
 
 
 ######
@@ -1348,3 +1610,9 @@ class GpRecoverSeg(Command):
        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 
+
+        
+if __name__ == '__main__':
+
+    import doctest
+    doctest.testmod()
