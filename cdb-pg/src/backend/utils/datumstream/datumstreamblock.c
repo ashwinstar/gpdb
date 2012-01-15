@@ -3753,7 +3753,7 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
 	 * Total.
 	 */
 	newTotalSize = (alignedHeaderSize + currentDataSize);
-    result = (alignedHeaderSize <= dsw->maxDataBlockSize);
+    result = (newTotalSize <= dsw->maxDataBlockSize);
 
 	if (Debug_appendonly_print_insert_tuple)
 	{
