@@ -1039,6 +1039,49 @@ simple_string_list_member(SimpleStringList *list, const char *val)
 
 
 /*
+ * openFileAndAppendToList: Read parameters from file
+ * and append values to given list.
+ * (Used to read multiple include/exclude tables.)
+ *
+ * reason - list name, to be logged.
+ *
+ * File format: one value per line.
+ */
+bool
+open_file_and_append_to_list(const char *fileName, SimpleStringList *list, const char *reason)
+{
+
+	char buf[1024];
+
+	write_msg(NULL, "Opening file %s for %s\n", fileName, reason);
+
+	FILE* file = fopen(fileName, "r");
+
+	if (file == NULL)
+		return false;
+
+	int lineNum = 0;
+	while (fgets(buf, sizeof(buf), file) != NULL)
+	{
+		int size = strlen(buf);
+		if (buf[size-1] == '\n')
+			buf[size-1] = '\0'; /* remove new line */
+
+		write_msg(NULL, "Line #%d, value: %s\n", ++lineNum, buf);
+		simple_string_list_append(list, buf);
+	}
+	write_msg(NULL, "Got %d lines from file %s\n", lineNum, fileName);
+	if (fclose(file) != 0)
+		return false;
+
+	write_msg(NULL, "Finished reading file %s successfully\n", fileName);
+
+	return true;
+
+}
+
+
+/*
  * Safer versions of some standard C library functions. If an
  * out-of-memory condition occurs, these functions will bail out
  * safely; therefore, their return value is guaranteed to be non-NULL.

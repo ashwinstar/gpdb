@@ -34,11 +34,13 @@ INJECT_GP_DUMP_FAILURE = None
 class DumpDatabase(Operation):
     # TODO: very verbose constructor = room for improvement. in the parent constructor, we could use kwargs
     # to automatically take in all arguments and perhaps do some data type validation.
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, backup_dir, report_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, ddboost):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, include_dump_tables_file, exclude_dump_tables_file, backup_dir, report_dir, free_space_percent, compress, clear_catalog_dumps, encoding, output_options, batch_default, master_datadir, master_port, ddboost):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
         self.exclude_dump_tables = exclude_dump_tables
+        self.include_dump_tables_file = include_dump_tables_file,
+        self.exclude_dump_tables_file = exclude_dump_tables_file,
         self.backup_dir = backup_dir
         self.report_dir = report_dir
         self.free_space_percent = free_space_percent
@@ -55,6 +57,8 @@ class DumpDatabase(Operation):
                                                         dump_schema = self.dump_schema,
                                                         include_dump_tables = self.include_dump_tables,
                                                         exclude_dump_tables = self.exclude_dump_tables,
+                                                        include_dump_tables_file = self.include_dump_tables_file[0],
+                                                        exclude_dump_tables_file = self.exclude_dump_tables_file[0],
                                                         backup_dir = self.backup_dir,
                                                         report_dir = self.report_dir,
                                                         free_space_percent = self.free_space_percent,
@@ -101,6 +105,10 @@ class DumpDatabase(Operation):
             schema, table = dump_table.split('.')
             dump_line += " --exclude-table=\"\\\"%s\\\"\".\"\\\"%s\\\"\"" % (schema, table)
             #dump_line += " --exclude-table=\"%s\".\"%s\"" % (schema, table)
+        if self.include_dump_tables_file[0] is not None:
+            dump_line += " --table-file=%s" % self.include_dump_tables_file
+        if self.exclude_dump_tables_file[0] is not None:
+            dump_line += " --exclude-table-file=%s" % self.exclude_dump_tables_file
         for opt in self.output_options:
             dump_line += " %s" % opt
         logger.info("Dump command line %s" % dump_line)
@@ -245,11 +253,15 @@ class NoDumpFile(Exception): pass
 
 
 class ValidateDumpDatabase(Operation):
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, backup_dir, report_dir, free_space_percent, compress, batch_default, master_datadir, master_port):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, 
+                 include_dump_tables_file, exclude_dump_tables_file, backup_dir, report_dir, 
+                 free_space_percent, compress, batch_default, master_datadir, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
         self.exclude_dump_tables = exclude_dump_tables
+        self.include_dump_tables_file = include_dump_tables_file
+        self.exclude_dump_tables_file = exclude_dump_tables_file
         self.backup_dir = backup_dir
         self.report_dir = report_dir
         self.free_space_percent = free_space_percent
@@ -278,6 +290,8 @@ class ValidateDumpDatabase(Operation):
                                                        dump_schema = self.dump_schema,
                                                        include_dump_tables = self.include_dump_tables,
                                                        exclude_dump_tables = self.exclude_dump_tables,
+                                                       include_dump_tables_file = self.include_dump_tables_file,
+                                                       exclude_dump_tables_file = self.exclude_dump_tables_file,
                                                        master_port = self.master_port).run()
 
         if self.free_space_percent is not None:
@@ -482,26 +496,32 @@ class DumpDirNotWritable(Exception): pass
 
 
 class ValidateDumpTargets(Operation):
-    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, master_port):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, exclude_dump_tables, 
+                 include_dump_tables_file, exclude_dump_tables_file, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
         self.exclude_dump_tables = exclude_dump_tables
+        self.include_dump_tables_file = include_dump_tables_file
+        self.exclude_dump_tables_file = exclude_dump_tables_file
         self.master_port = master_port
     def execute(self):
-        if len(self.include_dump_tables) > 0 and len(self.exclude_dump_tables) > 0:
-            raise ExceptionNoStackTraceNeeded("Cannot use -t and -T options at same time")
-        elif len(self.include_dump_tables) > 0:
+        if ((len(self.include_dump_tables) > 0 or (self.include_dump_tables_file is not None)) and 
+            (len(self.exclude_dump_tables) > 0 or (self.exclude_dump_tables_file is not None))):
+            raise ExceptionNoStackTraceNeeded("Cannot use -t/--table-file and -T/--exclude-table-file options at same time")
+        elif len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
             logger.info("Configuring for single-database, include-table dump")
             ValidateIncludeTargets(dump_database = self.dump_database,
                                    dump_schema = self.dump_schema,
                                    include_dump_tables = self.include_dump_tables,
+                                   include_dump_tables_file = self.include_dump_tables_file,
                                    master_port = self.master_port).run()
-        elif len(self.exclude_dump_tables) > 0:
+        elif len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:
             logger.info("Configuring for single-database, exclude-table dump")
             self.exclude_dump_tables = ValidateExcludeTargets(dump_database = self.dump_database,
                                                               dump_schema = self.dump_schema,
                                                               exclude_dump_tables = self.exclude_dump_tables,
+                                                              exclude_dump_tables_file = self.exclude_dump_tables_file,
                                                               master_port = self.master_port).run()
         else:
             logger.info("Configuring for single database dump")
@@ -510,13 +530,27 @@ class ValidateDumpTargets(Operation):
 
 
 class ValidateIncludeTargets(Operation):
-    def __init__(self, dump_database, dump_schema, include_dump_tables, master_port):
+    def __init__(self, dump_database, dump_schema, include_dump_tables, include_dump_tables_file, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.include_dump_tables = include_dump_tables
+        self.include_dump_tables_file = include_dump_tables_file
         self.master_port = master_port
     def execute(self):
+        
+        dump_tables = []
         for dump_table in self.include_dump_tables:
+            dump_tables.append(dump_table)
+                
+        if self.include_dump_tables_file is not None:
+            include_file = open(self.include_dump_tables_file, 'rU')   
+            if not include_file:
+                raise ExceptionNoStackTraceNeeded("Can't open file %s" % include_dump_tables_file);
+            for line in include_file:
+                dump_tables.append(line.strip('\n'));
+            include_file.close()
+     
+        for dump_table in dump_tables:
             if '.' not in dump_table:
                 raise ExceptionNoStackTraceNeeded("No schema name supplied for table %s" % dump_table)
             schema, table = dump_table.split('.')
@@ -535,14 +569,28 @@ class ValidateIncludeTargets(Operation):
 
 
 class ValidateExcludeTargets(Operation):
-    def __init__(self, dump_database, dump_schema, exclude_dump_tables, master_port):
+    def __init__(self, dump_database, dump_schema, exclude_dump_tables, exclude_dump_tables_file, master_port):
         self.dump_database = dump_database
         self.dump_schema = dump_schema
         self.exclude_dump_tables = exclude_dump_tables
+        self.exclude_dump_tables_file = exclude_dump_tables_file
         self.master_port = master_port
     def execute(self):
         rebuild_excludes = []
+        
+        dump_tables = []
         for dump_table in self.exclude_dump_tables:
+            dump_tables.append(dump_table)
+                 
+        if self.exclude_dump_tables_file is not None:
+            exclude_file = open(self.exclude_dump_tables_file, 'rU')   
+            if not exclude_file:
+                raise ExceptionNoStackTraceNeeded("Can't open file %s" % exclude_dump_tables_file);
+            for line in exclude_file:
+                dump_tables.append(line.strip('\n'));
+            exclude_file.close()
+        
+        for dump_table in dump_tables:
             if '.' not in dump_table:
                 raise ExceptionNoStackTraceNeeded("No schema name supplied for exclude table %s" % dump_table)   
             schema, table = dump_table.split('.')
