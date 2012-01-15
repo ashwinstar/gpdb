@@ -109,8 +109,9 @@ export OPENSSL_CONF
 EOF
 
 cat <<EOF
-# MPP-15405
-export HISTTIMEFORMAT='%F %T '
+# MPP-15405 - A new GPKILL utility
+HISTTIMEFORMAT='%F %T '
+export HISTTIMEFORMAT
 _kill ()
 { 
     \$GPHOME/bin/gpkill -q --check \$*
