@@ -78,9 +78,9 @@ class GpMasterEnvironment:
         checkNotNone("lc_numeric", self.__lcNumeric) # make sure we were initialized with "readFromMasterCatalog"
         return self.__lcNumeric
 
-    def getLocaleArray(self):
+    def getLocaleData(self):
         checkNotNone("lc_numeric", self.__lcNumeric) # make sure we were initialized with "readFromMasterCatalog"
-        return [self.__lcCollate, self.__lcMonetary, self.__lcNumeric]
+        return ":".join([self.__lcCollate, self.__lcMonetary, self.__lcNumeric])
 
     def getMasterDataDir(self): return self.__masterDataDir
     def getMasterMaxConnections(self) : return self.__masterMaxConnections

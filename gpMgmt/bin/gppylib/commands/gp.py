@@ -722,9 +722,9 @@ class GpSegStartArgs(CmdArgs):
     "$GPHOME/sbin/gpsegstart.py -C en_US.utf-8:en_US.utf-8:en_US.utf-8 -M mirrorless -V 'gpversion' -n 1 --era 123 -t 600"
     """
 
-    def __init__(self, collation, mirrormode, gpversion, num_cids, era, timeout):
+    def __init__(self, localeData, mirrormode, gpversion, num_cids, era, timeout):
         """
-        @param collation - string built from ":".join([lc_collate, lc_monetary, lc_numeric])
+        @param localeData - string built from ":".join([lc_collate, lc_monetary, lc_numeric]), e.g. gpEnv.getLocaleData()
         @param mirrormode - mirror start mode (START_AS_PRIMARY_OR_MIRROR or START_AS_MIRRORLESS)
         @param gpversion - version (from postgres --gp-version)
         @param num_cids - number content ids
@@ -733,7 +733,7 @@ class GpSegStartArgs(CmdArgs):
         """
         CmdArgs.__init__(self, [
             "$GPHOME/sbin/gpsegstart.py",
-            "-C", str(collation),
+            "-C", str(localeData),
             "-M", str(mirrormode),
             "-V '%s'" % gpversion,
             "-n", str(num_cids),
@@ -763,7 +763,7 @@ class GpSegStartArgs(CmdArgs):
 
 
 class GpSegStartCmd(Command):
-    def __init__(self, name, gphome, segments, collation, gpversion,
+    def __init__(self, name, gphome, segments, localeData, gpversion,
                  mirrormode, numContentsInCluster, era,
                  timeout=SEGMENT_TIMEOUT_DEFAULT, verbose=False, 
                  ctxt=LOCAL, remoteHost=None, pickledTransitionData=None,
@@ -773,7 +773,7 @@ class GpSegStartCmd(Command):
         self.dblist = [x for x in segments]
 
         # build gpsegstart command string
-        c = GpSegStartArgs(collation, mirrormode, gpversion, numContentsInCluster, era, timeout)
+        c = GpSegStartArgs(localeData, mirrormode, gpversion, numContentsInCluster, era, timeout)
         c.set_verbose(verbose)
         c.set_special(specialMode)
         c.set_transition(pickledTransitionData)
@@ -787,7 +787,7 @@ class GpSegStartCmd(Command):
 
 
 class GpSegChangeMirrorModeCmd(Command):
-    def __init__(self, name, gphome, collation, gpversion, dbs, targetMode,
+    def __init__(self, name, gphome, localeData, gpversion, dbs, targetMode,
                  pickledParams, verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dbs
@@ -798,14 +798,13 @@ class GpSegChangeMirrorModeCmd(Command):
             self.dirlist.append(datadir + ':' + str(port))
 
         dirstr=" -D ".join(self.dirlist)
-        colstr=":".join(collation)
         if verbose:
             setverbose=" -v "
         else:
             setverbose=""
 
         cmdStr="$GPHOME/sbin/gpsegtoprimaryormirror.py %s -D %s -C %s -M %s -p %s -V '%s'" % \
-                (setverbose,dirstr,colstr,targetMode,pickledParams,gpversion)
+                (setverbose,dirstr,localeData,targetMode,pickledParams,gpversion)
 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 

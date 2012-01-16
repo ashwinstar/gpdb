@@ -16,7 +16,8 @@ from gppylib.gparray import GpArray
 from gppylib import gphostcache
 from gppylib.testold.testUtils import *
 from gppylib.operations import startSegments
-
+from gppylib.gp_era import read_era
+    
 logger = get_default_logger()
 
 gDatabaseDirectories = [
@@ -641,7 +642,7 @@ class GpMirrorListToBuild:
 
     def __createStartSegmentsOp(self, gpEnv):
         return startSegments.StartSegmentsOperation(self.__pool, self.__quiet,
-                gpEnv.getLocaleArray(), gpEnv.getGpVersion(),
+                gpEnv.getLocaleData(), gpEnv.getGpVersion(),
                 gpEnv.getGpHome(), gpEnv.getMasterDataDir()
                 )
 
@@ -667,7 +668,11 @@ class GpMirrorListToBuild:
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "writing updated gpid files")
 
     def __startAll(self, gpEnv, gpArray, segments):
-        segmentStartResult = self.__createStartSegmentsOp(gpEnv).startSegments(gpArray, segments, startSegments.START_AS_PRIMARY_OR_MIRROR)
+
+        # the newly started segments should belong to the current era
+        era = read_era(gpEnv.getMasterDataDir(), logger=gplog.get_logger_if_verbose())
+
+        segmentStartResult = self.__createStartSegmentsOp(gpEnv).startSegments(gpArray, segments, startSegments.START_AS_PRIMARY_OR_MIRROR, era)
 
         for failure in segmentStartResult.getFailedSegmentObjs():
             failedSeg = failure.getSegment()

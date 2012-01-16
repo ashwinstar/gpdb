@@ -297,15 +297,16 @@ class GpDebugMain(YamlMain):
                     assert host == host2
                     if era != prev:
                         if tabLog:
-                            self.logger.info("Era: " + prev)
+                            self.logger.info("Era: %s" % prev)
                             tabLog.outputTable()
                         self.logger.info("--------------------------------------------")
                         tabLog = TableLogger()
                         tabLog.info(["Host","SessId","Pid","Detail"])
                         prev = era
                     tabLog.info([host, sessid, pid, detail])
-            self.logger.info("Era: " + prev)
-            tabLog.outputTable()
+            if tabLog:
+                self.logger.info("Era: %s" % prev)
+                tabLog.outputTable()
             self.logger.info("--------------------------------------------")
             
 
