@@ -77,7 +77,7 @@ class GpSegStop:
             cmd.run()
             res = cmd.get_results()
             if res.rc == 0:
-                
+
                 # MPP-15208
                 #
                 cmd2 = gp.SegmentIsShutDown('check if shutdown', datadir)
@@ -85,6 +85,13 @@ class GpSegStop:
                 if cmd2.is_shutdown():
                     status = SegStopStatus(datadir, True, "Shutdown Succeeded")
                     results.append(status)                
+                    continue
+
+                # MPP-16171
+                # 
+                if self.mode == 'immediate':
+                    status = SegStopStatus(datadir, True, "Shutdown Immediate")
+                    results.append(status)
                     continue
 
             # read pid and datadir from /tmp/.s.PGSQL.<port>.lock file
