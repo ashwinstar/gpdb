@@ -8,7 +8,7 @@ SYNOPSIS
 
 
 gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>]  
-[-S] [-v | -V] [-m <maxlen>]
+[-S] [-v | -V] [-m <maxlen>] [--ssl certificate_path]
 
 gpfdist [-? | --help] | --version
 
@@ -89,6 +89,19 @@ as it increases resource allocation. Valid range is 32K to 1MB.
 Opens the file for synchronous I/O with the O_SYNC flag. Any writes to 
 the resulting file descriptor block gpfdist until the data is 
 physically written to the underlying hardware.
+
+--ssl certificate_path
+
+Adds SSL encryption to data transfered with gpfdist. In addition 
+to specifying SSL encryption here, you can also use SSL encryption 
+with the gpfdists protocol and with gpload. The location specified 
+in certificate_path must contain the following files:
+
+- The server certificate file, server.crt
+- The server private key file, server.key
+- The trusted certificate authorities, root.crt
+
+The root directory (/) cannot be specified in certificate_path.
  
 
 -v (verbose)
