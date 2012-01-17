@@ -448,6 +448,8 @@ static void parse_command_line(int argc, const char* const argv[],
 	int 			ch;
 	int 			e;
 
+	char* current_directory = NULL;
+
 	static const apr_getopt_option_t option[] =
 	{
 	/* long-option, short-option, has-arg flag, description */
@@ -570,6 +572,11 @@ static void parse_command_line(int argc, const char* const argv[],
     if (! (16 <= opt.z && opt.t <= 512) )
 		usage_error("Error: -z listen queue size must be between 16 and 512 (default is 256)", 0);
 
+    /* get current directory, for ssl directory validation */
+    if (0 != apr_filepath_get(&current_directory, APR_FILEPATH_NATIVE, pool))
+		usage_error(apr_psprintf(pool, "Error: cannot access directory '.'\n"
+									   "Please run gpfdist from a different location"), 0);
+
 	/* validate opt.d */
 	{
 		char* p = gstring_trim(apr_pstrdup(pool, opt.d));
@@ -657,6 +664,10 @@ static void parse_command_line(int argc, const char* const argv[],
 			p[strlen(p) - 1] = 0;
 		opt.ssl = p;
 
+		/* change current directory to original one (after -d changed it) */
+		if (0 != apr_filepath_set(current_directory, pool))
+				usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
+											   "Please run gpfdist from a different location", current_directory), 0);
 		/* check that the dir exists */
 		if ( (0 != apr_filepath_set(opt.ssl, pool)) || (0 != apr_filepath_get(&p, APR_FILEPATH_NATIVE, pool)) )
 			usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
