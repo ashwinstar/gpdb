@@ -517,6 +517,26 @@ ReadGpRelationNode(
 	}
 	else
 	{
+		if (Debug_persistent_print)
+		{
+			TupleVisibilitySummary tupleVisibilitySummary;
+			char *tupleVisibilitySummaryString;
+			
+			GetTupleVisibilitySummary(
+									tuple,
+									&tupleVisibilitySummary);
+			tupleVisibilitySummaryString = GetTupleVisibilitySummaryString(&tupleVisibilitySummary);
+			
+			elog(Persistent_DebugPrintLevel(), 
+				 "ReadGpRelationNode: For relfilenode %u, segment file #%d found persistent serial number " INT64_FORMAT ", TID %s (gp_relation_node tuple visibility: %s)",
+				 relfilenode,
+				 segmentFileNum,
+				 *persistentSerialNum,
+				 ItemPointerToString(persistentTid),
+				 tupleVisibilitySummaryString);
+			pfree(tupleVisibilitySummaryString);
+		}
+
 		found = true;
 		heap_freetuple(tuple);
 	}
@@ -1967,6 +1987,11 @@ RelationReloadClassinfo(Relation relation)
 	if (relation->rd_amcache)
 		pfree(relation->rd_amcache);
 	relation->rd_amcache = NULL;
+
+	/* Forget gp_relation_node information -- it may have changed. */
+	MemSet(&relation->rd_segfile0_relationnodeinfo, 0, sizeof(RelationNodeInfo));
+
+
 	/* Okay, now it's valid again */
 	relation->rd_isvalid = true;
 }
