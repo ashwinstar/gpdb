@@ -3984,11 +3984,13 @@ void FileRepStats_GpmonInit(void)
 #endif 
 
 		gpmonInfo->gpsock = sock;
-		memcpy(&(gpmonInfo->gpaddr), &addrs->ai_addr, addrs->ai_addrlen);
-		gpmonInfo->gpaddr_len = addrs->ai_addrlen;
+	
+		memset(&(gpmonInfo->gpaddr), 0, sizeof(struct sockaddr_storage));
+		memcpy(&(gpmonInfo->gpaddr), rp->ai_addr, rp->ai_addrlen);
+		gpmonInfo->gpaddr_len = rp->ai_addrlen;
 
 		elog(DEBUG1, "FileRepStats_GpmonInit destAddress localhost, port %d\n",
-		  gpperfmon_port);
+				 gpperfmon_port);
 
 		return;
 	}
@@ -4101,14 +4103,17 @@ void FileRepStats_GpmonSend(int sig)
 			 return;
 	 }
 
-	 bytesSent = sendto(gpmonInfo->gpsock, packet, sizeof(gpmon_packet_t), 0,
+ 	 bytesSent = sendto(gpmonInfo->gpsock, packet, sizeof(gpmon_packet_t), 0,
 						(struct sockaddr *) &(gpmonInfo->gpaddr),
-						sizeof(struct sockaddr));
+						gpmonInfo->gpaddr_len);
+
 	 if (bytesSent != sizeof (gpmon_packet_t))
 	 {
-			 elog(WARNING, "Error when sending file rep stats to perfmon - \
-                            only %d bytes of %lu sent\n",
-				  bytesSent, (unsigned long)sizeof(gpmon_packet_t));
+			 elog(WARNING, "FileRepStats_GpmonSend: Error when sending file rep stats to perfmon - \
+                            only %d bytes of %lu sent; %s\n",
+				  bytesSent, (unsigned long)sizeof(gpmon_packet_t),
+				  strerror(errno)
+				 );
 	 } else 
 	 {
 
