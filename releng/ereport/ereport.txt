@@ -4027,12 +4027,14 @@ caba: cdbfilerep:00003940:  (errmsg("could not translate host addr \"%s\", port 
 caba: cdbfilerep:00003941:  "localhost", gpperfmon_port, gai_strerror(ret)))); 
 caba: cdbfilerep:00003977:  elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed"); 
 caba: cdbfilerep:00003982:  elog(WARNING, "fcntl(F_SETFD) failed"); 
-caba: cdbfilerep:00003995:  elog(WARNING, "gpmon: cannot create socket (%m)"); 
-caba: cdbfilerep:00004099:  elog(WARNING, 
-caba: cdbfilerep:00004100:  "Cannot send file rep stats to perfmon - socket invalid\n"); 
-caba: cdbfilerep:00004109:  elog(WARNING, "Error when sending file rep stats to perfmon - \ 
-caba: cdbfilerep:00004110:  only %d bytes of %lu sent\n", 
-caba: cdbfilerep:00004111:  bytesSent, (unsigned long)sizeof(gpmon_packet_t)); 
+caba: cdbfilerep:00003997:  elog(WARNING, "gpmon: cannot create socket (%m)"); 
+caba: cdbfilerep:00004101:  elog(WARNING, 
+caba: cdbfilerep:00004102:  "Cannot send file rep stats to perfmon - socket invalid\n"); 
+caba: cdbfilerep:00004112:  elog(WARNING, "FileRepStats_GpmonSend: Error when sending file rep stats to perfmon - \ 
+caba: cdbfilerep:00004113:  only %d bytes of %lu sent; %s\n", 
+caba: cdbfilerep:00004114:  bytesSent, (unsigned long)sizeof(gpmon_packet_t), 
+caba: cdbfilerep:00004115:  strerror(errno) 
+caba: cdbfilerep:00004116:  ); 
 aaaaa GP_IGNORE: caca: cdbfilerepconnclient - ./backend/cdb/cdbfilerepconnclient.c
 caca: cdbfilerepconnclient:00000059:  ereport(WARNING, 
 caca: cdbfilerepconnclient:00000060:  (errcode_for_socket_access(), 
