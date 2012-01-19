@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 
 #include "cdb/cdbtm.h"
+#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "storage/shmem.h"
 #include "storage/ipc.h"
@@ -35,8 +36,10 @@
 
 #include "cdb/cdbllize.h"
 #include "utils/faultinjector.h"
+#include "utils/fmgroids.h"
 
 extern bool Test_print_direct_dispatch_info;
+extern struct Port *MyProcPort;
 
 #define DTM_DEBUG3 (Debug_print_full_dtm ? LOG : DEBUG3)
 #define DTM_DEBUG5 (Debug_print_full_dtm ? LOG : DEBUG5)
@@ -1296,6 +1299,88 @@ initTM_recover_as_needed(void)
 	}
 }
 
+static char *
+getSuperuserName()
+{
+	char *suser = NULL;
+	Relation auth_rel;
+	HeapTuple       auth_tup;
+	HeapScanDesc auth_scan;
+	ScanKeyData key[2];
+	bool    isNull;
+
+	ScanKeyInit(&key[0],
+		Anum_pg_authid_rolsuper,
+		BTEqualStrategyNumber, F_BOOLEQ,
+		BoolGetDatum(true));
+	
+	ScanKeyInit(&key[1],
+		Anum_pg_authid_rolcanlogin,
+		BTEqualStrategyNumber, F_BOOLEQ,
+		BoolGetDatum(true));
+
+	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	auth_scan = heap_beginscan(auth_rel, SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan,
+		ForwardScanDirection)))
+	{
+		Datum   attrName;
+		Datum   validuntil;
+
+		validuntil = heap_getattr(auth_tup,
+			Anum_pg_authid_rolvaliduntil,
+			auth_rel->rd_att, &isNull);
+		/* we actually want it to be NULL, that means always valid */
+		if (!isNull)
+			continue;
+
+		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname,
+			auth_rel->rd_att, &isNull);
+
+		Assert(!isNull);
+
+		suser = strdup(DatumGetCString(attrName));
+		break;
+	}
+	heap_endscan(auth_scan);
+	heap_close(auth_rel, AccessShareLock);
+
+	return suser;
+}
+
+static char *
+ChangeToSuperuser()
+{
+	char *olduser;
+	char *newuser;
+
+	newuser = getSuperuserName();
+	olduser = MyProcPort->user_name;
+	if (strcmp(newuser, olduser) != 0)
+	{
+		InitializeSessionUserId(newuser);
+		MyProcPort->user_name = newuser;
+	}
+	else
+	{
+		free(newuser);
+	}
+
+	return olduser;
+}
+
+static void
+RestoreToUser(char *olduser)
+{
+	if (strcmp(olduser, MyProcPort->user_name) != 0)
+	{
+		free(MyProcPort->user_name);
+		MyProcPort->user_name = olduser;
+		InitializeSessionUserId(olduser);
+	}
+}
+
 /*
  * Initialize TM, called by cdb_setup() for each QD process.
  *
@@ -1310,11 +1395,28 @@ initTM_recover_as_needed(void)
 void
 initTM(void)
 {
+	char *olduser = NULL;
+
 	Assert(shmTmRecoverred != NULL);
 
 	/* Need to recover ? */
 	if (!*shmTmRecoverred)
 	{
+		/*
+		 * DTM initialization should be done in the context
+		 * of the superuser, and not the user who initiated this
+		 * backend (MPP-13866).
+		 * Following code changes the context to superuser and
+		 * and then restores it back.
+		 */
+		olduser = ChangeToSuperuser();
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+		DtmInit,
+		DDLNotSpecified,
+		"", //databaseName,
+		""); //tableName;
+#endif
 		/*
 		 * MPP-9894: during startup, we don't have a top-level
 		 * PG_TRY/PG_CATCH block yet, the dispatcher may throw errors:
@@ -1356,6 +1458,10 @@ initTM(void)
 			PG_END_TRY();
 		}
 		PG_END_TRY();
+
+		RestoreToUser(olduser);
+
+		freeGangsForPortal(NULL);
 	}
 }
 

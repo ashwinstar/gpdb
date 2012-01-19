@@ -134,6 +134,8 @@ typedef enum FaultInjectorIdentifier_e {
 	DtmBroadcastAbortPrepared,
 	
 	DtmXLogDistributedCommit,
+
+	DtmInit,
 	
         EndPreparedTwoPhaseSleep,
 	       /* sleep after creating two phase files */

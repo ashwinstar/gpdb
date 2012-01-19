@@ -1116,15 +1116,7 @@ RecordTransactionCommit(void)
 				recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_COMMIT, rdata);
 
 				insertedDistributedCommitted();
-				
-#ifdef FAULT_INJECTOR	
-				FaultInjector_InjectFaultIfSet(
-											   DtmXLogDistributedCommit, 
-											   DDLNotSpecified,
-											   "",	// databaseName
-											   ""); // tableName
-#endif				
-			
+
 			}
 			else
 			{
@@ -1215,6 +1207,14 @@ RecordTransactionCommit(void)
 			/* to avoid race conditions, the parent must commit first */
 			TransactionIdCommitTree(nchildren, children);
 		}
+
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+			DtmXLogDistributedCommit,
+			DDLNotSpecified,
+			"",  // databaseName
+			""); // tableName
+#endif
 
 		/* Unlock checkpoint lock if we acquired it */
 		if (madeTCentries)
