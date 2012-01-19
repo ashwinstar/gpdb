@@ -17,9 +17,12 @@ mkdir -p %{buildroot}/temp/ext/jre-%{jre_ver}
 cp -r %{jre_dir}/* %{buildroot}/temp/ext/jre-%{jre_ver}
 
 %post
-echo "export JAVA_HOME=\$GPHOME/ext/jre-%{jre_ver}/jre%{jre_ver}" >> $GPHOME/greenplum_path.sh
-echo "export PATH=\$JAVA_HOME/bin:\$PATH" >> $GPHOME/greenplum_path.sh
-echo "export LD_LIBRARY_PATH=\$JAVA_HOME/lib/amd64/server:\$LD_LIBRARY_PATH" >> $GPHOME/greenplum_path.sh
+echo "JAVA_HOME=\$GPHOME/ext/jre-%{jre_ver}/jre%{jre_ver}" >> $GPHOME/greenplum_path.sh
+echo "export JAVA_HOME" >> $GPHOME/greenplum_path.sh
+echo "PATH=\$JAVA_HOME/bin:\$PATH" >> $GPHOME/greenplum_path.sh
+echo "export PATH" >> $GPHOME/greenplum_path.sh
+echo "LD_LIBRARY_PATH=\$JAVA_HOME/lib/amd64/server:\$LD_LIBRARY_PATH" >> $GPHOME/greenplum_path.sh
+echo "export LD_LIBRARY_PATH" >> $GPHOME/greenplum_path.sh
 
 %postun
 sed -i".bk" "s|export JAVA_HOME=\$GPHOME/ext/jre-%{jre_ver}/jre%{jre_ver}||g" $GPHOME/greenplum_path.sh
