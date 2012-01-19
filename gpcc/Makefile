@@ -19,7 +19,7 @@ GPFDISTFILES=gpfdist.c
 GPFDISTFILES_EXTRA=fstream.c gfile.c transform.c glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
 GPFDISTOBJS_EXTRA=$(strip $(patsubst %.c,%.o,$(notdir $(GPFDISTFILES_EXTRA))))
 GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
-GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32
+GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32 -lgdi32
 EXT_EXE=.exe
 else
 GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c
@@ -40,7 +40,7 @@ OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8r
 ifeq "$(BLD_ARCH)" "win32"
-OPENSSL_LIBS=-leay32 $(BLD_THIRDPARTY_LIB_DIR)/ssleay32.a
+OPENSSL_LIBS=-L $(GPCC)/ext/$(OPENSSL) -lssl -lcrypto
 else
 OPENSSL_LIBS=-lssl -lcrypto
 endif
@@ -52,8 +52,9 @@ GPFXDIST=-DGPFXDIST
 # use gpcc/ext/ copies of libraries until prebuilt ones are ready
 ifeq "$(BLD_ARCH)" "win32"
 BLD_THIRDPARTY_BIN_DIR=$(GPCC)/ext/bin
+BLD_THIRDPARTY_OPENSSL_INCLUDES=-I$(GPCC)/ext/$(OPENSSL)/include   
 endif
-INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. 
+INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. $(BLD_THIRDPARTY_OPENSSL_INCLUDES) 
 CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall $(GPFXDIST)
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
