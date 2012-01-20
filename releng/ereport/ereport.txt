@@ -2475,88 +2475,88 @@ haae: heap:00002034:  relid, attnum);
 haae: heap:00002072:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
 haae: heap:00002094:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
 haae: heap:00002095:  myattnum, myrelid); 
-haae: heap:00002402:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002403:  attnum, RelationGetRelid(rel)); 
-haae: heap:00002665:  ereport(ERROR, 
-haae: heap:00002666:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002667:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
-haae: heap:00002668:  ccname, RelationGetRelationName(rel)), 
-haae: heap:00002669:  errOmitLocation(true))); 
-haae: heap:00002676:  ereport(ERROR, 
-haae: heap:00002677:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002678:  errmsg("check constraint \"%s\" already exists", 
-haae: heap:00002679:  ccname), 
-haae: heap:00002680:  errOmitLocation(true))); 
-haae: heap:00002769:  ereport(ERROR, 
-haae: heap:00002770:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002771:  errmsg("only table \"%s\" can be referenced in check constraint", 
-haae: heap:00002772:  relname), errOmitLocation(true))); 
-haae: heap:00002777:  ereport(ERROR, 
-haae: heap:00002778:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002779:  errmsg("cannot use subquery in check constraint"), 
-haae: heap:00002780:  errOmitLocation(true))); 
-haae: heap:00002782:  ereport(ERROR, 
-haae: heap:00002783:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002784:  errmsg("cannot use aggregate function in check constraint"), 
-haae: heap:00002785:  errOmitLocation(true))); 
-haae: heap:00002787:  ereport(ERROR, 
-haae: heap:00002788:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002789:  errmsg("cannot use window function in check constraint"), 
-haae: heap:00002790:  errOmitLocation(true))); 
-haae: heap:00002818:  elog(ERROR, "cache lookup failed for relation %u", 
-haae: heap:00002819:  RelationGetRelid(rel)); 
-haae: heap:00002873:  ereport(ERROR, 
-haae: heap:00002874:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002875:  errmsg("cannot use column references in default expression"))); 
-haae: heap:00002881:  ereport(ERROR, 
-haae: heap:00002882:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002883:  errmsg("default expression must not return a set"), 
-haae: heap:00002884:  errOmitLocation(true))); 
-haae: heap:00002890:  ereport(ERROR, 
-haae: heap:00002891:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002892:  errmsg("cannot use subquery in default expression"), 
-haae: heap:00002893:  errOmitLocation(true))); 
-haae: heap:00002895:  ereport(ERROR, 
-haae: heap:00002896:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002897:  errmsg("cannot use aggregate function in default expression"), 
-haae: heap:00002898:  errOmitLocation(true))); 
-haae: heap:00002900:  ereport(ERROR, 
-haae: heap:00002901:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002902:  errmsg("cannot use window function in default expression"), 
-haae: heap:00002903:  errOmitLocation(true))); 
+haae: heap:00002431:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002432:  attnum, RelationGetRelid(rel)); 
+haae: heap:00002694:  ereport(ERROR, 
+haae: heap:00002695:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002696:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
+haae: heap:00002697:  ccname, RelationGetRelationName(rel)), 
+haae: heap:00002698:  errOmitLocation(true))); 
+haae: heap:00002705:  ereport(ERROR, 
+haae: heap:00002706:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002707:  errmsg("check constraint \"%s\" already exists", 
+haae: heap:00002708:  ccname), 
+haae: heap:00002709:  errOmitLocation(true))); 
+haae: heap:00002798:  ereport(ERROR, 
+haae: heap:00002799:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002800:  errmsg("only table \"%s\" can be referenced in check constraint", 
+haae: heap:00002801:  relname), errOmitLocation(true))); 
+haae: heap:00002806:  ereport(ERROR, 
+haae: heap:00002807:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002808:  errmsg("cannot use subquery in check constraint"), 
+haae: heap:00002809:  errOmitLocation(true))); 
+haae: heap:00002811:  ereport(ERROR, 
+haae: heap:00002812:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002813:  errmsg("cannot use aggregate function in check constraint"), 
+haae: heap:00002814:  errOmitLocation(true))); 
+haae: heap:00002816:  ereport(ERROR, 
+haae: heap:00002817:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002818:  errmsg("cannot use window function in check constraint"), 
+haae: heap:00002819:  errOmitLocation(true))); 
+haae: heap:00002847:  elog(ERROR, "cache lookup failed for relation %u", 
+haae: heap:00002848:  RelationGetRelid(rel)); 
+haae: heap:00002902:  ereport(ERROR, 
+haae: heap:00002903:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002904:  errmsg("cannot use column references in default expression"))); 
+haae: heap:00002910:  ereport(ERROR, 
+haae: heap:00002911:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002912:  errmsg("default expression must not return a set"), 
+haae: heap:00002913:  errOmitLocation(true))); 
 haae: heap:00002919:  ereport(ERROR, 
-haae: heap:00002920:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002921:  errmsg("column \"%s\" is of type %s" 
-haae: heap:00002922:  " but default expression is of type %s", 
-haae: heap:00002923:  attname, 
-haae: heap:00002924:  format_type_be(atttypid), 
-haae: heap:00002925:  format_type_be(type_id)), 
-haae: heap:00002926:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002920:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002921:  errmsg("cannot use subquery in default expression"), 
+haae: heap:00002922:  errOmitLocation(true))); 
+haae: heap:00002924:  ereport(ERROR, 
+haae: heap:00002925:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002926:  errmsg("cannot use aggregate function in default expression"), 
 haae: heap:00002927:  errOmitLocation(true))); 
-haae: heap:00003237:  ereport(ERROR, 
-haae: heap:00003238:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003239:  errmsg("unsupported ON COMMIT and foreign key combination"), 
-haae: heap:00003240:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
-haae: heap:00003241:  relname2, relname), 
-haae: heap:00003242:  errOmitLocation(true))); 
-haae: heap:00003244:  ereport(ERROR, 
-haae: heap:00003245:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003246:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
-haae: heap:00003247:  errdetail("Table \"%s\" references \"%s\".", 
-haae: heap:00003248:  relname2, relname), 
-haae: heap:00003249:  errhint("Truncate table \"%s\" at the same time, " 
-haae: heap:00003250:  "or use TRUNCATE ... CASCADE.", 
-haae: heap:00003251:  relname2), 
-haae: heap:00003252:  errOmitLocation(true))); 
-haae: heap:00003381:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003382:  RelationGetRelid(relation)); 
-haae: heap:00003439:  elog(ERROR, 
-haae: heap:00003440:  "setNewRelfilenodeCommon has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
-haae: heap:00003441:  newrnode.spcNode, 
-haae: heap:00003442:  newrnode.dbNode, 
-haae: heap:00003443:  newrnode.relNode, 
-haae: heap:00003444:  NameStr(relation->rd_rel->relname), 
-haae: heap:00003445:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
+haae: heap:00002929:  ereport(ERROR, 
+haae: heap:00002930:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002931:  errmsg("cannot use window function in default expression"), 
+haae: heap:00002932:  errOmitLocation(true))); 
+haae: heap:00002948:  ereport(ERROR, 
+haae: heap:00002949:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002950:  errmsg("column \"%s\" is of type %s" 
+haae: heap:00002951:  " but default expression is of type %s", 
+haae: heap:00002952:  attname, 
+haae: heap:00002953:  format_type_be(atttypid), 
+haae: heap:00002954:  format_type_be(type_id)), 
+haae: heap:00002955:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002956:  errOmitLocation(true))); 
+haae: heap:00003266:  ereport(ERROR, 
+haae: heap:00003267:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003268:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+haae: heap:00003269:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
+haae: heap:00003270:  relname2, relname), 
+haae: heap:00003271:  errOmitLocation(true))); 
+haae: heap:00003273:  ereport(ERROR, 
+haae: heap:00003274:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003275:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+haae: heap:00003276:  errdetail("Table \"%s\" references \"%s\".", 
+haae: heap:00003277:  relname2, relname), 
+haae: heap:00003278:  errhint("Truncate table \"%s\" at the same time, " 
+haae: heap:00003279:  "or use TRUNCATE ... CASCADE.", 
+haae: heap:00003280:  relname2), 
+haae: heap:00003281:  errOmitLocation(true))); 
+haae: heap:00003410:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003411:  RelationGetRelid(relation)); 
+haae: heap:00003468:  elog(ERROR, 
+haae: heap:00003469:  "setNewRelfilenodeCommon has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+haae: heap:00003470:  newrnode.spcNode, 
+haae: heap:00003471:  newrnode.dbNode, 
+haae: heap:00003472:  newrnode.relNode, 
+haae: heap:00003473:  NameStr(relation->rd_rel->relname), 
+haae: heap:00003474:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000185:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000216:  elog(ERROR, "too few entries in indexprs list"); 
@@ -7450,120 +7450,120 @@ cabj: cdbtargeteddispatch:00000539:  elog(ERROR, "Invalid plan node %d", nodeTag
 aaaaa GP_IGNORE: caai: cdbtimer - ./backend/cdb/cdbtimer.c
 caai: cdbtimer:00000097:  elog( FATAL, "Old timer values not provided" ); 
 aaaaa GP_IGNORE: caaf: cdbtm - ./backend/cdb/cdbtm.c
-caaf: cdbtm:00000174:  elog(FATAL, "Expected segment distributed transaction context to be '%s', found '%s'", 
-caaf: cdbtm:00000175:  DtxContextToString(requiredCurrentContext), 
-caaf: cdbtm:00000176:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00000318:  elog(FATAL, "getDtxLogInfo found current distributed transaction is NULL"); 
-caaf: cdbtm:00000499:  elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail); 
-caaf: cdbtm:00000511:  elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')", 
-caaf: cdbtm:00000512:  DtxStateToString(currentGxact->state), debugCaller, debugDetail); 
-caaf: cdbtm:00000542:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00000543:  currentGxact->gid))); 
-caaf: cdbtm:00000618:  elog(ERROR, "The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000619:  currentGxact->gid); 
-caaf: cdbtm:00000696:  elog(WARNING, "The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000697:  currentGxact->gid); 
-caaf: cdbtm:00000708:  elog(NOTICE, "Releasing segworker group to retry broadcast."); 
-caaf: cdbtm:00000787:  elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000788:  currentGxact->gid); 
-caaf: cdbtm:00000793:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
-caaf: cdbtm:00000841:  elog(WARNING, "The distributed transaction '%s' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000842:  abortString, currentGxact->gid); 
-caaf: cdbtm:00000852:  elog(NOTICE, "Releasing segworker groups to retry broadcast."); 
-caaf: cdbtm:00000970:  elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000971:  prepareKind, currentGxact->gid); 
-caaf: cdbtm:00000973:  elog(NOTICE, "Retry of the distributed transaction '%s Prepared' broadcast succeeded to the segments for gid = %s.", 
+caaf: cdbtm:00000177:  elog(FATAL, "Expected segment distributed transaction context to be '%s', found '%s'", 
+caaf: cdbtm:00000178:  DtxContextToString(requiredCurrentContext), 
+caaf: cdbtm:00000179:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00000321:  elog(FATAL, "getDtxLogInfo found current distributed transaction is NULL"); 
+caaf: cdbtm:00000502:  elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail); 
+caaf: cdbtm:00000514:  elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')", 
+caaf: cdbtm:00000515:  DtxStateToString(currentGxact->state), debugCaller, debugDetail); 
+caaf: cdbtm:00000545:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00000546:  currentGxact->gid))); 
+caaf: cdbtm:00000621:  elog(ERROR, "The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000622:  currentGxact->gid); 
+caaf: cdbtm:00000699:  elog(WARNING, "The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000700:  currentGxact->gid); 
+caaf: cdbtm:00000711:  elog(NOTICE, "Releasing segworker group to retry broadcast."); 
+caaf: cdbtm:00000790:  elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000791:  currentGxact->gid); 
+caaf: cdbtm:00000796:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
+caaf: cdbtm:00000844:  elog(WARNING, "The distributed transaction '%s' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000845:  abortString, currentGxact->gid); 
+caaf: cdbtm:00000855:  elog(NOTICE, "Releasing segworker groups to retry broadcast."); 
+caaf: cdbtm:00000973:  elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.", 
 caaf: cdbtm:00000974:  prepareKind, currentGxact->gid); 
-caaf: cdbtm:00001046:  elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", gid); 
-caaf: cdbtm:00001071:  elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s. System will retry again later", gid); 
-caaf: cdbtm:00001163:  elog(WARNING, "Releasing segworker groups since one or more segment connections failed. This will abort the transactions in the segments that did not get prepared."); 
-caaf: cdbtm:00001188:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
-caaf: cdbtm:00001202:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
-caaf: cdbtm:00001203:  currentGxact->gid); 
-caaf: cdbtm:00001247:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
-caaf: cdbtm:00001248:  currentGxact->gid); 
-caaf: cdbtm:00001332:  elog(FATAL, "DTM initialization: failure during startup/recovery, could not retry, check segment status"); 
-caaf: cdbtm:00001351:  elog(FATAL, "DTM initialization: failure during startup/recovery, retry failed, check segment status"); 
-caaf: cdbtm:00001397:  elog(FATAL, "could not initialize transaction manager share memory"); 
-caaf: cdbtm:00001659:  ereport(ERROR, 
-caaf: cdbtm:00001660:  (errcode_for_file_access(), 
-caaf: cdbtm:00001661:  errmsg("could not create save DTM redo file \"%s\"", 
-caaf: cdbtm:00001662:  path))); 
-caaf: cdbtm:00001690:  ereport(ERROR, 
-caaf: cdbtm:00001691:  (errcode_for_file_access(), 
-caaf: cdbtm:00001692:  errmsg("could not write save DTM redo file : %m"))); 
-caaf: cdbtm:00001745:  elog(ERROR, "Bad redo length (expected %d and found %d)", 
-caaf: cdbtm:00001746:  (int)sizeof(TMGXACT_UTILITY_MODE_REDO), read_len); 
-caaf: cdbtm:00001750:  ereport(ERROR, 
-caaf: cdbtm:00001751:  (errcode_for_file_access(), 
-caaf: cdbtm:00001752:  errmsg("error reading DTM redo file: %m"))); 
-caaf: cdbtm:00001828:  ereport(FATAL, 
-caaf: cdbtm:00001829:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00001830:  max_tm_gxacts), 
-caaf: cdbtm:00001831:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002249:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
-caaf: cdbtm:00002250:  DtxStateToString(state)); 
-caaf: cdbtm:00002254:  elog(FATAL, "Cannot also be inserting COMMITTED into log buffer from another process with TM lock held"); 
-caaf: cdbtm:00002258:  elog(FATAL, "Cannot also be inserting FORGET COMMITTED into log buffer from another process with TM lock held"); 
-caaf: cdbtm:00002291:  elog(ERROR, "Too many distributed transactions for snapshot"); 
-caaf: cdbtm:00002375:  ereport(FATAL, 
-caaf: cdbtm:00002376:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00002377:  max_tm_gxacts), 
-caaf: cdbtm:00002378:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002437:  elog(FATAL, "releaseGxact expected currentGxact to not be NULL"); 
-caaf: cdbtm:00002645:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
-caaf: cdbtm:00002646:  DtxStateToString(state)); 
-caaf: cdbtm:00002650:  elog(FATAL, "Cannot also be buffering COMMITTED from another process with TM lock held"); 
-caaf: cdbtm:00002654:  elog(FATAL, "Cannot also be buffering FORGET COMMITTED from another process with TM lock held"); 
-caaf: cdbtm:00002736:  ereport(FATAL, 
-caaf: cdbtm:00002737:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
-caaf: cdbtm:00002860:  elog(NOTICE, "Releasing segworker groups for deferred recovery."); 
-caaf: cdbtm:00002990:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caaf: cdbtm:00002991:  errmsg("DTM Log recovery failed. There are still unresolved " 
-caaf: cdbtm:00002992:  "in-doubt transactions on some of the segment databaes " 
-caaf: cdbtm:00002993:  "that were not able to be resolved for an unknown reason. "), 
-caaf: cdbtm:00002994:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
-caaf: cdbtm:00002995:  indoubtBuff.data), 
-caaf: cdbtm:00002996:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
-caaf: cdbtm:00002997:  " an Administrator will need to resolve these transactions " 
-caaf: cdbtm:00002998:  " manually."))); 
-caaf: cdbtm:00003048:  ereport(ERROR, 
-caaf: cdbtm:00003049:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
-caaf: cdbtm:00003050:  errdetail("%s", errbuf.data))); 
-caaf: cdbtm:00003061:  elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok"); 
-caaf: cdbtm:00003129:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caaf: cdbtm:00003130:  errmsg("Unable to collect list of prepared transactions " 
-caaf: cdbtm:00003131:  "from all segment databases."), 
-caaf: cdbtm:00003132:  errdetail("%s", errmsgbuf.data))); 
-caaf: cdbtm:00003166:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaf: cdbtm:00003167:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
-caaf: cdbtm:00003471:  elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'", 
-caaf: cdbtm:00003472:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003585:  elog(ERROR, "setupQEDtxContext not expecting distributed begin or snapshot when no Snapshot slot exists"); 
-caaf: cdbtm:00003650:  elog(ERROR, "Starting an explicit distributed transaction in segment -- cannot already be in a transaction"); 
-caaf: cdbtm:00003674:  elog(ERROR, 
-caaf: cdbtm:00003675:  "Going to start a local implicit transaction in segment using a distribute " 
-caaf: cdbtm:00003676:  "snapshot -- cannot already be in a transaction"); 
-caaf: cdbtm:00003704:  elog(NOTICE, "We should have left this transition state '%s' at the end of the previous command...", 
-caaf: cdbtm:00003705:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003711:  elog(ERROR, "Cannot have an explicit BEGIN statement..."); 
-caaf: cdbtm:00003716:  elog(ERROR, "We should have left this transition state '%s' at the end of the previous command", 
-caaf: cdbtm:00003717:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003734:  elog(ERROR, "We should not be trying to execute a query in state '%s'", 
-caaf: cdbtm:00003735:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003773:  elog(FATAL, "Expected currentGxact to be NULL at this point. Found gid =%s, gxid = %u (state = %s, caller = %s)", 
-caaf: cdbtm:00003774:  currentGxact->gid, currentGxact->gxid, DtxStateToString(currentGxact->state), debugCaller); 
-caaf: cdbtm:00003845:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00003846:  currentGxact->gid))); 
-caaf: cdbtm:00003881:  elog(ERROR, "Prepare of distributed transaction %s failed", gid); 
-caaf: cdbtm:00003995:  elog(FATAL, "Unexpected segment distributed transaction context: '%s'", 
-caaf: cdbtm:00003996:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00004024:  elog(ERROR, "Distributed transaction %s not found", gid); 
-caaf: cdbtm:00004038:  elog(FATAL, "Unexpected segment distribute transaction context: '%s'", 
-caaf: cdbtm:00004039:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00004055:  elog(ERROR, "Distributed transaction %s not found", gid); 
-caaf: cdbtm:00004115:  elog(ERROR, "Unrecognized dtx protocol command: %d", 
-caaf: cdbtm:00004116:  (int) dtxProtocolCommand); 
+caaf: cdbtm:00000976:  elog(NOTICE, "Retry of the distributed transaction '%s Prepared' broadcast succeeded to the segments for gid = %s.", 
+caaf: cdbtm:00000977:  prepareKind, currentGxact->gid); 
+caaf: cdbtm:00001049:  elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", gid); 
+caaf: cdbtm:00001074:  elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s. System will retry again later", gid); 
+caaf: cdbtm:00001166:  elog(WARNING, "Releasing segworker groups since one or more segment connections failed. This will abort the transactions in the segments that did not get prepared."); 
+caaf: cdbtm:00001191:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
+caaf: cdbtm:00001205:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
+caaf: cdbtm:00001206:  currentGxact->gid); 
+caaf: cdbtm:00001250:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
+caaf: cdbtm:00001251:  currentGxact->gid); 
+caaf: cdbtm:00001434:  elog(FATAL, "DTM initialization: failure during startup/recovery, could not retry, check segment status"); 
+caaf: cdbtm:00001453:  elog(FATAL, "DTM initialization: failure during startup/recovery, retry failed, check segment status"); 
+caaf: cdbtm:00001503:  elog(FATAL, "could not initialize transaction manager share memory"); 
+caaf: cdbtm:00001765:  ereport(ERROR, 
+caaf: cdbtm:00001766:  (errcode_for_file_access(), 
+caaf: cdbtm:00001767:  errmsg("could not create save DTM redo file \"%s\"", 
+caaf: cdbtm:00001768:  path))); 
+caaf: cdbtm:00001796:  ereport(ERROR, 
+caaf: cdbtm:00001797:  (errcode_for_file_access(), 
+caaf: cdbtm:00001798:  errmsg("could not write save DTM redo file : %m"))); 
+caaf: cdbtm:00001851:  elog(ERROR, "Bad redo length (expected %d and found %d)", 
+caaf: cdbtm:00001852:  (int)sizeof(TMGXACT_UTILITY_MODE_REDO), read_len); 
+caaf: cdbtm:00001856:  ereport(ERROR, 
+caaf: cdbtm:00001857:  (errcode_for_file_access(), 
+caaf: cdbtm:00001858:  errmsg("error reading DTM redo file: %m"))); 
+caaf: cdbtm:00001934:  ereport(FATAL, 
+caaf: cdbtm:00001935:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00001936:  max_tm_gxacts), 
+caaf: cdbtm:00001937:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002355:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
+caaf: cdbtm:00002356:  DtxStateToString(state)); 
+caaf: cdbtm:00002360:  elog(FATAL, "Cannot also be inserting COMMITTED into log buffer from another process with TM lock held"); 
+caaf: cdbtm:00002364:  elog(FATAL, "Cannot also be inserting FORGET COMMITTED into log buffer from another process with TM lock held"); 
+caaf: cdbtm:00002397:  elog(ERROR, "Too many distributed transactions for snapshot"); 
+caaf: cdbtm:00002481:  ereport(FATAL, 
+caaf: cdbtm:00002482:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00002483:  max_tm_gxacts), 
+caaf: cdbtm:00002484:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002543:  elog(FATAL, "releaseGxact expected currentGxact to not be NULL"); 
+caaf: cdbtm:00002751:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
+caaf: cdbtm:00002752:  DtxStateToString(state)); 
+caaf: cdbtm:00002756:  elog(FATAL, "Cannot also be buffering COMMITTED from another process with TM lock held"); 
+caaf: cdbtm:00002760:  elog(FATAL, "Cannot also be buffering FORGET COMMITTED from another process with TM lock held"); 
+caaf: cdbtm:00002842:  ereport(FATAL, 
+caaf: cdbtm:00002843:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
+caaf: cdbtm:00002966:  elog(NOTICE, "Releasing segworker groups for deferred recovery."); 
+caaf: cdbtm:00003096:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caaf: cdbtm:00003097:  errmsg("DTM Log recovery failed. There are still unresolved " 
+caaf: cdbtm:00003098:  "in-doubt transactions on some of the segment databaes " 
+caaf: cdbtm:00003099:  "that were not able to be resolved for an unknown reason. "), 
+caaf: cdbtm:00003100:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
+caaf: cdbtm:00003101:  indoubtBuff.data), 
+caaf: cdbtm:00003102:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
+caaf: cdbtm:00003103:  " an Administrator will need to resolve these transactions " 
+caaf: cdbtm:00003104:  " manually."))); 
+caaf: cdbtm:00003154:  ereport(ERROR, 
+caaf: cdbtm:00003155:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
+caaf: cdbtm:00003156:  errdetail("%s", errbuf.data))); 
+caaf: cdbtm:00003167:  elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok"); 
+caaf: cdbtm:00003235:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caaf: cdbtm:00003236:  errmsg("Unable to collect list of prepared transactions " 
+caaf: cdbtm:00003237:  "from all segment databases."), 
+caaf: cdbtm:00003238:  errdetail("%s", errmsgbuf.data))); 
+caaf: cdbtm:00003272:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaf: cdbtm:00003273:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
+caaf: cdbtm:00003577:  elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'", 
+caaf: cdbtm:00003578:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003691:  elog(ERROR, "setupQEDtxContext not expecting distributed begin or snapshot when no Snapshot slot exists"); 
+caaf: cdbtm:00003756:  elog(ERROR, "Starting an explicit distributed transaction in segment -- cannot already be in a transaction"); 
+caaf: cdbtm:00003780:  elog(ERROR, 
+caaf: cdbtm:00003781:  "Going to start a local implicit transaction in segment using a distribute " 
+caaf: cdbtm:00003782:  "snapshot -- cannot already be in a transaction"); 
+caaf: cdbtm:00003810:  elog(NOTICE, "We should have left this transition state '%s' at the end of the previous command...", 
+caaf: cdbtm:00003811:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003817:  elog(ERROR, "Cannot have an explicit BEGIN statement..."); 
+caaf: cdbtm:00003822:  elog(ERROR, "We should have left this transition state '%s' at the end of the previous command", 
+caaf: cdbtm:00003823:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003840:  elog(ERROR, "We should not be trying to execute a query in state '%s'", 
+caaf: cdbtm:00003841:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003879:  elog(FATAL, "Expected currentGxact to be NULL at this point. Found gid =%s, gxid = %u (state = %s, caller = %s)", 
+caaf: cdbtm:00003880:  currentGxact->gid, currentGxact->gxid, DtxStateToString(currentGxact->state), debugCaller); 
+caaf: cdbtm:00003951:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00003952:  currentGxact->gid))); 
+caaf: cdbtm:00003987:  elog(ERROR, "Prepare of distributed transaction %s failed", gid); 
+caaf: cdbtm:00004101:  elog(FATAL, "Unexpected segment distributed transaction context: '%s'", 
+caaf: cdbtm:00004102:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00004130:  elog(ERROR, "Distributed transaction %s not found", gid); 
+caaf: cdbtm:00004144:  elog(FATAL, "Unexpected segment distribute transaction context: '%s'", 
+caaf: cdbtm:00004145:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00004161:  elog(ERROR, "Distributed transaction %s not found", gid); 
+caaf: cdbtm:00004221:  elog(ERROR, "Unrecognized dtx protocol command: %d", 
+caaf: cdbtm:00004222:  (int) dtxProtocolCommand); 
 aaaaa GP_IGNORE: caba: cdbtmutils - ./backend/cdb/cdbtmutils.c
 caba: cdbtmutils:00000056:  elog(ERROR, "Bad distributed transaction identifier \"%s\"", gid); 
 caba: cdbtmutils:00000129:  elog(NOTICE, "%s --> Now would be a good time to debug pid = %d", caller, MyProcPid); 
@@ -9625,7 +9625,7 @@ iaaj: indexcmds:00001441:  errmsg("\"%s\" is not an index",
 iaaj: indexcmds:00001442:  relation->relname))); 
 iaaj: indexcmds:00001456:  ereport(WARNING, 
 iaaj: indexcmds:00001457:  (errmsg("Only dropped the index \"%s\"", relation->relname), 
-iaaj: indexcmds:00001458:  errhint("To drop other indexes on child parts, drop each one explicitly."))); 
+iaaj: indexcmds:00001458:  errhint("To drop other indexes on child partitions, drop each one explicitly."))); 
 iaaj: indexcmds:00001480:  elog(ERROR, "cache lookup failed for relation %u", indOid); 
 iaaj: indexcmds:00001483:  ereport(ERROR, 
 iaaj: indexcmds:00001484:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
@@ -16517,81 +16517,81 @@ paba: parsexfunc:00000689:  ereport(ERROR,
 paba: parsexfunc:00000690:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
 paba: parsexfunc:00000691:  errmsg("cannot pass more than %d arguments to a function", 
 paba: parsexfunc:00000692:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001104:  elog(ERROR, "cache lookup failed for function %u", 
-paba: parsexfunc:00001105:  best_candidate->oid); 
-paba: parsexfunc:00001132:  elog(ERROR, "cache lookup failed for aggregate %u", 
-paba: parsexfunc:00001133:  best_candidate->oid); 
-paba: parsexfunc:00001375:  ereport(ERROR, 
-paba: parsexfunc:00001376:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001377:  errmsg("column %s.%s does not exist", 
-paba: parsexfunc:00001378:  rte->eref->aliasname, attname), 
-paba: parsexfunc:00001379:  errOmitLocation(true), 
-paba: parsexfunc:00001380:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001388:  ereport(ERROR, 
-paba: parsexfunc:00001389:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001390:  errmsg("column \"%s\" not found in data type %s", 
-paba: parsexfunc:00001391:  attname, format_type_be(relTypeId)), 
-paba: parsexfunc:00001392:  errOmitLocation(true), 
-paba: parsexfunc:00001393:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001395:  ereport(ERROR, 
-paba: parsexfunc:00001396:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001397:  errmsg("could not identify column \"%s\" in record data type", 
-paba: parsexfunc:00001398:  attname), 
-paba: parsexfunc:00001399:  errOmitLocation(true), 
-paba: parsexfunc:00001400:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001402:  ereport(ERROR, 
-paba: parsexfunc:00001403:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00001404:  errmsg("column notation .%s applied to type %s, " 
-paba: parsexfunc:00001405:  "which is not a composite type", 
-paba: parsexfunc:00001406:  attname, format_type_be(relTypeId)), 
-paba: parsexfunc:00001407:  errOmitLocation(true), 
-paba: parsexfunc:00001408:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001480:  ereport(ERROR, 
-paba: parsexfunc:00001481:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001482:  errmsg("function %s does not exist", 
-paba: parsexfunc:00001483:  func_signature_string(funcname, nargs, argtypes)), 
-paba: parsexfunc:00001484:  errOmitLocation(true))); 
-paba: parsexfunc:00001504:  ereport(ERROR, 
-paba: parsexfunc:00001505:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00001506:  errmsg("functions cannot have more than %d arguments", 
-paba: parsexfunc:00001507:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001517:  ereport(ERROR, 
-paba: parsexfunc:00001518:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexfunc:00001519:  errmsg("type \"%s\" does not exist", 
-paba: parsexfunc:00001520:  TypeNameToString(t)), 
-paba: parsexfunc:00001521:  errOmitLocation(true))); 
-paba: parsexfunc:00001550:  ereport(ERROR, 
-paba: parsexfunc:00001551:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00001552:  errmsg("functions cannot have more than %d arguments", 
-paba: parsexfunc:00001553:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001562:  ereport(ERROR, 
-paba: parsexfunc:00001563:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexfunc:00001564:  errmsg("type \"%s\" does not exist", 
-paba: parsexfunc:00001565:  TypeNameToString(t)), 
-paba: parsexfunc:00001566:  errOmitLocation(true))); 
-paba: parsexfunc:00001577:  ereport(ERROR, 
-paba: parsexfunc:00001578:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001579:  errmsg("aggregate %s(*) does not exist", 
-paba: parsexfunc:00001580:  NameListToString(aggname)), 
-paba: parsexfunc:00001581:  errOmitLocation(true))); 
-paba: parsexfunc:00001583:  ereport(ERROR, 
-paba: parsexfunc:00001584:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001585:  errmsg("aggregate %s does not exist", 
-paba: parsexfunc:00001586:  func_signature_string(aggname, 
-paba: parsexfunc:00001587:  argcount, argoids)), 
-paba: parsexfunc:00001588:  errOmitLocation(true))); 
-paba: parsexfunc:00001596:  elog(ERROR, "cache lookup failed for function %u", oid); 
-paba: parsexfunc:00001605:  ereport(ERROR, 
-paba: parsexfunc:00001606:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00001607:  errmsg("function %s is not an aggregate", 
-paba: parsexfunc:00001608:  func_signature_string(aggname, 
-paba: parsexfunc:00001609:  argcount, argoids)))); 
-paba: parsexfunc:00001660:  ereport(ERROR, 
-paba: parsexfunc:00001661:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexfunc:00001662:  errmsg("table functions must be invoked in FROM clause"))); 
-paba: parsexfunc:00001664:  ereport(ERROR, 
-paba: parsexfunc:00001665:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: parsexfunc:00001666:  errmsg("invalid use of TABLE value expression"))); 
+paba: parsexfunc:00001105:  elog(ERROR, "cache lookup failed for function %u", 
+paba: parsexfunc:00001106:  best_candidate->oid); 
+paba: parsexfunc:00001134:  elog(ERROR, "cache lookup failed for aggregate %u", 
+paba: parsexfunc:00001135:  best_candidate->oid); 
+paba: parsexfunc:00001377:  ereport(ERROR, 
+paba: parsexfunc:00001378:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001379:  errmsg("column %s.%s does not exist", 
+paba: parsexfunc:00001380:  rte->eref->aliasname, attname), 
+paba: parsexfunc:00001381:  errOmitLocation(true), 
+paba: parsexfunc:00001382:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001390:  ereport(ERROR, 
+paba: parsexfunc:00001391:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001392:  errmsg("column \"%s\" not found in data type %s", 
+paba: parsexfunc:00001393:  attname, format_type_be(relTypeId)), 
+paba: parsexfunc:00001394:  errOmitLocation(true), 
+paba: parsexfunc:00001395:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001397:  ereport(ERROR, 
+paba: parsexfunc:00001398:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001399:  errmsg("could not identify column \"%s\" in record data type", 
+paba: parsexfunc:00001400:  attname), 
+paba: parsexfunc:00001401:  errOmitLocation(true), 
+paba: parsexfunc:00001402:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001404:  ereport(ERROR, 
+paba: parsexfunc:00001405:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00001406:  errmsg("column notation .%s applied to type %s, " 
+paba: parsexfunc:00001407:  "which is not a composite type", 
+paba: parsexfunc:00001408:  attname, format_type_be(relTypeId)), 
+paba: parsexfunc:00001409:  errOmitLocation(true), 
+paba: parsexfunc:00001410:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001482:  ereport(ERROR, 
+paba: parsexfunc:00001483:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001484:  errmsg("function %s does not exist", 
+paba: parsexfunc:00001485:  func_signature_string(funcname, nargs, argtypes)), 
+paba: parsexfunc:00001486:  errOmitLocation(true))); 
+paba: parsexfunc:00001506:  ereport(ERROR, 
+paba: parsexfunc:00001507:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00001508:  errmsg("functions cannot have more than %d arguments", 
+paba: parsexfunc:00001509:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001519:  ereport(ERROR, 
+paba: parsexfunc:00001520:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexfunc:00001521:  errmsg("type \"%s\" does not exist", 
+paba: parsexfunc:00001522:  TypeNameToString(t)), 
+paba: parsexfunc:00001523:  errOmitLocation(true))); 
+paba: parsexfunc:00001552:  ereport(ERROR, 
+paba: parsexfunc:00001553:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00001554:  errmsg("functions cannot have more than %d arguments", 
+paba: parsexfunc:00001555:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001564:  ereport(ERROR, 
+paba: parsexfunc:00001565:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexfunc:00001566:  errmsg("type \"%s\" does not exist", 
+paba: parsexfunc:00001567:  TypeNameToString(t)), 
+paba: parsexfunc:00001568:  errOmitLocation(true))); 
+paba: parsexfunc:00001579:  ereport(ERROR, 
+paba: parsexfunc:00001580:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001581:  errmsg("aggregate %s(*) does not exist", 
+paba: parsexfunc:00001582:  NameListToString(aggname)), 
+paba: parsexfunc:00001583:  errOmitLocation(true))); 
+paba: parsexfunc:00001585:  ereport(ERROR, 
+paba: parsexfunc:00001586:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001587:  errmsg("aggregate %s does not exist", 
+paba: parsexfunc:00001588:  func_signature_string(aggname, 
+paba: parsexfunc:00001589:  argcount, argoids)), 
+paba: parsexfunc:00001590:  errOmitLocation(true))); 
+paba: parsexfunc:00001598:  elog(ERROR, "cache lookup failed for function %u", oid); 
+paba: parsexfunc:00001607:  ereport(ERROR, 
+paba: parsexfunc:00001608:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00001609:  errmsg("function %s is not an aggregate", 
+paba: parsexfunc:00001610:  func_signature_string(aggname, 
+paba: parsexfunc:00001611:  argcount, argoids)))); 
+paba: parsexfunc:00001662:  ereport(ERROR, 
+paba: parsexfunc:00001663:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexfunc:00001664:  errmsg("table functions must be invoked in FROM clause"))); 
+paba: parsexfunc:00001666:  ereport(ERROR, 
+paba: parsexfunc:00001667:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: parsexfunc:00001668:  errmsg("invalid use of TABLE value expression"))); 
 aaaaa GP_IGNORE: paba: parsexnode - ./backend/parser/parse_node.c
 paba: parsexnode:00000181:  elog(ERROR, "cache lookup failed for type %u", arrayType); 
 paba: parsexnode:00000188:  ereport(ERROR, 
@@ -22634,79 +22634,79 @@ raai: relcache:00000369:  elog(FATAL, "Mismatch in node tuple for gp_relation_no
 raai: relcache:00000370:  gpRelationNodeScan->relationId, 
 raai: relcache:00000371:  gpRelationNodeScan->relfilenode, 
 raai: relcache:00000372:  actualRelationNode); 
-raai: relcache:00000552:  elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u", 
-raai: relcache:00000553:  relation->rd_rel->relname.data, 
-raai: relcache:00000554:  relation->rd_id, 
-raai: relcache:00000555:  relation->rd_node.relNode); 
-raai: relcache:00000562:  elog(ERROR, 
-raai: relcache:00000563:  "RelationFetchSegFile0GpRelationNode has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
-raai: relcache:00000564:  relation->rd_node.spcNode, 
-raai: relcache:00000565:  relation->rd_node.dbNode, 
-raai: relcache:00000566:  relation->rd_node.relNode, 
-raai: relcache:00000567:  NameStr(relation->rd_rel->relname), 
-raai: relcache:00000568:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
-raai: relcache:00000590:  elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)", 
-raai: relcache:00000591:  countInThisBackend, 
-raai: relcache:00000592:  relation->rd_node.spcNode, 
-raai: relcache:00000593:  relation->rd_node.dbNode, 
-raai: relcache:00000594:  relation->rd_node.relNode, 
-raai: relcache:00000595:  deep); 
-raai: relcache:00000812:  elog(ERROR, "invalid attribute number %d for %s", 
-raai: relcache:00000813:  attp->attnum, RelationGetRelationName(relation)); 
-raai: relcache:00000846:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
-raai: relcache:00000847:  need, RelationGetRelid(relation)); 
-raai: relcache:00001302:  elog(ERROR, "cache lookup failed for index %u", 
-raai: relcache:00001303:  RelationGetRelid(relation)); 
-raai: relcache:00001329:  elog(ERROR, "cache lookup failed for access method %u", 
-raai: relcache:00001330:  relation->rd_rel->relam); 
-raai: relcache:00001338:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
-raai: relcache:00001339:  RelationGetRelid(relation)); 
-raai: relcache:00001435:  elog(ERROR, "bogus pg_index tuple"); 
-raai: relcache:00001567:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
-raai: relcache:00001568:  amopform->amopstrategy, operatorClassOid); 
-raai: relcache:00001601:  elog(ERROR, "invalid amproc number %d for opclass %u", 
-raai: relcache:00001602:  amprocform->amprocnum, operatorClassOid); 
-raai: relcache:00001872:  elog(ERROR, 
-raai: relcache:00001873:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
-raai: relcache:00001874:  rel->rd_node.spcNode, 
-raai: relcache:00001875:  rel->rd_node.dbNode, 
-raai: relcache:00001876:  rel->rd_node.relNode, 
-raai: relcache:00001877:  rel->rd_refcnt); 
-raai: relcache:00001952:  elog(ERROR, "could not find pg_class tuple for index %u", 
-raai: relcache:00001953:  RelationGetRelid(relation)); 
-raai: relcache:00002151:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
-raai: relcache:00002265:  elog(ERROR, "relation %u is still open", rid); 
-raai: relcache:00002638:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
-raai: relcache:00002639:  relname, relid); 
-raai: relcache:00002954:  elog(FATAL, "cache lookup failed for relation %u", 
-raai: relcache:00002955:  RelationGetRelid(relation)); 
-raai: relcache:00002984:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
-raai: relcache:00002985:  RelationGetRelationName(relation)); 
-raai: relcache:00003172:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
-raai: relcache:00003173:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003174:  RelationGetRelationName(relation)); 
-raai: relcache:00003182:  elog(WARNING, "null adbin for attr %s of rel %s", 
-raai: relcache:00003183:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003184:  RelationGetRelationName(relation)); 
-raai: relcache:00003192:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
-raai: relcache:00003193:  adform->adnum, RelationGetRelationName(relation)); 
-raai: relcache:00003200:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
-raai: relcache:00003201:  ndef - found, RelationGetRelationName(relation)); 
-raai: relcache:00003238:  elog(ERROR, "unexpected constraint record found for rel %s", 
-raai: relcache:00003239:  RelationGetRelationName(relation)); 
-raai: relcache:00003249:  elog(ERROR, "null conbin for rel %s", 
-raai: relcache:00003250:  RelationGetRelationName(relation)); 
-raai: relcache:00003261:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
-raai: relcache:00003262:  ncheck - found, RelationGetRelationName(relation)); 
-raai: relcache:00003995:  ereport(WARNING, 
-raai: relcache:00003996:  (errcode_for_file_access(), 
-raai: relcache:00003997:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00003998:  tempfilename), 
-raai: relcache:00003999:  errdetail("Continuing anyway, but there's something wrong."))); 
-raai: relcache:00004009:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004073:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004123:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004125:  elog(FATAL, "could not write init file"); 
+raai: relcache:00000572:  elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u", 
+raai: relcache:00000573:  relation->rd_rel->relname.data, 
+raai: relcache:00000574:  relation->rd_id, 
+raai: relcache:00000575:  relation->rd_node.relNode); 
+raai: relcache:00000582:  elog(ERROR, 
+raai: relcache:00000583:  "RelationFetchSegFile0GpRelationNode has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+raai: relcache:00000584:  relation->rd_node.spcNode, 
+raai: relcache:00000585:  relation->rd_node.dbNode, 
+raai: relcache:00000586:  relation->rd_node.relNode, 
+raai: relcache:00000587:  NameStr(relation->rd_rel->relname), 
+raai: relcache:00000588:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
+raai: relcache:00000610:  elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)", 
+raai: relcache:00000611:  countInThisBackend, 
+raai: relcache:00000612:  relation->rd_node.spcNode, 
+raai: relcache:00000613:  relation->rd_node.dbNode, 
+raai: relcache:00000614:  relation->rd_node.relNode, 
+raai: relcache:00000615:  deep); 
+raai: relcache:00000832:  elog(ERROR, "invalid attribute number %d for %s", 
+raai: relcache:00000833:  attp->attnum, RelationGetRelationName(relation)); 
+raai: relcache:00000866:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
+raai: relcache:00000867:  need, RelationGetRelid(relation)); 
+raai: relcache:00001322:  elog(ERROR, "cache lookup failed for index %u", 
+raai: relcache:00001323:  RelationGetRelid(relation)); 
+raai: relcache:00001349:  elog(ERROR, "cache lookup failed for access method %u", 
+raai: relcache:00001350:  relation->rd_rel->relam); 
+raai: relcache:00001358:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
+raai: relcache:00001359:  RelationGetRelid(relation)); 
+raai: relcache:00001455:  elog(ERROR, "bogus pg_index tuple"); 
+raai: relcache:00001587:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
+raai: relcache:00001588:  amopform->amopstrategy, operatorClassOid); 
+raai: relcache:00001621:  elog(ERROR, "invalid amproc number %d for opclass %u", 
+raai: relcache:00001622:  amprocform->amprocnum, operatorClassOid); 
+raai: relcache:00001892:  elog(ERROR, 
+raai: relcache:00001893:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
+raai: relcache:00001894:  rel->rd_node.spcNode, 
+raai: relcache:00001895:  rel->rd_node.dbNode, 
+raai: relcache:00001896:  rel->rd_node.relNode, 
+raai: relcache:00001897:  rel->rd_refcnt); 
+raai: relcache:00001972:  elog(ERROR, "could not find pg_class tuple for index %u", 
+raai: relcache:00001973:  RelationGetRelid(relation)); 
+raai: relcache:00002176:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
+raai: relcache:00002290:  elog(ERROR, "relation %u is still open", rid); 
+raai: relcache:00002663:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
+raai: relcache:00002664:  relname, relid); 
+raai: relcache:00002979:  elog(FATAL, "cache lookup failed for relation %u", 
+raai: relcache:00002980:  RelationGetRelid(relation)); 
+raai: relcache:00003009:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
+raai: relcache:00003010:  RelationGetRelationName(relation)); 
+raai: relcache:00003197:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
+raai: relcache:00003198:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003199:  RelationGetRelationName(relation)); 
+raai: relcache:00003207:  elog(WARNING, "null adbin for attr %s of rel %s", 
+raai: relcache:00003208:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003209:  RelationGetRelationName(relation)); 
+raai: relcache:00003217:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
+raai: relcache:00003218:  adform->adnum, RelationGetRelationName(relation)); 
+raai: relcache:00003225:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
+raai: relcache:00003226:  ndef - found, RelationGetRelationName(relation)); 
+raai: relcache:00003263:  elog(ERROR, "unexpected constraint record found for rel %s", 
+raai: relcache:00003264:  RelationGetRelationName(relation)); 
+raai: relcache:00003274:  elog(ERROR, "null conbin for rel %s", 
+raai: relcache:00003275:  RelationGetRelationName(relation)); 
+raai: relcache:00003286:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
+raai: relcache:00003287:  ncheck - found, RelationGetRelationName(relation)); 
+raai: relcache:00004020:  ereport(WARNING, 
+raai: relcache:00004021:  (errcode_for_file_access(), 
+raai: relcache:00004022:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00004023:  tempfilename), 
+raai: relcache:00004024:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00004034:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004098:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004148:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004150:  elog(FATAL, "could not write init file"); 
 aaaaa GP_IGNORE: saai: syscache - ./backend/utils/cache/syscache.c
 saai: syscache:00000595:  elog(ERROR, "could not initialize cache %u (%d)", 
 saai: syscache:00000596:  cacheinfo[cacheId].reloid, cacheId); 
@@ -24070,68 +24070,68 @@ waaf: wchar:00001642:  buf,
 waaf: wchar:00001643:  pg_enc2name_tbl[src_encoding].name, 
 waaf: wchar:00001644:  pg_enc2name_tbl[dest_encoding].name))); 
 aaaaa GP_IGNORE: fabd: faultinjector - ./backend/utils/misc/faultinjector.c
-fabd: faultinjector:00000352:  ereport(ERROR, 
-fabd: faultinjector:00000353:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000354:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000378:  ereport(ERROR, 
-fabd: faultinjector:00000379:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000380:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000509:  ereport(FATAL, 
-fabd: faultinjector:00000510:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000511:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000512:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000531:  ereport(ERROR, 
-fabd: faultinjector:00000532:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000533:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000534:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000761:  ereport(WARNING, 
-fabd: faultinjector:00000762:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000763:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000764:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000765:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000801:  ereport(WARNING, 
-fabd: faultinjector:00000802:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000803:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000804:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000805:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000868:  ereport(WARNING, 
-fabd: faultinjector:00000869:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000870:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000871:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000872:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000894:  ereport(WARNING, 
-fabd: faultinjector:00000895:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000896:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000897:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000898:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000899:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000917:  ereport(WARNING, 
-fabd: faultinjector:00000918:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000919:  "segment not in master role, " 
-fabd: faultinjector:00000920:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000921:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000922:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000938:  ereport(WARNING, 
-fabd: faultinjector:00000939:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000940:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000941:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000942:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000952:  ereport(WARNING, 
-fabd: faultinjector:00000953:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000954:  "entry already exists, " 
-fabd: faultinjector:00000955:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000956:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000957:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001016:  ereport(WARNING, 
-fabd: faultinjector:00001017:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00001018:  "no entry found, " 
-fabd: faultinjector:00001019:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001020:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00001021:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001247:  ereport(WARNING, 
-fabd: faultinjector:00001248:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001249:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001250:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000354:  ereport(ERROR, 
+fabd: faultinjector:00000355:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000356:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000380:  ereport(ERROR, 
+fabd: faultinjector:00000381:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000382:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000511:  ereport(FATAL, 
+fabd: faultinjector:00000512:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000513:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000514:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000533:  ereport(ERROR, 
+fabd: faultinjector:00000534:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000535:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000536:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000763:  ereport(WARNING, 
+fabd: faultinjector:00000764:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000765:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000766:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000767:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000803:  ereport(WARNING, 
+fabd: faultinjector:00000804:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000805:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000806:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000807:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000870:  ereport(WARNING, 
+fabd: faultinjector:00000871:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000872:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000873:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000874:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000896:  ereport(WARNING, 
+fabd: faultinjector:00000897:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000898:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000899:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000900:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000901:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000919:  ereport(WARNING, 
+fabd: faultinjector:00000920:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000921:  "segment not in master role, " 
+fabd: faultinjector:00000922:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000923:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000924:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000940:  ereport(WARNING, 
+fabd: faultinjector:00000941:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000942:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000943:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000944:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000954:  ereport(WARNING, 
+fabd: faultinjector:00000955:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000956:  "entry already exists, " 
+fabd: faultinjector:00000957:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000958:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000959:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001018:  ereport(WARNING, 
+fabd: faultinjector:00001019:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00001020:  "no entry found, " 
+fabd: faultinjector:00001021:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001022:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00001023:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001249:  ereport(WARNING, 
+fabd: faultinjector:00001250:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001251:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001252:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000557: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000558:  
