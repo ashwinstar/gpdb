@@ -51,9 +51,19 @@ LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE) $(CONNECTEMCLIB)
 # The backend doesn't need everything that's in LIBS, however
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
 
+# Add in the bsafe wrapper. This is only needed on platforms which support 
+# RSA BSAFE Crypto-C ME (Linux 64 bit, Mac 10.6 and Solaris)
+ifneq ($(RSA_BSAFE_DY_LIBS),)
+LIBS := $(LIBS) -L$(top_builddir)/src/backend/libpq/bsafe_wrapper \
+				-lbsafe_wrapper
+endif
+
 ##########################################################################
 
-all: submake-libpgport postgres $(POSTGRES_IMP)
+all: submake-libpgport submake-libbsafe_wrapper postgres $(POSTGRES_IMP)
+
+submake-libbsafe_wrapper:
+	$(MAKE) -C libpq/bsafe_wrapper all
 
 ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)

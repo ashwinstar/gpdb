@@ -16,6 +16,7 @@ include Makefile.global
 all install installdirs uninstall distprep:
 	$(MAKE) -C port $@
 	$(MAKE) -C timezone $@
+	$(MAKE) -C backend/libpq/bsafe_wrapper $@
 	$(MAKE) -C backend $@
 	$(MAKE) -C backend/utils/mb/conversion_procs $@
 	$(MAKE) -C include $@
@@ -57,6 +58,7 @@ clean:
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/thread $@
 	$(MAKE) -C tools/fsync $@
+	$(MAKE) -C backend/libpq/bsafe_wrapper $@
 
 distclean maintainer-clean:
 	$(MAKE) -C port $@
@@ -72,6 +74,7 @@ distclean maintainer-clean:
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/thread $@
 	$(MAKE) -C tools/fsync $@
+	$(MAKE) -C backend/libpq/bsafe_wrapper $@
 	rm -f Makefile.port Makefile.global
 
 

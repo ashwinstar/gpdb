@@ -1012,15 +1012,21 @@ if test "$enable_email" = yes ; then
 	AC_CHECK_LIB(esmtp,  smtp_start_session,  [], [AC_MSG_ERROR([library 'libesmtp' is required for email alert support])])
 fi
 
-# RSA BSAFE crypto-C ME library
+# RSA BSAFE crypto-C ME library. We don't want this added to $LIBS.
+pgac_save_LIBS="$LIBS"
 AC_CHECK_LIB(ccme_core, R_LIB_CTX_new)
 AC_CHECK_LIB(ccme_fipsprov, R_PROV_FIPS140_self_tests_full)
 
 if test "$ac_cv_lib_ccme_core_R_LIB_CTX_new" = yes ; then
 	if test "$ac_cv_lib_ccme_fipsprov_R_PROV_FIPS140_self_tests_full" = yes ; then
 		AC_DEFINE(HAVE_RSA_BSAFE_FIPS, 1, [Define to 1 if you have FIPS 140-2 RSA BSAFE.])
+		RSA_BSAFE_DY_LIBS="-lccme_core -lccme_fipsprov"
+		RSA_BSAFE_STATIC_LIBS="$LIBRARY_DIRS/libccme_core.a $LIBRARY_DIRS/libccme_fipsprov.a"
 	fi
 fi
+AC_SUBST(RSA_BSAFE_DY_LIBS)
+AC_SUBST(RSA_BSAFE_STATIC_LIBS)
+LIBS="$pgac_save_LIBS"
 
 ##
 ## Header files

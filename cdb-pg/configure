@@ -626,6 +626,8 @@ PTHREAD_CC
 acx_pthread_config
 LIBOBJS
 HAVE_IPV6
+RSA_BSAFE_STATIC_LIBS
+RSA_BSAFE_DY_LIBS
 CURL_LIBS
 CURL_CFLAGS
 CURL_CONFIG
@@ -9295,7 +9297,8 @@ fi
 
 fi
 
-# RSA BSAFE crypto-C ME library
+# RSA BSAFE crypto-C ME library. We don't want this added to $LIBS.
+pgac_save_LIBS="$LIBS"
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for R_LIB_CTX_new in -lccme_core" >&5
 $as_echo_n "checking for R_LIB_CTX_new in -lccme_core... " >&6; }
 if test "${ac_cv_lib_ccme_core_R_LIB_CTX_new+set}" = set; then :
@@ -9392,8 +9395,13 @@ if test "$ac_cv_lib_ccme_core_R_LIB_CTX_new" = yes ; then
 
 $as_echo "#define HAVE_RSA_BSAFE_FIPS 1" >>confdefs.h
 
+		RSA_BSAFE_DY_LIBS="-lccme_core -lccme_fipsprov"
+		RSA_BSAFE_STATIC_LIBS="$LIBRARY_DIRS/libccme_core.a $LIBRARY_DIRS/libccme_fipsprov.a"
 	fi
 fi
+
+
+LIBS="$pgac_save_LIBS"
 
 ##
 ## Header files

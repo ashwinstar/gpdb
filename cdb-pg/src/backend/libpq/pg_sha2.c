@@ -33,7 +33,7 @@
 #endif /* __darwin__ */
 
 #ifdef HAVE_RSA_BSAFE_FIPS
-#include "libpq/rsa_bsafe_sha2.h"
+#include "libpq/bsafe_wrapper/rsa_bsafe_sha2.h"
 #endif
 
 static void
