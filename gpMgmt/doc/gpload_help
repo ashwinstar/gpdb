@@ -300,16 +300,16 @@ FILE - Required. Specifies the location of a file, named pipe, or
 
 SSL - Optional. Specifies usage of SSL encryption.
 
-CERTIFICATES_PATH - Required when SSL is true; otherwise, optional.
-                    The location specified in certificate_path 
-                    must contain the following files:
+CERTIFICATES_PATH - Required when SSL is true; cannot be specified when 
+                    SSL is false or unspecified. The location specified 
+                    in CERTIFICATES_PATH must contain the following files:
 
                     - The server certificate file, server.crt
                     - The server private key file, server.key
                     - The trusted certificate authorities, root.crt
 
                     The root directory (/) cannot be specified 
-                    in certificate_path.
+                    as certificate_path.
 
 COLUMNS - Optional. Specifies the schema of the source data file(s) 
           in the format of field_name: data_type. The DELIMITER character 
