@@ -1455,7 +1455,7 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	{
 		ereport(WARNING,
 				(errmsg("Only dropped the index \"%s\"", relation->relname),
-				 errhint("To drop other indexes on child parts, drop each one explicitly.")));
+				 errhint("To drop other indexes on child partitions, drop each one explicitly.")));
 	}
 }
 
