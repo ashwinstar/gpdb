@@ -30,7 +30,7 @@ where queue_attribute is:
    MIN_COST=float
    PRIORITY={MIN|LOW|MEDIUM|HIGH|MAX}
 
-ALTER RESOURCE QUEUE name WITHOUT ( queue_attribute=value [, ... ] ) 
+ALTER RESOURCE QUEUE name WITHOUT ( queue_attribute [, ... ] ) 
 where queue_attribute is:
    ACTIVE_STATEMENTS
    MEMORY_LIMIT
