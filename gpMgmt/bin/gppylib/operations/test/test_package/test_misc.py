@@ -1,0 +1,34 @@
+#!/usr/bin/env python
+
+import os
+import shutil
+
+from gppylib.operations.test.test_package import GppkgTestCase, unittest
+from gppylib.test import run_command
+
+class MiscTestCase(GppkgTestCase):
+    """Covers all test cases which do not fall under any specific category"""
+    @unittest.expectedFailure
+    def test00_MPP_14671(self):
+        """
+        This test ensures that gppkg does not use the package name
+        to discern information about the package. 
+        """
+        gppkg_file = self.build(self.alpha_spec, self.A_spec)
+
+        dummy_file = "dummy-x.y.z-abcd-efgh.gppkg"
+        shutil.copy(gppkg_file, dummy_file)
+        self.extra_clean.add(dummy_file)
+
+        self.install(dummy_file)
+        assert os.path.exists(os.path.join(GPHOME, 'share', 'packages', 'archive', dummy_file))
+
+        self.check_rpm_install(self.A_spec.get_package_name())
+
+        assert self.check_install(gppkg_file)
+
+        results = run_command("gppkg -q --all")
+        assert ''.join(gppkg_file.split('-')[:1]) in results
+
+if __name__ == "__main__":
+    unittest.main()
