@@ -2423,46 +2423,23 @@ class gpload:
         return attrs
 
     def table_supports_update(self):
-        '''
-        Columns being updated cannot appear in the distribution key. Further,
-        match_columns must be equal to the distribution key as we do not
-        support UPDATE ... FROM unless this is the case.
-        '''
+        """Columns being updated cannot appear in the distribution key."""
         distKeyList = self.get_table_dist_key()
         distkey = set()
         for dk in distKeyList:
             distkey.add(quote_ident(dk)) 
 
-        if len(distkey) == 0: # randomly distributed
-            self.log(self.ERROR, 'table "' + self.schemaTable + '" is ' +
-                        'distributed randomly and ' +
-                        'therefore does not support update or merge via gpload')
-
         self.distkey = distkey
-        # update_columns better not be in distkey
-        updateColumnList = self.getconfig('gpload:output:update_columns'
-                                          , list
-                                          , returnOriginal=True
-                                          )
-        update_columns = convertListToDelimited(updateColumnList)
-        update_columns = set(update_columns)
-        a = distkey.intersection(update_columns)
-        if len(a):
-            self.control_file_error('update_columns cannot reference column(s) in distribution key (%s)' % ', '.join(list(distkey)))
-
-        # remember, match_columns might be a superset of the key
-        matchColumnList = self.getconfig('gpload:output:match_columns'
-                                        , list
-                                        , returnOriginal=True
-                                        )
-        match_columns = convertListToDelimited(matchColumnList)
-        match_columns = set(match_columns)
-        a = distkey.intersection(match_columns)
-        if a != distkey:
-            self.log(self.ERROR, 
-                    'match_columns (' + ', '.join(match_columns) + ') ' +
-                    'must contain all attributes in distribution key '+
-                    '(' + ', '.join(list(distkey)) + ')')
+        if len(distkey) != 0:
+            # not randomly distributed - check that UPDATE_COLUMNS isn't part of the distribution key
+            updateColumnList = self.getconfig('gpload:output:update_columns',
+                                              list,
+                                              returnOriginal=True)
+            update_columns = convertListToDelimited(updateColumnList)
+            update_columns = set(update_columns)
+            a = distkey.intersection(update_columns)
+            if len(a):
+                self.control_file_error('update_columns cannot reference column(s) in distribution key (%s)' % ', '.join(list(distkey)))        
 
     def do_method_update(self):
         """Load the data in and update an existing table based upon it"""
