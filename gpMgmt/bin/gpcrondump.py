@@ -81,7 +81,7 @@ class GpCronDump(Operation):
         self.ddboost_host = options.ddboost_host
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
-
+    
         # TODO: if action is 'append', wouldn't you expect a lack of input to result in [], as opposed to None?
         if self.include_dump_tables is None: self.include_dump_tables = []
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
@@ -203,7 +203,7 @@ class GpCronDump(Operation):
         if self.clear_dumps_only:
             DeleteOldestDumps(master_datadir = self.master_datadir,
                               master_port = self.master_port,
-                              ddboost = self.ddboost).run©¨
+                              ddboost = self.ddboost).run()
             return
         
         if self.post_script is not None:
@@ -226,13 +226,13 @@ class GpCronDump(Operation):
 
             dump_outcome = DumpDatabase(dump_database = dump_database,
                                         dump_schema = self.dump_schema,
-                                        include_dump_tables = self.include_dump_tables,
+                                        include_dump_tables = self.include_dump_tables,
                                         exclude_dump_tables = self.exclude_dump_tables,
                                         compress = self.compress,
                                         free_space_percent = self.free_space_percent,  
                                         clear_catalog_dumps = self.clear_catalog_dumps,
                                         backup_dir = self.backup_dir,
-                                        include_dump_tables_file = self.include_dump_tables_file,
+                                        include_dump_tables_file = self.include_dump_tables_file,
                                         exclude_dump_tables_file = self.exclude_dump_tables_file,
                                         report_dir = self.report_dir,
                                         encoding = self.encoding,
@@ -281,7 +281,7 @@ class GpCronDump(Operation):
                     # A current_exit_status of 2 or higher likely indicates either a serious issue in gp_dump
                     # or that the PostDumpDatabase could not determine a timestamp. Thus, do not attempt rollback.
                     logger.warn("Dump request was incomplete, however cannot rollback since no timestamp was found.")
-                    MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
+                    MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
                                   "Failed for database %s with return code %d, dump files not rolled back, because no new timestamp was found. [Start=%s End=%s] Options passed [%s]" 
                                     % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
                     raise ExceptionNoStackTraceNeeded("Dump incomplete, rollback not processed")
@@ -305,7 +305,7 @@ class GpCronDump(Operation):
                 if self.clear_dumps:
                     deleted_dump_set = DeleteOldestDumps(master_datadir = self.master_datadir, 
                                                          master_port = self.master_port,
-                                                         ddboost = self.ddboost).run()
+                                                         ddboost = self.ddboost).run()
 
             if self.post_vacuum:
                 logger.info('Commencing post-dump vacuum...')
@@ -315,12 +315,12 @@ class GpCronDump(Operation):
             self._status_report(dump_database,
                                 post_dump_outcome['timestamp'], 
                                 dump_outcome, 
-                                current_exit_status, 
+                                current_exit_status, 
                                 deleted_dump_set)
             
             MailDumpEvent("Report from gpcrondump on host %s [COMPLETED]" % self.cur_host,
                           "Completed for database %s with return code %d [Start=%s End=%s] Options passed [%s]" 
-                          % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run©¨
+                          % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
 
         if self.dump_config:
             DumpConfig(backup_dir = self.backup_dir,
@@ -334,7 +334,7 @@ class GpCronDump(Operation):
         return final_exit_status
 
     def _prompt_continue(self, dump_database):
-        logger.info("----------------­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­­¢¨
+        logger.info("---------------------------------------------------")
         logger.info("Master Greenplum Instance dump parameters")
         logger.info("---------------------------------------------------")
         if len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
@@ -359,7 +359,7 @@ class GpCronDump(Operation):
                     logger.info("Table name                               = %s" % table)
                 logger.info("---------------------------------------------------")
             if self.exclude_dump_tables_file is not None:
-                logger.info("Table file name                      ½ ¥s" % self.exclude_dump_tables_file)
+                logger.info("Table file name         s" % self.exclude_dump_tables_file)
                 logger.info("---------------------------------------------------")
         else:
             logger.info("Dump type                            = Single database")
@@ -411,7 +411,7 @@ class GpCronDump(Operation):
             logger.info("Additional options                   = -c")
         if self.free_space_percent is not None:
             logger.info("Ensuring remaining free disk         > %d" % self.free_space_percent)
-        
+    
         if not userinput.ask_yesno(None, "\nContinue with Greenplum dump", 'N'):
             raise UserAbortedException()
 
@@ -430,7 +430,7 @@ class GpCronDump(Operation):
         # TODO: logger.info("Number of segments dumped...
         if exit_status != 0:
             if self.rollback:
-                logger.warn("Status                                   ½ FAILED, Rollback Called")
+                logger.warn("Status                                   = FAILED, Rollback Called")
             else:
                 logger.warn("Status                                   = FAILED, Rollback Not Called")
             logger.info("See dump log file for errors")
@@ -455,7 +455,7 @@ class GpCronDump(Operation):
         else:
             logger.info("Exit code zero, no warnings generated")
         logger.info("---------------------------------------------------")
-            
+            
 
     def _validate_dump_target(self):
          if len(self.dump_databases) > 1:
@@ -470,7 +470,7 @@ class GpCronDump(Operation):
     def _validate_run_program(self):
         #Check to see if the file exists
         cmd = Command('Seeking post script', "which %s" % self.post_script)
-        cmd.run©¨
+        cmd.run()
         if cmd.get_results().rc != 0:
             cmd = Command('Seeking post script file', '[ -f %s ]' % self.post_script)
             cmd.run()
@@ -526,7 +526,7 @@ def create_parser():
     addTo.add_option('-g', action='store_true', dest='dump_config', default=False,
                      help="Dump configuration files: postgresql.conf, pg_ident.conf, and pg_hba.conf.")
     addTo.add_option('-G', action='store_true', dest='dump_global', default=False,
-                     help="Dump global objects, i.e. user accounts")
+                     help="Dump global objects, i.e. user accounts")
     addTo.add_option('-C', action='store_true', dest='clear_catalog_dumps', default=False,
                      help="Clean (drop) schema prior to dump [default: do not clean]")
     addTo.add_option('-R', dest='post_script', metavar="<program name>",
