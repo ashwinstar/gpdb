@@ -1069,8 +1069,6 @@ mkpgbench:
 
 mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE) BUILDDIR=$(BUILDDIR)
-	rm -f $(INSTLOC)/../greenplum-perfmon-*.zip
-	cp -p gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/..
 	cp -p gpperfmon/src/gpmon/gpmmon gpperfmon/src/gpmon/gpsmon $(INSTLOC)/bin
 	cp -p gpperfmon/src/gpmon/gpmon_catqrynow.py $(INSTLOC)/sbin
 	cp -p gpperfmon/src/gpmon/gpperfmon_install $(INSTLOC)/bin
