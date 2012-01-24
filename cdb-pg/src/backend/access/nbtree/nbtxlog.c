@@ -835,14 +835,14 @@ out_split(StringInfo buf, bool onleft, bool isroot, XLogRecord *record)
 	char			*rec = XLogRecGetData(record);
 	xl_btree_split 	*xlrec = (xl_btree_split *) rec;
 	BlockNumber targetblk;
-	OffsetNumber targetoff;
+
 	BlockNumber leftsib;
 	BlockNumber rightsib;
 
 	out_target(buf, &(xlrec->target));
 
 	targetblk = ItemPointerGetBlockNumber(&(xlrec->target.tid));
-	targetoff = ItemPointerGetOffsetNumber(&(xlrec->target.tid));
+
 	leftsib = (onleft) ? targetblk : xlrec->otherblk;
 	rightsib = (onleft) ? xlrec->otherblk : targetblk;
 
