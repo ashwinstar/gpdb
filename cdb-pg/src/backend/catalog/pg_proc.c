@@ -329,7 +329,7 @@ ProcedureCreate(const char *procedureName,
 
 		/*
 		 * Cannot add a describe callback to a function that has views defined
-		 * on it.  This restriction is for the same set of reasons that we 
+		 * on it.  This restriction is for the same set of reasons that we
 		 * cannot change the return type of existing functions.
 		 */
 		if (OidIsValid(describeFuncOid))
@@ -338,10 +338,10 @@ ProcedureCreate(const char *procedureName,
 			ScanKeyData key[2];
 			SysScanDesc scan;
 			HeapTuple   depTup;
-			
+
 
 			depRel = heap_open(DependRelationId, AccessShareLock);
-			
+
 			ScanKeyInit(&key[0],
 						Anum_pg_depend_refclassid,
 						BTEqualStrategyNumber, F_OIDEQ,
@@ -350,7 +350,7 @@ ProcedureCreate(const char *procedureName,
 						Anum_pg_depend_refobjid,
 						BTEqualStrategyNumber, F_OIDEQ,
 						ObjectIdGetDatum(oldOid));
-			
+
 			scan = systable_beginscan(depRel, DependReferenceIndexId, true,
 									  SnapshotNow, 2, key);
 			while (HeapTupleIsValid(depTup = systable_getnext(scan)))
@@ -415,10 +415,10 @@ ProcedureCreate(const char *procedureName,
 	{
 		/* Creating a new procedure */
 		tup = heap_form_tuple(tupDesc, values, nulls);
-				
+
 		if (OidIsValid(funcOid))
 			HeapTupleSetOid(tup, funcOid);
-			
+
 		simple_heap_insert(rel, tup);
 		is_update = false;
 	}
@@ -511,7 +511,6 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
-	Form_pg_proc proc;
 	bool		isnull;
 	Datum		tmp;
 	char	   *prosrc;
@@ -526,7 +525,6 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
-	proc = (Form_pg_proc) GETSTRUCT(tuple);
 
 	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
@@ -560,7 +558,6 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	Oid			funcoid = PG_GETARG_OID(0);
 	void	   *libraryhandle;
 	HeapTuple	tuple;
-	Form_pg_proc proc;
 	bool		isnull;
 	Datum		tmp;
 	char	   *prosrc;
@@ -577,7 +574,6 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
-	proc = (Form_pg_proc) GETSTRUCT(tuple);
 
 	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
