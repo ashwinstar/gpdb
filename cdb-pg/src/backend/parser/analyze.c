@@ -553,10 +553,10 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 		alters = NIL;
 		for (j = 0; j < i; j++)
 		{
-			AlterTableStmt *n;
+			//AlterTableStmt *n;
 			alters = lappend(alters, stmts[j]);
 
-			n = (AlterTableStmt *)((Query *)stmts[j])->utilityStmt;
+			//n = (AlterTableStmt *)((Query *)stmts[j])->utilityStmt;
 		}
 		result = list_concat(result, others);
 		result = list_concat(result, alters);
@@ -1630,7 +1630,7 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 						 errmsg("column \"%s\" duplicated",
 								colname),
 						 errOmitLocation(true)));
-				
+
 			}
 			ce->count = 0;
 		}
@@ -2932,7 +2932,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		if (cxt->inhRelations)
 		{
-			bool		found = false;
+			//bool		found = false;
 			/* try inherited tables */
 			ListCell   *inher;
 
@@ -2971,7 +2971,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 								 errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
 								 		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew."),
 								 errOmitLocation(true)));
-						found = true;
+						//found = true;
 						break;
 					}
 				}
@@ -4939,7 +4939,7 @@ preprocess_range_spec(partValidationState *vstate)
 		PartitionElem	*el			= lfirst(lc);
 		PartitionBoundSpec *pbs = (PartitionBoundSpec *)el->boundSpec;
 
-		Node			*pStoreAttr	= NULL;
+		//Node			*pStoreAttr	= NULL;
 		ListCell		*lc2;
 		bool			 bTablename = false;
 
@@ -4958,7 +4958,7 @@ preprocess_range_spec(partValidationState *vstate)
 
 		pbs = (PartitionBoundSpec *)transformExpr(pstate, (Node *)pbs);
 
-		pStoreAttr = el->storeAttr;
+		//pStoreAttr = el->storeAttr;
 
 		/* MPP-6297: check for WITH (tablename=name) clause
 		 * [only for dump/restore, set deep in the guts of
@@ -6401,11 +6401,11 @@ merge_partition_encoding(ParseState *pstate, PartitionElem *elem, List *penc)
 	ListCell *lc;
 	AlterPartitionCmd *pc;
 
-	/* 
+	/*
 	 * First of all, we shouldn't proceed if this partition isn't AOCO
 	 */
 
-	/* 
+	/*
 	 * Yes, I am as surprised as you are that this is how we represent the WITH
 	 * clause here.
 	 */
@@ -6422,7 +6422,7 @@ merge_partition_encoding(ParseState *pstate, PartitionElem *elem, List *penc)
 			return; /* nothing more to do */
 	}
 
-	/* 
+	/*
 	 * If the specific partition has no specific column encoding, just
 	 * set it to the partition level default and we're done.
 	 */
@@ -6431,7 +6431,7 @@ merge_partition_encoding(ParseState *pstate, PartitionElem *elem, List *penc)
 		elem->colencs = penc;
 		return;
 	}
-	
+
 	/*
 	 * Fixup the actual column encoding clauses for this specific partition
 	 * element.
@@ -7049,7 +7049,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 	int				 numElts = 0;
 	List			*partElts;
 	ListCell		*lc = NULL;
-	ListCell		*lc_prev = NULL;
+	//ListCell		*lc_prev = NULL;
 	List			*stenc = NIL;
 
 	Assert(pBy);
@@ -7528,7 +7528,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 			pBSpec->everyGenList = allNewPartns;
 
 l_next_iteration:
-		lc_prev = lc;
+		//lc_prev = lc;
 		lc = lnext(lc);
 	} /* end foreach */
 
@@ -7553,7 +7553,7 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 	if (!stenc)
 		return;
 
-	/* 
+	/*
 	 * First, split the table elements into column reference storage directives
 	 * and everything else.
 	 */
@@ -7589,7 +7589,7 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 		foreach(lc2, finalencs)
 		{
 			ColumnReferenceStorageDirective *f = lfirst(lc2);
- 
+
 			if (f->deflt)
 				continue;
 
@@ -7928,7 +7928,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					 CreateStmt *stmt, Node *partitionBy, GpPolicy *policy)
 {
 	Oid			snamespaceid;
-	char	   *snamespace;
+	//char	   *snamespace;
 	int		  	partDepth;	/* depth (starting at zero, but display at 1) */
 	char	  	depthstr[NAMEDATALEN];
 	char	   *at_depth = "";
@@ -8219,7 +8219,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	 * Determine namespace and name to use for the child table.
 	 */
 	snamespaceid = RangeVarGetCreationNamespace(cxt->relation);
-	snamespace = get_namespace_name(snamespaceid);
+	//snamespace = get_namespace_name(snamespaceid);
 
 	/* set up the partition specification element list if it exists */
 	if (pBy->partSpec)
@@ -11187,9 +11187,9 @@ transformAlterTable_all_PartitionStmt(
 	AlterTableCmd 		*atc1 	   = cmd;
 	RangeVar 			*rv   	   = stmt->relation;
 	PartitionNode 		*pNode 	   = NULL;
-	PartitionNode 		*prevNode  = NULL;
+	//PartitionNode 		*prevNode  = NULL;
 	int 			 	 partDepth = 0;
-	Oid 			 	 par_oid   = InvalidOid;
+	//Oid 			 	 par_oid   = InvalidOid;
 	StringInfoData   sid1, sid2;
 
 	if (atc1->subtype == AT_PartAlter)
@@ -11256,9 +11256,9 @@ transformAlterTable_all_PartitionStmt(
 			if (prule && prule->topRule &&
 				prule->topRule->children)
 			{
-				prevNode = pNode;
+				//prevNode = pNode;
 				pNode = prule->topRule->children;
-				par_oid = RelationGetRelid(rel);
+				//par_oid = RelationGetRelid(rel);
 
 				/*
 				 * Don't hold a long lock -- lock on the master is
@@ -11276,7 +11276,7 @@ transformAlterTable_all_PartitionStmt(
 			}
 			else
 			{
-				prevNode = pNode;
+				//prevNode = pNode;
 				pNode = NULL;
 			}
 
