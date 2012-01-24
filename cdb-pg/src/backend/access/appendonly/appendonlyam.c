@@ -1421,16 +1421,15 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 {
 	AppendOnlyScanDesc	scan;
 	AppendOnlyEntry		*aoentry;
-	char*				comptype;
-	int					complevel;
+	/*char*				comptype;
+	int					complevel;*/
 
 	AppendOnlyStorageAttributes *attr;
-
 	
 	StringInfoData titleBuf;
 
 	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
-	
+
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -1450,8 +1449,8 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 	 */
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
 	scan->aoEntry = aoentry;
-	complevel = aoentry->compresslevel;
-	comptype = aoentry->compresstype;
+	/*complevel = aoentry->compresslevel;
+	comptype = aoentry->compresstype;*/
 	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 
 	/*
@@ -1970,7 +1969,7 @@ appendonly_fetch_init(
 						GetAllFileSegInfo(
 									relation,
 									aoentry,
-									appendOnlyMetaDataSnapshot, 
+									appendOnlyMetaDataSnapshot,
 									&aoFetchDesc->totalSegfiles);
 
 	AppendOnlyStorageRead_Init(
@@ -2262,7 +2261,7 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc0(sizeof(AppendOnlyInsertDescData));
 
 	aoInsertDesc->aoi_rel = rel;
-	aoInsertDesc->appendOnlyMetaDataSnapshot = SnapshotNow;		
+	aoInsertDesc->appendOnlyMetaDataSnapshot = SnapshotNow;
 								// Writers uses this since they have exclusive access to the lock acquired with
 								// LockRelationAppendOnlySegmentFile for the segment-file.
 
@@ -2432,8 +2431,8 @@ appendonly_insert_init(Relation rel, int segno)
 
 	/* Initialize the block directory. */
 	AppendOnlyBlockDirectory_Init_forInsert(
-		&(aoInsertDesc->blockDirectory), 
-		aoentry, 
+		&(aoInsertDesc->blockDirectory),
+		aoentry,
 		aoInsertDesc->appendOnlyMetaDataSnapshot,		// CONCERN: Safe to assume all block directory entries for segment are "covered" by same exclusive lock.
 		aoInsertDesc->fsInfo, aoInsertDesc->lastSequence,
 		rel, segno, 1, false);
