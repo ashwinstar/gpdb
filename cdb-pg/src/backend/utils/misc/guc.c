@@ -292,6 +292,7 @@ int			gp_max_local_distributed_cache = 1024;
 bool		gp_appendonly_verify_block_checksums = false;
 bool 		gp_appendonly_verify_write_block = false;
 bool		gp_heap_require_relhasoids_match = true;
+bool		gp_suppress_distributed_tx_vacuum = false;
 bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
@@ -1995,7 +1996,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_heap_require_relhasoids_match,
 		true, NULL, NULL
 	},
-
+	
+	{
+		{"gp_suppress_distributed_tx_vacuum", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Do not use a distributed transaction for VACUUM."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_suppress_distributed_tx_vacuum,
+		false, NULL, NULL
+	},
+	
 	{
 		{"debug_appendonly_rezero_quicklz_compress_scratch", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Zero the QuickLZ scratch buffer before each append-only block that is being compressed."),

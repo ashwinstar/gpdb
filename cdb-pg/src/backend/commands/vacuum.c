@@ -407,8 +407,15 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * another one before exiting to match the commit waiting for us back in
 	 * PostgresMain().
 	 */
-	if (Gp_role != GP_ROLE_EXECUTE)
+	if (gp_suppress_distributed_tx_vacuum)
+	{
 		CommitTransactionCommand();
+	}
+	else
+	{
+		if (Gp_role != GP_ROLE_EXECUTE)
+			CommitTransactionCommand();
+	}
 
 	PG_TRY();
 	{
@@ -461,8 +468,15 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 
 			if (onerel == NULL)
 			{
-				if (Gp_role != GP_ROLE_EXECUTE)
+				if (gp_suppress_distributed_tx_vacuum)
+				{
 					CommitTransactionCommand();
+				}
+				else
+				{
+					if (Gp_role != GP_ROLE_EXECUTE)
+						CommitTransactionCommand();
+				}
 
 				continue;
 			}
@@ -630,8 +644,15 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 				vacstmt->relation = NULL;
 			}
 
-			if (Gp_role != GP_ROLE_EXECUTE)
+			if (gp_suppress_distributed_tx_vacuum)
+			{
 				CommitTransactionCommand();
+			}
+			else
+			{
+				if (Gp_role != GP_ROLE_EXECUTE)
+					CommitTransactionCommand();
+			}
 
 			/*
 			 * Now release the session-level lock on the master table.
@@ -3942,14 +3963,25 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	 */
 	PG_TRY();
 	{
-		/* mark the dtx as dirty */
-		dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
-				true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
+		if (gp_suppress_distributed_tx_vacuum)
+		{
+			cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
+									 true /* cancelOnError */, 
+									 false /* needTwoPhase */,
+									 false /* withSnapshot */,
+									 (struct CdbDispatcherState *)&ds);
+		}
+		else
+		{
+			/* mark the dtx as dirty */
+			dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
+					true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
 
-		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
-								 true /* cancelOnError */, true /* needTwoPhase */,
-								 true /* withSnapshot */,
-								 (struct CdbDispatcherState *)&ds);
+			cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
+									 true /* cancelOnError */, true /* needTwoPhase */,
+									 true /* withSnapshot */,
+									 (struct CdbDispatcherState *)&ds);
+		}
 
 		disp_phase = 1;
 
