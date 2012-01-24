@@ -1713,6 +1713,8 @@ bool RecordCrashTransactionAbortRecord(
 	}
 	recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_ABORT, rdata);
 
+	(void)recptr;  /* recptr is computed, but never used */
+
 	/*
 	 * Mark the transaction aborted in clog.  This is not absolutely
 	 * necessary but we may as well do it while we are here.
