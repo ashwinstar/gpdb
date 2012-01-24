@@ -449,7 +449,6 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 	Datum		repl_val[Natts_pg_foreign_data_wrapper];
 	bool		repl_null[Natts_pg_foreign_data_wrapper];
 	bool		repl_repl[Natts_pg_foreign_data_wrapper];
-	Oid			fdwId;
 	bool		isnull;
 	Datum		datum;
 	Oid			fdwvalidator;
@@ -472,8 +471,6 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 		errmsg("foreign-data wrapper \"%s\" does not exist", stmt->fdwname),
 				errOmitLocation(true)));
-
-	fdwId = HeapTupleGetOid(tp);
 
 	memset(repl_val, 0, sizeof(repl_val));
 	memset(repl_null, false, sizeof(repl_null));
@@ -544,7 +541,7 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 
 	heap_close(rel, RowExclusiveLock);
 	heap_freetuple(tp);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "AlterFdwStmt");
@@ -596,7 +593,7 @@ RemoveForeignDataWrapper(DropFdwStmt *stmt)
 	object.objectSubId = 0;
 
 	performDeletion(&object, stmt->behavior);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "DropFdwStmt");
@@ -731,7 +728,7 @@ CreateForeignServer(CreateForeignServerStmt *stmt)
 	recordDependencyOnOwner(ForeignServerRelationId, srvId, ownerId);
 
 	heap_close(rel, NoLock);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "CreateForeignServerStmt");
@@ -829,7 +826,7 @@ AlterForeignServer(AlterForeignServerStmt *stmt)
 
 	heap_close(rel, RowExclusiveLock);
 	heap_freetuple(tp);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "AlterForeignServerStmt");
@@ -875,7 +872,7 @@ RemoveForeignServer(DropForeignServerStmt *stmt)
 	object.objectSubId = 0;
 
 	performDeletion(&object, stmt->behavior);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "DropForeignServerStmt");
@@ -1021,7 +1018,7 @@ CreateUserMapping(CreateUserMappingStmt *stmt)
 		recordDependencyOnOwner(UserMappingRelationId, umId, useId);
 
 	heap_close(rel, NoLock);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "CreateUserMappingStmt");
@@ -1114,7 +1111,7 @@ AlterUserMapping(AlterUserMappingStmt *stmt)
 
 	heap_close(rel, RowExclusiveLock);
 	heap_freetuple(tp);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "AlterUserMappingStmt");
@@ -1191,7 +1188,7 @@ RemoveUserMapping(DropUserMappingStmt *stmt)
 	object.objectSubId = 0;
 
 	performDeletion(&object, DROP_CASCADE);
-	
+
 	/* dispatch to QEs */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "DropUserMappingStmt");
@@ -1225,7 +1222,7 @@ RemoveUserMappingById(Oid umId)
 
 /*******************************************************************
  * FOREIGN TABLE catalog manipulation
- * 
+ *
  * The foreign table API below is slightly different from the above
  * API. FDW, SERVER, and MAPPING are objects by themselves, and
  * creating/dropping/altering them is done directly on their
@@ -1267,7 +1264,7 @@ InsertForeignTableEntry(Oid relid, char	*servername, List *options)
 	}
 
 	fdw = GetForeignDataWrapper(srv->fdwid);
-	
+
 	/*
 	 * Insert tuple into pg_foreign_table.
 	 */
@@ -1280,7 +1277,7 @@ InsertForeignTableEntry(Oid relid, char	*servername, List *options)
 	values[Anum_pg_foreign_table_server - 1] = ObjectIdGetDatum(srv->serverid);
 
 	/* Add server options */
-	tbloptions = transformGenericOptions(PointerGetDatum(NULL), 
+	tbloptions = transformGenericOptions(PointerGetDatum(NULL),
 										 options,
 										 fdw->fdwvalidator);
 
@@ -1292,6 +1289,7 @@ InsertForeignTableEntry(Oid relid, char	*servername, List *options)
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
 	srvId = simple_heap_insert(rel, tuple);
+	(void) srvId;  /* never used */
 
 	CatalogUpdateIndexes(rel, tuple);
 	heap_freetuple(tuple);
@@ -1320,7 +1318,7 @@ RemoveForeignTableEntry(Oid relid)
 				F_OIDEQ,
 				ObjectIdGetDatum(relid));
 
-	foreignscan = systable_beginscan(pg_foreigntable_rel, 
+	foreignscan = systable_beginscan(pg_foreigntable_rel,
 									 ForeignTableRelOidIndexId, true,
 									 SnapshotNow, 1, &key);
 
