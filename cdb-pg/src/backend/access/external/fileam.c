@@ -1097,7 +1097,6 @@ externalgettup_custom(FileScanDesc scan)
 					 */
 					PG_TRY();
 					{
-						Datum					d;
 						FunctionCallInfoData	fcinfo;
 
 						/* per call formatter prep */
@@ -1109,7 +1108,7 @@ externalgettup_custom(FileScanDesc scan)
 													 scan->fs_tupDesc,
 													 scan->in_functions,
 													 scan->typioparams);
-						d = FunctionCallInvoke(&fcinfo);
+						(void) FunctionCallInvoke(&fcinfo);
 
 					}
 					PG_CATCH();
@@ -2524,7 +2523,7 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 			char	*key = token;
 			char	*val = NULL;
 			StringInfoData key_modified;
-			
+
 			initStringInfo(&key_modified);
 
 			while (key)
@@ -2533,7 +2532,7 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 				resetStringInfo(&key_modified);
 				appendStringInfoString(&key_modified, key);
 				replaceStringInfoString(&key_modified, "<gpx20>", " ");
-				
+
 				val = strtokx2(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, true, encoding);
 				if (val)
