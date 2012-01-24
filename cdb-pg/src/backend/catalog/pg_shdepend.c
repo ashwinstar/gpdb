@@ -1102,7 +1102,7 @@ shdepDropOwned(List *roleids, DropBehavior behavior)
 		while ((tuple = systable_getnext(scan)) != NULL)
 		{
 			ObjectAddress obj;
-			GrantObjectType objtype;
+
 			InternalGrant istmt;
 			Form_pg_shdepend sdepForm = (Form_pg_shdepend) GETSTRUCT(tuple);
 
@@ -1142,8 +1142,7 @@ shdepDropOwned(List *roleids, DropBehavior behavior)
 						default:
 							elog(ERROR, "unexpected object type %d",
 								 sdepForm->classid);
-							/* keep compiler quiet */
-							objtype = (GrantObjectType) 0;
+
 							break;
 					}
 					istmt.is_grant = false;
