@@ -345,6 +345,7 @@ remove_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid
                       &xid,
                       HASH_REMOVE,
                       &found);
+     (void) entry; /* We never use entry */
     }
 
   /* KAS should probably put out an error if it is not found.  */
