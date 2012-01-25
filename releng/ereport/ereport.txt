@@ -152,21 +152,21 @@ aabc: appendonlyam:00001382:  varBlockCheckError,
 aabc: appendonlyam:00001383:  VarBlockGetCheckErrorStr()), 
 aabc: appendonlyam:00001384:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
 aabc: appendonlyam:00001385:  errcontext_appendonly_insert_block(aoInsertDesc))); 
-aabc: appendonlyam:00002121:  ereport(WARNING, 
-aabc: appendonlyam:00002122:  (errmsg("Append-only fetch requires scan prior segment file: " 
-aabc: appendonlyam:00002123:  "segmentFileNum %d, rowNum " INT64_FORMAT 
-aabc: appendonlyam:00002124:  ", currentSegmentFileNum %d", 
-aabc: appendonlyam:00002125:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
-aabc: appendonlyam:00002578:  ereport(ERROR, 
-aabc: appendonlyam:00002579:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002580:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002581:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002582:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
-aabc: appendonlyam:00002620:  ereport(ERROR, 
-aabc: appendonlyam:00002621:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002622:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002623:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002624:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002120:  ereport(WARNING, 
+aabc: appendonlyam:00002121:  (errmsg("Append-only fetch requires scan prior segment file: " 
+aabc: appendonlyam:00002122:  "segmentFileNum %d, rowNum " INT64_FORMAT 
+aabc: appendonlyam:00002123:  ", currentSegmentFileNum %d", 
+aabc: appendonlyam:00002124:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
+aabc: appendonlyam:00002577:  ereport(ERROR, 
+aabc: appendonlyam:00002578:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002579:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002580:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002581:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002619:  ereport(ERROR, 
+aabc: appendonlyam:00002620:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002621:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002622:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002623:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
 aace: appendonlyblockdirectory:00000412:  ereport(ERROR, 
 aace: appendonlyblockdirectory:00000413:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -259,11 +259,11 @@ babb: bitmappages:00000436:  (errcode(ERRCODE_INTERNAL_ERROR),
 babb: bitmappages:00000437:  errmsg("failed to add LOV item to \"%s\"", 
 babb: bitmappages:00000438:  RelationGetRelationName(rel)))); 
 aaaaa GP_IGNORE: baba: bitmaputil - ./backend/access/bitmap/bitmaputil.c
-baba: bitmaputil:00000098:  ereport(ERROR, 
-baba: bitmaputil:00000099:  (0, 
-baba: bitmaputil:00000100:  errmsg("The disk format for %s is not valid for this version of " 
-baba: bitmaputil:00000101:  "Greenplum Database. Use REINDEX %s to update this index", 
-baba: bitmaputil:00000102:  RelationGetRelationName(rel), RelationGetRelationName(rel)))); 
+baba: bitmaputil:00000095:  ereport(ERROR, 
+baba: bitmaputil:00000096:  (0, 
+baba: bitmaputil:00000097:  errmsg("The disk format for %s is not valid for this version of " 
+baba: bitmaputil:00000098:  "Greenplum Database. Use REINDEX %s to update this index", 
+baba: bitmaputil:00000099:  RelationGetRelationName(rel), RelationGetRelationName(rel)))); 
 aaaaa GP_IGNORE: baba: bitmapxlog - ./backend/access/bitmap/bitmapxlog.c
 baba: bitmapxlog:00000226:  ereport(ERROR, 
 baba: bitmapxlog:00000227:  (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -493,67 +493,67 @@ faag: fileam:00000852: static DataLineStatus parse_next_line(FileScanDesc scan)
 faag: fileam:00000853: { 
 faag: fileam:00000854:  CopyState pstate = scan->fs_pstate; 
 faag: fileam:00001085:  elog(ERROR, "header line in custom format is not yet supported"); 
-faag: fileam:00001182:  elog(ERROR, "unsupported formatter notification (%d)", 
-faag: fileam:00001183:  formatter->fmt_notification); 
-faag: fileam:00001280:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001281:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001282:  formatter_name, 
-faag: fileam:00001283:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001284:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001285:  errOmitLocation(true))); 
-faag: fileam:00001289:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001290:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001291:  formatter_name, 
-faag: fileam:00001292:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001293:  errOmitLocation(true))); 
-faag: fileam:00001297:  ereport(ERROR, 
-faag: fileam:00001298:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faag: fileam:00001299:  errmsg("formatter function %s is not declared STABLE.", 
-faag: fileam:00001300:  formatter_name), 
-faag: fileam:00001301:  errOmitLocation(true))); 
-faag: fileam:00001386:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001387:  errmsg("The specified error table for this " 
-faag: fileam:00001388:  "external table doesn't appear to " 
-faag: fileam:00001389:  "exist in the database. It may have " 
-faag: fileam:00001390:  "been dropped."), 
-faag: fileam:00001391:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001452:  ereport(ERROR, 
-faag: fileam:00001453:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001454:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001671:  ereport(ERROR, 
-faag: fileam:00001672:  (errcode_for_file_access(), 
-faag: fileam:00001673:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001674:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001675:  errOmitLocation(true))); 
-faag: fileam:00001745:  ereport(ERROR, 
-faag: fileam:00001746:  (errcode_for_file_access(), 
-faag: fileam:00001747:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001748:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001807:  ereport(ERROR, 
-faag: fileam:00001808:  (errcode_for_file_access(), 
-faag: fileam:00001809:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001831:  ereport(ERROR, 
-faag: fileam:00001832:  (errcode_for_file_access(), 
-faag: fileam:00001833:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
-faag: fileam:00001834:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001957:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001959:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001965:  elog(NOTICE,"%s",a); 
-faag: fileam:00002562:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002563:  errmsg("external table internal parse error: " 
-faag: fileam:00002564:  "no formatter function name found"))); 
-faag: fileam:00002570:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002571:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002572:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
-faag: fileam:00002579:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002580:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002581:  token))); 
-faag: fileam:00002583:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002584:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002585:  "line"))); 
-faag: fileam:00002652:  ereport(ERROR, 
-faag: fileam:00002653:  (errcode_for_file_access(), 
-faag: fileam:00002654:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00001181:  elog(ERROR, "unsupported formatter notification (%d)", 
+faag: fileam:00001182:  formatter->fmt_notification); 
+faag: fileam:00001279:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001280:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001281:  formatter_name, 
+faag: fileam:00001282:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001283:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001284:  errOmitLocation(true))); 
+faag: fileam:00001288:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001289:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001290:  formatter_name, 
+faag: fileam:00001291:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001292:  errOmitLocation(true))); 
+faag: fileam:00001296:  ereport(ERROR, 
+faag: fileam:00001297:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faag: fileam:00001298:  errmsg("formatter function %s is not declared STABLE.", 
+faag: fileam:00001299:  formatter_name), 
+faag: fileam:00001300:  errOmitLocation(true))); 
+faag: fileam:00001385:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001386:  errmsg("The specified error table for this " 
+faag: fileam:00001387:  "external table doesn't appear to " 
+faag: fileam:00001388:  "exist in the database. It may have " 
+faag: fileam:00001389:  "been dropped."), 
+faag: fileam:00001390:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001451:  ereport(ERROR, 
+faag: fileam:00001452:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001453:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001670:  ereport(ERROR, 
+faag: fileam:00001671:  (errcode_for_file_access(), 
+faag: fileam:00001672:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001673:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001674:  errOmitLocation(true))); 
+faag: fileam:00001744:  ereport(ERROR, 
+faag: fileam:00001745:  (errcode_for_file_access(), 
+faag: fileam:00001746:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001747:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001806:  ereport(ERROR, 
+faag: fileam:00001807:  (errcode_for_file_access(), 
+faag: fileam:00001808:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001830:  ereport(ERROR, 
+faag: fileam:00001831:  (errcode_for_file_access(), 
+faag: fileam:00001832:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
+faag: fileam:00001833:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00001956:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001958:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001964:  elog(NOTICE,"%s",a); 
+faag: fileam:00002561:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002562:  errmsg("external table internal parse error: " 
+faag: fileam:00002563:  "no formatter function name found"))); 
+faag: fileam:00002569:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002570:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002571:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002578:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002579:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002580:  token))); 
+faag: fileam:00002582:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002583:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002584:  "line"))); 
+faag: fileam:00002651:  ereport(ERROR, 
+faag: fileam:00002652:  (errcode_for_file_access(), 
+faag: fileam:00002653:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000194:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000223:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -1291,58 +1291,58 @@ taah: transam:00000193:  transactionId);
 taah: transam:00000241:  elog(WARNING, "no pg_subtrans entry for subcommitted XID %u", 
 taah: transam:00000242:  transactionId); 
 aaaaa GP_IGNORE: taai: twophase - ./backend/access/transam/twophase.c
-taai: twophase:00000443:  ereport(ERROR, 
-taai: twophase:00000444:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taai: twophase:00000445:  errmsg("transaction identifier \"%s\" is too long (%d > %d max)", 
-taai: twophase:00000446:  gid, idlen, GIDSIZE))); 
-taai: twophase:00000480:  ereport(ERROR, 
-taai: twophase:00000481:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taai: twophase:00000482:  errmsg("transaction identifier \"%s\" is already in use", 
-taai: twophase:00000483:  gid))); 
-taai: twophase:00000489:  ereport(ERROR, 
-taai: twophase:00000490:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-taai: twophase:00000491:  errmsg("maximum number of prepared transactions reached"), 
-taai: twophase:00000492:  errhint("Increase max_prepared_transactions (currently %d).", 
-taai: twophase:00000493:  max_prepared_xacts))); 
-taai: twophase:00000644:  ereport(ERROR, 
-taai: twophase:00000645:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-taai: twophase:00000646:  errmsg("prepared transaction with identifier \"%s\" is busy", 
-taai: twophase:00000647:  gid))); 
-taai: twophase:00000656:  ereport(ERROR, 
-taai: twophase:00000657:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taai: twophase:00000658:  errmsg("permission denied to finish prepared transaction"), 
-taai: twophase:00000659:  errhint("Must be superuser or the user that prepared the transaction."))); 
-taai: twophase:00000671:  ereport(ERROR, 
-taai: twophase:00000672:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taai: twophase:00000673:  errmsg("prepared transaction belongs to another database"), 
-taai: twophase:00000674:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
-taai: twophase:00000692:  ereport(ERROR, 
-taai: twophase:00000693:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taai: twophase:00000694:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
-taai: twophase:00000695:  gid))); 
-taai: twophase:00000729:  ereport(ERROR, 
-taai: twophase:00000730:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taai: twophase:00000731:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
-taai: twophase:00000732:  gid))); 
-taai: twophase:00000780:  elog(ERROR, "failed to find %p in GlobalTransaction array", (void *)gxact); 
-taai: twophase:00000959:  elog(ERROR, "failed to find dummy PGPROC for xid %u (%d entries)", xid, TwoPhaseState->numPrepXacts); 
-taai: twophase:00001373:  elog( ERROR, "FinishPreparedTransaction: Did not find xid = %d in TwoPhaseState" 
-taai: twophase:00001374:  , xid 
-taai: twophase:00001375:  ); 
-taai: twophase:00001387:  ereport(WARNING, 
-taai: twophase:00001388:  (errmsg("primary failure, " 
-taai: twophase:00001389:  "xlog record is invalid, " 
-taai: twophase:00001390:  "failover requested"), 
-taai: twophase:00001391:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
-taai: twophase:00001395:  ereport(ERROR, 
-taai: twophase:00001396:  (errcode(ERRCODE_DATA_CORRUPTED), 
-taai: twophase:00001397:  errmsg("xlog record is invalid"), 
-taai: twophase:00001398:  errSendAlert(true))); 
-taai: twophase:00001404:  ereport(ERROR, 
-taai: twophase:00001405:  (errcode(ERRCODE_DATA_CORRUPTED), 
-taai: twophase:00001406:  errmsg("two-phase state information for transaction %u is corrupt", 
-taai: twophase:00001407:  xid), 
-taai: twophase:00001408:  errSendAlert(true))); 
+taai: twophase:00000444:  ereport(ERROR, 
+taai: twophase:00000445:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taai: twophase:00000446:  errmsg("transaction identifier \"%s\" is too long (%d > %d max)", 
+taai: twophase:00000447:  gid, idlen, GIDSIZE))); 
+taai: twophase:00000481:  ereport(ERROR, 
+taai: twophase:00000482:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taai: twophase:00000483:  errmsg("transaction identifier \"%s\" is already in use", 
+taai: twophase:00000484:  gid))); 
+taai: twophase:00000490:  ereport(ERROR, 
+taai: twophase:00000491:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+taai: twophase:00000492:  errmsg("maximum number of prepared transactions reached"), 
+taai: twophase:00000493:  errhint("Increase max_prepared_transactions (currently %d).", 
+taai: twophase:00000494:  max_prepared_xacts))); 
+taai: twophase:00000645:  ereport(ERROR, 
+taai: twophase:00000646:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+taai: twophase:00000647:  errmsg("prepared transaction with identifier \"%s\" is busy", 
+taai: twophase:00000648:  gid))); 
+taai: twophase:00000657:  ereport(ERROR, 
+taai: twophase:00000658:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taai: twophase:00000659:  errmsg("permission denied to finish prepared transaction"), 
+taai: twophase:00000660:  errhint("Must be superuser or the user that prepared the transaction."))); 
+taai: twophase:00000672:  ereport(ERROR, 
+taai: twophase:00000673:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taai: twophase:00000674:  errmsg("prepared transaction belongs to another database"), 
+taai: twophase:00000675:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
+taai: twophase:00000693:  ereport(ERROR, 
+taai: twophase:00000694:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taai: twophase:00000695:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
+taai: twophase:00000696:  gid))); 
+taai: twophase:00000730:  ereport(ERROR, 
+taai: twophase:00000731:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taai: twophase:00000732:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
+taai: twophase:00000733:  gid))); 
+taai: twophase:00000781:  elog(ERROR, "failed to find %p in GlobalTransaction array", (void *)gxact); 
+taai: twophase:00000960:  elog(ERROR, "failed to find dummy PGPROC for xid %u (%d entries)", xid, TwoPhaseState->numPrepXacts); 
+taai: twophase:00001374:  elog( ERROR, "FinishPreparedTransaction: Did not find xid = %d in TwoPhaseState" 
+taai: twophase:00001375:  , xid 
+taai: twophase:00001376:  ); 
+taai: twophase:00001388:  ereport(WARNING, 
+taai: twophase:00001389:  (errmsg("primary failure, " 
+taai: twophase:00001390:  "xlog record is invalid, " 
+taai: twophase:00001391:  "failover requested"), 
+taai: twophase:00001392:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+taai: twophase:00001396:  ereport(ERROR, 
+taai: twophase:00001397:  (errcode(ERRCODE_DATA_CORRUPTED), 
+taai: twophase:00001398:  errmsg("xlog record is invalid"), 
+taai: twophase:00001399:  errSendAlert(true))); 
+taai: twophase:00001405:  ereport(ERROR, 
+taai: twophase:00001406:  (errcode(ERRCODE_DATA_CORRUPTED), 
+taai: twophase:00001407:  errmsg("two-phase state information for transaction %u is corrupt", 
+taai: twophase:00001408:  xid), 
+taai: twophase:00001409:  errSendAlert(true))); 
 aaaaa GP_IGNORE: vaag: varsup - ./backend/access/transam/varsup.c
 vaag: varsup:00000089:  ereport(ERROR, 
 vaag: varsup:00000090:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -1376,148 +1376,148 @@ xaae: xact:00001004:  errhint("This is most likely the result of a feature being
 xaae: xact:00001005:  "on that violates the single WRITER principle"))); 
 xaae: xact:00001437:  elog(FATAL, "Unexpected segment distribute transaction context: '%s'", 
 xaae: xact:00001438:  DtxContextToString(DistributedTransactionContext)); 
-xaae: xact:00002061:  elog(FATAL, "Unexpected distributed transaction context: '%s'", 
-xaae: xact:00002062:  DtxContextToString(DistributedTransactionContext)); 
-xaae: xact:00002185:  elog(WARNING, "StartTransaction while in %s state", 
-xaae: xact:00002186:  TransStateAsString(s->state)); 
-xaae: xact:00002495:  ereport(ERROR, 
-xaae: xact:00002496:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-xaae: xact:00002497:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
-xaae: xact:00002498:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
-xaae: xact:00002499:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d\n" 
-xaae: xact:00002500:  "DistributedTransactionContext = %s." 
-xaae: xact:00002501:  "Dump of all sharedsnapshots in shmem: %s", 
-xaae: xact:00002502:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
-xaae: xact:00002503:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
-xaae: xact:00002504:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
-xaae: xact:00002505:  DtxContextToString(DistributedTransactionContext), 
-xaae: xact:00002506:  SharedSnapshotDump()))); 
-xaae: xact:00002530:  elog(FATAL, "Unexpected segment distribute transaction context: '%s'", 
-xaae: xact:00002531:  DtxContextToString(DistributedTransactionContext)); 
-xaae: xact:00002608:  elog(WARNING, "CommitTransaction while in %s state", 
-xaae: xact:00002609:  TransStateAsString(s->state)); 
-xaae: xact:00002692:  elog(ERROR,"Raise an error as directed by Debug_abort_after_distributed_prepared"); 
-xaae: xact:00002976:  elog(WARNING, "PrepareTransaction while in %s state", 
-xaae: xact:00002977:  TransStateAsString(s->state)); 
-xaae: xact:00003485:  elog(FATAL, "CleanupTransaction: unexpected state %s", 
-xaae: xact:00003486:  TransStateAsString(s->state)); 
-xaae: xact:00003617:  elog(ERROR, "StartTransactionCommand: unexpected s[tate %s", 
-xaae: xact:00003618:  BlockStateAsString(s->blockState)); 
-xaae: xact:00003650:  elog(FATAL, "CommitTransactionCommand: unexpected state %s", 
-xaae: xact:00003651:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004043:  ereport(ERROR, 
-xaae: xact:00004044:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004045:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00004046:  errmsg("%s cannot run inside a transaction block", 
-xaae: xact:00004047:  stmtType), 
-xaae: xact:00004048:  errOmitLocation(true))); 
-xaae: xact:00004054:  ereport(ERROR, 
-xaae: xact:00004055:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004056:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00004057:  errmsg("%s cannot run inside a subtransaction", 
-xaae: xact:00004058:  stmtType), 
-xaae: xact:00004059:  errOmitLocation(true))); 
-xaae: xact:00004067:  ereport(ERROR, 
-xaae: xact:00004068:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004069:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00004070:  errmsg("%s cannot be executed from a function", stmtType), 
-xaae: xact:00004071:  errOmitLocation(true))); 
-xaae: xact:00004076:  elog(FATAL, "cannot prevent transaction chain"); 
-xaae: xact:00004119:  ereport(ERROR, 
-xaae: xact:00004120:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004121:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00004122:  errmsg("%s may only be used in transaction blocks", 
-xaae: xact:00004123:  stmtType))); 
-xaae: xact:00004359:  ereport(WARNING, 
-xaae: xact:00004360:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004361:  errmsg("there is already a transaction in progress"))); 
-xaae: xact:00004377:  elog(FATAL, "BeginTransactionBlock: unexpected state %s", 
-xaae: xact:00004378:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004481:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
-xaae: xact:00004482:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004488:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
-xaae: xact:00004489:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004506:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
-xaae: xact:00004507:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004515:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
-xaae: xact:00004516:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004533:  ereport(WARNING, 
-xaae: xact:00004534:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004535:  errmsg("there is no transaction in progress"))); 
-xaae: xact:00004552:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
-xaae: xact:00004553:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004605:  elog(FATAL, "UserAbortTransactionBlock: unexpected state %s", 
-xaae: xact:00004606:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004614:  elog(FATAL, "UserAbortTransactionBlock: unexpected state %s", 
-xaae: xact:00004615:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004632:  ereport(WARNING, 
-xaae: xact:00004633:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004634:  errmsg("there is no transaction in progress"))); 
-xaae: xact:00004651:  elog(FATAL, "UserAbortTransactionBlock: unexpected state %s", 
-xaae: xact:00004652:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004682:  elog(ERROR, "Can't define savepoint name too long (%s)", name); 
-xaae: xact:00004698:  elog(ERROR, "Could not create a new savepoint (%s)", cmd); 
-xaae: xact:00004733:  elog(FATAL, "DefineSavepoint: unexpected state %s", 
-xaae: xact:00004734:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004761:  ereport(ERROR, 
-xaae: xact:00004762:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004763:  errmsg("no such savepoint"), 
-xaae: xact:00004764:  errOmitLocation(true))); 
-xaae: xact:00004790:  elog(FATAL, "ReleaseSavepoint: unexpected state %s", 
-xaae: xact:00004791:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004815:  elog(ERROR, "Can't release savepoint name too long (%s)", name); 
-xaae: xact:00004831:  elog(ERROR, "Could not release savepoint (%s)", cmd); 
-xaae: xact:00004845:  ereport(ERROR, 
-xaae: xact:00004846:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004847:  errmsg("no such savepoint"))); 
-xaae: xact:00004851:  ereport(ERROR, 
-xaae: xact:00004852:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004853:  errmsg("no such savepoint"))); 
-xaae: xact:00004895:  ereport(ERROR, 
-xaae: xact:00004896:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004897:  errmsg("no such savepoint"))); 
-xaae: xact:00004921:  elog(FATAL, "RollbackToSavepoint: unexpected state %s", 
-xaae: xact:00004922:  BlockStateAsString(s->blockState)); 
-xaae: xact:00004943:  ereport(ERROR, 
-xaae: xact:00004944:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004945:  errmsg("no such savepoint"))); 
-xaae: xact:00004949:  ereport(ERROR, 
-xaae: xact:00004950:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004951:  errmsg("no such savepoint"))); 
-xaae: xact:00004968:  elog(FATAL, "RollbackToSavepoint: unexpected state %s", 
-xaae: xact:00004969:  BlockStateAsString(xact->blockState)); 
-xaae: xact:00004980:  elog(FATAL, "RollbackToSavepoint: unexpected state %s", 
-xaae: xact:00004981:  BlockStateAsString(xact->blockState)); 
-xaae: xact:00004995:  elog(ERROR, "Can't rollback to savepoint, name too long (%s)", name); 
-xaae: xact:00005011:  elog(ERROR, "Could not rollback to savepoint (%s)", cmd); 
-xaae: xact:00005065:  elog(FATAL, "BeginInternalSubTransaction: unexpected state %s", 
-xaae: xact:00005066:  BlockStateAsString(s->blockState)); 
-xaae: xact:00005087:  elog(ERROR, "ReleaseCurrentSubTransaction: unexpected state %s", 
-xaae: xact:00005088:  BlockStateAsString(s->blockState)); 
-xaae: xact:00005131:  elog(FATAL, "RollbackAndReleaseCurrentSubTransaction: unexpected state %s", 
-xaae: xact:00005132:  BlockStateAsString(s->blockState)); 
-xaae: xact:00005325:  elog(FATAL, "invalid transaction block state: %s", 
-xaae: xact:00005326:  BlockStateAsString(s->blockState)); 
-xaae: xact:00005370:  elog(WARNING, "StartSubTransaction while in %s state", 
-xaae: xact:00005371:  TransStateAsString(s->state)); 
-xaae: xact:00005411:  elog(WARNING, "CommitSubTransaction while in %s state", 
-xaae: xact:00005412:  TransStateAsString(s->state)); 
-xaae: xact:00005532:  elog(WARNING, "AbortSubTransaction while in %s state", 
-xaae: xact:00005533:  TransStateAsString(s->state)); 
-xaae: xact:00005620:  elog(WARNING, "CleanupSubTransaction while in %s state", 
-xaae: xact:00005621:  TransStateAsString(s->state)); 
-xaae: xact:00005653:  ereport(ERROR, 
-xaae: xact:00005654:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
-xaae: xact:00005655:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
-xaae: xact:00005672:  ereport(ERROR, 
-xaae: xact:00005673:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-xaae: xact:00005674:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
-xaae: xact:00005716:  elog(WARNING, "PopTransaction while in %s state", 
-xaae: xact:00005717:  TransStateAsString(s->state)); 
-xaae: xact:00005720:  elog(FATAL, "PopTransaction with no parent"); 
-xaae: xact:00006009:  elog(ERROR, 
-xaae: xact:00006010:  "Distributed xid %u does not match %u in distributed commit redo record", 
-xaae: xact:00006011:  gxact_log->gxid, distribXid); 
+xaae: xact:00002063:  elog(FATAL, "Unexpected distributed transaction context: '%s'", 
+xaae: xact:00002064:  DtxContextToString(DistributedTransactionContext)); 
+xaae: xact:00002187:  elog(WARNING, "StartTransaction while in %s state", 
+xaae: xact:00002188:  TransStateAsString(s->state)); 
+xaae: xact:00002497:  ereport(ERROR, 
+xaae: xact:00002498:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+xaae: xact:00002499:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
+xaae: xact:00002500:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
+xaae: xact:00002501:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d\n" 
+xaae: xact:00002502:  "DistributedTransactionContext = %s." 
+xaae: xact:00002503:  "Dump of all sharedsnapshots in shmem: %s", 
+xaae: xact:00002504:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
+xaae: xact:00002505:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
+xaae: xact:00002506:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
+xaae: xact:00002507:  DtxContextToString(DistributedTransactionContext), 
+xaae: xact:00002508:  SharedSnapshotDump()))); 
+xaae: xact:00002532:  elog(FATAL, "Unexpected segment distribute transaction context: '%s'", 
+xaae: xact:00002533:  DtxContextToString(DistributedTransactionContext)); 
+xaae: xact:00002610:  elog(WARNING, "CommitTransaction while in %s state", 
+xaae: xact:00002611:  TransStateAsString(s->state)); 
+xaae: xact:00002694:  elog(ERROR,"Raise an error as directed by Debug_abort_after_distributed_prepared"); 
+xaae: xact:00002978:  elog(WARNING, "PrepareTransaction while in %s state", 
+xaae: xact:00002979:  TransStateAsString(s->state)); 
+xaae: xact:00003487:  elog(FATAL, "CleanupTransaction: unexpected state %s", 
+xaae: xact:00003488:  TransStateAsString(s->state)); 
+xaae: xact:00003619:  elog(ERROR, "StartTransactionCommand: unexpected s[tate %s", 
+xaae: xact:00003620:  BlockStateAsString(s->blockState)); 
+xaae: xact:00003652:  elog(FATAL, "CommitTransactionCommand: unexpected state %s", 
+xaae: xact:00003653:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004045:  ereport(ERROR, 
+xaae: xact:00004046:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004047:  /* translator: %s represents an SQL statement name */ 
+xaae: xact:00004048:  errmsg("%s cannot run inside a transaction block", 
+xaae: xact:00004049:  stmtType), 
+xaae: xact:00004050:  errOmitLocation(true))); 
+xaae: xact:00004056:  ereport(ERROR, 
+xaae: xact:00004057:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004058:  /* translator: %s represents an SQL statement name */ 
+xaae: xact:00004059:  errmsg("%s cannot run inside a subtransaction", 
+xaae: xact:00004060:  stmtType), 
+xaae: xact:00004061:  errOmitLocation(true))); 
+xaae: xact:00004069:  ereport(ERROR, 
+xaae: xact:00004070:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004071:  /* translator: %s represents an SQL statement name */ 
+xaae: xact:00004072:  errmsg("%s cannot be executed from a function", stmtType), 
+xaae: xact:00004073:  errOmitLocation(true))); 
+xaae: xact:00004078:  elog(FATAL, "cannot prevent transaction chain"); 
+xaae: xact:00004121:  ereport(ERROR, 
+xaae: xact:00004122:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004123:  /* translator: %s represents an SQL statement name */ 
+xaae: xact:00004124:  errmsg("%s may only be used in transaction blocks", 
+xaae: xact:00004125:  stmtType))); 
+xaae: xact:00004361:  ereport(WARNING, 
+xaae: xact:00004362:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004363:  errmsg("there is already a transaction in progress"))); 
+xaae: xact:00004379:  elog(FATAL, "BeginTransactionBlock: unexpected state %s", 
+xaae: xact:00004380:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004483:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
+xaae: xact:00004484:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004490:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
+xaae: xact:00004491:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004508:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
+xaae: xact:00004509:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004517:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
+xaae: xact:00004518:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004535:  ereport(WARNING, 
+xaae: xact:00004536:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004537:  errmsg("there is no transaction in progress"))); 
+xaae: xact:00004554:  elog(FATAL, "EndTransactionBlock: unexpected state %s", 
+xaae: xact:00004555:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004607:  elog(FATAL, "UserAbortTransactionBlock: unexpected state %s", 
+xaae: xact:00004608:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004616:  elog(FATAL, "UserAbortTransactionBlock: unexpected state %s", 
+xaae: xact:00004617:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004634:  ereport(WARNING, 
+xaae: xact:00004635:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004636:  errmsg("there is no transaction in progress"))); 
+xaae: xact:00004653:  elog(FATAL, "UserAbortTransactionBlock: unexpected state %s", 
+xaae: xact:00004654:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004684:  elog(ERROR, "Can't define savepoint name too long (%s)", name); 
+xaae: xact:00004700:  elog(ERROR, "Could not create a new savepoint (%s)", cmd); 
+xaae: xact:00004735:  elog(FATAL, "DefineSavepoint: unexpected state %s", 
+xaae: xact:00004736:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004763:  ereport(ERROR, 
+xaae: xact:00004764:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004765:  errmsg("no such savepoint"), 
+xaae: xact:00004766:  errOmitLocation(true))); 
+xaae: xact:00004792:  elog(FATAL, "ReleaseSavepoint: unexpected state %s", 
+xaae: xact:00004793:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004817:  elog(ERROR, "Can't release savepoint name too long (%s)", name); 
+xaae: xact:00004833:  elog(ERROR, "Could not release savepoint (%s)", cmd); 
+xaae: xact:00004847:  ereport(ERROR, 
+xaae: xact:00004848:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004849:  errmsg("no such savepoint"))); 
+xaae: xact:00004853:  ereport(ERROR, 
+xaae: xact:00004854:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004855:  errmsg("no such savepoint"))); 
+xaae: xact:00004897:  ereport(ERROR, 
+xaae: xact:00004898:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004899:  errmsg("no such savepoint"))); 
+xaae: xact:00004923:  elog(FATAL, "RollbackToSavepoint: unexpected state %s", 
+xaae: xact:00004924:  BlockStateAsString(s->blockState)); 
+xaae: xact:00004945:  ereport(ERROR, 
+xaae: xact:00004946:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004947:  errmsg("no such savepoint"))); 
+xaae: xact:00004951:  ereport(ERROR, 
+xaae: xact:00004952:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004953:  errmsg("no such savepoint"))); 
+xaae: xact:00004970:  elog(FATAL, "RollbackToSavepoint: unexpected state %s", 
+xaae: xact:00004971:  BlockStateAsString(xact->blockState)); 
+xaae: xact:00004982:  elog(FATAL, "RollbackToSavepoint: unexpected state %s", 
+xaae: xact:00004983:  BlockStateAsString(xact->blockState)); 
+xaae: xact:00004997:  elog(ERROR, "Can't rollback to savepoint, name too long (%s)", name); 
+xaae: xact:00005013:  elog(ERROR, "Could not rollback to savepoint (%s)", cmd); 
+xaae: xact:00005067:  elog(FATAL, "BeginInternalSubTransaction: unexpected state %s", 
+xaae: xact:00005068:  BlockStateAsString(s->blockState)); 
+xaae: xact:00005089:  elog(ERROR, "ReleaseCurrentSubTransaction: unexpected state %s", 
+xaae: xact:00005090:  BlockStateAsString(s->blockState)); 
+xaae: xact:00005133:  elog(FATAL, "RollbackAndReleaseCurrentSubTransaction: unexpected state %s", 
+xaae: xact:00005134:  BlockStateAsString(s->blockState)); 
+xaae: xact:00005327:  elog(FATAL, "invalid transaction block state: %s", 
+xaae: xact:00005328:  BlockStateAsString(s->blockState)); 
+xaae: xact:00005372:  elog(WARNING, "StartSubTransaction while in %s state", 
+xaae: xact:00005373:  TransStateAsString(s->state)); 
+xaae: xact:00005413:  elog(WARNING, "CommitSubTransaction while in %s state", 
+xaae: xact:00005414:  TransStateAsString(s->state)); 
+xaae: xact:00005534:  elog(WARNING, "AbortSubTransaction while in %s state", 
+xaae: xact:00005535:  TransStateAsString(s->state)); 
+xaae: xact:00005622:  elog(WARNING, "CleanupSubTransaction while in %s state", 
+xaae: xact:00005623:  TransStateAsString(s->state)); 
+xaae: xact:00005655:  ereport(ERROR, 
+xaae: xact:00005656:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
+xaae: xact:00005657:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
+xaae: xact:00005674:  ereport(ERROR, 
+xaae: xact:00005675:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+xaae: xact:00005676:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
+xaae: xact:00005718:  elog(WARNING, "PopTransaction while in %s state", 
+xaae: xact:00005719:  TransStateAsString(s->state)); 
+xaae: xact:00005722:  elog(FATAL, "PopTransaction with no parent"); 
+xaae: xact:00006011:  elog(ERROR, 
+xaae: xact:00006012:  "Distributed xid %u does not match %u in distributed commit redo record", 
+xaae: xact:00006013:  gxact_log->gxid, distribXid); 
 aaaaa GP_IGNORE: xaae: xlog - ./backend/access/transam/xlog.c
 xaae: xlog:00000822:  ereport(ERROR, 
 xaae: xlog:00000823:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
@@ -2433,130 +2433,130 @@ haae: heap:00000570:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 haae: heap:00000571:  errmsg("column \"%s\" has pseudo-type %s", 
 haae: heap:00000572:  attname, format_type_be(atttypid)), 
 haae: heap:00000573:  errOmitLocation(true))); 
-haae: heap:00001182:  elog(ERROR, 
-haae: heap:00001183:  "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
-haae: heap:00001184:  relationId, 
-haae: heap:00001185:  relname, 
-haae: heap:00001186:  relfilenode, 
-haae: heap:00001187:  segmentFileNum, 
-haae: heap:00001188:  persistentSerialNum); 
-haae: heap:00001244:  elog(ERROR, 
-haae: heap:00001245:  "Updating with invalid TID (0,0) in relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
-haae: heap:00001246:  relfilenode, 
-haae: heap:00001247:  segmentFileNum, 
-haae: heap:00001248:  persistentSerialNum); 
-haae: heap:00001385:  ereport(ERROR, 
-haae: heap:00001386:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haae: heap:00001387:  errmsg( 
-haae: heap:00001388:  "OIDS=TRUE is not allowed on tables that " 
-haae: heap:00001389:  "use column-oriented storage. Use OIDS=FALSE" 
-haae: heap:00001390:  ), 
-haae: heap:00001391:  errOmitLocation(true))); 
-haae: heap:00001393:  ereport(NOTICE, 
-haae: heap:00001394:  (errmsg( 
-haae: heap:00001395:  "OIDS=TRUE is not recommended for user-created " 
-haae: heap:00001396:  "tables. Use OIDS=FALSE to prevent wrap-around " 
-haae: heap:00001397:  "of the OID counter" 
-haae: heap:00001398:  ), 
-haae: heap:00001399:  errOmitLocation(true))); 
-haae: heap:00001405:  ereport(ERROR, 
-haae: heap:00001406:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-haae: heap:00001407:  errmsg("relation \"%s\" already exists", relname), 
-haae: heap:00001408:  errOmitLocation(true))); 
-haae: heap:00001805:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-haae: heap:00001870:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
-haae: heap:00001871:  RelationGetRelid(relation), 
-haae: heap:00001872:  relation->rd_rel->relfilenode, 
-haae: heap:00001873:  segmentFileNum); 
-haae: heap:00001915:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00001916:  attnum, relid); 
-haae: heap:00002033:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
-haae: heap:00002034:  relid, attnum); 
-haae: heap:00002072:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
-haae: heap:00002094:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002095:  myattnum, myrelid); 
-haae: heap:00002431:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002432:  attnum, RelationGetRelid(rel)); 
-haae: heap:00002694:  ereport(ERROR, 
-haae: heap:00002695:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002696:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
-haae: heap:00002697:  ccname, RelationGetRelationName(rel)), 
-haae: heap:00002698:  errOmitLocation(true))); 
-haae: heap:00002705:  ereport(ERROR, 
-haae: heap:00002706:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002707:  errmsg("check constraint \"%s\" already exists", 
-haae: heap:00002708:  ccname), 
-haae: heap:00002709:  errOmitLocation(true))); 
-haae: heap:00002798:  ereport(ERROR, 
-haae: heap:00002799:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002800:  errmsg("only table \"%s\" can be referenced in check constraint", 
-haae: heap:00002801:  relname), errOmitLocation(true))); 
-haae: heap:00002806:  ereport(ERROR, 
-haae: heap:00002807:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002808:  errmsg("cannot use subquery in check constraint"), 
-haae: heap:00002809:  errOmitLocation(true))); 
-haae: heap:00002811:  ereport(ERROR, 
-haae: heap:00002812:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002813:  errmsg("cannot use aggregate function in check constraint"), 
-haae: heap:00002814:  errOmitLocation(true))); 
-haae: heap:00002816:  ereport(ERROR, 
-haae: heap:00002817:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002818:  errmsg("cannot use window function in check constraint"), 
-haae: heap:00002819:  errOmitLocation(true))); 
-haae: heap:00002847:  elog(ERROR, "cache lookup failed for relation %u", 
-haae: heap:00002848:  RelationGetRelid(rel)); 
-haae: heap:00002902:  ereport(ERROR, 
-haae: heap:00002903:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002904:  errmsg("cannot use column references in default expression"))); 
-haae: heap:00002910:  ereport(ERROR, 
-haae: heap:00002911:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002912:  errmsg("default expression must not return a set"), 
-haae: heap:00002913:  errOmitLocation(true))); 
-haae: heap:00002919:  ereport(ERROR, 
-haae: heap:00002920:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002921:  errmsg("cannot use subquery in default expression"), 
-haae: heap:00002922:  errOmitLocation(true))); 
-haae: heap:00002924:  ereport(ERROR, 
-haae: heap:00002925:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002926:  errmsg("cannot use aggregate function in default expression"), 
-haae: heap:00002927:  errOmitLocation(true))); 
-haae: heap:00002929:  ereport(ERROR, 
-haae: heap:00002930:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002931:  errmsg("cannot use window function in default expression"), 
-haae: heap:00002932:  errOmitLocation(true))); 
-haae: heap:00002948:  ereport(ERROR, 
-haae: heap:00002949:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002950:  errmsg("column \"%s\" is of type %s" 
-haae: heap:00002951:  " but default expression is of type %s", 
-haae: heap:00002952:  attname, 
-haae: heap:00002953:  format_type_be(atttypid), 
-haae: heap:00002954:  format_type_be(type_id)), 
-haae: heap:00002955:  errhint("You will need to rewrite or cast the expression."), 
-haae: heap:00002956:  errOmitLocation(true))); 
-haae: heap:00003266:  ereport(ERROR, 
-haae: heap:00003267:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003268:  errmsg("unsupported ON COMMIT and foreign key combination"), 
-haae: heap:00003269:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
-haae: heap:00003270:  relname2, relname), 
-haae: heap:00003271:  errOmitLocation(true))); 
-haae: heap:00003273:  ereport(ERROR, 
-haae: heap:00003274:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003275:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
-haae: heap:00003276:  errdetail("Table \"%s\" references \"%s\".", 
-haae: heap:00003277:  relname2, relname), 
-haae: heap:00003278:  errhint("Truncate table \"%s\" at the same time, " 
-haae: heap:00003279:  "or use TRUNCATE ... CASCADE.", 
-haae: heap:00003280:  relname2), 
-haae: heap:00003281:  errOmitLocation(true))); 
-haae: heap:00003410:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003411:  RelationGetRelid(relation)); 
-haae: heap:00003468:  elog(ERROR, 
-haae: heap:00003469:  "setNewRelfilenodeCommon has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
-haae: heap:00003470:  newrnode.spcNode, 
-haae: heap:00003471:  newrnode.dbNode, 
-haae: heap:00003472:  newrnode.relNode, 
-haae: heap:00003473:  NameStr(relation->rd_rel->relname), 
-haae: heap:00003474:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
+haae: heap:00001180:  elog(ERROR, 
+haae: heap:00001181:  "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
+haae: heap:00001182:  relationId, 
+haae: heap:00001183:  relname, 
+haae: heap:00001184:  relfilenode, 
+haae: heap:00001185:  segmentFileNum, 
+haae: heap:00001186:  persistentSerialNum); 
+haae: heap:00001242:  elog(ERROR, 
+haae: heap:00001243:  "Updating with invalid TID (0,0) in relfilenode %u, segment file #%d, serial number " INT64_FORMAT, 
+haae: heap:00001244:  relfilenode, 
+haae: heap:00001245:  segmentFileNum, 
+haae: heap:00001246:  persistentSerialNum); 
+haae: heap:00001383:  ereport(ERROR, 
+haae: heap:00001384:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haae: heap:00001385:  errmsg( 
+haae: heap:00001386:  "OIDS=TRUE is not allowed on tables that " 
+haae: heap:00001387:  "use column-oriented storage. Use OIDS=FALSE" 
+haae: heap:00001388:  ), 
+haae: heap:00001389:  errOmitLocation(true))); 
+haae: heap:00001391:  ereport(NOTICE, 
+haae: heap:00001392:  (errmsg( 
+haae: heap:00001393:  "OIDS=TRUE is not recommended for user-created " 
+haae: heap:00001394:  "tables. Use OIDS=FALSE to prevent wrap-around " 
+haae: heap:00001395:  "of the OID counter" 
+haae: heap:00001396:  ), 
+haae: heap:00001397:  errOmitLocation(true))); 
+haae: heap:00001403:  ereport(ERROR, 
+haae: heap:00001404:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+haae: heap:00001405:  errmsg("relation \"%s\" already exists", relname), 
+haae: heap:00001406:  errOmitLocation(true))); 
+haae: heap:00001803:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+haae: heap:00001868:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
+haae: heap:00001869:  RelationGetRelid(relation), 
+haae: heap:00001870:  relation->rd_rel->relfilenode, 
+haae: heap:00001871:  segmentFileNum); 
+haae: heap:00001913:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00001914:  attnum, relid); 
+haae: heap:00002031:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
+haae: heap:00002032:  relid, attnum); 
+haae: heap:00002070:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
+haae: heap:00002092:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002093:  myattnum, myrelid); 
+haae: heap:00002429:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002430:  attnum, RelationGetRelid(rel)); 
+haae: heap:00002692:  ereport(ERROR, 
+haae: heap:00002693:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002694:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
+haae: heap:00002695:  ccname, RelationGetRelationName(rel)), 
+haae: heap:00002696:  errOmitLocation(true))); 
+haae: heap:00002703:  ereport(ERROR, 
+haae: heap:00002704:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002705:  errmsg("check constraint \"%s\" already exists", 
+haae: heap:00002706:  ccname), 
+haae: heap:00002707:  errOmitLocation(true))); 
+haae: heap:00002796:  ereport(ERROR, 
+haae: heap:00002797:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002798:  errmsg("only table \"%s\" can be referenced in check constraint", 
+haae: heap:00002799:  relname), errOmitLocation(true))); 
+haae: heap:00002804:  ereport(ERROR, 
+haae: heap:00002805:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002806:  errmsg("cannot use subquery in check constraint"), 
+haae: heap:00002807:  errOmitLocation(true))); 
+haae: heap:00002809:  ereport(ERROR, 
+haae: heap:00002810:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002811:  errmsg("cannot use aggregate function in check constraint"), 
+haae: heap:00002812:  errOmitLocation(true))); 
+haae: heap:00002814:  ereport(ERROR, 
+haae: heap:00002815:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002816:  errmsg("cannot use window function in check constraint"), 
+haae: heap:00002817:  errOmitLocation(true))); 
+haae: heap:00002845:  elog(ERROR, "cache lookup failed for relation %u", 
+haae: heap:00002846:  RelationGetRelid(rel)); 
+haae: heap:00002900:  ereport(ERROR, 
+haae: heap:00002901:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002902:  errmsg("cannot use column references in default expression"))); 
+haae: heap:00002908:  ereport(ERROR, 
+haae: heap:00002909:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002910:  errmsg("default expression must not return a set"), 
+haae: heap:00002911:  errOmitLocation(true))); 
+haae: heap:00002917:  ereport(ERROR, 
+haae: heap:00002918:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002919:  errmsg("cannot use subquery in default expression"), 
+haae: heap:00002920:  errOmitLocation(true))); 
+haae: heap:00002922:  ereport(ERROR, 
+haae: heap:00002923:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002924:  errmsg("cannot use aggregate function in default expression"), 
+haae: heap:00002925:  errOmitLocation(true))); 
+haae: heap:00002927:  ereport(ERROR, 
+haae: heap:00002928:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002929:  errmsg("cannot use window function in default expression"), 
+haae: heap:00002930:  errOmitLocation(true))); 
+haae: heap:00002946:  ereport(ERROR, 
+haae: heap:00002947:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002948:  errmsg("column \"%s\" is of type %s" 
+haae: heap:00002949:  " but default expression is of type %s", 
+haae: heap:00002950:  attname, 
+haae: heap:00002951:  format_type_be(atttypid), 
+haae: heap:00002952:  format_type_be(type_id)), 
+haae: heap:00002953:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002954:  errOmitLocation(true))); 
+haae: heap:00003264:  ereport(ERROR, 
+haae: heap:00003265:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003266:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+haae: heap:00003267:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
+haae: heap:00003268:  relname2, relname), 
+haae: heap:00003269:  errOmitLocation(true))); 
+haae: heap:00003271:  ereport(ERROR, 
+haae: heap:00003272:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003273:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+haae: heap:00003274:  errdetail("Table \"%s\" references \"%s\".", 
+haae: heap:00003275:  relname2, relname), 
+haae: heap:00003276:  errhint("Truncate table \"%s\" at the same time, " 
+haae: heap:00003277:  "or use TRUNCATE ... CASCADE.", 
+haae: heap:00003278:  relname2), 
+haae: heap:00003279:  errOmitLocation(true))); 
+haae: heap:00003408:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003409:  RelationGetRelid(relation)); 
+haae: heap:00003466:  elog(ERROR, 
+haae: heap:00003467:  "setNewRelfilenodeCommon has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+haae: heap:00003468:  newrnode.spcNode, 
+haae: heap:00003469:  newrnode.dbNode, 
+haae: heap:00003470:  newrnode.relNode, 
+haae: heap:00003471:  NameStr(relation->rd_rel->relname), 
+haae: heap:00003472:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000185:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000216:  elog(ERROR, "too few entries in indexprs list"); 
@@ -3032,27 +3032,27 @@ paah: pgxproc:00000397:  (errcode(ERRCODE_WRONG_OBJECT_TYPE),
 paah: pgxproc:00000398:  errmsg("function \"%s\" is not a window function", 
 paah: pgxproc:00000399:  procedureName), 
 paah: pgxproc:00000400:  errOmitLocation(true))); 
-paah: pgxproc:00000528:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
-paah: pgxproc:00000533:  elog(ERROR, "null prosrc"); 
-paah: pgxproc:00000537:  ereport(ERROR, 
-paah: pgxproc:00000538:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paah: pgxproc:00000539:  errmsg("there is no built-in function named \"%s\"", 
-paah: pgxproc:00000540:  prosrc), 
-paah: pgxproc:00000541:  errOmitLocation(true))); 
-paah: pgxproc:00000579:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
-paah: pgxproc:00000584:  elog(ERROR, "null prosrc"); 
-paah: pgxproc:00000589:  elog(ERROR, "null probin"); 
-paah: pgxproc:00000624:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
-paah: pgxproc:00000634:  ereport(ERROR, 
-paah: pgxproc:00000635:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-paah: pgxproc:00000636:  errmsg("SQL functions cannot return type %s", 
-paah: pgxproc:00000637:  format_type_be(proc->prorettype)))); 
-paah: pgxproc:00000650:  ereport(ERROR, 
-paah: pgxproc:00000651:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-paah: pgxproc:00000652:  errmsg("SQL functions cannot have arguments of type %s", 
-paah: pgxproc:00000653:  format_type_be(proc->proargtypes.values[i])))); 
-paah: pgxproc:00000662:  elog(ERROR, "null prosrc"); 
-paah: pgxproc:00000717:  elog(ERROR, "null prosrc"); 
+paah: pgxproc:00000527:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
+paah: pgxproc:00000531:  elog(ERROR, "null prosrc"); 
+paah: pgxproc:00000535:  ereport(ERROR, 
+paah: pgxproc:00000536:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paah: pgxproc:00000537:  errmsg("there is no built-in function named \"%s\"", 
+paah: pgxproc:00000538:  prosrc), 
+paah: pgxproc:00000539:  errOmitLocation(true))); 
+paah: pgxproc:00000576:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
+paah: pgxproc:00000580:  elog(ERROR, "null prosrc"); 
+paah: pgxproc:00000585:  elog(ERROR, "null probin"); 
+paah: pgxproc:00000620:  elog(ERROR, "cache lookup failed for function %u", funcoid); 
+paah: pgxproc:00000630:  ereport(ERROR, 
+paah: pgxproc:00000631:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+paah: pgxproc:00000632:  errmsg("SQL functions cannot return type %s", 
+paah: pgxproc:00000633:  format_type_be(proc->prorettype)))); 
+paah: pgxproc:00000646:  ereport(ERROR, 
+paah: pgxproc:00000647:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+paah: pgxproc:00000648:  errmsg("SQL functions cannot have arguments of type %s", 
+paah: pgxproc:00000649:  format_type_be(proc->proargtypes.values[i])))); 
+paah: pgxproc:00000658:  elog(ERROR, "null prosrc"); 
+paah: pgxproc:00000713:  elog(ERROR, "null prosrc"); 
 aaaaa GP_IGNORE: pabb: pgxshdepend - ./backend/catalog/pg_shdepend.c
 pabb: pgxshdepend:00000205:  elog(ERROR, 
 pabb: pgxshdepend:00000206:  "multiple pg_shdepend entries for object %u/%u deptype %c", 
@@ -3082,13 +3082,13 @@ pabb: pgxshdepend:00001087:  getObjectDescription(&obj))));
 pabb: pgxshdepend:00001118:  elog(ERROR, "unexpected dependency type"); 
 pabb: pgxshdepend:00001143:  elog(ERROR, "unexpected object type %d", 
 pabb: pgxshdepend:00001144:  sdepForm->classid); 
-pabb: pgxshdepend:00001211:  ereport(ERROR, 
-pabb: pgxshdepend:00001212:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-pabb: pgxshdepend:00001213:  errmsg("cannot drop objects owned by %s because they are " 
-pabb: pgxshdepend:00001214:  "required by the database system", 
-pabb: pgxshdepend:00001215:  getObjectDescription(&obj)))); 
-pabb: pgxshdepend:00001245:  elog(ERROR, "unexpected shared pin"); 
-pabb: pgxshdepend:00001285:  elog(ERROR, "unexpected classid %d", sdepForm->classid); 
+pabb: pgxshdepend:00001210:  ereport(ERROR, 
+pabb: pgxshdepend:00001211:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+pabb: pgxshdepend:00001212:  errmsg("cannot drop objects owned by %s because they are " 
+pabb: pgxshdepend:00001213:  "required by the database system", 
+pabb: pgxshdepend:00001214:  getObjectDescription(&obj)))); 
+pabb: pgxshdepend:00001244:  elog(ERROR, "unexpected shared pin"); 
+pabb: pgxshdepend:00001284:  elog(ERROR, "unexpected classid %d", sdepForm->classid); 
 aaaaa GP_IGNORE: paah: pgxtype - ./backend/catalog/pg_type.c
 paah: pgxtype:00000243:  ereport(ERROR, 
 paah: pgxtype:00000244:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
@@ -9145,87 +9145,87 @@ fabb: foreigncmds:00000375:  (errcode(ERRCODE_DUPLICATE_OBJECT),
 fabb: foreigncmds:00000376:  errmsg("foreign-data wrapper \"%s\" already exists", 
 fabb: foreigncmds:00000377:  stmt->fdwname), 
 fabb: foreigncmds:00000378:  errOmitLocation(true))); 
-fabb: foreigncmds:00000459:  ereport(ERROR, 
-fabb: foreigncmds:00000460:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-fabb: foreigncmds:00000461:  errmsg("permission denied to alter foreign-data wrapper \"%s\"", 
-fabb: foreigncmds:00000462:  stmt->fdwname), 
-fabb: foreigncmds:00000463:  errhint("Must be superuser to alter a foreign-data wrapper."), 
-fabb: foreigncmds:00000464:  errOmitLocation(true))); 
-fabb: foreigncmds:00000471:  ereport(ERROR, 
-fabb: foreigncmds:00000472:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00000473:  errmsg("foreign-data wrapper \"%s\" does not exist", stmt->fdwname), 
-fabb: foreigncmds:00000474:  errOmitLocation(true))); 
-fabb: foreigncmds:00000493:  ereport(WARNING, 
-fabb: foreigncmds:00000494:  (errmsg("changing the foreign-data wrapper validator can cause " 
-fabb: foreigncmds:00000495:  "the options for dependent objects to become invalid"), 
-fabb: foreigncmds:00000496:  errOmitLocation(true))); 
-fabb: foreigncmds:00000567:  ereport(ERROR, 
-fabb: foreigncmds:00000568:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-fabb: foreigncmds:00000569:  errmsg("permission denied to drop foreign-data wrapper \"%s\"", 
-fabb: foreigncmds:00000570:  stmt->fdwname), 
-fabb: foreigncmds:00000571:  errhint("Must be superuser to drop a foreign-data wrapper."), 
-fabb: foreigncmds:00000572:  errOmitLocation(true))); 
-fabb: foreigncmds:00000577:  ereport(ERROR, 
-fabb: foreigncmds:00000578:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00000579:  errmsg("foreign-data wrapper \"%s\" does not exist", 
-fabb: foreigncmds:00000580:  stmt->fdwname), 
-fabb: foreigncmds:00000581:  errOmitLocation(true))); 
-fabb: foreigncmds:00000584:  ereport(NOTICE, 
-fabb: foreigncmds:00000585:  (errmsg("foreign-data wrapper \"%s\" does not exist, skipping", 
-fabb: foreigncmds:00000586:  stmt->fdwname), 
-fabb: foreigncmds:00000587:  errOmitLocation(true))); 
-fabb: foreigncmds:00000623:  elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwId); 
-fabb: foreigncmds:00000658:  ereport(ERROR, 
-fabb: foreigncmds:00000659:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-fabb: foreigncmds:00000660:  errmsg("server \"%s\" already exists", 
-fabb: foreigncmds:00000661:  stmt->servername), 
-fabb: foreigncmds:00000662:  errOmitLocation(true))); 
-fabb: foreigncmds:00000761:  ereport(ERROR, 
-fabb: foreigncmds:00000762:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00000763:  errmsg("server \"%s\" does not exist", stmt->servername), 
-fabb: foreigncmds:00000764:  errOmitLocation(true))); 
-fabb: foreigncmds:00000855:  ereport(ERROR, 
-fabb: foreigncmds:00000856:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00000857:  errmsg("server \"%s\" does not exist", stmt->servername), 
-fabb: foreigncmds:00000858:  errOmitLocation(true))); 
-fabb: foreigncmds:00000861:  ereport(NOTICE, 
-fabb: foreigncmds:00000862:  (errmsg("server \"%s\" does not exist, skipping", 
-fabb: foreigncmds:00000863:  stmt->servername), 
-fabb: foreigncmds:00000864:  errOmitLocation(true))); 
-fabb: foreigncmds:00000902:  elog(ERROR, "cache lookup failed for foreign server %u", srvId); 
-fabb: foreigncmds:00000972:  ereport(ERROR, 
-fabb: foreigncmds:00000973:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-fabb: foreigncmds:00000974:  errmsg("user mapping \"%s\" already exists for server %s", 
-fabb: foreigncmds:00000975:  MappingUserName(useId), 
-fabb: foreigncmds:00000976:  stmt->servername), 
-fabb: foreigncmds:00000977:  errOmitLocation(true))); 
-fabb: foreigncmds:00001055:  ereport(ERROR, 
-fabb: foreigncmds:00001056:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00001057:  errmsg("user mapping \"%s\" does not exist for the server", 
-fabb: foreigncmds:00001058:  MappingUserName(useId)), 
-fabb: foreigncmds:00001059:  errOmitLocation(true))); 
-fabb: foreigncmds:00001068:  elog(ERROR, "cache lookup failed for user mapping %u", umId); 
-fabb: foreigncmds:00001145:  elog(NOTICE, "role \"%s\" does not exist, skipping", stmt->username); 
-fabb: foreigncmds:00001152:  ereport(ERROR, 
-fabb: foreigncmds:00001153:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00001154:  errmsg("server \"%s\" does not exist", 
-fabb: foreigncmds:00001155:  stmt->servername), 
+fabb: foreigncmds:00000458:  ereport(ERROR, 
+fabb: foreigncmds:00000459:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+fabb: foreigncmds:00000460:  errmsg("permission denied to alter foreign-data wrapper \"%s\"", 
+fabb: foreigncmds:00000461:  stmt->fdwname), 
+fabb: foreigncmds:00000462:  errhint("Must be superuser to alter a foreign-data wrapper."), 
+fabb: foreigncmds:00000463:  errOmitLocation(true))); 
+fabb: foreigncmds:00000470:  ereport(ERROR, 
+fabb: foreigncmds:00000471:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00000472:  errmsg("foreign-data wrapper \"%s\" does not exist", stmt->fdwname), 
+fabb: foreigncmds:00000473:  errOmitLocation(true))); 
+fabb: foreigncmds:00000490:  ereport(WARNING, 
+fabb: foreigncmds:00000491:  (errmsg("changing the foreign-data wrapper validator can cause " 
+fabb: foreigncmds:00000492:  "the options for dependent objects to become invalid"), 
+fabb: foreigncmds:00000493:  errOmitLocation(true))); 
+fabb: foreigncmds:00000564:  ereport(ERROR, 
+fabb: foreigncmds:00000565:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+fabb: foreigncmds:00000566:  errmsg("permission denied to drop foreign-data wrapper \"%s\"", 
+fabb: foreigncmds:00000567:  stmt->fdwname), 
+fabb: foreigncmds:00000568:  errhint("Must be superuser to drop a foreign-data wrapper."), 
+fabb: foreigncmds:00000569:  errOmitLocation(true))); 
+fabb: foreigncmds:00000574:  ereport(ERROR, 
+fabb: foreigncmds:00000575:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00000576:  errmsg("foreign-data wrapper \"%s\" does not exist", 
+fabb: foreigncmds:00000577:  stmt->fdwname), 
+fabb: foreigncmds:00000578:  errOmitLocation(true))); 
+fabb: foreigncmds:00000581:  ereport(NOTICE, 
+fabb: foreigncmds:00000582:  (errmsg("foreign-data wrapper \"%s\" does not exist, skipping", 
+fabb: foreigncmds:00000583:  stmt->fdwname), 
+fabb: foreigncmds:00000584:  errOmitLocation(true))); 
+fabb: foreigncmds:00000620:  elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwId); 
+fabb: foreigncmds:00000655:  ereport(ERROR, 
+fabb: foreigncmds:00000656:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+fabb: foreigncmds:00000657:  errmsg("server \"%s\" already exists", 
+fabb: foreigncmds:00000658:  stmt->servername), 
+fabb: foreigncmds:00000659:  errOmitLocation(true))); 
+fabb: foreigncmds:00000758:  ereport(ERROR, 
+fabb: foreigncmds:00000759:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00000760:  errmsg("server \"%s\" does not exist", stmt->servername), 
+fabb: foreigncmds:00000761:  errOmitLocation(true))); 
+fabb: foreigncmds:00000852:  ereport(ERROR, 
+fabb: foreigncmds:00000853:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00000854:  errmsg("server \"%s\" does not exist", stmt->servername), 
+fabb: foreigncmds:00000855:  errOmitLocation(true))); 
+fabb: foreigncmds:00000858:  ereport(NOTICE, 
+fabb: foreigncmds:00000859:  (errmsg("server \"%s\" does not exist, skipping", 
+fabb: foreigncmds:00000860:  stmt->servername), 
+fabb: foreigncmds:00000861:  errOmitLocation(true))); 
+fabb: foreigncmds:00000899:  elog(ERROR, "cache lookup failed for foreign server %u", srvId); 
+fabb: foreigncmds:00000969:  ereport(ERROR, 
+fabb: foreigncmds:00000970:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+fabb: foreigncmds:00000971:  errmsg("user mapping \"%s\" already exists for server %s", 
+fabb: foreigncmds:00000972:  MappingUserName(useId), 
+fabb: foreigncmds:00000973:  stmt->servername), 
+fabb: foreigncmds:00000974:  errOmitLocation(true))); 
+fabb: foreigncmds:00001052:  ereport(ERROR, 
+fabb: foreigncmds:00001053:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00001054:  errmsg("user mapping \"%s\" does not exist for the server", 
+fabb: foreigncmds:00001055:  MappingUserName(useId)), 
+fabb: foreigncmds:00001056:  errOmitLocation(true))); 
+fabb: foreigncmds:00001065:  elog(ERROR, "cache lookup failed for user mapping %u", umId); 
+fabb: foreigncmds:00001142:  elog(NOTICE, "role \"%s\" does not exist, skipping", stmt->username); 
+fabb: foreigncmds:00001149:  ereport(ERROR, 
+fabb: foreigncmds:00001150:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00001151:  errmsg("server \"%s\" does not exist", 
+fabb: foreigncmds:00001152:  stmt->servername), 
+fabb: foreigncmds:00001153:  errOmitLocation(true))); 
+fabb: foreigncmds:00001155:  ereport(NOTICE, (errmsg("server does not exist, skipping"), 
 fabb: foreigncmds:00001156:  errOmitLocation(true))); 
-fabb: foreigncmds:00001158:  ereport(NOTICE, (errmsg("server does not exist, skipping"), 
-fabb: foreigncmds:00001159:  errOmitLocation(true))); 
-fabb: foreigncmds:00001171:  ereport(ERROR, 
-fabb: foreigncmds:00001172:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00001173:  errmsg("user mapping \"%s\" does not exist for the server", 
-fabb: foreigncmds:00001174:  MappingUserName(useId)), 
-fabb: foreigncmds:00001175:  errOmitLocation(true))); 
-fabb: foreigncmds:00001178:  ereport(NOTICE, 
-fabb: foreigncmds:00001179:  (errmsg("user mapping \"%s\" does not exist for the server, skipping", 
-fabb: foreigncmds:00001180:  MappingUserName(useId)))); 
-fabb: foreigncmds:00001217:  elog(ERROR, "cache lookup failed for user mapping %u", umId); 
-fabb: foreigncmds:00001329:  ereport(ERROR, 
-fabb: foreigncmds:00001330:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-fabb: foreigncmds:00001331:  errmsg("foreign table object id \"%d\" does not exist", 
-fabb: foreigncmds:00001332:  relid))); 
+fabb: foreigncmds:00001168:  ereport(ERROR, 
+fabb: foreigncmds:00001169:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00001170:  errmsg("user mapping \"%s\" does not exist for the server", 
+fabb: foreigncmds:00001171:  MappingUserName(useId)), 
+fabb: foreigncmds:00001172:  errOmitLocation(true))); 
+fabb: foreigncmds:00001175:  ereport(NOTICE, 
+fabb: foreigncmds:00001176:  (errmsg("user mapping \"%s\" does not exist for the server, skipping", 
+fabb: foreigncmds:00001177:  MappingUserName(useId)))); 
+fabb: foreigncmds:00001214:  elog(ERROR, "cache lookup failed for user mapping %u", umId); 
+fabb: foreigncmds:00001327:  ereport(ERROR, 
+fabb: foreigncmds:00001328:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+fabb: foreigncmds:00001329:  errmsg("foreign table object id \"%d\" does not exist", 
+fabb: foreigncmds:00001330:  relid))); 
 aaaaa GP_IGNORE: fabc: functioncmds - ./backend/commands/functioncmds.c
 fabc: functioncmds:00000086:  ereport(ERROR, 
 fabc: functioncmds:00000087:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
@@ -9831,37 +9831,37 @@ paah: prepare:00000101:  ereport(ERROR,
 paah: prepare:00000102:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
 paah: prepare:00000103:  errmsg("utility statements cannot be prepared"), 
 paah: prepare:00000104:  errOmitLocation(true))); 
-paah: prepare:00000221:  ereport(ERROR, 
-paah: prepare:00000222:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paah: prepare:00000223:  errmsg("prepared statement is not a SELECT"))); 
-paah: prepare:00000234:  ereport(ERROR, 
-paah: prepare:00000235:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paah: prepare:00000236:  errmsg("prepared statement is not a SELECT"), 
-paah: prepare:00000237:  errOmitLocation(true))); 
-paah: prepare:00000301:  elog(ERROR, "wrong number of arguments"); 
-paah: prepare:00000385:  ereport(ERROR, 
-paah: prepare:00000386:  (errcode(ERRCODE_DUPLICATE_PSTATEMENT), 
-paah: prepare:00000387:  errmsg("prepared statement \"%s\" already exists", 
-paah: prepare:00000388:  stmt_name), 
-paah: prepare:00000389:  errOmitLocation(true))); 
-paah: prepare:00000418:  elog(ERROR, "duplicate prepared statement \"%s\"", 
-paah: prepare:00000419:  stmt_name); 
-paah: prepare:00000456:  ereport(ERROR, 
-paah: prepare:00000457:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
-paah: prepare:00000458:  errmsg("prepared statement \"%s\" does not exist", 
-paah: prepare:00000459:  stmt_name), 
-paah: prepare:00000460:  errOmitLocation(true))); 
-paah: prepare:00000697:  ereport(ERROR, 
-paah: prepare:00000698:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paah: prepare:00000699:  errmsg("prepared statement is not a SELECT"), 
-paah: prepare:00000700:  errOmitLocation(true))); 
-paah: prepare:00000743:  ereport(ERROR, 
-paah: prepare:00000744:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: prepare:00000745:  errmsg("set-valued function called in context that cannot accept a set"))); 
-paah: prepare:00000747:  ereport(ERROR, 
-paah: prepare:00000748:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: prepare:00000749:  errmsg("materialize mode required, but it is not " \ 
-paah: prepare:00000750:  "allowed in this context"))); 
+paah: prepare:00000222:  ereport(ERROR, 
+paah: prepare:00000223:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paah: prepare:00000224:  errmsg("prepared statement is not a SELECT"))); 
+paah: prepare:00000235:  ereport(ERROR, 
+paah: prepare:00000236:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paah: prepare:00000237:  errmsg("prepared statement is not a SELECT"), 
+paah: prepare:00000238:  errOmitLocation(true))); 
+paah: prepare:00000302:  elog(ERROR, "wrong number of arguments"); 
+paah: prepare:00000386:  ereport(ERROR, 
+paah: prepare:00000387:  (errcode(ERRCODE_DUPLICATE_PSTATEMENT), 
+paah: prepare:00000388:  errmsg("prepared statement \"%s\" already exists", 
+paah: prepare:00000389:  stmt_name), 
+paah: prepare:00000390:  errOmitLocation(true))); 
+paah: prepare:00000419:  elog(ERROR, "duplicate prepared statement \"%s\"", 
+paah: prepare:00000420:  stmt_name); 
+paah: prepare:00000457:  ereport(ERROR, 
+paah: prepare:00000458:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+paah: prepare:00000459:  errmsg("prepared statement \"%s\" does not exist", 
+paah: prepare:00000460:  stmt_name), 
+paah: prepare:00000461:  errOmitLocation(true))); 
+paah: prepare:00000698:  ereport(ERROR, 
+paah: prepare:00000699:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paah: prepare:00000700:  errmsg("prepared statement is not a SELECT"), 
+paah: prepare:00000701:  errOmitLocation(true))); 
+paah: prepare:00000744:  ereport(ERROR, 
+paah: prepare:00000745:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: prepare:00000746:  errmsg("set-valued function called in context that cannot accept a set"))); 
+paah: prepare:00000748:  ereport(ERROR, 
+paah: prepare:00000749:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: prepare:00000750:  errmsg("materialize mode required, but it is not " \ 
+paah: prepare:00000751:  "allowed in this context"))); 
 aaaaa GP_IGNORE: paai: proclang - ./backend/commands/proclang.c
 paai: proclang:00000069:  ereport(ERROR, 
 paai: proclang:00000070:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -12714,63 +12714,63 @@ vaag: vacuum:00000368:  (errcode(ERRCODE_WARNING),
 vaag: vacuum:00000369:  errmsg("'VACUUM FULL' is not safe for large tables and has " 
 vaag: vacuum:00000370:  "been known to yield unpredictable runtimes."), 
 vaag: vacuum:00000371:  errhint("Use 'VACUUM' instead."))); 
-vaag: vacuum:00000511:  elog(ERROR, "Relation name does not exist for relation with oid %d", relid); 
-vaag: vacuum:00000517:  elog(ERROR, "Namespace does not exist for relation with oid %d", relid); 
-vaag: vacuum:00000856:  ereport(WARNING, 
-vaag: vacuum:00000857:  (errmsg("oldest xmin is far in the past"), 
-vaag: vacuum:00000858:  errhint("Close open transactions soon to avoid wraparound problems."))); 
-vaag: vacuum:00000972:  elog(ERROR, "pg_class entry for relid %u vanished during vacuuming", 
-vaag: vacuum:00000973:  relid); 
-vaag: vacuum:00001125:  elog(ERROR, "could not find tuple for database %u", MyDatabaseId); 
-vaag: vacuum:00001227:  ereport(WARNING, 
-vaag: vacuum:00001228:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
-vaag: vacuum:00001229:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
-vaag: vacuum:00001583:  ereport(WARNING, 
-vaag: vacuum:00001584:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
-vaag: vacuum:00001585:  relname, blkno))); 
-vaag: vacuum:00001657:  elog(WARNING, "relation \"%s\" TID %u/%u: OID is invalid", 
-vaag: vacuum:00001658:  relname, blkno, offnum); 
-vaag: vacuum:00001697:  ereport(NOTICE, 
-vaag: vacuum:00001698:  (errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
-vaag: vacuum:00001699:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
-vaag: vacuum:00001710:  ereport(NOTICE, 
-vaag: vacuum:00001711:  (errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
-vaag: vacuum:00001712:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
-vaag: vacuum:00001716:  elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result"); 
-vaag: vacuum:00002118:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
-vaag: vacuum:00002120:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
-vaag: vacuum:00002127:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00002300:  elog(ERROR, "updated tuple is already HEAP_MOVED_OFF"); 
-vaag: vacuum:00002406:  elog(ERROR, "parent itemid marked as unused"); 
-vaag: vacuum:00002604:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
-vaag: vacuum:00002606:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
-vaag: vacuum:00002608:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00002821:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
-vaag: vacuum:00002823:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
-vaag: vacuum:00002825:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00003233:  elog(ERROR, "HEAP_MOVED_OFF/HEAP_MOVED_IN was expected"); 
-vaag: vacuum:00003235:  elog(ERROR, "invalid XVAC in tuple header"); 
-vaag: vacuum:00003419:  ereport(WARNING, 
-vaag: vacuum:00003420:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003421:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003422:  stats->num_index_tuples, num_tuples), 
-vaag: vacuum:00003423:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00003491:  ereport(WARNING, 
-vaag: vacuum:00003492:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003493:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003494:  stats->num_index_tuples, num_tuples + keep_tuples), 
-vaag: vacuum:00003495:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00004051:  ereport(WARNING, 
-vaag: vacuum:00004052:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
-vaag: vacuum:00004053:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00004064:  ereport(WARNING, 
-vaag: vacuum:00004065:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
-vaag: vacuum:00004066:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00004211:  ereport(ERROR, 
-vaag: vacuum:00004212:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
-vaag: vacuum:00004213:  "Please either increase your maintenance_work_mem or " 
-vaag: vacuum:00004214:  "drop the bitmap index and try again.", 
-vaag: vacuum:00004215:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00000525:  elog(ERROR, "Relation name does not exist for relation with oid %d", relid); 
+vaag: vacuum:00000531:  elog(ERROR, "Namespace does not exist for relation with oid %d", relid); 
+vaag: vacuum:00000877:  ereport(WARNING, 
+vaag: vacuum:00000878:  (errmsg("oldest xmin is far in the past"), 
+vaag: vacuum:00000879:  errhint("Close open transactions soon to avoid wraparound problems."))); 
+vaag: vacuum:00000993:  elog(ERROR, "pg_class entry for relid %u vanished during vacuuming", 
+vaag: vacuum:00000994:  relid); 
+vaag: vacuum:00001146:  elog(ERROR, "could not find tuple for database %u", MyDatabaseId); 
+vaag: vacuum:00001248:  ereport(WARNING, 
+vaag: vacuum:00001249:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
+vaag: vacuum:00001250:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
+vaag: vacuum:00001604:  ereport(WARNING, 
+vaag: vacuum:00001605:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
+vaag: vacuum:00001606:  relname, blkno))); 
+vaag: vacuum:00001678:  elog(WARNING, "relation \"%s\" TID %u/%u: OID is invalid", 
+vaag: vacuum:00001679:  relname, blkno, offnum); 
+vaag: vacuum:00001718:  ereport(NOTICE, 
+vaag: vacuum:00001719:  (errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
+vaag: vacuum:00001720:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
+vaag: vacuum:00001731:  ereport(NOTICE, 
+vaag: vacuum:00001732:  (errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
+vaag: vacuum:00001733:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
+vaag: vacuum:00001737:  elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result"); 
+vaag: vacuum:00002139:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
+vaag: vacuum:00002141:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
+vaag: vacuum:00002148:  elog(ERROR, "invalid XVAC in tuple header"); 
+vaag: vacuum:00002321:  elog(ERROR, "updated tuple is already HEAP_MOVED_OFF"); 
+vaag: vacuum:00002427:  elog(ERROR, "parent itemid marked as unused"); 
+vaag: vacuum:00002625:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
+vaag: vacuum:00002627:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
+vaag: vacuum:00002629:  elog(ERROR, "invalid XVAC in tuple header"); 
+vaag: vacuum:00002842:  elog(ERROR, "HEAP_MOVED_IN was not expected"); 
+vaag: vacuum:00002844:  elog(ERROR, "HEAP_MOVED_OFF was expected"); 
+vaag: vacuum:00002846:  elog(ERROR, "invalid XVAC in tuple header"); 
+vaag: vacuum:00003254:  elog(ERROR, "HEAP_MOVED_OFF/HEAP_MOVED_IN was expected"); 
+vaag: vacuum:00003256:  elog(ERROR, "invalid XVAC in tuple header"); 
+vaag: vacuum:00003440:  ereport(WARNING, 
+vaag: vacuum:00003441:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003442:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003443:  stats->num_index_tuples, num_tuples), 
+vaag: vacuum:00003444:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00003512:  ereport(WARNING, 
+vaag: vacuum:00003513:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003514:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003515:  stats->num_index_tuples, num_tuples + keep_tuples), 
+vaag: vacuum:00003516:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00004083:  ereport(WARNING, 
+vaag: vacuum:00004084:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
+vaag: vacuum:00004085:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00004096:  ereport(WARNING, 
+vaag: vacuum:00004097:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
+vaag: vacuum:00004098:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00004243:  ereport(ERROR, 
+vaag: vacuum:00004244:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
+vaag: vacuum:00004245:  "Please either increase your maintenance_work_mem or " 
+vaag: vacuum:00004246:  "drop the bitmap index and try again.", 
+vaag: vacuum:00004247:  RelationGetRelationName(onerel)))); 
 aaaaa GP_IGNORE: vaba: vacuumlazy - ./backend/commands/vacuumlazy.c
 vaba: vacuumlazy:00000383:  ereport(WARNING, 
 vaba: vacuumlazy:00000384:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
@@ -22634,79 +22634,86 @@ raai: relcache:00000369:  elog(FATAL, "Mismatch in node tuple for gp_relation_no
 raai: relcache:00000370:  gpRelationNodeScan->relationId, 
 raai: relcache:00000371:  gpRelationNodeScan->relfilenode, 
 raai: relcache:00000372:  actualRelationNode); 
-raai: relcache:00000572:  elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u", 
-raai: relcache:00000573:  relation->rd_rel->relname.data, 
-raai: relcache:00000574:  relation->rd_id, 
-raai: relcache:00000575:  relation->rd_node.relNode); 
-raai: relcache:00000582:  elog(ERROR, 
-raai: relcache:00000583:  "RelationFetchSegFile0GpRelationNode has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
-raai: relcache:00000584:  relation->rd_node.spcNode, 
-raai: relcache:00000585:  relation->rd_node.dbNode, 
-raai: relcache:00000586:  relation->rd_node.relNode, 
-raai: relcache:00000587:  NameStr(relation->rd_rel->relname), 
-raai: relcache:00000588:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
-raai: relcache:00000610:  elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)", 
-raai: relcache:00000611:  countInThisBackend, 
-raai: relcache:00000612:  relation->rd_node.spcNode, 
-raai: relcache:00000613:  relation->rd_node.dbNode, 
-raai: relcache:00000614:  relation->rd_node.relNode, 
-raai: relcache:00000615:  deep); 
-raai: relcache:00000832:  elog(ERROR, "invalid attribute number %d for %s", 
-raai: relcache:00000833:  attp->attnum, RelationGetRelationName(relation)); 
-raai: relcache:00000866:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
-raai: relcache:00000867:  need, RelationGetRelid(relation)); 
-raai: relcache:00001322:  elog(ERROR, "cache lookup failed for index %u", 
-raai: relcache:00001323:  RelationGetRelid(relation)); 
-raai: relcache:00001349:  elog(ERROR, "cache lookup failed for access method %u", 
-raai: relcache:00001350:  relation->rd_rel->relam); 
-raai: relcache:00001358:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
-raai: relcache:00001359:  RelationGetRelid(relation)); 
-raai: relcache:00001455:  elog(ERROR, "bogus pg_index tuple"); 
-raai: relcache:00001587:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
-raai: relcache:00001588:  amopform->amopstrategy, operatorClassOid); 
-raai: relcache:00001621:  elog(ERROR, "invalid amproc number %d for opclass %u", 
-raai: relcache:00001622:  amprocform->amprocnum, operatorClassOid); 
-raai: relcache:00001892:  elog(ERROR, 
-raai: relcache:00001893:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
-raai: relcache:00001894:  rel->rd_node.spcNode, 
-raai: relcache:00001895:  rel->rd_node.dbNode, 
-raai: relcache:00001896:  rel->rd_node.relNode, 
-raai: relcache:00001897:  rel->rd_refcnt); 
-raai: relcache:00001972:  elog(ERROR, "could not find pg_class tuple for index %u", 
-raai: relcache:00001973:  RelationGetRelid(relation)); 
-raai: relcache:00002176:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
-raai: relcache:00002290:  elog(ERROR, "relation %u is still open", rid); 
-raai: relcache:00002663:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
-raai: relcache:00002664:  relname, relid); 
-raai: relcache:00002979:  elog(FATAL, "cache lookup failed for relation %u", 
-raai: relcache:00002980:  RelationGetRelid(relation)); 
-raai: relcache:00003009:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
-raai: relcache:00003010:  RelationGetRelationName(relation)); 
-raai: relcache:00003197:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
-raai: relcache:00003198:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003199:  RelationGetRelationName(relation)); 
-raai: relcache:00003207:  elog(WARNING, "null adbin for attr %s of rel %s", 
-raai: relcache:00003208:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003209:  RelationGetRelationName(relation)); 
-raai: relcache:00003217:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
-raai: relcache:00003218:  adform->adnum, RelationGetRelationName(relation)); 
-raai: relcache:00003225:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
-raai: relcache:00003226:  ndef - found, RelationGetRelationName(relation)); 
-raai: relcache:00003263:  elog(ERROR, "unexpected constraint record found for rel %s", 
-raai: relcache:00003264:  RelationGetRelationName(relation)); 
-raai: relcache:00003274:  elog(ERROR, "null conbin for rel %s", 
-raai: relcache:00003275:  RelationGetRelationName(relation)); 
-raai: relcache:00003286:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
-raai: relcache:00003287:  ncheck - found, RelationGetRelationName(relation)); 
-raai: relcache:00004020:  ereport(WARNING, 
-raai: relcache:00004021:  (errcode_for_file_access(), 
-raai: relcache:00004022:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00004023:  tempfilename), 
-raai: relcache:00004024:  errdetail("Continuing anyway, but there's something wrong."))); 
-raai: relcache:00004034:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004098:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004148:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004150:  elog(FATAL, "could not write init file"); 
+raai: relcache:00000484:  elog(ERROR, 
+raai: relcache:00000485:  "FetchGpRelationNodeTuple relfilenode mismatch (actual %u, expected %u)", 
+raai: relcache:00000486:  actualRelationNode, 
+raai: relcache:00000487:  relfilenode); 
+raai: relcache:00000491:  elog(ERROR, 
+raai: relcache:00000492:  "FetchGpRelationNodeTuple has invalid TID (0,0) for relfilenode %u", 
+raai: relcache:00000493:  relfilenode); 
+raai: relcache:00000588:  elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u", 
+raai: relcache:00000589:  relation->rd_rel->relname.data, 
+raai: relcache:00000590:  relation->rd_id, 
+raai: relcache:00000591:  relation->rd_node.relNode); 
+raai: relcache:00000598:  elog(ERROR, 
+raai: relcache:00000599:  "RelationFetchSegFile0GpRelationNode has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT, 
+raai: relcache:00000600:  relation->rd_node.spcNode, 
+raai: relcache:00000601:  relation->rd_node.dbNode, 
+raai: relcache:00000602:  relation->rd_node.relNode, 
+raai: relcache:00000603:  NameStr(relation->rd_rel->relname), 
+raai: relcache:00000604:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
+raai: relcache:00000626:  elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)", 
+raai: relcache:00000627:  countInThisBackend, 
+raai: relcache:00000628:  relation->rd_node.spcNode, 
+raai: relcache:00000629:  relation->rd_node.dbNode, 
+raai: relcache:00000630:  relation->rd_node.relNode, 
+raai: relcache:00000631:  deep); 
+raai: relcache:00000848:  elog(ERROR, "invalid attribute number %d for %s", 
+raai: relcache:00000849:  attp->attnum, RelationGetRelationName(relation)); 
+raai: relcache:00000882:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
+raai: relcache:00000883:  need, RelationGetRelid(relation)); 
+raai: relcache:00001338:  elog(ERROR, "cache lookup failed for index %u", 
+raai: relcache:00001339:  RelationGetRelid(relation)); 
+raai: relcache:00001365:  elog(ERROR, "cache lookup failed for access method %u", 
+raai: relcache:00001366:  relation->rd_rel->relam); 
+raai: relcache:00001374:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
+raai: relcache:00001375:  RelationGetRelid(relation)); 
+raai: relcache:00001471:  elog(ERROR, "bogus pg_index tuple"); 
+raai: relcache:00001603:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
+raai: relcache:00001604:  amopform->amopstrategy, operatorClassOid); 
+raai: relcache:00001637:  elog(ERROR, "invalid amproc number %d for opclass %u", 
+raai: relcache:00001638:  amprocform->amprocnum, operatorClassOid); 
+raai: relcache:00001908:  elog(ERROR, 
+raai: relcache:00001909:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
+raai: relcache:00001910:  rel->rd_node.spcNode, 
+raai: relcache:00001911:  rel->rd_node.dbNode, 
+raai: relcache:00001912:  rel->rd_node.relNode, 
+raai: relcache:00001913:  rel->rd_refcnt); 
+raai: relcache:00001988:  elog(ERROR, "could not find pg_class tuple for index %u", 
+raai: relcache:00001989:  RelationGetRelid(relation)); 
+raai: relcache:00002192:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
+raai: relcache:00002306:  elog(ERROR, "relation %u is still open", rid); 
+raai: relcache:00002679:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
+raai: relcache:00002680:  relname, relid); 
+raai: relcache:00002995:  elog(FATAL, "cache lookup failed for relation %u", 
+raai: relcache:00002996:  RelationGetRelid(relation)); 
+raai: relcache:00003025:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
+raai: relcache:00003026:  RelationGetRelationName(relation)); 
+raai: relcache:00003213:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
+raai: relcache:00003214:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003215:  RelationGetRelationName(relation)); 
+raai: relcache:00003223:  elog(WARNING, "null adbin for attr %s of rel %s", 
+raai: relcache:00003224:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003225:  RelationGetRelationName(relation)); 
+raai: relcache:00003233:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
+raai: relcache:00003234:  adform->adnum, RelationGetRelationName(relation)); 
+raai: relcache:00003241:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
+raai: relcache:00003242:  ndef - found, RelationGetRelationName(relation)); 
+raai: relcache:00003279:  elog(ERROR, "unexpected constraint record found for rel %s", 
+raai: relcache:00003280:  RelationGetRelationName(relation)); 
+raai: relcache:00003290:  elog(ERROR, "null conbin for rel %s", 
+raai: relcache:00003291:  RelationGetRelationName(relation)); 
+raai: relcache:00003302:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
+raai: relcache:00003303:  ncheck - found, RelationGetRelationName(relation)); 
+raai: relcache:00004036:  ereport(WARNING, 
+raai: relcache:00004037:  (errcode_for_file_access(), 
+raai: relcache:00004038:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00004039:  tempfilename), 
+raai: relcache:00004040:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00004050:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004114:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004164:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004166:  elog(FATAL, "could not write init file"); 
 aaaaa GP_IGNORE: saai: syscache - ./backend/utils/cache/syscache.c
 saai: syscache:00000595:  elog(ERROR, "could not initialize cache %u (%d)", 
 saai: syscache:00000596:  cacheinfo[cacheId].reloid, cacheId); 
@@ -24147,112 +24154,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006626:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006627:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006640:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006641:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006654:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006655:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006685:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006686:  conf->gen.name, str); 
-gaad: guc:00006943:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006960:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006977:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007008:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007864:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007974:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007975:  " in a future release.", name); 
-gaad: guc:00007983:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007984:  name); 
-gaad: guc:00008458:  ereport(ERROR, 
-gaad: guc:00008459:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008460:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008462:  ereport(ERROR, 
-gaad: guc:00008463:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008464:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008498:  ereport(ERROR, 
-gaad: guc:00008499:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008500:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008502:  ereport(ERROR, 
-gaad: guc:00008503:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008504:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008573:  ereport(ERROR, 
-gaad: guc:00008574:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008575:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008582:  ereport(ERROR, 
-gaad: guc:00008583:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008584:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008597:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008644:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008645:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008702:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008728:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008729:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008755:  ereport(ERROR, 
-gaad: guc:00008756:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008757:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008819:  ereport(ERROR, 
-gaad: guc:00008820:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008821:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009140:  ereport(ERROR, 
-gaad: guc:00009141:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009142:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009144:  ereport(ERROR, 
-gaad: guc:00009145:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009146:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009915:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009948:  ereport(FATAL, 
-gaad: guc:00009949:  (errcode_for_file_access(), 
-gaad: guc:00009950:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009951:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009963:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009965:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009967:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010058:  ereport(WARNING, 
-gaad: guc:00010059:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010060:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010254:  ereport(ERROR, 
-gaad: guc:00010255:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010256:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010277:  ereport(ERROR, 
-gaad: guc:00010278:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010279:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010280:  tok))); 
-gaad: guc:00010306:  ereport(ERROR, 
-gaad: guc:00010307:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010308:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010309:  value))); 
-gaad: guc:00010741:  ereport(ERROR, 
-gaad: guc:00010742:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010743:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010817:  ereport(ERROR, 
-gaad: guc:00010818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010819:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010828:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010838:  ereport(ERROR, 
-gaad: guc:00010839:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010840:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010851:  ereport(ERROR, 
-gaad: guc:00010852:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010853:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010868:  ereport(ERROR, 
-gaad: guc:00010869:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010870:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010871:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010872:  "\"log_dispatch_stats\", " 
-gaad: guc:00010873:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010888:  ereport(ERROR, 
-gaad: guc:00010889:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010890:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010891:  "\"log_statement_stats\", " 
-gaad: guc:00010892:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010893:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010908:  ereport(ERROR, 
-gaad: guc:00010909:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010910:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011307:  elog(ERROR, 
-gaad: guc:00011308:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011309:  show_allow_system_table_mods()); 
+gaad: guc:00006637:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006638:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006651:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006652:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006665:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006666:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006696:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006697:  conf->gen.name, str); 
+gaad: guc:00006954:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006971:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006988:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007019:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007875:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007985:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007986:  " in a future release.", name); 
+gaad: guc:00007994:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007995:  name); 
+gaad: guc:00008469:  ereport(ERROR, 
+gaad: guc:00008470:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008471:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008473:  ereport(ERROR, 
+gaad: guc:00008474:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008475:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008509:  ereport(ERROR, 
+gaad: guc:00008510:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008511:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008513:  ereport(ERROR, 
+gaad: guc:00008514:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008515:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008584:  ereport(ERROR, 
+gaad: guc:00008585:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008586:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008593:  ereport(ERROR, 
+gaad: guc:00008594:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008595:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008608:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008655:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008656:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008713:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008739:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008740:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008766:  ereport(ERROR, 
+gaad: guc:00008767:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008768:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008830:  ereport(ERROR, 
+gaad: guc:00008831:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008832:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009151:  ereport(ERROR, 
+gaad: guc:00009152:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009153:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009155:  ereport(ERROR, 
+gaad: guc:00009156:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009157:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009926:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009959:  ereport(FATAL, 
+gaad: guc:00009960:  (errcode_for_file_access(), 
+gaad: guc:00009961:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009962:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009974:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009976:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009978:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010069:  ereport(WARNING, 
+gaad: guc:00010070:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010071:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010265:  ereport(ERROR, 
+gaad: guc:00010266:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010267:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010288:  ereport(ERROR, 
+gaad: guc:00010289:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010290:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010291:  tok))); 
+gaad: guc:00010317:  ereport(ERROR, 
+gaad: guc:00010318:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010319:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010320:  value))); 
+gaad: guc:00010752:  ereport(ERROR, 
+gaad: guc:00010753:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010754:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010828:  ereport(ERROR, 
+gaad: guc:00010829:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010830:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010839:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010849:  ereport(ERROR, 
+gaad: guc:00010850:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010851:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010862:  ereport(ERROR, 
+gaad: guc:00010863:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010864:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010879:  ereport(ERROR, 
+gaad: guc:00010880:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010881:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010882:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010883:  "\"log_dispatch_stats\", " 
+gaad: guc:00010884:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010899:  ereport(ERROR, 
+gaad: guc:00010900:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010901:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010902:  "\"log_statement_stats\", " 
+gaad: guc:00010903:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010904:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010919:  ereport(ERROR, 
+gaad: guc:00010920:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010921:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011318:  elog(ERROR, 
+gaad: guc:00011319:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011320:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
