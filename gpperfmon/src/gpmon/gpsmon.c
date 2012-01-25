@@ -330,7 +330,7 @@ static void send_fsinfo(SOCKET sock)
 		}
 	}
 }
-
+#if !(defined (sun))
 // Helper function to calculate the metric differences
 static apr_uint64_t metric_diff_calc( sigar_uint64_t newval, apr_uint64_t oldval, const char *name_for_log, const char* value_name_for_log ){
 	apr_uint64_t diff;
@@ -347,6 +347,7 @@ static apr_uint64_t metric_diff_calc( sigar_uint64_t newval, apr_uint64_t oldval
 	}
 	return diff;
 }
+#endif
 
 static void send_machine_metrics(SOCKET sock)
 {
