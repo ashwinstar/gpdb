@@ -95,8 +95,6 @@ extern Node *eval_const_expressions(PlannerInfo *root, Node *node);
 
 extern Node *estimate_expression_value(PlannerInfo *root, Node *node);
 
-extern Expr *evaluate_expr(Expr *expr, Oid result_type);
-
 extern Node *expression_tree_mutator(Node *node, Node *(*mutator) (),
 												 void *context);
 
@@ -108,6 +106,8 @@ extern List *range_table_mutator(List *rtable, Node *(*mutator) (),
 
 extern Node *query_or_expression_tree_mutator(Node *node, Node *(*mutator) (),
 												   void *context, int flags);
+extern Expr *evaluate_expr(Expr *expr, Oid result_type);
+
 extern bool is_grouping_extension(CanonicalGroupingSets *grpsets);
 extern bool contain_extended_grouping(List *grp);
 

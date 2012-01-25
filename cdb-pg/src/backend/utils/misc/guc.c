@@ -615,6 +615,13 @@ bool		gp_dynamic_partition_pruning = true;
 bool		gp_log_dynamic_partition_pruning = false;
 bool		gp_cte_sharing = false;
 
+/* ORCA related gucs */
+bool		gp_optimizer;
+bool		gp_log_optimizer;
+bool		gp_opt_trace_query;
+bool		gp_opt_trace_plan;
+bool		gp_opt_trace_xform;
+
 /*
  * Displayable names for context types (enum GucContext)
  *
@@ -3248,6 +3255,56 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_ignore_window_exclude,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_optimizer", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable the new optimizer."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_optimizer,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_log_optimizer", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Log new optimizer messages."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_log_optimizer,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_trace_query", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints the optimizer's input query expression tree."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_trace_query,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_trace_plan", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints the plan expression tree produced by the optimizer."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_trace_plan,
+		false, NULL, NULL
+	},
+	
+	{
+		{"gp_opt_trace_xform", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints the input and output expression trees of the optimizer transformations."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_trace_xform,
 		false, NULL, NULL
 	},
 

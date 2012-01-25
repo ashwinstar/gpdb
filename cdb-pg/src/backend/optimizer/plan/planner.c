@@ -14,6 +14,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <dlfcn.h>
 #include "postgres.h"
 
 #include <limits.h>
@@ -66,6 +67,8 @@ planner_hook_type planner_hook = NULL;
 
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
+extern bool		gp_optimizer; /* Enable the optimizer */
+extern bool		gp_log_optimizer; /* Enable logging of the optimizer */
 
 /* Expression kind codes for preprocess_expression */
 #define EXPRKIND_QUAL			0
@@ -122,6 +125,50 @@ static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 coun
 bool is_dummy_plan(Plan *plan);
 
 
+#define OPT_LIB "libgpoptudf.dylib"
+
+
+/**
+ * Use the optimizer. Explicitly load the shared library, call the optimize task,
+ * retrieve the planned statement and close the shared library.
+ */
+static PlannedStmt *optimizer(Query *parse)
+{
+	Assert(parse);
+
+	void *libHandle = dlopen(OPT_LIB, RTLD_NOW);
+	if (!libHandle)
+	{
+		if (gp_log_optimizer)
+		{
+			elog(NOTICE, "unable to load optimizer library");
+		}
+		return NULL;
+	}
+
+	typedef PlannedStmt * (*opt) (Query *);
+
+	opt orca = (opt ) dlsym(libHandle, "orca");
+
+	char *error = NULL;
+	if ((error = dlerror()) != NULL)
+	{
+		if (gp_log_optimizer)
+		{
+			elog(NOTICE, "unable to load orca function from library %s", error);
+		}
+		return NULL;
+	}
+
+	PlannedStmt *result = NULL;
+
+	result = (* orca) (parse);
+
+	dlclose(libHandle);
+	return result;
+}
+
+
 /*****************************************************************************
  *
  *	   Query optimizer entry point
@@ -140,12 +187,33 @@ PlannedStmt *
 planner(Query *parse, int cursorOptions,
 		ParamListInfo boundParams)
 {
-	PlannedStmt *result;
-	
-	if (planner_hook)
-		result = (*planner_hook) (parse, cursorOptions, boundParams);
-	else
+	PlannedStmt *result = NULL;
+
+	/**
+	 * If the new optimizer is enabled, try that first. If it does not return a plan,
+	 * then fall back to the planner.
+	 */
+	if (gp_optimizer)
+	{
+		result = optimizer(parse);
+
+		if (gp_log_optimizer)
+		{
+			if (result)
+			{
+				elog(NOTICE, "Optimizer successfully produced plan");
+			}
+			else
+			{
+				elog(NOTICE, "Falling back to planner");
+			}
+		}
+	}
+
+	if (!result)
+	{
 		result = standard_planner(parse, cursorOptions, boundParams);
+	}
 	return result;
 }
 

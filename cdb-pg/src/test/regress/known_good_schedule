@@ -165,5 +165,4 @@ test: auth_constraint
 test: column_compression
 test: role
 test: rle
-
-
+ignore: tpch500GB_orca

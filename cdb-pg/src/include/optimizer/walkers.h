@@ -33,6 +33,18 @@ extern bool query_or_expression_tree_walker(Node *node, bool (*walker) (),
 												   void *context, int flags);
 
 
+extern Node *expression_tree_mutator(Node *node, Node *(*mutator) (),
+												 void *context);
+
+extern Query *query_tree_mutator(Query *query, Node *(*mutator) (),
+											 void *context, int flags);
+
+extern List *range_table_mutator(List *rtable, Node *(*mutator) (),
+											 void *context, int flags);
+
+extern Node *query_or_expression_tree_mutator(Node *node, Node *(*mutator) (),
+												   void *context, int flags);
+
 /* The plan associated with a SubPlan is found in a list.  During planning this is in
  * the global structure found through the root PlannerInfo.  After planning this is in
  * the PlannedStmt.
