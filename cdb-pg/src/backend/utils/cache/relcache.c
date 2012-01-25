@@ -477,6 +477,22 @@ FetchGpRelationNodeTuple(
 						&createMirrorDataLossTrackingSessionNum,
 						persistentTid,
 						persistentSerialNum);
+	if (Debug_check_for_invalid_persistent_tid)
+	{
+		if (actualRelationNode != relfilenode)
+		{
+			elog(ERROR, 
+				 "FetchGpRelationNodeTuple relfilenode mismatch (actual %u, expected %u)",
+				 actualRelationNode,
+				 relfilenode);
+		}
+		if (PersistentStore_IsZeroTid(persistentTid))
+		{	
+			elog(ERROR, 
+				 "FetchGpRelationNodeTuple has invalid TID (0,0) for relfilenode %u",
+				 relfilenode);
+		}
+	}
 	Assert (actualRelationNode == relfilenode);
 	
 	return tuple;
