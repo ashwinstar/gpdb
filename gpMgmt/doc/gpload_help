@@ -298,7 +298,9 @@ FILE - Required. Specifies the location of a file, named pipe, or
        specified are assumed to be relative to the current directory 
        from which gpload is executed (or you can declare an absolute path).
 
-SSL - Optional. Specifies usage of SSL encryption.
+SSL - Optional. Specifies usage of SSL encryption. If SSL is set to true, 
+      gpload starts the gpfdist server with the --ssl option and uses the 
+      gpfdists protocol.
 
 CERTIFICATES_PATH - Required when SSL is true; cannot be specified when 
                     SSL is false or unspecified. The location specified 
