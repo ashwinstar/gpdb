@@ -14209,33 +14209,37 @@ pabc: plangroupext:00000279:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YE
 pabc: plangroupext:00000280:  errmsg("GROUPING SETS / ROLLUP / CUBE columns ambiguous.") 
 pabc: plangroupext:00000281:  )); 
 aaaaa GP_IGNORE: paah: planner - ./backend/optimizer/plan/planner.c
-paah: planner:00000674:  elog(ERROR, "failure repartitioning plan"); 
-paah: planner:00000837:  elog(ERROR, "unrecognized node type: %d", 
-paah: planner:00000838:  (int) nodeTag(jtnode)); 
-paah: planner:00000952:  ereport(ERROR, ( 
-paah: planner:00000953:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00000954:  errmsg("incompatible loci in target inheritance set") )); 
-paah: planner:00001030:  ereport(ERROR, ( 
-paah: planner:00001031:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001032:  errmsg("unexpected locus assigned to target inheritance set") )); 
-paah: planner:00001172:  ereport(ERROR, 
-paah: planner:00001173:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001174:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001812:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001813:  errmsg("unexpected input locus to distinct"))); 
-paah: planner:00002837:  elog(ERROR, "failed to locate grouping columns"); 
-paah: planner:00002876:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00002881:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00002954:  elog(ERROR, "invalid grouping set"); 
-paah: planner:00003092:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003101:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003111:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003155:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003170:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003184:  elog(ERROR,"invalid grouping set"); 
-paah: planner:00003190:  elog(ERROR,"invalid grouping set list"); 
-paah: planner:00003210:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
-paah: planner:00003279:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00000144:  elog(NOTICE, "unable to load optimizer library"); 
+paah: planner:00000158:  elog(NOTICE, "unable to load orca function from library %s", error); 
+paah: planner:00000204:  elog(NOTICE, "Optimizer successfully produced plan"); 
+paah: planner:00000208:  elog(NOTICE, "Falling back to planner"); 
+paah: planner:00000742:  elog(ERROR, "failure repartitioning plan"); 
+paah: planner:00000905:  elog(ERROR, "unrecognized node type: %d", 
+paah: planner:00000906:  (int) nodeTag(jtnode)); 
+paah: planner:00001020:  ereport(ERROR, ( 
+paah: planner:00001021:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001022:  errmsg("incompatible loci in target inheritance set") )); 
+paah: planner:00001098:  ereport(ERROR, ( 
+paah: planner:00001099:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001100:  errmsg("unexpected locus assigned to target inheritance set") )); 
+paah: planner:00001240:  ereport(ERROR, 
+paah: planner:00001241:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001242:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+paah: planner:00001880:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001881:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00002905:  elog(ERROR, "failed to locate grouping columns"); 
+paah: planner:00002944:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00002949:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003022:  elog(ERROR, "invalid grouping set"); 
+paah: planner:00003160:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003169:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003179:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003223:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003238:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003252:  elog(ERROR,"invalid grouping set"); 
+paah: planner:00003258:  elog(ERROR,"invalid grouping set list"); 
+paah: planner:00003278:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00003347:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000868:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000964:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
@@ -14396,9 +14400,6 @@ caah: clauses:00002885:  elog(ERROR, "null prosrc for function %u", funcid);
 caah: clauses:00003085:  elog(ERROR, "unexpected paramkind: %d", (int) param->paramkind); 
 caah: clauses:00003087:  elog(ERROR, "invalid paramid: %d", param->paramid); 
 caah: clauses:00003121:  elog(ERROR, "null prosrc"); 
-caah: clauses:00003813:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: clauses:00003814:  errmsg_internal("unrecognized node type: %d", 
-caah: clauses:00003815:  nodeTag(node)) )); 
 aaaaa GP_IGNORE: paai: pathnode - ./backend/optimizer/util/pathnode.c
 paai: pathnode:00000117:  elog(ERROR, "unrecognized pathnode: %d", (int)s->type); 
 paai: pathnode:00000284:  elog(ERROR, "unrecognized path type: %d", (int)path->pathtype); 
@@ -14449,6 +14450,9 @@ aaaaa GP_IGNORE: waah: walkers - ./backend/optimizer/util/walkers.c
 waah: walkers:00000485:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
 waah: walkers:00000486:  errmsg_internal("unrecognized node type: %d", 
 waah: walkers:00000487:  nodeTag(node)) )); 
+waah: walkers:00001843:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+waah: walkers:00001844:  errmsg_internal("unrecognized node type: %d", 
+waah: walkers:00001845:  nodeTag(node)) )); 
 aaaaa GP_IGNORE: aaah: analyze - ./backend/parser/analyze.c
 aaah: analyze:00000363:  ereport(ERROR, 
 aaah: analyze:00000364:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
@@ -24154,112 +24158,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006637:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006638:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006651:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006652:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006665:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006666:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006696:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006697:  conf->gen.name, str); 
-gaad: guc:00006954:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006971:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006988:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007019:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007875:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007985:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007986:  " in a future release.", name); 
-gaad: guc:00007994:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007995:  name); 
-gaad: guc:00008469:  ereport(ERROR, 
-gaad: guc:00008470:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008471:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008473:  ereport(ERROR, 
-gaad: guc:00008474:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008475:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008509:  ereport(ERROR, 
-gaad: guc:00008510:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008511:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008513:  ereport(ERROR, 
-gaad: guc:00008514:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008515:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008584:  ereport(ERROR, 
-gaad: guc:00008585:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008586:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008593:  ereport(ERROR, 
-gaad: guc:00008594:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008595:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008608:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008655:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008656:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008713:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008739:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008740:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008766:  ereport(ERROR, 
-gaad: guc:00008767:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008768:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008830:  ereport(ERROR, 
-gaad: guc:00008831:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008832:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009151:  ereport(ERROR, 
-gaad: guc:00009152:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009153:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009155:  ereport(ERROR, 
-gaad: guc:00009156:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009157:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009926:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009959:  ereport(FATAL, 
-gaad: guc:00009960:  (errcode_for_file_access(), 
-gaad: guc:00009961:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009962:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009974:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009976:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009978:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010069:  ereport(WARNING, 
-gaad: guc:00010070:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010071:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010265:  ereport(ERROR, 
-gaad: guc:00010266:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010267:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010288:  ereport(ERROR, 
-gaad: guc:00010289:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010290:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010291:  tok))); 
-gaad: guc:00010317:  ereport(ERROR, 
-gaad: guc:00010318:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010319:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010320:  value))); 
-gaad: guc:00010752:  ereport(ERROR, 
-gaad: guc:00010753:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010754:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010828:  ereport(ERROR, 
-gaad: guc:00010829:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010830:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010839:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010849:  ereport(ERROR, 
-gaad: guc:00010850:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010851:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010862:  ereport(ERROR, 
-gaad: guc:00010863:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010864:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010879:  ereport(ERROR, 
-gaad: guc:00010880:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010881:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010882:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010883:  "\"log_dispatch_stats\", " 
-gaad: guc:00010884:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010899:  ereport(ERROR, 
-gaad: guc:00010900:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010901:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010902:  "\"log_statement_stats\", " 
-gaad: guc:00010903:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010904:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00006694:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006695:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006708:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006709:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006722:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006723:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006753:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006754:  conf->gen.name, str); 
+gaad: guc:00007011:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007028:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007045:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007076:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007932:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00008042:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00008043:  " in a future release.", name); 
+gaad: guc:00008051:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00008052:  name); 
+gaad: guc:00008526:  ereport(ERROR, 
+gaad: guc:00008527:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008528:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008530:  ereport(ERROR, 
+gaad: guc:00008531:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008532:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008566:  ereport(ERROR, 
+gaad: guc:00008567:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008568:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008570:  ereport(ERROR, 
+gaad: guc:00008571:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008572:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008641:  ereport(ERROR, 
+gaad: guc:00008642:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008643:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008650:  ereport(ERROR, 
+gaad: guc:00008651:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008652:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008665:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008712:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008713:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008770:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008796:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008797:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008823:  ereport(ERROR, 
+gaad: guc:00008824:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008825:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008887:  ereport(ERROR, 
+gaad: guc:00008888:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008889:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009208:  ereport(ERROR, 
+gaad: guc:00009209:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009210:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009212:  ereport(ERROR, 
+gaad: guc:00009213:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009214:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009983:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010016:  ereport(FATAL, 
+gaad: guc:00010017:  (errcode_for_file_access(), 
+gaad: guc:00010018:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00010019:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00010031:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00010033:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010035:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010126:  ereport(WARNING, 
+gaad: guc:00010127:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010128:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010322:  ereport(ERROR, 
+gaad: guc:00010323:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010324:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010345:  ereport(ERROR, 
+gaad: guc:00010346:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010347:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010348:  tok))); 
+gaad: guc:00010374:  ereport(ERROR, 
+gaad: guc:00010375:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010376:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010377:  value))); 
+gaad: guc:00010809:  ereport(ERROR, 
+gaad: guc:00010810:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010811:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010885:  ereport(ERROR, 
+gaad: guc:00010886:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010887:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010896:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010906:  ereport(ERROR, 
+gaad: guc:00010907:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010908:  errmsg("SSL is not supported by this build"))); 
 gaad: guc:00010919:  ereport(ERROR, 
 gaad: guc:00010920:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010921:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011318:  elog(ERROR, 
-gaad: guc:00011319:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011320:  show_allow_system_table_mods()); 
+gaad: guc:00010921:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010936:  ereport(ERROR, 
+gaad: guc:00010937:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010938:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010939:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010940:  "\"log_dispatch_stats\", " 
+gaad: guc:00010941:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010956:  ereport(ERROR, 
+gaad: guc:00010957:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010958:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010959:  "\"log_statement_stats\", " 
+gaad: guc:00010960:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010961:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010976:  ereport(ERROR, 
+gaad: guc:00010977:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010978:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011375:  elog(ERROR, 
+gaad: guc:00011376:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011377:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
