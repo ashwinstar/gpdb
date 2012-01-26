@@ -50,7 +50,7 @@
 
 static char *GetResqueueCapability(Oid queueOid, int capabilityIndex);
 
-/* MPP-6923: 
+/* MPP-6923:
  * GetResourceTypeByName: find the named resource in pg_resourcetype
  *
  * Input: name of resource
@@ -72,10 +72,10 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 
 	ScanKeyInit(&key[0],
 				Anum_pg_resourcetype_resname,
-				BTEqualStrategyNumber, 
+				BTEqualStrategyNumber,
 				F_NAMEEQ,
 				CStringGetDatum(pNameIn));
-	
+
 	scan = systable_beginscan(rel,
 							  ResourceTypeResnameIndexId,
 							  /* XXX XXX XXX XXX : snapshotnow ? */
@@ -97,7 +97,7 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 	return (bStat);
 } /* end GetResourceTypeByName */
 
-static 
+static
 bool ValidPriority(char			*pResSetting)
 {
 	char *priority_vals[] = {"MAX",
@@ -108,13 +108,13 @@ bool ValidPriority(char			*pResSetting)
 							 NULL};
 	int ii				  = 0;
 
-	char *pval = priority_vals[ii]; 
+	char *pval = priority_vals[ii];
 
 	while (pval)
 	{
 		if (0 == pg_strcasecmp(pval, pResSetting))
 			return true;
-		pval = priority_vals[++ii]; 
+		pval = priority_vals[++ii];
 	}
 	return false;
 }
@@ -122,7 +122,7 @@ bool ValidPriority(char			*pResSetting)
 /**
  * Validate memory limit setting.
  */
-static 
+static
 bool ValidMemoryLimit(char			*pResSetting)
 {
 	int valueKB;
@@ -148,9 +148,9 @@ bool ValidMemoryLimit(char			*pResSetting)
 						"resource type \"%s\". "
 						"Value must be at least %dkB",
 						pResSetting, restyp, (int) MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB)));
-		
+
 	}
-	
+
 	return true;
 }
 
@@ -180,13 +180,13 @@ void ValidateResqueueCapabilityEntry(int			 resTypeInt,
 		case PG_RESRCTYPE_PRIORITY:			/* backoff.c: priority queue */
 			bValid = ValidPriority(pResSetting);
 			restyp = "PRIORITY";
-			break;				
+			break;
 
 		case PG_RESRCTYPE_MEMORY_LIMIT:
 			bValid = ValidMemoryLimit(pResSetting);
 			Assert(bValid);
 			restyp = "MEMORY_LIMIT";
-						
+
 			break;
 
 		default:
@@ -197,7 +197,7 @@ void ValidateResqueueCapabilityEntry(int			 resTypeInt,
 
 			break;
 	}
-	
+
 	if (!bValid)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -216,7 +216,7 @@ void ValidateResqueueCapabilityEntry(int			 resTypeInt,
  * else insert a new row.
  *
  */
-static 
+static
 List *
  AddUpdResqueueCapabilityEntryInternal(
 								  List			*stmtOptIdList,
@@ -234,13 +234,13 @@ List *
 	MemSet(isnull, 0, sizeof(bool) * Natts_pg_resqueuecapability);
 	MemSet(new_record_repl, 0, sizeof(bool) * Natts_pg_resqueuecapability);
 
-	values[Anum_pg_resqueuecapability_resqueueid - 1]  = 
+	values[Anum_pg_resqueuecapability_resqueueid - 1]  =
 			ObjectIdGetDatum(queueid);
 	values[Anum_pg_resqueuecapability_restypid - 1]   = resTypeInt;
 
 	Assert(pResSetting);
 
-	values[Anum_pg_resqueuecapability_ressetting - 1] = 
+	values[Anum_pg_resqueuecapability_ressetting - 1] =
 			CStringGetTextDatum(pResSetting);
 	/* set this column to update */
 	new_record_repl[Anum_pg_resqueuecapability_ressetting - 1]  = true;
@@ -249,7 +249,7 @@ List *
 
 	if (HeapTupleIsValid(old_tuple))
 	{
-		new_tuple = heap_modify_tuple(old_tuple, 
+		new_tuple = heap_modify_tuple(old_tuple,
 									  RelationGetDescr(rel), values,
 									  isnull, new_record_repl);
 
@@ -286,8 +286,8 @@ List *
 
 	return stmtOptIdList;
 } /* end AddUpdResqueueCapabilityEntryInternal */
-				
-/* MPP-6923: */				  
+
+/* MPP-6923: */
 static
 List *
 AlterResqueueCapabilityEntry(
@@ -361,15 +361,15 @@ AlterResqueueCapabilityEntry(
 		else
 		{
 			pStrVal = NULL; /* if NULL, delete entry from
-							 * pg_resqueuecapability 
+							 * pg_resqueuecapability
 							 */
 
 			ScanKeyInit(&key[0],
 						Anum_pg_resourcetype_restypid,
-						BTEqualStrategyNumber, 
+						BTEqualStrategyNumber,
 						F_INT2EQ,
 						Int16GetDatum(resTypeInt));
-	
+
 			scan = systable_beginscan(rel,
 									  ResourceTypeRestypidIndexId,
 									  /* XXX XXX XXX XXX : snapshotnow ? */
@@ -381,7 +381,7 @@ AlterResqueueCapabilityEntry(
 				char	*shutoff_str	  = NULL;
 				Datum	 shutoff_datum;
 				bool	 isnull			  = false;
-				Form_pg_resourcetype rtyp = 
+				Form_pg_resourcetype rtyp =
 						(Form_pg_resourcetype)GETSTRUCT(tuple);
 
 				if (!rtyp->reshasdisable)
@@ -393,14 +393,14 @@ AlterResqueueCapabilityEntry(
 				}
 
 				/* required type must have a default value if it can
-				 * be disabled 
+				 * be disabled
 				 */
 				if (!rtyp->reshasdefault)
 				{
 					if (!rtyp->resrequired)
 						/* optional resource without a default is
 						 * turned off by removing entry from
-						 * pg_resqueuecapability 
+						 * pg_resqueuecapability
 						 */
 						break;
 					else
@@ -415,21 +415,21 @@ AlterResqueueCapabilityEntry(
 				}
 
 				/* get the shutoff string */
-				shutoff_datum = 
+				shutoff_datum =
 						heap_getattr(tuple,
 									 Anum_pg_resourcetype_resdisabledsetting,
 									 tupdesc,
 									 &isnull);
 				Assert(!isnull);
 				shutoff_text = DatumGetTextP(shutoff_datum);
-				shutoff_str = 
+				shutoff_str =
 						DatumGetCString(
 								DirectFunctionCall1(
 										textout,
 										PointerGetDatum(shutoff_text)));
 
 				pStrVal = makeString(shutoff_str);
-					
+
 				break;
 			} /* end while heaptuple is valid */
 			systable_endscan(scan);
@@ -475,7 +475,7 @@ AlterResqueueCapabilityEntry(
 		/* If creating a new resource queue, check pg_resourcetype for
 		 * optional types that have a default value.  Check for
 		 * corresponding match in dupcheck -- if no entry then add the
-		 * one to the WITH list (elems) with the default. 
+		 * one to the WITH list (elems) with the default.
 		 */
 		rel = heap_open(ResourceTypeRelationId, RowExclusiveLock);
 		tupdesc = RelationGetDescr(rel);
@@ -495,7 +495,7 @@ AlterResqueueCapabilityEntry(
 			char	*default_str	  = NULL;
 			Datum	 default_datum;
 			bool	 isnull			  = false;
-			Form_pg_resourcetype rtyp = 
+			Form_pg_resourcetype rtyp =
 					(Form_pg_resourcetype)GETSTRUCT(tuple);
 
 			/* only interested in resources types with default value */
@@ -503,13 +503,13 @@ AlterResqueueCapabilityEntry(
 				continue;
 
 			/* Note: ignore the dummy entries for active_statements,
-			 * max_cost, etc 
+			 * max_cost, etc
 			 */
 			if (rtyp->restypid < PG_RESRCTYPE_PRIORITY)
 				continue;
 
 			/* if resource has a default value, see if it was already
-			 * specified 
+			 * specified
 			 */
 			pResnameVal = makeString(NameStr(rtyp->resname));
 
@@ -517,18 +517,18 @@ AlterResqueueCapabilityEntry(
 				continue;
 
 			/* resource was not specified, so add its default value to
-			 * the WITH list 
+			 * the WITH list
 			 */
 
 			/* get the default string */
-			default_datum = 
+			default_datum =
 					heap_getattr(tuple,
 								 Anum_pg_resourcetype_resdefaultsetting,
 								 tupdesc,
 								 &isnull);
 			Assert(!isnull);
 			default_text = DatumGetTextP(default_datum);
-			default_str = 
+			default_str =
 					DatumGetCString(
 							DirectFunctionCall1(
 									textout,
@@ -563,11 +563,11 @@ AlterResqueueCapabilityEntry(
 		Assert (2 == list_length(pentry));
 
 		lc2 = list_head(pentry);
-		
+
 		resTypeInt = intVal(lfirst(lc2));
 
 		lc2 = lnext(lc2);
-		
+
 		pVal = lfirst(lc2);
 
 		pResSetting = strVal(pVal);
@@ -592,7 +592,7 @@ AlterResqueueCapabilityEntry(
 					((Form_pg_resqueuecapability) GETSTRUCT(tuple))->restypid)
 				{
 					/* found it -- update it */
-					stmtOptIdList = 
+					stmtOptIdList =
 							AddUpdResqueueCapabilityEntryInternal(
 									stmtOptIdList,
 									queueid,
@@ -605,11 +605,11 @@ AlterResqueueCapabilityEntry(
 				}
 			}
 		}
-		systable_endscan(scan); 
+		systable_endscan(scan);
 
 		if (!ii)
 			/* does not exist -- add it */
-			stmtOptIdList = 
+			stmtOptIdList =
 					AddUpdResqueueCapabilityEntryInternal(
 							stmtOptIdList,
 							queueid,
@@ -628,18 +628,15 @@ AlterResqueueCapabilityEntry(
 		ListCell		*lc2;
 		List			*pentry		 = lfirst(lc);
 		int				 resTypeInt;
-		Node			*pVal;
 		int				 ii;
 
 		Assert (2 == list_length(pentry));
 
 		lc2 = list_head(pentry);
-		
+
 		resTypeInt = intVal(lfirst(lc2));
 
 		lc2 = lnext(lc2);
-		
-		pVal = lfirst(lc2);
 
 		ScanKeyInit(&key[0],
 					Anum_pg_resqueuecapability_resqueueid,
@@ -666,7 +663,7 @@ AlterResqueueCapabilityEntry(
 				}
 			}
 		}
-		systable_endscan(scan); 
+		systable_endscan(scan);
 
 	} /* end foreach elem */
 
@@ -676,8 +673,8 @@ AlterResqueueCapabilityEntry(
 
 } /* end AlterResqueueCapabilityEntry */
 
-/* MPP-6923: */				  
-List * 
+/* MPP-6923: */
+List *
 GetResqueueCapabilityEntry(Oid  queueid)
 {
 	List		*elems = NIL;
@@ -702,7 +699,7 @@ GetResqueueCapabilityEntry(Oid  queueid)
 							  true, SnapshotNow, 1, key);
 
 	ii = 0;
-	
+
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
 		if (HeapTupleIsValid(tuple))
@@ -732,14 +729,14 @@ GetResqueueCapabilityEntry(Oid  queueid)
 
 			/* list of lists */
 			elems = lappend(elems, pentry);
-			
+
 			ii++;
 		}
 	}
-	systable_endscan(scan); 
+	systable_endscan(scan);
 
 	heap_close(rel, AccessShareLock);
-	
+
 	return (elems);
 } /* end GetResqueueCapabilityEntry */
 
@@ -762,7 +759,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	ListCell    *pWithList = NULL;
 
 	/* thresholds for active and cost limiters. */
-	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;	
+	Cost		activelimit = INVALID_RES_LIMIT_THRESHOLD;
 	Cost		costlimit	= INVALID_RES_LIMIT_THRESHOLD;
 
 	/* overcommit indicator */
@@ -848,7 +845,7 @@ CreateQueue(CreateQueueStmt *stmt)
 		else
 		{
 			/* silently ignore options on WITH list -- will deal with
-			 * them later in AlterResqueueCapabilityEntry 
+			 * them later in AlterResqueueCapabilityEntry
 			 */
 			if (!bWith)
 				elog(ERROR, "option \"%s\" not recognized",
@@ -863,7 +860,7 @@ CreateQueue(CreateQueueStmt *stmt)
 		if (!(activelimit == INVALID_RES_LIMIT_THRESHOLD || (activelimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("active threshold cannot be less than %d or equal to 0", 
+					 errmsg("active threshold cannot be less than %d or equal to 0",
 							INVALID_RES_LIMIT_THRESHOLD)));
 	}
 
@@ -873,7 +870,7 @@ CreateQueue(CreateQueueStmt *stmt)
 		if (!(costlimit == INVALID_RES_LIMIT_THRESHOLD || (costlimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("cost threshold cannot be less than %d or equal to 0", 
+					 errmsg("cost threshold cannot be less than %d or equal to 0",
 							INVALID_RES_LIMIT_THRESHOLD)));
 	}
 
@@ -923,19 +920,19 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	/*
 	 * Check the pg_resqueue relation to be certain the queue doesn't already
-	 * exist. 
+	 * exist.
 	 */
 	pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
-	
+
 	/**
 	 * Get database locks in anticipation that we'll need to access
 	 * this catalog table later.
 	 */
-	Relation resqueueCapabilityRel = 
+	Relation resqueueCapabilityRel =
 			heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
-	Relation resqueueCapabilityIndexRel = 
+	Relation resqueueCapabilityIndexRel =
 			index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
-	
+
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
 	ScanKeyInit(&key,
@@ -963,16 +960,16 @@ CreateQueue(CreateQueueStmt *stmt)
 	new_record[Anum_pg_resqueue_rsqname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->queue));
 
-	new_record[Anum_pg_resqueue_rsqcountlimit - 1] = 
+	new_record[Anum_pg_resqueue_rsqcountlimit - 1] =
 		Float4GetDatum(activelimit);
 
-	new_record[Anum_pg_resqueue_rsqcostlimit - 1] = 
+	new_record[Anum_pg_resqueue_rsqcostlimit - 1] =
 		Float4GetDatum(costlimit);
 
-	new_record[Anum_pg_resqueue_rsqovercommit - 1] = 
+	new_record[Anum_pg_resqueue_rsqovercommit - 1] =
 		BoolGetDatum(overcommit);
 
-	new_record[Anum_pg_resqueue_rsqignorecostlimit - 1] = 
+	new_record[Anum_pg_resqueue_rsqignorecostlimit - 1] =
 		Float4GetDatum(ignorelimit);
 
 
@@ -990,7 +987,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
 		stmt->optids =
-				AlterResqueueCapabilityEntry(stmt->optids, 
+				AlterResqueueCapabilityEntry(stmt->optids,
 											 queueid, pWithList, true);
 
 	/*
@@ -1006,13 +1003,13 @@ CreateQueue(CreateQueueStmt *stmt)
 			thresholds[RES_COUNT_LIMIT]	 = activelimit;
 			thresholds[RES_COST_LIMIT]	 = costlimit;
 
-			thresholds[RES_MEMORY_LIMIT] = 
+			thresholds[RES_MEMORY_LIMIT] =
 					ResourceQueueGetMemoryLimit(queueid);
-			queueok	= ResCreateQueue(queueid, 
-									 thresholds, 
-									 overcommit, 
+			queueok	= ResCreateQueue(queueid,
+									 thresholds,
+									 overcommit,
 									 ignorelimit);
-			
+
 			/**
 			 * Ensure that the shared data structures are consistent with
 			 * the catalog table on memory limits.
@@ -1020,7 +1017,7 @@ CreateQueue(CreateQueueStmt *stmt)
 #ifdef USE_ASSERT_CHECKING
 			AssertMemoryLimitsMatch();
 #endif
-		
+
 			LWLockRelease(ResQueueLock);
 
 			if (!queueok)
@@ -1039,7 +1036,7 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
-	
+
 	/* MPP-6929, MPP-7583: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -1053,7 +1050,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	}
 
 	CatalogUpdateIndexes(pg_resqueue_rel, tuple);
-	
+
 	heap_close(resqueueCapabilityIndexRel, NoLock);
 	heap_close(resqueueCapabilityRel, NoLock);
 	heap_close(pg_resqueue_rel, NoLock);
@@ -1131,8 +1128,8 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dactivelimit = defel;
 			else
-				dactivelimit = 
-						makeDefElem("active_statements", 
+				dactivelimit =
+						makeDefElem("active_statements",
 									(Node *)
 									makeFloat(INVALID_RES_LIMIT_STRING));
 
@@ -1147,8 +1144,8 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dcostlimit = defel;
 			else
-				dcostlimit = 
-						makeDefElem("max_cost", 
+				dcostlimit =
+						makeDefElem("max_cost",
 									(Node *)
 									makeInteger(costlimit));
 
@@ -1163,8 +1160,8 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dovercommit = defel;
 			else
-				dovercommit = 
-						makeDefElem("cost_overcommit", 
+				dovercommit =
+						makeDefElem("cost_overcommit",
 									(Node *)
 									makeInteger(overcommit));
 
@@ -1179,8 +1176,8 @@ AlterQueue(AlterQueueStmt *stmt)
 			if (!bWithOut)
 				dignorelimit = defel;
 			else
-				dignorelimit = 
-						makeDefElem("min_cost", 
+				dignorelimit =
+						makeDefElem("min_cost",
 									(Node *)
 									makeFloat("0")); /* MPP-7817 */
 
@@ -1215,7 +1212,7 @@ AlterQueue(AlterQueueStmt *stmt)
 		else
 		{
 			/* silently ignore options on WITH list -- will deal with
-			 * them later in AlterResqueueCapabilityEntry 
+			 * them later in AlterResqueueCapabilityEntry
 			 */
 			if (!bWith)
 				elog(ERROR, "option \"%s\" not recognized",
@@ -1251,7 +1248,7 @@ AlterQueue(AlterQueueStmt *stmt)
 		if (!(activelimit == INVALID_RES_LIMIT_THRESHOLD || (activelimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("active threshold cannot be less than %d or equal to 0", 
+					 errmsg("active threshold cannot be less than %d or equal to 0",
 							INVALID_RES_LIMIT_THRESHOLD),
 									   errOmitLocation(true)));
 	}
@@ -1262,7 +1259,7 @@ AlterQueue(AlterQueueStmt *stmt)
 		if (!(costlimit == INVALID_RES_LIMIT_THRESHOLD || (costlimit > 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("cost threshold must be equal to %d or greater than 0", 
+					 errmsg("cost threshold must be equal to %d or greater than 0",
 							INVALID_RES_LIMIT_THRESHOLD),
 									   errOmitLocation(true)));
 	}
@@ -1275,11 +1272,11 @@ AlterQueue(AlterQueueStmt *stmt)
 	if(dignorelimit)
 	{
 		ignorelimit = (Cost) defGetNumeric(dignorelimit);
-		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD || 
+		if (!(ignorelimit == INVALID_RES_LIMIT_THRESHOLD ||
 			  (ignorelimit >= 0)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("min_cost threshold cannot be negative"), 
+					 errmsg("min_cost threshold cannot be negative"),
 					 errOmitLocation(true)));
 	}
 
@@ -1293,7 +1290,7 @@ AlterQueue(AlterQueueStmt *stmt)
 		if (bWith && initcell && lnext(initcell))
 		{
 			/* if have an item on the "with list", don't need to set a
-			 * threshold 
+			 * threshold
 			 */
 		}
 		else
@@ -1306,10 +1303,10 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	/*
 	 * Check the pg_resqueue relation to be certain the queue already
-	 * exists. 
+	 * exists.
 	 */
 	pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
-	
+
 	/**
 	 * Get database locks in anticipation that we'll need to access this catalog table later.
 	 */
@@ -1341,9 +1338,9 @@ AlterQueue(AlterQueueStmt *stmt)
 	 */
 	queueid = HeapTupleGetOid(tuple);
 
-	thresholds[RES_COUNT_LIMIT] = 
+	thresholds[RES_COUNT_LIMIT] =
 		((Form_pg_resqueue) GETSTRUCT(tuple))->rsqcountlimit;
-	thresholds[RES_COST_LIMIT] = 
+	thresholds[RES_COST_LIMIT] =
 		((Form_pg_resqueue) GETSTRUCT(tuple))->rsqcostlimit;
 	thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
 
@@ -1365,17 +1362,17 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	if (dactivelimit)
 	{
-		new_record[Anum_pg_resqueue_rsqcountlimit - 1] = 
+		new_record[Anum_pg_resqueue_rsqcountlimit - 1] =
 			Float4GetDatum(activelimit);
 		new_record_repl[Anum_pg_resqueue_rsqcountlimit - 1] = true;
 
 		thresholds[RES_COUNT_LIMIT] = activelimit;
-		
+
 	}
 
 	if (dcostlimit)
 	{
-		new_record[Anum_pg_resqueue_rsqcostlimit - 1] = 
+		new_record[Anum_pg_resqueue_rsqcostlimit - 1] =
 			Float4GetDatum(costlimit);
 		new_record_repl[Anum_pg_resqueue_rsqcostlimit - 1] = true;
 
@@ -1384,7 +1381,7 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	if (dovercommit)
 	{
-		new_record[Anum_pg_resqueue_rsqovercommit - 1] = 
+		new_record[Anum_pg_resqueue_rsqovercommit - 1] =
 			BoolGetDatum(overcommit);
 		new_record_repl[Anum_pg_resqueue_rsqovercommit - 1] = true;
 
@@ -1392,7 +1389,7 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	if (dignorelimit)
 	{
-		new_record[Anum_pg_resqueue_rsqignorecostlimit - 1] = 
+		new_record[Anum_pg_resqueue_rsqignorecostlimit - 1] =
 			Float4GetDatum(ignorelimit);
 		new_record_repl[Anum_pg_resqueue_rsqignorecostlimit - 1] = true;
 	}
@@ -1419,7 +1416,7 @@ AlterQueue(AlterQueueStmt *stmt)
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
 		stmt->optids =
-				AlterResqueueCapabilityEntry(stmt->optids, 
+				AlterResqueueCapabilityEntry(stmt->optids,
 											 queueid, pWithList, false);
 
 	/** Get new memory limit if changed */
@@ -1440,11 +1437,11 @@ AlterQueue(AlterQueueStmt *stmt)
 		{
 			LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
-			queueok = ResAlterQueue(queueid, 
-									thresholds, 
-									overcommit, 
+			queueok = ResAlterQueue(queueid,
+									thresholds,
+									overcommit,
 									ignorelimit);
-			
+
 			/**
 			 * Ensure that the shared data structures are consistent with
 			 * the catalog table on memory limits.
@@ -1454,7 +1451,7 @@ AlterQueue(AlterQueueStmt *stmt)
 #endif
 
 			LWLockRelease(ResQueueLock);
-			
+
 			if (queueok != ALTERQUEUE_OK)
 			{
 				if (queueok == ALTERQUEUE_SMALL_THRESHOLD)
@@ -1507,7 +1504,6 @@ void
 DropQueue(DropQueueStmt *stmt)
 {
 	Relation	pg_resqueue_rel, pg_authid_rel;
-	TupleDesc	pg_resqueue_dsc, pg_authid_dsc;
 	HeapTuple	tuple, roltuple;
 	ScanKeyData	key, rolekey;
 	SysScanDesc	rsqscan, rolscan;
@@ -1524,17 +1520,15 @@ DropQueue(DropQueueStmt *stmt)
 
 	/*
 	 * Check the pg_resqueue relation to be certain the queue already
-	 * exists. 
+	 * exists.
 	 */
 	pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
-	
+
 	/**
 	 * Get database locks in anticipation that we'll need to access this catalog table later.
 	 */
 	Relation resqueueCapabilityRel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
 	Relation resqueueCapabilityIndexRel = index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
-
-	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
 	ScanKeyInit(&key,
 				Anum_pg_resqueue_rsqname,
@@ -1563,7 +1557,7 @@ DropQueue(DropQueueStmt *stmt)
 	 * Check to see if any roles are in this queue.
 	 */
 	pg_authid_rel = heap_open(AuthIdRelationId, AccessShareLock);
-	pg_authid_dsc = RelationGetDescr(pg_authid_rel);
+	//pg_authid_dsc = RelationGetDescr(pg_authid_rel);
 
 	ScanKeyInit(&rolekey,
 				Anum_pg_authid_rolresqueue,
@@ -1607,7 +1601,7 @@ DropQueue(DropQueueStmt *stmt)
 			LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 			queueok = ResDestroyQueue(queueid);
-		
+
 			/**
 			 * Ensure that the shared data structures are consistent with
 			 * the catalog table on memory limits.
@@ -1652,7 +1646,7 @@ DropQueue(DropQueueStmt *stmt)
 	MetaTrackDropObject(ResQueueRelationId,
 						queueid);
 
-	/* MPP-6923: drop the extended attributes for this queue */	 
+	/* MPP-6923: drop the extended attributes for this queue */
 	{
 		HeapTuple	 xtuple;
 		ScanKeyData	 xkey[1];
@@ -1670,14 +1664,14 @@ DropQueue(DropQueueStmt *stmt)
 								   ResQueueCapabilityResqueueidIndexId,
 								   /* XXX XXX XXX XXX : snapshotnow ? */
 								   true, SnapshotNow, 1, xkey);
-		
+
 		while (HeapTupleIsValid(xtuple = systable_getnext(xscan)))
 		{
 			if (HeapTupleIsValid(xtuple))
 				simple_heap_delete(xrel, &xtuple->t_self);
 
 		}
-		systable_endscan(xscan); 
+		systable_endscan(xscan);
 		heap_close(xrel, RowExclusiveLock);
 	}
 
