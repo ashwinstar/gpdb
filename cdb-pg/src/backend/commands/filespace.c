@@ -47,13 +47,13 @@ static void DeleteFilespaceEntryTuples(Oid fsoid);
 
 /*
  * Calculate maximum filespace path length, Remember that we're going to append
- * '/<tbsoid>/<dboid>/<relid>.<nnn>'  
+ * '/<tbsoid>/<dboid>/<relid>.<nnn>'
  *
  *      10 digits for each oid and the extension number,
  *       1 digit for each slash and the '.' of the extension
  *       = 10*4 + 4 = +44 characters
  *
- * Note: This may be overly conservative.  Do we ever form the whole path 
+ * Note: This may be overly conservative.  Do we ever form the whole path
  * explicitly?
  */
 #define MAX_FILESPACE_PATH (MAXPGPATH - 44)
@@ -84,7 +84,7 @@ typedef struct
 void
 CreateFileSpace(CreateFileSpaceStmt *stmt)
 {
-	Relation			 rel;	
+	Relation			 rel;
 	HeapTuple			 tuple;
 	TupleDesc			 tupdesc;
 	NameData			 fsname;		/* filespace name */
@@ -94,8 +94,6 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	int					 i;     /* Array loop variable */
 	bool				 nulls[Natts_pg_filespace];
 	Datum				 values[Natts_pg_filespace];
-	bool				 enulls[Natts_pg_filespace_entry];
-	Datum				 evalues[Natts_pg_filespace_entry];
 	FileSpaceEntry      *primary  = NULL;
 	FileSpaceEntry      *mirror	  = NULL;
 	List                *nodeSegs = NULL;
@@ -165,13 +163,13 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		segments = getCdbComponentDatabases();
 		numsegs = segments->total_segment_dbs + segments->total_entry_dbs;
 
-		/* 
+		/*
 		 * We need to perform several checks:
 		 *   - Does every segment have a path specified?
 		 *   - Does any segment have more than one path specified?
 		 *   - Are there paths specified for non-existent segments?
 		 *   - Are any paths duplicated between segments on the same host?
-		 * 
+		 *
 		 * In order to answer those questions in a reasonable O(N) calculation
 		 * we build a hash table mapping dbid => filespace entries
 		 *   - segHash[dbid]      => {FileSpaceEntry}
@@ -187,17 +185,17 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		segInfo.hash       = int32_hash;
 		segInfo.hcxt       = CurrentMemoryContext;
 		segFlags           = HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT;
-		segHash = hash_create("filespace segHash", 
+		segHash = hash_create("filespace segHash",
 							  numsegs, &segInfo, segFlags);
-		
-		/* 
+
+		/*
 		 * Pass 1 - Loop through all locations specified in the statement:
-		 *   - segHash[dbid] => { _, FileSpaceEntry} 
+		 *   - segHash[dbid] => { _, FileSpaceEntry}
 		 *   - check for any duplicate dbids
 		*/
-		foreach (cell, stmt->locations) 
+		foreach (cell, stmt->locations)
 		{
-			FileSpaceEntry		*fse  = (FileSpaceEntry*) lfirst(cell); 
+			FileSpaceEntry		*fse  = (FileSpaceEntry*) lfirst(cell);
 			int32				 dbid = (int32) fse->dbid;
 
 			/* Check for existing entry */
@@ -213,8 +211,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 			/* Populate the hash entry */
 			segElem->fse = fse;
 		}
-		
-		/* 
+
+		/*
 		 * Pass 2 - Loop through segment information in the array.
 		 *   - check for any segments not specified in the command.
 		 *   - annotates the FileSpaceEntry with the contentid and hostname
@@ -227,7 +225,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 			int32		 dbid	   = segments->entry_db_info[i].dbid;
 			int32		 contentid = segments->entry_db_info[i].segindex;
 			char		*hostname  = segments->entry_db_info[i].hostname;
-			
+
 			/* Lookup the entry in the segHash */
 			segElem = (segHashElem *) \
 				hash_search(segHash, (void *) &dbid, HASH_FIND, &found);
@@ -288,15 +286,15 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		hash_destroy(segHash);
 	}
 
-	/* 
-	 * Find the location of the filespace for *this* segment, and perform 
+	/*
+	 * Find the location of the filespace for *this* segment, and perform
 	 * additional validations on the path.
 	 */
 	foreach(cell, stmt->locations)
 	{
 		FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 
-		/* 
+		/*
 		 * Find the location information for this dbid, and identify the
 		 * dbid and location for our mirror pair (matching contentid)
 		 */
@@ -307,16 +305,16 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		}
 		else if (fse->contentid == GpIdentity.segindex)
 		{
-			/* 
-			 * This will require work if we start supporting multiple 
-			 * mirrors per segment. 
+			/*
+			 * This will require work if we start supporting multiple
+			 * mirrors per segment.
 			 */
 			Assert(mirror == NULL);
 			mirror = fse;
 		}
 	}
 
-	/* 
+	/*
 	 * Should have been checked before QE dispatch, something is weird if
 	 * we hit this condition here.
 	 */
@@ -324,8 +322,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		elog(ERROR, "filespace location not specified for dbid %d",
 			 GpIdentity.dbid);
 
-	/* 
-	 * Check the path for the primary and mirror.  
+	/*
+	 * Check the path for the primary and mirror.
 	 *
 	 * We need to check this this before we ask the persistent object layer to
 	 * create the directory because once we switch to "CreatePending" any
@@ -342,16 +340,16 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	if (mirror)
 		MirroredFileSysObj_ValidateFilespaceDir(mirror->location);
 
-	/* 
+	/*
 	 * Having identified the fse entry for this segment we now know what
 	 * the canonical hostname is for this host and can identify the other
-	 * segments running on this host.  
+	 * segments running on this host.
 	 *
 	 * Note: since we need to check the mirrors against other mirrors and
 	 * we can't do this on the mirror side it is the responsibility of
 	 * the primaries on the node to check the mirrors.  Since they can't
 	 * currently differentiate which of the other segments are primaries
-	 * and which are mirrors all of them end up checking everything. 
+	 * and which are mirrors all of them end up checking everything.
 	 * This is redundant, but its the only way we can check the mirrors.
 	 *
 	 * Note: This is only a best effort attempt at verifying the mirrors.
@@ -367,7 +365,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		FileSpaceEntry	*outer = (FileSpaceEntry*) lfirst(cell);
 		ListCell        *cell2;
 
-		/* 
+		/*
 		 * For every segment on this host:
 		 *  - compare against every segments found so far
 		 *  - add to the list of segments
@@ -388,8 +386,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	list_free(nodeSegs);
 	nodeSegs = NULL;
 
-	/* 
-	 * Everything possible has been checked: 
+	/*
+	 * Everything possible has been checked:
 	 *  - Begin actual creation of the filespace
 	 */
 
@@ -418,7 +416,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	/* Keep the lock until commit/abort */
 	heap_close(rel, NoLock);
 
-	/* 
+	/*
 	 * Master only:
 	 *   1) Add all locations to the pg_filespace_entry table
 	 *   2) Dispatch to the segments
@@ -434,13 +432,11 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	{
 		rel = heap_open(FileSpaceEntryRelationId, RowExclusiveLock);
 		tupdesc = RelationGetDescr(rel);
-		MemSet(enulls, false, sizeof(enulls));
-		evalues[Anum_pg_filespace_entry_fsefsoid - 1] = ObjectIdGetDatum(fsoid);
 
 		foreach(cell, stmt->locations)
 		{
 			FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
-			
+
 			add_catalog_filespace_entry(rel, fsoid, fse->dbid, fse->location);
 		}
 
@@ -458,27 +454,27 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 				);
 	}
 
-	/* 
+	/*
 	 * Update the gp_persistent_filespace_node table.
 	 *
 	 * The persistent object layer is responsible for ensuring that the
-	 * directories are created and maintained in the filesystem.  Most 
+	 * directories are created and maintained in the filesystem.  Most
 	 * importantly this layer knows how to cleanup filesystem objects in the
-	 * event that this transaction aborts and the rollback and recovery 
-	 * mechanisms know how to use this to cleanup after a hard failure or 
+	 * event that this transaction aborts and the rollback and recovery
+	 * mechanisms know how to use this to cleanup after a hard failure or
 	 * replay the creation for mirror resynchronisation.
 	 */
 	if (mirror == NULL)
 	{
 		MirroredFileSysObj_TransactionCreateFilespaceDir(
-			fsoid, 
+			fsoid,
 			primary->dbid, primary->location, 0, NULL,
 			&persistentTid, &persistentSerialNum);
 	}
 	else
 	{
 		MirroredFileSysObj_TransactionCreateFilespaceDir(
-			fsoid, 
+			fsoid,
 			primary->dbid, primary->location, mirror->dbid, mirror->location,
 			&persistentTid, &persistentSerialNum);
 	}
@@ -489,7 +485,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
  *
  * Be careful to check that the filespace is empty.
  */
-void 
+void
 RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 {
 	Relation      rel;
@@ -497,7 +493,7 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 	Oid			  fsoid;
 	ObjectAddress object;
 
-	/* 
+	/*
 	 * General DROP (object) syntax allows fully qualified names, but
 	 * filespaces are global objects that do not live in schemas, so
 	 * it is a syntax error if a fully qualified name was given.
@@ -514,7 +510,7 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("syntax at or near \"cascade\"")));
 
-	/* 
+	/*
 	 * Because rollback of filespace operations are difficult and expected
 	 * usage is anticipated to be light we remove concurency worries by
 	 * taking a big lock up front.
@@ -531,7 +527,7 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 		{
 			if (Gp_role != GP_ROLE_EXECUTE)
 				ereport(NOTICE,
-						(errmsg("filespace \"%s\" does not exist, skipping", 
+						(errmsg("filespace \"%s\" does not exist, skipping",
 								fsname)));
 			return;
 		}
@@ -553,7 +549,7 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 				(errmsg("cannot drop filespace %s because it is required "
 						"by the database system", fsname)));
 
-	/* 
+	/*
 	 * performDeletion only drops things that have dependencies in
 	 * pg_depend/pg_shdepend which does NOT include dependencies on tablespaces
 	 * (perhaps pg_shdepend should).  So we look for these dependencies by
@@ -572,12 +568,12 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 */
 	DeleteSharedComments(fsoid, FileSpaceRelationId);
 
-	/* 
-	 * Keep the lock until commit/abort 
+	/*
+	 * Keep the lock until commit/abort
 	 */
 	heap_close(rel, NoLock);
 
-	/* 
+	/*
 	 * Master Only:
 	 *   1) Remove entries from pg_filespace_entry
 	 *
@@ -592,7 +588,7 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 							fsoid);
 	}
 
-	/* 
+	/*
 	 * The persistent object layer is responsible for actually managing the
 	 * actual directory on disk.  Tell it that this filespace is removed by
 	 * this transaciton.  This marks the filespace as pending delete and it
@@ -601,7 +597,7 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 	MirroredFileSysObj_ScheduleDropFilespaceDir(fsoid);
 }
 
-/* 
+/*
  * RemoveFileSpaceById
  *   Guts of Filespace Deletion, called by dependency.c
  */
@@ -632,7 +628,7 @@ RemoveFileSpaceById(Oid fsoid)
 	heap_close(rel, RowExclusiveLock);
 }
 
-static void 
+static void
 DeleteFilespaceEntryTuples(Oid fsoid)
 {
 	Relation	rel;
@@ -706,7 +702,7 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	if (!allowSystemTableModsDDL && IsReservedName(fsname))
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
-				 errmsg("permission denied: \"%s\" is a system filespace", 
+				 errmsg("permission denied: \"%s\" is a system filespace",
 						fsname)));
 
 	/*
@@ -803,7 +799,7 @@ RenameFileSpace(const char *oldname, const char *newname)
 	if (!allowSystemTableModsDDL && IsReservedName(oldname))
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
-				 errmsg("permission denied: \"%s\" is a system filespace", 
+				 errmsg("permission denied: \"%s\" is a system filespace",
 						oldname)));
 
 	/* Must be owner */
@@ -992,7 +988,7 @@ get_filespace_path(Oid fseoid, int16 dbid)
  * We have other checks to perform, but these are the only ones that we
  * can run based only on the name without the local file system present.
  */
-static void 
+static void
 checkPathFormat(char *path)
 {
 	/* Unix-ify the offered path and strip any trailing slashes */
@@ -1004,7 +1000,7 @@ checkPathFormat(char *path)
 				(errcode(ERRCODE_INVALID_NAME),
 				 errmsg("filespace location \"%s\" "
 						"cannot contain single quotes", path)));
-	
+
 	/*
 	 * Allowing relative paths seems risky
 	 *
@@ -1017,14 +1013,14 @@ checkPathFormat(char *path)
 						"must be an absolute path", path)));
 
 	/*
-	 * Check that location isn't too long. 
+	 * Check that location isn't too long.
 	 */
 	if (strlen(path) >= MAX_FILESPACE_PATH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("filespace location \"%s\" is too long",
 						path),
-				 errhint("maximum length %d characters", 
+				 errhint("maximum length %d characters",
 						 MAX_FILESPACE_PATH)));
 }
 
@@ -1045,10 +1041,10 @@ checkPathFormat(char *path)
  *    - Validate that the parent has apropriate permissions
  *
  * Note: Passing these checks does not guarantee that everything is good.
- * In particular we have not checked anywhere that the paths are all 
+ * In particular we have not checked anywhere that the paths are all
  * unique on a given host.  We omit this only because this is a difficult
  * test when we don't have metadata about what segments are on the same host.
- * 
+ *
  * If there is a conflict we should see it when we actually try to claim
  * the directories for the segments.
  *
@@ -1058,7 +1054,7 @@ checkPathFormat(char *path)
  * Note: See FileRepMirror_Validation() in cdb/cdbfilerepmirror.c for the same
  * checks run on the mirror side.
  */
-static void 
+static void
 checkPathPermissions(char *path)
 {
 	struct stat st;
@@ -1067,7 +1063,7 @@ checkPathPermissions(char *path)
 	/* The specified path should not exist yet */
 	if (stat(path, &st) >= 0)
 	{
-		ereport(ERROR, 
+		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("%s: File exists", path)));
 	}
@@ -1080,17 +1076,17 @@ checkPathPermissions(char *path)
 	if (stat(parentdir, &st) < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("%s: No such file or directory", 
+				 errmsg("%s: No such file or directory",
 						parentdir)));
-		
+
 	/* The parent directory must be a directory */
 	if (! S_ISDIR(st.st_mode))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("%s: Not a directory", parentdir)));
 
-	/* 
-	 * Check write permissions of the parent directory 
+	/*
+	 * Check write permissions of the parent directory
 	 *
 	 * Note: Accornding to the BSD manual access shouldn't be used because it
 	 * is a security hole, but what they are actually refering to is the fact
@@ -1110,7 +1106,7 @@ checkPathPermissions(char *path)
  * duplicatePathCheck()
  *
  * Compares two filespace entries to determine if they have the same location.
- * 
+ *
  * The main complication is that two paths that look different from
  * each other could in fact be the same due to links, mount points, etc.
  *
@@ -1136,7 +1132,7 @@ duplicatePathCheck(FileSpaceEntry *fse1, FileSpaceEntry *fse2)
 	tail1 = path1 + strlen(parent1) + 1;
 	tail2 = path2 + strlen(parent2) + 1;
 
-	/* 
+	/*
 	 * It is assumed that we have run at least one of these two paths through
 	 * checkPathPermissions, which means that it's parent directory exists.  If
 	 * the OTHER paths parent doesn't exist, then they aren't the same path.
@@ -1182,7 +1178,7 @@ dup_path_return:
  * Checks the gp_persistent_tablespace_node table to determine if the specified
  * filespace is empty.
  */
-static void 
+static void
 filespace_check_empty(Oid fsoid)
 {
 	HeapScanDesc scandesc;
@@ -1203,7 +1199,7 @@ filespace_check_empty(Oid fsoid)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("filespace \"%s\" is not empty", 
+				 errmsg("filespace \"%s\" is not empty",
 						get_filespace_name(fsoid))));
 	}
 	heap_endscan(scandesc);
@@ -1225,7 +1221,7 @@ add_catalog_filespace_entry(Relation rel, Oid fsoid, int16 dbid, char *location)
 	evalues[Anum_pg_filespace_entry_fsedbid - 1] = Int16GetDatum(dbid);
 	evalues[Anum_pg_filespace_entry_fselocation - 1] =
 				DirectFunctionCall1(textin, CStringGetDatum(location));
-			
+
 	tuple = heap_form_tuple(RelationGetDescr(rel), evalues, enulls);
 	simple_heap_insert(rel, tuple);
 	CatalogUpdateIndexes(rel, tuple);

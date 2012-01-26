@@ -664,7 +664,7 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 
 	}
 
-	
+
 	return bytesread;
 }
 
@@ -788,14 +788,14 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 				/* RET */
 				ereport(NOTICE,
 						(errmsg("HEADER means that each one of the data files "
-								"has a header row.")));				
+								"has a header row.")));
 			}
 			else
 			{
 				/* WET */
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-						errmsg("HEADER is not yet supported for writable external tables")));				
+						errmsg("HEADER is not yet supported for writable external tables")));
 			}
 		}
 	}
@@ -1168,7 +1168,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	/* set end of line type if NEWLINE keyword was specified */
 	if (cstate->eol_str)
 		CopyEolStrToType(cstate);
-	
+
 	/* Disallow file COPY except to superusers. */
 	if (!pipe && !superuser())
 		ereport(ERROR,
@@ -1183,7 +1183,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	cstate->fe_msgbuf = NULL;
 	cstate->fe_eof = false;
 	cstate->missing_bytes = 0;
-	
+
 	if(!is_from)
 	{
 		if (pipe)
@@ -1638,7 +1638,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		pfree(cstate->force_quote_flags);
 	if(cstate->force_notnull_flags)
 		pfree(cstate->force_notnull_flags);
-		
+
 	pfree(cstate->attribute_buf.data);
 	pfree(cstate->line_buf.data);
 	pfree(cstate);
@@ -1812,7 +1812,6 @@ CopyToDispatch(CopyState cstate)
 {
 	TupleDesc	tupDesc;
 	int			num_phys_attrs;
-	int			attr_count;
 	Form_pg_attribute *attr;
 	CdbCopy    *cdbCopy;
 	StringInfoData cdbcopy_err;
@@ -1821,7 +1820,6 @@ CopyToDispatch(CopyState cstate)
 	tupDesc = cstate->rel->rd_att;
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
-	attr_count = list_length(cstate->attnumlist);
 
 	/* We use fe_msgbuf as a per-row buffer regardless of copy_dest */
 	cstate->fe_msgbuf = makeStringInfo();
@@ -2231,9 +2229,9 @@ CopyTo(CopyState cstate)
 
 void
 CopyOneCustomRowTo(CopyState cstate, bytea *value)
-{	
-	appendBinaryStringInfo(cstate->fe_msgbuf, 
-						   VARDATA_ANY((void *) value), 
+{
+	appendBinaryStringInfo(cstate->fe_msgbuf,
+						   VARDATA_ANY((void *) value),
 						   VARSIZE_ANY_EXHDR((void *) value));
 }
 
@@ -2326,7 +2324,7 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *isnulls)
 
 	/*
 	 * Finish off the row: write it to the destination, and update the count.
-	 * However, if we're in the context of a writable external table, we let 
+	 * However, if we're in the context of a writable external table, we let
 	 * the caller do it - send the data to its local external source (see
 	 * external_insert() ).
 	 */
@@ -2335,7 +2333,7 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *isnulls)
 		CopySendEndOfRow(cstate);
 		cstate->processed++;
 	}
-	
+
 	MemoryContextSwitchTo(oldcontext);
 }
 
@@ -2475,7 +2473,7 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 		Assert(cstate->eol_str);
 		appendStringInfo(cdbcopy_cmd, " NEWLINE AS '%s'", cstate->eol_str);
 	}
-		
+
 	if (cstate->csv_mode)
 	{
 		appendStringInfo(cdbcopy_cmd, " CSV");
@@ -2529,7 +2527,6 @@ CopyFromDispatch(CopyState cstate)
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
-				attr_count,
 				num_defaults;
 	FmgrInfo   *in_functions;
 	FmgrInfo   *out_functions; /* for handling defaults in Greenplum Database */
@@ -2587,7 +2584,6 @@ CopyFromDispatch(CopyState cstate)
 
 	/* variables for partitioning */
 	Datum      *part_values = NULL;
-	Oid		   *part_attr_types = NULL; /* types for partitioning */
 	Oid		   *part_typio = NULL;
 	FmgrInfo   *part_infuncs = NULL;
 	AttrNumber *part_attnum = NULL;
@@ -2628,7 +2624,6 @@ CopyFromDispatch(CopyState cstate)
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
-	attr_count = list_length(cstate->attnumlist);
 	num_defaults = 0;
 	h_attnum = 0;
 
@@ -2867,7 +2862,7 @@ CopyFromDispatch(CopyState cstate)
 				{
 					if (i > cstate->last_hash_field)
 						cstate->last_hash_field = i;
-				}				
+				}
 			}
 
 			i++;
@@ -3260,7 +3255,6 @@ CopyFromDispatch(CopyState cstate)
 							cxt_save = MemoryContextSwitchTo(oldcontext);
 
 							part_values = palloc0(num_phys_attrs * sizeof(Datum));
-							part_attr_types = palloc(num_phys_attrs * sizeof(Oid));
 							part_typio = palloc(num_phys_attrs * sizeof(Oid));
 							part_infuncs =
 								palloc(num_phys_attrs * sizeof(FmgrInfo));
@@ -3423,7 +3417,7 @@ CopyFromDispatch(CopyState cstate)
 								 cstate->line_buf_converted, \
 								 COPY_METADATA_DELIM, \
 								 cstate->line_buf.data);
-				
+
 				/* send modified data */
 				cdbCopySendData(cdbCopy,
 								target_seg,
@@ -3516,11 +3510,11 @@ CopyFromDispatch(CopyState cstate)
 	{
 		int total_rejected = 0;
 		int total_rejected_from_qd = cstate->cdbsreh->rejectcount;
-		
+
 		/* if used errtable, QD bad rows were sent to QEs and counted there. ignore QD count */
 		if (cstate->cdbsreh->errtbl)
 			total_rejected_from_qd = 0;
-		
+
 		total_rejected = total_rejected_from_qd + total_rejeted_from_qes;
 		cstate->processed -= total_rejected;
 
@@ -3622,7 +3616,7 @@ CopyFromDispatch(CopyState cstate)
 	 * freed when our current memory context is freed. And that will be
 	 * quite soon.
 	 */
-	
+
 	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }
@@ -3637,7 +3631,6 @@ CopyFrom(CopyState cstate)
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
-				attr_count,
 				num_defaults;
 	FmgrInfo   *in_functions;
 	Oid		   *typioparams;
@@ -3665,7 +3658,6 @@ CopyFrom(CopyState cstate)
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
-	attr_count = list_length(cstate->attnumlist);
 	num_defaults = 0;
 
 	/*
@@ -3805,7 +3797,7 @@ CopyFrom(CopyState cstate)
 				bool		skip_tuple;
 				Oid			loaded_oid = InvalidOid;
 				char		relstorage;
-				
+
 				CHECK_FOR_INTERRUPTS();
 
 				/* Reset the per-tuple exprcontext */
@@ -4109,7 +4101,7 @@ CopyFrom(CopyState cstate)
 				if (!skip_tuple)
 				{
 					char relstorage = RelinfoGetStorage(resultRelInfo);
-					
+
 					if (relstorage != RELSTORAGE_AOCOLS)
 					{
 						/* Place tuple in tuple slot */
@@ -4137,17 +4129,17 @@ CopyFrom(CopyState cstate)
 					{
 						Oid			tupleOid;
 						AOTupleId	aoTupleId;
-						
+
 						/* inserting into an append only relation */
 						appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple, &tupleOid, &aoTupleId);
-						
+
 						if (resultRelInfo->ri_NumIndices > 0)
 							ExecInsertIndexTuples(slot, (ItemPointer)&aoTupleId, estate, false);
 					}
 					else if (relstorage == RELSTORAGE_AOCOLS)
 					{
 						AOTupleId aoTupleId;
-						
+
                         aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls, &aoTupleId);
 						if (resultRelInfo->ri_NumIndices > 0)
 							ExecInsertIndexTuples(slot, (ItemPointer)&aoTupleId, estate, false);
@@ -4223,7 +4215,7 @@ CopyFrom(CopyState cstate)
 	/* free the hash table allocated by values_get_partition(), if any */
 	if(estate->es_result_partitions && estate->es_partition_state->result_partition_hash != NULL)
 		hash_destroy(estate->es_partition_state->result_partition_hash);
-		
+
 	pfree(attr_offsets);
 
 	pfree(in_functions);
@@ -4247,13 +4239,13 @@ CopyFrom(CopyState cstate)
 
 			if (resultRelInfo->ri_extInsertDesc)
 					external_insert_finish(resultRelInfo->ri_extInsertDesc);
-			
+
 			/* Close indices and then the relation itself */
 			ExecCloseIndices(resultRelInfo);
 			heap_close(resultRelInfo->ri_RelationDesc, NoLock);
 			resultRelInfo++;
 	}
-	
+
 	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }
@@ -4269,15 +4261,9 @@ bool
 CopyReadLineText(CopyState cstate, size_t bytesread)
 {
 	int			linesize;
-	char		escapec = '\0';
 
 	/* mark that encoding conversion hasn't occurred yet */
 	cstate->line_buf_converted = false;
-
-	/*
-	 * set the escape char for text format ('\\' by default).
-	 */
-	escapec = cstate->escape[0];
 
 	/*
 	 * Detect end of line type if not already detected.
@@ -4743,16 +4729,16 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 	char		quotec = '\0',
 				escapec = '\0';
 	bool		csv = false;
-	
+
 	/*
 	 * CSV special case. See MPP-7819.
-	 * 
+	 *
 	 * this functions may change the in_quote value while processing.
 	 * this is ok as we need to keep state in case we don't find EOL
 	 * in this buffer and need to be called again to continue searching.
-	 * BUT if EOL *was* found we must reset to the state we had since 
+	 * BUT if EOL *was* found we must reset to the state we had since
 	 * we are about to reprocess this buffer again in CopyReadLineCSV
-	 * from the same starting point as we are in right now. 
+	 * from the same starting point as we are in right now.
 	 */
 	bool save_inquote = cstate->in_quote;
 	bool save_lastwas = cstate->last_was_esc;
@@ -4787,7 +4773,7 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 		if (c == '\n')
 		{
 			lineno++;
-			
+
 			if (!csv || (csv && !cstate->in_quote))
 			{
 				cstate->eol_type = EOL_LF;
@@ -4799,7 +4785,7 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 				return true;
 			}
 			else if(csv && cstate->in_quote && cstate->line_buf.len + index >= gp_max_csv_line_length)
-			{	
+			{
 				/* we do a "line too long" CSV check for the first row as well (MPP-7869) */
 				cstate->in_quote = false;
 				cstate->line_done = true;
@@ -4814,7 +4800,7 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 		if (c == '\r')
 		{
 			lineno++;
-			
+
 			if (!csv || (csv && !cstate->in_quote))
 			{
 				if (cstate->raw_buf[index + 1] == '\n')		/* always safe */
@@ -4839,10 +4825,10 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 		index++;
 	}
 
-	/* since we're yet to find the EOL this buffer will never be 
+	/* since we're yet to find the EOL this buffer will never be
 	 * re-processed so add the number of rows we found so we don't lose it */
 	cstate->cur_lineno += lineno;
-	
+
 	return false;
 }
 
@@ -5209,10 +5195,10 @@ CopyReadAttributesText(CopyState cstate, bool * __restrict nulls,
 						else
 						{
 							/* no escape sequence found. it's a lone escape */
-							
+
 							bool next_is_eol = ((nextc == '\n' && cstate->eol_type == EOL_LF) ||
 																   cstate->eol_type == EOL_CRLF);
-							
+
 							if(!next_is_eol)
 							{
 								/* take next char literally */
@@ -5220,7 +5206,7 @@ CopyReadAttributesText(CopyState cstate, bool * __restrict nulls,
 							}
 							else
 							{
-								/* there isn't a next char (end of data in line). we keep the 
+								/* there isn't a next char (end of data in line). we keep the
 								 * backslash as a literal character. We don't skip over the EOL,
 								 * since we don't support escaping it anymore (unlike PG).
 								 */
@@ -5268,11 +5254,11 @@ CopyReadAttributesText(CopyState cstate, bool * __restrict nulls,
 			*(cstate->attribute_buf.data + attr_offsets[attribute] - 1) = '\0';
 	}
 
-	/* 
-	 * MPP-6816 
+	/*
+	 * MPP-6816
 	 * If any attribute has a de-escaped octal or hex sequence with a
 	 * high bit set, we check that the changed attribute text is still
-	 * valid WRT encoding. We run the check on all attributes since 
+	 * valid WRT encoding. We run the check on all attributes since
 	 * such octal sequences are so rare in client data that it wouldn't
 	 * affect performance at all anyway.
 	 */
@@ -5609,9 +5595,9 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	char		escapec = cstate->escape[0];
 
 	if (cstate->need_transcoding)
-		ptr = pg_server_to_custom(string, 
-								  strlen(string), 
-								  cstate->client_encoding, 
+		ptr = pg_server_to_custom(string,
+								  strlen(string),
+								  cstate->client_encoding,
 								  cstate->enc_conversion_proc);
 	else
 		ptr = string;
@@ -5791,7 +5777,7 @@ CopyAttributeOutCSV(CopyState cstate, char *string,
 		use_quote = true;
 
 	if (cstate->need_transcoding)
-		ptr = pg_server_to_custom(string, 
+		ptr = pg_server_to_custom(string,
 								  strlen(string),
 								  cstate->client_encoding,
 								  cstate->enc_conversion_proc);
@@ -5949,7 +5935,7 @@ if(md_delim && (md_delim != line_start)) \
 else \
 { \
 	cstate->md_error = true; \
-}	
+}
 
 /*
  * CopyExtractRowMetaData - extract embedded row number from data.
@@ -5975,7 +5961,7 @@ static
 void CopyExtractRowMetaData(CopyState cstate)
 {
 	char *md_delim = NULL; /* position of the metadata delimiter */
-	
+
 	/*
 	 * Line_buf may have already skipped an OID column if WITH OIDS defined,
 	 * so we need to start from cursor not always from beginning of linebuf.
@@ -5984,14 +5970,14 @@ void CopyExtractRowMetaData(CopyState cstate)
 	int  value_len = 0;
 
 	cstate->md_error = false;
-	
+
 	/* look for the first delimiter, and extract lineno */
 	COPY_FIND_MD_DELIM;
-	
-	/* 
+
+	/*
 	 * make sure MD exists. that should always be the case
-	 * unless we run into an edge case - see MPP-8052. if that 
-	 * happens md_error is now set. we raise an error. 
+	 * unless we run into an edge case - see MPP-8052. if that
+	 * happens md_error is now set. we raise an error.
 	 */
 	if(cstate->md_error)
 		ereport(ERROR,
@@ -6010,9 +5996,9 @@ void CopyExtractRowMetaData(CopyState cstate)
 
 	/* look for the second delimiter, and extract line_buf_converted */
 	COPY_FIND_MD_DELIM;
-	Assert(*line_start == '0' || *line_start == '1'); 
+	Assert(*line_start == '0' || *line_start == '1');
 	cstate->line_buf_converted = atoi(line_start);
-	
+
 	*md_delim = COPY_METADATA_DELIM;
 	cstate->line_buf.cursor += value_len;
 }
@@ -6047,9 +6033,9 @@ copy_in_error_callback(void *arg)
 
 	/*
 	 * If our (copy of) linebuf has the embedded original row number and other
-	 * row-specific metadata, remove it. It is not part of the actual data, and 
+	 * row-specific metadata, remove it. It is not part of the actual data, and
 	 * should not be displayed.
-	 * 
+	 *
 	 * we skip this step, however, if md_error was previously set by
 	 * CopyExtractRowMetaData. That should rarely happen, though.
 	 */
@@ -6066,8 +6052,8 @@ copy_in_error_callback(void *arg)
 			/*
 			 * we only continue parsing metadata if the first extraction above
 			 * succeeded. there are some edge cases where we may not have a line
-			 * with MD to parse, for example if some non-copy related error 
-			 * propagated here and we don't yet have a proper data line. 
+			 * with MD to parse, for example if some non-copy related error
+			 * propagated here and we don't yet have a proper data line.
 			 * see MPP-11328
 			 */
 			value_len = lineno_delim - line_start + 1;
@@ -6079,7 +6065,7 @@ copy_in_error_callback(void *arg)
 
 			value_len = lineno_delim - line_start + 1;
 			copy_of_line_buf.data += value_len; /* advance beyond line_buf_converted */
-			copy_of_line_buf.len -= value_len;		
+			copy_of_line_buf.len -= value_len;
 		}
 	}
 
@@ -6252,27 +6238,27 @@ attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
 char *
 scanTextLine(CopyState cstate, const char *s, char eol, size_t len)
 {
-		
+
 	if (cstate->encoding_embeds_ascii && !cstate->line_buf_converted)
 	{
 		int			mblen;
 		const char *end = s + len;
-		
+
 		/* we may need to skip the end of a multibyte char from the previous buffer */
 		s += cstate->missing_bytes;
-		
+
 		mblen = pg_encoding_mblen(cstate->client_encoding, s);
 
 		for (; *s != eol && s < end; s += mblen)
 			mblen = pg_encoding_mblen(cstate->client_encoding, s);
 
-		/* 
+		/*
 		 * MPP-10802
-		 * if last char is a partial mb char (the rest of its bytes are in the next 
-		 * buffer) save # of missing bytes for this char and skip them next time around 
+		 * if last char is a partial mb char (the rest of its bytes are in the next
+		 * buffer) save # of missing bytes for this char and skip them next time around
 		 */
 		cstate->missing_bytes = (s > end ? s - end : 0);
-			
+
 		return ((*s == eol) ? (char *) s : NULL);
 	}
 	else
@@ -6285,16 +6271,16 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 {
 	const char *start = s;
 	const char *end = start + len;
-	
+
 	if (cstate->encoding_embeds_ascii && !cstate->line_buf_converted)
 	{
 		int			mblen;
-		
+
 		/* we may need to skip the end of a multibyte char from the previous buffer */
 		s += cstate->missing_bytes;
-		
+
 		mblen = pg_encoding_mblen(cstate->client_encoding, s);
-		
+
 		for ( ; *s != eol && s < end ; s += mblen)
 		{
 			if (cstate->in_quote && *s == escapec)
@@ -6306,17 +6292,17 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 
 			mblen = pg_encoding_mblen(cstate->client_encoding, s);
 		}
-		
-		/* 
+
+		/*
 		 * MPP-10802
-		 * if last char is a partial mb char (the rest of its bytes are in the next 
-		 * buffer) save # of missing bytes for this char and skip them next time around 
+		 * if last char is a partial mb char (the rest of its bytes are in the next
+		 * buffer) save # of missing bytes for this char and skip them next time around
 		 */
 		cstate->missing_bytes = (s > end ? s - end : 0);
 	}
 	else
 		/* safe to scroll byte by byte */
-	{	
+	{
 		for ( ; *s != eol && s < end ; s++)
 		{
 			if (cstate->in_quote && *s == escapec)
@@ -6330,7 +6316,7 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 
 	if (s == end)
 		return NULL;
-	
+
 	if (*s == eol)
 		cstate->last_was_esc = false;
 
@@ -6540,7 +6526,7 @@ static bool CopyCheckIsLastLine(CopyState cstate)
 		concatenateEol(cstate);
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -6558,7 +6544,7 @@ static bool CopyCheckIsLastLine(CopyState cstate)
 void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswritable)
 {
 	Oid		conversion_proc;
-	
+
 	/*
 	 * COPY FROM and RET: convert from client to server
 	 * COPY TO   and WET: convert from server to client
@@ -6566,10 +6552,10 @@ void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswri
 	if (iswritable)
 		conversion_proc = FindDefaultConversionProc(GetDatabaseEncoding(),
 													client_encoding);
-	else		
+	else
 		conversion_proc = FindDefaultConversionProc(client_encoding,
 												    GetDatabaseEncoding());
-	
+
 	if (OidIsValid(conversion_proc))
 	{
 		/* conversion proc found */
@@ -6611,15 +6597,15 @@ void preProcessDataLine(CopyState cstate)
 	else if(cstate->err_loc_type == ROWNUM_EMBEDDED)
 	{
 		Assert(Gp_role == GP_ROLE_EXECUTE);
-		
+
 		/*
 		 * Extract various metadata sent to us from the QD COPY about this row:
 		 * 1) the original line number of the row.
 		 * 2) if the row was converted to server encoding or not
 		 */
 		CopyExtractRowMetaData(cstate); /* sets cur_lineno internally */
-		
-		/* check if QD sent us a badly encoded row, still in client_encoding, 
+
+		/* check if QD sent us a badly encoded row, still in client_encoding,
 		 * in order to catch the encoding error ourselves. if line_buf_converted
 		 * is false after CopyExtractRowMetaData then we must transcode and catch
 		 * the error. Verify that we are indeed in SREH error table mode. that's
@@ -6628,24 +6614,24 @@ void preProcessDataLine(CopyState cstate)
 		if (!cstate->line_buf_converted)
 		{
 			Assert(cstate->errMode == SREH_LOG);
-			force_transcoding = true; 
+			force_transcoding = true;
 		}
-			
+
 	}
 	else
 	{
 		Assert(false); /* byte offset not yet supported */
 	}
-	
+
 	if (cstate->need_transcoding || force_transcoding)
 	{
 		cvt = (char *) pg_custom_to_server(cstate->line_buf.data,
 										   cstate->line_buf.len,
 										   cstate->client_encoding,
 										   cstate->enc_conversion_proc);
-		
+
 		Assert(!force_transcoding); /* if force is 't' we must have failed in the conversion */
-		
+
 		if (cvt != cstate->line_buf.data)
 		{
 			/* transfer converted data back to line_buf */
@@ -6675,12 +6661,12 @@ void CopyEolStrToType(CopyState cstate)
 	{
 		cstate->eol_type = EOL_CRLF;
 		cstate->eol_ch[0] = '\r';
-		cstate->eol_ch[1] = '\n';		
-		
+		cstate->eol_ch[1] = '\n';
+
 	}
 	else /* error. must have been validated in CopyValidateControlChars() ! */
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+				 errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s",
 						 cstate->eol_str)));
 }
