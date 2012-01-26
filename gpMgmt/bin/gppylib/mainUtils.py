@@ -442,7 +442,7 @@ class YamlOptions:
         # gname  - option group name
 
         self.y      = get_yaml(target.__class__)
-        self.parser = OptionParser( description=self.y['Description'], version='%prog version $Revision: #1 $')
+        self.parser = OptionParser( description=self.y['Description'], version='%prog version $Revision$')
         self.parser.remove_option('-h')
         self.parser.set_usage(self.y['Usage'])
         self.opty   = self.y['Options']
