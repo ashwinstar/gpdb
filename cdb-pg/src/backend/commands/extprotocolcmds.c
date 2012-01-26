@@ -99,12 +99,12 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 									   validatorfuncName, 	/* validator function name */
 									   newOid,
 									   trusted);
-					
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
 		stmt->kind = OBJECT_EXTPROTOCOL;
-		stmt->oldstyle = false;  
+		stmt->oldstyle = false;
 		stmt->defnames = name;
 		stmt->args = NIL;
 		stmt->definition = parameters;
@@ -128,7 +128,7 @@ RemoveExtProtocol(List *names, DropBehavior behavior, bool missing_ok)
 	Oid			protocolOid = InvalidOid;
 	ObjectAddress object;
 
-	/* 
+	/*
 	 * General DROP (object) syntax allows fully qualified names, but
 	 * protocols are global objects that do not live in schemas, so
 	 * it is a syntax error if a fully qualified name was given.
@@ -175,7 +175,7 @@ RemoveExtProtocol(List *names, DropBehavior behavior, bool missing_ok)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
-	
+
 }
 
 /*
@@ -206,43 +206,43 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	SysScanDesc	scan;
 	Datum		ownerDatum;
 	Datum		trustedDatum;
-	
-	
+
+
 	/*
 	 * Check the pg_extprotocol relation to be certain the protocol
-	 * is there. 
+	 * is there.
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
 	dsc = RelationGetDescr(rel);
-	
+
 	ScanKeyInit(&key,
 				Anum_pg_extprotocol_ptcname,
 				BTEqualStrategyNumber,
 				F_NAMEEQ,
 				CStringGetDatum(name));
-	
-	scan = systable_beginscan(rel, 
-							  ExtprotocolPtcnameIndexId, 
+
+	scan = systable_beginscan(rel,
+							  ExtprotocolPtcnameIndexId,
 							  true,
-							  SnapshotNow, 
-							  1, 
+							  SnapshotNow,
+							  1,
 							  &key);
-	
+
 	tup = systable_getnext(scan);
-	
+
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol \"%s\" does not exist",
 						name)));
-	
+
 	ptcId = HeapTupleGetOid(tup);
-	
-	ownerDatum = heap_getattr(tup, 
+
+	ownerDatum = heap_getattr(tup,
 							  Anum_pg_extprotocol_ptcowner,
-							  dsc, 
+							  dsc,
 							  &isNull);
-	
+
 	if(isNull)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -251,11 +251,11 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 
 	ownerId = DatumGetObjectId(ownerDatum);
 
-	trustedDatum = heap_getattr(tup, 
+	trustedDatum = heap_getattr(tup,
 							 Anum_pg_extprotocol_ptctrusted,
-							 dsc, 
+							 dsc,
 							 &isNull);
-	
+
 	if(isNull)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -263,7 +263,7 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 						 name)));
 
 	isTrusted = DatumGetBool(trustedDatum);
-	
+
 	if (ownerId != newOwnerId)
 	{
 		Acl		   *newAcl;
@@ -295,10 +295,10 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		if(!isTrusted && !superuser_arg(newOwnerId))
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("untrusted protocol \"%s\" can't be owned by non superuser", 
+					 errmsg("untrusted protocol \"%s\" can't be owned by non superuser",
 							 name)));
 
-		
+
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, false, sizeof(nulls));
 		MemSet(replaces, false, sizeof(replaces));
@@ -306,11 +306,11 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		replaces[Anum_pg_extprotocol_ptcowner - 1] = true;
 		values[Anum_pg_extprotocol_ptcowner - 1] = ObjectIdGetDatum(newOwnerId);
 
-		aclDatum = heap_getattr(tup, 
+		aclDatum = heap_getattr(tup,
 								Anum_pg_extprotocol_ptcacl,
-								dsc, 
+								dsc,
 								&isNull);
-		
+
 		if (!isNull)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
@@ -328,12 +328,12 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
-		
+
 		/* Update owner dependency reference */
 		changeDependencyOnOwner(ExtprotocolRelationId, ptcId, newOwnerId);
 	}
 
-	systable_endscan(scan);	
+	systable_endscan(scan);
 	heap_close(rel, NoLock);
 }
 
@@ -347,55 +347,51 @@ RenameExtProtocol(const char *oldname, const char *newname)
 	Relation	rel;
 	TupleDesc	dsc;
 	Oid			ptcId;
-	Oid			ownerId;
 	bool		isNull;
 	ScanKeyData	key;
 	SysScanDesc	scan;
-	Datum		ownerDatum;
-	
-	
+
+
 	/*
-	 * Check the pg_extprotocol relation to be certain the protocol 
-	 * is there. 
+	 * Check the pg_extprotocol relation to be certain the protocol
+	 * is there.
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
 	dsc = RelationGetDescr(rel);
-	
+
 	ScanKeyInit(&key,
 				Anum_pg_extprotocol_ptcname,
 				BTEqualStrategyNumber,
 				F_NAMEEQ,
 				CStringGetDatum(oldname));
-	
-	scan = systable_beginscan(rel, 
-							  ExtprotocolPtcnameIndexId, 
+
+	scan = systable_beginscan(rel,
+							  ExtprotocolPtcnameIndexId,
 							  true,
-							  SnapshotNow, 
-							  1, 
+							  SnapshotNow,
+							  1,
 							  &key);
-	
+
 	tup = systable_getnext(scan);
-	
+
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol \"%s\" does not exist",
 						oldname)));
-	
+
 	ptcId = HeapTupleGetOid(tup);
-	
-	ownerDatum = heap_getattr(tup, 
+
+	(void) heap_getattr(tup,
 							  Anum_pg_extprotocol_ptcowner,
-							  dsc, 
+							  dsc,
 							  &isNull);
-	
+
 	if(isNull)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("internal error: protocol \"%s\"  has no owner defined",
-						 oldname)));	
-
-	ownerId = DatumGetObjectId(ownerDatum);
+						 oldname)));
 
 	if (strcmp(oldname, newname) != 0)
 	{
@@ -419,7 +415,7 @@ RenameExtProtocol(const char *oldname, const char *newname)
 
 		replaces[Anum_pg_extprotocol_ptcname - 1] = true;
 		values[Anum_pg_extprotocol_ptcname - 1] = CStringGetDatum(newname);
-		
+
 		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values,
 									 nulls, replaces);
 
@@ -428,9 +424,9 @@ RenameExtProtocol(const char *oldname, const char *newname)
 		/* keep the catalog indexes up to date */
 		CatalogUpdateIndexes(rel, newtuple);
 
-		heap_freetuple(newtuple);		
+		heap_freetuple(newtuple);
 	}
 
-	systable_endscan(scan);	
+	systable_endscan(scan);
 	heap_close(rel, NoLock);
 }
