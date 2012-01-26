@@ -43,7 +43,7 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 					     Oid			 protNamespace,
 					     List			*readfuncName,
 					     List			*writefuncName,
-					     List			*validatorfuncName,					   
+					     List			*validatorfuncName,
 					     Oid			 protOid,
 					     bool			 trusted)
 {
@@ -85,15 +85,15 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 				 errhint("pick a different protocol name")));
 	}
 
-	/* 
+	/*
 	 * function checks: if supplied, check existence and correct signature in the catalog
 	 */
-	
+
 	if (readfuncName)
 		readfn = ValidateProtocolFunction(readfuncName, EXTPTC_FUNC_READER);
 
 	if (writefuncName)
-		writefn = ValidateProtocolFunction(writefuncName, EXTPTC_FUNC_WRITER);				
+		writefn = ValidateProtocolFunction(writefuncName, EXTPTC_FUNC_WRITER);
 
 	if (validatorfuncName)
 		validatorfn = ValidateProtocolFunction(validatorfuncName, EXTPTC_FUNC_VALIDATOR);
@@ -111,19 +111,19 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 	}
 	namestrcpy(&prtname, protocolName);
 	values[Anum_pg_extprotocol_ptcname - 1] = NameGetDatum(&prtname);
-	
+
 	if (readfn)
 		values[Anum_pg_extprotocol_ptcreadfn - 1] = ObjectIdGetDatum(readfn);
 	else
 		nulls[Anum_pg_extprotocol_ptcreadfn - 1] = true;
-	
+
 	if (writefn)
-		values[Anum_pg_extprotocol_ptcwritefn - 1] = ObjectIdGetDatum(writefn); 
+		values[Anum_pg_extprotocol_ptcwritefn - 1] = ObjectIdGetDatum(writefn);
 	else
 		nulls[Anum_pg_extprotocol_ptcwritefn - 1] = true;
-	
+
 	if (validatorfn)
-		values[Anum_pg_extprotocol_ptcvalidatorfn - 1] = ObjectIdGetDatum(validatorfn); 
+		values[Anum_pg_extprotocol_ptcvalidatorfn - 1] = ObjectIdGetDatum(validatorfn);
 	else
 		nulls[Anum_pg_extprotocol_ptcvalidatorfn - 1] = true;
 
@@ -178,7 +178,7 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 
 void
 ExtProtocolDeleteByOid(Oid	protOid)
-{		
+{
 	Relation	rel;
 	HeapScanDesc scandesc;
 	HeapTuple	tuple;
@@ -204,7 +204,7 @@ ExtProtocolDeleteByOid(Oid	protOid)
 	}
 
 	simple_heap_delete(rel, &tuple->t_self);
-	
+
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 }
@@ -226,7 +226,7 @@ ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
 	AclResult	aclresult;
 	Oid 		inputTypes[1] = {InvalidOid}; /* dummy */
 	int			nargs = 0; /* true for all 3 function types at the moment */
-	
+
 	if (fntype == EXTPTC_FUNC_VALIDATOR)
 		desired_rettype = VOIDOID;
 	else
@@ -250,13 +250,13 @@ ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
 				 errmsg("function %s does not exist",
 						func_signature_string(fnName, nargs, inputTypes)),
 				 errOmitLocation(true)));
-	
+
 	if (retset)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("Invalid protocol function"),
 				 errdetail("Protocol functions cannot return sets."),
-				 errOmitLocation(true)));		
+				 errOmitLocation(true)));
 
 	if (actual_rettype != desired_rettype)
 		ereport(ERROR,
@@ -266,7 +266,7 @@ ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
 						func_signature_string(fnName, nargs, inputTypes),
 						(fntype == EXTPTC_FUNC_VALIDATOR ? "void" : "an integer")),
 				 errOmitLocation(true)));
-	
+
 	if (func_volatile(fnOid) == PROVOLATILE_IMMUTABLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -276,7 +276,7 @@ ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
 				 errhint("PROTOCOL functions must be declared STABLE or VOLATILE"),
 				 errOmitLocation(true)));
 
-	
+
 	/* Check protocol creator has permission to call the function */
 	aclresult = pg_proc_aclcheck(fnOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
@@ -290,15 +290,15 @@ ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
  * Finds an external protocol by passed in protocol name.
  * Errors if no such protocol exist, or if no function to
  * execute this protocol exists (for read or write separately).
- * 
+ *
  * Returns the protocol function to use.
  */
 Oid
-LookupExtProtocolFunction(const char *prot_name, 
+LookupExtProtocolFunction(const char *prot_name,
 						  ExtPtcFuncType prot_type,
 						  bool error)
 {
-		
+
 	Relation	pg_extprotocol_rel;
 	TupleDesc	pg_extprotocol_dsc;
 	HeapTuple	tuple;
@@ -307,55 +307,55 @@ LookupExtProtocolFunction(const char *prot_name,
 	SysScanDesc	scan;
 	Oid			funcOid = InvalidOid;
 	Datum		funcDatum;
-	
+
 	/*
-	 * Check the pg_extprotocol relation to be certain the ao table 
-	 * is there. 
+	 * Check the pg_extprotocol relation to be certain the ao table
+	 * is there.
 	 */
 	pg_extprotocol_rel = heap_open(ExtprotocolRelationId, AccessShareLock);
 	pg_extprotocol_dsc = RelationGetDescr(pg_extprotocol_rel);
-	
+
 	ScanKeyInit(&key,
 				Anum_pg_extprotocol_ptcname,
 				BTEqualStrategyNumber,
 				F_NAMEEQ,
 				CStringGetDatum(prot_name));
-	
-	scan = systable_beginscan(pg_extprotocol_rel, 
-							  ExtprotocolPtcnameIndexId, 
+
+	scan = systable_beginscan(pg_extprotocol_rel,
+							  ExtprotocolPtcnameIndexId,
 							  true,
-							  SnapshotNow, 
-							  1, 
+							  SnapshotNow,
+							  1,
 							  &key);
-	
+
 	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol \"%s\" does not exist",
 						prot_name)));
-	
-	funcDatum = heap_getattr(tuple, 
+
+	funcDatum = heap_getattr(tuple,
 							 func_type_to_attnum(prot_type),
-							 pg_extprotocol_dsc, 
+							 pg_extprotocol_dsc,
 							 &isNull);
-	
+
 	if (isNull)
 	{
 		if (error)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("protocol '%s' has no %s function defined",
-							 prot_name, func_type_to_name(prot_type))));	
+							 prot_name, func_type_to_name(prot_type))));
 	}
 	else
 	{
 		funcOid = DatumGetObjectId(funcDatum);
 	}
-	
+
 	/* Finish up scan and close pg_extprotocol catalog. */
 	systable_endscan(scan);
-	
+
 	heap_close(pg_extprotocol_rel, AccessShareLock);
 
 	return funcOid;
@@ -369,34 +369,32 @@ LookupExtProtocolFunction(const char *prot_name,
 Oid
 LookupExtProtocolOid(const char *prot_name, bool missing_ok)
 {
-		
+
 	Relation	pg_extprotocol_rel;
-	TupleDesc	pg_extprotocol_dsc;
 	HeapTuple	tuple;
 	ScanKeyData	key;
 	SysScanDesc	scan;
 	Oid			protOid = InvalidOid;
-	
+
 	/*
-	 * Check the pg_extprotocol relation to be certain the ao table 
-	 * is there. 
+	 * Check the pg_extprotocol relation to be certain the ao table
+	 * is there.
 	 */
 	pg_extprotocol_rel = heap_open(ExtprotocolRelationId, AccessShareLock);
-	pg_extprotocol_dsc = RelationGetDescr(pg_extprotocol_rel);
-	
+
 	ScanKeyInit(&key,
 				Anum_pg_extprotocol_ptcname,
 				BTEqualStrategyNumber,
 				F_NAMEEQ,
 				CStringGetDatum(prot_name));
-	
-	scan = systable_beginscan(pg_extprotocol_rel, 
-							  ExtprotocolPtcnameIndexId, 
+
+	scan = systable_beginscan(pg_extprotocol_rel,
+							  ExtprotocolPtcnameIndexId,
 							  true,
-							  SnapshotNow, 
-							  1, 
+							  SnapshotNow,
+							  1,
 							  &key);
-	
+
 	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 	{
@@ -408,10 +406,10 @@ LookupExtProtocolOid(const char *prot_name, bool missing_ok)
 	}
 	else
 		protOid = HeapTupleGetOid(tuple);
-	
+
 	/* Finish up scan and close pg_extprotocol catalog. */
 	systable_endscan(scan);
-	
+
 	heap_close(pg_extprotocol_rel, AccessShareLock);
 
 	return protOid;
@@ -420,7 +418,7 @@ LookupExtProtocolOid(const char *prot_name, bool missing_ok)
 
 char *
 ExtProtocolGetNameByOid(Oid	protOid)
-{		
+{
 	Relation	rel;
 	HeapScanDesc scandesc;
 	HeapTuple	tuple;
@@ -429,7 +427,7 @@ ExtProtocolGetNameByOid(Oid	protOid)
 	Name		ptcname;
 	char		*ptcnamestr;
 	bool		isNull;
-	
+
 	/*
 	 * Search pg_extprotocol.  We use a heapscan here even though there is an
 	 * index on oid, on the theory that pg_extprotocol will usually have just a
@@ -449,14 +447,14 @@ ExtProtocolGetNameByOid(Oid	protOid)
 		elog(ERROR, "protocol %u could not be found", protOid);
 	}
 
-	ptcnameDatum = heap_getattr(tuple, 
+	ptcnameDatum = heap_getattr(tuple,
 								Anum_pg_extprotocol_ptcname,
-								rel->rd_att, 
+								rel->rd_att,
 								&isNull);
 
 	ptcname = DatumGetName(ptcnameDatum);
 	ptcnamestr = strdup(NameStr(*ptcname));
-	
+
 	if(isNull)
 		ereport(ERROR,
 			(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -465,7 +463,7 @@ ExtProtocolGetNameByOid(Oid	protOid)
 
 	heap_endscan(scandesc);
 	heap_close(rel, AccessShareLock);
-	
+
 	return ptcnamestr;
 }
 
