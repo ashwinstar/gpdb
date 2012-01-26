@@ -1,0 +1,6 @@
+Pkgname: libgppc
+Architecture: #arch
+Version: 1.0
+OS: #os
+GPDBVersion: #gpver
+Description: Libgppc provides an abstract layer for external UDFs
