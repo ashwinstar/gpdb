@@ -28,6 +28,9 @@
 ------------------------------------
 \set ON_ERROR_STOP ON
 
+-- We need plpgsql
+create language plpgsql;
+
 -- No need to run in a transaction, we always rollback thoroughly, plus, the
 -- pg_compression table needs to be visible so that we can add rows to it.
 
