@@ -36,3 +36,4 @@ lcov.info
 win32ver.rc
 *.exe
 lib*dll.defautom4te.cache
+*.Po
