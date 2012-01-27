@@ -1,6 +1,20 @@
 GPMGMT=$(BLD_TOP)/gpMgmt
 include $(BLD_TOP)/Makefile.global
 
+# In case building without INSTLOC argument, infer the install path
+# from cdb-pg makefile.  Since gppkg is independent from cdb-pg,
+# first check for the Makefile's existence, and if not present, proceed silently.
+ifndef INSTLOC
+ifndef prefix
+top_builddir = $(BLD_TOP)/cdb-pg
+cdbpg_makefile = $(BLD_TOP)/cdb-pg/src/Makefile.global
+ifneq ($(wildcard $(cdbpg_makefile)),)
+include $(BLD_TOP)/cdb-pg/src/Makefile.global
+endif
+endif
+INSTLOC := $(prefix)
+endif
+
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
