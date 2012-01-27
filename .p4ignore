@@ -26,6 +26,7 @@ Build
 .timestamp
 .autotools
 *.log
+*.Po
 greenplum-plr-*.zip
 greenplum-clients-*.zip
 greenplum-loaders-*.zip
