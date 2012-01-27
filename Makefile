@@ -39,7 +39,7 @@ all : devel
 .PHONY : test2 test3
 
 # Internal functions which are invoked by other rules within this makefile
-.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr copylibs
+.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy copylibs
 .PHONY : greenplum_path RECONFIG HOMEDEP GPROOTDEP GPROOTDEP GPROOTFAIL
 .PHONY : version gccVersionCheck pygres authlibs clients loaders connectivity gppkg
 
@@ -362,7 +362,6 @@ define BUILD_STEPS
 	@$(MAKE) mkplatform INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
@@ -1147,28 +1146,6 @@ endif
 	echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 	rm -rf $(INSTLOC)/bin/gppylib
-
-pkgplr:
-	@if [ ! -z "$(PLRDIR)" ]; then \
-	    echo "`date` -- INFO: Found a previous PL/R package, removing it"; \
-	    rm -rf $(PLRDIR); \
-	fi
-	@if [ -f $(INSTLOC)/lib/postgresql/plr.so ] ; then \
-	    echo "" ; \
-	    echo "`date` -- INFO: Found plr.so, creating PL/R package" ; \
-	    mkdir $(PLRDIR) ; \
-	    cp -p $(INSTLOC)/lib/postgresql/plr.so $(PLRDIR)/ ; \
-	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLRDIR)/ ; fi ; \
-	    cp -p $(BLD_TOP)/languages/PLR/PLR_README $(PLRDIR)/ ; \
-	    echo "" ; \
-	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of plr components" ; \
-	    rm -f $(INSTLOC)/share/postgresql/contrib/plr.sql ; \
-	    rm -f $(INSTLOC)/lib/postgresql/plr.so ; \
-	    echo "" ; \
-	    echo "`date` -- INFO: Creating .zip" ; \
-	    zip -q -r greenplum-plr-$(VERSION)-${MPP_ARCH}.zip $(PLRDIR) ; \
-	    echo "" ; \
-	fi
 
 BLD_LDD=ldd
 osx104_x86_LDD=otool -L
