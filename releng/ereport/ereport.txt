@@ -168,10 +168,10 @@ aabc: appendonlyam:00002621:  errmsg("Item too long (check #2): length %d, maxBu
 aabc: appendonlyam:00002622:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
 aabc: appendonlyam:00002623:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
-aace: appendonlyblockdirectory:00000412:  ereport(ERROR, 
-aace: appendonlyblockdirectory:00000413:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aace: appendonlyblockdirectory:00000414:  errmsg("Block directory for append-only relation '%s' does not exist", 
-aace: appendonlyblockdirectory:00000415:  RelationGetRelationName(blockDirectory->aoRel)))); 
+aace: appendonlyblockdirectory:00000411:  ereport(ERROR, 
+aace: appendonlyblockdirectory:00000412:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aace: appendonlyblockdirectory:00000413:  errmsg("Block directory for append-only relation '%s' does not exist", 
+aace: appendonlyblockdirectory:00000414:  RelationGetRelationName(blockDirectory->aoRel)))); 
 aaaaa GP_IGNORE: aabd: appendonlytid - ./backend/access/appendonly/appendonlytid.c
 aabd: appendonlytid:00000058:  ereport(ERROR, 
 aabd: appendonlytid:00000059:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -207,18 +207,18 @@ aabg: appendonlywriter:00000864:  ereport(ERROR,
 aabg: appendonlywriter:00000865:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
 aabg: appendonlywriter:00000866:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
 aaaaa GP_IGNORE: baag: bitmap - ./backend/access/bitmap/bitmap.c
-baag: bitmap:00000075:  elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes"); 
-baag: bitmap:00000079:  ereport (ERROR, 
-baag: bitmap:00000080:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-baag: bitmap:00000081:  errmsg("index \"%s\" already contains data", 
-baag: bitmap:00000082:  RelationGetRelationName(index)), 
-baag: bitmap:00000083:  errSendAlert(true))); 
-baag: bitmap:00000096:  ereport(ERROR, 
-baag: bitmap:00000097:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-baag: bitmap:00000098:  errmsg("oids for bitmap index \"%s\" do not exist", 
-baag: bitmap:00000099:  RelationGetRelationName(index)))); 
-baag: bitmap:00000271:  elog(ERROR, "non stream bitmap"); 
-baag: bitmap:00000753:  elog(ERROR, "scan position uninitialized"); 
+baag: bitmap:00000074:  elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes"); 
+baag: bitmap:00000078:  ereport (ERROR, 
+baag: bitmap:00000079:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+baag: bitmap:00000080:  errmsg("index \"%s\" already contains data", 
+baag: bitmap:00000081:  RelationGetRelationName(index)), 
+baag: bitmap:00000082:  errSendAlert(true))); 
+baag: bitmap:00000093:  ereport(ERROR, 
+baag: bitmap:00000094:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+baag: bitmap:00000095:  errmsg("oids for bitmap index \"%s\" do not exist", 
+baag: bitmap:00000096:  RelationGetRelationName(index)))); 
+baag: bitmap:00000266:  elog(ERROR, "non stream bitmap"); 
+baag: bitmap:00000748:  elog(ERROR, "scan position uninitialized"); 
 aaaaa GP_IGNORE: babc: bitmapinsert - ./backend/access/bitmap/bitmapinsert.c
 babc: bitmapinsert:00000723:  elog(ERROR, "Found incorrect bitmap words in LOV block %d offset %d. " 
 babc: bitmapinsert:00000724:  "Please reindex", 
@@ -2728,83 +2728,83 @@ pabc: pgxaggregate:00000440:  (errcode(ERRCODE_DATATYPE_MISMATCH),
 pabc: pgxaggregate:00000441:  errmsg("function %s requires run-time type coercion", 
 pabc: pgxaggregate:00000442:  func_signature_string(fnName, nargs, true_oid_array)))); 
 aaaaa GP_IGNORE: pabd: pgxappendonly - ./backend/catalog/pg_appendonly.c
-pabd: pgxappendonly:00000169:  ereport(ERROR, 
-pabd: pgxappendonly:00000170:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000171:  errmsg("missing pg_appendonly entry for relation \"%s\"", 
-pabd: pgxappendonly:00000172:  get_rel_name(relid)))); 
-pabd: pgxappendonly:00000182:  ereport(ERROR, 
-pabd: pgxappendonly:00000183:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000184:  errmsg("got invalid segrelid value: NULL"))); 
-pabd: pgxappendonly:00000197:  ereport(ERROR, 
-pabd: pgxappendonly:00000198:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000199:  errmsg("got invalid segidxid value: NULL"))); 
-pabd: pgxappendonly:00000212:  ereport(ERROR, 
-pabd: pgxappendonly:00000213:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000214:  errmsg("got invalid blkdirrelid value: NULL"))); 
-pabd: pgxappendonly:00000227:  ereport(ERROR, 
-pabd: pgxappendonly:00000228:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000229:  errmsg("got invalid blkdiridxid value: NULL"))); 
-pabd: pgxappendonly:00000279:  ereport(ERROR, 
-pabd: pgxappendonly:00000280:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000281:  errmsg("missing pg_appendonly entry for relation \"%s\"", 
-pabd: pgxappendonly:00000282:  get_rel_name(relid)))); 
-pabd: pgxappendonly:00000337:  ereport(ERROR, 
-pabd: pgxappendonly:00000338:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000339:  errmsg("got invalid relid value: NULL"))); 
-pabd: pgxappendonly:00000348:  ereport(ERROR, 
-pabd: pgxappendonly:00000349:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000350:  errmsg("got invalid blocksize value: NULL"))); 
-pabd: pgxappendonly:00000359:  ereport(ERROR, 
-pabd: pgxappendonly:00000360:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000361:  errmsg("got invalid safe fs write size value: NULL"))); 
-pabd: pgxappendonly:00000370:  ereport(ERROR, 
-pabd: pgxappendonly:00000371:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000372:  errmsg("got invalid compresslevel value: NULL"))); 
-pabd: pgxappendonly:00000381:  ereport(ERROR, 
-pabd: pgxappendonly:00000382:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000383:  errmsg("got invalid major version value: NULL"))); 
-pabd: pgxappendonly:00000392:  ereport(ERROR, 
-pabd: pgxappendonly:00000393:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000394:  errmsg("got invalid minor version value: NULL"))); 
-pabd: pgxappendonly:00000402:  ereport(ERROR, 
-pabd: pgxappendonly:00000403:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000404:  errmsg("got invalid checksum value: NULL"))); 
-pabd: pgxappendonly:00000412:  ereport(ERROR, 
-pabd: pgxappendonly:00000413:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000414:  errmsg("got invalid columnstore value: NULL"))); 
-pabd: pgxappendonly:00000436:  ereport(ERROR, 
-pabd: pgxappendonly:00000437:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000438:  errmsg("got invalid segrelid value: NULL"))); 
-pabd: pgxappendonly:00000446:  ereport(ERROR, 
-pabd: pgxappendonly:00000447:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000448:  errmsg("got invalid segidxid value: NULL"))); 
-pabd: pgxappendonly:00000456:  ereport(ERROR, 
-pabd: pgxappendonly:00000457:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000458:  errmsg("got invalid blkdirrelid value: NULL"))); 
-pabd: pgxappendonly:00000466:  ereport(ERROR, 
-pabd: pgxappendonly:00000467:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000468:  errmsg("got invalid blkdiridxid value: NULL"))); 
-pabd: pgxappendonly:00000477:  ereport(ERROR, 
-pabd: pgxappendonly:00000478:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000479:  errmsg("got invalid version value: NULL"))); 
-pabd: pgxappendonly:00000543:  ereport(ERROR, 
-pabd: pgxappendonly:00000544:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000545:  errmsg("missing pg_appendonly entry for relation \"%s\"", 
-pabd: pgxappendonly:00000546:  get_rel_name(relid)))); 
-pabd: pgxappendonly:00000631:  ereport(ERROR, 
-pabd: pgxappendonly:00000632:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000633:  errmsg("appendonly table relid \"%d\" does not exist in " 
-pabd: pgxappendonly:00000634:  "pg_appendonly", relid))); 
-pabd: pgxappendonly:00000724:  ereport(ERROR, 
-pabd: pgxappendonly:00000725:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000726:  errmsg("appendonly table relid \"%d\" does not exist in " 
-pabd: pgxappendonly:00000727:  "pg_appendonly", relId))); 
-pabd: pgxappendonly:00000735:  ereport(ERROR, 
-pabd: pgxappendonly:00000736:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000737:  errmsg("got invalid segrelid value: NULL"))); 
-pabd: pgxappendonly:00000745:  ereport(ERROR, 
-pabd: pgxappendonly:00000746:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabd: pgxappendonly:00000747:  errmsg("got invalid blkdirrelid value: NULL"))); 
+pabd: pgxappendonly:00000167:  ereport(ERROR, 
+pabd: pgxappendonly:00000168:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000169:  errmsg("missing pg_appendonly entry for relation \"%s\"", 
+pabd: pgxappendonly:00000170:  get_rel_name(relid)))); 
+pabd: pgxappendonly:00000180:  ereport(ERROR, 
+pabd: pgxappendonly:00000181:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000182:  errmsg("got invalid segrelid value: NULL"))); 
+pabd: pgxappendonly:00000195:  ereport(ERROR, 
+pabd: pgxappendonly:00000196:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000197:  errmsg("got invalid segidxid value: NULL"))); 
+pabd: pgxappendonly:00000210:  ereport(ERROR, 
+pabd: pgxappendonly:00000211:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000212:  errmsg("got invalid blkdirrelid value: NULL"))); 
+pabd: pgxappendonly:00000225:  ereport(ERROR, 
+pabd: pgxappendonly:00000226:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000227:  errmsg("got invalid blkdiridxid value: NULL"))); 
+pabd: pgxappendonly:00000277:  ereport(ERROR, 
+pabd: pgxappendonly:00000278:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000279:  errmsg("missing pg_appendonly entry for relation \"%s\"", 
+pabd: pgxappendonly:00000280:  get_rel_name(relid)))); 
+pabd: pgxappendonly:00000335:  ereport(ERROR, 
+pabd: pgxappendonly:00000336:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000337:  errmsg("got invalid relid value: NULL"))); 
+pabd: pgxappendonly:00000346:  ereport(ERROR, 
+pabd: pgxappendonly:00000347:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000348:  errmsg("got invalid blocksize value: NULL"))); 
+pabd: pgxappendonly:00000357:  ereport(ERROR, 
+pabd: pgxappendonly:00000358:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000359:  errmsg("got invalid safe fs write size value: NULL"))); 
+pabd: pgxappendonly:00000368:  ereport(ERROR, 
+pabd: pgxappendonly:00000369:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000370:  errmsg("got invalid compresslevel value: NULL"))); 
+pabd: pgxappendonly:00000379:  ereport(ERROR, 
+pabd: pgxappendonly:00000380:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000381:  errmsg("got invalid major version value: NULL"))); 
+pabd: pgxappendonly:00000390:  ereport(ERROR, 
+pabd: pgxappendonly:00000391:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000392:  errmsg("got invalid minor version value: NULL"))); 
+pabd: pgxappendonly:00000400:  ereport(ERROR, 
+pabd: pgxappendonly:00000401:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000402:  errmsg("got invalid checksum value: NULL"))); 
+pabd: pgxappendonly:00000410:  ereport(ERROR, 
+pabd: pgxappendonly:00000411:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000412:  errmsg("got invalid columnstore value: NULL"))); 
+pabd: pgxappendonly:00000434:  ereport(ERROR, 
+pabd: pgxappendonly:00000435:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000436:  errmsg("got invalid segrelid value: NULL"))); 
+pabd: pgxappendonly:00000444:  ereport(ERROR, 
+pabd: pgxappendonly:00000445:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000446:  errmsg("got invalid segidxid value: NULL"))); 
+pabd: pgxappendonly:00000454:  ereport(ERROR, 
+pabd: pgxappendonly:00000455:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000456:  errmsg("got invalid blkdirrelid value: NULL"))); 
+pabd: pgxappendonly:00000464:  ereport(ERROR, 
+pabd: pgxappendonly:00000465:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000466:  errmsg("got invalid blkdiridxid value: NULL"))); 
+pabd: pgxappendonly:00000475:  ereport(ERROR, 
+pabd: pgxappendonly:00000476:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000477:  errmsg("got invalid version value: NULL"))); 
+pabd: pgxappendonly:00000541:  ereport(ERROR, 
+pabd: pgxappendonly:00000542:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000543:  errmsg("missing pg_appendonly entry for relation \"%s\"", 
+pabd: pgxappendonly:00000544:  get_rel_name(relid)))); 
+pabd: pgxappendonly:00000629:  ereport(ERROR, 
+pabd: pgxappendonly:00000630:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000631:  errmsg("appendonly table relid \"%d\" does not exist in " 
+pabd: pgxappendonly:00000632:  "pg_appendonly", relid))); 
+pabd: pgxappendonly:00000722:  ereport(ERROR, 
+pabd: pgxappendonly:00000723:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000724:  errmsg("appendonly table relid \"%d\" does not exist in " 
+pabd: pgxappendonly:00000725:  "pg_appendonly", relId))); 
+pabd: pgxappendonly:00000733:  ereport(ERROR, 
+pabd: pgxappendonly:00000734:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000735:  errmsg("got invalid segrelid value: NULL"))); 
+pabd: pgxappendonly:00000743:  ereport(ERROR, 
+pabd: pgxappendonly:00000744:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabd: pgxappendonly:00000745:  errmsg("got invalid blkdirrelid value: NULL"))); 
 aaaaa GP_IGNORE: pacb: pgxattributexencoding - ./backend/catalog/pg_attribute_encoding.c
 pacb: pgxattributexencoding:00000344:  elog(ERROR, "column \"%s\" does not exist", strVal(c->column)); 
 pacb: pgxattributexencoding:00000347:  elog(ERROR, "column \"%s\" is a system column", strVal(c->column)); 
@@ -2905,29 +2905,29 @@ pabe: pgxextprotocol:00000346:  ereport(ERROR,
 pabe: pgxextprotocol:00000347:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 pabe: pgxextprotocol:00000348:  errmsg("protocol '%s' has no %s function defined", 
 pabe: pgxextprotocol:00000349:  prot_name, func_type_to_name(prot_type)))); 
-pabe: pgxextprotocol:00000404:  ereport(ERROR, 
-pabe: pgxextprotocol:00000405:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000406:  errmsg("protocol \"%s\" does not exist", 
-pabe: pgxextprotocol:00000407:  prot_name))); 
-pabe: pgxextprotocol:00000449:  elog(ERROR, "protocol %u could not be found", protOid); 
-pabe: pgxextprotocol:00000461:  ereport(ERROR, 
-pabe: pgxextprotocol:00000462:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000463:  errmsg("internal error: protocol '%u' has no name defined", 
-pabe: pgxextprotocol:00000464:  protOid))); 
-pabe: pgxextprotocol:00000483:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_name"); 
-pabe: pgxextprotocol:00000499:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum"); 
+pabe: pgxextprotocol:00000402:  ereport(ERROR, 
+pabe: pgxextprotocol:00000403:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000404:  errmsg("protocol \"%s\" does not exist", 
+pabe: pgxextprotocol:00000405:  prot_name))); 
+pabe: pgxextprotocol:00000447:  elog(ERROR, "protocol %u could not be found", protOid); 
+pabe: pgxextprotocol:00000459:  ereport(ERROR, 
+pabe: pgxextprotocol:00000460:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000461:  errmsg("internal error: protocol '%u' has no name defined", 
+pabe: pgxextprotocol:00000462:  protOid))); 
+pabe: pgxextprotocol:00000481:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_name"); 
+pabe: pgxextprotocol:00000497:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum"); 
 aaaaa GP_IGNORE: pabb: pgxexttable - ./backend/catalog/pg_exttable.c
-pabb: pgxexttable:00000171:  ereport(ERROR, 
-pabb: pgxexttable:00000172:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabb: pgxexttable:00000173:  errmsg("missing pg_exttable entry for relation \"%s\"", 
-pabb: pgxexttable:00000174:  get_rel_name(relid)))); 
-pabb: pgxexttable:00000224:  ereport(ERROR, 
-pabb: pgxexttable:00000225:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabb: pgxexttable:00000226:  errmsg("got invalid pg_exttable tuple. location and command are both NULL"))); 
-pabb: pgxexttable:00000350:  ereport(ERROR, 
-pabb: pgxexttable:00000351:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabb: pgxexttable:00000352:  errmsg("external table object id \"%d\" does not exist", 
-pabb: pgxexttable:00000353:  relid))); 
+pabb: pgxexttable:00000169:  ereport(ERROR, 
+pabb: pgxexttable:00000170:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabb: pgxexttable:00000171:  errmsg("missing pg_exttable entry for relation \"%s\"", 
+pabb: pgxexttable:00000172:  get_rel_name(relid)))); 
+pabb: pgxexttable:00000222:  ereport(ERROR, 
+pabb: pgxexttable:00000223:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabb: pgxexttable:00000224:  errmsg("got invalid pg_exttable tuple. location and command are both NULL"))); 
+pabb: pgxexttable:00000346:  ereport(ERROR, 
+pabb: pgxexttable:00000347:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabb: pgxexttable:00000348:  errmsg("external table object id \"%d\" does not exist", 
+pabb: pgxexttable:00000349:  relid))); 
 aaaaa GP_IGNORE: pabe: pgxlargeobject - ./backend/catalog/pg_largeobject.c
 pabe: pgxlargeobject:00000105:  ereport(ERROR, 
 pabe: pgxlargeobject:00000106:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -8607,104 +8607,104 @@ caae: copy:00001731:  ereport(ERROR,
 caae: copy:00001732:  (errcode_for_file_access(), 
 caae: copy:00001733:  errmsg("could not write to file \"%s\": %m", 
 caae: copy:00001734:  cstate->filename))); 
-caae: copy:00001965:  ereport(ERROR, 
-caae: copy:00001966:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00001967:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00001969:  ereport(ERROR, 
-caae: copy:00001970:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00001971:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00002182:  elog(ERROR, "OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE"); 
-caae: copy:00003105:  ereport(ERROR, 
-caae: copy:00003106:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003107:  errmsg("null OID in COPY data."))); 
-caae: copy:00003139:  ereport(ERROR, 
-caae: copy:00003140:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003141:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00003362:  elog(FATAL, "Bad or undefined policy. (%p)", part_policy); 
-caae: copy:00003491:  ereport(ERROR, 
-caae: copy:00003492:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003493:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003494:  errOmitLocation(true))); 
-caae: copy:00003496:  ereport(ERROR, 
-caae: copy:00003497:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00003498:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003499:  errOmitLocation(true))); 
-caae: copy:00003873:  ereport(ERROR, 
-caae: copy:00003874:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003875:  errmsg("null OID in COPY data."))); 
-caae: copy:00003903:  ereport(ERROR, 
-caae: copy:00003904:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003905:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00004094:  elog(ERROR, "triggers are not supported on tables that use column-oriented storage"); 
-caae: copy:00004676:  ereport(ERROR, 
-caae: copy:00004677:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004678:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004808:  ereport(ERROR, 
-caae: copy:00004809:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004810:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004990:  ereport(ERROR, 
-caae: copy:00004991:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004992:  errmsg("extra data after last expected column"), 
-caae: copy:00004993:  errOmitLocation(true))); 
-caae: copy:00005040:  ereport(ERROR, 
-caae: copy:00005041:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005042:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005043:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005044:  errOmitLocation(true))); 
-caae: copy:00005047:  ereport(ERROR, 
-caae: copy:00005048:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005049:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005050:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005051:  errOmitLocation(true))); 
-caae: copy:00005058:  ereport(ERROR, 
-caae: copy:00005059:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005060:  errmsg("extra data after last expected column"), 
-caae: copy:00005061:  errOmitLocation(true))); 
-caae: copy:00005358:  ereport(ERROR, 
-caae: copy:00005359:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005360:  errmsg("extra data after last expected column"), 
-caae: copy:00005361:  errOmitLocation(true))); 
-caae: copy:00005371:  ereport(ERROR, 
-caae: copy:00005372:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005373:  errmsg("unterminated CSV quoted field"), 
-caae: copy:00005374:  errOmitLocation(true))); 
-caae: copy:00005389:  ereport(ERROR, 
-caae: copy:00005390:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005391:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005392:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005393:  errOmitLocation(true))); 
-caae: copy:00005396:  ereport(ERROR, 
-caae: copy:00005397:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005398:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005399:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005400:  errOmitLocation(true))); 
-caae: copy:00005431:  ereport(ERROR, 
-caae: copy:00005432:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005433:  errmsg("extra data after last expected column"), 
-caae: copy:00005434:  errOmitLocation(true))); 
+caae: copy:00001963:  ereport(ERROR, 
+caae: copy:00001964:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00001965:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00001967:  ereport(ERROR, 
+caae: copy:00001968:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00001969:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00002180:  elog(ERROR, "OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE"); 
+caae: copy:00003100:  ereport(ERROR, 
+caae: copy:00003101:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003102:  errmsg("null OID in COPY data."))); 
+caae: copy:00003134:  ereport(ERROR, 
+caae: copy:00003135:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003136:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00003356:  elog(FATAL, "Bad or undefined policy. (%p)", part_policy); 
+caae: copy:00003485:  ereport(ERROR, 
+caae: copy:00003486:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003487:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003488:  errOmitLocation(true))); 
+caae: copy:00003490:  ereport(ERROR, 
+caae: copy:00003491:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00003492:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003493:  errOmitLocation(true))); 
+caae: copy:00003865:  ereport(ERROR, 
+caae: copy:00003866:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003867:  errmsg("null OID in COPY data."))); 
+caae: copy:00003895:  ereport(ERROR, 
+caae: copy:00003896:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003897:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00004086:  elog(ERROR, "triggers are not supported on tables that use column-oriented storage"); 
+caae: copy:00004662:  ereport(ERROR, 
+caae: copy:00004663:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004664:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004794:  ereport(ERROR, 
+caae: copy:00004795:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004796:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004976:  ereport(ERROR, 
+caae: copy:00004977:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004978:  errmsg("extra data after last expected column"), 
+caae: copy:00004979:  errOmitLocation(true))); 
+caae: copy:00005026:  ereport(ERROR, 
+caae: copy:00005027:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005028:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005029:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005030:  errOmitLocation(true))); 
+caae: copy:00005033:  ereport(ERROR, 
+caae: copy:00005034:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005035:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005036:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005037:  errOmitLocation(true))); 
+caae: copy:00005044:  ereport(ERROR, 
+caae: copy:00005045:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005046:  errmsg("extra data after last expected column"), 
+caae: copy:00005047:  errOmitLocation(true))); 
+caae: copy:00005344:  ereport(ERROR, 
+caae: copy:00005345:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005346:  errmsg("extra data after last expected column"), 
+caae: copy:00005347:  errOmitLocation(true))); 
+caae: copy:00005357:  ereport(ERROR, 
+caae: copy:00005358:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005359:  errmsg("unterminated CSV quoted field"), 
+caae: copy:00005360:  errOmitLocation(true))); 
+caae: copy:00005375:  ereport(ERROR, 
+caae: copy:00005376:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005377:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005378:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005379:  errOmitLocation(true))); 
+caae: copy:00005382:  ereport(ERROR, 
+caae: copy:00005383:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005384:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005385:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005386:  errOmitLocation(true))); 
+caae: copy:00005417:  ereport(ERROR, 
+caae: copy:00005418:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005419:  errmsg("extra data after last expected column"), 
+caae: copy:00005420:  errOmitLocation(true))); 
+caae: copy:00005903:  ereport(ERROR, 
+caae: copy:00005904:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005905:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+caae: copy:00005906:  name, RelationGetRelationName(rel)), 
+caae: copy:00005907:  errOmitLocation(true))); 
+caae: copy:00005909:  ereport(ERROR, 
+caae: copy:00005910:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005911:  errmsg("column \"%s\" does not exist", 
+caae: copy:00005912:  name), 
+caae: copy:00005913:  errOmitLocation(true))); 
 caae: copy:00005917:  ereport(ERROR, 
-caae: copy:00005918:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005919:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-caae: copy:00005920:  name, RelationGetRelationName(rel)), 
-caae: copy:00005921:  errOmitLocation(true))); 
-caae: copy:00005923:  ereport(ERROR, 
-caae: copy:00005924:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005925:  errmsg("column \"%s\" does not exist", 
-caae: copy:00005926:  name), 
-caae: copy:00005927:  errOmitLocation(true))); 
-caae: copy:00005931:  ereport(ERROR, 
-caae: copy:00005932:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-caae: copy:00005933:  errmsg("column \"%s\" specified more than once", 
-caae: copy:00005934:  name))); 
-caae: copy:00005997:  ereport(ERROR, 
-caae: copy:00005998:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-caae: copy:00005999:  errmsg("COPY metadata not found. This probably means that there is a " 
-caae: copy:00006000:  "mixture of newline types in the data. Use the NEWLINE keyword " 
-caae: copy:00006001:  "in order to resolve this reliably."))); 
-caae: copy:00006682:  ereport(ERROR, 
-caae: copy:00006683:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caae: copy:00006684:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
-caae: copy:00006685:  cstate->eol_str))); 
+caae: copy:00005918:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+caae: copy:00005919:  errmsg("column \"%s\" specified more than once", 
+caae: copy:00005920:  name))); 
+caae: copy:00005983:  ereport(ERROR, 
+caae: copy:00005984:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+caae: copy:00005985:  errmsg("COPY metadata not found. This probably means that there is a " 
+caae: copy:00005986:  "mixture of newline types in the data. Use the NEWLINE keyword " 
+caae: copy:00005987:  "in order to resolve this reliably."))); 
+caae: copy:00006668:  ereport(ERROR, 
+caae: copy:00006669:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caae: copy:00006670:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+caae: copy:00006671:  cstate->eol_str))); 
 aaaaa GP_IGNORE: daba: dbcommands - ./backend/commands/dbcommands.c
 daba: dbcommands:00000196:  elog(ERROR, "Failed to fetch gp_relation_node tuple at TID %s", 
 daba: dbcommands:00000197:  ItemPointerToString(&tuple.t_self)); 
@@ -8974,128 +8974,128 @@ eabf: extprotocolcmds:00000296:  ereport(ERROR,
 eabf: extprotocolcmds:00000297:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
 eabf: extprotocolcmds:00000298:  errmsg("untrusted protocol \"%s\" can't be owned by non superuser", 
 eabf: extprotocolcmds:00000299:  name))); 
-eabf: extprotocolcmds:00000380:  ereport(ERROR, 
-eabf: extprotocolcmds:00000381:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eabf: extprotocolcmds:00000382:  errmsg("protocol \"%s\" does not exist", 
-eabf: extprotocolcmds:00000383:  oldname))); 
-eabf: extprotocolcmds:00000393:  ereport(ERROR, 
-eabf: extprotocolcmds:00000394:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eabf: extprotocolcmds:00000395:  errmsg("internal error: protocol \"%s\" has no owner defined", 
-eabf: extprotocolcmds:00000396:  oldname))); 
+eabf: extprotocolcmds:00000378:  ereport(ERROR, 
+eabf: extprotocolcmds:00000379:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000380:  errmsg("protocol \"%s\" does not exist", 
+eabf: extprotocolcmds:00000381:  oldname))); 
+eabf: extprotocolcmds:00000391:  ereport(ERROR, 
+eabf: extprotocolcmds:00000392:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000393:  errmsg("internal error: protocol \"%s\" has no owner defined", 
+eabf: extprotocolcmds:00000394:  oldname))); 
 aaaaa GP_IGNORE: faaj: filespace - ./backend/commands/filespace.c
-faaj: filespace:00000106:  elog(ERROR, "cannot create filespaces in utility mode"); 
-faaj: filespace:00000110:  ereport(ERROR, 
-faaj: filespace:00000111:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-faaj: filespace:00000112:  errmsg("permission denied to create filespace \"%s\"", 
-faaj: filespace:00000113:  stmt->filespacename), 
-faaj: filespace:00000114:  errhint("Must be superuser to create a filespace."))); 
-faaj: filespace:00000128:  ereport(ERROR, 
-faaj: filespace:00000129:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000130:  errmsg("unacceptable filespace name \"%s\"", 
-faaj: filespace:00000131:  stmt->filespacename), 
-faaj: filespace:00000132:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
-faaj: filespace:00000133:  GetReservedPrefix(stmt->filespacename)))); 
-faaj: filespace:00000147:  ereport(ERROR, 
-faaj: filespace:00000148:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00000149:  errmsg("filespace \"%s\" already exists", 
-faaj: filespace:00000150:  stmt->filespacename))); 
-faaj: filespace:00000208:  ereport(ERROR, 
-faaj: filespace:00000209:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000210:  errmsg("multiple filespace locations specified " 
-faaj: filespace:00000211:  "for dbid %d", dbid))); 
-faaj: filespace:00000236:  ereport(ERROR, 
-faaj: filespace:00000237:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000238:  errmsg("missing filespace location for dbid %d", 
-faaj: filespace:00000239:  dbid))); 
-faaj: filespace:00000256:  ereport(ERROR, 
-faaj: filespace:00000257:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000258:  errmsg("missing filespace location for dbid %d", 
-faaj: filespace:00000259:  dbid))); 
-faaj: filespace:00000281:  ereport(ERROR, 
-faaj: filespace:00000282:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000283:  errmsg("filespace location specified for non-existent " 
-faaj: filespace:00000284:  "dbid %d", segElem->dbid))); 
-faaj: filespace:00000324:  elog(ERROR, "filespace location not specified for dbid %d", 
-faaj: filespace:00000325:  GpIdentity.dbid); 
-faaj: filespace:00000506:  ereport(ERROR, 
-faaj: filespace:00000507:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000508:  errmsg("filespace name may not be qualified"))); 
-faaj: filespace:00000513:  ereport(ERROR, 
-faaj: filespace:00000514:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000515:  errmsg("syntax at or near \"cascade\""))); 
-faaj: filespace:00000533:  ereport(NOTICE, 
-faaj: filespace:00000534:  (errmsg("filespace \"%s\" does not exist, skipping", 
-faaj: filespace:00000535:  fsname))); 
-faaj: filespace:00000540:  ereport(ERROR, 
-faaj: filespace:00000541:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000542:  errmsg("filespace \"%s\" does not exist", fsname))); 
-faaj: filespace:00000552:  ereport(ERROR, 
-faaj: filespace:00000553:  (errmsg("cannot drop filespace %s because it is required " 
-faaj: filespace:00000554:  "by the database system", fsname))); 
-faaj: filespace:00000627:  elog(ERROR, "cache lookup failed for filespace %u", fsoid); 
-faaj: filespace:00000685:  ereport(ERROR, 
-faaj: filespace:00000686:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000687:  errmsg("filespace name may not be qualified"))); 
-faaj: filespace:00000699:  ereport(ERROR, 
-faaj: filespace:00000700:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000701:  errmsg("filespace \"%s\" does not exist", fsname))); 
-faaj: filespace:00000707:  ereport(ERROR, 
-faaj: filespace:00000708:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000709:  errmsg("permission denied: \"%s\" is a system filespace", 
-faaj: filespace:00000710:  fsname))); 
-faaj: filespace:00000794:  ereport(ERROR, 
-faaj: filespace:00000795:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000796:  errmsg("filespace \"%s\" does not exist", 
-faaj: filespace:00000797:  oldname))); 
-faaj: filespace:00000804:  ereport(ERROR, 
-faaj: filespace:00000805:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000806:  errmsg("permission denied: \"%s\" is a system filespace", 
-faaj: filespace:00000807:  oldname))); 
-faaj: filespace:00000817:  ereport(ERROR, 
-faaj: filespace:00000818:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000819:  errmsg("unacceptable filespace name \"%s\"", newname), 
-faaj: filespace:00000820:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
-faaj: filespace:00000821:  GetReservedPrefix(newname)))); 
-faaj: filespace:00000831:  ereport(ERROR, 
-faaj: filespace:00000832:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00000833:  errmsg("filespace \"%s\" already exists", newname))); 
-faaj: filespace:00001003:  ereport(ERROR, 
-faaj: filespace:00001004:  (errcode(ERRCODE_INVALID_NAME), 
-faaj: filespace:00001005:  errmsg("filespace location \"%s\" " 
-faaj: filespace:00001006:  "cannot contain single quotes", path))); 
-faaj: filespace:00001014:  ereport(ERROR, 
-faaj: filespace:00001015:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001016:  errmsg("filespace location \"%s\" " 
-faaj: filespace:00001017:  "must be an absolute path", path))); 
-faaj: filespace:00001023:  ereport(ERROR, 
-faaj: filespace:00001024:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001025:  errmsg("filespace location \"%s\" is too long", 
-faaj: filespace:00001026:  path), 
-faaj: filespace:00001027:  errhint("maximum length %d characters", 
-faaj: filespace:00001028:  MAX_FILESPACE_PATH))); 
-faaj: filespace:00001070:  ereport(ERROR, 
-faaj: filespace:00001071:  (errcode_for_file_access(), 
-faaj: filespace:00001072:  errmsg("%s: File exists", path))); 
-faaj: filespace:00001081:  ereport(ERROR, 
-faaj: filespace:00001082:  (errcode_for_file_access(), 
-faaj: filespace:00001083:  errmsg("%s: No such file or directory", 
-faaj: filespace:00001084:  parentdir))); 
-faaj: filespace:00001088:  ereport(ERROR, 
-faaj: filespace:00001089:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001090:  errmsg("%s: Not a directory", parentdir))); 
-faaj: filespace:00001104:  ereport(ERROR, 
-faaj: filespace:00001105:  (errcode_for_file_access(), 
-faaj: filespace:00001106:  errmsg("%s: Permission denied", path))); 
-faaj: filespace:00001165:  ereport(ERROR, 
-faaj: filespace:00001166:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00001167:  errmsg("duplicate filespace locations: " 
-faaj: filespace:00001168:  "(%d: '%s', %d: '%s')", 
-faaj: filespace:00001169:  fse2->dbid, fse2->location, 
-faaj: filespace:00001170:  fse1->dbid, fse1->location))); 
-faaj: filespace:00001204:  ereport(ERROR, 
-faaj: filespace:00001205:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-faaj: filespace:00001206:  errmsg("filespace \"%s\" is not empty", 
-faaj: filespace:00001207:  get_filespace_name(fsoid)))); 
+faaj: filespace:00000104:  elog(ERROR, "cannot create filespaces in utility mode"); 
+faaj: filespace:00000108:  ereport(ERROR, 
+faaj: filespace:00000109:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+faaj: filespace:00000110:  errmsg("permission denied to create filespace \"%s\"", 
+faaj: filespace:00000111:  stmt->filespacename), 
+faaj: filespace:00000112:  errhint("Must be superuser to create a filespace."))); 
+faaj: filespace:00000126:  ereport(ERROR, 
+faaj: filespace:00000127:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000128:  errmsg("unacceptable filespace name \"%s\"", 
+faaj: filespace:00000129:  stmt->filespacename), 
+faaj: filespace:00000130:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
+faaj: filespace:00000131:  GetReservedPrefix(stmt->filespacename)))); 
+faaj: filespace:00000145:  ereport(ERROR, 
+faaj: filespace:00000146:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00000147:  errmsg("filespace \"%s\" already exists", 
+faaj: filespace:00000148:  stmt->filespacename))); 
+faaj: filespace:00000206:  ereport(ERROR, 
+faaj: filespace:00000207:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000208:  errmsg("multiple filespace locations specified " 
+faaj: filespace:00000209:  "for dbid %d", dbid))); 
+faaj: filespace:00000234:  ereport(ERROR, 
+faaj: filespace:00000235:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000236:  errmsg("missing filespace location for dbid %d", 
+faaj: filespace:00000237:  dbid))); 
+faaj: filespace:00000254:  ereport(ERROR, 
+faaj: filespace:00000255:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000256:  errmsg("missing filespace location for dbid %d", 
+faaj: filespace:00000257:  dbid))); 
+faaj: filespace:00000279:  ereport(ERROR, 
+faaj: filespace:00000280:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000281:  errmsg("filespace location specified for non-existent " 
+faaj: filespace:00000282:  "dbid %d", segElem->dbid))); 
+faaj: filespace:00000322:  elog(ERROR, "filespace location not specified for dbid %d", 
+faaj: filespace:00000323:  GpIdentity.dbid); 
+faaj: filespace:00000502:  ereport(ERROR, 
+faaj: filespace:00000503:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000504:  errmsg("filespace name may not be qualified"))); 
+faaj: filespace:00000509:  ereport(ERROR, 
+faaj: filespace:00000510:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000511:  errmsg("syntax at or near \"cascade\""))); 
+faaj: filespace:00000529:  ereport(NOTICE, 
+faaj: filespace:00000530:  (errmsg("filespace \"%s\" does not exist, skipping", 
+faaj: filespace:00000531:  fsname))); 
+faaj: filespace:00000536:  ereport(ERROR, 
+faaj: filespace:00000537:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000538:  errmsg("filespace \"%s\" does not exist", fsname))); 
+faaj: filespace:00000548:  ereport(ERROR, 
+faaj: filespace:00000549:  (errmsg("cannot drop filespace %s because it is required " 
+faaj: filespace:00000550:  "by the database system", fsname))); 
+faaj: filespace:00000623:  elog(ERROR, "cache lookup failed for filespace %u", fsoid); 
+faaj: filespace:00000681:  ereport(ERROR, 
+faaj: filespace:00000682:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000683:  errmsg("filespace name may not be qualified"))); 
+faaj: filespace:00000695:  ereport(ERROR, 
+faaj: filespace:00000696:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000697:  errmsg("filespace \"%s\" does not exist", fsname))); 
+faaj: filespace:00000703:  ereport(ERROR, 
+faaj: filespace:00000704:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000705:  errmsg("permission denied: \"%s\" is a system filespace", 
+faaj: filespace:00000706:  fsname))); 
+faaj: filespace:00000790:  ereport(ERROR, 
+faaj: filespace:00000791:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000792:  errmsg("filespace \"%s\" does not exist", 
+faaj: filespace:00000793:  oldname))); 
+faaj: filespace:00000800:  ereport(ERROR, 
+faaj: filespace:00000801:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000802:  errmsg("permission denied: \"%s\" is a system filespace", 
+faaj: filespace:00000803:  oldname))); 
+faaj: filespace:00000813:  ereport(ERROR, 
+faaj: filespace:00000814:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000815:  errmsg("unacceptable filespace name \"%s\"", newname), 
+faaj: filespace:00000816:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
+faaj: filespace:00000817:  GetReservedPrefix(newname)))); 
+faaj: filespace:00000827:  ereport(ERROR, 
+faaj: filespace:00000828:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00000829:  errmsg("filespace \"%s\" already exists", newname))); 
+faaj: filespace:00000999:  ereport(ERROR, 
+faaj: filespace:00001000:  (errcode(ERRCODE_INVALID_NAME), 
+faaj: filespace:00001001:  errmsg("filespace location \"%s\" " 
+faaj: filespace:00001002:  "cannot contain single quotes", path))); 
+faaj: filespace:00001010:  ereport(ERROR, 
+faaj: filespace:00001011:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001012:  errmsg("filespace location \"%s\" " 
+faaj: filespace:00001013:  "must be an absolute path", path))); 
+faaj: filespace:00001019:  ereport(ERROR, 
+faaj: filespace:00001020:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001021:  errmsg("filespace location \"%s\" is too long", 
+faaj: filespace:00001022:  path), 
+faaj: filespace:00001023:  errhint("maximum length %d characters", 
+faaj: filespace:00001024:  MAX_FILESPACE_PATH))); 
+faaj: filespace:00001066:  ereport(ERROR, 
+faaj: filespace:00001067:  (errcode_for_file_access(), 
+faaj: filespace:00001068:  errmsg("%s: File exists", path))); 
+faaj: filespace:00001077:  ereport(ERROR, 
+faaj: filespace:00001078:  (errcode_for_file_access(), 
+faaj: filespace:00001079:  errmsg("%s: No such file or directory", 
+faaj: filespace:00001080:  parentdir))); 
+faaj: filespace:00001084:  ereport(ERROR, 
+faaj: filespace:00001085:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001086:  errmsg("%s: Not a directory", parentdir))); 
+faaj: filespace:00001100:  ereport(ERROR, 
+faaj: filespace:00001101:  (errcode_for_file_access(), 
+faaj: filespace:00001102:  errmsg("%s: Permission denied", path))); 
+faaj: filespace:00001161:  ereport(ERROR, 
+faaj: filespace:00001162:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00001163:  errmsg("duplicate filespace locations: " 
+faaj: filespace:00001164:  "(%d: '%s', %d: '%s')", 
+faaj: filespace:00001165:  fse2->dbid, fse2->location, 
+faaj: filespace:00001166:  fse1->dbid, fse1->location))); 
+faaj: filespace:00001200:  ereport(ERROR, 
+faaj: filespace:00001201:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+faaj: filespace:00001202:  errmsg("filespace \"%s\" is not empty", 
+faaj: filespace:00001203:  get_filespace_name(fsoid)))); 
 aaaaa GP_IGNORE: fabb: foreigncmds - ./backend/commands/foreigncmds.c
 fabb: foreigncmds:00000134:  ereport(ERROR, 
 fabb: foreigncmds:00000135:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -9961,148 +9961,148 @@ qaaf: queue:00000440:  ereport(ERROR,
 qaaf: queue:00000441:  (errcode(ERRCODE_SYNTAX_ERROR), 
 qaaf: queue:00000442:  errmsg("conflicting or redundant option for \"%s\"", 
 qaaf: queue:00000443:  defel->defname))); 
-qaaf: queue:00000783:  ereport(ERROR, 
-qaaf: queue:00000784:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00000785:  errmsg("must be superuser to create resource queues"))); 
-qaaf: queue:00000806:  ereport(ERROR, 
-qaaf: queue:00000807:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000808:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000814:  ereport(ERROR, 
-qaaf: queue:00000815:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000816:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000822:  ereport(ERROR, 
-qaaf: queue:00000823:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000824:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000830:  ereport(ERROR, 
-qaaf: queue:00000831:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000832:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000839:  ereport(ERROR, 
-qaaf: queue:00000840:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000841:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00000842:  defel->defname))); 
-qaaf: queue:00000854:  elog(ERROR, "option \"%s\" not recognized", 
-qaaf: queue:00000855:  defel->defname); 
-qaaf: queue:00000864:  ereport(ERROR, 
-qaaf: queue:00000865:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000866:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000867:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000874:  ereport(ERROR, 
-qaaf: queue:00000875:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000876:  errmsg("cost threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000877:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000889:  ereport(ERROR, 
-qaaf: queue:00000890:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000891:  errmsg("min_cost threshold cannot be negative"))); 
-qaaf: queue:00000899:  ereport(ERROR, 
-qaaf: queue:00000900:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000901:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
-qaaf: queue:00000902:  errOmitLocation(true))); 
-qaaf: queue:00000907:  ereport(ERROR, 
-qaaf: queue:00000908:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000909:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00000910:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00000911:  errOmitLocation(true))); 
-qaaf: queue:00000918:  ereport(ERROR, 
-qaaf: queue:00000919:  (errcode(ERRCODE_RESERVED_NAME), 
-qaaf: queue:00000920:  errmsg("resource queue name \"%s\" is reserved", 
-qaaf: queue:00000921:  stmt->queue), 
-qaaf: queue:00000922:  errOmitLocation(true))); 
-qaaf: queue:00000952:  ereport(ERROR, 
-qaaf: queue:00000953:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-qaaf: queue:00000954:  errmsg("resource queue \"%s\" already exists", 
-qaaf: queue:00000955:  stmt->queue))); 
-qaaf: queue:00001027:  ereport(ERROR, 
-qaaf: queue:00001028:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00001029:  errmsg("insufficient resource queues available"), 
-qaaf: queue:00001030:  errhint("Increase max_resource_queues"))); 
-qaaf: queue:00001034:  ereport(WARNING, 
-qaaf: queue:00001035:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001036:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001105:  ereport(ERROR, 
-qaaf: queue:00001106:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001107:  errmsg("must be superuser to alter resource queues"))); 
-qaaf: queue:00001128:  ereport(ERROR, 
-qaaf: queue:00001129:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001130:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001144:  ereport(ERROR, 
-qaaf: queue:00001145:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001146:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001160:  ereport(ERROR, 
-qaaf: queue:00001161:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001162:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001176:  ereport(ERROR, 
-qaaf: queue:00001177:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001178:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001194:  ereport(ERROR, 
-qaaf: queue:00001195:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001196:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001197:  defel->defname))); 
-qaaf: queue:00001207:  ereport(ERROR, 
-qaaf: queue:00001208:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001209:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001210:  defel->defname))); 
-qaaf: queue:00001221:  elog(ERROR, "option \"%s\" not recognized", 
-qaaf: queue:00001222:  defel->defname); 
-qaaf: queue:00001252:  ereport(ERROR, 
-qaaf: queue:00001253:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001254:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00001255:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001256:  errOmitLocation(true))); 
-qaaf: queue:00001263:  ereport(ERROR, 
-qaaf: queue:00001264:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001265:  errmsg("cost threshold must be equal to %d or greater than 0", 
-qaaf: queue:00001266:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001267:  errOmitLocation(true))); 
-qaaf: queue:00001280:  ereport(ERROR, 
-qaaf: queue:00001281:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001282:  errmsg("min_cost threshold cannot be negative"), 
-qaaf: queue:00001283:  errOmitLocation(true))); 
-qaaf: queue:00001300:  ereport(ERROR, 
-qaaf: queue:00001301:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001302:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
-qaaf: queue:00001303:  errOmitLocation(true))); 
-qaaf: queue:00001332:  ereport(ERROR, 
-qaaf: queue:00001333:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001334:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001335:  stmt->queue), 
-qaaf: queue:00001336:  errOmitLocation(true))); 
-qaaf: queue:00001406:  ereport(ERROR, 
-qaaf: queue:00001407:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001408:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00001409:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00001461:  ereport(ERROR, 
-qaaf: queue:00001462:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001463:  errmsg("thresholds cannot be less than current values"))); 
-qaaf: queue:00001465:  ereport(ERROR, 
-qaaf: queue:00001466:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001467:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
-qaaf: queue:00001469:  ereport(ERROR, 
-qaaf: queue:00001470:  (errcode(ERRCODE_INTERNAL_ERROR), 
-qaaf: queue:00001471:  errmsg("queue hash table corrupted"))); 
-qaaf: queue:00001478:  ereport(WARNING, 
-qaaf: queue:00001479:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001480:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001520:  ereport(ERROR, 
-qaaf: queue:00001521:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001522:  errmsg("must be superuser to drop resource queues"))); 
-qaaf: queue:00001550:  ereport(ERROR, 
-qaaf: queue:00001551:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001552:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001553:  stmt->queue))); 
-qaaf: queue:00001578:  ereport(ERROR, 
-qaaf: queue:00001579:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-qaaf: queue:00001580:  errmsg("resource queue \"%s\" is used by at least one role", 
-qaaf: queue:00001581:  stmt->queue))); 
-qaaf: queue:00001589:  ereport(ERROR, 
-qaaf: queue:00001590:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-qaaf: queue:00001591:  errmsg("cannot drop default resource queue \"%s\"", 
-qaaf: queue:00001592:  stmt->queue))); 
-qaaf: queue:00001622:  ereport(ERROR, 
-qaaf: queue:00001623:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00001624:  errmsg("resource queue cannot be dropped as is in use"))); 
-qaaf: queue:00001628:  ereport(WARNING, 
-qaaf: queue:00001629:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001630:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00000780:  ereport(ERROR, 
+qaaf: queue:00000781:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00000782:  errmsg("must be superuser to create resource queues"))); 
+qaaf: queue:00000803:  ereport(ERROR, 
+qaaf: queue:00000804:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000805:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000811:  ereport(ERROR, 
+qaaf: queue:00000812:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000813:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000819:  ereport(ERROR, 
+qaaf: queue:00000820:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000821:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000827:  ereport(ERROR, 
+qaaf: queue:00000828:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000829:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000836:  ereport(ERROR, 
+qaaf: queue:00000837:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000838:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00000839:  defel->defname))); 
+qaaf: queue:00000851:  elog(ERROR, "option \"%s\" not recognized", 
+qaaf: queue:00000852:  defel->defname); 
+qaaf: queue:00000861:  ereport(ERROR, 
+qaaf: queue:00000862:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000863:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000864:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000871:  ereport(ERROR, 
+qaaf: queue:00000872:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000873:  errmsg("cost threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000874:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000886:  ereport(ERROR, 
+qaaf: queue:00000887:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000888:  errmsg("min_cost threshold cannot be negative"))); 
+qaaf: queue:00000896:  ereport(ERROR, 
+qaaf: queue:00000897:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000898:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
+qaaf: queue:00000899:  errOmitLocation(true))); 
+qaaf: queue:00000904:  ereport(ERROR, 
+qaaf: queue:00000905:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000906:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00000907:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00000908:  errOmitLocation(true))); 
+qaaf: queue:00000915:  ereport(ERROR, 
+qaaf: queue:00000916:  (errcode(ERRCODE_RESERVED_NAME), 
+qaaf: queue:00000917:  errmsg("resource queue name \"%s\" is reserved", 
+qaaf: queue:00000918:  stmt->queue), 
+qaaf: queue:00000919:  errOmitLocation(true))); 
+qaaf: queue:00000949:  ereport(ERROR, 
+qaaf: queue:00000950:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+qaaf: queue:00000951:  errmsg("resource queue \"%s\" already exists", 
+qaaf: queue:00000952:  stmt->queue))); 
+qaaf: queue:00001024:  ereport(ERROR, 
+qaaf: queue:00001025:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001026:  errmsg("insufficient resource queues available"), 
+qaaf: queue:00001027:  errhint("Increase max_resource_queues"))); 
+qaaf: queue:00001031:  ereport(WARNING, 
+qaaf: queue:00001032:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001033:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001102:  ereport(ERROR, 
+qaaf: queue:00001103:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001104:  errmsg("must be superuser to alter resource queues"))); 
+qaaf: queue:00001125:  ereport(ERROR, 
+qaaf: queue:00001126:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001127:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001141:  ereport(ERROR, 
+qaaf: queue:00001142:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001143:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001157:  ereport(ERROR, 
+qaaf: queue:00001158:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001159:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001173:  ereport(ERROR, 
+qaaf: queue:00001174:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001175:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001191:  ereport(ERROR, 
+qaaf: queue:00001192:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001193:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001194:  defel->defname))); 
+qaaf: queue:00001204:  ereport(ERROR, 
+qaaf: queue:00001205:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001206:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001207:  defel->defname))); 
+qaaf: queue:00001218:  elog(ERROR, "option \"%s\" not recognized", 
+qaaf: queue:00001219:  defel->defname); 
+qaaf: queue:00001249:  ereport(ERROR, 
+qaaf: queue:00001250:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001251:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00001252:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001253:  errOmitLocation(true))); 
+qaaf: queue:00001260:  ereport(ERROR, 
+qaaf: queue:00001261:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001262:  errmsg("cost threshold must be equal to %d or greater than 0", 
+qaaf: queue:00001263:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001264:  errOmitLocation(true))); 
+qaaf: queue:00001277:  ereport(ERROR, 
+qaaf: queue:00001278:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001279:  errmsg("min_cost threshold cannot be negative"), 
+qaaf: queue:00001280:  errOmitLocation(true))); 
+qaaf: queue:00001297:  ereport(ERROR, 
+qaaf: queue:00001298:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001299:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+qaaf: queue:00001300:  errOmitLocation(true))); 
+qaaf: queue:00001329:  ereport(ERROR, 
+qaaf: queue:00001330:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001331:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001332:  stmt->queue), 
+qaaf: queue:00001333:  errOmitLocation(true))); 
+qaaf: queue:00001403:  ereport(ERROR, 
+qaaf: queue:00001404:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001405:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00001406:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00001458:  ereport(ERROR, 
+qaaf: queue:00001459:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001460:  errmsg("thresholds cannot be less than current values"))); 
+qaaf: queue:00001462:  ereport(ERROR, 
+qaaf: queue:00001463:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001464:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
+qaaf: queue:00001466:  ereport(ERROR, 
+qaaf: queue:00001467:  (errcode(ERRCODE_INTERNAL_ERROR), 
+qaaf: queue:00001468:  errmsg("queue hash table corrupted"))); 
+qaaf: queue:00001475:  ereport(WARNING, 
+qaaf: queue:00001476:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001477:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001516:  ereport(ERROR, 
+qaaf: queue:00001517:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001518:  errmsg("must be superuser to drop resource queues"))); 
+qaaf: queue:00001544:  ereport(ERROR, 
+qaaf: queue:00001545:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001546:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001547:  stmt->queue))); 
+qaaf: queue:00001572:  ereport(ERROR, 
+qaaf: queue:00001573:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+qaaf: queue:00001574:  errmsg("resource queue \"%s\" is used by at least one role", 
+qaaf: queue:00001575:  stmt->queue))); 
+qaaf: queue:00001583:  ereport(ERROR, 
+qaaf: queue:00001584:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+qaaf: queue:00001585:  errmsg("cannot drop default resource queue \"%s\"", 
+qaaf: queue:00001586:  stmt->queue))); 
+qaaf: queue:00001616:  ereport(ERROR, 
+qaaf: queue:00001617:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001618:  errmsg("resource queue cannot be dropped as is in use"))); 
+qaaf: queue:00001622:  ereport(WARNING, 
+qaaf: queue:00001623:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001624:  errhint("To enable set resource_scheduler=on"))); 
 aaaaa GP_IGNORE: saba: schemacmds - ./backend/commands/schemacmds.c
 saba: schemacmds:00000114:  ereport(ERROR, 
 saba: schemacmds:00000115:  (errcode(ERRCODE_RESERVED_NAME), 
@@ -13696,6 +13696,31 @@ saba: stringinfo:00000284:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 saba: stringinfo:00000285:  errmsg("out of memory"), 
 saba: stringinfo:00000286:  errdetail("Cannot enlarge string buffer containing %d bytes by %d more bytes.", 
 saba: stringinfo:00000287:  str->len, needed))); 
+aaaaa GP_IGNORE: gaae: gppc - ./backend/libgppc/lib/gppc.c
+gaae: gppc:00000028:  elog(ERROR, "unexpected value %d", (val == NULL ? 0 : nodeTag(val))); \ 
+gaae: gppc:00000029: } while(0) 
+gaae: gppc:00000030:  
+gaae: gppc:00000031: /* 
+gaae: gppc:00000032:  * libgppc.so has PG_MODULE_MAGIC, user libraries don't. Linking 
+gaae: gppc:00000033:  * to libgppc, user libraries can be loaded by the backend. 
+gaae: gppc:00000034:  */ 
+gaae: gppc:00000035: PG_MODULE_MAGIC; 
+gaae: gppc:00000041:  elog(ERROR, "requested invalid attno(%d)", (attno)); \ 
+gaae: gppc:00000042:  if ((tupdesc) == NULL) \ 
+gaae: gppc:00000043:  elog(ERROR, "tuple desc is null"); \ 
+gaae: gppc:00000044:  if (((TupleDesc) (tupdesc))->natts <= (attno)) \ 
+gaae: gppc:00000045:  elog(ERROR, "requested attno(%d) over tuple desc length(%d)", \ 
+gaae: gppc:00000046:  (attno), ((TupleDesc) (tupdesc))->natts); \ 
+gaae: gppc:00000047: }while(0) 
+gaae: gppc:00000048:  
+gaae: gppc:00000049: /* 
+gaae: gppc:00000050:  * V1 call convension helper function. This is just to avoid leaking 
+gaae: gppc:00000051:  * Pg_finfo_record struct. 
+gaae: gppc:00000052:  */ 
+gaae: gppc:00000053: const void * 
+gaae: gppc:00000054: GppcFinfoV1(void) 
+gaae: gppc:00000055: { 
+gaae: gppc:00000056:  static const Pg_finfo_record my_finfo = { 1 }; 
 aaaaa GP_IGNORE: aaae: auth - ./backend/libpq/auth.c
 aaae: auth:00000309:  ereport(FATAL, 
 aaae: auth:00000310:  (errcode(errcode_return), 
