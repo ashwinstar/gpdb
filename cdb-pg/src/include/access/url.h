@@ -141,9 +141,6 @@ typedef struct extvar_t
  	char* GP_HADOOP_CONN_JARDIR;
  	char* GP_HADOOP_CONN_VERSION;
  	char* GP_HADOOP_HOME;
- 	/* EOL vars*/
- 	char* GP_LINE_DELIM_STR;
-	char* GP_LINE_DELIM_LENGTH;
 } extvar_t;
 
 /* exported functions */

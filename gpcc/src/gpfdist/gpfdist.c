@@ -80,7 +80,6 @@ int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
 
-void base16_decode(char* data);
 /* SSL additions */
 #define SSL_RENEGOTIATE_TIMEOUT_SEC	(600) /* 10 minutes */
 const char* const CertificateFilename = "server.crt";
@@ -322,8 +321,6 @@ struct request_t
 	} in;
 
 	block_t	outblock;	/* next block to send out */
-	char*           line_delim_str;
-	int             line_delim_length;
 	
 	/* SSL related */
 	BIO			*io;		/* for the i.o. */
@@ -1006,7 +1003,7 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
  * header (metadata for client such as filename, etc) and the data itself.
  */
 static const char*
-session_get_block(session_t* session, block_t* retblock, char* line_delim_str, int line_delim_length)
+session_get_block(session_t* session, block_t* retblock)
 {
 	int 		size;
 	const int 	whole_rows = 1; /* gpfdist must not read data with partial rows */
@@ -1023,8 +1020,8 @@ session_get_block(session_t* session, block_t* retblock, char* line_delim_str, i
 	gcb.read_bytes -= fstream_get_compressed_position(session->fstream);
 
 	/* read data from our filestream as a chunk with whole data rows */
-	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows, line_delim_str, line_delim_length);
-
+	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows);
+	
 	if (size == 0)
 	{
 		gcb.read_bytes += fstream_get_compressed_size(session->fstream);
@@ -1424,7 +1421,7 @@ static void do_write(int fd, short event, void* arg)
 		/* get a block (or find a remaining block) */
 		if (r->outblock.top == r->outblock.bot)
 		{
-			const char* ferror = session_get_block(r->session, &r->outblock, r->line_delim_str, r->line_delim_length);
+			const char* ferror = session_get_block(r->session, &r->outblock);
 
 			if (ferror)
 			{
@@ -2437,7 +2434,7 @@ static void handle_post_request(request_t *r, int header_end)
 
 		/* only write it out if no more data is expected */
 		if(r->in.davailable == 0)
-			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1, r->line_delim_str, r->line_delim_length);
+			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1);
 	}
 
 	/*
@@ -2490,7 +2487,7 @@ static void handle_post_request(request_t *r, int header_end)
 			if (r->in.dbufmax == r->in.dbuftop || r->in.davailable == 0)
 			{
 				/* only write up to end of last row */
-				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1, r->line_delim_str, r->line_delim_length);
+				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1);
 				gprint("wrote %d bytes to file\n", wrote);
 
 				if(wrote == -1)
@@ -2620,23 +2617,6 @@ static int request_validate(request_t *r)
 	return 0;
 }
 
-void base16_decode(char* data) {
-	if(data == NULL)
-		return;
-	char *encoded_bytes = data;
-    char buf[3];
-    char *endp;
-    int i = 0;
-    while ( encoded_bytes[0] ) {
-        memcpy ( buf, encoded_bytes, 2 );
-        buf[2] = '\0';
-        data[i] = strtoul ( buf, &endp, 16 );
-        i++;
-        encoded_bytes += 2;
-     }
-     data[i] = '\0';
-}
-
 /*
  * request_parse_gp_headers
  *
@@ -2672,12 +2652,6 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->totalsegs = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-SEGMENT-ID", r->in.req->hname[i]))
 			r->segid = atoi(r->in.req->hvalue[i]);
-		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i])){
-			base16_decode(r->in.req->hvalue[i]);
-			r->line_delim_str = r->in.req->hvalue[i];
-		}
-		else if (0 == strcmp("X-GP-LINE-DELIM-LENGTH", r->in.req->hname[i]))
-			r->line_delim_length = atoi(r->in.req->hvalue[i]);
 #ifdef GPFXDIST
 		else if (0 == strcmp("X-GP-TRANSFORM", r->in.req->hname[i]))
 			r->trans.name = r->in.req->hvalue[i];

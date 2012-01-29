@@ -88,8 +88,6 @@ static void close_external_source(FILE *dataSource, bool failOnError, const char
 static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom);
 static void justifyDatabuf(StringInfo buf);
 
-void base16_encode(char* raw, int len, char* encoded);
-
 /* ----------------------------------------------------------------
 *				   external_ interface functions
 * ----------------------------------------------------------------
@@ -1615,47 +1613,19 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 static void
 open_external_readable_source(FileScanDesc scan)
 {
-
 	extvar_t 	extvar;
 	int 		response_code;
 	const char*	response_string;
-	/* search for custom end of line delimiter */
-	char*  line_delim_str = "";
-	int line_delim_length = -1;
-	char buffer_delim_length [33];
-
-		List* l = scan->fs_pstate->custom_formatter_params;
-	if(l!=NULL){
-		ListCell* lc = l->head;
-			while (lc)
-		{
-			if (pg_strcasecmp(((DefElem *)lc->data.ptr_value)->defname, "line_delim") == 0)
-			{
-				line_delim_str = ((Value*)((DefElem *)lc->data.ptr_value)->arg)->val.str;
-				/*
-			 	 * non printable escape characters is not acceptable by PSQL
-			 	 * Therefore, we didn't use any encoding for processing the data
-			 	 */
-				line_delim_length = strlen(line_delim_str);
-			}
-			if(line_delim_length>=0)
-				break;
-			lc = lc->next;
-		}
-	}
-	sprintf( buffer_delim_length, "%d", line_delim_length );
 
 	/* set up extvar */
 	memset(&extvar, 0, sizeof(extvar));
-	external_set_env_vars_ext(&extvar,
+	external_set_env_vars(&extvar,
 						  scan->fs_uri,
 						  scan->fs_pstate->csv_mode,
 						  scan->fs_pstate->escape,
 						  scan->fs_pstate->quote,
 						  scan->fs_pstate->header_line,
-						  scan->fs_scancounter,
-						  line_delim_str,
-						  buffer_delim_length);
+						  scan->fs_scancounter);
 
     /* actually open the external source */
     scan->fs_file = (FILE*) url_fopen(scan->fs_uri,
@@ -1698,38 +1668,15 @@ open_external_writable_source(ExternalInsertDesc extInsertDesc)
 	int 		response_code;
 	const char*	response_string;
 
-	char*  line_delim_str = "";
-	int line_delim_length = -1;
-	char buffer_delim_length [33];
-
-	List* l = extInsertDesc->ext_pstate->custom_formatter_params;
-	if(l!=NULL)
-	{
-		ListCell* lc = l->head;
-		while (lc)
-		{
-			if (pg_strcasecmp(((DefElem *)lc->data.ptr_value)->defname, "line_delim") == 0)
-			{
-				line_delim_str = ((Value*)((DefElem *)lc->data.ptr_value)->arg)->val.str;
-				line_delim_length = strlen(line_delim_str);
-			}
-			if(line_delim_length>=0)
-				break;
-			lc = lc->next;
-		}
-		snprintf( buffer_delim_length, 33, "%d", line_delim_length );
-	}
 	/* set up extvar */
 	memset(&extvar, 0, sizeof(extvar));
-	external_set_env_vars_ext(&extvar,
+	external_set_env_vars(&extvar,
 						  extInsertDesc->ext_uri,
 						  extInsertDesc->ext_pstate->csv_mode,
 						  extInsertDesc->ext_pstate->escape,
 						  extInsertDesc->ext_pstate->quote,
 						  extInsertDesc->ext_pstate->header_line,
-						  0,
-						  line_delim_str,
-						  buffer_delim_length);
+						  0);
 
     /* actually open the external source */
     extInsertDesc->ext_file = (FILE*) url_fopen(extInsertDesc->ext_uri,
@@ -2543,10 +2490,8 @@ static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 						formatter_found = true;
 					}
 					else
-					{
 						l = lappend(l, makeDefElem(pstrdup(key_modified.data),
 									(Node *)makeString(pstrdup(val))));
-					}
 				}
 				else
 					goto error;
@@ -2588,22 +2533,6 @@ error:
 void
 external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter)
 {
-	external_set_env_vars_ext(extvar, uri, csv, escape, quote, header, scancounter, "", "-1");
-}
-
-void base16_encode(char* raw, int len, char* encoded) {
-    const char* raw_bytes = raw;
-    char *encoded_bytes = encoded;
-    int remaining = len;
-    for ( ; remaining-- ; encoded_bytes += 2 ) {
-        sprintf ( encoded_bytes, "%02x", *(raw_bytes++) );
-    }
-}
-
-void
-external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter, char* line_delim_str, char* buffer_delim_length)
-{
-
 	time_t 		now = time(0);
 	struct tm* 	tm = localtime(&now);
 	char*		result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
@@ -2671,10 +2600,4 @@ external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, c
  	extvar->GP_HADOOP_CONN_JARDIR  = gp_hadoop_connector_jardir;
  	extvar->GP_HADOOP_CONN_VERSION = gp_hadoop_connector_version;
  	extvar->GP_HADOOP_HOME         = gp_hadoop_home;
-
- 	int length = (int)strlen(line_delim_str);
- 	char* encoded_delim = (char*)(palloc(length*2+1));
- 	base16_encode(line_delim_str, length, encoded_delim);
- 	extvar->GP_LINE_DELIM_STR      = encoded_delim;
- 	extvar->GP_LINE_DELIM_LENGTH   = buffer_delim_length;
 }

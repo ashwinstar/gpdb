@@ -48,57 +48,6 @@ struct fstream_t
 };
 
 /*
- * Returns a pointer to the last occurrence of delimiter in content, or a null pointer if delimiter is not part of content.
- *
- * content - sequence of character to be scanned
- * content_length - number of characters in content
- * delimiter - sequence of characters to match
- * delimiter_length - number of characters in delimiter
- */
-static char* find_last(const char* content, const int content_length,  const char* delimiter, const int delimiter_length)
-{
-	char* content_p;
-	if(!delimiter_length)
-		return (char*)content;
-		
-	if(content_length - delimiter_length <= 0)
-		return NULL;
-
-	for ( content_p = (char*)(content + content_length - delimiter_length); content_p != content; content_p--)
-	{
-		if(memcmp(content_p,delimiter,delimiter_length)==0)
-			return content_p;
-	}
-	return NULL;
-}
-
-/*
- * Returns a pointer to the first occurrence of delimiter in content, or a null pointer if delimiter is not part of content.
- *
- * content - character sequebce to be scanned
- * content_length - number of characters in content
- * delimiter - sequence of characters to match
- * delimiter_length - number of characters in delimiter
- */
-static char* find_first(const char* content, const int content_length, const char* delimiter, const int delimiter_length)
-{
-	char* content_p;
-	if(delimiter_length==0)
-		return (char*)content;
-		
-	if(content_length - delimiter_length <= 0)
-		return NULL;
-		
-	const char* limit = content + content_length - delimiter_length;
-	for ( content_p = (char*)content; content_p <= limit; content_p++)
-	{
-		if(memcmp(content_p, delimiter, delimiter_length) == 0)
-			return content_p;
-	}
-	return NULL;
-}
-
-/*
  * glob_and_copy
  *
  * Given a pattern, glob it and populate pglob with the results that match it.
@@ -655,15 +604,12 @@ char* format_error(char* c1, char* c2)
  * If 'read_whole_lines' is specified then read up to the last logical row
  * in the source buffer. 'fo' keeps the state (name, offset, etc) of the current
  * filestream file we are reading from.
- * eolDelim is optional argument for custom end of line delimiter. 
  */
 int fstream_read(fstream_t *fs,
 				 void *dest,
 				 int size,
 				 struct fstream_filename_and_offset *fo,
-				 const int read_whole_lines,
-				 const char* line_delim_str,
-				 const int line_delim_length)
+				 const int read_whole_lines)
 {
 	int buffer_capacity = fs->options.bufsize;
 	static char err_buf[FILE_ERROR_SZ] = {0};
@@ -711,14 +657,6 @@ int fstream_read(fstream_t *fs,
 			{
 				/* csv header */
 				p = scan_csv_records(p, q, 1, fs);
-			}
-			/* \n is the default delimiter, the length of \n is defined to be -1*/
-			else if(line_delim_length > 0)
-			{
-				/* text header with defined EOL*/
-				p = find_first(p, size, line_delim_str, line_delim_length);
-				p = (p < q ? p + line_delim_length : 0);
-				fs->line_number++;
 			}
 			else
 			{
@@ -825,17 +763,6 @@ int fstream_read(fstream_t *fs,
 				/* CSV: go slow, scan byte-by-byte for record boundary */
 				p = scan_csv_records(dest, (char*)dest + size, 0, fs);
 			}
-			else if (line_delim_length > 0)
-			{
-				/*
-				 * TEXT: go fast, scan for end of line delimiter for record boundary
-				 * find the last end of line delimiter from the back
-				 */
-				p = (char*)dest;
-				p = find_last(p, size, line_delim_str, line_delim_length);
-				p = (char*)dest <= p ? p + line_delim_length : 0;
-				fs->line_number = 0;
-			}
 			else
 			{
 				/*
@@ -854,7 +781,7 @@ int fstream_read(fstream_t *fs,
 			if (!p || (char*)dest + size >= p + buffer_capacity)
 			{
 				snprintf(err_buf, sizeof(err_buf)-1, "line too long in file %s near (%lld bytes)",
-						fs->glob.gl_pathv[fs->fidx], (long long) fs->foff);
+						 fs->glob.gl_pathv[fs->fidx], (long long) fs->foff);
 				fs->ferror = err_buf;
 				gfile_printf_then_putc_newline("%s", err_buf);
 				return -1;
@@ -919,14 +846,13 @@ int fstream_read(fstream_t *fs,
 int fstream_write(fstream_t *fs,
 				  void *buf,
 				  int size,
-				  const int write_whole_lines,
-				  const char* line_delim_str,
-				  const int line_delim_length)
+				  const int write_whole_lines)
 {
 	int byteswritten = 0;
 	
 	if (fs->ferror)
 		return -1;
+
 	/*
 	 * If we need to write all the data up to the last *complete* logical
 	 * line in the data buffer (like gpfdist for example) - we choose this
@@ -936,54 +862,35 @@ int fstream_write(fstream_t *fs,
 	 */	
 	if (write_whole_lines)
 	{
-		/* \n is the default delimiter, the length of \n is defined to be -1*/
-		if(line_delim_length > 0) //eolDelim exists
+		char* last_lf;
+
+		/*
+		 * scan for \n for record boundary
+		 * find the last \n from the back
+		 */
+		for (last_lf = (char*)buf + size; (char*)buf <= --last_lf && *last_lf != '\n';)
+			;
+		last_lf = (char*)buf <= last_lf ? last_lf + 1 : 0;
+	 	
+		if (last_lf == 0)
 		{
-			/*
-			* scan for EOL Delimiter for record boundary
-			* find the last EOL Delimiter from the back
-			*/
-			char* last_delim = find_last(buf, size, line_delim_str, line_delim_length);
-			last_delim = (char*)buf <= last_delim ? last_delim + line_delim_length : 0;
-			if (last_delim == 0)
-			{
-				fs->ferror = "no complete data row found for writing";
-				return -1;
-			}
-			/* write data to destination file */
-			byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_delim - (char *)buf);
-			/* caller should move leftover data to start of buffer */
+			fs->ferror = "no complete data row found for writing";
+			return -1;
 		}
-		else
-		{
-			char* last_lf;
-			/*
-		 	 * scan for \n for record boundary
-		 	 * find the last \n from the back
-		 	 */
-			for (last_lf = (char*)buf + size; (char*)buf <= --last_lf && *last_lf != '\n';)
-				;
-			last_lf = (char*)buf <= last_lf ? last_lf + 1 : 0;
-
-			if (last_lf == 0)
-			{
-				fs->ferror = "no complete data row found for writing";
-				return -1;
-			}
-
-			/* TODO: need to do this more carefully for CSV, like in the read case */
-
-			/* write data to destination file */
-			byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_lf - (char *)buf);
-
-			/* caller should move leftover data to start of buffer */
-		}
+				
+		/* TODO: need to do this more carefully for CSV, like in the read case */
+		
+		/* write data to destination file */
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_lf - (char *)buf);
+		
+		/* caller should move leftover data to start of buffer */
 	}
 	else
 	{
 		/* write data to destination file */
 		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, size);
 	}
+		
 	if (byteswritten < 0)
 	{
 		fs->ferror = "cannot write into file";
