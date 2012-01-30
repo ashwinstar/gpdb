@@ -124,9 +124,11 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
 static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *limitOffset, int64 offset_est);
 bool is_dummy_plan(Plan *plan);
 
-
+#ifdef __darwin__
 #define OPT_LIB "libgpoptudf.dylib"
-
+#else
+#define OPT_LIB "libgpoptudf.so"
+#endif
 
 /**
  * Use the optimizer. Explicitly load the shared library, call the optimize task,
