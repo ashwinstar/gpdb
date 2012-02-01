@@ -24,9 +24,10 @@ PostgreSQL documentation
 CREATE [READABLE] EXTERNAL TABLE table_name 
      ( column_name data_type [, ...] | LIKE other_table )
       LOCATION ('file://seghost[:port]/path/file' [, ...])
-         | ('gpfdist://filehost[:port]/file_pattern[#transform]'
-           [, ...])
-         | ('gphdfs://hdfs_host[:port]/path/file')
+        | ('gpfdist://filehost[:port]/file_pattern[#transform]'
+        | ('gpfdists://filehost[:port]/file_pattern[#transform]'
+            [, ...])
+        | ('gphdfs://hdfs_host[:port]/path/file')
       FORMAT 'TEXT' 
             [( [HEADER]
                [DELIMITER [AS] 'delimiter' | 'OFF']
@@ -78,8 +79,9 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
 CREATE WRITABLE EXTERNAL TABLE table_name
     ( column_name data_type [, ...] | LIKE other_table )
      LOCATION('gpfdist://outputhost[:port]/filename[#transform]'
-              [, ...])
-         | ('gphdfs://hdfs_host[:port]/path')
+      | ('gpfdists://outputhost[:port]/file_pattern[#transform]'
+          [, ...])
+      | ('gphdfs://hdfs_host[:port]/path')
       FORMAT 'TEXT' 
                [( [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
