@@ -10,6 +10,9 @@ endif
 ifeq "$(BLD_ARCH)" "osx106_x86"
 export BLD_ARCH=osx105_x86
 endif
+ifeq "$(BLD_ARCH)" "osx107_x86"
+export BLD_ARCH=osx105_x86
+endif
 
 # map builds on OpenSUSE to look like SUSE enterprise 10, for now
 ifeq "$(BLD_ARCH)" "suse11.4_x86_64"
