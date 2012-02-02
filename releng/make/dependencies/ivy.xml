@@ -11,6 +11,7 @@
     </configurations>
 
     <dependencies>
+      <dependency org="perl" name="perl" rev="5.12.4-p1" conf="osx105_x86->osx105_x86;rhel5_x86_64->rhel5_x86_64;sol10_x86_32->sol10_x86_32;sol10_x86_64->sol10_x86_64;suse10_x86_64->suse10_x86_64" />
       <dependency org="R-Project" name="R" rev="2.13.0" conf="osx105_x86->osx105_x86;rhel5_x86_64->rhel5_x86_64;sol10_x86_32->sol10_x86_32;sol10_x86_64->sol10_x86_64;suse10_x86_64->suse10_x86_64" />
     </dependencies>
 

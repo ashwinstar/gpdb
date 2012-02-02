@@ -14,15 +14,16 @@ The Perl package provides Perl for PL/Perl.
 
 %install
 mkdir -p %{buildroot}/temp/ext/perl-%{perl_ver}
-cp -r %{perl_dir}/perl-%{perl_ver}/*   %{buildroot}/temp/ext/perl-%{perl_ver}
+cp -r %{perl_dir}/*   %{buildroot}/temp/ext/perl-%{perl_ver}
 
 %post
-echo "export PATH=$GPHOME/ext/perl-%{perl_ver}/bin:\$PATH" >> $GPHOME/greenplum_path.sh
-echo "export LD_LIBRARY_PATH=$GPHOME/ext/perl-%{perl_ver}/lib/5.12.4/x86_64-linux/CORE:\$LD_LIBRARY_PATH" >> $GPHOME/greenplum_path.sh
+echo "PERL5HOME=\$GPHOME/ext/perl-%{perl_ver}" >> $GPHOME/greenplum_path.sh
+echo "export PATH=\$PERL5HOME/bin:\$PATH" >> $GPHOME/greenplum_path.sh
+echo "export LD_LIBRARY_PATH=\$PERL5HOME/lib/5.12.4/x86_64-linux/CORE:\$LD_LIBRARY_PATH" >> $GPHOME/greenplum_path.sh
+echo "export PERL5LIB=\$PERL5HOME/lib/site_perl/5.12.4/x86_64-linux:\$PERL5HOME/lib/site_perl/5.12.4:\$PERL5HOME/lib/5.12.4/x86_64-linux:\$PERL5HOME/lib/5.12.4" >> $GPHOME/greenplum_path.sh
 
 %postun
-sed -i".bk" "s|export PATH=$GPHOME/ext/perl-%{perl_ver}/bin:\$PATH||g" $GPHOME/greenplum_path.sh
-sed -i".bk" "s|export LD_LIBRARY_PATH=$GPHOME/ext/perl-%{perl_ver}/lib/5.12.4/x86_64-linux/CORE:\$LD_LIBRARY_PATH||g" $GPHOME/greenplum_path.sh
+sed -i".bk" "/PERL5HOME/d" $GPHOME/greenplum_path.sh
 rm -rf $GPHOME/greenplum_path.sh.bk
 
 %files
