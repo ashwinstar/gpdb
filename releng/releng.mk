@@ -32,6 +32,16 @@ R_HOME = /opt/releng/tools/R-Project/R/$(R_VER)/$(BLD_ARCH)/lib/R
 endif
 endif
 
+PERL_VERSION = $(shell grep 'name="perl"' $(GREP_SED_VAR))
+ifneq "$(wildcard /opt/releng/tools/perl/perl/$(PERL_VERSION)/$(BLD_ARCH)/bin/perl)" ""
+PERL_DIR = /opt/releng/tools/perl/perl/$(PERL_VERSION)/$(BLD_ARCH)
+perltmpPATH:=$(PERL_DIR)/bin:$(PATH)
+perltmpLDLPATH:=$(PERL_DIR)/lib/5.12.4/x86_64-linux/CORE:$(LD_LIBRARY_PATH)
+export PATH=$(perltmpPATH)
+export LD_LIBRARY_PATH=$(perltmpLDLPATH)
+export PERL5LIB=$(PERL_DIR)/lib/site_perl/5.12.4/x86_64-linux:$(PERL_DIR)/lib/site_perl/5.12.4:$(PERL_DIR)/lib/5.12.4/x86_64-linux:$(PERL_DIR)/lib/5.12.4
+endif
+
 display_dependent_vers:
 	@echo ""
 	@echo "======================================================================"

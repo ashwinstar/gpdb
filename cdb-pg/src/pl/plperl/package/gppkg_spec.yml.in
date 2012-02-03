@@ -1,7 +1,7 @@
 Pkgname: plperl 
 Architecture: #arch
 OS: #os
-Version: 1.0
+Version: 1.1
 GPDBVersion: 4.2
 Description: Provides a procedural langauge implementation of Perl for the Greenplum Database. 
 PostInstall:
