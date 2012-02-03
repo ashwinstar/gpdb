@@ -274,6 +274,7 @@ bool 		Debug_appendonly_print_blockdirectory = false;
 bool 		Debug_appendonly_print_read_block = false;
 bool 		Debug_appendonly_print_append_block = false;
 bool 		Debug_appendonly_print_segfile_choice = false;
+bool 		Debug_gp_relation_node_fetch_wait_for_debugging = false;
 bool        gp_crash_recovery_abort_suppress_fatal = false;
 bool		gp_persistent_statechange_suppress_error = false;
 bool		Debug_bitmap_print_insert = false;
@@ -2466,6 +2467,17 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+	
+	{
+		{"debug_gp_relation_node_fetch_wait_for_debugging", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Wait for debugger attach for MPP-16395 RelationFetchGpRelationNodeForXLog issue."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_gp_relation_node_fetch_wait_for_debugging,
+		false, NULL, NULL
+	},
+	
 	{
 		{"debug_xlog_insert_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print XLOG Insert record debugging information."),
