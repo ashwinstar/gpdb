@@ -459,101 +459,101 @@ taah: tupdesc:00000550:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 taah: tupdesc:00000551:  errmsg("column \"%s\" cannot be declared SETOF", 
 taah: tupdesc:00000552:  attname))); 
 aaaaa GP_IGNORE: faag: fileam - ./backend/access/external/fileam.c
-faag: fileam:00000544:  ereport(ERROR, 
-faag: fileam:00000545:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00000546:  errmsg("External table has more URLs then available primary " 
-faag: fileam:00000547:  "segments that can write into them"))); 
-faag: fileam:00000554:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
-faag: fileam:00000555:  } 
-faag: fileam:00000556:  
-faag: fileam:00000557:  /* 
-faag: fileam:00000558:  * Allocate and init our structure that keeps track of data parsing state 
-faag: fileam:00000559:  */ 
-faag: fileam:00000560:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
-faag: fileam:00000668:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
-faag: fileam:00000834:  ereport(ERROR, \ 
-faag: fileam:00000835:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
-faag: fileam:00000836:  (errmsg("%s", finalmsg) \ 
-faag: fileam:00000837:  ),errOmitLocation(true))); \ 
-faag: fileam:00000838: } 
-faag: fileam:00000839:  
-faag: fileam:00000840: /* 
-faag: fileam:00000841:  * parse_next_line 
-faag: fileam:00000842:  * 
-faag: fileam:00000843:  * Given a buffer of data, extract the next data line from it and parse it 
-faag: fileam:00000844:  * to attributes according to the data format specifications. 
-faag: fileam:00000845:  * 
-faag: fileam:00000846:  * Returns: 
-faag: fileam:00000847:  * LINE_OK - line parsed successfully. 
-faag: fileam:00000848:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
-faag: fileam:00000849:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
-faag: fileam:00000850:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
-faag: fileam:00000851:  */ 
-faag: fileam:00000852: static DataLineStatus parse_next_line(FileScanDesc scan) 
-faag: fileam:00000853: { 
-faag: fileam:00000854:  CopyState pstate = scan->fs_pstate; 
-faag: fileam:00001085:  elog(ERROR, "header line in custom format is not yet supported"); 
-faag: fileam:00001181:  elog(ERROR, "unsupported formatter notification (%d)", 
-faag: fileam:00001182:  formatter->fmt_notification); 
-faag: fileam:00001279:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001280:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001281:  formatter_name, 
-faag: fileam:00001282:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001283:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001284:  errOmitLocation(true))); 
-faag: fileam:00001288:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001289:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001290:  formatter_name, 
-faag: fileam:00001291:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001292:  errOmitLocation(true))); 
-faag: fileam:00001296:  ereport(ERROR, 
-faag: fileam:00001297:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faag: fileam:00001298:  errmsg("formatter function %s is not declared STABLE.", 
-faag: fileam:00001299:  formatter_name), 
-faag: fileam:00001300:  errOmitLocation(true))); 
-faag: fileam:00001385:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001386:  errmsg("The specified error table for this " 
-faag: fileam:00001387:  "external table doesn't appear to " 
-faag: fileam:00001388:  "exist in the database. It may have " 
-faag: fileam:00001389:  "been dropped."), 
-faag: fileam:00001390:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001451:  ereport(ERROR, 
-faag: fileam:00001452:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001453:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001670:  ereport(ERROR, 
-faag: fileam:00001671:  (errcode_for_file_access(), 
-faag: fileam:00001672:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001673:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001674:  errOmitLocation(true))); 
-faag: fileam:00001744:  ereport(ERROR, 
-faag: fileam:00001745:  (errcode_for_file_access(), 
-faag: fileam:00001746:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001747:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001806:  ereport(ERROR, 
-faag: fileam:00001807:  (errcode_for_file_access(), 
-faag: fileam:00001808:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001830:  ereport(ERROR, 
-faag: fileam:00001831:  (errcode_for_file_access(), 
-faag: fileam:00001832:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
-faag: fileam:00001833:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001956:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001958:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001964:  elog(NOTICE,"%s",a); 
-faag: fileam:00002561:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002562:  errmsg("external table internal parse error: " 
-faag: fileam:00002563:  "no formatter function name found"))); 
-faag: fileam:00002569:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002570:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002571:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
-faag: fileam:00002578:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002579:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002580:  token))); 
-faag: fileam:00002582:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002583:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002584:  "line"))); 
-faag: fileam:00002651:  ereport(ERROR, 
-faag: fileam:00002652:  (errcode_for_file_access(), 
-faag: fileam:00002653:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00000542:  ereport(ERROR, 
+faag: fileam:00000543:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00000544:  errmsg("External table has more URLs then available primary " 
+faag: fileam:00000545:  "segments that can write into them"))); 
+faag: fileam:00000552:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
+faag: fileam:00000553:  } 
+faag: fileam:00000554:  
+faag: fileam:00000555:  /* 
+faag: fileam:00000556:  * Allocate and init our structure that keeps track of data parsing state 
+faag: fileam:00000557:  */ 
+faag: fileam:00000558:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
+faag: fileam:00000666:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+faag: fileam:00000832:  ereport(ERROR, \ 
+faag: fileam:00000833:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
+faag: fileam:00000834:  (errmsg("%s", finalmsg) \ 
+faag: fileam:00000835:  ),errOmitLocation(true))); \ 
+faag: fileam:00000836: } 
+faag: fileam:00000837:  
+faag: fileam:00000838: /* 
+faag: fileam:00000839:  * parse_next_line 
+faag: fileam:00000840:  * 
+faag: fileam:00000841:  * Given a buffer of data, extract the next data line from it and parse it 
+faag: fileam:00000842:  * to attributes according to the data format specifications. 
+faag: fileam:00000843:  * 
+faag: fileam:00000844:  * Returns: 
+faag: fileam:00000845:  * LINE_OK - line parsed successfully. 
+faag: fileam:00000846:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+faag: fileam:00000847:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+faag: fileam:00000848:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+faag: fileam:00000849:  */ 
+faag: fileam:00000850: static DataLineStatus parse_next_line(FileScanDesc scan) 
+faag: fileam:00000851: { 
+faag: fileam:00000852:  CopyState pstate = scan->fs_pstate; 
+faag: fileam:00001083:  elog(ERROR, "header line in custom format is not yet supported"); 
+faag: fileam:00001179:  elog(ERROR, "unsupported formatter notification (%d)", 
+faag: fileam:00001180:  formatter->fmt_notification); 
+faag: fileam:00001277:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001278:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001279:  formatter_name, 
+faag: fileam:00001280:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001281:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001282:  errOmitLocation(true))); 
+faag: fileam:00001286:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001287:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001288:  formatter_name, 
+faag: fileam:00001289:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001290:  errOmitLocation(true))); 
+faag: fileam:00001294:  ereport(ERROR, 
+faag: fileam:00001295:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faag: fileam:00001296:  errmsg("formatter function %s is not declared STABLE.", 
+faag: fileam:00001297:  formatter_name), 
+faag: fileam:00001298:  errOmitLocation(true))); 
+faag: fileam:00001383:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001384:  errmsg("The specified error table for this " 
+faag: fileam:00001385:  "external table doesn't appear to " 
+faag: fileam:00001386:  "exist in the database. It may have " 
+faag: fileam:00001387:  "been dropped."), 
+faag: fileam:00001388:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001449:  ereport(ERROR, 
+faag: fileam:00001450:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001451:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001640:  ereport(ERROR, 
+faag: fileam:00001641:  (errcode_for_file_access(), 
+faag: fileam:00001642:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001643:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001644:  errOmitLocation(true))); 
+faag: fileam:00001691:  ereport(ERROR, 
+faag: fileam:00001692:  (errcode_for_file_access(), 
+faag: fileam:00001693:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001694:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001753:  ereport(ERROR, 
+faag: fileam:00001754:  (errcode_for_file_access(), 
+faag: fileam:00001755:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001777:  ereport(ERROR, 
+faag: fileam:00001778:  (errcode_for_file_access(), 
+faag: fileam:00001779:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
+faag: fileam:00001780:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00001903:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001905:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001911:  elog(NOTICE,"%s",a); 
+faag: fileam:00002506:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002507:  errmsg("external table internal parse error: " 
+faag: fileam:00002508:  "no formatter function name found"))); 
+faag: fileam:00002514:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002515:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002516:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002523:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002524:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002525:  token))); 
+faag: fileam:00002527:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002528:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002529:  "line"))); 
+faag: fileam:00002580:  ereport(ERROR, 
+faag: fileam:00002581:  (errcode_for_file_access(), 
+faag: fileam:00002582:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000194:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000223:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -601,104 +601,104 @@ uaad: url:00000854:  elog(ERROR, "External Table error opening file: '%s', inval
 uaad: url:00000855:  "file path", url); 
 uaad: url:00000896:  elog(ERROR, "illegal URL: %s", url_cpy); 
 uaad: url:00000949:  elog(ERROR, "internal error: curl_easy_init failed"); 
-uaad: url:00000958:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
-uaad: url:00000959:  e, curl_easy_strerror(e)); 
-uaad: url:00000964:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
-uaad: url:00000965:  e, curl_easy_strerror(e)); 
-uaad: url:00000971:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
-uaad: url:00000972:  e, curl_easy_strerror(e)); 
-uaad: url:00000978:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
-uaad: url:00000979:  e, curl_easy_strerror(e)); 
-uaad: url:00000985:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
-uaad: url:00000986:  e, curl_easy_strerror(e)); 
-uaad: url:00000992:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
-uaad: url:00000993:  e, curl_easy_strerror(e)); 
-uaad: url:00001003:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
-uaad: url:00001004:  e, curl_easy_strerror(e)); 
-uaad: url:00001032:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00001042:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00001060:  elog(ERROR, "internal error: some header value is too long"); 
-uaad: url:00001075:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
-uaad: url:00001083:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
-uaad: url:00001084:  e, curl_easy_strerror(e)); 
-uaad: url:00001092:  elog(ERROR, "internal error: curl_multi_init failed"); 
-uaad: url:00001101:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
-uaad: url:00001102:  e, curl_easy_strerror(e)); 
-uaad: url:00001118:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_ERRORBUFFER error (%d - %s)", 
-uaad: url:00001119:  e, curl_easy_strerror(e)); 
-uaad: url:00001126:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLCERTTYPE error (%d - %s)", 
-uaad: url:00001127:  e, curl_easy_strerror(e)); 
-uaad: url:00001137:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
-uaad: url:00001142:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
-uaad: url:00001143:  e, curl_easy_strerror(e)); 
-uaad: url:00001153:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_KEYPASSWD error (%d - %s)", 
-uaad: url:00001154:  e, curl_easy_strerror(e)); 
-uaad: url:00001161:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEYTYPE error (%d - %s)", 
-uaad: url:00001162:  e, curl_easy_strerror(e)); 
-uaad: url:00001172:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
-uaad: url:00001177:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
-uaad: url:00001178:  e, curl_easy_strerror(e)); 
-uaad: url:00001189:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
-uaad: url:00001194:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_CAINFO error (%d - %s)", 
-uaad: url:00001195:  e, curl_easy_strerror(e)); 
-uaad: url:00001203:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYPEER error (%d - %s)", 
-uaad: url:00001204:  e, curl_easy_strerror(e)); 
-uaad: url:00001211:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYHOST error (%d - %s)", 
-uaad: url:00001212:  e, curl_easy_strerror(e)); 
-uaad: url:00001218:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_CIPHER_LIST error (%d - %s)", 
-uaad: url:00001219:  e, curl_easy_strerror(e)); 
-uaad: url:00001225:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLVERSION error (%d - %s)", 
-uaad: url:00001226:  e, curl_easy_strerror(e)); 
-uaad: url:00001253:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
-uaad: url:00001254:  e, curl_easy_strerror(e)); 
-uaad: url:00001266:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001267:  e, curl_easy_strerror(e)); 
-uaad: url:00001274:  elog(ERROR, "error: %s", 
-uaad: url:00001275:  curl_easy_strerror(e)); 
-uaad: url:00001467:  ereport(ERROR, 
-uaad: url:00001468:  (errcode(ERRCODE_INTERNAL_ERROR), 
-uaad: url:00001469:  errmsg_internal("external table type not implemented: %d", type))); 
-uaad: url:00001610:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
-uaad: url:00001616:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
-uaad: url:00001630:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
-uaad: url:00001631:  type, len); 
-uaad: url:00001635:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
-uaad: url:00001636:  curl->in.bot, curl->in.top); 
-uaad: url:00001657:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
-uaad: url:00001662:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
-uaad: url:00001677:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
-uaad: url:00001682:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001711:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
-uaad: url:00001716:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001732:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
-uaad: url:00001737:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001759:  // elog(NOTICE, "D %d", curl->block.datalen); 
-uaad: url:00001763:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
-uaad: url:00001780:  elog(ERROR, "gpfdist server closed connection.\n"); 
-uaad: url:00001789:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
-uaad: url:00001814:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001815:  e, curl_easy_strerror(e)); 
-uaad: url:00001819:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
-uaad: url:00001820:  e, curl_easy_strerror(e)); 
-uaad: url:00001824:  elog(ERROR, "%s error (%d - %s)", 
-uaad: url:00001825:  file->u.curl.curl_url, 
-uaad: url:00001826:  e, curl_easy_strerror(e)); 
-uaad: url:00001830:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
-uaad: url:00001831:  file->u.curl.curl_url, response_code, response_string); 
-uaad: url:00001847:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
-uaad: url:00001848:  file->u.curl.curl_url, 
-uaad: url:00001849:  e, curl_easy_strerror(e)); 
-uaad: url:00001855:  elog(ERROR, "%s error: %s", 
-uaad: url:00001856:  file->u.curl.curl_url, 
-uaad: url:00001857:  curl_easy_strerror(e)); 
-uaad: url:00001872:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001883:  //elog(NOTICE, "curl_fread %d bytes", n); 
-uaad: url:00001898:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001944:  elog(ERROR, "out of memory (curl_fwrite)"); 
-uaad: url:00002029:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00002069:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00002123:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
-uaad: url:00002514:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+uaad: url:00000954:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)", 
+uaad: url:00000955:  e, curl_easy_strerror(e)); 
+uaad: url:00000960:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
+uaad: url:00000961:  e, curl_easy_strerror(e)); 
+uaad: url:00000967:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
+uaad: url:00000968:  e, curl_easy_strerror(e)); 
+uaad: url:00000974:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)", 
+uaad: url:00000975:  e, curl_easy_strerror(e)); 
+uaad: url:00000981:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
+uaad: url:00000982:  e, curl_easy_strerror(e)); 
+uaad: url:00000988:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)", 
+uaad: url:00000989:  e, curl_easy_strerror(e)); 
+uaad: url:00000999:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)", 
+uaad: url:00001000:  e, curl_easy_strerror(e)); 
+uaad: url:00001027:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001037:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001055:  elog(ERROR, "internal error: some header value is too long"); 
+uaad: url:00001070:  elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long"); 
+uaad: url:00001078:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HTTPHEADER error (%d - %s)", 
+uaad: url:00001079:  e, curl_easy_strerror(e)); 
+uaad: url:00001087:  elog(ERROR, "internal error: curl_multi_init failed"); 
+uaad: url:00001096:  elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
+uaad: url:00001097:  e, curl_easy_strerror(e)); 
+uaad: url:00001113:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_ERRORBUFFER error (%d - %s)", 
+uaad: url:00001114:  e, curl_easy_strerror(e)); 
+uaad: url:00001121:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLCERTTYPE error (%d - %s)", 
+uaad: url:00001122:  e, curl_easy_strerror(e)); 
+uaad: url:00001132:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001137:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00001138:  e, curl_easy_strerror(e)); 
+uaad: url:00001148:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_KEYPASSWD error (%d - %s)", 
+uaad: url:00001149:  e, curl_easy_strerror(e)); 
+uaad: url:00001156:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEYTYPE error (%d - %s)", 
+uaad: url:00001157:  e, curl_easy_strerror(e)); 
+uaad: url:00001167:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001172:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLKEY error (%d - %s)", 
+uaad: url:00001173:  e, curl_easy_strerror(e)); 
+uaad: url:00001184:  elog(ERROR, "file %s doesn't exists", extssl_cer_full); 
+uaad: url:00001189:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_CAINFO error (%d - %s)", 
+uaad: url:00001190:  e, curl_easy_strerror(e)); 
+uaad: url:00001198:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYPEER error (%d - %s)", 
+uaad: url:00001199:  e, curl_easy_strerror(e)); 
+uaad: url:00001206:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_VERIFYHOST error (%d - %s)", 
+uaad: url:00001207:  e, curl_easy_strerror(e)); 
+uaad: url:00001213:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSL_CIPHER_LIST error (%d - %s)", 
+uaad: url:00001214:  e, curl_easy_strerror(e)); 
+uaad: url:00001220:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_SSLVERSION error (%d - %s)", 
+uaad: url:00001221:  e, curl_easy_strerror(e)); 
+uaad: url:00001248:  elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+uaad: url:00001249:  e, curl_easy_strerror(e)); 
+uaad: url:00001261:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001262:  e, curl_easy_strerror(e)); 
+uaad: url:00001269:  elog(ERROR, "error: %s", 
+uaad: url:00001270:  curl_easy_strerror(e)); 
+uaad: url:00001462:  ereport(ERROR, 
+uaad: url:00001463:  (errcode(ERRCODE_INTERNAL_ERROR), 
+uaad: url:00001464:  errmsg_internal("external table type not implemented: %d", type))); 
+uaad: url:00001605:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
+uaad: url:00001611:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
+uaad: url:00001625:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
+uaad: url:00001626:  type, len); 
+uaad: url:00001630:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
+uaad: url:00001631:  curl->in.bot, curl->in.top); 
+uaad: url:00001652:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
+uaad: url:00001657:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
+uaad: url:00001672:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
+uaad: url:00001677:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001706:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
+uaad: url:00001711:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001727:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
+uaad: url:00001732:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001754:  // elog(NOTICE, "D %d", curl->block.datalen); 
+uaad: url:00001758:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
+uaad: url:00001775:  elog(ERROR, "gpfdist server closed connection.\n"); 
+uaad: url:00001785:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
+uaad: url:00001810:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001811:  e, curl_easy_strerror(e)); 
+uaad: url:00001815:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
+uaad: url:00001816:  e, curl_easy_strerror(e)); 
+uaad: url:00001820:  elog(ERROR, "%s error (%d - %s)", 
+uaad: url:00001821:  file->u.curl.curl_url, 
+uaad: url:00001822:  e, curl_easy_strerror(e)); 
+uaad: url:00001826:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
+uaad: url:00001827:  file->u.curl.curl_url, response_code, response_string); 
+uaad: url:00001843:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
+uaad: url:00001844:  file->u.curl.curl_url, 
+uaad: url:00001845:  e, curl_easy_strerror(e)); 
+uaad: url:00001851:  elog(ERROR, "%s error: %s", 
+uaad: url:00001852:  file->u.curl.curl_url, 
+uaad: url:00001853:  curl_easy_strerror(e)); 
+uaad: url:00001868:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001879:  //elog(NOTICE, "curl_fread %d bytes", n); 
+uaad: url:00001894:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001940:  elog(ERROR, "out of memory (curl_fwrite)"); 
+uaad: url:00002025:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00002065:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00002119:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
+uaad: url:00002510:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
 aaaaa GP_IGNORE: gabc: ginarrayproc - ./backend/access/gin/ginarrayproc.c
 gabc: ginarrayproc:00000028:  ereport(ERROR, \ 
 gabc: ginarrayproc:00000029:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \ 
@@ -13509,46 +13509,46 @@ naba: nodewindow:00005187:  (errcode(ERRCODE_DATA_EXCEPTION),
 naba: nodewindow:00005188:  errmsg("can't coerce leading frame bound to type of trailing frame bound"), 
 naba: nodewindow:00005189:  errhint("specify the leading and trailing frame bounds as the same type"), 
 naba: nodewindow:00005190:  errOmitLocation(true))); 
-naba: nodewindow:00005669:  ereport(ERROR, 
-naba: nodewindow:00005670:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-naba: nodewindow:00005671:  errmsg("aggregate functions with no prelimfn or " 
-naba: nodewindow:00005672:  "invprelimfn are not yet supported as window functions"), 
-naba: nodewindow:00005673:  errOmitLocation(true))); 
-naba: nodewindow:00005898:  ereport(ERROR, 
-naba: nodewindow:00005899:  (errcode(ERRCODE_SYNTAX_ERROR), 
-naba: nodewindow:00005900:  errmsg("function %s may only be called as a window function", 
-naba: nodewindow:00005901:  format_procedure(fcinfo->flinfo->fn_oid)), 
-naba: nodewindow:00005902:  errhint("To call a function as a window function use an OVER clause."), 
-naba: nodewindow:00005903:  errOmitLocation(true)) 
-naba: nodewindow:00005904:  ); 
-naba: nodewindow:00006012:  ereport(ERROR, 
-naba: nodewindow:00006013:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00006014:  errmsg("arguments invalid or inconsistent"), 
-naba: nodewindow:00006015:  errhint("inappropriate call to window function implementation"), 
-naba: nodewindow:00006016:  errOmitLocation(true))); 
-naba: nodewindow:00006029:  ereport(ERROR, 
-naba: nodewindow:00006030:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00006031:  errmsg("value out of range: overflow"), 
-naba: nodewindow:00006032:  errOmitLocation(true))); 
-naba: nodewindow:00006071:  ereport(ERROR, 
-naba: nodewindow:00006072:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00006073:  errmsg("arguments invalid or inconsistent"), 
-naba: nodewindow:00006074:  errhint("inappropriate call to window function implementation"))); 
-naba: nodewindow:00006087:  ereport(ERROR, 
-naba: nodewindow:00006088:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00006089:  errmsg("value out of range: overflow"))); 
-naba: nodewindow:00006126:  ereport(ERROR, 
-naba: nodewindow:00006127:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00006128:  errmsg("argument value out of range"), 
-naba: nodewindow:00006129:  errhint("NTILE expects a positive integer argument."))); 
-naba: nodewindow:00006205:  elog(ERROR, "expected 2-element int8 array"); 
-naba: nodewindow:00006253:  elog(ERROR, "LEAD offset cannot be NULL"); 
-naba: nodewindow:00006255:  elog(ERROR, "LAG offset cannot be NULL"); 
-naba: nodewindow:00006267:  ereport(ERROR, 
-naba: nodewindow:00006268:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-naba: nodewindow:00006269:  errmsg("%s offset cannot be negative", 
-naba: nodewindow:00006270:  is_lead ? "LEAD" : "LAG"), 
-naba: nodewindow:00006271:  errOmitLocation(true))); 
+naba: nodewindow:00005671:  ereport(ERROR, 
+naba: nodewindow:00005672:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+naba: nodewindow:00005673:  errmsg("aggregate functions with no prelimfn or " 
+naba: nodewindow:00005674:  "invprelimfn are not yet supported as window functions"), 
+naba: nodewindow:00005675:  errOmitLocation(true))); 
+naba: nodewindow:00005900:  ereport(ERROR, 
+naba: nodewindow:00005901:  (errcode(ERRCODE_SYNTAX_ERROR), 
+naba: nodewindow:00005902:  errmsg("function %s may only be called as a window function", 
+naba: nodewindow:00005903:  format_procedure(fcinfo->flinfo->fn_oid)), 
+naba: nodewindow:00005904:  errhint("To call a function as a window function use an OVER clause."), 
+naba: nodewindow:00005905:  errOmitLocation(true)) 
+naba: nodewindow:00005906:  ); 
+naba: nodewindow:00006014:  ereport(ERROR, 
+naba: nodewindow:00006015:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00006016:  errmsg("arguments invalid or inconsistent"), 
+naba: nodewindow:00006017:  errhint("inappropriate call to window function implementation"), 
+naba: nodewindow:00006018:  errOmitLocation(true))); 
+naba: nodewindow:00006031:  ereport(ERROR, 
+naba: nodewindow:00006032:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00006033:  errmsg("value out of range: overflow"), 
+naba: nodewindow:00006034:  errOmitLocation(true))); 
+naba: nodewindow:00006073:  ereport(ERROR, 
+naba: nodewindow:00006074:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00006075:  errmsg("arguments invalid or inconsistent"), 
+naba: nodewindow:00006076:  errhint("inappropriate call to window function implementation"))); 
+naba: nodewindow:00006089:  ereport(ERROR, 
+naba: nodewindow:00006090:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00006091:  errmsg("value out of range: overflow"))); 
+naba: nodewindow:00006128:  ereport(ERROR, 
+naba: nodewindow:00006129:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00006130:  errmsg("argument value out of range"), 
+naba: nodewindow:00006131:  errhint("NTILE expects a positive integer argument."))); 
+naba: nodewindow:00006207:  elog(ERROR, "expected 2-element int8 array"); 
+naba: nodewindow:00006255:  elog(ERROR, "LEAD offset cannot be NULL"); 
+naba: nodewindow:00006257:  elog(ERROR, "LAG offset cannot be NULL"); 
+naba: nodewindow:00006269:  ereport(ERROR, 
+naba: nodewindow:00006270:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+naba: nodewindow:00006271:  errmsg("%s offset cannot be negative", 
+naba: nodewindow:00006272:  is_lead ? "LEAD" : "LAG"), 
+naba: nodewindow:00006273:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: saad: spi - ./backend/executor/spi.c
 saad: spi:00000243:  ereport(WARNING, 
 saad: spi:00000244:  (errcode(ERRCODE_WARNING), 
@@ -14234,37 +14234,37 @@ pabc: plangroupext:00000279:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YE
 pabc: plangroupext:00000280:  errmsg("GROUPING SETS / ROLLUP / CUBE columns ambiguous.") 
 pabc: plangroupext:00000281:  )); 
 aaaaa GP_IGNORE: paah: planner - ./backend/optimizer/plan/planner.c
-paah: planner:00000144:  elog(NOTICE, "unable to load optimizer library"); 
-paah: planner:00000158:  elog(NOTICE, "unable to load orca function from library %s", error); 
-paah: planner:00000204:  elog(NOTICE, "Optimizer successfully produced plan"); 
-paah: planner:00000208:  elog(NOTICE, "Falling back to planner"); 
-paah: planner:00000742:  elog(ERROR, "failure repartitioning plan"); 
-paah: planner:00000905:  elog(ERROR, "unrecognized node type: %d", 
-paah: planner:00000906:  (int) nodeTag(jtnode)); 
-paah: planner:00001020:  ereport(ERROR, ( 
-paah: planner:00001021:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001022:  errmsg("incompatible loci in target inheritance set") )); 
-paah: planner:00001098:  ereport(ERROR, ( 
-paah: planner:00001099:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001100:  errmsg("unexpected locus assigned to target inheritance set") )); 
-paah: planner:00001240:  ereport(ERROR, 
-paah: planner:00001241:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001242:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001880:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001881:  errmsg("unexpected input locus to distinct"))); 
-paah: planner:00002905:  elog(ERROR, "failed to locate grouping columns"); 
-paah: planner:00002944:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00002949:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003022:  elog(ERROR, "invalid grouping set"); 
-paah: planner:00003160:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003169:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003179:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003223:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003238:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003252:  elog(ERROR,"invalid grouping set"); 
-paah: planner:00003258:  elog(ERROR,"invalid grouping set list"); 
-paah: planner:00003278:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
-paah: planner:00003347:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00000146:  elog(NOTICE, "unable to load optimizer library"); 
+paah: planner:00000160:  elog(NOTICE, "unable to load orca function from library %s", error); 
+paah: planner:00000206:  elog(NOTICE, "Optimizer successfully produced plan"); 
+paah: planner:00000210:  elog(NOTICE, "Falling back to planner"); 
+paah: planner:00000744:  elog(ERROR, "failure repartitioning plan"); 
+paah: planner:00000907:  elog(ERROR, "unrecognized node type: %d", 
+paah: planner:00000908:  (int) nodeTag(jtnode)); 
+paah: planner:00001022:  ereport(ERROR, ( 
+paah: planner:00001023:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001024:  errmsg("incompatible loci in target inheritance set") )); 
+paah: planner:00001100:  ereport(ERROR, ( 
+paah: planner:00001101:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001102:  errmsg("unexpected locus assigned to target inheritance set") )); 
+paah: planner:00001242:  ereport(ERROR, 
+paah: planner:00001243:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001244:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+paah: planner:00001882:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001883:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00002907:  elog(ERROR, "failed to locate grouping columns"); 
+paah: planner:00002946:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00002951:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003024:  elog(ERROR, "invalid grouping set"); 
+paah: planner:00003162:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003171:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003181:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003225:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003240:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003254:  elog(ERROR,"invalid grouping set"); 
+paah: planner:00003260:  elog(ERROR,"invalid grouping set list"); 
+paah: planner:00003280:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00003349:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000868:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000964:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
@@ -22681,68 +22681,74 @@ raai: relcache:00000601:  relation->rd_node.dbNode,
 raai: relcache:00000602:  relation->rd_node.relNode, 
 raai: relcache:00000603:  NameStr(relation->rd_rel->relname), 
 raai: relcache:00000604:  relation->rd_segfile0_relationnodeinfo.persistentSerialNum); 
-raai: relcache:00000626:  elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)", 
-raai: relcache:00000627:  countInThisBackend, 
-raai: relcache:00000628:  relation->rd_node.spcNode, 
-raai: relcache:00000629:  relation->rd_node.dbNode, 
-raai: relcache:00000630:  relation->rd_node.relNode, 
-raai: relcache:00000631:  deep); 
-raai: relcache:00000848:  elog(ERROR, "invalid attribute number %d for %s", 
-raai: relcache:00000849:  attp->attnum, RelationGetRelationName(relation)); 
-raai: relcache:00000882:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
-raai: relcache:00000883:  need, RelationGetRelid(relation)); 
-raai: relcache:00001338:  elog(ERROR, "cache lookup failed for index %u", 
-raai: relcache:00001339:  RelationGetRelid(relation)); 
-raai: relcache:00001365:  elog(ERROR, "cache lookup failed for access method %u", 
-raai: relcache:00001366:  relation->rd_rel->relam); 
-raai: relcache:00001374:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
-raai: relcache:00001375:  RelationGetRelid(relation)); 
-raai: relcache:00001471:  elog(ERROR, "bogus pg_index tuple"); 
-raai: relcache:00001603:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
-raai: relcache:00001604:  amopform->amopstrategy, operatorClassOid); 
-raai: relcache:00001637:  elog(ERROR, "invalid amproc number %d for opclass %u", 
-raai: relcache:00001638:  amprocform->amprocnum, operatorClassOid); 
-raai: relcache:00001908:  elog(ERROR, 
-raai: relcache:00001909:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
-raai: relcache:00001910:  rel->rd_node.spcNode, 
-raai: relcache:00001911:  rel->rd_node.dbNode, 
-raai: relcache:00001912:  rel->rd_node.relNode, 
-raai: relcache:00001913:  rel->rd_refcnt); 
-raai: relcache:00001988:  elog(ERROR, "could not find pg_class tuple for index %u", 
-raai: relcache:00001989:  RelationGetRelid(relation)); 
-raai: relcache:00002192:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
-raai: relcache:00002306:  elog(ERROR, "relation %u is still open", rid); 
-raai: relcache:00002679:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
-raai: relcache:00002680:  relname, relid); 
-raai: relcache:00002995:  elog(FATAL, "cache lookup failed for relation %u", 
-raai: relcache:00002996:  RelationGetRelid(relation)); 
-raai: relcache:00003025:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
-raai: relcache:00003026:  RelationGetRelationName(relation)); 
-raai: relcache:00003213:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
-raai: relcache:00003214:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003215:  RelationGetRelationName(relation)); 
-raai: relcache:00003223:  elog(WARNING, "null adbin for attr %s of rel %s", 
-raai: relcache:00003224:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
-raai: relcache:00003225:  RelationGetRelationName(relation)); 
-raai: relcache:00003233:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
-raai: relcache:00003234:  adform->adnum, RelationGetRelationName(relation)); 
-raai: relcache:00003241:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
-raai: relcache:00003242:  ndef - found, RelationGetRelationName(relation)); 
-raai: relcache:00003279:  elog(ERROR, "unexpected constraint record found for rel %s", 
-raai: relcache:00003280:  RelationGetRelationName(relation)); 
-raai: relcache:00003290:  elog(ERROR, "null conbin for rel %s", 
-raai: relcache:00003291:  RelationGetRelationName(relation)); 
-raai: relcache:00003302:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
-raai: relcache:00003303:  ncheck - found, RelationGetRelationName(relation)); 
-raai: relcache:00004036:  ereport(WARNING, 
-raai: relcache:00004037:  (errcode_for_file_access(), 
-raai: relcache:00004038:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00004039:  tempfilename), 
-raai: relcache:00004040:  errdetail("Continuing anyway, but there's something wrong."))); 
-raai: relcache:00004050:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004114:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004164:  elog(FATAL, "could not write init file"); 
-raai: relcache:00004166:  elog(FATAL, "could not write init file"); 
+raai: relcache:00000632:  elog(WARNING, "RelationFetchGpRelationNodeForXLog_Index [%d] for non-heap %u/%u/%u (deep %d) -- waiting for debug attach...", 
+raai: relcache:00000633:  countInThisBackend, 
+raai: relcache:00000634:  relation->rd_node.spcNode, 
+raai: relcache:00000635:  relation->rd_node.dbNode, 
+raai: relcache:00000636:  relation->rd_node.relNode, 
+raai: relcache:00000637:  deep); 
+raai: relcache:00000651:  elog(ERROR, "RelationFetchGpRelationNodeForXLog_Index [%d] for non-heap %u/%u/%u (deep %d)", 
+raai: relcache:00000652:  countInThisBackend, 
+raai: relcache:00000653:  relation->rd_node.spcNode, 
+raai: relcache:00000654:  relation->rd_node.dbNode, 
+raai: relcache:00000655:  relation->rd_node.relNode, 
+raai: relcache:00000656:  saveDeep); 
+raai: relcache:00000874:  elog(ERROR, "invalid attribute number %d for %s", 
+raai: relcache:00000875:  attp->attnum, RelationGetRelationName(relation)); 
+raai: relcache:00000908:  elog(ERROR, "catalog is missing %d attribute(s) for relid %u", 
+raai: relcache:00000909:  need, RelationGetRelid(relation)); 
+raai: relcache:00001364:  elog(ERROR, "cache lookup failed for index %u", 
+raai: relcache:00001365:  RelationGetRelid(relation)); 
+raai: relcache:00001391:  elog(ERROR, "cache lookup failed for access method %u", 
+raai: relcache:00001392:  relation->rd_rel->relam); 
+raai: relcache:00001400:  elog(ERROR, "relnatts disagrees with indnatts for index %u", 
+raai: relcache:00001401:  RelationGetRelid(relation)); 
+raai: relcache:00001497:  elog(ERROR, "bogus pg_index tuple"); 
+raai: relcache:00001629:  elog(ERROR, "invalid amopstrategy number %d for opclass %u", 
+raai: relcache:00001630:  amopform->amopstrategy, operatorClassOid); 
+raai: relcache:00001663:  elog(ERROR, "invalid amproc number %d for opclass %u", 
+raai: relcache:00001664:  amprocform->amprocnum, operatorClassOid); 
+raai: relcache:00001934:  elog(ERROR, 
+raai: relcache:00001935:  "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)", 
+raai: relcache:00001936:  rel->rd_node.spcNode, 
+raai: relcache:00001937:  rel->rd_node.dbNode, 
+raai: relcache:00001938:  rel->rd_node.relNode, 
+raai: relcache:00001939:  rel->rd_refcnt); 
+raai: relcache:00002014:  elog(ERROR, "could not find pg_class tuple for index %u", 
+raai: relcache:00002015:  RelationGetRelid(relation)); 
+raai: relcache:00002218:  elog(ERROR, "relation %u deleted while still in use", save_relid); 
+raai: relcache:00002332:  elog(ERROR, "relation %u is still open", rid); 
+raai: relcache:00002705:  elog(ERROR, "shared_relation flag for \"%s\" does not match IsSharedRelation(%u)", 
+raai: relcache:00002706:  relname, relid); 
+raai: relcache:00003021:  elog(FATAL, "cache lookup failed for relation %u", 
+raai: relcache:00003022:  RelationGetRelid(relation)); 
+raai: relcache:00003051:  elog(ERROR, "invalid relowner in pg_class entry for \"%s\"", 
+raai: relcache:00003052:  RelationGetRelationName(relation)); 
+raai: relcache:00003239:  elog(WARNING, "multiple attrdef records found for attr %s of rel %s", 
+raai: relcache:00003240:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003241:  RelationGetRelationName(relation)); 
+raai: relcache:00003249:  elog(WARNING, "null adbin for attr %s of rel %s", 
+raai: relcache:00003250:  NameStr(relation->rd_att->attrs[adform->adnum - 1]->attname), 
+raai: relcache:00003251:  RelationGetRelationName(relation)); 
+raai: relcache:00003259:  elog(WARNING, "unexpected attrdef record found for attr %d of rel %s", 
+raai: relcache:00003260:  adform->adnum, RelationGetRelationName(relation)); 
+raai: relcache:00003267:  elog(WARNING, "%d attrdef record(s) missing for rel %s", 
+raai: relcache:00003268:  ndef - found, RelationGetRelationName(relation)); 
+raai: relcache:00003305:  elog(ERROR, "unexpected constraint record found for rel %s", 
+raai: relcache:00003306:  RelationGetRelationName(relation)); 
+raai: relcache:00003316:  elog(ERROR, "null conbin for rel %s", 
+raai: relcache:00003317:  RelationGetRelationName(relation)); 
+raai: relcache:00003328:  elog(ERROR, "%d constraint record(s) missing for rel %s", 
+raai: relcache:00003329:  ncheck - found, RelationGetRelationName(relation)); 
+raai: relcache:00004062:  ereport(WARNING, 
+raai: relcache:00004063:  (errcode_for_file_access(), 
+raai: relcache:00004064:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00004065:  tempfilename), 
+raai: relcache:00004066:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00004076:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004140:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004190:  elog(FATAL, "could not write init file"); 
+raai: relcache:00004192:  elog(FATAL, "could not write init file"); 
 aaaaa GP_IGNORE: saai: syscache - ./backend/utils/cache/syscache.c
 saai: syscache:00000595:  elog(ERROR, "could not initialize cache %u (%d)", 
 saai: syscache:00000596:  cacheinfo[cacheId].reloid, cacheId); 
@@ -24183,112 +24189,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006694:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006695:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006708:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006709:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006722:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006723:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006753:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006754:  conf->gen.name, str); 
-gaad: guc:00007011:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007028:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007045:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007076:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007932:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00008042:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00008043:  " in a future release.", name); 
-gaad: guc:00008051:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00008052:  name); 
-gaad: guc:00008526:  ereport(ERROR, 
-gaad: guc:00008527:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008528:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008530:  ereport(ERROR, 
-gaad: guc:00008531:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008532:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008566:  ereport(ERROR, 
-gaad: guc:00008567:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008568:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008570:  ereport(ERROR, 
-gaad: guc:00008571:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008572:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008641:  ereport(ERROR, 
-gaad: guc:00008642:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008643:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008650:  ereport(ERROR, 
-gaad: guc:00008651:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008652:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008665:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008712:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008713:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008770:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008796:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008797:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008823:  ereport(ERROR, 
-gaad: guc:00008824:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008825:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008887:  ereport(ERROR, 
-gaad: guc:00008888:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008889:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009208:  ereport(ERROR, 
-gaad: guc:00009209:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009210:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009212:  ereport(ERROR, 
-gaad: guc:00009213:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009214:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009983:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010016:  ereport(FATAL, 
-gaad: guc:00010017:  (errcode_for_file_access(), 
-gaad: guc:00010018:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00010019:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00010031:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00010033:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010035:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010126:  ereport(WARNING, 
-gaad: guc:00010127:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010128:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010322:  ereport(ERROR, 
-gaad: guc:00010323:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010324:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010345:  ereport(ERROR, 
-gaad: guc:00010346:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010347:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010348:  tok))); 
-gaad: guc:00010374:  ereport(ERROR, 
-gaad: guc:00010375:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010376:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010377:  value))); 
-gaad: guc:00010809:  ereport(ERROR, 
-gaad: guc:00010810:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010811:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010885:  ereport(ERROR, 
-gaad: guc:00010886:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010887:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010896:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010906:  ereport(ERROR, 
-gaad: guc:00010907:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010908:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010919:  ereport(ERROR, 
-gaad: guc:00010920:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010921:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010936:  ereport(ERROR, 
-gaad: guc:00010937:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010938:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010939:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010940:  "\"log_dispatch_stats\", " 
-gaad: guc:00010941:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010956:  ereport(ERROR, 
-gaad: guc:00010957:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010958:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010959:  "\"log_statement_stats\", " 
-gaad: guc:00010960:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010961:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010976:  ereport(ERROR, 
-gaad: guc:00010977:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010978:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011375:  elog(ERROR, 
-gaad: guc:00011376:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011377:  show_allow_system_table_mods()); 
+gaad: guc:00006706:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006707:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006720:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006721:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006734:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006735:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006765:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006766:  conf->gen.name, str); 
+gaad: guc:00007023:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007040:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007057:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007088:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007944:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00008054:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00008055:  " in a future release.", name); 
+gaad: guc:00008063:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00008064:  name); 
+gaad: guc:00008538:  ereport(ERROR, 
+gaad: guc:00008539:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008540:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008542:  ereport(ERROR, 
+gaad: guc:00008543:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008544:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008578:  ereport(ERROR, 
+gaad: guc:00008579:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008580:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008582:  ereport(ERROR, 
+gaad: guc:00008583:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008584:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008653:  ereport(ERROR, 
+gaad: guc:00008654:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008655:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008662:  ereport(ERROR, 
+gaad: guc:00008663:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008664:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008677:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008724:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008725:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008782:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008808:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008809:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008835:  ereport(ERROR, 
+gaad: guc:00008836:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008837:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008899:  ereport(ERROR, 
+gaad: guc:00008900:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008901:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009220:  ereport(ERROR, 
+gaad: guc:00009221:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009222:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009224:  ereport(ERROR, 
+gaad: guc:00009225:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009226:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009995:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010028:  ereport(FATAL, 
+gaad: guc:00010029:  (errcode_for_file_access(), 
+gaad: guc:00010030:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00010031:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00010043:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00010045:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010047:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010138:  ereport(WARNING, 
+gaad: guc:00010139:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010140:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010334:  ereport(ERROR, 
+gaad: guc:00010335:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010336:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010357:  ereport(ERROR, 
+gaad: guc:00010358:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010359:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010360:  tok))); 
+gaad: guc:00010386:  ereport(ERROR, 
+gaad: guc:00010387:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010388:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010389:  value))); 
+gaad: guc:00010821:  ereport(ERROR, 
+gaad: guc:00010822:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010823:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010897:  ereport(ERROR, 
+gaad: guc:00010898:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010899:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010908:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010918:  ereport(ERROR, 
+gaad: guc:00010919:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010920:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010931:  ereport(ERROR, 
+gaad: guc:00010932:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010933:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010948:  ereport(ERROR, 
+gaad: guc:00010949:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010950:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010951:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010952:  "\"log_dispatch_stats\", " 
+gaad: guc:00010953:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010968:  ereport(ERROR, 
+gaad: guc:00010969:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010970:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010971:  "\"log_statement_stats\", " 
+gaad: guc:00010972:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010973:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010988:  ereport(ERROR, 
+gaad: guc:00010989:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010990:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011387:  elog(ERROR, 
+gaad: guc:00011388:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011389:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
