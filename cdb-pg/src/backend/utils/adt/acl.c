@@ -1464,6 +1464,8 @@ has_table_privilege_name_name(PG_FUNCTION_ARGS)
 
 	roleid = get_roleid_checked(NameStr(*rolename));
 	tableoid = convert_table_name(tablename);
+	if (!OidIsValid(tableoid))
+		PG_RETURN_NULL();
 	mode = convert_table_priv_string(priv_type_text);
 
 	aclresult = pg_class_aclcheck(tableoid, roleid, mode);
@@ -1489,6 +1491,8 @@ has_table_privilege_name(PG_FUNCTION_ARGS)
 
 	roleid = GetUserId();
 	tableoid = convert_table_name(tablename);
+	if (!OidIsValid(tableoid))
+		PG_RETURN_NULL();
 	mode = convert_table_priv_string(priv_type_text);
 
 	aclresult = pg_class_aclcheck(tableoid, roleid, mode);
@@ -1568,6 +1572,8 @@ has_table_privilege_id_name(PG_FUNCTION_ARGS)
 	AclResult	aclresult;
 
 	tableoid = convert_table_name(tablename);
+	if (!OidIsValid(tableoid))
+		PG_RETURN_NULL();
 	mode = convert_table_priv_string(priv_type_text);
 
 	aclresult = pg_class_aclcheck(tableoid, roleid, mode);
@@ -1607,6 +1613,8 @@ has_table_privilege_id_id(PG_FUNCTION_ARGS)
 
 /*
  * Given a table name expressed as a string, look it up and return Oid
+ * This may return InvalidOid rather than ERROR when the relation does
+ * not exist due to concurrent operations.
  */
 static Oid
 convert_table_name(text *tablename)
@@ -1615,7 +1623,7 @@ convert_table_name(text *tablename)
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(tablename));
 
-	return RangeVarGetRelid(relrv, false);
+	return RangeVarGetRelid(relrv, true);
 }
 
 /*
