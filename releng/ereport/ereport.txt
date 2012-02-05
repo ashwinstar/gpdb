@@ -7596,22 +7596,22 @@ caah: cdbutil:00001192:  elog(ERROR, "could not find configuration entry for dbi
 caah: cdbutil:00001222:  elog(ERROR, "contentid_get_dbid() executed on execution segment"); 
 caah: cdbutil:00001275:  elog(ERROR, "my_mirror_dbid() executed on execution segment"); 
 aaaaa GP_IGNORE: caah: cdbvars - ./backend/cdb/cdbvars.c
-caah: cdbvars:00000396:  elog(ERROR, "GpIdentity is not set"); 
-caah: cdbvars:00000877:  elog(ERROR, "Unknown interconnect type. (current type is '%s')", gpvars_show_gp_interconnect_type()); 
-caah: cdbvars:00000884:  elog(WARNING, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped)."); 
-caah: cdbvars:00000892:  elog(WARNING, "Nil-Interconnect diagnostic mode disabled."); 
-caah: cdbvars:00000937:  elog(ERROR, "Unknown autostats mode. (current type is '%s')", gpvars_show_gp_autostats_mode()); 
-caah: cdbvars:00000981:  ereport(ERROR, 
-caah: cdbvars:00000982:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00000983:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
-caah: cdbvars:00001001:  ereport(ERROR, 
-caah: cdbvars:00001002:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00001003:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
-caah: cdbvars:00001058:  ereport(WARNING, 
-caah: cdbvars:00001059:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00001060:  errmsg("gp_hash_index is deprecated and has no effect"))); 
-caah: cdbvars:00001083:  elog(ERROR, "unknown resource queue memory policy: current policy is '%s'", gpvars_show_gp_resqueue_memory_policy()); 
-caah: cdbvars:00001117:  elog(ERROR, "Invalid input for statement_mem. Must be less than max_statement_mem (%d kB).", max_statement_mem); 
+caah: cdbvars:00000398:  elog(ERROR, "GpIdentity is not set"); 
+caah: cdbvars:00000879:  elog(ERROR, "Unknown interconnect type. (current type is '%s')", gpvars_show_gp_interconnect_type()); 
+caah: cdbvars:00000886:  elog(WARNING, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped)."); 
+caah: cdbvars:00000894:  elog(WARNING, "Nil-Interconnect diagnostic mode disabled."); 
+caah: cdbvars:00000953:  elog(ERROR, "Unknown autostats mode. (current type is '%s')", autostats_mode_string); 
+caah: cdbvars:00001054:  ereport(ERROR, 
+caah: cdbvars:00001055:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00001056:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
+caah: cdbvars:00001074:  ereport(ERROR, 
+caah: cdbvars:00001075:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00001076:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
+caah: cdbvars:00001131:  ereport(WARNING, 
+caah: cdbvars:00001132:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00001133:  errmsg("gp_hash_index is deprecated and has no effect"))); 
+caah: cdbvars:00001156:  elog(ERROR, "unknown resource queue memory policy: current policy is '%s'", gpvars_show_gp_resqueue_memory_policy()); 
+caah: cdbvars:00001190:  elog(ERROR, "Invalid input for statement_mem. Must be less than max_statement_mem (%d kB).", max_statement_mem); 
 aaaaa GP_IGNORE: cabb: cdbworkfile - ./backend/cdb/cdbworkfile.c
 cabb: cdbworkfile:00000113:  ereport(ERROR, (errmsg("Workfile I/O error: %m."), 
 cabb: cdbworkfile:00000114:  errdetail("Failed to seek to offset " UINT64_FORMAT 
@@ -8095,25 +8095,25 @@ aaaf: alter:00000194:  (int) stmt->objectType);
 aaaf: alter:00000272:  elog(ERROR, "unrecognized AlterOwnerStmt type: %d", 
 aaaf: alter:00000273:  (int) stmt->objectType); 
 aaaaa GP_IGNORE: aaah: analyze - ./backend/commands/analyze.c
-aaah: analyze:00000461:  ereport(WARNING, 
-aaah: analyze:00000462:  (errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables", 
-aaah: analyze:00000463:  RelationGetRelationName(candidateRelation)))); 
-aaah: analyze:00000531:  ereport(WARNING, 
-aaah: analyze:00000532:  (errmsg("Skipping \"%s\" --- only table or database owner can analyze it", 
-aaah: analyze:00000533:  RelationGetRelationName(candidateRelation)))); 
-aaah: analyze:00000604:  ereport(ERROR, 
-aaah: analyze:00000605:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00000606:  errmsg("Attribute %s has been dropped in relation %s.", 
-aaah: analyze:00000607:  attributeName, get_rel_name(relationOid)))); 
-aaah: analyze:00000621:  ereport(ERROR, 
-aaah: analyze:00000622:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00000623:  errmsg("Relation %s does not have an attribute named %s.", 
-aaah: analyze:00000624:  get_rel_name(relationOid),attributeName))); 
-aaah: analyze:00001014:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaah: analyze:00001015:  errmsg("Unable to connect to execute internal query."))); 
-aaah: analyze:00001227:  elog(ERROR, "ANALYZE unable to generate accurate statistics on table %s.%s. Try lowering gp_analyze_relative_error", 
-aaah: analyze:00001228:  quote_identifier(schemaName), 
-aaah: analyze:00001229:  quote_identifier(tableName)); 
+aaah: analyze:00000466:  ereport(WARNING, 
+aaah: analyze:00000467:  (errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables", 
+aaah: analyze:00000468:  RelationGetRelationName(candidateRelation)))); 
+aaah: analyze:00000536:  ereport(WARNING, 
+aaah: analyze:00000537:  (errmsg("Skipping \"%s\" --- only table or database owner can analyze it", 
+aaah: analyze:00000538:  RelationGetRelationName(candidateRelation)))); 
+aaah: analyze:00000609:  ereport(ERROR, 
+aaah: analyze:00000610:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00000611:  errmsg("Attribute %s has been dropped in relation %s.", 
+aaah: analyze:00000612:  attributeName, get_rel_name(relationOid)))); 
+aaah: analyze:00000626:  ereport(ERROR, 
+aaah: analyze:00000627:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00000628:  errmsg("Relation %s does not have an attribute named %s.", 
+aaah: analyze:00000629:  get_rel_name(relationOid),attributeName))); 
+aaah: analyze:00001019:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaah: analyze:00001020:  errmsg("Unable to connect to execute internal query."))); 
+aaah: analyze:00001232:  elog(ERROR, "ANALYZE unable to generate accurate statistics on table %s.%s. Try lowering gp_analyze_relative_error", 
+aaah: analyze:00001233:  quote_identifier(schemaName), 
+aaah: analyze:00001234:  quote_identifier(tableName)); 
 aaaaa GP_IGNORE: aaaf: async - ./backend/commands/async.c
 aaaf: async:00000342:  ereport(ERROR, 
 aaaf: async:00000343:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -18941,56 +18941,56 @@ paai: postgres:00006147:  firstchar)));
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000116:  elog(NOTICE, "running query (sessionId, commandId): (%d, %d)", 
 paag: pquery:00000117:  MyProc->mppSessionId, gp_command_count); 
-paag: pquery:00000966:  ereport(ERROR, 
-paag: pquery:00000967:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paag: pquery:00000968:  errmsg("bind message has %d result formats but query has %d columns", 
-paag: pquery:00000969:  nFormats, natts), 
-paag: pquery:00000970:  errOmitLocation(true))); 
-paag: pquery:00001042:  ereport(ERROR, 
-paag: pquery:00001043:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001044:  errmsg("portal \"%s\" cannot be run", portal->name), 
-paag: pquery:00001045:  errOmitLocation(true))); 
-paag: pquery:00001138:  elog(ERROR, "unrecognized portal strategy: %d", 
-paag: pquery:00001139:  (int) portal->strategy); 
-paag: pquery:00001285:  ereport(ERROR, 
-paag: pquery:00001286:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001287:  errmsg("cursor can only scan forward"), 
-paag: pquery:00001288:  errhint("Declare it with SCROLL option to enable backward scan."), 
-paag: pquery:00001289:  errOmitLocation(true))); 
-paag: pquery:00001377:  elog(ERROR, "unsupported portal strategy: %d", 
-paag: pquery:00001378:  (int) portal->strategy); 
-paag: pquery:00001678:  ereport(ERROR, 
-paag: pquery:00001679:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001680:  errmsg("portal \"%s\" cannot be run", portal->name))); 
-paag: pquery:00001727:  elog(ERROR, "unsupported portal strategy"); 
-paag: pquery:00001788:  ereport(ERROR, 
-paag: pquery:00001789:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001790:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001791:  errOmitLocation(true))); 
-paag: pquery:00001804:  ereport(ERROR, 
-paag: pquery:00001805:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001806:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001807:  errOmitLocation(true))); 
-paag: pquery:00001827:  ereport(ERROR, 
-paag: pquery:00001828:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001829:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001830:  errOmitLocation(true))); 
-paag: pquery:00001863:  ereport(ERROR, 
-paag: pquery:00001864:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001865:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001866:  errOmitLocation(true))); 
-paag: pquery:00001878:  ereport(ERROR, 
-paag: pquery:00001879:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001880:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001881:  errOmitLocation(true))); 
-paag: pquery:00001906:  ereport(ERROR, 
-paag: pquery:00001907:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001908:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
-paag: pquery:00001922:  elog(ERROR, "bogus direction"); 
-paag: pquery:00001974:  ereport(ERROR, 
-paag: pquery:00001975:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001976:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001977:  errOmitLocation(true))); 
+paag: pquery:00000967:  ereport(ERROR, 
+paag: pquery:00000968:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paag: pquery:00000969:  errmsg("bind message has %d result formats but query has %d columns", 
+paag: pquery:00000970:  nFormats, natts), 
+paag: pquery:00000971:  errOmitLocation(true))); 
+paag: pquery:00001043:  ereport(ERROR, 
+paag: pquery:00001044:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001045:  errmsg("portal \"%s\" cannot be run", portal->name), 
+paag: pquery:00001046:  errOmitLocation(true))); 
+paag: pquery:00001139:  elog(ERROR, "unrecognized portal strategy: %d", 
+paag: pquery:00001140:  (int) portal->strategy); 
+paag: pquery:00001286:  ereport(ERROR, 
+paag: pquery:00001287:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001288:  errmsg("cursor can only scan forward"), 
+paag: pquery:00001289:  errhint("Declare it with SCROLL option to enable backward scan."), 
+paag: pquery:00001290:  errOmitLocation(true))); 
+paag: pquery:00001378:  elog(ERROR, "unsupported portal strategy: %d", 
+paag: pquery:00001379:  (int) portal->strategy); 
+paag: pquery:00001679:  ereport(ERROR, 
+paag: pquery:00001680:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001681:  errmsg("portal \"%s\" cannot be run", portal->name))); 
+paag: pquery:00001728:  elog(ERROR, "unsupported portal strategy"); 
+paag: pquery:00001789:  ereport(ERROR, 
+paag: pquery:00001790:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001791:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001792:  errOmitLocation(true))); 
+paag: pquery:00001805:  ereport(ERROR, 
+paag: pquery:00001806:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001807:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001808:  errOmitLocation(true))); 
+paag: pquery:00001828:  ereport(ERROR, 
+paag: pquery:00001829:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001830:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001831:  errOmitLocation(true))); 
+paag: pquery:00001864:  ereport(ERROR, 
+paag: pquery:00001865:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001866:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001867:  errOmitLocation(true))); 
+paag: pquery:00001879:  ereport(ERROR, 
+paag: pquery:00001880:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001881:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001882:  errOmitLocation(true))); 
+paag: pquery:00001907:  ereport(ERROR, 
+paag: pquery:00001908:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001909:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
+paag: pquery:00001923:  elog(ERROR, "bogus direction"); 
+paag: pquery:00001975:  ereport(ERROR, 
+paag: pquery:00001976:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001977:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001978:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: uaah: utility - ./backend/tcop/utility.c
 uaah: utility:00000138:  ereport(ERROR, 
 uaah: utility:00000139:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
@@ -24176,112 +24176,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006706:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006707:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006720:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006721:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006734:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006735:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006765:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006766:  conf->gen.name, str); 
-gaad: guc:00007023:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007040:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007057:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007088:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007944:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00008054:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00008055:  " in a future release.", name); 
-gaad: guc:00008063:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00008064:  name); 
-gaad: guc:00008538:  ereport(ERROR, 
-gaad: guc:00008539:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008540:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008542:  ereport(ERROR, 
-gaad: guc:00008543:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008544:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008578:  ereport(ERROR, 
-gaad: guc:00008579:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008580:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008582:  ereport(ERROR, 
-gaad: guc:00008583:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008584:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008653:  ereport(ERROR, 
-gaad: guc:00008654:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008655:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00006715:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006716:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006729:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006730:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006743:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006744:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006774:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006775:  conf->gen.name, str); 
+gaad: guc:00007032:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007049:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007066:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007097:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007953:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00008063:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00008064:  " in a future release.", name); 
+gaad: guc:00008072:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00008073:  name); 
+gaad: guc:00008547:  ereport(ERROR, 
+gaad: guc:00008548:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008549:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008551:  ereport(ERROR, 
+gaad: guc:00008552:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008553:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008587:  ereport(ERROR, 
+gaad: guc:00008588:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008589:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008591:  ereport(ERROR, 
+gaad: guc:00008592:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008593:  errmsg("must be superuser to examine \"%s\"", name))); 
 gaad: guc:00008662:  ereport(ERROR, 
-gaad: guc:00008663:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008664:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008677:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008724:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008725:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008782:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008808:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008809:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008835:  ereport(ERROR, 
-gaad: guc:00008836:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008837:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008899:  ereport(ERROR, 
-gaad: guc:00008900:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008901:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009220:  ereport(ERROR, 
-gaad: guc:00009221:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009222:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009224:  ereport(ERROR, 
-gaad: guc:00009225:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009226:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009995:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010028:  ereport(FATAL, 
-gaad: guc:00010029:  (errcode_for_file_access(), 
-gaad: guc:00010030:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00010031:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00010043:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00010045:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010047:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010138:  ereport(WARNING, 
-gaad: guc:00010139:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010140:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010334:  ereport(ERROR, 
-gaad: guc:00010335:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010336:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010357:  ereport(ERROR, 
-gaad: guc:00010358:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010359:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010360:  tok))); 
-gaad: guc:00010386:  ereport(ERROR, 
-gaad: guc:00010387:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010388:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010389:  value))); 
-gaad: guc:00010821:  ereport(ERROR, 
-gaad: guc:00010822:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010823:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010897:  ereport(ERROR, 
-gaad: guc:00010898:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010899:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010908:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010918:  ereport(ERROR, 
-gaad: guc:00010919:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010920:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010931:  ereport(ERROR, 
-gaad: guc:00010932:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010933:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010948:  ereport(ERROR, 
-gaad: guc:00010949:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010950:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010951:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010952:  "\"log_dispatch_stats\", " 
-gaad: guc:00010953:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010968:  ereport(ERROR, 
-gaad: guc:00010969:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010970:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010971:  "\"log_statement_stats\", " 
-gaad: guc:00010972:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010973:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010988:  ereport(ERROR, 
-gaad: guc:00010989:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010990:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011387:  elog(ERROR, 
-gaad: guc:00011388:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011389:  show_allow_system_table_mods()); 
+gaad: guc:00008663:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008664:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008671:  ereport(ERROR, 
+gaad: guc:00008672:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008673:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008686:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008733:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008734:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008791:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008817:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008818:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008844:  ereport(ERROR, 
+gaad: guc:00008845:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008846:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008908:  ereport(ERROR, 
+gaad: guc:00008909:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008910:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009229:  ereport(ERROR, 
+gaad: guc:00009230:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009231:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009233:  ereport(ERROR, 
+gaad: guc:00009234:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009235:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00010004:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010037:  ereport(FATAL, 
+gaad: guc:00010038:  (errcode_for_file_access(), 
+gaad: guc:00010039:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00010040:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00010052:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00010054:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010056:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010147:  ereport(WARNING, 
+gaad: guc:00010148:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010149:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010343:  ereport(ERROR, 
+gaad: guc:00010344:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010345:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010366:  ereport(ERROR, 
+gaad: guc:00010367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010368:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010369:  tok))); 
+gaad: guc:00010395:  ereport(ERROR, 
+gaad: guc:00010396:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010397:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010398:  value))); 
+gaad: guc:00010830:  ereport(ERROR, 
+gaad: guc:00010831:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010832:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010906:  ereport(ERROR, 
+gaad: guc:00010907:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010908:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010917:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010927:  ereport(ERROR, 
+gaad: guc:00010928:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010929:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010940:  ereport(ERROR, 
+gaad: guc:00010941:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010942:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010957:  ereport(ERROR, 
+gaad: guc:00010958:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010959:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010960:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010961:  "\"log_dispatch_stats\", " 
+gaad: guc:00010962:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010977:  ereport(ERROR, 
+gaad: guc:00010978:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010979:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010980:  "\"log_statement_stats\", " 
+gaad: guc:00010981:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010982:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010997:  ereport(ERROR, 
+gaad: guc:00010998:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010999:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011396:  elog(ERROR, 
+gaad: guc:00011397:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011398:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
