@@ -1018,29 +1018,6 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 										errOmitLocation(true)));
 
 				}
-				else if (uri->protocol == URI_GPHDFS && iswritable)
-				{
-					Datum 	d_wexthdfs = heap_getattr(tuple, Anum_pg_authid_rolcreatewexthdfs, pg_authid_dsc, &isnull);
-					bool	createwexthdfs = (isnull ? false : DatumGetBool(d_wexthdfs));
-
-					if (!createwexthdfs)
-						ereport(ERROR,
-								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-								errmsg("permission denied: no privilege to create a writable gphdfs external table"),
-										errOmitLocation(true)));
-				}
-				else if (uri->protocol == URI_GPHDFS && !iswritable)
-				{
-					Datum 	d_rexthdfs = heap_getattr(tuple, Anum_pg_authid_rolcreaterexthdfs, pg_authid_dsc, &isnull);
-					bool	createrexthdfs = (isnull ? false : DatumGetBool(d_rexthdfs));
-
-					if (!createrexthdfs)
-						ereport(ERROR,
-								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-								errmsg("permission denied: no privilege to create a readable gphdfs external table"),
-										errOmitLocation(true)));
-
-				}
 				else if (uri->protocol == URI_HTTP && !iswritable)
 				{
 					Datum 	d_exthttp = heap_getattr(tuple, Anum_pg_authid_rolcreaterexthttp, pg_authid_dsc, &isnull);
@@ -16959,17 +16936,6 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 			/* no changes to original uri string */
 			uri_str_final = (char *) uri_str_orig;
 		}
-
-		/*
-		 * check for various errors
-		 */
-		if (!first_uri && uri->protocol == URI_GPHDFS)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					errmsg("GPHDFS can only have one location list"),
-					errhint("Combine multiple HDFS files into a single file"),
-					errOmitLocation(true)));
-
 
 		/* 
 		 * If a custom protocol is used, validate its existence.
