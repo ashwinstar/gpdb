@@ -452,7 +452,8 @@ ProcessQuery(Portal portal,
 		}
 		
 		/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
-		auto_stats(cmdType, relationOid, queryDesc->es_processed);
+		bool inFunction = false;
+		auto_stats(cmdType, relationOid, queryDesc->es_processed, inFunction);
 	}
 
 	FreeQueryDesc(queryDesc);
