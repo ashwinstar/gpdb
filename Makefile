@@ -1406,6 +1406,7 @@ GPPKG_SOURCES = \
 	cdb-pg/src/pl/plperl \
 	cdb-pg/src/pl/pljava \
 	cdb-pg/src/bin/gphdfs \
+	cdb-pg/src/backend/libgppc/lib \
 	$(NULL)
 
 ## ----------------------------------------------------------------------
