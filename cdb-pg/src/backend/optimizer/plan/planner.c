@@ -1308,6 +1308,18 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		grpext = is_grouping_extension(canonical_grpsets);
 
 		/*
+		 * Error out when the number of grouping attributes is greater than
+		 * MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION.
+		 */
+		if (grpext && numGroupCols > MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("maximum number of grouping columns exceeded (max: %d)",
+							MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION)));
+		}
+
+		/*
 		 * Will need actual number of aggregates for estimating costs.
 		 *
 		 * Note: we do not attempt to detect duplicate aggregates here; a

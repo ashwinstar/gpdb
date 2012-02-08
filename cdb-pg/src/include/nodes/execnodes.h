@@ -27,6 +27,12 @@
 #include "utils/relcache.h"
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
 
+/*
+ * Currently, since grouping is defined as uint64 internally, it limits the
+ * maximum number of grouping attributes to 64.
+ */
+#define MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION 64
+
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
 struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
 struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
@@ -1693,45 +1699,66 @@ typedef struct SortState
 typedef struct AggStatePerAggData *AggStatePerAgg;
 typedef struct AggStatePerGroupData *AggStatePerGroup;
 
+/*
+ * There are four different types of Agg nodes:
+ *   (1) Scalar (Plain) Agg: Inputs are read in and aggregated into a single value. This Agg
+ *       always returns a single value, even when there are no inputs at all.
+ *   (2) Ordinary Grouping Agg node: Inputs come in as groups. Each group is aggregated.
+ *       This Agg will handle the ordinary grouping and first stage of rollup Agg.
+ *   (3) Intermediate Rollup Agg node: There are two different inputs:
+ *       (a) Inputs that just need to be pass-through. These tuples are coming from
+ *           2+ level downstream of rollup Aggs, and do not need to be aggregated.
+ *       (b) Inputs that need to be aggregated as groups. These tuples also need to
+ *           be pass-through.
+ *   (4) Final Rollup Agg node: This is similar to (3), except that the pass-through
+ *       tuples need to be finalized.
+ */
+typedef enum AggType
+{
+	AggTypeScalar,
+	AggTypeGroup,
+	AggTypeIntermediateRollup,
+	AggTypeFinalRollup
+} AggType;
+
 typedef struct AggState
 {
-        ScanState        ss;                                /* its first field is NodeTag */
-        List           *aggs;                        /* all Aggref nodes in targetlist & quals */
-        int                        numaggs;                /* length of list (could be zero!) */
-        FmgrInfo   *eqfunctions;        /* per-grouping-field equality fns */
-        FmgrInfo   *hashfunctions;        /* per-grouping-field hash fns */
-        AggStatePerAgg peragg;                /* per-Aggref information */
-        MemoryContext aggcontext;        /* memory context for long-lived data */
-        ExprContext *tmpcontext;        /* econtext for input expressions */
-        bool                agg_done;                /* indicates completion of Agg scan */
-        bool        has_partial_agg;/* indicate if a partial aggregate result
-                                                                 * has been calculated in the previous call.
-                                                                  */
+	ScanState        ss;                                /* its first field is NodeTag */
+	List           *aggs;                        /* all Aggref nodes in targetlist & quals */
+	int                        numaggs;                /* length of list (could be zero!) */
+	FmgrInfo   *eqfunctions;        /* per-grouping-field equality fns */
+	FmgrInfo   *hashfunctions;        /* per-grouping-field hash fns */
+	AggStatePerAgg peragg;                /* per-Aggref information */
+	MemoryContext aggcontext;        /* memory context for long-lived data */
+	ExprContext *tmpcontext;        /* econtext for input expressions */
+	bool                agg_done;                /* indicates completion of Agg scan */
 
-        /* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
-        AggStatePerGroup pergroup;        /* per-Aggref-per-group working state */
-        struct MemTupleData *       grp_firstTuple; /* copy of first tuple of current group */
-        /* these fields are used in AGG_HASHED mode: */
-        TupleHashTable hashtable;        /* hash table with one entry per group */
-        struct TupleTableSlot *hashslot;        /* slot for loading hash table */
-        List           *hash_needed;        /* list of columns needed in hash table */
-        TupleHashIterator hashiter; /* for iterating through hash table */
-        
-        /* MPP */
-        struct HashAggTable *hhashtable;
-        MemoryManagerContainer mem_manager;
-
-        /* ROLLUP */
-        AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
-
-        /*
-         * The following are used to define how to modify input tuples to
-         * satisfy the rollup level of this Agg node.
-         */
-        int num_attrs;                /* number of grouping attributes for the Agg node */
-        Datum *replValues;
-        bool *replIsnull;
-        bool *doReplace;
+	/* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
+	AggStatePerGroup pergroup;        /* per-Aggref-per-group working state */
+	struct MemTupleData *       grp_firstTuple; /* copy of first tuple of current group */
+	/* these fields are used in AGG_HASHED mode: */
+	TupleHashTable hashtable;        /* hash table with one entry per group */
+	struct TupleTableSlot *hashslot;        /* slot for loading hash table */
+	List           *hash_needed;        /* list of columns needed in hash table */
+	TupleHashIterator hashiter; /* for iterating through hash table */
+    
+	/* MPP */
+	struct HashAggTable *hhashtable;
+	MemoryManagerContainer mem_manager;
+	
+	AggType aggType;
+	
+	  /* ROLLUP */
+	AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
+	
+	/*
+	 * The following are used to define how to modify input tuples to
+	 * satisfy the rollup level of this Agg node.
+	 */
+	int num_attrs;                /* number of grouping attributes for the Agg node */
+	Datum *replValues;
+	bool *replIsnull;
+	bool *doReplace;
 } AggState;
 
 
