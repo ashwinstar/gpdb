@@ -13324,20 +13324,20 @@ faaj: functions:00001277:  errmsg("return type %s is not supported for SQL funct
 faaj: functions:00001278:  format_type_be(rettype)), 
 faaj: functions:00001279:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: naah: nodeagg - ./backend/executor/nodeAgg.c
-naah: nodeagg:00001036:  elog(ERROR,"hybrid hash aggregation sequencing error"); 
-naah: nodeagg:00001883:  elog(ERROR, "cache lookup failed for aggregate %u", 
-naah: nodeagg:00001884:  aggref->aggfnoid); 
-naah: nodeagg:00001929:  elog(ERROR, "cache lookup failed for function %u", 
-naah: nodeagg:00001930:  aggref->aggfnoid); 
-naah: nodeagg:00002025:  ereport(ERROR, 
-naah: nodeagg:00002026:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-naah: nodeagg:00002027:  errmsg("aggregate %u needs to have compatible input type and transition type", 
-naah: nodeagg:00002028:  aggref->aggfnoid))); 
-naah: nodeagg:00002072:  ereport(ERROR, 
-naah: nodeagg:00002073:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naah: nodeagg:00002074:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
-naah: nodeagg:00002346:  elog(ERROR, "aggregate function %u called as normal function", 
-naah: nodeagg:00002347:  fcinfo->flinfo->fn_oid); 
+naah: nodeagg:00001062:  elog(ERROR,"hybrid hash aggregation sequencing error"); 
+naah: nodeagg:00002092:  elog(ERROR, "cache lookup failed for aggregate %u", 
+naah: nodeagg:00002093:  aggref->aggfnoid); 
+naah: nodeagg:00002138:  elog(ERROR, "cache lookup failed for function %u", 
+naah: nodeagg:00002139:  aggref->aggfnoid); 
+naah: nodeagg:00002234:  ereport(ERROR, 
+naah: nodeagg:00002235:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+naah: nodeagg:00002236:  errmsg("aggregate %u needs to have compatible input type and transition type", 
+naah: nodeagg:00002237:  aggref->aggfnoid))); 
+naah: nodeagg:00002281:  ereport(ERROR, 
+naah: nodeagg:00002282:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naah: nodeagg:00002283:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
+naah: nodeagg:00002555:  elog(ERROR, "aggregate function %u called as normal function", 
+naah: nodeagg:00002556:  fcinfo->flinfo->fn_oid); 
 aaaaa GP_IGNORE: nabd: nodebitmapand - ./backend/executor/nodeBitmapAnd.c
 nabd: nodebitmapand:00000158:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nace: nodebitmapappendonlyscan - ./backend/executor/nodeBitmapAppendOnlyscan.c
@@ -14237,21 +14237,25 @@ paah: planner:00001102:  errmsg("unexpected locus assigned to target inheritance
 paah: planner:00001242:  ereport(ERROR, 
 paah: planner:00001243:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 paah: planner:00001244:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001882:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001883:  errmsg("unexpected input locus to distinct"))); 
-paah: planner:00002907:  elog(ERROR, "failed to locate grouping columns"); 
-paah: planner:00002946:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00002951:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003024:  elog(ERROR, "invalid grouping set"); 
-paah: planner:00003162:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003171:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003181:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003225:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003240:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003254:  elog(ERROR,"invalid grouping set"); 
-paah: planner:00003260:  elog(ERROR,"invalid grouping set list"); 
-paah: planner:00003280:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
-paah: planner:00003349:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00001316:  ereport(ERROR, 
+paah: planner:00001317:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001318:  errmsg("maximum number of grouping columns exceeded (max: %d)", 
+paah: planner:00001319:  MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION))); 
+paah: planner:00001894:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001895:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00002919:  elog(ERROR, "failed to locate grouping columns"); 
+paah: planner:00002958:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00002963:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003036:  elog(ERROR, "invalid grouping set"); 
+paah: planner:00003174:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003183:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003193:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003237:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003252:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003266:  elog(ERROR,"invalid grouping set"); 
+paah: planner:00003272:  elog(ERROR,"invalid grouping set list"); 
+paah: planner:00003292:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00003361:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000868:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000964:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
