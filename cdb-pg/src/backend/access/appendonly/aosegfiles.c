@@ -207,6 +207,11 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnly
 
 	/* get the uncompressed eof */
 	eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
+	/*
+	 * Confusing: This eof_uncompressed variable is never used.  It appears we only
+	 * call fastgetattr to get the isNull value.  this variable "eof_uncompressed" is
+	 * not at all the same as fsinfo->eof_uncompressed.
+	 */
 
 	if(isNull)
 	{
