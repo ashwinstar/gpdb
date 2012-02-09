@@ -1021,7 +1021,9 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			set_httpheader(file, "X-GP-CID", ev->GP_CID) ||
 			set_httpheader(file, "X-GP-SN", ev->GP_SN) ||
 			set_httpheader(file, "X-GP-SEGMENT-ID", ev->GP_SEGMENT_ID) ||
-			set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT))
+			set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT) ||
+			set_httpheader(file, "X-GP-LINE-DELIM-STR", ev->GP_LINE_DELIM_STR) ||
+			set_httpheader(file, "X-GP-LINE-DELIM-LENGTH", ev->GP_LINE_DELIM_LENGTH))
 		{
 			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: some header value is too long");
@@ -1969,7 +1971,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 
 			assert(size == 1);
 
-			n = fstream_read(file->u.file.fp, ptr, nmemb, &fo, whole_rows);
+			n = fstream_read(file->u.file.fp, ptr, nmemb, &fo, whole_rows, "", -1);
 			want = n > 0 ? n : 0;
 
 			if (n > 0 && fo.line_number)

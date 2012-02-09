@@ -80,6 +80,8 @@ int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
 
+static void base16_decode(char* data);
+
 /* SSL additions */
 #define SSL_RENEGOTIATE_TIMEOUT_SEC	(600) /* 10 minutes */
 const char* const CertificateFilename = "server.crt";
@@ -321,6 +323,8 @@ struct request_t
 	} in;
 
 	block_t	outblock;	/* next block to send out */
+	char*           line_delim_str;
+	int             line_delim_length;
 	
 	/* SSL related */
 	BIO			*io;		/* for the i.o. */
@@ -1003,7 +1007,7 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
  * header (metadata for client such as filename, etc) and the data itself.
  */
 static const char*
-session_get_block(session_t* session, block_t* retblock)
+session_get_block(session_t* session, block_t* retblock, char* line_delim_str, int line_delim_length)
 {
 	int 		size;
 	const int 	whole_rows = 1; /* gpfdist must not read data with partial rows */
@@ -1020,8 +1024,9 @@ session_get_block(session_t* session, block_t* retblock)
 	gcb.read_bytes -= fstream_get_compressed_position(session->fstream);
 
 	/* read data from our filestream as a chunk with whole data rows */
-	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows);
 	
+	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows, line_delim_str, line_delim_length);
+
 	if (size == 0)
 	{
 		gcb.read_bytes += fstream_get_compressed_size(session->fstream);
@@ -1421,7 +1426,7 @@ static void do_write(int fd, short event, void* arg)
 		/* get a block (or find a remaining block) */
 		if (r->outblock.top == r->outblock.bot)
 		{
-			const char* ferror = session_get_block(r->session, &r->outblock);
+			const char* ferror = session_get_block(r->session, &r->outblock, r->line_delim_str, r->line_delim_length);
 
 			if (ferror)
 			{
@@ -1774,6 +1779,9 @@ static void do_accept(int fd, short event, void* arg)
 	r->sock = sock;
 
     r->outblock.data = apr_palloc(pool, opt.m); /* use the block size specified by -m option */
+
+	r->line_delim_str = "";
+	r->line_delim_length = -1;
 
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
@@ -2434,7 +2442,7 @@ static void handle_post_request(request_t *r, int header_end)
 
 		/* only write it out if no more data is expected */
 		if(r->in.davailable == 0)
-			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1);
+			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1, r->line_delim_str, r->line_delim_length);
 	}
 
 	/*
@@ -2487,7 +2495,7 @@ static void handle_post_request(request_t *r, int header_end)
 			if (r->in.dbufmax == r->in.dbuftop || r->in.davailable == 0)
 			{
 				/* only write up to end of last row */
-				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1);
+				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1, r->line_delim_str, r->line_delim_length);
 				gprint("wrote %d bytes to file\n", wrote);
 
 				if(wrote == -1)
@@ -2617,6 +2625,27 @@ static int request_validate(request_t *r)
 	return 0;
 }
 
+static void base16_decode(char* data)
+{
+	int i = 0;
+	char *encoded_bytes = data;
+
+	char buf[3];
+	buf[2] = '\0';
+
+	while (encoded_bytes[0])
+	{
+		buf[0] = encoded_bytes[0];
+		buf[1] = encoded_bytes[1];
+
+        data[i] = strtoul(buf, NULL, 16);
+
+		i++;
+        encoded_bytes += 2;
+     }
+     data[i] = '\0';
+}
+
 /*
  * request_parse_gp_headers
  *
@@ -2652,12 +2681,34 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->totalsegs = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-SEGMENT-ID", r->in.req->hname[i]))
 			r->segid = atoi(r->in.req->hvalue[i]);
+		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i]))
+		{
+			if (NULL == r->in.req->hvalue[i] || ((int)strlen(r->in.req->hvalue[i]))%2 == 1)
+			{
+				gwarning(FLINE, "reject invalid request from %s, invalid EOL encoding: %s", r->peer, r->in.req->hvalue[i]);
+				http_error(r, FDIST_BAD_REQUEST, "invalid EOL encoding");
+				request_end(r, 1, 0);
+			}
+			base16_decode(r->in.req->hvalue[i]);
+			r->line_delim_str = r->in.req->hvalue[i];
+		}
+		else if (0 == strcmp("X-GP-LINE-DELIM-LENGTH", r->in.req->hname[i]))
+			r->line_delim_length = atoi(r->in.req->hvalue[i]);
 #ifdef GPFXDIST
 		else if (0 == strcmp("X-GP-TRANSFORM", r->in.req->hname[i]))
 			r->trans.name = r->in.req->hvalue[i];
 #endif
 	}
 
+	if (r->line_delim_length > 0)
+	{
+		if (NULL == r->line_delim_str || (((int)strlen(r->line_delim_str)) != r->line_delim_length))
+		{
+			gwarning(FLINE, "reject invalid request from %s, invalid EOL length: %s, EOL: %s", r->peer, r->line_delim_length, r->line_delim_str);
+			http_error(r, FDIST_BAD_REQUEST, "invalid EOL length");
+			request_end(r, 1, 0);
+		}
+	}
 	r->gp_proto = strtol(gp_proto, 0, 0);
 
 	if (r->gp_proto != 0 && r->gp_proto != 1)
