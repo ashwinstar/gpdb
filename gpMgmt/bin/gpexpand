@@ -111,7 +111,7 @@ EXECNAME = os.path.split(__file__)[-1]
 def parseargs():
     parser = OptParser(option_class=OptChecker,
                 description=' '.join(description.split()),
-                version='%prog version 4.0 build 21002')
+                version='%prog version $Revision$')
     parser.setHelp(_help)
     parser.set_usage('%prog ' + _usage)
     parser.remove_option('-h')
