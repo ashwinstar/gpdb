@@ -691,11 +691,14 @@ dumpResQueues(PGconn *conn)
 				bWith = true;
 				appendPQExpBuffer(buf, "\n WITH (");
 			}
-			appendPQExpBuffer(buf, " %s=%s", resname, ressetting);
 
+			if (0 == strcmp("memory_limit", resname) && (strcmp(ressetting, "-1") != 0))
+			  appendPQExpBuffer(buf, " %s='%s'", resname, ressetting);
+			else
+			  appendPQExpBuffer(buf, " %s=%s", resname, ressetting);
 		}
 
-	}							/* end for */
+	}/* end for */
 
 	/* need to write out last statement */
 	if (prev_rsqname)
