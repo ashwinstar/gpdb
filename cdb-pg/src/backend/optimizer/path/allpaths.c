@@ -602,7 +602,6 @@ static void
 set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte)
 {
-	Query	   *parse = root->parse;
 	Query	   *subquery = rte->subquery;
 	double		tuple_fraction;
 	List	   *pathkeys;
@@ -628,24 +627,20 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		rel->onerow = false;
 
 		/* Set-returning function in tlist could give any number of rows. */
-		if (expression_returns_set((Node *)parse->targetList))
+		if (expression_returns_set((Node *)subquery->targetList))
 		{}
 
 		/* Always one row if aggregate function without GROUP BY. */
-		else if (!parse->groupClause &&
-				 (parse->hasAggs || parse->havingQual))
-			rel->onerow = true;
-
-		/* Just a targetlist with no FROM clause? */
-		else if (!parse->jointree->fromlist)
+		else if (!subquery->groupClause &&
+				 (subquery->hasAggs || subquery->havingQual))
 			rel->onerow = true;
 
 		/* LIMIT 1 or less? */
-		else if (parse->limitCount &&
-				 IsA(parse->limitCount, Const) &&
-				 !((Const *)parse->limitCount)->constisnull)
+		else if (subquery->limitCount &&
+				 IsA(subquery->limitCount, Const) &&
+				 !((Const *)subquery->limitCount)->constisnull)
 		{
-			Const  *cnst = (Const *)parse->limitCount;
+			Const  *cnst = (Const *)subquery->limitCount;
 
 			if (cnst->consttype == INT8OID &&
 				DatumGetInt64(cnst->constvalue) <= 1)
@@ -658,11 +653,11 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * we'd better tell the subquery to plan for full retrieval. (XXX This
 		 * could probably be made more intelligent ...)
 		 */
-		if (parse->hasAggs ||
-			parse->groupClause ||
-			parse->havingQual ||
-			parse->distinctClause ||
-			parse->sortClause ||
+		if (subquery->hasAggs ||
+			subquery->groupClause ||
+			subquery->havingQual ||
+			subquery->distinctClause ||
+			subquery->sortClause ||
 			has_multiple_baserels(root))
 			tuple_fraction = 0.0;	/* default case */
 		else

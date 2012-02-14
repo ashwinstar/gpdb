@@ -587,3 +587,39 @@ select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where 
 explain select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.i=t1.i + 1);
 
 select * from csq_pullup t0 where not exists (select 1 from csq_pullup t1 where t0.i=t1.i + 1);
+
+--
+-- FINRA wrong results bug MPP-16477
+--
+
+drop table if exists finra_t1;
+drop table if exists finra_t2;
+
+create table finra_t1(x int);
+insert into finra_t1 values(1),(2);
+
+create table finra_t2(y int);
+insert into finra_t2 values(1),(2),(2);
+
+analyze finra_t1;
+analyze finra_t2;
+
+explain select * from finra_t1 where x in (select y from finra_t2);
+
+select * from finra_t1 where x in (select y from finra_t2);
+
+explain select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
+
+select * from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
+
+explain select count(*) from finra_t1 where x in (select y from finra_t2);
+
+select count(*) from finra_t1 where x in (select y from finra_t2);
+
+explain select count(*) from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
+
+select count(*) from finra_t1 where x in (select y from finra_t2 union all select y from finra_t2);
+
+select count(*) from 
+       ( select 1 as FIELD_1 union all select 2 as FIELD_1 ) TABLE_1 
+       where FIELD_1 in ( select 1 as FIELD_1 union all select 1 as FIELD_1 union all select 1 as FIELD_1 );
