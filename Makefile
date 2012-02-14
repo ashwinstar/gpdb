@@ -1434,6 +1434,7 @@ INSTALLCHECK_GPPKG_SOURCES = \
 	cdb-pg/contrib/postgis \
 	cdb-pg/src/pl/plperl \
 	cdb-pg/src/pl/plr \
+	cdb-pg/src/backend/libgppc/lib \
 	$(NULL)
 
 installcheck-gppkg:
