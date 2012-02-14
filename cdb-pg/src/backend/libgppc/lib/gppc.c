@@ -258,7 +258,7 @@ GppcDatumGetFloat8(GppcDatum x)
 /*
  * DatumGetText
  */
-GppcText
+const GppcText
 GppcDatumGetText(GppcDatum x)
 {
 	return (GppcText) DatumGetTextP(x);
@@ -276,7 +276,7 @@ GppcDatumGetTextCopy(GppcDatum x)
 /*
  * DatumGetVarChar
  */
-GppcVarChar
+const GppcVarChar
 GppcDatumGetVarChar(GppcDatum x)
 {
 	return (GppcVarChar) DatumGetVarCharP(x);
@@ -294,7 +294,7 @@ GppcDatumGetVarCharCopy(GppcDatum x)
 /*
  * DatumGetBpChar
  */
-GppcBpChar
+const GppcBpChar
 GppcDatumGetBpChar(GppcDatum x)
 {
 	return (GppcBpChar) DatumGetBpCharP(x);

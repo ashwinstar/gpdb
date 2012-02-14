@@ -25,6 +25,10 @@ endif
 
 include $(top_builddir)/src/Makefile.global
 
+HAS_DOXYGEN = $(shell which doxygen > /dev/null 2>&1 && echo yes)
+# doxygen generates latex directory which uses pdflatex to generate pdf manual.
+# We suppress error if it's not available.
+HAS_PDFLATEX = $(shell which pdflatex > /dev/null 2>&1 && echo yes)
 
 # shared library parameters
 NAME = gppc
@@ -36,13 +40,7 @@ override CPPFLAGS := -I$(includedir_server) -I$(includedir_internal) $(CPPFLAGS)
 OBJS = gppc.o
 
 
-all: gppc_gp_version_num_check gppc_config.h all-lib
-
-doc: gppc_config.h
-	doxygen
-
-clean-doc:
-	rm -rf html latex
+all: gppc_gp_version_num_check gppc_config.h latex/refman.pdf all-lib
 
 # Fetch version number from pg_config.h, because
 # GPPC should have its own config header so that
@@ -79,10 +77,39 @@ endif
 # Depend on Makefile.global to force rebuild on re-run of configure.
 gppc_config.h: $(top_builddir)/src/Makefile.global
 
+# The target name is arbitrary, just make sure dependency works.
+latex/Makefile: gppc_config.h
+ifneq ($(HAS_DOXYGEN),yes)
+	@echo "*** doc is not generated, for doxygen is not installed ***"
+else
+	doxygen > doxygen.log
+endif
+
+latex/refman.pdf: latex/Makefile
+ifneq ($(HAS_PDFLATEX),yes)
+	@echo "*** PDF manual s not generated, pdflatex is not installed ***"
+else
+	$(MAKE) -C latex > doxygen-pdf.log
+endif
+
+doc: latex/refman.pdf
+
+clean-doc:
+	rm -rf html latex
+	rm -rf doxygen.log doxygen-pdf.log
+
+# Top-level Makefile requires each package directory to be able to
+# run intallcheck.  For GPPC, installcheck program is in ../test.
+installcheck: install
+	$(MAKE) -C ../test $@
+
 
 install: all installdirs install-lib
 	$(INSTALL_DATA) $(srcdir)/gppc.h '$(DESTDIR)$(includedir)'
 	$(INSTALL_DATA) $(srcdir)/gppc_config.h '$(DESTDIR)$(includedir)'
+ifeq ($(HAS_PDFLATEX),yes)
+	$(INSTALL_DATA) $(srcdir)/latex/refman.pdf '$(DESTDIR)$(docdir)/libgppc-refman.pdf'
+endif
 
 installdirs: installdirs-lib
 	$(MKDIR_P) '$(DESTDIR)$(includedir)' '$(DESTDIR)$(includedir_internal)'

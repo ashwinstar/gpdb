@@ -427,7 +427,7 @@ GppcFloat8		GppcDatumGetFloat8(GppcDatum x);
  * \brief Converts ::GppcDatum to ::GppcText
  * \param x ::GppcDatum to be converted to ::GppcText
  */
-GppcText		GppcDatumGetText(GppcDatum x);
+const GppcText		GppcDatumGetText(GppcDatum x);
 /**
  * \brief Converts ::GppcDatum to ::GppcText
  * \param x ::GppcDatum to be converted and copied to ::GppcText
@@ -437,7 +437,7 @@ GppcText		GppcDatumGetTextCopy(GppcDatum x);
  * \brief Converts ::GppcDatum to ::GppcVarChar
  * \param x ::GppcDatum to be converted to ::GppcVarChar
  */
-GppcVarChar		GppcDatumGetVarChar(GppcDatum x);
+const GppcVarChar		GppcDatumGetVarChar(GppcDatum x);
 /**
  * \brief Converts ::GppcDatum to ::GppcVarChar
  * \param x ::GppcDatum to be converted and copied to ::GppcVarChar
@@ -447,7 +447,7 @@ GppcVarChar		GppcDatumGetVarCharCopy(GppcDatum x);
  * \brief Converts ::GppcDatum to ::GppcBpChar
  * \param x ::GppcDatum to be converted to ::GppcBpChar
  */
-GppcBpChar		GppcDatumGetBpChar(GppcDatum x);
+const GppcBpChar		GppcDatumGetBpChar(GppcDatum x);
 /**
  * \brief Converts ::GppcDatum to ::GppcBpChar
  * \param x ::GppcDatum to be converted and copied to ::GppcBpChar

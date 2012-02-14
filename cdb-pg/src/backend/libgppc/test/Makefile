@@ -52,3 +52,5 @@ endif # USE_PGXS
 GP_VERSION_NUM := $(shell test -f $(gppc_config_path) && \
 	(grep 'define  *GP_VERSION_NUM' $(gppc_config_path) \
 		| sed 's/^[^0-9]*\([0-9]*\)/\1/') || echo 0)
+
+installcheck: install
