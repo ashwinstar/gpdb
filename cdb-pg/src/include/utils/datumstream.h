@@ -75,31 +75,16 @@ typedef enum DatumStreamLargeObjectState
 
 typedef struct DatumStreamRead
 {
-	MemoryContext	memctxt;
-
-	DatumStreamTypeInfo	typeInfo;
-
-	/*
-	 * Version of datum stream block format -- original or RLE_TYPE,
+	/*--------------------------------------------------------------------------
+	 * Information for reading blocks.
 	 */
-	DatumStreamVersion	datumStreamVersion;
-
-	bool	rle_can_have_compression;
-
-	int32	maxAoBlockSize;
-	int32	maxDataBlockSize;
-
-	char	*title;
-
-    /* AO Storage */
-    bool need_close_file;
-	AppendOnlyStorageAttributes ao_attr;
-    AppendOnlyStorageRead ao_read;
-
+	 
 	/* Information collected and adjusted for the current block. */
 	int64 blockFirstRowNum;
 	int64 blockFileOffset;
 	int blockRowCount;
+
+    AppendOnlyStorageRead ao_read;
 
 	/*
 	 * Values returned by AppendOnlyStorageRead_GetBlockInfo.
@@ -114,18 +99,48 @@ typedef struct DatumStreamRead
 		bool 	isCompressed;
 	} getBlockInfo;
 
+	uint8	*buffer_beginp;
+
+	/*-------------------------------------------------------------------------
+	 * For better CPU data cache locality, put commonly used variables of
+	 * datumstreamread_get and datumstreamread_advance here.
+	 */	
+	DatumStreamLargeObjectState		largeObjectState;
+
 	DatumStreamBlockRead	blockRead;
 
-	uint8	*buffer_beginp;
+	/*-------------------------------------------------------------------------
+	 * Less commonly used fields.
+	 */
+	 
+	MemoryContext	memctxt;
 
 	uint8	*large_object_buffer;
 	int32	large_object_buffer_size;
 
-	DatumStreamLargeObjectState		largeObjectState;
-
     /* EOF of current file */
     int64 eof;
     int64 eofUncompress;
+
+	AppendOnlyStorageAttributes ao_attr;
+
+	/*
+	 * Version of datum stream block format -- original or RLE_TYPE,
+	 */
+	DatumStreamVersion	datumStreamVersion;
+
+	DatumStreamTypeInfo	typeInfo;
+
+	bool	rle_can_have_compression;
+
+	int32	maxAoBlockSize;
+	int32	maxDataBlockSize;
+
+	char	*title;
+
+    /* AO Storage */
+    bool need_close_file;
+
 } DatumStreamRead;
 
 /*
@@ -151,9 +166,55 @@ typedef struct DatumStreamFetchDescData
 typedef DatumStreamFetchDescData *DatumStreamFetchDesc;
 
 /* Stream access method */
-extern int datumstreamread_get(DatumStreamRead *ds, Datum *datum, bool *null);
-extern int datumstreamread_advance(DatumStreamRead *ds);
-extern int datumstreamread_nth(DatumStreamRead *ds);
+extern int datumstreamread_getlarge(DatumStreamRead *ds, Datum *datum, bool *null);
+inline static int datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool *null)
+{
+	if (acc->largeObjectState == DatumStreamLargeObjectState_None)
+	{
+		/*
+		 * Small objects are handled by the DatumStreamBlockRead module.
+		 */
+		return DatumStreamBlockRead_Get(&acc->blockRead, datum, null);
+	}
+	else
+	{
+		return datumstreamread_getlarge(acc, datum, null);
+	}
+}
+	
+extern int datumstreamread_advancelarge(DatumStreamRead *ds);
+inline static int datumstreamread_advance(DatumStreamRead *acc)
+{
+	if (acc->largeObjectState == DatumStreamLargeObjectState_None)
+	{
+		/*
+		 * Small objects are handled by the DatumStreamBlockRead module.
+		 */
+		return DatumStreamBlockRead_Advance(&acc->blockRead);
+	}
+	else
+	{
+		return datumstreamread_advancelarge(acc);
+	}
+}
+
+extern int datumstreamread_nthlarge(DatumStreamRead *ds);
+inline static int datumstreamread_nth(DatumStreamRead *acc)
+{
+	if (acc->largeObjectState == DatumStreamLargeObjectState_None)
+	{
+		/*
+		 * Small objects are handled by the DatumStreamBlockRead module.
+		 */
+		return DatumStreamBlockRead_Nth(&acc->blockRead);
+	}
+	else
+	{
+		return datumstreamread_nthlarge(acc);
+	}
+}
+
+//------------------------------------------------------------------------------
 
 extern int datumstreamwrite_put(
 								DatumStreamWrite 	*acc, 

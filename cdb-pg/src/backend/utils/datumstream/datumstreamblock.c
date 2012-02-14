@@ -11,707 +11,7 @@
 #include "utils/guc.h"
 
 // Forwards.
-static inline void DatumStreamBitMapRead_Init(
-	DatumStreamBitMapRead 	*bmr,
-	uint8					*buffer,
-	int32					bitCount);
-
-static inline bool DatumStreamBitMapRead_IsExhausted(
-	DatumStreamBitMapRead 	*bmr);
-
-static inline void DatumStreamBitMapRead_Next(
-	DatumStreamBitMapRead 	*bmr);
-
-static inline int32 DatumStreamBitMapRead_OnSeenCount(
-	DatumStreamBitMapRead 	*bmr);
-
-/*
- * DatumStreamBitMap routines.
- */
-
-static inline int32 DatumStreamBitMap_Size(
-	int32 bitCount)
-{
-	return ((bitCount + 7) >> 3);
-}
-
-static inline int32 DatumStreamBitMap_CountOn(
-	uint8					*buffer,
-	int32					bitCount)
-{
-	DatumStreamBitMapRead bmr;
-
-	DatumStreamBitMapRead_Init(
-							&bmr,
-							buffer,
-							bitCount);
-
-	/*
-	 * Scan the whole bit-map.
-	 */
-	while (!DatumStreamBitMapRead_IsExhausted(&bmr))
-	{
-		DatumStreamBitMapRead_Next(&bmr);
-	}
-
-	return DatumStreamBitMapRead_OnSeenCount(&bmr);
-}
-
-
-/*
- * DatumStreamBitMapWrite routines.
- */
-
-// Forward.
-static inline void DatumStreamBitMapWrite_Set(
-	DatumStreamBitMapWrite 	*bmw);
-
-/*
- * Initialize writing a bit-map.
- *
- * Writing is automatically positioned BEFORE THE FIRST BIT.  
- *
- * Use DatumStreamBitMapWrite_AddBit to add a bit to the bit-map.
- */
-static inline void DatumStreamBitMapWrite_Init(
-	DatumStreamBitMapWrite 	*bmw,
-	uint8					*buffer,
-	int32					bufferSize)
-{
-	bmw->buffer = buffer;
-	bmw->bufferSize = bufferSize;
-
-	bmw->bytePointer = buffer;
-	bmw->byteBit = 0;
-	bmw->bitOnCount = 0;
-	bmw->bitCount = 0;
-}
-
-static inline void DatumStreamBitMapWrite_ZeroFill(
-	DatumStreamBitMapWrite 	*bmw,
-	int32					bitCount)
-{
-	int32 newSize;
-	int32 bitNumberInByte;
-
-	/*
-	 * Assert the bit-map is newly initialized.
-	 */
-	Assert(bmw->byteBit == 0);
-	Assert(bmw->bitOnCount == 0);
-	Assert(bmw->bitCount == 0);
-
-	if (bitCount > 0)
-	{
-		/*
-		 * Assert we are not going beyond the maximum buffer size.
-		 */
-		newSize = DatumStreamBitMap_Size(bitCount);
-#ifdef USE_ASSERT_CHECKING
-		if (newSize > bmw->bufferSize)
-		{
-			elog(ERROR, 
-				 "New fill bit-map buffer size %d greater than maximum buffer size %d",
-				 newSize,
-				 bmw->bufferSize);
-		}
-#endif
-
-		/*
-		 * Zero fill out and set the write variables.
-		 */
-	    memset(bmw->buffer, 0, newSize);
-
-		bitNumberInByte = (bitCount - 1) & 7;
-		bmw->byteBit = 1 << bitNumberInByte;
-
-		bmw->bytePointer = &bmw->buffer[newSize - 1];
-		
-		bmw->bitCount = bitCount;
-	}
-}
-
-static inline void DatumStreamBitMapWrite_AddBit(
-	DatumStreamBitMapWrite 	*bmw,
-	bool					on)
-{
-	if (bmw->bitCount == 0)
-	{
-		Assert(bmw->byteBit == 0);
-
-		// Zero first byte of bit-map.
-		(*bmw->bytePointer) = 0;
-
-		bmw->byteBit = 1;
-	}
-	else
-	{
-	    bmw->byteBit <<= 1;
-
-	    if(bmw->byteBit == 0)
-	    {
-	    	// Zero next byte of bit-map
-	        *(++bmw->bytePointer) = 0;
-
-	        bmw->byteBit = 1;
-	    }
-	}
-	bmw->bitCount++;
-
-	if (on)
-	{
-		DatumStreamBitMapWrite_Set(bmw);
-	}
-}
-
-static inline bool DatumStreamBitMapWrite_CurrentIsOn(
-	DatumStreamBitMapWrite 	*bmw)
-{
-	return (((*bmw->bytePointer) & bmw->byteBit) != 0);
-}
-
-static inline void DatumStreamBitMapWrite_Set(
-	DatumStreamBitMapWrite 	*bmw)
-{
-	Assert(!DatumStreamBitMapWrite_CurrentIsOn(bmw));
-	(*bmw->bytePointer) |= bmw->byteBit;
-
-	bmw->bitOnCount++;
-}
-
-static inline int32 DatumStreamBitMapWrite_OnCount(
-	DatumStreamBitMapWrite 	*bmw)
-{
-	return bmw->bitOnCount;
-}
-
-static inline int32 DatumStreamBitMapWrite_Count(
-	DatumStreamBitMapWrite 	*bmw)
-{
-	return bmw->bitCount;
-}
-
-static inline int32 DatumStreamBitMapWrite_Size(
-	DatumStreamBitMapWrite 	*bmw)
-{
-	return DatumStreamBitMap_Size(bmw->bitCount);
-}
-
-static inline int32 DatumStreamBitMapWrite_NextSize(
-	DatumStreamBitMapWrite 	*bmw)
-{
-	return DatumStreamBitMap_Size(bmw->bitCount + 1);
-}
-
-static inline int32 DatumStreamBitMapWrite_MaxSize(
-	DatumStreamBitMapWrite 	*bmw)
-{
-	return bmw->bufferSize;
-}
-
-static void DatumStreamBitMapWrite_CopyToLargerBuffer(
-	DatumStreamBitMapWrite 	*bmw,
-	uint8					*newBuffer,
-	int32					newBufferSize)
-{
-	Assert(newBufferSize > bmw->bufferSize);
-
-	memcpy(newBuffer, bmw->buffer, DatumStreamBitMapWrite_Size(bmw));
-	
-	bmw->bytePointer = newBuffer + (bmw->bytePointer - bmw->buffer);
-
-	bmw->buffer = newBuffer;
-	bmw->bufferSize = newBufferSize;
-}
-
-/*
- * DatumStreamBitMapRead routines.
- */
-	
-// Forwards.
-static inline bool DatumStreamBitMapRead_CurrentIsOn(
-	DatumStreamBitMapRead 	*bmr);
-
-/*
- * Initialize reading a bit-map.
- *
- * Reading is automatically positioned BEFORE THE FIRST BIT.
- */
-static inline void DatumStreamBitMapRead_Init(
-	DatumStreamBitMapRead 	*bmr,
-	uint8					*buffer,
-	int32					bitCount)
-{
-	Assert(bitCount >= 0);
-
-	bmr->buffer =  buffer;
-
-	bmr->bytePointer = buffer;
-	bmr->byteBit = 0;
-	bmr->bitCount = bitCount;
-	bmr->bitPosition = -1;
-	bmr->readBitOnCount = 0;
-}
-
-static inline bool DatumStreamBitMapRead_IsExhausted(
-	DatumStreamBitMapRead 	*bmr)
-{
-	return (bmr->bitPosition >= bmr->bitCount - 1);
-}
-
-static inline bool DatumStreamBitMapRead_InRange(
-	DatumStreamBitMapRead 	*bmr)
-{
-	return (bmr->bitPosition < bmr->bitCount);
-}
-
-static inline bool DatumStreamBitMapRead_CurrentIsOn(
-	DatumStreamBitMapRead 	*bmr)
-{
-	if (bmr->bitPosition >= bmr->bitCount)
-	{
-		elog(ERROR, "Past end of bitmap (bit position %d, total bit count %d)",
-			 bmr->bitPosition,
-			 bmr->bitCount);
-	}
-	return (((*bmr->bytePointer) & bmr->byteBit) != 0);
-}
-
-static inline int32 DatumStreamBitMapRead_Position(
-	DatumStreamBitMapRead 	*bmr)
-{
-	return bmr->bitPosition;
-}
-
-static inline int32 DatumStreamBitMapRead_OnSeenCount(
-	DatumStreamBitMapRead 	*bmr)
-{
-	return bmr->readBitOnCount;
-}
-
-static inline void DatumStreamBitMapRead_Next(
-	DatumStreamBitMapRead 	*bmr)
-{
-	if (bmr->bitPosition >= bmr->bitCount)
-	{
-		elog(ERROR, "Moving past end of bitmap (bit position %d, total bit count %d)",
-			 bmr->bitPosition,
-			 bmr->bitCount);
-	}
-
-	if (bmr->bitPosition == -1)
-	{
-		Assert(bmr->byteBit == 0);
-		Assert(bmr->bytePointer == bmr->buffer);
-
-		bmr->byteBit = 1;
-	}
-	else
-	{
-	    bmr->byteBit <<= 1;
-
-	    if(bmr->byteBit == 0)
-	    {
-	        ++bmr->bytePointer;
-
-	        bmr->byteBit = 1;
-	    }
-	}
-	bmr->bitPosition++;
-	
-	if (DatumStreamBitMapRead_InRange(bmr) &&
-		DatumStreamBitMapRead_CurrentIsOn(bmr))
-	{
-		bmr->readBitOnCount++;
-	}
-}
-
-static inline int32 DatumStreamBitMapRead_Size(
-	DatumStreamBitMapRead 	*bmr)
-{
-	return DatumStreamBitMap_Size(bmr->bitCount);
-}
-
-static inline int32 DatumStreamBitMapRead_Count(
-	DatumStreamBitMapRead 	*bmr)
-{
-	return bmr->bitCount;
-}
-
-/*
- * DatumStreamBlockInt32Compress.
- */
-#define Int32Compress_MaxByteLen 4
-#define Int32Compress_1ByteLimit 0x3F
-#define Int32Compress_2ByteLimit 0x3FFF
-#define Int32Compress_3ByteLimit 0x3FFFFF
-#define Int32Compress_4ByteLimit 0x3FFFFFFF
-#define Int32Compress_LenFieldMask 0xC0
-#define Int32Compress_LenFieldShift 6
-
-static int32 DatumStreamInt32Compress_Decode(
-	uint8 	*buffer,
-	int32	*byteLen);
-#ifdef USE_ASSERT_CHECKING
-// Currently only used in an Assert expression.
-static int32 DatumStreamInt32Compress_DecodeLen(
-	uint8 	*buffer);
-#endif
-
-static int32 DatumStreamInt32Compress_Size(int32 value)
-{
-	if (value <= Int32Compress_1ByteLimit)
-	{
-		return 1;
-	}
-	else if (value <= Int32Compress_2ByteLimit)
-	{
-		return 2;
-	}
-	else if (value <= Int32Compress_3ByteLimit)
-	{
-		return 3;
-	}
-	else
-	{
-		Assert(value <= Int32Compress_4ByteLimit);
-		return 4;
-	}
-}
-
-static int32 DatumStreamInt32Compress_Encode(
-	uint8 	*buffer,
-	int32 	value)
-{
-	int32	byteLen;
-
-	if (value <= Int32Compress_1ByteLimit)
-	{
-		buffer[0] = (uint8)value;
-		byteLen = 1;
-	}
-	else if (value <= Int32Compress_2ByteLimit)
-	{
-		buffer[0] = (1 << Int32Compress_LenFieldShift) | (uint8)(value >> 8);
-		buffer[1] = (uint8)(value);
-		byteLen = 2;
-	}
-	else if (value <= Int32Compress_3ByteLimit)
-	{
-		buffer[0] = (2 << Int32Compress_LenFieldShift) | (uint8)(value >> 16);
-		buffer[1] = (uint8)(value >> 8);
-		buffer[2] = (uint8)(value);
-		byteLen = 3;
-	}
-	else
-	{
-		Assert(value <= Int32Compress_4ByteLimit);
-
-		buffer[0] = (3 << Int32Compress_LenFieldShift) | (uint8)(value >> 24);
-		buffer[1] = (uint8)(value >> 16);
-		buffer[2] = (uint8)(value >> 8);
-		buffer[3] = (uint8)(value);
-		byteLen = 4;
-	}
-
-#ifdef USE_ASSERT_CHECKING
-	{
-		int32 decodeLen;
-		int32 decodedValue;
-		int32 decodedLen;
-
-		decodeLen = DatumStreamInt32Compress_DecodeLen(buffer);
-		if (decodeLen != byteLen)
-		{
-			elog(ERROR, "integer compress encode / decode length difference (expected %d, found %d)",
-				 byteLen, decodeLen);
-		}
-
-		decodedValue = DatumStreamInt32Compress_Decode(buffer, &decodedLen);
-		if (decodedValue != value)
-		{
-			elog(ERROR, "integer compress encode / decode value difference (expected %d, found %d)",
-				 value, decodedValue);
-		}
-
-		if (decodedLen != byteLen)
-		{
-			elog(ERROR, "integer compress encode / decode length difference #2 (expected %d, found %d)",
-				 byteLen, decodedLen);
-		}
-	}
-#endif
-	return byteLen;
-}
-
-#ifdef USE_ASSERT_CHECKING
-// Currently only used in an Assert expression.
-static int32 DatumStreamInt32Compress_DecodeLen(
-	uint8 	*buffer)
-{
-	uint8	masked;
-	uint8	lenFieldOnly;
-
-	masked = (buffer[0] & Int32Compress_LenFieldMask);
-	lenFieldOnly = masked >> Int32Compress_LenFieldShift;
-
-	return lenFieldOnly + 1;
-}
-#endif
-
-static int32 DatumStreamInt32Compress_Decode(
-	uint8 	*buffer,
-	int32	*byteLen)
-{
-	uint8	masked;
-	uint8	lenFieldOnly;
-	int32	len;
-	int32	value = 0;
-
-	masked = (buffer[0] & Int32Compress_LenFieldMask);
-	lenFieldOnly = masked >> Int32Compress_LenFieldShift;
-	len = lenFieldOnly + 1;
-	switch (len)
-	{
-	case 1:
-		value = (buffer[0] & ~Int32Compress_LenFieldMask);
-		break;
-	case 2:
-		value = ((int32)(buffer[0] & ~Int32Compress_LenFieldMask) << 8) |
-				buffer[1];
-		break;
-	case 3:
-		value = ((int32)(buffer[0] & ~Int32Compress_LenFieldMask) << 16) |
-				((int32)buffer[1] << 8) |
-				buffer[2];
-		break;
-	case 4:
-		value = ((int32)(buffer[0] & ~Int32Compress_LenFieldMask) << 24) |
-				((int32)buffer[1] << 16) |
-				((int32)buffer[2] << 8) |
-				buffer[3];
-		break;
-	default:
-		ereport(FATAL,
-				(errmsg("Unexpected compressed integer byte length %d", 
-			 			len)));
-		break;
-	}
-
-	*byteLen = len;
-
-	return value;
-}
-
-/*
- * DatumStreamBlock.
- */
-static int32 DatumStreamBlock_IntegrityCheckVarlena(
-	uint8						*physicalData,
-	int32						physicalDataSize,
-	DatumStreamVersion			datumStreamVersion,
-	DatumStreamTypeInfo 		*typeInfo,
-	int 						(*errdetailCallback) (void *errdetailArg),
-	void						*errdetailArg,
-	int 						(*errcontextCallback) (void *errcontextArg),
-	void						*errcontextArg)
-{
-	int32 count;
-	int32 currentOffset;
-	uint8 *p;
-
-	Assert(physicalDataSize >= 0);
-	if (physicalDataSize == 0)
-	{
-		return 0;
-	}
-
-	count = 0;
-
-	p = physicalData;
-	currentOffset = 0;
-	while (true)
-	{
-		int32 remainingSize;
-		int32 varLen;
-
-		remainingSize = physicalDataSize - currentOffset;
-		Assert(remainingSize > 0);
-
-		/* 
-		 * Verify and move past any possible zero paddings AFTER PREVIOUS varlena data.
-		 */
-		if (currentOffset > 0 && *p == 0)
-		{
-			uint8	*afterPadding;
-			int32	saveBeginOffset;
-
-			/*
-			 * Note that SHORT varlena has the high bit of the first byte as 1, so
-			 * we will not go here if item begins with SHORT header.
-			 */
-
-			afterPadding = (uint8 *) att_align(p, typeInfo->align);
-			saveBeginOffset = currentOffset;
-			while (p < afterPadding)
-			{
-				if (*p != 0)
-				{
-					ereport(ERROR,
-							(errmsg("Bad datum stream %s variable-length item zero padding byte at offset %d is not zero (begin offset %d, physical item index #%d)",
-									DatumStreamVersion_String(datumStreamVersion),
-									currentOffset,
-									saveBeginOffset,
-									count),
-							 errOmitLocation(false),
-							 errdetailCallback(errdetailArg),
-							 errcontextCallback(errcontextArg)));
-				}
-				p++;
-				currentOffset++;
-				remainingSize--;
-				if (remainingSize <= 0)
-				{
-					break;
-				}
-			}
-		}
-
-		if (currentOffset >= physicalDataSize)
-		{
-			break;
-		}
-
-		/*
-		 * Enough room for minimum varlena?
-		 */
-		if (VARATT_IS_EXTERNAL(p))
-		{
-			ereport(ERROR,
-					(errmsg("Bad datum stream %s variable-length item at physical offset %d is corrupt (varlena is EXTERNAL, physical item index #%d)",
-							DatumStreamVersion_String(datumStreamVersion),
-							currentOffset,
-							count),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-			varLen = 0;		// Never reaches here.
-		}
-		else if (VARATT_IS_SHORT(p))
-		{
-			Assert(remainingSize >= 1);
-
-			varLen = VARSIZE_SHORT(p);
-
-			/*
-			 * Check SHORT varlena length.
-			 */
-			if (varLen < VARHDRSZ_SHORT)
-			{
-				ereport(ERROR,
-						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  SHORT varlena VARSIZE too short (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
-								DatumStreamVersion_String(datumStreamVersion),
-								currentOffset,
-								varLen,
-								remainingSize,
-								physicalDataSize,
-								count,
-								VarlenaInfoToString(p)),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-			if (varLen > remainingSize)
-			{
-				ereport(ERROR,
-						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  SHORT varlena size bad (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
-								DatumStreamVersion_String(datumStreamVersion),
-								currentOffset,
-								varLen,
-								remainingSize,
-								physicalDataSize,
-								count,
-								VarlenaInfoToString(p)),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-		else
-		{
-			if (remainingSize < VARHDRSZ)
-			{
-				ereport(ERROR,
-						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Remaining length %d too short for regular varlena 4 byte header (physical item index #%d)",
-								DatumStreamVersion_String(datumStreamVersion),
-								currentOffset,
-								remainingSize,
-								count),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-
-			if (currentOffset % 1 != 0)
-			{
-				ereport(ERROR,
-						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Not aligned on at least a 2 byte boundary for regular varlena header (physical item index #%d)",
-								DatumStreamVersion_String(datumStreamVersion),
-								currentOffset,
-								count),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-
-			varLen = VARSIZE_ANY(p);
-
-			if (varLen < VARHDRSZ)
-			{
-				ereport(ERROR,
-						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Regular varlena VARSIZE too short (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
-								DatumStreamVersion_String(datumStreamVersion),
-								currentOffset,
-								varLen,
-								remainingSize,
-								physicalDataSize,
-								count,
-								VarlenaInfoToString(p)),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-			if (varLen > remainingSize)
-			{
-				ereport(ERROR,
-						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Regular varlena length bad (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
-								DatumStreamVersion_String(datumStreamVersion),
-								currentOffset,
-								varLen,
-								remainingSize,
-								physicalDataSize,
-								count,
-								VarlenaInfoToString(p)),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-
-		p += varLen;
-		currentOffset += varLen;
-
-		if (currentOffset >= physicalDataSize)
-		{
-			Assert(currentOffset == physicalDataSize);
-			break;
-		}
-
-		count++;
-	}
-
-	return count;
-}
+static char *VarlenaInfoToBuffer(char *buffer, uint8 *p);
 
 static void DatumStreamBlock_IntegrityCheckOrig(
 	uint8						*buffer,
@@ -722,78 +22,7 @@ static void DatumStreamBlock_IntegrityCheckOrig(
 	int							(*errdetailCallback) (void *errdetailArg),
 	void	   					*errdetailArg,
 	int							(*errcontextCallback) (void *errcontextArg),
-	void	   					*errcontextArg)
-{
-	int32 minHeaderSize = sizeof(DatumStreamBlock_Orig);
-
-	DatumStreamBlock_Orig	*blockOrig;
-	
-	int32 headerSize;
-	uint8 *p;
-
-	bool hasNull;
-
-	if (bufferSize < minHeaderSize)
-	{
-		ereport(ERROR,
-				(errmsg("Bad datum stream Original block header size.  Found %d and expected the size to be at least %d",
-					    bufferSize,
-					    minHeaderSize),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-
-	blockOrig = (DatumStreamBlock_Orig*)buffer;
-	headerSize = minHeaderSize;
-	p = buffer + headerSize;
-
-	if (blockOrig->version != DatumStreamVersion_Original)
-	{
-		ereport(ERROR,
-				(errmsg("Bad datum stream Original block version.  Found %d and expected %d",
-					    blockOrig->version,
-					    DatumStreamVersion_Original),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-
-	if (minimalIntegrityChecks)
-	{
-		return;
-	}
-
-	// CONSIDER: Verify reserved flags are Zero
-
-	hasNull = ((blockOrig->flags & DSB_HAS_NULLBITMAP) != 0);
-
-	// UNDONE: Add a whole bunch of other checking...
-
-	if (hasNull)
-	{
-		/*
-		 * The field nullsz byte length is MAXALIGN.
-		 */
-		p += blockOrig->nullsz;
-	}
-
-	if (typeInfo->datumlen < 0)
-	{
-		/*
-		 * Variable length items (i.e. varlena).
-		 */
-		DatumStreamBlock_IntegrityCheckVarlena(
-											p,
-											blockOrig->sz,
-											DatumStreamVersion_Original,
-											typeInfo,
-											errdetailCallback,
-											errdetailArg,
-											errcontextCallback,
-											errcontextArg);
-	}
-}
+	void	   					*errcontextArg);
 
 static void DatumStreamBlock_IntegrityCheckDense(
 	uint8						*buffer,
@@ -804,593 +33,14 @@ static void DatumStreamBlock_IntegrityCheckDense(
 	int							(*errdetailCallback) (void *errdetailArg),
 	void	   					*errdetailArg,
 	int							(*errcontextCallback) (void *errcontextArg),
-	void	   					*errcontextArg)
-{
-	int32 minHeaderSize = sizeof(DatumStreamBlock_Dense);
-
-	DatumStreamBlock_Dense	*blockDense;
-	
-	int32 headerSize;
-	uint8 *p;
-
-	bool hasNull;
-	bool hasRleCompression;
-
-	int32 alignedHeaderSize;
-
-	if (bufferSize < minHeaderSize)
-	{
-		ereport(ERROR,
-				(errmsg("Bad datum stream Dense block header size.  Found %d and expected the size to be at least %d",
-					    bufferSize,
-					    minHeaderSize),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-
-	blockDense = (DatumStreamBlock_Dense*)buffer;
-	headerSize = minHeaderSize;
-	p = buffer + headerSize;
-
-	if (blockDense->orig_4_bytes.version != DatumStreamVersion_Dense)
-	{
-		ereport(ERROR,
-				(errmsg("Bad datum stream Dense block version.  Found %d and expected %d",
-					    blockDense->orig_4_bytes.version,
-					    DatumStreamVersion_Dense),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-
-	if (minimalIntegrityChecks)
-	{
-		return;
-	}
-
-	// CONSIDER: Verify reserved flags are Zero
-
-	hasNull = ((blockDense->orig_4_bytes.flags & DSB_HAS_NULLBITMAP) != 0);
-	hasRleCompression = ((blockDense->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION) != 0);
-
-	/*
-	 * Verify logical row count.
-	 */
-	if (blockDense->logical_row_count < 0)
-	{
-		ereport(ERROR,
-				(errmsg("Logical row count is negative and is expected to be greater than 0. (%d)",
-						 blockDense->logical_row_count),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-	if (blockDense->logical_row_count == 0)
-	{
-		ereport(ERROR,
-				(errmsg("Logical row count is zero and is expected to be at greater than 0"),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-	if (blockDense->logical_row_count != expectedRowCount)
-	{
-		ereport(ERROR,
-				(errmsg("Logical row count does not match expected value (found %d, expected %d)",
-					    blockDense->logical_row_count,
-					    expectedRowCount),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-
-	/*
-	 * Verify physical datum count.
-	 */
-	if (blockDense->physical_datum_count < 0)
-	{
-		ereport(ERROR,
-				(errmsg("Physical datum count is negative and is expected to be at least greater than or equal to 0. (%d)",
-					    blockDense->physical_datum_count),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-
-	/*
-	 * Verify physical data size.
-	 */
-	if (blockDense->physical_data_size < 0)
-	{
-		ereport(ERROR,
-				(errmsg("Physical data size is negative and is expected to be at least greater than or equal to 0. (%d)",
-			 			blockDense->physical_data_size),
-				 errOmitLocation(false),
-				 errdetailCallback(errdetailArg),
-				 errcontextCallback(errcontextArg)));
-	}
-
-	if (blockDense->physical_datum_count > 0)
-	{
-		if (blockDense->physical_data_size == 0)
-		{
-			ereport(ERROR,
-					(errmsg("Physical data size is zero and is expected to be at least greater than 0 since physical datum count is %d",
-				 			blockDense->physical_datum_count),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		if (blockDense->physical_data_size > bufferSize)
-		{
-			ereport(ERROR,
-					(errmsg("Physical data size %d is greater than buffer size %d",
-				 			blockDense->physical_data_size,
-				 			bufferSize),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		/*
-		 * This check will make it safer to do multiplication of datum count and datum length.
-		 */
-		if (blockDense->physical_datum_count > blockDense->physical_data_size)
-		{
-			ereport(ERROR,
-					(errmsg("More physical items %d than physical bytes %d",
-							blockDense->physical_datum_count,
-				 			blockDense->physical_data_size),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		if (typeInfo->datumlen >= 0)
-		{
-			int64 calculatedDataSize;
-
-			/*
-			 * Fixed-length items.
-			 */
-			calculatedDataSize = ((int64)blockDense->physical_datum_count) * typeInfo->datumlen;
-			
-			if (calculatedDataSize > blockDense->physical_data_size)
-			{
-				ereport(ERROR,
-						(errmsg("Physical size doesn't match calculations for %d count of fixed-size %d items "
-								"(found " INT64_FORMAT ", expected %d)",
-								blockDense->physical_datum_count,
-								typeInfo->datumlen,
-								calculatedDataSize,
-								blockDense->physical_data_size),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-	}
-	else
-	{
-		Assert(blockDense->physical_datum_count == 0);
-		if (blockDense->physical_data_size != 0)
-		{
-			ereport(ERROR,
-					(errmsg("Physical data size %d is expected to be at 0 since physical datum count is 0",
-				 			blockDense->physical_data_size),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-	}
-
-	if (!hasRleCompression)
-	{
-		if (!hasNull)
-		{
-			alignedHeaderSize = MAXALIGN(headerSize);
-
-			if (blockDense->logical_row_count != blockDense->physical_datum_count)
-			{
-				ereport(ERROR,
-						(errmsg("Logical row count expected to match physical datum count when block does not have NULLs "
-								"(logical row count %d, physical datum count %d)",
-								blockDense->logical_row_count,
-								blockDense->physical_datum_count),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-		else
-		{
-			int32 nullBitMapSize;
-
-			int32 actualNullOnCount;
-			int32 expectedNullOnCount;
-
-			nullBitMapSize = DatumStreamBitMap_Size(blockDense->logical_row_count);
-			headerSize += nullBitMapSize;
-
-			alignedHeaderSize = MAXALIGN(headerSize);
-
-			if (bufferSize < alignedHeaderSize)
-			{
-				ereport(ERROR,
-						(errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d",
-								alignedHeaderSize,
-								bufferSize),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-
-			actualNullOnCount = DatumStreamBitMap_CountOn(p, blockDense->logical_row_count);
-
-			expectedNullOnCount = blockDense->logical_row_count - blockDense->physical_datum_count;
-
-			if (actualNullOnCount != expectedNullOnCount)
-			{
-				ereport(ERROR,
-						(errmsg("NULL bit-map ON count does not match.  Found %d, expected %d",
-								actualNullOnCount,
-								expectedNullOnCount),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-
-			p += nullBitMapSize;
-		}
-
-		// CONSIDER: Verify zero padding
-	}
-	else
-	{
-		DatumStreamBlock_Rle_Extension *rleExtension;
-
-		int32 actualNullOnCount;
-
-		int32 compressBitMapSize;
-				
-		int32 actualCompressOnCount;
-
-		int32 totalRepeatCount;
-		int32 totalRepeatCountsSize;
-
-		int i;
-		
-		int32 expectedNullOnCount;
-
-		headerSize += sizeof(DatumStreamBlock_Rle_Extension);
-
-		if (bufferSize < headerSize)
-		{
-			ereport(ERROR,
-					(errmsg("Bad datum stream RLE_TYPE block header extension size.	Found %d and expected the size to be at least %d",
-							bufferSize,
-							headerSize),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		rleExtension = (DatumStreamBlock_Rle_Extension *) p;
-
-		if (!hasNull)
-		{
-			if (rleExtension->norepeats_null_bitmap_count != 0)
-			{
-				ereport(ERROR,
-						(errmsg("RLE_TYPE NULL bit-map count is expected to be 0 when there are no NULLs. (%d)",
-								 rleExtension->norepeats_null_bitmap_count),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-		else
-		{
-			if (rleExtension->norepeats_null_bitmap_count <= 0)
-			{
-				ereport(ERROR,
-						(errmsg("RLE_TYPE NULL bit-map count is negative or 0 and is expected to be greater than 0 when there are NULLs. (%d)",
-								 rleExtension->norepeats_null_bitmap_count),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-
-		if (rleExtension->compress_bitmap_count <= 0)
-		{
-			ereport(ERROR,
-					(errmsg("RLE_TYPE COMPRESS bit-map count is negative or 0 and is expected to be greater than 0. (%d)",
-							 rleExtension->compress_bitmap_count),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		if (rleExtension->repeatcounts_count <= 0)
-		{
-			ereport(ERROR,
-					(errmsg("RLE_TYPE repeats count is negative or 0 and is expected to be greater than 0. (%d)",
-							 rleExtension->repeatcounts_count),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		if (rleExtension->repeatcounts_size <= 0)
-		{
-			ereport(ERROR,
-					(errmsg("RLE_TYPE repeats size is negative or 0 and is expected to be greater than 0. (%d)",
-							 rleExtension->repeatcounts_size),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		p += sizeof(DatumStreamBlock_Rle_Extension);
-
-		if (!hasNull)
-		{
-			actualNullOnCount = 0;
-		}
-		else
-		{
-			int32 nullBitMapSize;
-					
-			nullBitMapSize = DatumStreamBitMap_Size(rleExtension->norepeats_null_bitmap_count);
-			headerSize += nullBitMapSize;
-		
-			if (bufferSize < headerSize)
-			{
-				ereport(ERROR,
-						(errmsg("Bad NULL bit-map size %d with RLE_TYPE compression extension header is larger than buffer size %d",
-								headerSize,
-								bufferSize),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-
-			actualNullOnCount = DatumStreamBitMap_CountOn(p, rleExtension->norepeats_null_bitmap_count);
-
-			p += nullBitMapSize;
-		}
-
-		compressBitMapSize = DatumStreamBitMap_Size(rleExtension->compress_bitmap_count);
-		headerSize += compressBitMapSize;
-	
-		if (bufferSize < headerSize)
-		{
-			ereport(ERROR,
-					(errmsg("Expected RLE_TYPE header size %d including NULL bit-map is larger than buffer size %d",
-							headerSize,
-							bufferSize),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		actualCompressOnCount = DatumStreamBitMap_CountOn(p, rleExtension->compress_bitmap_count);
-
-		if (actualCompressOnCount != rleExtension->repeatcounts_count)
-		{
-			ereport(ERROR,
-					(errmsg("RLE_TYPE COMPRESS bit-map ON count does not match COMPRESS bit-map ON count.  Found %d, expected %d",
-							actualCompressOnCount,
-							rleExtension->repeatcounts_count),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		p += compressBitMapSize;
-
-		headerSize += rleExtension->repeatcounts_size;
-
-		alignedHeaderSize = MAXALIGN(headerSize);
-
-		if (bufferSize < alignedHeaderSize)
-		{
-			ereport(ERROR,
-					(errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d",
-							alignedHeaderSize,
-							bufferSize),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		totalRepeatCount = 0;
-		totalRepeatCountsSize = 0;
-		for (i = 0; i < rleExtension->repeatcounts_count; i++)
-		{
-			int32 repeatCount;
-			int byteLen;
-				
-			repeatCount = DatumStreamInt32Compress_Decode(p, &byteLen);
-			// UNDONE: Range check repeatCount
-
-			totalRepeatCount += repeatCount;
-			totalRepeatCountsSize += byteLen;
-			p += byteLen;
-		}
-
-		if (totalRepeatCountsSize != rleExtension->repeatcounts_size)
-		{
-			ereport(ERROR,
-					(errmsg("Bad RLE_TYPE repeats count size.  Found %d, expected %d",
-							totalRepeatCountsSize,
-							rleExtension->repeatcounts_size),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
-		}
-
-		expectedNullOnCount =
-				blockDense->logical_row_count -
-				rleExtension->compress_bitmap_count -
-				totalRepeatCount;
-
-		if (!hasNull)
-		{
-			Assert(actualNullOnCount == 0);
-			if (expectedNullOnCount != 0)
-			{
-				ereport(ERROR,
-						(errmsg("Logical row count, COMPRESS bit-map count, and total repeat count for RLE_TYPE compression do not add up properly. Found %d, expected %d. "
-								"(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)",
-								actualNullOnCount,
-								expectedNullOnCount,
-								blockDense->logical_row_count,
-								rleExtension->compress_bitmap_count,
-								totalRepeatCount),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-		else
-		{
-			if (actualNullOnCount != expectedNullOnCount)
-			{
-				ereport(ERROR,
-						(errmsg("NULL bit-map ON count for RLE_TYPE compression does not match.	Found %d, expected %d. "
-								"(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)",
-								actualNullOnCount,
-								expectedNullOnCount,
-								blockDense->logical_row_count,
-								rleExtension->compress_bitmap_count,
-								totalRepeatCount),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
-			}
-		}
-
-		p = buffer + rleExtension->repeatcounts_size;
-
-		// UNDONE: Verify zero padding
-	}
-
-	if (typeInfo->datumlen < 0)
-	{
-		/*
-		 * Variable-length items.
-		 */
-
-		DatumStreamBlock_IntegrityCheckVarlena(
-											buffer + alignedHeaderSize,
-											blockDense->physical_data_size,
-											DatumStreamVersion_Dense,
-											typeInfo,
-											errdetailCallback,
-											errdetailArg,
-											errcontextCallback,
-											errcontextArg);
-	}
-}
-
-char *DatumStreamVersion_String(DatumStreamVersion datumStreamVersion)
-{
-	switch (datumStreamVersion)
-	{
-	case DatumStreamVersion_Original:	return "Original";
-	case DatumStreamVersion_Dense:		return "Dense";
-	default:
-		return "Unknown";
-	}
-}
-
-/*
- * varlena header info to string.
- */
-static char *
-VarlenaInfoToBuffer(char *buffer, uint8 *p)
-{	
-	uint32 alignment = (uint32)((uint8*)INTALIGN(p) - p);
-
-	if(VARATT_IS_EXTERNAL(p))
-	{
-		struct varatt_external *ext = (struct varatt_external*)p;
-		bool externalIsCompressed = (ext->va_extsize != ext->va_rawsize - VARHDRSZ);
-		sprintf(buffer,
-					"external (header ptr %p, header alignment %u, header 0x%.8x): "
-					"va_rawsize: %d, va_extsize %d, valueid %u, toastrelid %u (compressed %s)",
-					p,
-					alignment,
-					*((uint32*)p),
-					ext->va_rawsize,
-					ext->va_extsize,
-					ext->va_valueid,
-					ext->va_toastrelid,
-					(externalIsCompressed ? "true" : "false"));
-	}
-	else if (VARATT_IS_SHORT(p))
-	{
-		sprintf(buffer,
-					"short (header ptr %p, header alignment %u, header 0x%.2x): "
-					"VARSIZE_SHORT %d, VARDATA_SHORT %p",
-					p,
-					alignment,
-					(uint32)*((uint8*)p),
-					(int32)VARSIZE_SHORT(p),
-					VARDATA_SHORT(p));
-	}
-	else if (VARATT_IS_COMPRESSED(p))
-	{
-		varattrib_4b *comp = (varattrib_4b*)p;
-		sprintf(buffer,
-					"compressed (header ptr %p, header alignment %u, header 0x%.8x): "
-					"va_rawsize: %d, "
-					"VARSIZE_ANY %d, VARDATA_ANY %p",
-					p,
-					alignment,
-					*((uint32*)p),
-					(int32)comp->va_compressed.va_rawsize,
-					(int32)VARSIZE_ANY(p),
-					VARDATA_ANY(p));
-	}
-	else
-	{
-		sprintf(buffer,
-					"regular (header ptr %p, header alignment %u, header 0x%.8x): "
-					"VARSIZE_ANY %d, VARDATA_ANY %p",
-					p,
-					alignment,
-					*((uint32*)p),
-					(int32)VARSIZE_ANY(p),
-					VARDATA_ANY(p));
-	}
-
-	return buffer;
-}
-
-static char varlenaInfoBuffer[100];
-static char varlenaInfoBuffer2[100];
-
-char *
-VarlenaInfoToString(uint8 *p)
-{
-	return VarlenaInfoToBuffer(varlenaInfoBuffer, p);
-}
-
-char *
-VarlenaInfoToString2(uint8 *p)
-{
-	return VarlenaInfoToBuffer(varlenaInfoBuffer2, p);
-}
+	void	   					*errcontextArg);
 
 /*
  * DatumStreamBlockRead.
  */
-static void
+// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
+void
 DatumStreamBlockRead_PrintVarlenaInfo(
 								DatumStreamBlockRead *dsr,
 								uint8 *p)
@@ -1398,8 +48,9 @@ DatumStreamBlockRead_PrintVarlenaInfo(
 	elog(LOG, "Read varlena <%s>",	
 		VarlenaInfoToString(p));
 }
+#endif
 
-static int errdetail_datumstreamblockread(
+int errdetail_datumstreamblockread(
 	DatumStreamBlockRead 	*dsr)
 {
 	dsr->errdetailCallback(dsr->errcontextArg);
@@ -1418,7 +69,7 @@ static int errdetail_datumstreamblockread_callback(
 	return errdetail_datumstreamblockread(dsr);
 }
 
-static int errcontext_datumstreamblockread(
+int errcontext_datumstreamblockread(
 	DatumStreamBlockRead 	*dsr)
 {
 	dsr->errcontextCallback(dsr->errcontextArg);
@@ -1437,877 +88,13 @@ static int errcontext_datumstreamblockread_callback(
 	return errcontext_datumstreamblockread(dsr);
 }
 
+void DatumStreamBlockRead_ResetOrig(DatumStreamBlockRead *dsr)
+{
+	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
 #ifdef USE_ASSERT_CHECKING
-static void DatumStreamBlockRead_CheckDenseGetInvariant(
-	DatumStreamBlockRead 	*dsr) 
-{
-	if (!dsr->rle_block_was_compressed)
-	{
-		if (!dsr->has_null)
-		{
-			if (dsr->nth != dsr->physical_datum_index)
-			{
-				ereport(ERROR,
-						(errmsg("Nth position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
-								"(logical row count %d, physical datum count %d)",
-								dsr->nth,
-								dsr->physical_datum_index,
-								dsr->logical_row_count,
-								dsr->physical_datum_count),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-		}
-		else
-		{
-			int32 currentNullOnCount;
-			int32 expectedNullOnCount;
-
-			currentNullOnCount = DatumStreamBitMapRead_OnSeenCount(&dsr->null_bitmap);
-
-			expectedNullOnCount = dsr->nth - dsr->physical_datum_index;
-
-			if (currentNullOnCount != expectedNullOnCount)
-			{
-				ereport(ERROR,
-						(errmsg("NULL bit-map ON count does not match when Dense block does not have RLE_TYPE compression.  Found %d, expected %d",
-								currentNullOnCount,
-								expectedNullOnCount),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-		}
-	}
-	else
-	{
-		int32 currentCompressBitMapPosition;
-		int32 currentCompressBitMapOffCount;
-
-		currentCompressBitMapPosition = DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap);
-
-		if (currentCompressBitMapPosition != dsr->physical_datum_index)
-		{
-			ereport(ERROR,
-					(errmsg("COMPRESS bit-map position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
-							"(logical row count %d, physical datum count %d)",
-							currentCompressBitMapPosition,
-							dsr->physical_datum_index,
-							dsr->logical_row_count,
-							dsr->physical_datum_count),
-					 errOmitLocation(false),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-
-
-		currentCompressBitMapOffCount = 
-								DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap) + 1
-							  - DatumStreamBitMapRead_OnSeenCount(&dsr->rle_compress_bitmap);
-
-		if (!dsr->has_null)
-		{
-			if (dsr->nth != currentCompressBitMapOffCount + dsr->rle_total_repeat_items_read - 1)
-			{
-				ereport(ERROR,
-						(errmsg("Nth position %d expected to match "
-								"current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 "
-								"when Dense block does not have RLE_TYPE compression and does not have NULLs "
-								"(logical row count %d, physical datum count %d)",
-								dsr->nth,
-								currentCompressBitMapOffCount,
-								dsr->rle_total_repeat_items_read,
-								dsr->logical_row_count,
-								dsr->physical_datum_count),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-		}
-		else
-		{
-			int32 currentNullBitMapOnCount;
-
-			currentNullBitMapOnCount = DatumStreamBitMapRead_OnSeenCount(&dsr->null_bitmap);
-			
-			if (dsr->nth != currentNullBitMapOnCount + currentCompressBitMapOffCount + dsr->rle_total_repeat_items_read - 1)
-			{
-				ereport(ERROR,
-						(errmsg("Nth position %d expected to match current NULL bit-map ON count %d + "
-								"current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 "
-								"when Dense block does not have RLE_TYPE compression and does not have NULLs "
-								"(logical row count %d, physical datum count %d)",
-								dsr->nth,
-								currentNullBitMapOnCount,
-								currentCompressBitMapOffCount,
-								dsr->rle_total_repeat_items_read,
-								dsr->logical_row_count,
-								dsr->physical_datum_count),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-		}
-	}
-}
-#endif
-
-static void DatumStreamBlockRead_GetVarlena(
-	DatumStreamBlockRead 	*dsr, 
-	Datum 					*datum) 
-{
-	Datum result;
-	int32 varLen;
-
-	result = PointerGetDatum(dsr->datump);
-	Assert(VARATT_IS_SHORT_D(result) || !VARATT_IS_EXTERNAL_D(result));
-
-	varLen = VARSIZE_ANY_D(result);
-	if (varLen < 0 || varLen > dsr->physical_data_size)
-	{
-		ereport(ERROR,
-				(errmsg("Datum stream block %s read variable-length item index %d length too large "
-						"(nth %d, logical row count %d, "
-						"item length %d, total physical data size %d, "
-						"current datum pointer %p, after data pointer %p)",
-						DatumStreamVersion_String(dsr->datumStreamVersion),
-						dsr->physical_datum_index,
-						dsr->nth,
-						dsr->logical_row_count,
-						varLen,
-						dsr->physical_data_size,
-						dsr->datump,
-						dsr->datum_afterp),
-				 errOmitLocation(false),
-				 errdetail_datumstreamblockread(dsr),
-				 errcontext_datumstreamblockread(dsr)));
-	}
-
-	if (dsr->datump + varLen > dsr->datum_afterp)
-	{
-		ereport(ERROR,
-				(errmsg("Datum stream block %s read variable-length item index %d length goes beyond end of block "
-						"(nth %d, logical row count %d, "
-						"item length %d, "
-						"current datum pointer %p, after data pointer %p)",
-						DatumStreamVersion_String(dsr->datumStreamVersion),
-						dsr->physical_datum_index,
-						dsr->nth,
-						dsr->logical_row_count,
-						varLen,
-						dsr->datump,
-						dsr->datum_afterp),
-				 errOmitLocation(false),
-				 errdetail_datumstreamblockread(dsr),
-				 errcontext_datumstreamblockread(dsr)));
-	}
-
-	if (Debug_datumstream_read_print_varlena_info)
-	{
-		DatumStreamBlockRead_PrintVarlenaInfo(
-											dsr,
-											dsr->datump);
-	}
-
-	if (Debug_appendonly_print_scan_tuple)
-	{
-		ereport(LOG,
-				(errmsg("Datum stream block %s read is returning variable-length item #%d "
-						"(nth %d, item begin %p, item offset " INT64_FORMAT ")",
-						DatumStreamVersion_String(dsr->datumStreamVersion),
-						dsr->physical_datum_index,
-						dsr->nth,
-						dsr->datump,
-						(int64)(dsr->datump - dsr->datum_beginp)),
-				 errOmitLocation(true),
-				 errdetail_datumstreamblockread(dsr),
-				 errcontext_datumstreamblockread(dsr)));
-	}
-
-	*datum = result;
-}
-
-static int DatumStreamBlockRead_GetOrig(
-	DatumStreamBlockRead 	*dsr, 
-	Datum 					*datum, 
-	bool 					*null)
-{
-    Assert(dsr && datum && null);
-
-    if(dsr->has_null && DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
-    {
-		
-		if (Debug_appendonly_print_scan_tuple)
-		{
-			ereport(LOG,
-			        (errmsg("Datum stream block Original read is returning NULL "
-						    "(nth %d)",
-						    dsr->nth),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-			         errcontext_datumstreamblockread(dsr)));
-		}
-		
-        *null = true;
-        return 0;
-    }
-    else
-        *null = false;
-
-	if (dsr->typeInfo->datumlen < 0)
-	{
-		DatumStreamBlockRead_GetVarlena(dsr, datum);		
-	}
-    else if (!dsr->typeInfo->byval)
-    {
-        *datum = PointerGetDatum(dsr->datump);
-		
-		if (Debug_appendonly_print_scan_tuple)
-		{
-			ereport(LOG,
-			        (errmsg("Datum stream block Original read is returning fixed-length item #%d "
-						    "(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ")",
-						    dsr->physical_datum_index,
-						    dsr->nth,
-						    dsr->typeInfo->datumlen,
-						    dsr->datump,
-						    (int64)(dsr->datump - dsr->datum_beginp)),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-		
-    }
-    else
-    {
-		switch (dsr->typeInfo->datumlen)
-		{
-			case 1:
-	            *datum = *(uint8 *) dsr->datump;
-				break;
-
-			case 2:
-	            Assert(IsAligned(dsr->datump, 2));
-	            *datum = *(uint16 *) dsr->datump;
-				break;
-
-			case 4:
-	            Assert(IsAligned(dsr->datump, 4));
-	            *datum = *(uint32 *) dsr->datump;
-				break;
-
-			case 8:
-				Assert(IsAligned(dsr->datump, 8) || IsAligned(dsr->datump, 4));
-	            *datum = *(Datum *) dsr->datump;
-				break;
-
-			default:
-				ereport(FATAL,
-						(errmsg("fixed length type has unexpected length %d", 
-							    dsr->typeInfo->datumlen),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
-				break;	// Never reaches here.
-        }
-
-		if (Debug_appendonly_print_scan_tuple)
-		{
-			ereport(LOG,
-			        (errmsg("Datum stream block Original read is returning fixed-length item #%d "
-						    "(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", integer " INT64_FORMAT ")",
-						    dsr->physical_datum_index,
-						    dsr->nth,
-						    dsr->typeInfo->datumlen,
-						    dsr->datump,
-						    (int64)(dsr->datump - dsr->datum_beginp),
-						    (int64)*datum),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-		
-    }
-
-    return 0;
-}
-
-static int DatumStreamBlockRead_GetDense(
-	DatumStreamBlockRead 	*dsr, 
-	Datum 					*datum, 
-	bool 					*null)
-{
-    Assert(dsr && datum && null);
-
-#ifdef USE_ASSERT_CHECKING
-	DatumStreamBlockRead_CheckDenseGetInvariant(dsr);
-#endif
-
-    if(dsr->has_null && DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
-    {
-        *null = true;
-        return 0;
-    }
-    else
-        *null = false;
-
-	if (dsr->typeInfo->datumlen < 0)
-	{
-		DatumStreamBlockRead_GetVarlena(dsr, datum);		
-	}
-    else if (!dsr->typeInfo->byval)
-    {
-        *datum = PointerGetDatum(dsr->datump);
-		
-		if (Debug_appendonly_print_scan_tuple)
-		{
-			ereport(LOG,
-			        (errmsg("Datum stream block read is returning fixed-length item #%d "
-						    "(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ")",
-						    dsr->physical_datum_index,
-						    dsr->nth,
-						    dsr->typeInfo->datumlen,
-						    dsr->datump,
-						    (int64)(dsr->datump - dsr->datum_beginp)),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-		
-    }
-    else
-    {
-		switch (dsr->typeInfo->datumlen)
-		{
-			case 1:
-	            *datum = *(uint8 *) dsr->datump;
-				break;
-
-			case 2:
-	            Assert(IsAligned(dsr->datump, 2));
-	            *datum = *(uint16 *) dsr->datump;
-				break;
-
-			case 4:
-	            Assert(IsAligned(dsr->datump, 4));
-	            *datum = *(uint32 *) dsr->datump;
-				break;
-
-			case 8:
-				Assert(IsAligned(dsr->datump, 8) || IsAligned(dsr->datump, 4));
-	            *datum = *(Datum *) dsr->datump;
-				break;
-
-			default:
-				ereport(FATAL,
-						(errmsg("fixed length type has unexpected length %d", 
-							    dsr->typeInfo->datumlen),
-						  errOmitLocation(true),
-						  errdetail_datumstreamblockread(dsr),
-				          errcontext_datumstreamblockread(dsr)));
-				break;	// Never reaches here.
-        }
-    }
-
-    return 0;
-}
-
-int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *datum, bool *null)
-{
 	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
 		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
-
-	switch (dsr->datumStreamVersion)
-	{
-	case DatumStreamVersion_Original:
-		return DatumStreamBlockRead_GetOrig(dsr, datum, null);
-
-	case DatumStreamVersion_Dense:
-		return DatumStreamBlockRead_GetDense(dsr, datum, null);
-
-	default:
-		ereport(FATAL,
-				(errmsg("Unexpected datum stream version %d", 
-			 			dsr->datumStreamVersion),
-				  errOmitLocation(true),
-				  errdetail_datumstreamblockread(dsr),
-				  errcontext_datumstreamblockread(dsr)));
-		return 0;	// Never reaches here.
-	}
-}
-
-static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
-{
-    Assert(dsr);
-	
-    ++dsr->nth;		// Initially, -1.
-
-    /* Advance out of bounds? */
-    if(dsr->nth >= dsr->logical_row_count)
-        return 0;
-
-    if(dsr->has_null)
-    {
-		DatumStreamBitMapRead_Next(&dsr->null_bitmap);
-		Assert(DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
-
-        if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
-		{
-			if (Debug_appendonly_print_scan_tuple)
-			{
-				ereport(LOG,
-						(errmsg("Datum stream block read is positioned to NULL "
-							    "(nth %d)",
-							    dsr->nth),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
-			}
-			
-			return 1;
-		}
-    }
-
-	Assert(dsr->datump >= dsr->datum_beginp);
-	Assert (dsr->datump < dsr->datum_afterp);
-
-    ++dsr->physical_datum_index;		// Initially, -1.
-
-	if (dsr->physical_datum_index == 0)
-	{
-		// Pre-positioned by block read to first item.
-		
-		if (Debug_appendonly_print_scan_tuple)
-		{
-			ereport(LOG,
-					(errmsg("Datum stream block read advance is positioned to first item "
-						    "(nth %d, logical row count %d, item begin %p, item offset " INT64_FORMAT ")",
-						    dsr->nth,
-						    dsr->logical_row_count,
-						    dsr->datump,
-						    (int64)(dsr->datump - dsr->datum_beginp)),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-	}
-	else
-	{
-		uint8 *item_beginp;
-		
-		item_beginp = dsr->datump;
-
-		/*
-		 * Advance the item pointer.
-		 */
-	    if(dsr->typeInfo->datumlen < 0)
-	    {
-	        struct varlena *s;
-
-	        Assert(dsr->typeInfo->datumlen == -1);
-			Assert(dsr->datump >= dsr->datum_beginp);
-			Assert(dsr->datump < dsr->datum_afterp);
-
-	        s = (struct varlena *) dsr->datump;
-	        dsr->datump += VARSIZE_ANY(s);
-			
-			/* 
-			 * Skip any possible zero paddings AFTER PREVIOUS varlena data.
-			 */
-	        if(*dsr->datump == 0)
-			{
-	            dsr->datump = (uint8 *) att_align(dsr->datump, dsr->typeInfo->align);
-			}
-
-			if (dsr->datump > dsr->datum_afterp)
-			{
-				ereport(ERROR,
-						(errmsg("Datum stream block read pointer to variable-length item index %d out of bounds "
-								"(nth %d, logical row count %d, "
-								"current datum pointer %p, next datum pointer %p, after data pointer %p)",
-							    dsr->physical_datum_index,
-							    dsr->nth,
-							    dsr->logical_row_count,
-							    item_beginp,
-							    dsr->datump,
-							    dsr->datum_afterp),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
-			}
-			
-			if (Debug_appendonly_print_scan_tuple)
-			{
-				ereport(LOG,
-						(errmsg("Datum stream block read advanced to variable-length item index %d "
-							    "(nth %d, logical row count %d, "
-							    "previous item begin %p, previous item offset " INT64_FORMAT ", next item begin %p)",
-							    dsr->physical_datum_index,
-							    dsr->nth,
-							    dsr->logical_row_count,
-							    item_beginp,
-							    (int64)(item_beginp - dsr->datum_beginp),
-							    dsr->datump),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
-			}
-		}
-	    else
-		{
-	        dsr->datump += dsr->typeInfo->datumlen;
-			
-			if (Debug_appendonly_print_scan_tuple)
-			{
-				ereport(LOG,
-						(errmsg("Datum stream block read advanced to fixed-item item index %d "
-							    "(nth %d, logical row count %d, "
-							    "item size %d, previous item begin %p, previous item offset " INT64_FORMAT ", next item begin %p)",
-							    dsr->physical_datum_index,
-							    dsr->nth,
-							    dsr->logical_row_count,
-							    dsr->typeInfo->datumlen,
-							    item_beginp,
-							    (int64)(item_beginp - dsr->datum_beginp),
-							    dsr->datump),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
-			}
-			
-		}
-	}
-
-    return 1;
-}
-
-static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
-{
-	Assert(dsr);
-
-	++dsr->nth; 	// Initially, -1.
-
-	/* Advance out of bounds? */
-	if(dsr->nth >= dsr->logical_row_count)
-		return 0;
-
-	if (!dsr->rle_block_was_compressed)
-	{
-		/*
-		 * A Dense block with optional NULL bit-map.
-		 */
-		if(dsr->has_null)
-		{
-			DatumStreamBitMapRead_Next(&dsr->null_bitmap);
-			Assert(DatumStreamBitMapRead_InRange(&dsr->null_bitmap));
-		
-			if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
-			{
-				/*
-				 * NULL item.
-				 */
-				return 1;
-			}
-		}
-	}
-	else
-	{
-		/*
-		 * For RLE_TYPE compression, we only represent the repeated item once in
-		 * the NULL bit-map.
-		 */
-
-		if (dsr->rle_in_repeated_item)
-		{
-			Assert(dsr->rle_repeated_item_count > 0);
-#ifdef USE_ASSERT_CHECKING
-			if (dsr->has_null)
-			{
-				if (!DatumStreamBitMapRead_InRange(&dsr->null_bitmap))
-				{
-					ereport(ERROR,
-							(errmsg("Datum stream block read advance NULL bit-map out-of-range "
-									"(nth %d, logical row count %d, NULL bit-map count %d)",
-									dsr->nth,
-									dsr->logical_row_count,
-									DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
-							 errOmitLocation(true),
-							 errdetail_datumstreamblockread(dsr),
-							 errcontext_datumstreamblockread(dsr)));
-				}
-				if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
-				{
-					ereport(ERROR,
-							(errmsg("Datum stream block read advance NULL bit-map ON for repeated item "
-									"(nth %d, logical row count %d, NULL bit-map count %d)",
-									dsr->nth,
-									dsr->logical_row_count,
-									DatumStreamBitMapRead_Count(&dsr->null_bitmap)),
-							 errOmitLocation(true),
-							 errdetail_datumstreamblockread(dsr),
-							 errcontext_datumstreamblockread(dsr)));
-				}
-			}
-
-			if (!DatumStreamBitMapRead_InRange(&dsr->rle_compress_bitmap))
-			{
-				ereport(ERROR,
-						(errmsg("Datum stream block read advance COMPRESS bit-map out-of-range "
-								"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
-								dsr->nth,
-								dsr->logical_row_count,
-								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-			if (!DatumStreamBitMapRead_CurrentIsOn(&dsr->rle_compress_bitmap))
-			{
-				ereport(ERROR,
-						(errmsg("Datum stream block read advance COMPRESS bit-map OFF for repeated item "
-								"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
-								dsr->nth,
-								dsr->logical_row_count,
-								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
 #endif
-
-			dsr->rle_repeated_item_count--;
-			dsr->rle_total_repeat_items_read++;
-
-			if (dsr->rle_repeated_item_count <= 0)
-			{
-				/*
-				 * The nth item is the last of the repeated item.
-				 *
-				 * Leave the RLE_TYPE compression bit-map positions and
-				 * optional NULL bit-map positions the same since they still represent
-				 * the last copy of the repeated item.
-				 */
-				dsr->rle_in_repeated_item = false;
-			}
-
-			/*
-			 * Item pointers are already setup.
-			 */
-			return 1;
-		}
-
-		/*
-		 * The first step of advancing not being inside current repeated item is advancing the
-		 * NULL bit-map.  
-		 *
-		 * (We only advance the RLE_TYPE compress bit-map inside a non-NULL item)
-		 */
-		if(dsr->has_null)
-		{
-			DatumStreamBitMapRead_Next(&dsr->null_bitmap);
-#ifdef USE_ASSERT_CHECKING
-			if (!DatumStreamBitMapRead_InRange(&dsr->null_bitmap))
-			{
-//				pg_usleep(300 * 1000000L);
-				ereport(ERROR,
-						(errmsg("Datum stream block read advance NULL bit-map out-of-range "
-								"(nth %d, logical row count %d, NULL bit-map count %d, "
-								"physical datum count %d, COMPRESS bit-map count %d)",
-								dsr->nth,
-								dsr->logical_row_count,
-								DatumStreamBitMapRead_Count(&dsr->null_bitmap),
-								dsr->physical_datum_count,
-								DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-#endif
-		
-			if (DatumStreamBitMapRead_CurrentIsOn(&dsr->null_bitmap))
-			{
-				/*
-				 * NULL item.
-				 */
-				return 1;
-			}
-		}
-
-		/*
-		 * Now that we have an item that is not NULL, see if it is repeated.
-		 */
-		DatumStreamBitMapRead_Next(&dsr->rle_compress_bitmap);
-#ifdef USE_ASSERT_CHECKING
-		if (!DatumStreamBitMapRead_InRange(&dsr->rle_compress_bitmap))
-		{
-			ereport(ERROR,
-					(errmsg("Datum stream block read advance COMPRESS bit-map out-of-range "
-							"(nth %d, logical row count %d, COMPRESS bit-map count %d)",
-							dsr->nth,
-							dsr->logical_row_count,
-							DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap)),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-#endif
-		if (DatumStreamBitMapRead_CurrentIsOn(&dsr->rle_compress_bitmap))
-		{
-			int32 repeatCount;
-			int32 byteLen;
-
-			/*
-			 * New repeated item.
-			 */
-			dsr->rle_repeatcounts_index++;
-
-			dsr->rle_total_repeat_items_read++;
-
-			repeatCount = DatumStreamInt32Compress_Decode(dsr->rle_repeatcountsp, &byteLen);
-			dsr->rle_repeatcountsp += byteLen;
-
-			// UNDONE: Integrity check.
-
-			dsr->rle_repeated_item_count = repeatCount;
-			dsr->rle_in_repeated_item = true;
-		}
-
-		/*
-		 * Fall through and setup pointer to new item.
-		 */
-	}
-
-	Assert(dsr->datump >= dsr->datum_beginp);
-	Assert (dsr->datump < dsr->datum_afterp);
-
-	++dsr->physical_datum_index;		// Initially, -1.
-
-	if (dsr->physical_datum_index == 0)
-	{
-		// Pre-positioned by block read to first item.
-		
-		if (Debug_appendonly_print_scan_tuple)
-		{
-			ereport(LOG,
-					(errmsg("Datum stream block read advance is positioned to first item "
-						    "(nth %d, logical row count %d, item begin %p, item offset " INT64_FORMAT ")",
-						    dsr->nth,
-						    dsr->logical_row_count,
-						    dsr->datump,
-						    (int64)(dsr->datump - dsr->datum_beginp)),
-					 errOmitLocation(true),
-					 errdetail_datumstreamblockread(dsr),
-					 errcontext_datumstreamblockread(dsr)));
-		}
-	}
-	else
-	{
-		uint8 *item_beginp;
-		
-		item_beginp = dsr->datump;
-
-		/*
-		 * Advance the item pointer.
-		 */
-		if(dsr->typeInfo->datumlen < 0)
-		{
-	        struct varlena *s;
-
-	        Assert(dsr->typeInfo->datumlen == -1);
-			Assert(dsr->datump >= dsr->datum_beginp);
-			Assert(dsr->datump < dsr->datum_afterp);
-
-	        s = (struct varlena *) dsr->datump;
-			dsr->datump += VARSIZE_ANY(s);
-
-			/* 
-			 * Skip any possible zero paddings AFTER varlena data.
-			 */
-	        if(*dsr->datump == 0)
-			{
-	            dsr->datump = (uint8 *) att_align(dsr->datump, dsr->typeInfo->align);
-			}
-
-			if (dsr->datump > dsr->datum_afterp)
-			{
-				ereport(ERROR,
-						(errmsg("Datum stream block read pointer to variable-length item index %d out of bounds "
-								"(nth %d, logical row count %d, "
-								"current datum pointer %p, next datum pointer %p, after data pointer %p)",
-								dsr->physical_datum_index,
-								dsr->nth,
-								dsr->logical_row_count,
-								item_beginp,
-								dsr->datump,
-								dsr->datum_afterp),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-
-			if (Debug_appendonly_print_scan_tuple)
-			{
-				ereport(LOG,
-						(errmsg("Datum stream block read advanced to variable-length item index %d "
-								"(nth %d, logical row count %d, "
-								"previous item begin %p, previous item offset " INT64_FORMAT ", next item begin %p)",
-								dsr->physical_datum_index,
-								dsr->nth,
-								dsr->logical_row_count,
-								item_beginp,
-								(int64)(item_beginp - dsr->datum_beginp),
-								dsr->datump),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-		}
-		else
-		{
-			dsr->datump += dsr->typeInfo->datumlen;
-		}
-	}
-
-	return 1;
-}
-
-int DatumStreamBlockRead_Advance(DatumStreamBlockRead *dsr)
-{
-	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
-		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
-
-	switch (dsr->datumStreamVersion)
-	{
-	case DatumStreamVersion_Original:
-		return DatumStreamBlockRead_AdvanceOrig(dsr);
-
-	case DatumStreamVersion_Dense:
-		return DatumStreamBlockRead_AdvanceDense(dsr);
-
-	default:
-		ereport(FATAL,
-				(errmsg("Unexpected datum stream version %d", 
-			 			dsr->datumStreamVersion),
-				 errOmitLocation(false),
-				 errdetail_datumstreamblockread(dsr),
-				 errcontext_datumstreamblockread(dsr)));
-		return 0;	// Never reaches here.
-	}
-}
-
-int DatumStreamBlockRead_Nth(DatumStreamBlockRead *dsr)
-{
-	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
-		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
-
-	return dsr->nth;
-}
-
-void DatumStreamBlockRead_Reset(DatumStreamBlockRead *dsr)
-{
-	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
-		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
 
 	/* 
 	 * Put before first entry.  Caller will advance.
@@ -2326,23 +113,13 @@ void DatumStreamBlockRead_Reset(DatumStreamBlockRead *dsr)
 	dsr->null_bitmap_beginp = NULL;
 	dsr->datum_beginp = NULL;
 	dsr->datum_afterp = NULL;
-	dsr->rle_compress_beginp = NULL;
-	dsr->rle_repeatcountsp = NULL;
 
 	dsr->buffer_beginp = NULL;
     dsr->datump = NULL;
-
-	dsr->rle_block_was_compressed = false;
-
-	dsr->rle_repeatcounts_index = 0;
-	dsr->rle_in_repeated_item = false;
-	dsr->rle_repeated_item_count = 0;
-
-	dsr->rle_total_repeat_items_read = 0;
 }
 
 void
-DatumStreamBlockRead_GetReady(
+DatumStreamBlockRead_GetReadyOrig(
 	DatumStreamBlockRead	*dsr,
 	uint8					*buffer,
 	int32					bufferSize,
@@ -2357,8 +134,14 @@ DatumStreamBlockRead_GetReady(
 	int32 alignedHeaderSize;
 	bool minimalIntegrityChecks;
 
+	DatumStreamBlock_Orig *blockOrig;
+	int32 minHeaderSize = sizeof(DatumStreamBlock_Orig);
+	
+	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
 	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
 		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
+#endif
 
 	*hadToAdjustRowCount = false;
 	*adjustedRowCount = 0;
@@ -2384,352 +167,145 @@ DatumStreamBlockRead_GetReady(
 	 */
 	p = dsr->buffer_beginp;
 
-	switch (dsr->datumStreamVersion)
+	if (bufferSize < minHeaderSize)
 	{
-	case DatumStreamVersion_Original:
-		{
-	        DatumStreamBlock_Orig *blockOrig;
-			int32 minHeaderSize = sizeof(DatumStreamBlock_Orig);
-
-			if (bufferSize < minHeaderSize)
-			{
-				ereport(ERROR,
-						(errmsg("Bad datum stream Original block header size.  Found %d and expected the size to be at least %d",
-							    bufferSize,
-							    minHeaderSize),
-						 errOmitLocation(false),
-						 errdetail_datumstreamblockread(dsr),
-				         errcontext_datumstreamblockread(dsr)));
-			}
-			
-			blockOrig = (DatumStreamBlock_Orig *) p;
-			DatumStreamBlock_IntegrityCheckOrig(
-											buffer,
-											bufferSize,
-											minimalIntegrityChecks,
-											rowCount,
-											dsr->typeInfo,
-											/* errdetailCallback */ errdetail_datumstreamblockread_callback,
-											/* errdetailArg */ (void*) dsr,
-											/* errcontextCallback */ errcontext_datumstreamblockread_callback,
-											/* errcontextArg */ (void*) dsr);
-
-			dsr->logical_row_count = blockOrig->ndatum;
-
-			dsr->physical_datum_count = 0;	// Not used for Original format.
-			
-			dsr->physical_data_size = blockOrig->sz;
-
-	        p += sizeof(DatumStreamBlock_Orig);
-
-	        /* Set up acc */
-	        Assert(dsr->nth == -1);
-			Assert(dsr->physical_datum_index == -1);
-
-	        dsr->has_null = ((blockOrig->flags & DSB_HAS_NULLBITMAP) != 0);
-			if (dsr->has_null)
-			{
-		        dsr->null_bitmap_beginp = p;
-
-				DatumStreamBitMapRead_Init(
-									&dsr->null_bitmap,
-									dsr->null_bitmap_beginp,
-									dsr->logical_row_count);
-				/*
-				 * The field nullsz byte length is MAXALIGN.
-				 */
-				p += blockOrig->nullsz;
-			}
-
-	        /*
-			 * Pre-4.0 code did not enforce the following assertion.
-			 * We identify this exception through firstRow, which is -1
-			 * for pre-4.0 blocks (not stored inside the block).
-			 */
-	        Assert(dsr->logical_row_count == rowCount || firstRowNum == -1);
-
-	        /*
-	        	 * In pre-4.0 blocks, the maximum value of ndatum is
-			 * 32000 while rowCnt cannot exceed 16384, so we set
-			 * rowCnt to ndatum to build the block directory
-			 * consistently.
-			 */
-			if (dsr->logical_row_count > rowCount && firstRowNum == -1)
-	        {
-	        	/* Adjust !!!! */
-				*adjustedRowCount = dsr->logical_row_count;
-				*hadToAdjustRowCount = true;
-	        }
-
-			unalignedHeaderSize = (int32)(p - dsr->buffer_beginp);
-			alignedHeaderSize = MAXALIGN(unalignedHeaderSize);
-
-			dsr->datum_beginp = dsr->buffer_beginp + alignedHeaderSize;
-			dsr->datum_afterp = dsr->datum_beginp + dsr->physical_data_size;
-
-			if (Debug_appendonly_print_scan)
-			{
-				if (!dsr->has_null)
-				{
-					ereport(LOG,
-							(errmsg("Datum stream block read unpack Original with NO NULLs "
-								    "(logical row count %d, physical data size = %d, "
-								    "adjustedRowCount %d, row count adjusted %s, "
-								    "unaligned header size %d, aligned header size %d, "
-								    "datum begin %p, datum after %p)",
-								    dsr->logical_row_count,
-								    dsr->physical_data_size,
-								    *adjustedRowCount,
-								    (*hadToAdjustRowCount ? "true" : "false"),
-								    unalignedHeaderSize,
-								    alignedHeaderSize,
-								    dsr->datum_beginp,
-								    dsr->datum_afterp),
-							 errOmitLocation(true),
-							 errdetail_datumstreamblockread(dsr),
-							 errcontext_datumstreamblockread(dsr)));
-				}
-				else
-				{
-					ereport(LOG,
-							(errmsg("Datum stream block read unpack Original with NULLs "
-								    "(logical row count %d, physical data size = %d, "
-								    "NULL bit-map MAXALIGN size %d, "
-								    "adjustedRowCount %d, row count adjusted %s, "
-								    "unaligned header size %d, aligned header size %d, "
-								    "null begin %p, datum begin %p, datum after %p)",
-								    dsr->logical_row_count,
-								    dsr->physical_data_size,
-								    blockOrig->nullsz,
-								    *adjustedRowCount,
-								    (*hadToAdjustRowCount ? "true" : "false"),
-								    unalignedHeaderSize,
-								    alignedHeaderSize,
-								    dsr->null_bitmap_beginp,
-								    dsr->datum_beginp,
-								    dsr->datum_afterp),
-							 errOmitLocation(true),
-							 errdetail_datumstreamblockread(dsr),
-							 errcontext_datumstreamblockread(dsr)));
-				}
-			}
-
-		}
-		break;
-
-	case DatumStreamVersion_Dense:
-		{
-	        DatumStreamBlock_Dense *blockDense;
-	        DatumStreamBlock_Rle_Extension *rleExtension;
-
-			Assert(p == buffer);
-			DatumStreamBlock_IntegrityCheckDense(
-											buffer,
-											bufferSize,
-											minimalIntegrityChecks,
-											rowCount,
-											dsr->typeInfo,
-											/* errdetailCallback */ errdetail_datumstreamblockread_callback,
-											/* errdetailArg */ (void*) dsr,
-											/* errcontextCallback */ errcontext_datumstreamblockread_callback,
-											/* errcontextArg */ (void*) dsr);
-			
-			blockDense = (DatumStreamBlock_Dense *) p;
-
-			dsr->logical_row_count = blockDense->logical_row_count;
-	        Assert(dsr->logical_row_count == rowCount);
-
-			dsr->physical_datum_count = blockDense->physical_datum_count;
-			dsr->physical_data_size = blockDense->physical_data_size;
-
-	        p += sizeof(DatumStreamBlock_Dense);
-			
-			dsr->rle_block_was_compressed = ((blockDense->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION) != 0);
-			if (dsr->rle_block_was_compressed)
-			{
-				rleExtension = (DatumStreamBlock_Rle_Extension *) p;
-				p += sizeof(DatumStreamBlock_Rle_Extension);
-				
-				dsr->rle_norepeats_null_bitmap_count = rleExtension->norepeats_null_bitmap_count;
-				dsr->rle_compress_bitmap_count = rleExtension->compress_bitmap_count;
-				dsr->rle_repeatcounts_count = rleExtension->repeatcounts_count;
-				dsr->rle_repeatcounts_size = rleExtension->repeatcounts_size;
-			}
-			else
-			{
-				rleExtension = NULL;
-			}
-
-	        /* Set up acc */
-	        dsr->nth = -1; /* put it before first entry.  Caller will advance */
-			dsr->physical_datum_index = -1;
-	        dsr->has_null = ((blockDense->orig_4_bytes.flags & DSB_HAS_NULLBITMAP) != 0);
-
-			if (dsr->has_null)
-			{
-				dsr->null_bitmap_beginp = p;
-				
-				DatumStreamBitMapRead_Init(
-									&dsr->null_bitmap,
-									dsr->null_bitmap_beginp,
-									(!dsr->rle_block_was_compressed ?
-											dsr->logical_row_count :
-											dsr->rle_norepeats_null_bitmap_count));
-
-				p += DatumStreamBitMapRead_Size(&dsr->null_bitmap);
-			}
-
-			unalignedHeaderSize = (int32)(p - dsr->buffer_beginp);
-			alignedHeaderSize = MAXALIGN(unalignedHeaderSize);
-
-			/*
-			 * Skip over alignment padding.
-			 */
-			dsr->datum_beginp = dsr->buffer_beginp + alignedHeaderSize;
-			dsr->datum_afterp = dsr->datum_beginp + dsr->physical_data_size;
-
-			if (!dsr->rle_block_was_compressed)
-			{
-				if (Debug_appendonly_print_scan)
-				{
-					if (!dsr->has_null)
-					{
-						ereport(LOG,
-								(errmsg("Datum stream block read unpack Dense with NO NULLs "
-									    "(logical row count %d, physical data size = %d, "
-									    "unaligned header size %d, aligned header size %d, "
-									    "datum begin %p, datum after %p)",
-									    dsr->logical_row_count,
-									    dsr->physical_data_size,
-									    unalignedHeaderSize,
-									    alignedHeaderSize,
-									    dsr->datum_beginp,
-									    dsr->datum_afterp),
-								 errOmitLocation(true),
-								 errdetail_datumstreamblockread(dsr),
-								 errcontext_datumstreamblockread(dsr)));
-					}
-					else
-					{
-						ereport(LOG,
-								(errmsg("Datum stream read unpack Dense block header for table with NULLs "
-									    "(logical row count %d, physical data size = %d, NULL bit-map size %d, "
-									    "unaligned header size %d, aligned header size %d, "
-									    "null begin %p, datum begin %p, datum after %p)",
-									    dsr->logical_row_count,
-									    dsr->physical_data_size,
-									    DatumStreamBitMapRead_Size(&dsr->null_bitmap),
-									    unalignedHeaderSize,
-									    alignedHeaderSize,
-									    dsr->null_bitmap_beginp,
-									    dsr->datum_beginp,
-									    dsr->datum_afterp),
-								 errOmitLocation(true),
-								 errdetail_datumstreamblockread(dsr),
-								 errcontext_datumstreamblockread(dsr)));
-					}
-				}
-			}
-			else
-			{
-				/*
-				 * RLE_TYPE compression was used for this block.
-				 */
-				dsr->rle_compress_beginp = p;
-				
-				DatumStreamBitMapRead_Init(
-									&dsr->rle_compress_bitmap,
-									dsr->rle_compress_beginp,
-									dsr->rle_compress_bitmap_count);
-
-				p += DatumStreamBitMapRead_Size(&dsr->rle_compress_bitmap);
-
-				/*
-				 * Start our decompression of repeat counts at beginning.
-				 */
-				dsr->rle_repeatcountsp = p;
-
-				p += dsr->rle_repeatcounts_size;
-				
-				dsr->rle_repeatcounts_index = -1;
-				dsr->rle_repeated_item_count = 0;
-				dsr->rle_in_repeated_item = false;
-
-				unalignedHeaderSize = p - dsr->buffer_beginp;
-				alignedHeaderSize = MAXALIGN(unalignedHeaderSize);
-
-				/*
-				 * Skip over alignment padding.
-				 */
-				dsr->datum_beginp = dsr->buffer_beginp + alignedHeaderSize;
-				dsr->datum_afterp = dsr->datum_beginp + dsr->physical_data_size;
-
-				if (Debug_appendonly_print_scan)
-				{
-					if (!dsr->has_null)
-					{
-						ereport(LOG,
-								(errmsg("Datum stream block read unpack Dense with NO NULLs and RLE_TYPE compression "
-									    "(logical row count %d, physical data size = %d, "
-									    "compress bit-map count %d, compress bit-map size %d, "
-									    "repeat counts count %d, repeat counts size %d, "
-									    "unaligned header size %d, aligned header size %d, "
-									    "datum begin %p, datum after %p)",
-									    dsr->logical_row_count,
-									    dsr->physical_data_size,
-									    DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap),
-									    DatumStreamBitMapRead_Size(&dsr->rle_compress_bitmap),
-									    dsr->rle_repeatcounts_count,
-									    dsr->rle_repeatcounts_size,
-									    unalignedHeaderSize,
-									    alignedHeaderSize,
-									    dsr->datum_beginp,
-									    dsr->datum_afterp),
-								 errOmitLocation(true),
-								 errdetail_datumstreamblockread(dsr),
-								 errcontext_datumstreamblockread(dsr)));
-					}
-					else
-					{
-						ereport(LOG,
-								(errmsg("Datum stream block read unpack Dense with NULLs and RLE_TYPE compression "
-									    "(logical row count %d, physical data size = %d, "
-									    "norepeats NULL bit-map count %d, norepeats NULL bit-map size %d, "
-									    "compress bit-map count %d, compress bit-map size %d, "
-									    "repeat counts count %d, repeat counts size %d, "
-									    "unaligned header size %d, aligned header size %d, "
-									    "null begin %p, datum begin %p, datum after %p)",
-									    dsr->logical_row_count,
-									    dsr->physical_data_size,
-									    DatumStreamBitMapRead_Count(&dsr->null_bitmap),
-									    DatumStreamBitMapRead_Size(&dsr->null_bitmap),
-									    DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap),
-									    DatumStreamBitMapRead_Size(&dsr->rle_compress_bitmap),
-									    dsr->rle_repeatcounts_count,
-									    dsr->rle_repeatcounts_size,
-									    unalignedHeaderSize,
-									    alignedHeaderSize,
-									    dsr->null_bitmap_beginp,
-									    dsr->datum_beginp,
-									    dsr->datum_afterp),
-								 errOmitLocation(true),
-								 errdetail_datumstreamblockread(dsr),
-								 errcontext_datumstreamblockread(dsr)));
-					}
-				}
-			}
-		}
-		break;		
-
-	default:
-		ereport(FATAL,
-				(errmsg("Unexpected datum stream version %d", 
-			 			dsr->datumStreamVersion),
+		ereport(ERROR,
+				(errmsg("Bad datum stream Original block header size.  Found %d and expected the size to be at least %d",
+					    bufferSize,
+					    minHeaderSize),
+				 errOmitLocation(false),
+				 errdetail_datumstreamblockread(dsr),
+		         errcontext_datumstreamblockread(dsr)));
+	}
+	
+	blockOrig = (DatumStreamBlock_Orig *) p;
+	if (blockOrig->version != DatumStreamVersion_Original)
+	{
+		ereport(ERROR,
+				(errmsg("Bad datum stream Original block version.  Found %d and expected %d",
+						blockOrig->version,
+						DatumStreamVersion_Original),
 				 errOmitLocation(false),
 				 errdetail_datumstreamblockread(dsr),
 				 errcontext_datumstreamblockread(dsr)));
-		break;
 	}
+
+	if (!minimalIntegrityChecks)
+	{
+		DatumStreamBlock_IntegrityCheckOrig(
+										buffer,
+										bufferSize,
+										minimalIntegrityChecks,
+										rowCount,
+										&dsr->typeInfo,
+										/* errdetailCallback */ errdetail_datumstreamblockread_callback,
+										/* errdetailArg */ (void*) dsr,
+										/* errcontextCallback */ errcontext_datumstreamblockread_callback,
+										/* errcontextArg */ (void*) dsr);
+	}
+
+	dsr->logical_row_count = blockOrig->ndatum;
+
+	dsr->physical_datum_count = 0;	// Not used for Original format.
+	
+	dsr->physical_data_size = blockOrig->sz;
+
+    p += sizeof(DatumStreamBlock_Orig);
+
+    /* Set up acc */
+    Assert(dsr->nth == -1);
+	Assert(dsr->physical_datum_index == -1);
+
+    dsr->has_null = ((blockOrig->flags & DSB_HAS_NULLBITMAP) != 0);
+	if (dsr->has_null)
+	{
+        dsr->null_bitmap_beginp = p;
+
+		DatumStreamBitMapRead_Init(
+							&dsr->null_bitmap,
+							dsr->null_bitmap_beginp,
+							dsr->logical_row_count);
+		/*
+		 * The field nullsz byte length is MAXALIGN.
+		 */
+		p += blockOrig->nullsz;
+	}
+
+    /*
+	 * Pre-4.0 code did not enforce the following assertion.
+	 * We identify this exception through firstRow, which is -1
+	 * for pre-4.0 blocks (not stored inside the block).
+	 */
+    Assert(dsr->logical_row_count == rowCount || firstRowNum == -1);
+
+    /*
+    	 * In pre-4.0 blocks, the maximum value of ndatum is
+	 * 32000 while rowCnt cannot exceed 16384, so we set
+	 * rowCnt to ndatum to build the block directory
+	 * consistently.
+	 */
+	if (dsr->logical_row_count > rowCount && firstRowNum == -1)
+    {
+    	/* Adjust !!!! */
+		*adjustedRowCount = dsr->logical_row_count;
+		*hadToAdjustRowCount = true;
+    }
+
+	unalignedHeaderSize = (int32)(p - dsr->buffer_beginp);
+	alignedHeaderSize = MAXALIGN(unalignedHeaderSize);
+
+	dsr->datum_beginp = dsr->buffer_beginp + alignedHeaderSize;
+	dsr->datum_afterp = dsr->datum_beginp + dsr->physical_data_size;
+
+	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
+	if (Debug_appendonly_print_scan)
+	{
+		if (!dsr->has_null)
+		{
+			ereport(LOG,
+					(errmsg("Datum stream block read unpack Original with NO NULLs "
+						    "(logical row count %d, physical data size = %d, "
+						    "adjustedRowCount %d, row count adjusted %s, "
+						    "unaligned header size %d, aligned header size %d, "
+						    "datum begin %p, datum after %p)",
+						    dsr->logical_row_count,
+						    dsr->physical_data_size,
+						    *adjustedRowCount,
+						    (*hadToAdjustRowCount ? "true" : "false"),
+						    unalignedHeaderSize,
+						    alignedHeaderSize,
+						    dsr->datum_beginp,
+						    dsr->datum_afterp),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockread(dsr),
+					 errcontext_datumstreamblockread(dsr)));
+		}
+		else
+		{
+			ereport(LOG,
+					(errmsg("Datum stream block read unpack Original with NULLs "
+						    "(logical row count %d, physical data size = %d, "
+						    "NULL bit-map MAXALIGN size %d, "
+						    "adjustedRowCount %d, row count adjusted %s, "
+						    "unaligned header size %d, aligned header size %d, "
+						    "null begin %p, datum begin %p, datum after %p)",
+						    dsr->logical_row_count,
+						    dsr->physical_data_size,
+						    blockOrig->nullsz,
+						    *adjustedRowCount,
+						    (*hadToAdjustRowCount ? "true" : "false"),
+						    unalignedHeaderSize,
+						    alignedHeaderSize,
+						    dsr->null_bitmap_beginp,
+						    dsr->datum_beginp,
+						    dsr->datum_afterp),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockread(dsr),
+					 errcontext_datumstreamblockread(dsr)));
+		}
+	}
+#endif
 
 	dsr->datump = dsr->datum_beginp;
 }
@@ -2746,7 +322,7 @@ void DatumStreamBlockRead_Init(
 {
 	memcpy(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen);
 
-	dsr->typeInfo = typeInfo;
+	memcpy(&dsr->typeInfo, typeInfo, sizeof(DatumStreamTypeInfo));
 
 	dsr->datumStreamVersion = datumStreamVersion;
 
@@ -2785,6 +361,426 @@ void DatumStreamBlockRead_Finish(
 	DatumStreamBlockRead 	*dsr)
 {
 	// Place holder.
+}
+
+/*
+ * Dense routines.
+ */
+#ifdef USE_ASSERT_CHECKING
+void DatumStreamBlockRead_CheckDenseGetInvariant(
+	DatumStreamBlockRead	*dsr) 
+{
+	if (!dsr->rle_block_was_compressed)
+	{
+		if (!dsr->has_null)
+		{
+			if (dsr->nth != dsr->physical_datum_index)
+			{
+				ereport(ERROR,
+						(errmsg("Nth position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
+								"(logical row count %d, physical datum count %d)",
+								dsr->nth,
+								dsr->physical_datum_index,
+								dsr->logical_row_count,
+								dsr->physical_datum_count),
+						 errOmitLocation(false),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+		}
+		else
+		{
+			int32 currentNullOnCount;
+			int32 expectedNullOnCount;
+
+			currentNullOnCount = DatumStreamBitMap_CountOn(
+												dsr->null_bitmap_beginp,
+												DatumStreamBitMapRead_Position(&dsr->null_bitmap) + 1);
+
+			expectedNullOnCount = dsr->nth - dsr->physical_datum_index;
+
+			if (currentNullOnCount != expectedNullOnCount)
+			{
+				ereport(ERROR,
+						(errmsg("NULL bit-map ON count does not match when Dense block does not have RLE_TYPE compression.	Found %d, expected %d",
+								currentNullOnCount,
+								expectedNullOnCount),
+						 errOmitLocation(false),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+		}
+	}
+	else
+	{
+		int32 currentCompressBitMapPosition;
+		int32 currentCompressBitMapOffCount;
+
+		currentCompressBitMapPosition = DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap);
+
+		if (currentCompressBitMapPosition != dsr->physical_datum_index)
+		{
+			ereport(ERROR,
+					(errmsg("COMPRESS bit-map position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
+							"(logical row count %d, physical datum count %d)",
+							currentCompressBitMapPosition,
+							dsr->physical_datum_index,
+							dsr->logical_row_count,
+							dsr->physical_datum_count),
+					 errOmitLocation(false),
+					 errdetail_datumstreamblockread(dsr),
+					 errcontext_datumstreamblockread(dsr)));
+		}
+
+
+		currentCompressBitMapOffCount = 
+								DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap) + 1
+							  - DatumStreamBitMap_CountOn(
+												dsr->rle_compress_beginp,
+												DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap) + 1);
+
+		if (!dsr->has_null)
+		{
+			if (dsr->nth != currentCompressBitMapOffCount + dsr->rle_total_repeat_items_read - 1)
+			{
+				ereport(ERROR,
+						(errmsg("Nth position %d expected to match "
+								"current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 "
+								"when Dense block does not have RLE_TYPE compression and does not have NULLs "
+								"(logical row count %d, physical datum count %d)",
+								dsr->nth,
+								currentCompressBitMapOffCount,
+								dsr->rle_total_repeat_items_read,
+								dsr->logical_row_count,
+								dsr->physical_datum_count),
+						 errOmitLocation(false),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+		}
+		else
+		{
+			int32 currentNullBitMapOnCount;
+
+			currentNullBitMapOnCount = DatumStreamBitMap_CountOn(
+												dsr->null_bitmap_beginp,
+												DatumStreamBitMapRead_Position(&dsr->null_bitmap) + 1);
+			
+			if (dsr->nth != currentNullBitMapOnCount + currentCompressBitMapOffCount + dsr->rle_total_repeat_items_read - 1)
+			{
+				ereport(ERROR,
+						(errmsg("Nth position %d expected to match current NULL bit-map ON count %d + "
+								"current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 "
+								"when Dense block does not have RLE_TYPE compression and does not have NULLs "
+								"(logical row count %d, physical datum count %d)",
+								dsr->nth,
+								currentNullBitMapOnCount,
+								currentCompressBitMapOffCount,
+								dsr->rle_total_repeat_items_read,
+								dsr->logical_row_count,
+								dsr->physical_datum_count),
+						 errOmitLocation(false),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+		}
+	}
+}
+#endif
+
+void DatumStreamBlockRead_ResetDense(DatumStreamBlockRead *dsr)
+{
+	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
+	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
+		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
+#endif
+
+	/* 
+	 * Put before first entry.  Caller will advance.
+	 */
+	dsr->nth = -1;
+	dsr->physical_datum_index = -1;
+
+	/*
+	 * Reset everything else.
+	 */
+	dsr->physical_datum_count = 0;
+	dsr->physical_data_size = 0;
+	dsr->logical_row_count = 0;
+	dsr->has_null = false;
+	
+	dsr->null_bitmap_beginp = NULL;
+	dsr->datum_beginp = NULL;
+	dsr->datum_afterp = NULL;
+	dsr->rle_compress_beginp = NULL;
+	dsr->rle_repeatcountsp = NULL;
+
+	dsr->buffer_beginp = NULL;
+    dsr->datump = NULL;
+
+	dsr->rle_block_was_compressed = false;
+
+	dsr->rle_repeatcounts_index = 0;
+	dsr->rle_in_repeated_item = false;
+	dsr->rle_repeated_item_count = 0;
+
+	dsr->rle_total_repeat_items_read = 0;
+}
+
+void
+DatumStreamBlockRead_GetReadyDense(
+	DatumStreamBlockRead	*dsr,
+	uint8					*buffer,
+	int32					bufferSize,
+	int64					firstRowNum,
+	int32					rowCount,
+	bool					*hadToAdjustRowCount,
+	int32					*adjustedRowCount)
+{
+	uint8 *p;
+
+	int32 unalignedHeaderSize;
+	int32 alignedHeaderSize;
+	bool minimalIntegrityChecks;
+	
+	DatumStreamBlock_Dense *blockDense;
+	DatumStreamBlock_Rle_Extension *rleExtension;
+	
+	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
+	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
+		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
+#endif
+
+	*hadToAdjustRowCount = false;
+	*adjustedRowCount = 0;
+
+#ifdef USE_ASSERT_CHECKING
+	minimalIntegrityChecks = false;
+#else
+	minimalIntegrityChecks = true;
+#endif
+	if (Debug_datumstream_block_read_check_integrity)
+	{
+		minimalIntegrityChecks = false;
+	}
+
+	dsr->buffer_beginp = buffer;
+
+	/*
+	 * Read header information and setup for reading the datum in the block.
+	 */
+
+	/*
+	 * Advance pointer 'p' as we discover the contents of this block.
+	 */
+	p = dsr->buffer_beginp;
+
+	Assert(p == buffer);
+	DatumStreamBlock_IntegrityCheckDense(
+									buffer,
+									bufferSize,
+									minimalIntegrityChecks,
+									rowCount,
+									&dsr->typeInfo,
+									/* errdetailCallback */ errdetail_datumstreamblockread_callback,
+									/* errdetailArg */ (void*) dsr,
+									/* errcontextCallback */ errcontext_datumstreamblockread_callback,
+									/* errcontextArg */ (void*) dsr);
+	
+	blockDense = (DatumStreamBlock_Dense *) p;
+
+	dsr->logical_row_count = blockDense->logical_row_count;
+    Assert(dsr->logical_row_count == rowCount);
+
+	dsr->physical_datum_count = blockDense->physical_datum_count;
+	dsr->physical_data_size = blockDense->physical_data_size;
+
+    p += sizeof(DatumStreamBlock_Dense);
+	
+	dsr->rle_block_was_compressed = ((blockDense->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION) != 0);
+	if (dsr->rle_block_was_compressed)
+	{
+		rleExtension = (DatumStreamBlock_Rle_Extension *) p;
+		p += sizeof(DatumStreamBlock_Rle_Extension);
+		
+		dsr->rle_norepeats_null_bitmap_count = rleExtension->norepeats_null_bitmap_count;
+		dsr->rle_compress_bitmap_count = rleExtension->compress_bitmap_count;
+		dsr->rle_repeatcounts_count = rleExtension->repeatcounts_count;
+		dsr->rle_repeatcounts_size = rleExtension->repeatcounts_size;
+	}
+	else
+	{
+		rleExtension = NULL;
+	}
+
+    /* Set up acc */
+    dsr->nth = -1; /* put it before first entry.  Caller will advance */
+	dsr->physical_datum_index = -1;
+    dsr->has_null = ((blockDense->orig_4_bytes.flags & DSB_HAS_NULLBITMAP) != 0);
+
+	if (dsr->has_null)
+	{
+		dsr->null_bitmap_beginp = p;
+		
+		DatumStreamBitMapRead_Init(
+							&dsr->null_bitmap,
+							dsr->null_bitmap_beginp,
+							(!dsr->rle_block_was_compressed ?
+									dsr->logical_row_count :
+									dsr->rle_norepeats_null_bitmap_count));
+
+		p += DatumStreamBitMapRead_Size(&dsr->null_bitmap);
+	}
+
+	unalignedHeaderSize = (int32)(p - dsr->buffer_beginp);
+	alignedHeaderSize = MAXALIGN(unalignedHeaderSize);
+
+	/*
+	 * Skip over alignment padding.
+	 */
+	dsr->datum_beginp = dsr->buffer_beginp + alignedHeaderSize;
+	dsr->datum_afterp = dsr->datum_beginp + dsr->physical_data_size;
+
+	if (!dsr->rle_block_was_compressed)
+	{
+		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
+		if (Debug_appendonly_print_scan)
+		{
+			if (!dsr->has_null)
+			{
+				ereport(LOG,
+						(errmsg("Datum stream block read unpack Dense with NO NULLs "
+							    "(logical row count %d, physical data size = %d, "
+							    "unaligned header size %d, aligned header size %d, "
+							    "datum begin %p, datum after %p)",
+							    dsr->logical_row_count,
+							    dsr->physical_data_size,
+							    unalignedHeaderSize,
+							    alignedHeaderSize,
+							    dsr->datum_beginp,
+							    dsr->datum_afterp),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+			else
+			{
+				ereport(LOG,
+						(errmsg("Datum stream read unpack Dense block header for table with NULLs "
+							    "(logical row count %d, physical data size = %d, NULL bit-map size %d, "
+							    "unaligned header size %d, aligned header size %d, "
+							    "null begin %p, datum begin %p, datum after %p)",
+							    dsr->logical_row_count,
+							    dsr->physical_data_size,
+							    DatumStreamBitMapRead_Size(&dsr->null_bitmap),
+							    unalignedHeaderSize,
+							    alignedHeaderSize,
+							    dsr->null_bitmap_beginp,
+							    dsr->datum_beginp,
+							    dsr->datum_afterp),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+		}
+#endif
+	}
+	else
+	{
+		/*
+		 * RLE_TYPE compression was used for this block.
+		 */
+		dsr->rle_compress_beginp = p;
+		
+		DatumStreamBitMapRead_Init(
+							&dsr->rle_compress_bitmap,
+							dsr->rle_compress_beginp,
+							dsr->rle_compress_bitmap_count);
+
+		p += DatumStreamBitMapRead_Size(&dsr->rle_compress_bitmap);
+
+		/*
+		 * Start our decompression of repeat counts at beginning.
+		 */
+		dsr->rle_repeatcountsp = p;
+
+		p += dsr->rle_repeatcounts_size;
+		
+		dsr->rle_repeatcounts_index = -1;
+		dsr->rle_repeated_item_count = 0;
+		dsr->rle_in_repeated_item = false;
+
+		unalignedHeaderSize = p - dsr->buffer_beginp;
+		alignedHeaderSize = MAXALIGN(unalignedHeaderSize);
+
+		/*
+		 * Skip over alignment padding.
+		 */
+		dsr->datum_beginp = dsr->buffer_beginp + alignedHeaderSize;
+		dsr->datum_afterp = dsr->datum_beginp + dsr->physical_data_size;
+
+		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
+		if (Debug_appendonly_print_scan)
+		{
+			if (!dsr->has_null)
+			{
+				ereport(LOG,
+						(errmsg("Datum stream block read unpack Dense with NO NULLs and RLE_TYPE compression "
+							    "(logical row count %d, physical data size = %d, "
+							    "compress bit-map count %d, compress bit-map size %d, "
+							    "repeat counts count %d, repeat counts size %d, "
+							    "unaligned header size %d, aligned header size %d, "
+							    "datum begin %p, datum after %p)",
+							    dsr->logical_row_count,
+							    dsr->physical_data_size,
+							    DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap),
+							    DatumStreamBitMapRead_Size(&dsr->rle_compress_bitmap),
+							    dsr->rle_repeatcounts_count,
+							    dsr->rle_repeatcounts_size,
+							    unalignedHeaderSize,
+							    alignedHeaderSize,
+							    dsr->datum_beginp,
+							    dsr->datum_afterp),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+			else
+			{
+				ereport(LOG,
+						(errmsg("Datum stream block read unpack Dense with NULLs and RLE_TYPE compression "
+							    "(logical row count %d, physical data size = %d, "
+							    "norepeats NULL bit-map count %d, norepeats NULL bit-map size %d, "
+							    "compress bit-map count %d, compress bit-map size %d, "
+							    "repeat counts count %d, repeat counts size %d, "
+							    "unaligned header size %d, aligned header size %d, "
+							    "null begin %p, datum begin %p, datum after %p)",
+							    dsr->logical_row_count,
+							    dsr->physical_data_size,
+							    DatumStreamBitMapRead_Count(&dsr->null_bitmap),
+							    DatumStreamBitMapRead_Size(&dsr->null_bitmap),
+							    DatumStreamBitMapRead_Count(&dsr->rle_compress_bitmap),
+							    DatumStreamBitMapRead_Size(&dsr->rle_compress_bitmap),
+							    dsr->rle_repeatcounts_count,
+							    dsr->rle_repeatcounts_size,
+							    unalignedHeaderSize,
+							    alignedHeaderSize,
+							    dsr->null_bitmap_beginp,
+							    dsr->datum_beginp,
+							    dsr->datum_afterp),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+		}
+#endif
+	}
+
+	dsr->datump = dsr->datum_beginp;
 }
 
 static int errdetail_datumstreamblockwrite(
@@ -5407,3 +3403,888 @@ void DatumStreamBlockWrite_Finish(
 
 	MemoryContextSwitchTo(oldCtxt);
 }
+
+/*
+ * DatumStreamBlock.
+ */
+static int32 DatumStreamBlock_IntegrityCheckVarlena(
+	uint8						*physicalData,
+	int32						physicalDataSize,
+	DatumStreamVersion			datumStreamVersion,
+	DatumStreamTypeInfo 		*typeInfo,
+	int 						(*errdetailCallback) (void *errdetailArg),
+	void						*errdetailArg,
+	int 						(*errcontextCallback) (void *errcontextArg),
+	void						*errcontextArg)
+{
+	int32 count;
+	int32 currentOffset;
+	uint8 *p;
+
+	Assert(physicalDataSize >= 0);
+	if (physicalDataSize == 0)
+	{
+		return 0;
+	}
+
+	count = 0;
+
+	p = physicalData;
+	currentOffset = 0;
+	while (true)
+	{
+		int32 remainingSize;
+		int32 varLen;
+
+		remainingSize = physicalDataSize - currentOffset;
+		Assert(remainingSize > 0);
+
+		/* 
+		 * Verify and move past any possible zero paddings AFTER PREVIOUS varlena data.
+		 */
+		if (currentOffset > 0 && *p == 0)
+		{
+			uint8	*afterPadding;
+			int32	saveBeginOffset;
+
+			/*
+			 * Note that SHORT varlena has the high bit of the first byte as 1, so
+			 * we will not go here if item begins with SHORT header.
+			 */
+
+			afterPadding = (uint8 *) att_align(p, typeInfo->align);
+			saveBeginOffset = currentOffset;
+			while (p < afterPadding)
+			{
+				if (*p != 0)
+				{
+					ereport(ERROR,
+							(errmsg("Bad datum stream %s variable-length item zero padding byte at offset %d is not zero (begin offset %d, physical item index #%d)",
+									DatumStreamVersion_String(datumStreamVersion),
+									currentOffset,
+									saveBeginOffset,
+									count),
+							 errOmitLocation(false),
+							 errdetailCallback(errdetailArg),
+							 errcontextCallback(errcontextArg)));
+				}
+				p++;
+				currentOffset++;
+				remainingSize--;
+				if (remainingSize <= 0)
+				{
+					break;
+				}
+			}
+		}
+
+		if (currentOffset >= physicalDataSize)
+		{
+			break;
+		}
+
+		/*
+		 * Enough room for minimum varlena?
+		 */
+		if (VARATT_IS_EXTERNAL(p))
+		{
+			ereport(ERROR,
+					(errmsg("Bad datum stream %s variable-length item at physical offset %d is corrupt (varlena is EXTERNAL, physical item index #%d)",
+							DatumStreamVersion_String(datumStreamVersion),
+							currentOffset,
+							count),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+			varLen = 0;		// Never reaches here.
+		}
+		else if (VARATT_IS_SHORT(p))
+		{
+			Assert(remainingSize >= 1);
+
+			varLen = VARSIZE_SHORT(p);
+
+			/*
+			 * Check SHORT varlena length.
+			 */
+			if (varLen < VARHDRSZ_SHORT)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  SHORT varlena VARSIZE too short (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
+								DatumStreamVersion_String(datumStreamVersion),
+								currentOffset,
+								varLen,
+								remainingSize,
+								physicalDataSize,
+								count,
+								VarlenaInfoToString(p)),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+			if (varLen > remainingSize)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  SHORT varlena size bad (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
+								DatumStreamVersion_String(datumStreamVersion),
+								currentOffset,
+								varLen,
+								remainingSize,
+								physicalDataSize,
+								count,
+								VarlenaInfoToString(p)),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+		else
+		{
+			if (remainingSize < VARHDRSZ)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Remaining length %d too short for regular varlena 4 byte header (physical item index #%d)",
+								DatumStreamVersion_String(datumStreamVersion),
+								currentOffset,
+								remainingSize,
+								count),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+
+			if (currentOffset % 1 != 0)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Not aligned on at least a 2 byte boundary for regular varlena header (physical item index #%d)",
+								DatumStreamVersion_String(datumStreamVersion),
+								currentOffset,
+								count),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+
+			varLen = VARSIZE_ANY(p);
+
+			if (varLen < VARHDRSZ)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Regular varlena VARSIZE too short (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
+								DatumStreamVersion_String(datumStreamVersion),
+								currentOffset,
+								varLen,
+								remainingSize,
+								physicalDataSize,
+								count,
+								VarlenaInfoToString(p)),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+			if (varLen > remainingSize)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream %s variable-length item at physical offset %d.  Regular varlena length bad (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)",
+								DatumStreamVersion_String(datumStreamVersion),
+								currentOffset,
+								varLen,
+								remainingSize,
+								physicalDataSize,
+								count,
+								VarlenaInfoToString(p)),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+
+		p += varLen;
+		currentOffset += varLen;
+
+		if (currentOffset >= physicalDataSize)
+		{
+			Assert(currentOffset == physicalDataSize);
+			break;
+		}
+
+		count++;
+	}
+
+	return count;
+}
+
+static void DatumStreamBlock_IntegrityCheckOrig(
+	uint8						*buffer,
+	int32 						bufferSize,
+	bool						minimalIntegrityChecks,
+	int32						expectedRowCount,
+	DatumStreamTypeInfo 		*typeInfo,
+	int							(*errdetailCallback) (void *errdetailArg),
+	void	   					*errdetailArg,
+	int							(*errcontextCallback) (void *errcontextArg),
+	void	   					*errcontextArg)
+{
+	int32 minHeaderSize = sizeof(DatumStreamBlock_Orig);
+
+	DatumStreamBlock_Orig	*blockOrig;
+	
+	int32 headerSize;
+	uint8 *p;
+
+	bool hasNull;
+
+	if (bufferSize < minHeaderSize)
+	{
+		ereport(ERROR,
+				(errmsg("Bad datum stream Original block header size.  Found %d and expected the size to be at least %d",
+					    bufferSize,
+					    minHeaderSize),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	blockOrig = (DatumStreamBlock_Orig*)buffer;
+	headerSize = minHeaderSize;
+	p = buffer + headerSize;
+
+	if (blockOrig->version != DatumStreamVersion_Original)
+	{
+		ereport(ERROR,
+				(errmsg("Bad datum stream Original block version.  Found %d and expected %d",
+					    blockOrig->version,
+					    DatumStreamVersion_Original),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	if (minimalIntegrityChecks)
+	{
+		return;
+	}
+
+	// CONSIDER: Verify reserved flags are Zero
+
+	hasNull = ((blockOrig->flags & DSB_HAS_NULLBITMAP) != 0);
+
+	// UNDONE: Add a whole bunch of other checking...
+
+	if (hasNull)
+	{
+		/*
+		 * The field nullsz byte length is MAXALIGN.
+		 */
+		p += blockOrig->nullsz;
+	}
+
+	if (typeInfo->datumlen < 0)
+	{
+		/*
+		 * Variable length items (i.e. varlena).
+		 */
+		DatumStreamBlock_IntegrityCheckVarlena(
+											p,
+											blockOrig->sz,
+											DatumStreamVersion_Original,
+											typeInfo,
+											errdetailCallback,
+											errdetailArg,
+											errcontextCallback,
+											errcontextArg);
+	}
+}
+
+static void DatumStreamBlock_IntegrityCheckDense(
+	uint8						*buffer,
+	int32 						bufferSize,
+	bool						minimalIntegrityChecks,
+	int32						expectedRowCount,
+	DatumStreamTypeInfo 		*typeInfo,
+	int							(*errdetailCallback) (void *errdetailArg),
+	void	   					*errdetailArg,
+	int							(*errcontextCallback) (void *errcontextArg),
+	void	   					*errcontextArg)
+{
+	int32 minHeaderSize = sizeof(DatumStreamBlock_Dense);
+
+	DatumStreamBlock_Dense	*blockDense;
+	
+	int32 headerSize;
+	uint8 *p;
+
+	bool hasNull;
+	bool hasRleCompression;
+
+	int32 alignedHeaderSize;
+
+	if (bufferSize < minHeaderSize)
+	{
+		ereport(ERROR,
+				(errmsg("Bad datum stream Dense block header size.  Found %d and expected the size to be at least %d",
+					    bufferSize,
+					    minHeaderSize),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	blockDense = (DatumStreamBlock_Dense*)buffer;
+	headerSize = minHeaderSize;
+	p = buffer + headerSize;
+
+	if (blockDense->orig_4_bytes.version != DatumStreamVersion_Dense)
+	{
+		ereport(ERROR,
+				(errmsg("Bad datum stream Dense block version.  Found %d and expected %d",
+					    blockDense->orig_4_bytes.version,
+					    DatumStreamVersion_Dense),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	if (minimalIntegrityChecks)
+	{
+		return;
+	}
+
+	// CONSIDER: Verify reserved flags are Zero
+
+	hasNull = ((blockDense->orig_4_bytes.flags & DSB_HAS_NULLBITMAP) != 0);
+	hasRleCompression = ((blockDense->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION) != 0);
+
+	/*
+	 * Verify logical row count.
+	 */
+	if (blockDense->logical_row_count < 0)
+	{
+		ereport(ERROR,
+				(errmsg("Logical row count is negative and is expected to be greater than 0. (%d)",
+						 blockDense->logical_row_count),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+	if (blockDense->logical_row_count == 0)
+	{
+		ereport(ERROR,
+				(errmsg("Logical row count is zero and is expected to be at greater than 0"),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+	if (blockDense->logical_row_count != expectedRowCount)
+	{
+		ereport(ERROR,
+				(errmsg("Logical row count does not match expected value (found %d, expected %d)",
+					    blockDense->logical_row_count,
+					    expectedRowCount),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	/*
+	 * Verify physical datum count.
+	 */
+	if (blockDense->physical_datum_count < 0)
+	{
+		ereport(ERROR,
+				(errmsg("Physical datum count is negative and is expected to be at least greater than or equal to 0. (%d)",
+					    blockDense->physical_datum_count),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	/*
+	 * Verify physical data size.
+	 */
+	if (blockDense->physical_data_size < 0)
+	{
+		ereport(ERROR,
+				(errmsg("Physical data size is negative and is expected to be at least greater than or equal to 0. (%d)",
+			 			blockDense->physical_data_size),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	if (blockDense->physical_datum_count > 0)
+	{
+		if (blockDense->physical_data_size == 0)
+		{
+			ereport(ERROR,
+					(errmsg("Physical data size is zero and is expected to be at least greater than 0 since physical datum count is %d",
+				 			blockDense->physical_datum_count),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		if (blockDense->physical_data_size > bufferSize)
+		{
+			ereport(ERROR,
+					(errmsg("Physical data size %d is greater than buffer size %d",
+				 			blockDense->physical_data_size,
+				 			bufferSize),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		/*
+		 * This check will make it safer to do multiplication of datum count and datum length.
+		 */
+		if (blockDense->physical_datum_count > blockDense->physical_data_size)
+		{
+			ereport(ERROR,
+					(errmsg("More physical items %d than physical bytes %d",
+							blockDense->physical_datum_count,
+				 			blockDense->physical_data_size),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		if (typeInfo->datumlen >= 0)
+		{
+			int64 calculatedDataSize;
+
+			/*
+			 * Fixed-length items.
+			 */
+			calculatedDataSize = ((int64)blockDense->physical_datum_count) * typeInfo->datumlen;
+			
+			if (calculatedDataSize > blockDense->physical_data_size)
+			{
+				ereport(ERROR,
+						(errmsg("Physical size doesn't match calculations for %d count of fixed-size %d items "
+								"(found " INT64_FORMAT ", expected %d)",
+								blockDense->physical_datum_count,
+								typeInfo->datumlen,
+								calculatedDataSize,
+								blockDense->physical_data_size),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+	}
+	else
+	{
+		Assert(blockDense->physical_datum_count == 0);
+		if (blockDense->physical_data_size != 0)
+		{
+			ereport(ERROR,
+					(errmsg("Physical data size %d is expected to be at 0 since physical datum count is 0",
+				 			blockDense->physical_data_size),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+	}
+
+	if (!hasRleCompression)
+	{
+		if (!hasNull)
+		{
+			alignedHeaderSize = MAXALIGN(headerSize);
+
+			if (blockDense->logical_row_count != blockDense->physical_datum_count)
+			{
+				ereport(ERROR,
+						(errmsg("Logical row count expected to match physical datum count when block does not have NULLs "
+								"(logical row count %d, physical datum count %d)",
+								blockDense->logical_row_count,
+								blockDense->physical_datum_count),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+		else
+		{
+			int32 nullBitMapSize;
+
+			int32 actualNullOnCount;
+			int32 expectedNullOnCount;
+
+			nullBitMapSize = DatumStreamBitMap_Size(blockDense->logical_row_count);
+			headerSize += nullBitMapSize;
+
+			alignedHeaderSize = MAXALIGN(headerSize);
+
+			if (bufferSize < alignedHeaderSize)
+			{
+				ereport(ERROR,
+						(errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d",
+								alignedHeaderSize,
+								bufferSize),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+
+			actualNullOnCount = DatumStreamBitMap_CountOn(p, blockDense->logical_row_count);
+
+			expectedNullOnCount = blockDense->logical_row_count - blockDense->physical_datum_count;
+
+			if (actualNullOnCount != expectedNullOnCount)
+			{
+				ereport(ERROR,
+						(errmsg("NULL bit-map ON count does not match.  Found %d, expected %d",
+								actualNullOnCount,
+								expectedNullOnCount),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+
+			p += nullBitMapSize;
+		}
+
+		// CONSIDER: Verify zero padding
+	}
+	else
+	{
+		DatumStreamBlock_Rle_Extension *rleExtension;
+
+		int32 actualNullOnCount;
+
+		int32 compressBitMapSize;
+				
+		int32 actualCompressOnCount;
+
+		int32 totalRepeatCount;
+		int32 totalRepeatCountsSize;
+
+		int i;
+		
+		int32 expectedNullOnCount;
+
+		headerSize += sizeof(DatumStreamBlock_Rle_Extension);
+
+		if (bufferSize < headerSize)
+		{
+			ereport(ERROR,
+					(errmsg("Bad datum stream RLE_TYPE block header extension size.	Found %d and expected the size to be at least %d",
+							bufferSize,
+							headerSize),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		rleExtension = (DatumStreamBlock_Rle_Extension *) p;
+
+		if (!hasNull)
+		{
+			if (rleExtension->norepeats_null_bitmap_count != 0)
+			{
+				ereport(ERROR,
+						(errmsg("RLE_TYPE NULL bit-map count is expected to be 0 when there are no NULLs. (%d)",
+								 rleExtension->norepeats_null_bitmap_count),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+		else
+		{
+			if (rleExtension->norepeats_null_bitmap_count <= 0)
+			{
+				ereport(ERROR,
+						(errmsg("RLE_TYPE NULL bit-map count is negative or 0 and is expected to be greater than 0 when there are NULLs. (%d)",
+								 rleExtension->norepeats_null_bitmap_count),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+
+		if (rleExtension->compress_bitmap_count <= 0)
+		{
+			ereport(ERROR,
+					(errmsg("RLE_TYPE COMPRESS bit-map count is negative or 0 and is expected to be greater than 0. (%d)",
+							 rleExtension->compress_bitmap_count),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		if (rleExtension->repeatcounts_count <= 0)
+		{
+			ereport(ERROR,
+					(errmsg("RLE_TYPE repeats count is negative or 0 and is expected to be greater than 0. (%d)",
+							 rleExtension->repeatcounts_count),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		if (rleExtension->repeatcounts_size <= 0)
+		{
+			ereport(ERROR,
+					(errmsg("RLE_TYPE repeats size is negative or 0 and is expected to be greater than 0. (%d)",
+							 rleExtension->repeatcounts_size),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		p += sizeof(DatumStreamBlock_Rle_Extension);
+
+		if (!hasNull)
+		{
+			actualNullOnCount = 0;
+		}
+		else
+		{
+			int32 nullBitMapSize;
+					
+			nullBitMapSize = DatumStreamBitMap_Size(rleExtension->norepeats_null_bitmap_count);
+			headerSize += nullBitMapSize;
+		
+			if (bufferSize < headerSize)
+			{
+				ereport(ERROR,
+						(errmsg("Bad NULL bit-map size %d with RLE_TYPE compression extension header is larger than buffer size %d",
+								headerSize,
+								bufferSize),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+
+			actualNullOnCount = DatumStreamBitMap_CountOn(p, rleExtension->norepeats_null_bitmap_count);
+
+			p += nullBitMapSize;
+		}
+
+		compressBitMapSize = DatumStreamBitMap_Size(rleExtension->compress_bitmap_count);
+		headerSize += compressBitMapSize;
+	
+		if (bufferSize < headerSize)
+		{
+			ereport(ERROR,
+					(errmsg("Expected RLE_TYPE header size %d including NULL bit-map is larger than buffer size %d",
+							headerSize,
+							bufferSize),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		actualCompressOnCount = DatumStreamBitMap_CountOn(p, rleExtension->compress_bitmap_count);
+
+		if (actualCompressOnCount != rleExtension->repeatcounts_count)
+		{
+			ereport(ERROR,
+					(errmsg("RLE_TYPE COMPRESS bit-map ON count does not match COMPRESS bit-map ON count.  Found %d, expected %d",
+							actualCompressOnCount,
+							rleExtension->repeatcounts_count),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		p += compressBitMapSize;
+
+		headerSize += rleExtension->repeatcounts_size;
+
+		alignedHeaderSize = MAXALIGN(headerSize);
+
+		if (bufferSize < alignedHeaderSize)
+		{
+			ereport(ERROR,
+					(errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d",
+							alignedHeaderSize,
+							bufferSize),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		totalRepeatCount = 0;
+		totalRepeatCountsSize = 0;
+		for (i = 0; i < rleExtension->repeatcounts_count; i++)
+		{
+			int32 repeatCount;
+			int byteLen;
+				
+			repeatCount = DatumStreamInt32Compress_Decode(p, &byteLen);
+			// UNDONE: Range check repeatCount
+
+			totalRepeatCount += repeatCount;
+			totalRepeatCountsSize += byteLen;
+			p += byteLen;
+		}
+
+		if (totalRepeatCountsSize != rleExtension->repeatcounts_size)
+		{
+			ereport(ERROR,
+					(errmsg("Bad RLE_TYPE repeats count size.  Found %d, expected %d",
+							totalRepeatCountsSize,
+							rleExtension->repeatcounts_size),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+
+		expectedNullOnCount =
+				blockDense->logical_row_count -
+				rleExtension->compress_bitmap_count -
+				totalRepeatCount;
+
+		if (!hasNull)
+		{
+			Assert(actualNullOnCount == 0);
+			if (expectedNullOnCount != 0)
+			{
+				ereport(ERROR,
+						(errmsg("Logical row count, COMPRESS bit-map count, and total repeat count for RLE_TYPE compression do not add up properly. Found %d, expected %d. "
+								"(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)",
+								actualNullOnCount,
+								expectedNullOnCount,
+								blockDense->logical_row_count,
+								rleExtension->compress_bitmap_count,
+								totalRepeatCount),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+		else
+		{
+			if (actualNullOnCount != expectedNullOnCount)
+			{
+				ereport(ERROR,
+						(errmsg("NULL bit-map ON count for RLE_TYPE compression does not match.	Found %d, expected %d. "
+								"(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)",
+								actualNullOnCount,
+								expectedNullOnCount,
+								blockDense->logical_row_count,
+								rleExtension->compress_bitmap_count,
+								totalRepeatCount),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+
+		p = buffer + rleExtension->repeatcounts_size;
+
+		// UNDONE: Verify zero padding
+	}
+
+	if (typeInfo->datumlen < 0)
+	{
+		/*
+		 * Variable-length items.
+		 */
+
+		DatumStreamBlock_IntegrityCheckVarlena(
+											buffer + alignedHeaderSize,
+											blockDense->physical_data_size,
+											DatumStreamVersion_Dense,
+											typeInfo,
+											errdetailCallback,
+											errdetailArg,
+											errcontextCallback,
+											errcontextArg);
+	}
+}
+
+char *DatumStreamVersion_String(DatumStreamVersion datumStreamVersion)
+{
+	switch (datumStreamVersion)
+	{
+	case DatumStreamVersion_Original:	return "Original";
+	case DatumStreamVersion_Dense:		return "Dense";
+	default:
+		return "Unknown";
+	}
+}
+
+/*
+ * varlena header info to string.
+ */
+static char *
+VarlenaInfoToBuffer(char *buffer, uint8 *p)
+{	
+	uint32 alignment = (uint32)((uint8*)INTALIGN(p) - p);
+
+	if(VARATT_IS_EXTERNAL(p))
+	{
+		struct varatt_external *ext = (struct varatt_external*)p;
+		bool externalIsCompressed = (ext->va_extsize != ext->va_rawsize - VARHDRSZ);
+		sprintf(buffer,
+					"external (header ptr %p, header alignment %u, header 0x%.8x): "
+					"va_rawsize: %d, va_extsize %d, valueid %u, toastrelid %u (compressed %s)",
+					p,
+					alignment,
+					*((uint32*)p),
+					ext->va_rawsize,
+					ext->va_extsize,
+					ext->va_valueid,
+					ext->va_toastrelid,
+					(externalIsCompressed ? "true" : "false"));
+	}
+	else if (VARATT_IS_SHORT(p))
+	{
+		sprintf(buffer,
+					"short (header ptr %p, header alignment %u, header 0x%.2x): "
+					"VARSIZE_SHORT %d, VARDATA_SHORT %p",
+					p,
+					alignment,
+					(uint32)*((uint8*)p),
+					(int32)VARSIZE_SHORT(p),
+					VARDATA_SHORT(p));
+	}
+	else if (VARATT_IS_COMPRESSED(p))
+	{
+		varattrib_4b *comp = (varattrib_4b*)p;
+		sprintf(buffer,
+					"compressed (header ptr %p, header alignment %u, header 0x%.8x): "
+					"va_rawsize: %d, "
+					"VARSIZE_ANY %d, VARDATA_ANY %p",
+					p,
+					alignment,
+					*((uint32*)p),
+					(int32)comp->va_compressed.va_rawsize,
+					(int32)VARSIZE_ANY(p),
+					VARDATA_ANY(p));
+	}
+	else
+	{
+		sprintf(buffer,
+					"regular (header ptr %p, header alignment %u, header 0x%.8x): "
+					"VARSIZE_ANY %d, VARDATA_ANY %p",
+					p,
+					alignment,
+					*((uint32*)p),
+					(int32)VARSIZE_ANY(p),
+					VARDATA_ANY(p));
+	}
+
+	return buffer;
+}
+
+static char varlenaInfoBuffer[100];
+static char varlenaInfoBuffer2[100];
+
+char *
+VarlenaInfoToString(uint8 *p)
+{
+	return VarlenaInfoToBuffer(varlenaInfoBuffer, p);
+}
+
+char *
+VarlenaInfoToString2(uint8 *p)
+{
+	return VarlenaInfoToBuffer(varlenaInfoBuffer2, p);
+}
+

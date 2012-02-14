@@ -146,20 +146,10 @@ datumstreamwrite_context_callback(void *arg)
 	return 0;
 }
 
-int datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool *null)
+int datumstreamread_getlarge(DatumStreamRead *acc, Datum *datum, bool *null)
 {
-	int result;
-
 	switch (acc->largeObjectState)
 	{
-	case DatumStreamLargeObjectState_None:
-		/*
-		 * Small objects are handled by the DatumStreamBlockRead module.
-		 */
-		result = DatumStreamBlockRead_Get(&acc->blockRead, datum, null);
-
-		return result;
-
 	case DatumStreamLargeObjectState_HaveAoContent:
 		ereport(ERROR,
 				(errmsg("Advance not called on large datum stream object")));
@@ -215,20 +205,10 @@ int datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool *null)
 	}
 }
 
-int datumstreamread_advance(DatumStreamRead *acc)
+int datumstreamread_advancelarge(DatumStreamRead *acc)
 {
-	int result;
-
 	switch (acc->largeObjectState)
 	{
-	case DatumStreamLargeObjectState_None:
-		/*
-		 * Small objects are handled by the DatumStreamBlockRead module.
-		 */
-		result = DatumStreamBlockRead_Advance(&acc->blockRead);
-		
-		return result;
-
 	case DatumStreamLargeObjectState_HaveAoContent:
 		{
 			struct varlena *va;
@@ -238,7 +218,7 @@ int datumstreamread_advance(DatumStreamRead *acc)
 			len = VARSIZE_ANY(va);
 
 			acc->largeObjectState = DatumStreamLargeObjectState_PositionAdvanced;
-			return len;	// Never gets here.
+			return len;
 		}
 				
 	case DatumStreamLargeObjectState_PositionAdvanced:
@@ -259,18 +239,13 @@ int datumstreamread_advance(DatumStreamRead *acc)
 				(errmsg("Unexpected large datum stream state %d", 
 			 			acc->largeObjectState)));
 		return 0;	// Never reaches here.
-	}}
+	}
+}
 
-int datumstreamread_nth(DatumStreamRead *acc)
+int datumstreamread_nthlarge(DatumStreamRead *acc)
 {
 	switch (acc->largeObjectState)
 	{
-	case DatumStreamLargeObjectState_None:
-		/*
-		 * Small objects are handled by the DatumStreamBlockRead module.
-		 */
-		return DatumStreamBlockRead_Nth(&acc->blockRead);
-
 	case DatumStreamLargeObjectState_HaveAoContent:
 		ereport(ERROR,
 				(errmsg("Advance not called on large datum stream object")));

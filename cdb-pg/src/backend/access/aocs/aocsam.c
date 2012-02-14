@@ -526,8 +526,8 @@ ReadNext:
                     if(err < 0)
                     {
                         /* Ha, cannot read next block,
-                         * we need to go to next seg
-                         */
+		                           * we need to go to next seg
+		                           */
 						close_cur_scan_seg(scan);
                         goto ReadNext;
                     }
@@ -546,6 +546,12 @@ ReadNext:
                     err = datumstreamread_advance(scan->ds[i]);
                     Assert(err > 0);
                 }
+
+				/*
+				 * Get the column's datum right here since the data structures should still
+				 * be hot in CPU data cache memory.
+				 */
+                datumstreamread_get(scan->ds[i], &d[i], &null[i]);
 
 				if (rowNum == INT64CONST(-1) &&
 					scan->ds[i]->blockFirstRowNum != INT64CONST(-1))
@@ -571,14 +577,6 @@ ReadNext:
 		{
 			AOTupleIdInit_rowNum(&aoTupleId, rowNum);
 		}
-
-        /* OK, I got the tuple.  Read it out */
-        Assert(scan->cur_seg >= 0 && scan->cur_seg < scan->total_seg);
-        for(i=0; i<ncol; ++i)
-        {
-            if(scan->proj[i])
-                datumstreamread_get(scan->ds[i], &d[i], &null[i]);
-        }
 
 		scan->cdb_fake_ctid = *((ItemPointer)&aoTupleId);
 
