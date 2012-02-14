@@ -47,8 +47,8 @@ PG_MODULE_MAGIC;
 }while(0)
 
 /*
- * V1 call convension helper function.  This is just to avoid leaking
- * Pg_finfo_record struct.
+ * V1 call convention helper function.  This is just to avoid leaking
+ * the Pg_finfo_record struct.
  */
 const void *
 GppcFinfoV1(void)
@@ -516,12 +516,14 @@ GppcReport(GppcReportLevel elevel, const char *fmt, ...)
 }
 
 /*
- * Check if database encoding is utf8
+ * GetDatabaseEncoding
+ * Returns the value from GetDatabaseEncoding for now, but if we renumber pg_enc,
+ * we'll need to map it GppcEncoding to keep compatibility.
  */
-bool
-GppcIsDatabaseEncodingUtf8(void)
+GppcEncoding
+GppcGetDatabaseEncoding(void)
 {
-	return GetDatabaseEncoding() == PG_UTF8;
+	return GetDatabaseEncoding();
 }
 
 /*

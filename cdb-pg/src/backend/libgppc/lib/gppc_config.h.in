@@ -20,4 +20,11 @@
 #define GP_VERSION_NUM $GP_VERSION_NUM_IN
 #endif
 
+/**
+ * \brief Indicates GPPC version in numeric.
+ *
+ * The number consists of major * 100 + minor.
+ */
+#define GPPC_VERSION_NUM $GPPC_VERSION_NUM_IN
+
 #endif  /* GPPC_CONFIG_H */

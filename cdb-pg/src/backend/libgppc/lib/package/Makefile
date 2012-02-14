@@ -4,6 +4,9 @@ BLD_TOP=../../../../../..
 GPMGMT=$(BLD_TOP)/gpMgmt
 include $(BLD_TOP)/Makefile.global
 
+# GPPC specific
+include ../Makefile.version
+
 pg_config_path := $(BLD_TOP)/cdb-pg/src/include/pg_config.h
 GP_VERSION_NUM := $(shell grep 'define  *GP_VERSION_NUM' $(pg_config_path) \
 	| perl -ne '$$m1=int($$1/10000),$$m2=int(($$1-$$m1*10000)/100) if/^.*?([0-9]+)/;print "$$m1.$$m2$$/"' )
@@ -12,7 +15,7 @@ OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
 LIBGPPC_DIR=`cd .. && pwd`
-LIBGPPC_VER=1.0
+LIBGPPC_VER=$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
 LIBGPPC_REL=1
 LIBGPPC_RPM_FLAGS="--define 'libgppc_dir $(LIBGPPC_DIR)' --define 'libgppc_ver $(LIBGPPC_VER)' --define 'libgppc_rel $(LIBGPPC_REL)'"
 LIBGPPC_RPM=libgppc-$(LIBGPPC_VER)-$(LIBGPPC_REL).$(ARCH).rpm
@@ -26,7 +29,7 @@ EXTRA_CLEAN+=$(LIBGPPC_RPM) $(LIBGPPC_GPPKG)# gppkg_spec.yml.in
 #
 include $(BLD_TOP)/releng/gppkg.mk
 
-gppkg_spec.yml.in: gppkg_spec.yml.in.in
+gppkg_spec.yml.in: gppkg_spec.yml.source.in
 	sed 's/#gpver/$(GP_VERSION_NUM)/g' $< > $@
 
 gppkg: 

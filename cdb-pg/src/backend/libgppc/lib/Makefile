@@ -25,19 +25,23 @@ endif
 
 include $(top_builddir)/src/Makefile.global
 
+# We require Doxygen to generate html/latex manual, and this is the part of
+# dependency chain since gppkg should contain pdf manual. But we know these
+# tools are not installed in the standard system, so check it and skip if
+# not available.
 HAS_DOXYGEN = $(shell which doxygen > /dev/null 2>&1 && echo yes)
-# doxygen generates latex directory which uses pdflatex to generate pdf manual.
+
+# Doxygen generates latex directory which uses pdflatex to generate pdf manual.
 # We suppress error if it's not available.
+# For Mac OS, MacTex is the good distribution. For Linux/CentOS, install tetex
+# and tetex-latex packages via yum for pdflatex.
 HAS_PDFLATEX = $(shell which pdflatex > /dev/null 2>&1 && echo yes)
 
 # shared library parameters
 NAME = gppc
-SO_MAJOR_VERSION = 1
-SO_MINOR_VERSION = 0
-
 override CPPFLAGS := -I$(includedir_server) -I$(includedir_internal) $(CPPFLAGS)
-
 OBJS = gppc.o
+include ./Makefile.version
 
 
 all: gppc_gp_version_num_check gppc_config.h latex/refman.pdf all-lib
@@ -63,7 +67,8 @@ ifneq ($(GP_VERSION_NUM),$(GPPC_GP_VERSION_NUM))
 	rm -f gppc_config.h
 endif
 gppc_config.h: gppc_config.h.in
-	sed 's/$$GP_VERSION_NUM_IN/$(GP_VERSION_NUM)/' $< > $@
+	cat $< | sed 's/$$GP_VERSION_NUM_IN/$(GP_VERSION_NUM)/' | \
+		sed 's/$$GPPC_VERSION_NUM_IN/$(GPPC_VERSION_NUM)/' > $@
 
 # Shared library stuff
 include $(top_srcdir)/src/Makefile.shlib
