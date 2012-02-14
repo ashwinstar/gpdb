@@ -13701,8 +13701,8 @@ gaae: gppc:00000046:  (attno), ((TupleDesc) (tupdesc))->natts); \
 gaae: gppc:00000047: }while(0) 
 gaae: gppc:00000048:  
 gaae: gppc:00000049: /* 
-gaae: gppc:00000050:  * V1 call convension helper function. This is just to avoid leaking 
-gaae: gppc:00000051:  * Pg_finfo_record struct. 
+gaae: gppc:00000050:  * V1 call convention helper function. This is just to avoid leaking 
+gaae: gppc:00000051:  * the Pg_finfo_record struct. 
 gaae: gppc:00000052:  */ 
 gaae: gppc:00000053: const void * 
 gaae: gppc:00000054: GppcFinfoV1(void) 
