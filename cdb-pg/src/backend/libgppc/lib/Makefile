@@ -112,8 +112,10 @@ installcheck: install
 install: all installdirs install-lib
 	$(INSTALL_DATA) $(srcdir)/gppc.h '$(DESTDIR)$(includedir)'
 	$(INSTALL_DATA) $(srcdir)/gppc_config.h '$(DESTDIR)$(includedir)'
+# docdir is desiable, but it's not aware of prefix parameter, so we install
+# pdf manual to datadir.
 ifeq ($(HAS_PDFLATEX),yes)
-	$(INSTALL_DATA) $(srcdir)/latex/refman.pdf '$(DESTDIR)$(docdir)/libgppc-refman.pdf'
+	$(INSTALL_DATA) $(srcdir)/latex/refman.pdf '$(DESTDIR)$(datadir)/libgppc-refman.pdf'
 endif
 
 installdirs: installdirs-lib
