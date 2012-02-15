@@ -507,12 +507,11 @@ GppcReport(GppcReportLevel elevel, const char *fmt, ...)
 	va_list		ap;
 	char		buf[1024];
 
-	/* TODO: elog doesn't accept va_list, but we need follow the behavior */
+	/* elog doesn't accept va_list. There could be a better way...  */
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
-	/* For some reason, we need the third argument to suppress compiler warning */
-	elog(elevel, (const char *) buf, ' ');
+	elog(elevel, "%s", (const char *) buf);
 }
 
 /*

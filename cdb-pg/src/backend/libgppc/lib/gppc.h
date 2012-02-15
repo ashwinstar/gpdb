@@ -35,6 +35,35 @@
 
 #include "gppc_config.h"
 
+#ifndef GPPC_C_BUILD
+
+#ifdef PG_VERSION_NUM
+#error "PG_VERSION_NUM detected. Please not include GPDB internal headers."
+#endif
+
+#ifndef __cplusplus /* C++ has built-in bool */
+
+/**
+ * \brief Generic boolean type if it's not defined.
+ */
+typedef char		bool;
+#ifndef true
+/**
+ * \brief Generic boolean true if it's not defined.
+ */
+#define true ((bool) 1)
+#endif
+#ifndef false
+/**
+ * \brief Generic boolean false if it's not defined.
+ */
+#define false ((bool) 0)
+#endif
+
+#endif  /* __cplusplus */
+
+#endif  /* GPPC_C_BUILD */
+
 /**
  * \brief Creates the necessary glue to make the named function SQL invokable.
  * \param funcname the name of exposed function.
@@ -57,27 +86,6 @@ extern int no_such_variable
  * as its only argument.
  */
 #define GPPC_FUNCTION_ARGS GppcFcinfo fcinfo
-
-#ifndef GPPC_C_BUILD
-#ifndef bool
-/**
- * \brief Generic boolean type if it's not defined.
- */
-typedef char		bool;
-#endif
-#ifndef true
-/**
- * \brief Generic boolean true if it's not defined.
- */
-#define true 1
-#endif
-#ifndef false
-/**
- * \brief Generic boolean false if it's not defined.
- */
-#define false 0
-#endif
-#endif  /* GPPC_C_BUILD */
 
 /****************************************************************************
  * GPPC types
@@ -755,5 +763,9 @@ GppcEncoding GppcGetDatabaseEncoding(void);
  * \brief Returns maximum byte size of database encoding in a character.
  */
 int GppcDatabaseEncodingMaxLength(void);
+
+#ifdef BOOL_DEFINED
+#undef bool
+#endif
 
 #endif   /* GPPC_H */
