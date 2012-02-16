@@ -83,6 +83,7 @@ VALUE__VERIFICATION_VERIFIED = FieldDefinition("Data verified", "data_verified",
 VALUE__VERIFICATION_EST_TOTAL = FieldDefinition("Estimated total data to verify", "est_total_data", "text")
 VALUE__VERIFICATION_EST_PROGRESS = FieldDefinition("Estimated verification progress", "est_progress", "text")
 VALUE__VERIFICATION_EST_END_TIME = FieldDefinition("Estimated verification end time", "est_end_time", "timestamp")
+VALUE__VERIFICATION_TOKEN = FieldDefinition("Verification token", "verification_token", "text")
 
 # these are not in a category, used for other logging
 VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text", "Status")
@@ -171,7 +172,8 @@ class GpStateData:
                  VALUE__VERIFICATION_VERIFIED,
                  VALUE__VERIFICATION_EST_TOTAL,
                  VALUE__VERIFICATION_EST_PROGRESS,
-                 VALUE__VERIFICATION_EST_END_TIME
+                 VALUE__VERIFICATION_EST_END_TIME,
+                 VALUE__VERIFICATION_TOKEN,
                  ]
 
         self.__allValues = {}
@@ -186,7 +188,7 @@ class GpStateData:
                     VALUE__VERIFICATION_STATUS,
                     VALUE__VERIFICATION_MODE, VALUE__VERIFICATION_START_TIME,
                     VALUE__VERIFICATION_VERIFIED, VALUE__VERIFICATION_EST_TOTAL,
-                    VALUE__VERIFICATION_EST_PROGRESS, VALUE__VERIFICATION_EST_END_TIME
+                    VALUE__VERIFICATION_EST_PROGRESS, VALUE__VERIFICATION_EST_END_TIME, VALUE__VERIFICATION_TOKEN
                     ]:
             self.__allValues[k] = True
 
@@ -773,7 +775,8 @@ class GpSystemStateProgram:
                 VALUE__VERIFICATION_VERIFIED,
                 VALUE__VERIFICATION_EST_TOTAL,
                 VALUE__VERIFICATION_EST_PROGRESS,
-                VALUE__VERIFICATION_EST_END_TIME
+                VALUE__VERIFICATION_EST_END_TIME,
+                VALUE__VERIFICATION_TOKEN
                 ]
 
     def __segmentStatusPipeSeparatedForTableUse(self, gpEnv, gpArray):
@@ -961,6 +964,7 @@ class GpSystemStateProgram:
             elif mirrorData["verificationStatus"] == "Running" or mirrorData["verificationStatus"] == "Suspended" or mirrorData["verificationStatus"] == "Pending":                   
                 data.addValue(VALUE__VERIFICATION_STATUS, mirrorData["verificationStatus"])
                 data.addValue(VALUE__VERIFICATION_MODE, mirrorData["verificationMode"])
+                data.addValue(VALUE__VERIFICATION_TOKEN, mirrorData["verificationToken"])
                 verifyStartTimeStr = None
                 verifyStartTime = datetime.datetime.fromtimestamp(float(mirrorData["verificationStartTimeSecondsSinceEpoch"]))
                 verifyStartTimeStr = str (verifyStartTime)
@@ -1000,6 +1004,7 @@ class GpSystemStateProgram:
                     data.addValue(VALUE__VERIFICATION_EST_END_TIME, "Not Available")
                     data.addValue(VALUE__VERIFICATION_VERIFIED, "Not Available")
                     data.addValue(VALUE__VERIFICATION_EST_TOTAL, mirrorData["Not Available"])
+                    data.addValue(VALUE__VERIFICATION_TOKEN, "Not Available")
 		
         #
         # populate resync modes on primary and mirror

@@ -100,7 +100,6 @@
  *
  *  - write a fix and diff file recprd when heap files are bigger than RELSEG_SIZE*BLCKSZ
  *
- *  - add a timestamp line to the fix file
  *
  *  MEDIUM TODO
  *   - replace all fopen/fread/fwrite/fclose/fseek with
@@ -204,28 +203,28 @@
  * TODO: allow more - have a hashtable of requests (via token)
  */
 
+
+/* Important entry points 
+
+   processVerifyRequest - drops off a new request with the primary
+
+   FileRepPrimary_StartVerification - run on primary when it first starts up
+                 contains main loop on the primary - 
+                 waits to see new requests dropped off and actually starts them
+				 calls FileRepPrimary_EstimateVerificationRequest and
+				       FileRepPrimary_ExecuteVerificationRequest
+
+   FileRepMirror_StartVerificationRequest - run on mirror when it starts up
+
+   FileRepMirror_ExecuteVerificationRequest - called for each message sent
+      from primary to mirror
+   
+ */
 #define VERIFYDIR				"pg_verify"
 #define INPROGRESS_TOKEN_FILE	"inprogress_token"
 
 char gMirrorBaseDir[MAXPGPATH+1];
 FileRepVerifyMirrorRequestParams_s gMirrorRequestParams;
-
-typedef struct FileRepVerifyShmem_s
-{
-	slock_t					lock;
-
-	volatile bool			isVerificationInProgress;
-	volatile bool			isNewRequestWaiting;
-	/* SYNCHRONOUSABORTSUSPEND*/
-	volatile bool           signalSynchronousRequests;
-
-	FileRepVerifyRequest_s	request;
-
-	bool					availableForReuse;
-	bool					resume;
-
-} FileRepVerifyShmem_s;
-
 FileRepVerifyShmem_s *gFileRepVerifyShmem = NULL;
 
 Size FileRepVerifyShmemSize(void);
@@ -247,17 +246,10 @@ int FileRepPrimary_ExecuteVerificationRequest(
 int FileRepPrimary_ExchangeRequestParameters(
 										 FileRepVerifyRequest_s *request);
 
-void FileRepPrimary_ClearCheckpoint(
-									FileRepVerifyRequest_s *request);
-
-void FileRepPrimary_SetLogicalCheckpoint(
+void FileRepPrimary_SetCheckpointInfo(
 										 FileRepVerifyRequest_s		*request,
+										 FileRepVerify_RestartPoint_e restartPoint,
 										 int64						persistentSerialNum);
-
-void FileRepPrimary_SetPhysicalCheckpoint(
-										  FileRepVerifyRequest_s	*request,
-										  char						*nextParent,
-										  char						*nextChild);
 
 bool FileRepPrimary_CheckpointFileIsPresent(
 											char	*token,
@@ -347,8 +339,10 @@ int FileRepVerify_ComputeFileHash(
 								  uint64 whichSegment,  /* if exception is Heap */
 								  FileRepVerifyLogControl_s logControl );
 
+#define LISTING_START 0
+#define LISTING_COMPLETE -1
 int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
-																   FileRepVerifyRequest_s *request,
+	                                                               FileRepVerifyRequest_s *request,
 																   char *primaryBaseDir,
 																   char *mirrorBaseDir,
 																   char *listingBuffer,
@@ -356,13 +350,15 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 																   uint32 *numEntries,
 																   bool justCount,
 																   bool *complete,
-																   char *whereNextParent,
-																   char *whereNextChild );
+																   int startDepth,
+																   int *currDepth);
+
+
 
 int FillBufferWithDirectoryTreeListing(
 									   FileRepVerifyRequest_s *request,
 									   char *priBaseDirectory,
-									   char *mirrBaseDirectory,
+									   char *mirrBaseDx2irectory,
 									   char *fromBasePath,
 									   char *buf,
 									   uint32 *used_len,
@@ -370,14 +366,8 @@ int FillBufferWithDirectoryTreeListing(
 									   uint32 *num_entries,
 									   bool justCount,
 									   bool *complete,
-									   char *whereNextParent,
-									   char *whereNextChild);
-
-bool wasHandledAlready(
-					   char *thisDirectory,
-					   char *thisChild,
-					   char *nextDirectory,
-					   char *nextChild);
+									   int startDepth,
+	                                   int *currDepth);
 
 bool keepItem(
 			  char *toMatch,
@@ -2091,7 +2081,9 @@ FileRepPrimary_StartRequest_Return:
 			);
 
 		success = false;
-	} else {
+	} 
+	else 
+	{
 
 
 		if (request->state == FileRepVerifyRequestState_RUNNING ||
@@ -2363,9 +2355,16 @@ FileRepPrimary_BuildRequest(FileRepVerifyRequest_s *request)
 	request->skipRelFiles = true;
 	request->isFailed = false;
 	request->state = FileRepVerifyRequestState_PENDING;
-	FileRepPrimary_ClearCheckpoint(request);
+	FileRepPrimary_SetCheckpointInfo(request,
+									 FileRepVerify_RestartPoint_INVALID,
+									 INVALID_PERSISTENT_SERIAL_NUM);
 	request->abortRequested = false;
 	request->suspendRequested = false;
+
+	for (int i=0; i< MAX_DIRECTORY_DEPTH; i++)
+	{
+		request->savedDirectoryStack[i].dir = NULL;
+	}
 
 	memset(&(request->compareStats), 0, sizeof(FileRepVerify_CompareStats_s));
 
@@ -2714,10 +2713,6 @@ FileRepPrimary_VerifyUserFilespaces(
 	FileRepVerifyLogControl_s logControl = request->logControl;
 	bool	keepFilespace = false;
 
-	request->restartInfo.filespacesComplete = false;
-	request->restartInfo.physicalCheckpoint_persistentSerialNum = -1;
-	request->restartInfo.haveWrittenIgnoreInfo = false;
-
 	verifyLog(logControl,
 			  DEBUG1,
 			  "FileRepPrimary_VerifyUserFilespaces START ");
@@ -2748,7 +2743,7 @@ FileRepPrimary_VerifyUserFilespaces(
 			if (resume &&
 				!(request->restartInfo.useLogical) &&
 				(persistentSerialNum <=
-				 request->restartInfo.physicalCheckpoint_persistentSerialNum))
+				 request->restartInfo.persistentSerialNum))
 			{
 				/* we've already done this one - skip over it*/
 				continue;
@@ -2821,7 +2816,10 @@ FileRepPrimary_VerifyUserFilespaces(
 				return status;
 			}
 
-			request->restartInfo.physicalCheckpoint_persistentSerialNum = persistentSerialNum;
+			FileRepPrimary_SetCheckpointInfo(
+				request, 
+				FileRepVerify_RestartPoint_USERFILESPACES,
+				persistentSerialNum);
 
 			/* JEANNA how the state will get changed, Periodic check was not issued */
 			if (request->state != FileRepVerifyRequestState_RUNNING)
@@ -2837,7 +2835,13 @@ FileRepPrimary_VerifyUserFilespaces(
 	verifyLog(logControl, DEBUG1,
 			  "FileRepPrimary_VerifyUserFilespaces numFilespaces %d END ",
 			  numFilespaces);
-	request->restartInfo.filespacesComplete = true;
+
+	/* User level file spaces is complete - change checkpoint info
+	   to say we are doing System Filespace */
+	FileRepPrimary_SetCheckpointInfo(
+		request, 
+		FileRepVerify_RestartPoint_SYSTEMFILESPACE,
+		INVALID_PERSISTENT_SERIAL_NUM);
 
 	return STATUS_OK;
 }
@@ -2848,19 +2852,16 @@ FileRepPrimary_EstimateDirectory(
 	char * primaryBaseDir)
 {
 	int status = STATUS_OK;
-	char  whereNextParent[MAXPGPATH+1];
-	char  whereNextChild[MAXPGPATH+1];
 
 	bool justCount = true;
 
 	bool complete = false;
 
 	uint32 toCompareThisDirectory = 0;
+	int resumeDepth = LISTING_START;
 
 
 
-	whereNextParent[0] = '\0';
-	whereNextChild[0] = '\0';
 
 
 
@@ -2880,8 +2881,9 @@ FileRepPrimary_EstimateDirectory(
 		&toCompareThisDirectory,
 		justCount,
 		&complete,
-		whereNextParent,
-		whereNextChild);
+		LISTING_START,
+   		&resumeDepth);
+
 	if (status != STATUS_OK)
 	{
 		verifyLog(request->logControl,
@@ -2892,13 +2894,19 @@ FileRepPrimary_EstimateDirectory(
 	}
 	else
 	{
+		/*
+		 * should be able to just count in one pass -
+		 *  no limited buffer size to make us return early
+		 */
+		Assert( complete == true);
+		Assert( resumeDepth == LISTING_COMPLETE);
+		for (int i=0; i< MAX_DIRECTORY_DEPTH; i++)
+		{
+			Assert(request->savedDirectoryStack[i].dir == NULL);
+		}
+		
 		request->compareStats.estimateTotalCompares += toCompareThisDirectory;
 	}
-	/*
-	 * should be able to just count in one pass -
-	 *  no limited buffer size to make us return early
-	 */
-	Assert( complete == true);
 
 	return STATUS_OK;
 }
@@ -2913,8 +2921,6 @@ FileRepPrimary_VerifyDirectory(
 {
 	bool justCount = false;
 
-	char  whereNextParent[MAXPGPATH+1];
-	char  whereNextChild[MAXPGPATH+1];
 	bool complete = false;
 	int status = STATUS_OK;
 	char  listingBuffer[FILEREP_MESSAGEBODY_LEN];
@@ -2936,26 +2942,21 @@ FileRepPrimary_VerifyDirectory(
 	FileRepIdentifier_u		fileRepIdentifier;
 	FileRepRelationType_e	fileRepRelationType;
 	bool continueRequest = true;
+	int resumeDepth = LISTING_START;
 
 	memset(&fileRepIdentifier, 0, sizeof(FileRepIdentifier_u));
 
 	if (resume)
 	{
-		strncpy( whereNextParent,
-				 request->restartInfo.physicalCheckpoint_whereNextParent,
-				 MAXPGPATH+1);
-		strncpy( whereNextChild,
-				 request->restartInfo.physicalCheckpoint_whereNextChild,
-				 MAXPGPATH+1);
+		/* physical verificaiton of directories and non-rel node files shouldn't take that long
+		 * repeat it - recording where to pick up is problematic on systems like Linux and Solaris
+		 * where ReadDir returns things in order modified rather than alphabetical order
+		 */
 		verifyLog(request->logControl, LOG,
-				  "Resuming from parent %s child %s",
-				  whereNextParent, whereNextChild);
+				  "Resuming - restart verification of primaryBaseDir %s mirrorBaseDir %s",
+				  primaryBaseDir, mirrorBaseDir);
 
-	}
-	else
-	{
-		whereNextParent[0] = '\0';
-		whereNextChild[0] = '\0';
+	
 	}
 	maxSummaryItemsPerSend =
 		FILEREP_MESSAGEBODY_LEN/sizeof(FileRepVerifySummaryItem_s);
@@ -2995,8 +2996,8 @@ FileRepPrimary_VerifyDirectory(
 			&num_entries,
 			justCount,
 			&complete,
-			whereNextParent,
-			whereNextChild);
+			LISTING_START,
+			&resumeDepth);
 		if (status != STATUS_OK)
 		{
 			/*
@@ -3010,6 +3011,12 @@ FileRepPrimary_VerifyDirectory(
 					  "VERIFICATION_ERROR_INTERNAL: Failure of FileRepVerify_ComputeSummaryItemsFromRecursuveDirectoryListing %d",
 					  status);
 			return status;
+
+		} else if (complete){
+			for (int i=0; i< MAX_DIRECTORY_DEPTH; i++)
+			{
+				Assert(request->savedDirectoryStack[i].dir == NULL);
+			}
 
 		}
 
@@ -3434,10 +3441,6 @@ FileRepPrimary_VerifyDirectory(
 
 		printVerificationStatus(LOG, request);
 
-		FileRepPrimary_SetPhysicalCheckpoint(
-			request,whereNextParent,
-			whereNextChild);
-
 		FileRepPrimary_PeriodicTasks(request);
 
 		continueRequest = FileRepPrimary_ContinueVerificationRequest(request);
@@ -3659,7 +3662,7 @@ FileRepPrimary_EstimateUserFilespaces(
 
 	verifyLog(request->logControl,
 			  LOG,
-			  "AFTER EstimateUserFilespaces ESTIMATE total compares TODO %d",
+			  "AFTER EstimateUserFilespaces ESTIMATE total compares to be done %d",
 			  request->compareStats.estimateTotalCompares);
 	return STATUS_OK;
 }
@@ -3709,7 +3712,7 @@ FileRepPrimary_EstimateSystemFilespace(
 	/* Rewrite as % complete */
 	verifyLog(request->logControl,
 			  LOG,
-			  "AFTER EstimateSystemFilespace ESTIMATE total compares TODO %d",
+			  "AFTER EstimateSystemFilespace ESTIMATE total compares to be done %d",
 			  request->compareStats.estimateTotalCompares);
 
 	if (request->compareStats.estimateTotalCompares ==0)
@@ -3970,8 +3973,8 @@ FileRepPrimary_VerifyAllRelFileNodes(
 
 		if (resume	&&
 			foundAnotherRow &&
-			(request->restartInfo.logicalCheckpoint_persistentSerialNum != 1) &&
-			(persistentSerialNum < request->restartInfo.logicalCheckpoint_persistentSerialNum))
+			(request->restartInfo.persistentSerialNum != 1) &&
+			(persistentSerialNum < request->restartInfo.persistentSerialNum))
 		{
 			/* we've already done this one - skip over it */
 			verifyLog(
@@ -3979,7 +3982,7 @@ FileRepPrimary_VerifyAllRelFileNodes(
 				LOG,
 				"Resuming and we've already completed this one (%d) checkpoint is %d ",
 				persistentSerialNum,
-				request->restartInfo.logicalCheckpoint_persistentSerialNum);
+				request->restartInfo.persistentSerialNum);
 			continueRequest = true;
 			continue;
 		}
@@ -4270,10 +4273,13 @@ FileRepPrimary_VerifyAllRelFileNodes(
 					{
 						numSegments = FileRepVerify_NumHeapSegments(relfilenodeTable[numThisSend].relFileNode);
 
-					} else {
+					} 
+					else 
+					{
 						numSegments = 1;
 					}
-					for (seg=0; seg < numSegments; seg++){
+					for (seg=0; seg < numSegments; seg++)
+					{
 						if (seg == 0)
 						{
 
@@ -4648,7 +4654,9 @@ FileRepPrimary_VerifyAllRelFileNodes(
 			/* REPORT STATS */
 			printVerificationStatus(LOG, request);
 
-			FileRepPrimary_SetLogicalCheckpoint(request,persistentSerialNum );
+			FileRepPrimary_SetCheckpointInfo(request,
+												FileRepVerify_RestartPoint_RELFILENODES,
+												persistentSerialNum );
 
 			status = FileRepPrimary_PeriodicTasks(request);
 
@@ -4695,39 +4703,46 @@ FileRepPrimary_VerifyAllRelFileNodes(
 	return STATUS_OK;
 }
 
-void
-FileRepPrimary_ClearCheckpoint(FileRepVerifyRequest_s *request)
-{
-	request->restartInfo.valid = false;
 
-}
 void
-FileRepPrimary_SetLogicalCheckpoint(
+FileRepPrimary_SetCheckpointInfo(
 									FileRepVerifyRequest_s	*request,
+									FileRepVerify_RestartPoint_e restartPoint,
 									int64					persistentSerialNum)
 {
-	request->restartInfo.useLogical = true;
-	request->restartInfo.logicalCheckpoint_persistentSerialNum = persistentSerialNum;
-	request->restartInfo.valid = true;
+	switch (restartPoint)
+	{
+		case FileRepVerify_RestartPoint_INVALID:
+			request->restartInfo.valid = false;
+			request->restartInfo.filespacesComplete = false;
+			request->restartInfo.persistentSerialNum = -1;
+			request->restartInfo.haveWrittenIgnoreInfo = false;
+			break;
+		case FileRepVerify_RestartPoint_USERFILESPACES:
+			request->restartInfo.valid = true;
+			request->restartInfo.useLogical = false;
+			request->restartInfo.filespacesComplete = false;
+			request->restartInfo.persistentSerialNum = persistentSerialNum;
+			break;
+		case FileRepVerify_RestartPoint_SYSTEMFILESPACE:
+			request->restartInfo.valid = true;
+			request->restartInfo.useLogical = false;
+			request->restartInfo.filespacesComplete = true;
+			request->restartInfo.persistentSerialNum = -1;
+			break;
+		case FileRepVerify_RestartPoint_RELFILENODES:
+			request->restartInfo.valid = true;
+			request->restartInfo.useLogical = true;
+			request->restartInfo.filespacesComplete = true;
+			request->restartInfo.persistentSerialNum = persistentSerialNum;
+			break;
+		default:
+			Assert(0);
+			break;
+	}
+			
 }
 
-void
-FileRepPrimary_SetPhysicalCheckpoint(
-									 FileRepVerifyRequest_s *request,
-									 char *nextParent,
-									 char *nextChild)
-{
-	request->restartInfo.useLogical = false;
-	strncpy(
-			request->restartInfo.physicalCheckpoint_whereNextParent,
-			nextParent,
-			MAXPGPATH+1);
-	strncpy(
-			request->restartInfo.physicalCheckpoint_whereNextChild,
-			nextChild,
-			MAXPGPATH+1);
-	request->restartInfo.valid = true;
-}
 
 bool
 FileRepPrimary_CheckpointFileIsPresent(
@@ -5090,7 +5105,7 @@ FileRepPrimary_RestoreVerificationRequest(
 				request->logControl,
 				NOTICE,
 				"verification checkpoint restored successfully: logical persistent serial num %d ",
-				request->restartInfo.logicalCheckpoint_persistentSerialNum);
+				request->restartInfo.persistentSerialNum);
 
 		}
 		else
@@ -5099,9 +5114,9 @@ FileRepPrimary_RestoreVerificationRequest(
 			verifyLog(
 				request->logControl,
 				NOTICE,
-				"verification checkpoint restored successfully: physical next to compare %s child %s",
-				request->restartInfo.physicalCheckpoint_whereNextParent,
-				request->restartInfo.physicalCheckpoint_whereNextChild);
+				"verification checkpoint restored successfully: physical filespacesComplete %d persistent serial num %d",
+				request->restartInfo.filespacesComplete,
+				request->restartInfo.persistentSerialNum);
 		}
 	}
 	else
@@ -5115,6 +5130,12 @@ FileRepPrimary_RestoreVerificationRequest(
 				 errhint("run gpverify")));
 
 		return STATUS_ERROR;
+	}
+
+
+	for (int i=0; i< MAX_DIRECTORY_DEPTH; i++)
+	{
+		request->savedDirectoryStack[i].dir = NULL;
 	}
 
 	return STATUS_OK;
@@ -5181,7 +5202,7 @@ FileRepPrimary_CheckpointVerificationRequest(
 				request->logControl,
 				DEBUG1,
 				"CHECKPOINT: useLogical	persistentSerialNum %d ",
-				request->restartInfo.logicalCheckpoint_persistentSerialNum);
+				request->restartInfo.persistentSerialNum);
 
 		}
 		else
@@ -5189,9 +5210,8 @@ FileRepPrimary_CheckpointVerificationRequest(
 			verifyLog(
 				request->logControl,
 				DEBUG1,
-				"CHECKPOINT: usePhysical	 whereNextParent %s	 whereNextChild %s",
-				request->restartInfo.physicalCheckpoint_whereNextParent,
-				request->restartInfo.physicalCheckpoint_whereNextChild);
+				"CHECKPOINT: usePhysical");
+			/* physicalCheckpoint_persistentSerialNum ??*/
 		}
 
 		if (FileSeek(request->logControl.chkpntFile, 0, SEEK_SET) < 0)
@@ -5521,7 +5541,9 @@ FileRepPrimary_EstimateVerificationRequest(FileRepVerifyRequest_s *request)
 			request->logControl, DEBUG1,
 			"requestType DIRECTORY verifyItem %s",
 			request->verifyItem);
-	} else {
+	} 
+	else 
+	{
 		verifyLog(
 			request->logControl,DEBUG1,
 			"requestType FULL");
@@ -5717,7 +5739,8 @@ FileRepPrimary_ExchangeRequestParameters(FileRepVerifyRequest_s *request)
 	 * left in the pipeline - this while loop will clear those out and get 
 	 * us to the reponse to the ExchangeRequestParameters request 
 	 */
-	while(responseDesc.verify.type != FileRepOpVerifyType_RequestParameters){
+	while(responseDesc.verify.type != FileRepOpVerifyType_RequestParameters)
+	{
 
 		status = FileRepAckPrimary_RunConsumerVerification(
 			&responseData, 
@@ -5982,6 +6005,7 @@ void FileRepMirror_StartVerification(void)
 	gMirrorRequestParams.valid = false;
 	gMirrorRequestParams.numIgnoreFilePatterns = 0;
 	gMirrorRequestParams.numIgnoreDirs = 0;
+	gMirrorRequestParams.compareDir = NULL;
 
 }
 
@@ -6198,7 +6222,6 @@ int FileRepMirror_CompareSummaryItem(
 
 		/* open up the directory and see how many immediate children
 		 *  and compute hash over their names
-		 *  TODO: Factor out this code and call same on primary and mirror
 		 */
 		dir = AllocateDir(directoryName);
 		if (dir == NULL)
@@ -6262,7 +6285,9 @@ int FileRepMirror_CompareSummaryItem(
 						strlen(de->d_name));
 				}
 
-			} else {
+			} 
+			else 
+			{
 				verifyLog(logControl, DEBUG3,
 						  "FileRepMirror_CompareDirectoryContents 1: Skipping %s because excluded",
 						  de->d_name);
@@ -6417,7 +6442,9 @@ FileRepMirror_CompareAllSummaryItems(
 						  DEBUG3,
 						  "FileRepMirror_CompareAllSummaryItems *response %p",
 						  *response);
-			} else {
+			} 
+			else 
+			{
 				Assert(FILEREP_MESSAGEBODY_LEN >= numMismatches*sizeof(FileRepVerifySummaryItem_s));
 			}
 			/* copy the summary item into the response at the proper place */
@@ -6878,13 +6905,10 @@ FileRepMirror_CompareDirectoryContents(
 	struct stat	 mirrorDir_st;
 	struct stat	 child_st;
 	char		 child_path[MAXPGPATH+1];
-	bool foundLastChild = false;
 	bool startOver = false;
 	uint32 numThisSend =0;
 	char * childrenList;
 	bool firstBatch = false;
-	int lastChildLen = 0;
-	char lastChild[MAXPGPATH+1];
 	bool bufferFull = false;
 	
 	/* 
@@ -6948,109 +6972,91 @@ FileRepMirror_CompareDirectoryContents(
 	}
 
 
-	/* Allocate the directory */
-	if ((dir = AllocateDir(directoryName)) == NULL)
-	{
-		ereport(WARNING,
-				(errcode_for_file_access(),
-				 errmsg("verification failure, "
-						"could not read directory '%s' verification token '%s' : %m "
-						"verification aborted",
-						directoryName,
-						logControl.logOptions.token),
-				 errhint("run gpverify")));
-
-		return STATUS_ERROR;
-	}
-
-
-	if (!firstBatch)
-	{
-		/* read the lastChild from the message body */
-		lastChildLen = (int) (*fileRepMessageBody);
-		
-		Assert( lastChildLen < MAXPGPATH);
-		memcpy(lastChild,
-			   fileRepMessageBody+ sizeof(int),
-			   lastChildLen);
-		/* make sure there is a '\0' there? not necessary? */
-		lastChild[lastChildLen] = '\0';
-
-		verifyLog(logControl,
-				  DEBUG5,
-				  "lastChild is %s lastChildLen %d\n",
-				  lastChild,
-				  lastChildLen);
-
-		/* Advance the directory on mirror until we find lastChild */
-		foundLastChild = false;
-		verifyLog(logControl, DEBUG5, "Looking for lastChild %s in directory %s",
-				  lastChild,
-				  directoryName);
-
-		/* once we've found the last child importat that we don't read another de 
-		 * short circuit evaluation of this condition is important
-		 */
-		while ( !foundLastChild && ((de = ReadDir(dir, directoryName)) != NULL))
+	/* Allocate the directory 
+	*  SAVE AND USE DIR FROM LAST TIME!
+	* gMirrorRequestParams.compareDir
+	*/
+	if(firstBatch)
+	{ 
+		if (gMirrorRequestParams.compareDir != NULL)
 		{
-
-			
-			if (strcmp(de->d_name, ".") == 0 ||
-				strcmp(de->d_name, "..") == 0)
-			{
-				continue;
-			}
-
-			/* strlen(de->d_name does not include the \0 and lastChildLen does */
-			if ((strncmp(lastChild, de->d_name, lastChildLen) == 0)
-				&& (strlen(de->d_name)+1 == lastChildLen))
-			{
-
-				foundLastChild = true;
-
-			}
-			
+			verifyLog(logControl,
+					  WARNING,
+					  "FileRepMirror_CompareDirectoryContents: UNEXPECTED ERROR firstBatch but found a non null compare dir %s, Freeing..\n",
+					  gMirrorRequestParams.compareDir_Name
+				);
+			FreeDir(gMirrorRequestParams.compareDir);
 		}
-
-		/* if we don't find the last child then start back over from the beginning ? */
-		if (!foundLastChild){
-
-			verifyLog(
-				logControl, 
-				LOG, 
-				"FileRepMirror_CompareDirectoryContents did not find lastChild %s in dir %s", 
-				lastChild,
-				directoryName);
-
-			/* Because there is no locking on the directory this is possible but should be rare 
-			 * - Primary will only allow MAX_START_OVERS to prevent an infinite loop
-			 */
-			FreeDir(dir);
-			startOver = true;
-
-			if ((dir = AllocateDir(directoryName)) == NULL)
-			{
-				ereport(WARNING,
-						(errcode_for_file_access(),
-						 errmsg("verification failure, "
-								"could not read directory '%s' verification token '%s' : %m "
-								"verification aborted",
-								directoryName,
-								logControl.logOptions.token),
-						 errhint("run gpverify")));
-				
-				return STATUS_ERROR;
-			}
+	} else {
+		if (gMirrorRequestParams.compareDir == NULL){
+			verifyLog(logControl,
+					  WARNING,
+					  "FileRepMirror_CompareDirectoryContents: UNEXPECTED ERROR !firstBatch but found a null compare dir %s, will have to reopen and start again"
+				);
 		}
+		startOver = true;
 	}
+
+	if (gMirrorRequestParams.compareDir == NULL) {
+		verifyLog(logControl,
+				  DEBUG1,
+				  "FileRepMirror_CompareDirectoryContents: calling AllocateDir on %s",
+				  directoryName
+			);
+		
+		if ((gMirrorRequestParams.compareDir = AllocateDir(directoryName)) == NULL)
+		{
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("verification failure, "
+							"could not read directory '%s' verification token '%s' : %m "
+							"verification aborted",
+							directoryName,
+							logControl.logOptions.token),
+					 errhint("run gpverify")));
+
+			return STATUS_ERROR;
+		}
+
+		strncpy(gMirrorRequestParams.compareDir_Name, directoryName, MAXPGPATH);
+
+	} 
+	else
+	{
+		//string compare on directoryName and compareDir_Name - if not the same ERROR!
+		int thisLen = strlen(gMirrorRequestParams.compareDir_NextChild)+1;
+		verifyLog(logControl,
+				  DEBUG1,
+				  "FileRepMirror_CompareDirectoryContents: restoring saved dirp %d dir %s nextchild %s",
+				  gMirrorRequestParams.compareDir,
+				  gMirrorRequestParams.compareDir_Name,
+				  gMirrorRequestParams.compareDir_NextChild
+			);
+
+		/* Copy this item into place */
+		verifyLog(
+			logControl,
+			DEBUG5,
+			"Child %d: name %s len %d (SAVED FROM LAST TIME)",
+			numThisSend, gMirrorRequestParams.compareDir_NextChild, thisLen);
+		
+		memcpy(childrenList+ currOffset, &thisLen, sizeof(int));
+		currOffset+=sizeof(int);
+		numThisSend++;
+				
+		memcpy(childrenList+ currOffset, gMirrorRequestParams.compareDir_NextChild, thisLen);
+		currOffset+=thisLen;
+		
+	}
+	dir = gMirrorRequestParams.compareDir;
 
 	
 	/* Look over the mirror directory - copying each child into the response buffer
 	 * while we have room
 	 */
 	bufferFull = false;
-	currOffset = 0;
-	while (((de = ReadDir(dir, directoryName)) != NULL) && !bufferFull)
+	//short circuit evaluation is important - don't read the next thing if buffer is full
+	while (!bufferFull &&  ((de = ReadDir(dir, directoryName)) != NULL) )
 	{
 
 		if (strcmp(de->d_name, ".") == 0 ||
@@ -7079,6 +7085,7 @@ FileRepMirror_CompareDirectoryContents(
 			//Why just continue?
 			/* FreeDir(dir);
 			 * return STATUS_ERROR;
+			 * write a diff table record??
 			 */
 			continue;
 		}
@@ -7096,6 +7103,8 @@ FileRepMirror_CompareDirectoryContents(
 		{
 			int thisLen = strlen(de->d_name)+1;
 
+			Assert((thisLen >0) && (thisLen <= MAXPGPATH));
+
 			if (currOffset + thisLen + sizeof(int) >= FILEREP_MESSAGEBODY_LEN)
 			{
 
@@ -7104,16 +7113,25 @@ FileRepMirror_CompareDirectoryContents(
 				 */
 
 				bufferFull = true;
-			
+				strncpy(gMirrorRequestParams.compareDir_NextChild, de->d_name, MAXPGPATH);
+				verifyLog(
+					logControl,
+					DEBUG5,
+					"Child: name %s len %d (SAVING FOR NEXT TIME)",
+					gMirrorRequestParams.compareDir_NextChild, thisLen);
+	
 				
-			} else {
+			} 
+			else 
+			{
 				
 				/* Copy this item into place */
 				verifyLog(
 					logControl,
 					DEBUG5,
-					"Child %d: name %s len %d",
-					numThisSend, de->d_name, thisLen);
+					"Child %d: name %s len %d curOffset %d bufferSize %d",
+					numThisSend, de->d_name, thisLen,
+					currOffset, FILEREP_MESSAGEBODY_LEN);
 				memcpy(childrenList+ currOffset, &thisLen, sizeof(int));
 				currOffset+=sizeof(int);
 				numThisSend++;
@@ -7121,7 +7139,9 @@ FileRepMirror_CompareDirectoryContents(
 				memcpy(childrenList+ currOffset, de->d_name, thisLen);
 				currOffset+=thisLen;
 			}
-		} else {
+		} 
+		else 
+		{
 			verifyLog(logControl, DEBUG3,
 					  "FileRepMirror_CompareDirectoryContents 4: Skipping %s because excluded",
 					  de->d_name);
@@ -7142,7 +7162,11 @@ FileRepMirror_CompareDirectoryContents(
 	*responseSizeBytes = currOffset;
 
 	pfree(directoryName);
-	FreeDir(dir);
+
+	if (!bufferFull) {
+		FreeDir(dir);
+		gMirrorRequestParams.compareDir = NULL;
+	}
 	return status;
 
 
@@ -7540,40 +7564,7 @@ int FileRepPrimary_CompareDirectoryListing(
 
 		fileRepOperationDescription.verify.desc.dirContents.firstBatch =
 			firstBatch;
-		
-		if (!firstBatch){
 
-			/* copy the lastChildLen and lastChild value into the dataToMirror buffer */
-			dataLength = sizeof(int) + lastChildLen;
-			
-			dataToMirror = (char *)palloc(dataLength);
-			if (dataToMirror == NULL)
-			{
-				ereport(WARNING,
-						(errmsg("verification failure, "
-								"could not allocate memory to run verification token '%s' "
-								"verification aborted",
-								request->logControl.logOptions.token),
-						 errhint("run gpverify")));
-				
-				return STATUS_ERROR;
-			}
-			Assert(lastChild != NULL);
-			Assert(lastChildLen >0);
-			memcpy(dataToMirror, &lastChildLen, sizeof(int));
-			memcpy((char*)(dataToMirror)+sizeof(int),
-				   lastChild, lastChildLen);
-
-			/* lastChild was a pointer into responseData
-			 * now we are done with it so free it 
-			 */
-			if (responseData != NULL)
-			{
-				pfree(responseData);
-				responseData = NULL;
-			}
-			
-		}
 
 		/* Ask Mirror to send us a batch */
 		status = FileRepPrimary_MirrorVerify(
@@ -7631,7 +7622,7 @@ int FileRepPrimary_CompareDirectoryListing(
 		{
 			numStartOvers++;
 			
-/* if mirror does not find lastChild it will start over at the beginning 
+/* if mirror does not find a valid dir pointer it will start over
  * only allow that to happen so many times to avoid infinite loop
 */
 #define MAX_START_OVERS 5
@@ -7662,7 +7653,8 @@ int FileRepPrimary_CompareDirectoryListing(
 			responseDataLength,
 			directoryExists);
 	  
-		if (numChildrenInBatch > 0){
+		if (numChildrenInBatch > 0)
+		{
 			Assert(responseData != NULL);
 		}
 		/* Walk through all the children sent by mirror
@@ -7679,7 +7671,8 @@ int FileRepPrimary_CompareDirectoryListing(
 		while (child < numChildrenInBatch)
 		{
 			
-			lastChildLen = (int)(*((char *)responseData+currOffset));
+			memcpy(&lastChildLen, (char* )responseData+currOffset, sizeof(int));
+
 			Assert(lastChildLen > 1);
 			lastChild = (char *)((char *)responseData+currOffset+sizeof(int));
 			verifyLog(logControl,
@@ -7743,6 +7736,12 @@ int FileRepPrimary_CompareDirectoryListing(
 			currOffset += lastChildLen;
 		}
 		
+		if (responseData != NULL)
+		{
+			pfree(responseData);
+			responseData = NULL;
+		}
+
 		
 	} while (!finalBatch && directoryExists);
 
@@ -8291,7 +8290,8 @@ FileRepPrimary_SendEnhancedBlockHashes(
 						&madeChange,
 						logControl);
 
-					if (madeChange){
+					if (madeChange)
+					{
 						page = (Page) scratchBuf;
 					}
 					/* whichSegment ? blkno / RELSEG_SIZE whichPage?
@@ -8345,7 +8345,8 @@ FileRepPrimary_SendEnhancedBlockHashes(
 						&madeChange,
 						logControl);
 
-					if (madeChange){
+					if (madeChange)
+					{
 						page = (Page) scratchBuf;
 					}
 
@@ -8454,9 +8455,12 @@ FileRepPrimary_SendEnhancedBlockHashes(
 				fileRepOperationDescription.verify.desc.enhancedBlockHash.dataLength = dataLengthLocal;
 				fileRepOperationDescription.verify.desc.enhancedBlockHash.hashcode = hashcode;
 				fileRepOperationDescription.verify.desc.enhancedBlockHash.exception = relinfo.exception;
-				if (blkno == numBlocks-1){
+				if (blkno == numBlocks-1)
+				{
 					fileRepOperationDescription.verify.desc.enhancedBlockHash.lastBlock = true;
-				} else {
+				} 
+				else 
+				{
 					fileRepOperationDescription.verify.desc.enhancedBlockHash.lastBlock = false;
 				}
 
@@ -8557,6 +8561,9 @@ FileRepPrimary_SendEnhancedBlockHashes(
 								  "VERIFICATION_ERROR_REPORT PRIMARY: !!MISMATCH!!!: ENHANCED FILE BLOCK HASH DID NOT MATCH FOR BLOCK OFFSET %d (STOPPING WITH FIRST MISMATCH)",
 								  fileOffset);
 #endif
+//						Assert(primaryFilename[0] == '\\');
+//						Assert(mirrorFilename[0] == '\\');
+						
 						writeFixFileRecord(
 										   logControl,
 										   getCompareExceptionString(relinfo),
@@ -9470,246 +9477,6 @@ looksLikeRelFileName(
 	return false;
 }
 
-bool
-wasHandledAlready(
-	char * thisDirectory,
-	char * thisChild,
-	char * nextDirectory,
-	char * nextChild)
-{
-
-	/*	elog(
-	 	LOG,
-	 	"wasHandledAlready thisDir %s thisChild %s nextDir %s nextChild %s",
-		thisDirectory,
-		thisChild,
-		nextDirectory,
-		nextChild);
-	*/
-	/* compare this directory and thisChild to the nextDiretory and nextChild
-	 *if earlier in the predefined order then don't process again
-	 */
-
-	if ((nextDirectory[0] == '\0') && (nextChild[0] == '\0'))
-	{
-		/* NOTHING PROCESSED YET */
-		return false;
-
-	}
-
-#if 0
-	/* TOOD this works given ordering - better to say
-	 * if thisDirectory >= nextDirectory && nextChild is null
-	 */
-	if (nextChild[0] == '\0')
-	{
-		/* thisDirectory base/2	nextDirectory base/1
-		 * everything in this directory has been processed -
-		 * just need to tally up the stats for the directory itself
-		 */
-		return true;
-	}
-#endif
-
-	/* SAME DIRECTORY */
-	if ((strlen(thisDirectory) == strlen(nextDirectory)) &&
-		(strcmp(thisDirectory, nextDirectory) == 0))
-	{
-		/* 		elog(LOG, "Directories are the same"); */
-		/* directories are the same - just compare the child names */
-		if (nextChild[0] == '\0')
-		{
-			if (thisChild[0] == '\0')
-			{
-				/* all we have left to do is the directory itself
-				 * and this is it
-				 */
-				return false;
-			}
-			else
-			{
-				/* all children have been done */
-				return true;
-			}
-		}
-		else if (thisChild[0] == '\0')
-		{
-			/* if thisChild is 0 and nextChild is not -
-			 * then we have not handled this yet because thisChild 0
-			 * is the last thing to handle in a directory
-			 */
-			return false;
-		}
-
-		/* NEITHER thisChild or nextChild is null so just compare them */
-		if (strcmp(thisChild,nextChild) <0)
-		{
-			/* this child is < next child then its been processed
-			 * already
-			 */
-			return true;
-		}
-		else
-		{
-			/* if child is the same too then this is the nextChild
-			 * to be processed and
-			 * so it was not handled already
-			 */
-			return false;
-		}
-	}
-
-
-	/* DIFFERENT DIRECTORIES
-	 * ONE DIRECTORY MAY BE A CHILD OF ANOTHER
-	 */
-	if ( (strlen(thisDirectory) > strlen(nextDirectory)) &&
-		 (strncmp(thisDirectory, nextDirectory, strlen(nextDirectory)) ==0))
-	{
-
-		/* THIS IS LONGER but STARTS WITH NEXT -
-		 * THIS COULD BE A CHILD OF NEXT
-		 * CAREFUL could be this /base/120 and next is /base/1 -
-		 * not a child of each other - should get out of here and
-		 * do compares at the end
-		 */
-		int nextDirLen = strlen(nextDirectory);
-
-		if (thisDirectory[nextDirLen] == '/')
-		{
-
-			/* thisDirectory is a child of nextDirectory -
-			 * but also have to look at the children!
-			 */
-			 /* elog(LOG,
-			  " thisDirectory %s is child of nextDirectory %s",
-			  thisDirectory,  nextDirectory); */
-            /* compare rest of /this to next's child
-			 */
-			if (nextChild[0] == '\0')
-			{
-				/* e.g. this /base/2 100 and next is /base
-				 * e.g. this /base/2	 and next is /base
-				 * just have the parent left to do -
-				 * all the children were handled already
-				 */
-				return true;
-
-			}
-			else if (strncmp(
-						 thisDirectory+nextDirLen+1,
-						 nextChild,
-						 strlen(nextChild)) <0)
-			{
-				/* e.g. this /base/2 100 and next is /base 3 */
-				/* elog(LOG,
-				   "wasHandledAlready-2- Skipping thisDirectory %s %s nextDirectory %s %s",
-				   thisDirectory, thisChild, nextDirectory, nextChild);
-				 */
-				return true;
-			}
-			else
-			{
-				/* e.g. this /base/2 100 and next is /base 1 */
-				/*
-				 elog(LOG,
-				  "wasHandledAlready-3- Not skipping thisDirectory %s %s nextDirectory %s %s",
-				  thisDirectory, thisChild, nextDirectory, nextChild);
-				*/
-				return false;
-			}
-		}
-
-	}
-	else if ( (strlen(thisDirectory) < strlen(nextDirectory))
-				 &&
-				 (strncmp(thisDirectory,
-						  nextDirectory,
-						  strlen(thisDirectory)) ==0))
-	{
-
-		/* NEXT IS LONGER but STARTS WITH THIS -
-		 * NEXT COULD BE A CHILD OF THIS
-		 * CAREFUL could be this /base/1 and next is /base/120 -
-		 * not a child of each other - that should get out of
-		 * here and do compares at the end
-		 */
-		int thisDirLen = strlen(thisDirectory);
-
-		if (nextDirectory[thisDirLen] == '/')
-		{
-			/*
-			  elog(LOG, "next %s is child of this %s",
-			  nextDirectory,  thisDirectory);
-			 */
-
-			/* nextDirectory is a child of thisDirectory -
-			 * but also have to look at the children!
-			 * compare rest of /next to this's child
-			 */
-			if (thisChild[0] == '\0')
-			{
-				/* next is /base/2 100 and this is /base	 NOT DONE */
-				/* elog(LOG,
-				   "wasHandledAlready-4-Not skipping thisDirectory %s %s nextDirectory %s %s",
-				   thisDirectory,
-				   thisChild,
-				   nextDirectory,
-				   nextChild);
-				*/
-				return false;
-			}
-			else if (strncmp(nextDirectory+thisDirLen+1,
-							 thisChild, strlen(thisChild)) <= 0)
-			{
-				/* next is /base/2 100 and this is /base 3
-				 * NOT DONE
-				 * next is /base/2 100 and this is /base 2
-				 * NOT DONE
-				 */
-				/* elog(LOG,
-				   "wasHandledAlready-5-Not skipping thisDirectory %s %s nextDirectory %s %s",
-				   thisDirectory,
-				   thisChild,
-				   nextDirectory,
-				   nextChild); */
-				return false;
-			}
-			else
-			{
-				/* ext is /base/2 100 and this is /base 1 DONE*/
-				/* elog(LOG,
-				   "wasHandledAlready-6-Skipping thisDirectory %s %s nextDirectory %s %s",
-				   thisDirectory,
-				   thisChild,
-				   nextDirectory,
-				   nextChild);*/
-				return true;
-			}
-
-			return false;
-		}
-
-	}
-
-	/* DIFFERENT DIRECTORIES AND NEITHER IS A CHILD OF THE OTHER -
-	 * JUST COMPARE THE DIRECTORIES
-	 */
-	Assert(strcmp(thisDirectory, nextDirectory) != 0);
-
-	if (strcmp(thisDirectory, nextDirectory) < 0)
-	{
-		/* if thisDirectory is < nextDirectory then
-		 * it has been processed already
-		 */
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
 int
 FillBufferWithDirectoryTreeListing(
 								   FileRepVerifyRequest_s * request,
@@ -9731,38 +9498,43 @@ FillBufferWithDirectoryTreeListing(
 								   uint32 *num_entries,
 								   bool justCount,
 								   bool *complete,
-
-	/*
-	 *  whereNext will be terms of the full path - baseDir/fromBasePath
-	 *  it is only used to pick back up where we left off - it is not
-	 *  used to put in the buffer
-	 */
-								   char * whereNextParent,
-								   char * whereNextChild)
+								   int startDepth,
+								   int *currDepth)
 {
 
 	int	 status = STATUS_OK;
 	DIR		*dir = NULL;
 	struct stat	 child_st;
 	char		 currentDirectoryName[MAXPGPATH+1];
+	char		 currentFromBasePath[MAXPGPATH+1];
 	char		 child_path[MAXPGPATH+1];
 	char		 base_path[MAXPGPATH+1];
 	struct dirent	*de = NULL;
 	FileRepVerifySummaryItem_s summaryItem;
 	FileRepVerifySummaryItem_s *pItem = NULL;
-	uint32 numImmediateChildren =0;
-	int this_len = 0;
-	pg_crc32 directoryHashcode = 0;
 	bool doFileHash = false;
 	bool doDirectoryHash = false;
 	bool keepChild = false;
 	bool sendDirectory = false;
+	
+	if (mirrBaseDirectory != NULL)
+	{
+		verifyLog(
+			request->logControl,	DEBUG1,
+			"FillBufferWithDirectoryTreeListing: priBaseDirectory %s mirrBaseDirectory %s depth %d num_entries %d\n",
+			priBaseDirectory,
+			mirrBaseDirectory,
+			*currDepth,
+			*num_entries);
 
-	verifyLog(
-		request->logControl,	DEBUG1,
-		"FillBufferWithDirectoryTreeListing: priBaseDirectory %s mirrBaseDirectory %s\n",
-		priBaseDirectory,
-		mirrBaseDirectory);
+	} else {
+		verifyLog(
+			request->logControl,	DEBUG1,
+			"FillBufferWithDirectoryTreeListing: priBaseDirectory %s depth %d num_entries %d\n",
+			priBaseDirectory,
+			*currDepth,
+			*num_entries);
+	}
 
 	doFileHash = request->doHash;
 
@@ -9790,14 +9562,10 @@ FillBufferWithDirectoryTreeListing(
 
 	*complete = false;
 
-	if (doDirectoryHash)
-	{
 
-		//NEW_HASH
-		directoryHashcode = crc32cInit();
+	errno = 0;
 
-	}
-
+	
 	if (strlen(fromBasePath) == 0)
 	{
 		snprintf(currentDirectoryName,
@@ -9812,72 +9580,166 @@ FillBufferWithDirectoryTreeListing(
 				 "%s/%s",
 				 priBaseDirectory, fromBasePath);
 	}
-
+	
 	verifyLog(request->logControl,
 			  DEBUG1,
-			  "FillBufferWithDirectoryTreeListing: currentDirectoryName %s whereNext parent %s child %s",
-			  currentDirectoryName,
-			  whereNextParent,
-			  whereNextChild);
+			  "FillBufferWithDirectoryTreeListing: currentDirectoryName %s",
+			  currentDirectoryName);
+	
+	Assert(startDepth <= *currDepth);
 
-	errno = 0;
-	/* read the directory into the DIR structure */
-	if ((dir = AllocateDir(currentDirectoryName)) == NULL)
+	if (startDepth >=MAX_DIRECTORY_DEPTH)
 	{
-		/* VERIFICATION_ERROR_INTERNAL */
-		ereport(WARNING,
-				(errcode_for_file_access(),
-				 errmsg("verification failure, "
-						"could not read directory '%s' : %m "
-						"verification aborted",
-						currentDirectoryName),
-				 errhint("run gpverify")));
+		/* this should not happen as we only have filerep/base/NUM/NUM
+		 * but it is possible that someone creates a deep directory tree under
+		 * this directory - don't stop verification - just report directory
+		 * tree unverified
+		 */
+
+		writeDiffTableRecord(
+			request->logControl,
+			request->logControl.logOptions.token,
+			"FileRepVerifyDirectoryTreeUnverifiedDepthExceeded",
+			fileRepPrimaryHostAddress,
+			currentDirectoryName, 
+			fileRepMirrorHostAddress,
+			mirrBaseDirectory,
+			-1,	-1,		-1, -1, -1,
+			NULL);
+		gFileRepVerifyShmem->request.isFailed = true;
+		
+		verifyLog(request->logControl,
+				  LOG,
+				  "UNEXPECTED ERROR in VERIFICATION: FillBufferWithDirectoryTreeListing directory depth %d exceeded max of  %d",
+				  startDepth, MAX_DIRECTORY_DEPTH);
+		Assert( startDepth == *currDepth);
+		//we are done with this depth
+		(*currDepth)--;
+		*complete = true;
+		return STATUS_OK;
+		
+	}
+	else if (startDepth < 0)
+	{
+		verifyLog(request->logControl,
+				  LOG,
+				  "INTERNAL ERROR in VERIFICATION: FillBufferWithDirectoryTreeListing directory depth %d",
+				  startDepth);
+		Assert(0);
+		return STATUS_ERROR;
+		
+	}
+	
+	if (request->savedDirectoryStack[startDepth].dir == NULL) 
+	{
+
+		
+		if ((dir = AllocateDir(currentDirectoryName)) == NULL)
+		{
+			/* VERIFICATION_ERROR_INTERNAL */
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("verification failure, "
+							"could not read directory '%s' : %m "
+							"verification aborted",
+							currentDirectoryName),
+					 errhint("run gpverify")));
+			
+			verifyLog(request->logControl,
+					  DEBUG1,
+					  "FillBufferWithDirectoryTreeListing: Unable to AllocateDir %s",
+					  currentDirectoryName);
+			
+			return STATUS_ERROR;
+		}
+		request->savedDirectoryStack[startDepth].dir = dir;
+		strcpy(request->savedDirectoryStack[startDepth].fromBasePath,fromBasePath);
+		request->savedDirectoryStack[startDepth].numImmediateChildrenFound = 0;
 
 		verifyLog(request->logControl,
 				  DEBUG1,
-				  "FillBufferWithDirectoryTreeListing: Unable to AllocateDir %s",
-				  currentDirectoryName);
-
-		return STATUS_ERROR;
-	}
-
-	while ((de = ReadDir(dir, currentDirectoryName)) != NULL)
-	{
-
-		/*
-		   verifyLog(
-		   request->logControl,
-		   DEBUG5,
-		   "FillBufferWithDirectoryTreeListing de->d_name: |%s| num_entries %d numImmediateChildren %d",
-		   de->d_name,
-		   *num_entries,
-		   numImmediateChildren);
-		   verifyLog(
-		   request->logControl,
-		   DEBUG5,
-		   "strcmp(de->d_name, .) %d", strcmp(de->d_name, "."));
-		   verifyLog(
-		   request->logControl,
-		   DEBUG5, "strcmp(de->d_name, ..) %d", strcmp(de->d_name, ".."));
-		*/
-		if (strcmp(de->d_name, ".") == 0 ||
-			strcmp(de->d_name, "..") == 0)
+				  "FillBufferWithDirectoryTreeListing called allocate depth %d dir %s dirp %d",
+				  startDepth,
+				  currentDirectoryName,
+				  dir);
+				  
+		if (doDirectoryHash)
 		{
-			//verifyLog(request->logControl, DEBUG5, "continuing");
-			continue;
+			//NEW_HASH
+			request->savedDirectoryStack[startDepth].hash = crc32cInit();
+			
 		}
 
-		/* TODO inefficient to look at each one and say whether handled or not?
-		 * restrucutre to just start at whereNext and
-		 * then go to the right, including doing up and to the right as necessary
-		 */
-		snprintf(child_path,
-				 MAXPGPATH+1,
-				 "%s/%s",
-				 currentDirectoryName, de->d_name);
+	} 
 
 
-		/* MOVE THIS if just before the recursive call to FillBuffer */
+	do 
+	{
+
+		Assert(!(*currDepth >=MAX_DIRECTORY_DEPTH) || (*currDepth < 0));
+		Assert(request->savedDirectoryStack[*currDepth].dir != NULL);
+		
+		dir = request->savedDirectoryStack[*currDepth].dir;
+
+		
+		/* build the currentDirectoryName from this depth's base path*/
+		strcpy(currentFromBasePath, request->savedDirectoryStack[*currDepth].fromBasePath);
+		if (strlen(currentFromBasePath) == 0)
+		{
+			snprintf(currentDirectoryName,
+					 MAXPGPATH+1,
+					 "%s",
+					 priBaseDirectory);
+		}
+		else
+		{
+			snprintf(currentDirectoryName,
+					 MAXPGPATH+1,
+					 "%s/%s",
+					 priBaseDirectory, currentFromBasePath);
+		}
+
+
+		verifyLog(request->logControl,
+				  DEBUG1,
+				  "FillBufferWithDirectoryTreeListing restored saved dir depth %d dir %s dirp %d",
+				  *currDepth,
+				  currentDirectoryName,
+				  dir);
+
+		while ((de = ReadDir(dir, currentDirectoryName)) != NULL)
+		{
+			
+			/*
+			  verifyLog(
+			  request->logControl,
+			  DEBUG5,
+			  "FillBufferWithDirectoryTreeListing de->d_name: |%s| num_entries %d numImmediateChildren %d",
+			  de->d_name,
+			  *num_entries,
+			  numImmediateChildren);
+			  verifyLog(
+			  request->logControl,
+			  DEBUG5,
+			  "strcmp(de->d_name, .) %d", strcmp(de->d_name, "."));
+			  verifyLog(
+			  request->logControl,
+			  DEBUG5, "strcmp(de->d_name, ..) %d", strcmp(de->d_name, ".."));
+			*/
+			if (strcmp(de->d_name, ".") == 0 ||
+				strcmp(de->d_name, "..") == 0)
+			{
+				//verifyLog(request->logControl, DEBUG5, "continuing");
+				continue;
+			}
+			
+			snprintf(child_path,
+					 MAXPGPATH+1,
+					 "%s/%s",
+					 currentDirectoryName, de->d_name);
+
+
+			/* MOVE THIS if just before the recursive call to FillBuffer */
 /*	  if (fromBasePath != NULL)
 	  {
 	  snprintf(base_path, "%s/%s", fromBasePath, de->d_name);
@@ -9888,493 +9750,478 @@ FillBufferWithDirectoryTreeListing(
 	  }
 */
 
-		if (stat(child_path, &child_st) != 0)
-		{
-			/* VERIFICATION_ERROR_INTERNAL */
-			ereport(WARNING,
-					(errcode_for_file_access(),
-					 errmsg("could not stat file '%s/%s' : %m",
+			if (stat(child_path, &child_st) != 0)
+			{
+				/* VERIFICATION_ERROR_INTERNAL */
+				ereport(WARNING,
+						(errcode_for_file_access(),
+						 errmsg("could not stat file '%s/%s' : %m",
+								child_path,
+								de->d_name),
+						 errhint("run gpverify")));
+				
+				verifyLog(request->logControl,
+						  DEBUG1,
+						  "FillBufferWithDirectoryTreeListing: Unable to stat %s",
+						  child_path);
+				return STATUS_ERROR;
+			}
+			keepChild =
+				keepItem(child_path,
+						 S_ISREG(child_st.st_mode),
+						 request->verifyItem,
+						 request->requestType);
+			
+			if (!keepChild)
+			{
+				verifyLog(request->logControl,
+						  DEBUG3,
+						  "Skipping CHILD %s",
+						  child_path);
+				continue;
+			}
+			else
+			{
+				verifyLog(request->logControl,
+						  DEBUG3,
+						  "Keeping CHILD %s",
+						  child_path);
+			}
+			
+			
+			if (S_ISDIR(child_st.st_mode) &&
+				isExcludedDirectory(
+					de->d_name,
+					request->numIgnoreDirs,
+					request->ignoreDirs ))
+			{
+				verifyLog(request->logControl,
+						  DEBUG3,
+						  "FillBufferWithDirectoryTreeListing Skipping excluded directory %s/%s",
+						  currentDirectoryName,
+						  de->d_name);
+			}
+			if (S_ISREG(child_st.st_mode) &&
+				isExcludedFile(
+					de->d_name,
+					request->numIgnoreFilePatterns,
+					request->ignoreFiles))
+			{
+				verifyLog(request->logControl,
+						  DEBUG3,
+						  "FillBufferWithDirectoryTreeListing Skipping excluded file %s/%s",
+						  currentDirectoryName,
+						  de->d_name);
+			}
+			if (S_ISDIR(child_st.st_mode) &&
+				!isExcludedDirectory(
+					de->d_name,
+					request->numIgnoreDirs,
+					request->ignoreDirs ))
+			{
+				bool subDirComplete = false;
+				int subDirDepth = *currDepth+1;
+				
+				request->savedDirectoryStack[*currDepth].numImmediateChildrenFound++;
+				if (doDirectoryHash)
+				{
+					
+					//NEW_HASH
+					request->savedDirectoryStack[*currDepth].hash =
+						crc32c(
+							request->savedDirectoryStack[*currDepth].hash,
+							de->d_name,
+							strlen(de->d_name));
+					
+				}
+				
+				/* JUST PASS IN '\0' to start out fromBasePath rather than NULL
+				 * WOULD GET RID OF THIS SPECIAL CASE?
+				 */
+				if (strlen(currentFromBasePath) == 0)
+				{
+					snprintf(base_path,
+							 MAXPGPATH+1,
+							 "%s",
+							 de->d_name);
+				}
+				else
+				{
+					snprintf(base_path,
+							 MAXPGPATH+1,
+							 "%s/%s",
+							 currentFromBasePath, de->d_name);
+					
+				}
+				(*currDepth)++;
+				status = FillBufferWithDirectoryTreeListing(
+					request,
+					priBaseDirectory,
+					mirrBaseDirectory,
+					base_path,
+					buf,
+					used_len,
+					bufferSizeBytes,
+					num_entries,
+					justCount,
+					&subDirComplete,
+					subDirDepth,
+					currDepth);
+				
+				if (status != STATUS_OK)
+				{
+					ereport(WARNING,
+							(errmsg("verification failure, "
+									"could not parse file '%s' "
+									"verification aborted",
+									child_path),
+							 errhint("run gpverify")));
+					
+					return status;
+				} 
+				
+				if ((!subDirComplete) || 
+					(!justCount && 
+					 (bufferSizeBytes < 
+					  (*used_len + sizeof(FileRepVerifySummaryItem_s) ))))
+				{
+					return STATUS_OK;
+				} 
+
+			}
+			else if (
+				S_ISREG(child_st.st_mode) &&
+				!isExcludedFile(
+					de->d_name,
+					request->numIgnoreFilePatterns,
+					request->ignoreFiles))
+			{
+				
+				request->savedDirectoryStack[*currDepth].numImmediateChildrenFound++;
+				if (doDirectoryHash)
+				{
+					
+					//NEW_HASH
+					request->savedDirectoryStack[*currDepth].hash = 
+						crc32c(
+							request->savedDirectoryStack[*currDepth].hash,
+							de->d_name,
+							strlen(de->d_name));
+					
+				}
+				
+				/* TODO -disable this check to see that the database version
+				 * is really finding everything it needs to!!!
+				 */
+				if (request->skipRelFiles &&
+/*				  looksLikeRelFileName(currentDirectoryName, de->d_name)) */
+					looksLikeRelFileName(currentFromBasePath, de->d_name))
+				{
+					verifyLog(
+						request->logControl,
+						DEBUG5,
+						"Skipping compare %s %s %s looksLikeRelFileName",
+						priBaseDirectory,
+						currentFromBasePath,
+						de->d_name);
+					continue;
+				}
+				else
+				{
+					verifyLog(
+						request->logControl,
+						DEBUG3,
+						"%s %s %s Do compare - not relfilename or !skipRelFiles (skipRelFiles %d)",
+						priBaseDirectory,
+						currentFromBasePath,
+						de->d_name,
+						request->skipRelFiles);
+				}
+				
+				if (justCount)
+				{
+					FileRepVerify_AddToTotalBlocksToVerify(child_st.st_size);
+				
+				} 
+				else 
+				{
+					/* add to bytes verified ? not really verified at this point */
+					FileRepVerify_AddToTotalBlocksVerified(child_st.st_size);
+				   
+				}
+				
+				verifyLog(
+					request->logControl,
+					DEBUG3,
+					"FillBufferWithDirectoryTreeListing FILE de->d_name: |%s| num_entries %d",
+					de->d_name,
+					*num_entries);
+				
+				/* TODO: Is there really any point of sending a
+				 * summaryItem.isFile = true entry if we don't compare the size
+				 *  or the contents?
+				 *  we shouldn't compare size or contents of relFileNodes -
+				 *  but we are skipping those anyway	 -
+				 *  everything else we find would
+				 *  be a flat file - shouldn't we be comparing the size and
+				 *  contents of those?
+				 */
+				
+				(*num_entries)++;
+				
+				if (!justCount)
+				{
+					memset(&summaryItem, 0,
+						   sizeof(FileRepVerifySummaryItem_s));
+					summaryItem.isFile = true;
+					
+					/* WHEN WE PLACE ITEMS in the buffer -
+					 * we just leave off the baseDir portion
+					 * It has to be put back on on the mirror
+					 * when we go to actually open files
+					 */
+					strncpy(summaryItem.baseDir,
+							mirrBaseDirectory,
+							MAXPGPATH+1);
+					
+					if (strlen(currentFromBasePath) != 0)
+					{
+						strncpy(summaryItem.fromBasePath,
+								currentFromBasePath,
+								strlen(currentFromBasePath)+1);
+					}
+					else
+					{
+						summaryItem.fromBasePath[0] = '\0';
+					}
+					strncpy(summaryItem.filename,
+							de->d_name,
+							strlen(de->d_name)+1);
+					
+					
+					/*summaryItem.identifier.fileRepFlatFileIdentifier.blockId =
+					  FILEREPFLATFILEID_WHOLE_FILE;*/
+					
+					if (request->includeFileSizeInfo)
+					{
+						summaryItem.summary.fileSummary.fileSize =
+							child_st.st_size;
+						
+					}
+					else
+					{
+						summaryItem.summary.fileSummary.fileSize = 0;
+					}
+					if (doFileHash)
+					{
+						char primaryFileName[MAXPGPATH+1];
+						char mirrorFileName[MAXPGPATH+1];
+
+						snprintf(primaryFileName, MAXPGPATH+1,
+								 "%s/%s/%s",
+								 priBaseDirectory,
+								 summaryItem.fromBasePath,
+								 summaryItem.filename);
+						snprintf(mirrorFileName, MAXPGPATH+1,
+								 "%s/%s/%s",
+								 mirrBaseDirectory,
+								 summaryItem.fromBasePath,
+								 summaryItem.filename);
+						
+						FileRepVerify_ComputeFileHash(
+							primaryFileName,
+							&summaryItem.summary.fileSummary.fileContentsHashcode,
+							FileRepVerifyCompareException_None,
+							0,
+							0,
+							request->logControl);
+					}
+					else
+					{
+						summaryItem.summary.fileSummary.fileContentsHashcode = 0;
+					}
+					
+					
+					
+					pItem = (FileRepVerifySummaryItem_s *)(buf + *used_len);
+					memcpy((void *)pItem, (void *) (&(summaryItem)), 
+						   sizeof(	FileRepVerifySummaryItem_s));
+					
+					*used_len+=sizeof(	FileRepVerifySummaryItem_s);
+					if(bufferSizeBytes < 
+					   (*used_len + sizeof(FileRepVerifySummaryItem_s)))
+					{
+						/* there won't be room for another item...
+						   so return now
+						 */
+						verifyLog(
+							request->logControl,
+							DEBUG3,
+							"No room for another item 2...returning from partial directory %s depth %d",
 							child_path,
-							de->d_name),
-					errhint("run gpverify")));
+							*currDepth);
+						return STATUS_OK;
+						
+					}
 
-			FreeDir(dir);
-			verifyLog(request->logControl,
-					  DEBUG1,
-					  "FillBufferWithDirectoryTreeListing: Unable to stat %s",
-					  child_path);
-			return STATUS_ERROR;
-		}
-		keepChild =
-			keepItem(child_path,
-					 S_ISREG(child_st.st_mode),
-					 request->verifyItem,
-					 request->requestType);
+				}
+				
+			}
+		} //ReadDir
 
-		if (!keepChild)
+		
+		if (doDirectoryHash)
 		{
-			verifyLog(request->logControl,
-					  DEBUG3,
-					  "Skipping CHILD %s",
-					  child_path);
-			continue;
+			
+			//NEW_HASH
+			request->savedDirectoryStack[*currDepth].hash = 
+				crc32cFinish( request->savedDirectoryStack[*currDepth].hash);
+		}
+		
+		
+		Assert(strlen("\0") == 0);
+		
+		
+		if (request->requestType ==
+			FileRepVerifyRequestType_FILE )
+		{
+			sendDirectory = false;
+		}
+		else if (request->requestType ==
+				 FileRepVerifyRequestType_DIRECTORY )
+		{
+			int compareLen;
+			compareLen = strlen(request->verifyItem);
+			if (request->verifyItem[compareLen-1] == '\\')
+			{
+				compareLen --;
+			}
+			if (strncmp(currentDirectoryName,
+						request->verifyItem,
+						compareLen) ==0)
+			{
+				sendDirectory = true;
+			}
+			else
+			{
+				sendDirectory = false;
+			}
 		}
 		else
 		{
-			verifyLog(request->logControl,
-					  DEBUG3,
-					  "Keeping CHILD %s",
-					  child_path);
+			sendDirectory = true;
 		}
 
-
-		if (S_ISDIR(child_st.st_mode) &&
-			isExcludedDirectory(
-								de->d_name,
-								request->numIgnoreDirs,
-								request->ignoreDirs ))
+		if(sendDirectory)
 		{
-			verifyLog(request->logControl,
-					  DEBUG3,
-					  "FillBufferWithDirectoryTreeListing Skipping excluded directory %s/%s",
-					  currentDirectoryName,
-					  de->d_name);
-		}
-		if (S_ISREG(child_st.st_mode) &&
-			isExcludedFile(
-						   de->d_name,
-						   request->numIgnoreFilePatterns,
-						   request->ignoreFiles))
-		{
-			verifyLog(request->logControl,
-					  DEBUG3,
-					  "FillBufferWithDirectoryTreeListing Skipping excluded file %s/%s",
-					  currentDirectoryName,
-					  de->d_name);
-		}
-		if (S_ISDIR(child_st.st_mode) &&
-			!isExcludedDirectory(
-								 de->d_name,
-								 request->numIgnoreDirs,
-								 request->ignoreDirs ))
-		{
-			bool subDirComplete = false;
-
-			numImmediateChildren++;
-			if (doDirectoryHash)
-			{
-
-				//NEW_HASH
-				directoryHashcode =
-					crc32c(
-						directoryHashcode,
-						de->d_name,
-						strlen(de->d_name));
-
-			}
-
-			if (wasHandledAlready(
-								  currentDirectoryName,
-								  de->d_name,
-								  whereNextParent,
-								  whereNextChild))
-			{
-				verifyLog(
-						  request->logControl,
-						  DEBUG5,
-						  "Skipping %s/%s because handled already",
-						  currentDirectoryName,
-						  de->d_name);
-				continue;
-			}
-
-			/* JUST PASS IN '\0' to start out fromBasePath rather than NULL
-			 * WOULD GET RID OF THIS SPECIAL CASE?
-			 */
-			if (strlen(fromBasePath) == 0)
-			{
-				snprintf(base_path,
-						 MAXPGPATH+1,
-						 "%s",
-						 de->d_name);
-			}
-			else
-			{
-				snprintf(base_path,
-						 MAXPGPATH+1,
-						 "%s/%s",
-						 fromBasePath, de->d_name);
-
-			}
-			status = FillBufferWithDirectoryTreeListing(
-														request,
-														priBaseDirectory,
-														mirrBaseDirectory,
-														base_path,
-														buf,
-														used_len,
-														bufferSizeBytes,
-														num_entries,
-														justCount,
-														&subDirComplete,
-														whereNextParent,
-														whereNextChild);
-
-			if (status != STATUS_OK)
-			{
-				ereport(WARNING,
-						(errmsg("verification failure, "
-								"could not parse file '%s' "
-								"verification aborted",
-								child_path),
-						 errhint("run gpverify")));
-
-				FreeDir(dir);
-				return status;
-			}
-
-			/* if this sub directory is not complete then no point
-			 * continuing here - return all the way back to send this out
-			 */
-			if (!subDirComplete)
-			{
-				verifyLog(
-						  request->logControl,
-						  DEBUG3,
-						  "Returning from partial directory %s whereNext parent %s child %s",
-						  child_path,
-						  whereNextParent,
-						  whereNextChild);
-				FreeDir(dir);
-				return STATUS_OK;
-			}
-
-		}
-		else if (
-				 S_ISREG(child_st.st_mode) &&
-				 !isExcludedFile(
-								 de->d_name,
-								 request->numIgnoreFilePatterns,
-								 request->ignoreFiles))
-		{
-
-			numImmediateChildren++;
-			if (doDirectoryHash)
-			{
-
-				//NEW_HASH
-				directoryHashcode = crc32c(
-						directoryHashcode,
-						de->d_name,
-						strlen(de->d_name));
-
-			}
-
-			/* TODO -disable this check to see that the database version
-			 * is really finding everything it needs to!!!
-			 */
-			if (request->skipRelFiles &&
-/*				  looksLikeRelFileName(currentDirectoryName, de->d_name)) */
-				looksLikeRelFileName(fromBasePath, de->d_name))
-			{
-				verifyLog(
-						  request->logControl,
-						  DEBUG5,
-						  "Skipping compare %s %s %s looksLikeRelFileName",
-						  priBaseDirectory,
-						  fromBasePath,
-						  de->d_name);
-				continue;
-			}
-			else
-			{
-				verifyLog(
-						  request->logControl,
-						  DEBUG3,
-						  "%s %s %s Do compare - not relfilename or !skipRelFiles (skipRelFiles %d)",
-						  priBaseDirectory,
-						  fromBasePath,
-						  de->d_name,
-						  request->skipRelFiles);
-			}
-
-			if (wasHandledAlready(
-								  currentDirectoryName,
-								  de->d_name,
-								  whereNextParent,
-								  whereNextChild))
-			{
-				verifyLog(
-					request->logControl,
-					DEBUG5,
-					"Skipping %s/%s because handled already",
-					currentDirectoryName, de->d_name);
-				continue;
-			}
-
-			if (!justCount)
-			{
-				this_len = sizeof(FileRepVerifySummaryItem_s);
-
-				/* add to bytes verified ? not really verified at this point */
-				FileRepVerify_AddToTotalBlocksVerified(child_st.st_size);
-
-				/* buffer is full so just send, set last Item so
-				 * we can pick up where we left off
-				 */
-				if (bufferSizeBytes < *used_len + this_len)
-				{
-
-					verifyLog(
-							  request->logControl,
-							  DEBUG3,
-							  "Buffer is full - set whereNextParent %s and whereNextChild %s",
-							  currentDirectoryName,
-							  de->d_name);
-
-					strcpy(whereNextParent, currentDirectoryName);
-					strcpy(whereNextChild, de->d_name);
-					FreeDir(dir);
-
-					return STATUS_OK;
-
-				}
-			} else {
-				FileRepVerify_AddToTotalBlocksToVerify(child_st.st_size);
-			}
-
+			/* TODO: This is being done multiple times for the same directory */
 			verifyLog(
-					  request->logControl,
-					  DEBUG3,
-					  "FillBufferWithDirectoryTreeListing FILE de->d_name: |%s| num_entries %d",
-					  de->d_name,
-					  *num_entries);
-
-			/* TODO: Is there really any point of sending a
-			 * summaryItem.isFile = true entry if we don't compare the size
-			 *  or the contents?
-			 *  we shouldn't compare size or contents of relFileNodes -
-			 *  but we are skipping those anyway	 -
-			 *  everything else we find would
-			 *  be a flat file - shouldn't we be comparing the size and
-			 *  contents of those?
-			 */
+				request->logControl,
+				DEBUG3,
+				"FillBufferWithDirectoryTreeListing DIRECTORY currentDirectoryName |%s| num_entries %d numImmediateChildren %d",
+				currentDirectoryName,
+				*num_entries,
+				request->savedDirectoryStack[*currDepth].numImmediateChildrenFound);
 
 			(*num_entries)++;
-
 			if (!justCount)
 			{
-				memset(&summaryItem, 0,
-					   sizeof(FileRepVerifySummaryItem_s));
-				summaryItem.isFile = true;
-
+				memset(&summaryItem, 0, sizeof(FileRepVerifySummaryItem_s));
+				summaryItem.isFile = false;
+				
+				strncpy(summaryItem.baseDir,
+						mirrBaseDirectory,
+						MAXPGPATH+1);
+				
 				/* WHEN WE PLACE ITEMS in the buffer -
 				 * we just leave off the baseDir portion
 				 * It has to be put back on on the mirror
 				 * when we go to actually open files
 				 */
-				strncpy(summaryItem.baseDir,
-						mirrBaseDirectory,
-						MAXPGPATH+1);
-
-				if (strlen(fromBasePath) != 0)
+				if (strlen(currentFromBasePath) != 0)
 				{
 					strncpy(summaryItem.fromBasePath,
-							fromBasePath,
-							strlen(fromBasePath)+1);
+							currentFromBasePath,
+							strlen(currentFromBasePath)+1);
 				}
 				else
 				{
 					summaryItem.fromBasePath[0] = '\0';
 				}
-				strncpy(summaryItem.filename,
-						de->d_name,
-						strlen(de->d_name)+1);
+				
+				summaryItem.filename[0] = '\0';
 
-
-				/*summaryItem.identifier.fileRepFlatFileIdentifier.blockId =
-				  FILEREPFLATFILEID_WHOLE_FILE;*/
-
-				if (request->includeFileSizeInfo)
+				summaryItem.summary.dirSummary.numImmediateChildren =
+					request->savedDirectoryStack[*currDepth].numImmediateChildrenFound;
+				
+				
+				if (doDirectoryHash)
 				{
-					summaryItem.summary.fileSummary.fileSize =
-						child_st.st_size;
-
+					summaryItem.summary.dirSummary.childrenListHashcode =
+						request->savedDirectoryStack[*currDepth].hash;
 				}
 				else
 				{
-					summaryItem.summary.fileSummary.fileSize = 0;
+					summaryItem.summary.dirSummary.childrenListHashcode =
+						0;
 				}
-				if (doFileHash)
-				{
-					char primaryFileName[MAXPGPATH+1];
-					char mirrorFileName[MAXPGPATH+1];
-
-					snprintf(primaryFileName, MAXPGPATH+1,
-							 "%s/%s/%s",
-							 priBaseDirectory,
-							 summaryItem.fromBasePath,
-							 summaryItem.filename);
-					snprintf(mirrorFileName, MAXPGPATH+1,
-							 "%s/%s/%s",
-							 mirrBaseDirectory,
-							 summaryItem.fromBasePath,
-							 summaryItem.filename);
-
-					FileRepVerify_ComputeFileHash(
-						primaryFileName,
-						&summaryItem.summary.fileSummary.fileContentsHashcode,
-						FileRepVerifyCompareException_None,
-						0,
-						0,
-						request->logControl);
-				}
-				else
-				{
-					summaryItem.summary.fileSummary.fileContentsHashcode = 0;
-				}
-
-
 
 				pItem = (FileRepVerifySummaryItem_s *)(buf + *used_len);
-				memcpy((void *)pItem, (void *) (&(summaryItem)), this_len);
+				memcpy((void *)pItem, (void *) (&(summaryItem)), 
+					   sizeof(	FileRepVerifySummaryItem_s));
+				*used_len+=sizeof(	FileRepVerifySummaryItem_s);
+				if(bufferSizeBytes < 
+				   ( *used_len + sizeof(FileRepVerifySummaryItem_s)))
+				{
 
-				*used_len+=this_len;
+					/* there won't be room for another item 
+					 * return now
+					 */
+					verifyLog(
+						request->logControl,
+						DEBUG3,
+						"No room for another item 1...returning from partial directory %s startDepth %d currDepth %d",
+						child_path,
+						startDepth,
+						*currDepth);
+
+					/*we are done with this directory - 
+					 * free it and change depth before we return
+					 */
+					if (*currDepth == startDepth) 
+					{
+						//this sub dir is complete
+						*complete = true;
+					}
+
+					FreeDir(request->savedDirectoryStack[*currDepth].dir);
+					request->savedDirectoryStack[*currDepth].dir = NULL;
+
+					(*currDepth)--;
+					
+					return STATUS_OK;
+					
+				}
+
+
 			}
 
 		}
-	}
 
-
-	//NEW_HASH
-	directoryHashcode = crc32cFinish(directoryHashcode);
-
-	if (!justCount)
-	{
-		this_len = sizeof(FileRepVerifySummaryItem_s);
-
-		if (bufferSizeBytes < *used_len + this_len)
+		if ((*currDepth > -1) && 
+			(request->savedDirectoryStack[*currDepth].dir != NULL))
 		{
 
-			verifyLog(
-				request->logControl,
-				DEBUG3,
-				"Buffer is full -just have directory %s left",
-				currentDirectoryName);
-			strcpy(whereNextParent, currentDirectoryName);
-			whereNextChild[0] = '\0';
-			FreeDir(dir);
-			return STATUS_OK;
+			FreeDir(request->savedDirectoryStack[*currDepth].dir);
+			request->savedDirectoryStack[*currDepth].dir = NULL;
+			(*currDepth)--;
 
 		}
-	}
-
-	Assert(strlen("\0") == 0);
-
-
-	if (request->requestType ==
-		FileRepVerifyRequestType_FILE )
-	{
-		sendDirectory = false;
-	}
-	else if (request->requestType ==
-			   FileRepVerifyRequestType_DIRECTORY )
-	{
-		int compareLen;
-		compareLen = strlen(request->verifyItem);
-		if (request->verifyItem[compareLen-1] == '\\')
-		{
-			compareLen --;
-		}
-		if (strncmp(currentDirectoryName,
-					request->verifyItem,
-					compareLen) ==0)
-		{
-			sendDirectory = true;
-		}
-		else
-		{
-			sendDirectory = false;
-		}
-	}
-	else
-	{
-		sendDirectory = true;
-	}
-	if (sendDirectory
-		&& ! wasHandledAlready(
-			currentDirectoryName,
-			"\0",
-			whereNextParent,
-			whereNextChild))
-	{
-		/* TODO: This is being done multiple times for the same directory */
-		verifyLog(
-			request->logControl,
-			DEBUG3,
-			"FillBufferWithDirectoryTreeListing DIRECTORY currentDirectoryName %s numImmediateChildren %d",
-			currentDirectoryName,
-			numImmediateChildren);
-
-		if (!justCount)
-		{
-			memset(&summaryItem, 0, sizeof(FileRepVerifySummaryItem_s));
-			summaryItem.isFile = false;
-
-			strncpy(summaryItem.baseDir,
-					mirrBaseDirectory,
-					MAXPGPATH+1);
-
-			/* WHEN WE PLACE ITEMS in the buffer -
-			 * we just leave off the baseDir portion
-			 * It has to be put back on on the mirror
-			 * when we go to actually open files
-			 */
-			if (strlen(fromBasePath) != 0)
-			{
-				strncpy(summaryItem.fromBasePath,
-						fromBasePath,
-						strlen(fromBasePath)+1);
-			}
-			else
-			{
-				summaryItem.fromBasePath[0] = '\0';
-			}
-
-			summaryItem.filename[0] = '\0';
-/*			summaryItem.identifier.fileRepFlatFileIdentifier.blockId =
-					FILEREPFLATFILEID_WHOLE_FILE;
-*/
-			summaryItem.summary.dirSummary.numImmediateChildren =
-				numImmediateChildren;
-
-
-			if (doDirectoryHash)
-			{
-				summaryItem.summary.dirSummary.childrenListHashcode =
-					directoryHashcode;
-			}
-			else
-			{
-				summaryItem.summary.dirSummary.childrenListHashcode =
-					0;
-			}
-			/*
-			   memcpy((void *)(*buf+ *used_len),
-			   (void *) (&(summaryItem)), this_len);
-			   *used_len+=this_len;
-			   */
-			pItem = (FileRepVerifySummaryItem_s *)(buf + *used_len);
-			memcpy((void *)pItem, (void *) (&(summaryItem)), this_len);
-			*used_len+=this_len;
-		}
-		(*num_entries)++;
-	}
+		
+		
+	}while ((*currDepth) >= startDepth);
 
 	*complete = true;
-	FreeDir(dir);
-
-	/* TODO: Update the global count of total blocks to be verified*/
 
 	return STATUS_OK;
 }
@@ -10395,20 +10242,18 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 																   uint32 * num_entries,
 																   bool justCount,
 																   bool * complete,
-																   char * whereNextParent,
-																   char * whereNextChild)
-						{
+																   int startDepth,
+																   int * currDepth)
+{
 	int status = STATUS_OK;
 	struct stat	 dir_st;
 	uint32	used_len = 0;
 
+	
 	verifyLog(request->logControl,
 			  DEBUG1,
-			  "FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing: primary %s mirror %s whereNext parent %s child %s",
-			  primaryBaseDir,
-			  mirrorBaseDir,
-			  whereNextParent,
-			  whereNextChild);
+			  "FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing: primary %s",
+			  primaryBaseDir);
 
 	errno = 0;
 	if (stat(primaryBaseDir, &dir_st) <	 0)
@@ -10464,8 +10309,8 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 												num_entries,
 												justCount,
 												complete,
-												whereNextParent,
-												whereNextChild);
+												startDepth,
+												currDepth);
 
 	if (status != STATUS_OK)
 	{
@@ -10476,18 +10321,24 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 						primaryBaseDir),
 				 errhint("run gpverify")));
 
+		for (int i=0; i< MAX_DIRECTORY_DEPTH; i++)
+		{
+			if (request->savedDirectoryStack[i].dir != NULL)
+			{
+				FreeDir(request->savedDirectoryStack[i].dir);
+				request->savedDirectoryStack[i].dir= NULL;
+			}
+		}
+
 		return status;
-	}
+	} 
 
 	verifyLog(request->logControl,
 			  DEBUG1,
-			  "FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing: num_entries %d used_len %d bufferSizeBytes %d complete %d whereNextParent %s whereNextChild %s",
-			  *num_entries,
+			  "FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing: used_len %d bufferSizeBytes %d complete %d",
 			  used_len,
 			  bufferSizeBytes,
-			  (int) (*complete),
-			  whereNextParent,
-			  whereNextChild);
+			  (int) (*complete));
 
 	return STATUS_OK;
 }
@@ -10847,7 +10698,8 @@ extractDir(char * file, char * dir, int maxLen)
 
 	len = strlen(file);
 
-	if (len > maxLen){
+	if (len > maxLen)
+	{
 		return false;
 	}
 
@@ -10871,7 +10723,8 @@ extractDir(char * file, char * dir, int maxLen)
 	}
 
 	len = endOfDir-startOfDir +1;
-	if (len <=0){
+	if (len <=0)
+	{
 		return false;
 	}
 
@@ -10895,8 +10748,9 @@ checkDirectoryExists(char * dir)
 	if (stat(dir, &st) < 0)
 	{
 		return false;
-	} else {
-
+	} 
+	else 
+	{
 		return true;
 	}
 }
@@ -11120,6 +10974,10 @@ processVerifyRequest(
 						 args->token);
 					gFileRepVerifyShmem->resume = true;
 					gFileRepVerifyShmem->isNewRequestWaiting = true;
+
+					/* We are not reading the checkpoint file here because current 
+					 * request structure already reflects this one 
+					 */
 				}
 				else
 				{

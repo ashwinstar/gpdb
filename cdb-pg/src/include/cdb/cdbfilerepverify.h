@@ -185,24 +185,43 @@ typedef enum FileRepVerifyRequestState_e
 	
 } FileRepVerifyRequestState_e;
 
-typedef struct FileRepVerifyRequest_RestartPoint_s 
-{
-	bool valid;
-	bool useLogical;
-  
-	/* type logical or physical?
-	 * union of structs - one for logical and one for physical?
-	 */
-	int64 logicalCheckpoint_persistentSerialNum; /* Tid	 */
-  
-	bool filespacesComplete;
-	int64 physicalCheckpoint_persistentSerialNum;
-	char	physicalCheckpoint_whereNextParent[MAXPGPATH+1];
-	char	physicalCheckpoint_whereNextChild[MAXPGPATH+1];
 
+typedef enum FileRepVerify_RestartPoint_e 
+{
+	/* order is 
+	   1. physical verify 
+	   1.1 VerifyUserFilespaces
+	   1.2 VerifySystemFilespace 
+	   2 logical verify 
+	   2.1 VerifyRelFileNodes) 
+	*/
+	FileRepVerify_RestartPoint_INVALID=0,
+	FileRepVerify_RestartPoint_USERFILESPACES,
+	FileRepVerify_RestartPoint_SYSTEMFILESPACE,
+	FileRepVerify_RestartPoint_RELFILENODES,
+
+	/* the number of values in this enumeration */
+	FileRepVerify_RestartPoint__EnumerationCount,
+
+} FileRepVerify_RestartPoint_e;
+
+#define INVALID_PERSISTENT_SERIAL_NUM -1
+typedef struct FileRepVerifyRequest_RestartInfo_s 
+{
+
+	bool valid;
+	bool useLogical; /* if false skip physical all together */
+	bool filespacesComplete; 
+  
+	/* logical persistent serial num refers to the serial num of the 
+	 * last rel file node  as returned by PersistentFileSysObj_OnlineVerifyScan
+	 */
+	int64 persistentSerialNum; /* Tid	 */
+    
+	/* ignore info won't change from one suspend to another - only write it once */
 	bool	haveWrittenIgnoreInfo;
 
-} FileRepVerifyRequest_RestartPoint_s;
+} FileRepVerifyRequest_RestartInfo_s;
 
 typedef struct FileRepVerify_CompareStats_s 
 {
@@ -282,6 +301,22 @@ typedef enum FileRepVerifyDiffType_e
 	FielRepVerifyMissingRelationforFile
 	
 }FileRepVerifyDiffType_e;
+
+
+/* 
+ * when we are traversing the directory structure to compare
+ * directories and non-rel node files, we save a stack
+ * of directory information as we descend the directory tree
+ * this avoids multiple calls to AllocateDir for each level
+ */
+typedef struct FileRepVerifyDirectoryStack_s
+{
+	DIR		*dir;
+	pg_crc32 hash;
+	char	 fromBasePath[MAXPGPATH+1];
+	uint32   numImmediateChildrenFound;
+	
+} FileRepVerifyDirectoryStack_s;
 /*
  * This structure will live in shared memory so it must not use any 
  * allocation to build it!
@@ -314,13 +349,20 @@ typedef struct FileRepVerifyRequest_s
 	bool isFailed;	
 	FileRepVerifyRequestState_e state;
 	/* checkpoint or restart from X */
-	FileRepVerifyRequest_RestartPoint_s restartInfo;
+	FileRepVerifyRequest_RestartInfo_s restartInfo;
 	FileRepVerify_CompareStats_s compareStats;
 	FileRepVerifyArguments_s fileRepVerifyArguments;
 	FileRepVerifyRequestType_e requestType;
 	char verifyItem[MAXPGPATH+1];
 	TimestampTz startTime;
 	TimestampTz endTime;
+
+	/*
+	 * we really shouldn't have more that a depth of 4
+	 * filerep/base/NUM/NUM
+	 */
+#define MAX_DIRECTORY_DEPTH 10	
+	FileRepVerifyDirectoryStack_s savedDirectoryStack[MAX_DIRECTORY_DEPTH];
 
 	//Rajesh used this - why do we need both?
 	struct timeval			startVerificationTime;
@@ -342,8 +384,28 @@ typedef struct FileRepVerifyMirrorRequestParams_s
 	int		numIgnoreDirs;
 	char	**ignoreFiles;
 	char	**ignoreDirs;
+
+	DIR		*compareDir;
+	char	 compareDir_Name[MAXPGPATH+1];
+	char	 compareDir_NextChild[MAXPGPATH+1];
 	
 } FileRepVerifyMirrorRequestParams_s;
+
+typedef struct FileRepVerifyShmem_s
+{
+	slock_t					lock;
+
+	volatile bool			isVerificationInProgress;
+	volatile bool			isNewRequestWaiting;
+	/* SYNCHRONOUSABORTSUSPEND*/
+	volatile bool           signalSynchronousRequests;
+
+	FileRepVerifyRequest_s	request;
+
+	bool					availableForReuse;
+	bool					resume;
+
+} FileRepVerifyShmem_s;
 
 
 extern void FileRepPrimary_StartVerification(void);
