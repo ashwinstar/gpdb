@@ -2930,7 +2930,14 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_statistics_use_fkeys,
 		true, NULL, NULL
 	},
-
+	{
+		{"gp_statistics_master_sample", PGC_USERSET, STATS_ANALYZE,
+			gettext_noop("This guc enables the sample needed for analyze to reside on the master."),
+			NULL
+		},
+		&gp_statistics_master_sample,
+		false, NULL, NULL
+	},
 	{
 		{"gp_eager_hashtable_release", PGC_USERSET, DEPRECATED_OPTIONS,
 			gettext_noop("This guc determines if a hash-join eagerly releases its hash table."),

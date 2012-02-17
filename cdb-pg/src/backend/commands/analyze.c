@@ -80,6 +80,7 @@ bool			gp_statistics_use_fkeys = FALSE;
 int				gp_statistics_blocks_target = 25;
 double			gp_statistics_ndistinct_scaling_ratio_threshold = 0.10;
 double			gp_statistics_sampling_threshold = 10000;
+bool 			gp_statistics_master_sample = FALSE;
 
 /**
  * This struct contains statistics produced during ANALYZE
@@ -128,6 +129,9 @@ static bool	isFixedWidth(Oid relationOid, const char *attributeName, float4 *wid
 static bool hasMaxDefined(Oid relationOid, const char *attributeName);
 
 /* Sampling related */
+static void runCtasForSampleTable(StringInfoData strSelectQuery, float4 sampleSizeReqd, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName);
+static void populateSampleTableOnMaster(StringInfoData strSelectQuery, float4 requestedSampleSize, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName);
+
 static float4 estimateSampleSize(Oid relationOid, const char *attributeName, float4 relTuples);
 static char* temporarySampleTableName(Oid relationOid);
 static Oid buildSampleTable(Oid relationOid, 
@@ -1140,6 +1144,92 @@ static void spiCallback_getEachResultColumnAsArray(void *clientData)
 }
 
 /**
+ * This method creates the shell of the sample table
+ */
+static void runCtasForSampleTable(StringInfoData strSelectQuery, float4 sampleSizeReqd, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName)
+{
+	StringInfoData strCreateTable;
+	initStringInfo(&strCreateTable);
+	appendStringInfo(&strCreateTable, "create table %s.%s as (",
+			quote_identifier(sampleSchemaName), quote_identifier(sampleTableName));
+
+	appendStringInfoString(&strCreateTable, strSelectQuery.data);
+	appendStringInfo(&strCreateTable, " limit %lu ) distributed randomly", (unsigned long) sampleSizeReqd);
+
+	spiExecuteWithCallback(strCreateTable.data, false /*readonly*/, 0 /*tcount */,
+	                        spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
+
+	if (gp_statistics_master_sample)
+	{
+		elog(elevel, "Create the shell of the sample table");
+	}
+
+	elog(elevel, "Created sample table %s.%s with nrows=%.0f",
+			quote_identifier(sampleSchemaName),
+			quote_identifier(sampleTableName),
+			*sampleTableRelTuples);
+
+	pfree(strCreateTable.data);
+}
+
+/**
+ * This function first delete the distribution policy of the sample table to make it a master only table.
+ * It then populates the table with the sample.
+ */
+static void populateSampleTableOnMaster(StringInfoData strSelectQuery, float4 requestedSampleSize, float4 *sampleTableRelTuples, char *sampleSchemaName, char *sampleTableName)
+{
+	float4 distPolicyTuples = 1.0;
+
+	/* Delete the distribution policy of the sample table*/
+	StringInfoData strDeleteDistPolicy;
+	initStringInfo(&strDeleteDistPolicy);
+
+	/* allow the modification of catalog table*/
+	bool allowSystemTableModsDMLOld = allowSystemTableModsDML;
+	allowSystemTableModsDML = true;
+
+	elog(elevel, "Deleting the distribution policy of the sample table '%s.%s'",
+					quote_identifier(sampleSchemaName),
+					quote_identifier(sampleTableName)
+					);
+
+	appendStringInfo(&strDeleteDistPolicy,
+					"delete from gp_distribution_policy where localoid = (select oid from pg_class where relname = '%s.%s')",
+					quote_identifier(sampleSchemaName),
+					quote_identifier(sampleTableName)
+					);
+
+	spiExecuteWithCallback(strDeleteDistPolicy.data, false /*readonly*/, 0 /*tcount */,
+			                        spiCallback_getProcessedAsFloat4, &distPolicyTuples);
+
+	/* insert the sample data into a master only sample table*/
+	StringInfoData strInsert;
+	initStringInfo(&strInsert);
+	appendStringInfo(&strInsert,
+					"insert into %s.%s ",
+					quote_identifier(sampleSchemaName),
+					quote_identifier(sampleTableName)
+					);
+	appendStringInfoString(&strInsert, strSelectQuery.data);
+	appendStringInfo(&strInsert, " limit %lu ",(unsigned long) requestedSampleSize);
+
+	elog(elevel, "Inserting the sample into the table %s.%s with nrows=%.0f",
+					quote_identifier(sampleSchemaName),
+					quote_identifier(sampleTableName),
+					requestedSampleSize);
+
+
+	spiExecuteWithCallback(strInsert.data, false /*readonly*/, 0 /*tcount */,
+	                       spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
+
+	/* reset the permission to modifying catalog table*/
+	allowSystemTableModsDML = allowSystemTableModsDMLOld;
+
+	pfree(strDeleteDistPolicy.data);
+	pfree(strInsert.data);
+}
+
+/**
  * This method builds a sampled version of the given relation. The sampled
  * version is created in a temp namespace. Note that ANALYZE can be
  * executed only by the database owner. It is safe to assume that the database
@@ -1164,7 +1254,7 @@ static Oid buildSampleTable(Oid relationOid,
 		float4 *sampleTableRelTuples)
 {
 	int nAttributes = -1;
-	StringInfoData str;
+
 	int i = 0;
 	ListCell *le = NULL;
 	const char *schemaName = NULL;
@@ -1184,38 +1274,45 @@ static Oid buildSampleTable(Oid relationOid,
 	tableName = get_rel_name(relationOid); //must be pfreed
 	sampleTableName = temporarySampleTableName(relationOid); // must be pfreed 
 
-	initStringInfo(&str);
-	appendStringInfo(&str, "create table %s.%s as (select ", 
-			quote_identifier(sampleSchemaName), quote_identifier(sampleTableName)); 
-	
+	/* generate the string select query */
+	StringInfoData strSelectQuery;
+	initStringInfo(&strSelectQuery);
+	appendStringInfo(&strSelectQuery, "select ");
+
 	nAttributes = list_length(lAttributeNames);
 
 	foreach_with_count(le, lAttributeNames, i)
 	{
-		appendStringInfo(&str, "Ta.%s", quote_identifier((const char *) lfirst(le)));
+		appendStringInfo(&strSelectQuery, "Ta.%s", quote_identifier((const char *) lfirst(le)));
 		if (i < nAttributes - 1)
 		{
-			appendStringInfo(&str, ", ");
+			appendStringInfo(&strSelectQuery, ", ");
 		}
 		else
 		{
-			appendStringInfo(&str, " ");			
+			appendStringInfo(&strSelectQuery, " ");
 		}
 	}
 	
-	appendStringInfo(&str, "from only %s.%s as Ta where random() < %.38f limit %lu) distributed randomly", 
-			quote_identifier(schemaName), 
-			quote_identifier(tableName), randomThreshold, (unsigned long) requestedSampleSize);
+	appendStringInfo(&strSelectQuery, "from only %s.%s as Ta where random() < %.38f ",
+		quote_identifier(schemaName),
+		quote_identifier(tableName), randomThreshold);
 
-	spiExecuteWithCallback(str.data, false /*readonly*/, 0 /*tcount */, 
-	                        spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
 
-	pfree(str.data);
-		
-	elog(elevel, "Created sample table %s.%s with nrows=%.0f", 
-			quote_identifier(sampleSchemaName), 
-			quote_identifier(sampleTableName), 
-			*sampleTableRelTuples);
+	/**
+	 * Solution to MPP-14406: To alleviate the performance issue with analyze
+	 * create the sample table on the master when gp_statistics_master_sample is
+	 * set to on.
+	 */
+	if (gp_statistics_master_sample)
+	{
+		runCtasForSampleTable(strSelectQuery, 0.0, sampleTableRelTuples, sampleSchemaName, sampleTableName);
+		populateSampleTableOnMaster(strSelectQuery, requestedSampleSize, sampleTableRelTuples,  sampleSchemaName, sampleTableName);
+	}
+	else
+	{
+		runCtasForSampleTable(strSelectQuery, requestedSampleSize, sampleTableRelTuples,  sampleSchemaName, sampleTableName);
+	}
 
 	rangeVar = makeRangeVar(sampleSchemaName, sampleTableName, -1);
 	sampleTableOid = RangeVarGetRelid(rangeVar, true);
@@ -1240,6 +1337,7 @@ static Oid buildSampleTable(Oid relationOid,
 	 */
 	updateReltuplesRelpagesInCatalog(sampleTableOid, *sampleTableRelTuples, 2);
 
+	pfree(strSelectQuery.data);
 	pfree((void *) rangeVar);
 	pfree((void *) sampleTableName);
 	pfree((void *) tableName);
