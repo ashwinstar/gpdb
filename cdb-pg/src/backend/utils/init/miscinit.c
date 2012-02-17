@@ -357,6 +357,13 @@ SetSessionUserId(Oid userid, bool is_superuser)
 	CurrentUserId = userid;
 }
 
+bool
+IsAuthenticatedUserSuperUser()
+{
+	AssertState(OidIsValid(AuthenticatedUserId));
+	return AuthenticatedUserIsSuperuser;
+}
+
 /*
  * GetAuthenticatedUserId
  */

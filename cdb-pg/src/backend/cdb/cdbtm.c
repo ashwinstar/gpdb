@@ -37,6 +37,7 @@
 #include "cdb/cdbllize.h"
 #include "utils/faultinjector.h"
 #include "utils/fmgroids.h"
+#include "utils/memutils.h"
 
 extern bool Test_print_direct_dispatch_info;
 extern struct Port *MyProcPort;
@@ -1300,7 +1301,7 @@ initTM_recover_as_needed(void)
 }
 
 static char *
-getSuperuserName()
+getSuperuser(Oid *userOid)
 {
 	char *suser = NULL;
 	Relation auth_rel;
@@ -1326,6 +1327,7 @@ getSuperuserName()
 		ForwardScanDirection)))
 	{
 		Datum   attrName;
+		Datum   attrNameOid;
 		Datum   validuntil;
 
 		validuntil = heap_getattr(auth_tup,
@@ -1336,13 +1338,20 @@ getSuperuserName()
 			continue;
 
 		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname,
-			auth_rel->rd_att, &isNull);
+					auth_rel->rd_att, &isNull);
 
 		Assert(!isNull);
 
-		suser = strdup(DatumGetCString(attrName));
+		suser = pstrdup(DatumGetCString(attrName));
+
+		attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber,
+					   auth_rel->rd_att, &isNull);
+		Assert(!isNull);
+		*userOid = DatumGetObjectId(attrNameOid);
+
 		break;
 	}
+
 	heap_endscan(auth_scan);
 	heap_close(auth_rel, AccessShareLock);
 
@@ -1352,19 +1361,20 @@ getSuperuserName()
 static char *
 ChangeToSuperuser()
 {
-	char *olduser;
+	char *olduser = NULL;
 	char *newuser;
+	Oid  userOid = InvalidOid;
+	MemoryContext oldcontext;
 
-	newuser = getSuperuserName();
-	olduser = MyProcPort->user_name;
-	if (strcmp(newuser, olduser) != 0)
+	if (!IsAuthenticatedUserSuperUser())
 	{
-		InitializeSessionUserId(newuser);
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+		newuser = getSuperuser(&userOid);
+		MemoryContextSwitchTo(oldcontext);
+
+		olduser = MyProcPort->user_name;
+		SetSessionUserId(userOid, true);
 		MyProcPort->user_name = newuser;
-	}
-	else
-	{
-		free(newuser);
 	}
 
 	return olduser;
@@ -1373,11 +1383,16 @@ ChangeToSuperuser()
 static void
 RestoreToUser(char *olduser)
 {
-	if (strcmp(olduser, MyProcPort->user_name) != 0)
+	MemoryContext oldcontext;
+
+	if (!IsAuthenticatedUserSuperUser())
 	{
-		free(MyProcPort->user_name);
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+		pfree(MyProcPort->user_name);
+		MemoryContextSwitchTo(oldcontext);
+
 		MyProcPort->user_name = olduser;
-		InitializeSessionUserId(olduser);
+		SetSessionUserId(GetAuthenticatedUserId(), false);
 	}
 }
 

@@ -322,6 +322,7 @@ extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
 extern void 	SetSessionUserId(Oid, bool);
 extern Oid	GetAuthenticatedUserId(void);
+extern bool IsAuthenticatedUserSuperUser(void);
 extern void GetUserIdAndContext(Oid *userid, bool *sec_def_context);
 extern void SetUserIdAndContext(Oid userid, bool sec_def_context);
 extern bool InSecurityDefinerContext(void);
