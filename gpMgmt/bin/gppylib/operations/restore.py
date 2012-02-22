@@ -345,6 +345,9 @@ class BuildDDBoostTableDumps(Operation):
                 'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s' 
                 % (real_createdb, fake_createdb)).run(validateAfter = True)
 
+        # Build master _post_data file:
+        CopyPostData(self.restore_timestamp, fake_timestamp, self.compress, self.master_datadir).run()
+        
         return fake_timestamp
 
 
@@ -388,6 +391,9 @@ class BuildAllTableDumps(Operation):
         fake_createdb = os.path.join(self.master_datadir, DUMP_DIR, fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, fake_timestamp))
         shutil.copy(real_createdb, fake_createdb)
 
+        # Build master _post_data file:
+        CopyPostData(self.restore_timestamp, fake_timestamp, self.compress, self.master_datadir).run()
+       
         return fake_timestamp
 
 
@@ -420,7 +426,23 @@ class PickDumpTimestamp(Operation):
             raise ExceptionNoStackTraceNeeded("Could not construct table dump")
         return fake_timestamp
 
-
+class CopyPostData(Operation):
+    ''' Copy _post_data when using fake timestamp. 
+        The same operation can be done with/without ddboost, because
+        the _post_data file is always kept on the master, not on the dd server '''
+    def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
+        self.restore_timestamp = restore_timestamp
+        self.fake_timestamp = fake_timestamp
+        self.compress = compress
+        self.master_datadir = master_datadir
+    def execute(self):
+         # Build master _post_data file:
+        real_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s_post_data" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
+        fake_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s_post_data" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
+        if (self.compress):
+            real_post_data = real_post_data + ".gz"
+            fake_post_data = fake_post_data + ".gz"
+        shutil.copy(real_post_data, fake_post_data)
         
 class BuildMasterTableDump(Operation):
     def __init__(self, restore_timestamp, fake_timestamp, compress, master_datadir):
@@ -561,6 +583,15 @@ class ClearAllTableDumps(Operation):
 
         # Remove master cdatabase file
         path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, self.fake_timestamp))
+        try:
+            RemoveFile(path).run()
+        except OSError, e:
+            logger.warn('Failed to remove %s on master' % path)
+
+        # Remove master _post_data file
+        path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s_post_data" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
+        if self.compress:
+            path += '.gz'
         try:
             RemoveFile(path).run()
         except OSError, e:
