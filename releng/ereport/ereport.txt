@@ -4961,826 +4961,812 @@ cabh: cdbfilerepservice:00000585:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DAT
 cabh: cdbfilerepservice:00000586:  errmsg("database 'postgres' does not exist"))); 
 cabh: cdbfilerepservice:00000613:  elog(FATAL, "bad backend id: %d", MyBackendId); 
 aaaaa GP_IGNORE: cabg: cdbfilerepverify - ./backend/cdb/cdbfilerepverify.c
-cabg: cdbfilerepverify:00000604:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000605:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000606:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000607:  "could not write to file '%s' data '%s' length '%lu' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00000608:  "verification aborted", 
-cabg: cdbfilerepverify:00000609:  logControl.logOptions.fixPath, 
-cabg: cdbfilerepverify:00000610:  fixMessage, 
-cabg: cdbfilerepverify:00000611:  (long unsigned int) strlen(fixMessage), 
-cabg: cdbfilerepverify:00000612:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00000613:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000618:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000619:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000620:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000621:  "could not flush (fsync) to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00000622:  "verification aborted", 
-cabg: cdbfilerepverify:00000623:  logControl.logOptions.fixPath, 
-cabg: cdbfilerepverify:00000624:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00000625:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000650:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000651:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000652:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000653:  "could not create directory '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00000654:  "verification aborted", 
-cabg: cdbfilerepverify:00000655:  VERIFYDIR, 
-cabg: cdbfilerepverify:00000656:  token), 
-cabg: cdbfilerepverify:00000657:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000674:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000675:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000676:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000677:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00000678:  "verification aborted", 
-cabg: cdbfilerepverify:00000679:  (fileName == NULL) ? "<null>" : fileName, 
-cabg: cdbfilerepverify:00000680:  token), 
-cabg: cdbfilerepverify:00000681:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000691:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000692:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000693:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000694:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00000695:  "verification aborted", 
-cabg: cdbfilerepverify:00000696:  (fileName == NULL) ? "<null>" : fileName, 
-cabg: cdbfilerepverify:00000697:  token), 
-cabg: cdbfilerepverify:00000698:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000704:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000705:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000706:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000707:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00000708:  "verification aborted", 
-cabg: cdbfilerepverify:00000709:  (fileName == NULL) ? "<null>" : fileName, 
-cabg: cdbfilerepverify:00000710:  token), 
-cabg: cdbfilerepverify:00000711:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000737:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000738:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000739:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000740:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00000741:  "verification aborted", 
-cabg: cdbfilerepverify:00000742:  (fileName == NULL) ? "<null>" : fileName), 
-cabg: cdbfilerepverify:00000743:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000751:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000752:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000753:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000754:  "in progress file empty '%s' : %m " 
-cabg: cdbfilerepverify:00000755:  "verification aborted", 
-cabg: cdbfilerepverify:00000756:  (fileName == NULL) ? "<null>" : fileName), 
-cabg: cdbfilerepverify:00000757:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000766:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000767:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000768:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000769:  "could not seek to begin of file '%s' : %m " 
-cabg: cdbfilerepverify:00000770:  "verification aborted", 
-cabg: cdbfilerepverify:00000771:  (fileName == NULL) ? "<null>" : fileName), 
-cabg: cdbfilerepverify:00000772:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000781:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000782:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000783:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000784:  "could not read from file '%s' verification token : %m " 
-cabg: cdbfilerepverify:00000785:  "verification aborted", 
-cabg: cdbfilerepverify:00000786:  (fileName == NULL) ? "<null>" : fileName), 
-cabg: cdbfilerepverify:00000787:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000808:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000809:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000810:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000811:  "could not read from file '%s' verification token : %m " 
-cabg: cdbfilerepverify:00000812:  "verification aborted", 
-cabg: cdbfilerepverify:00000813:  (fileName == NULL) ? "<null>" : fileName), 
-cabg: cdbfilerepverify:00000814:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000838:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000839:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000840:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000841:  "could not create directory '%s' : %m " 
-cabg: cdbfilerepverify:00000842:  "verification aborted", 
-cabg: cdbfilerepverify:00000843:  VERIFYDIR), 
-cabg: cdbfilerepverify:00000844:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000861:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000862:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000863:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000864:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00000865:  "verification aborted", 
-cabg: cdbfilerepverify:00000866:  fileName), 
-cabg: cdbfilerepverify:00000867:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000876:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000877:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000878:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000879:  "could not write to file '%s' : %m " 
-cabg: cdbfilerepverify:00000880:  "verification aborted", 
-cabg: cdbfilerepverify:00000881:  fileName), 
-cabg: cdbfilerepverify:00000882:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000904:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000905:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000906:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000907:  "could not create directory '%s' : %m " 
-cabg: cdbfilerepverify:00000908:  "verification aborted ", 
-cabg: cdbfilerepverify:00000909:  VERIFYDIR), 
-cabg: cdbfilerepverify:00000910:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000948:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000949:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000950:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000951:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00000952:  "verification aborted ", 
-cabg: cdbfilerepverify:00000953:  logControl->logOptions.logPath), 
-cabg: cdbfilerepverify:00000954:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000962:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000963:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000964:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000965:  "could not seek to end of file '%s' : %m " 
-cabg: cdbfilerepverify:00000966:  "verification aborted", 
-cabg: cdbfilerepverify:00000967:  logControl->logOptions.logPath), 
-cabg: cdbfilerepverify:00000968:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00000981:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000982:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000983:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000984:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00000985:  "verification aborted ", 
-cabg: cdbfilerepverify:00000986:  logControl->logOptions.fixPath), 
-cabg: cdbfilerepverify:00000987:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00000994:  ereport(WARNING, 
-cabg: cdbfilerepverify:00000995:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00000996:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00000997:  "could not seek to end of file '%s' : %m " 
-cabg: cdbfilerepverify:00000998:  "verification aborted", 
-cabg: cdbfilerepverify:00000999:  logControl->logOptions.fixPath), 
-cabg: cdbfilerepverify:00001000:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00001015:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001016:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001017:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001018:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00001019:  "verification aborted ", 
-cabg: cdbfilerepverify:00001020:  logControl->logOptions.chkpntPath), 
-cabg: cdbfilerepverify:00001021:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00001028:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001029:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001030:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001031:  "could not seek to end of file '%s' : %m " 
-cabg: cdbfilerepverify:00001032:  "verification aborted", 
-cabg: cdbfilerepverify:00001033:  logControl->logOptions.chkpntPath), 
-cabg: cdbfilerepverify:00001034:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00001047:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001048:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001049:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001050:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00001051:  "verification aborted ", 
-cabg: cdbfilerepverify:00001052:  logControl->logOptions.externalTablePath), 
-cabg: cdbfilerepverify:00001053:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00001065:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001066:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001067:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001068:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00001069:  "verification aborted ", 
-cabg: cdbfilerepverify:00001070:  logControl->logOptions.resultsPath), 
-cabg: cdbfilerepverify:00001071:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00001446:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001447:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001448:  errmsg("could not write to file '%s' data '%p' dataLength '%lu' : %m", 
-cabg: cdbfilerepverify:00001449:  logControl.logOptions.logPath, 
-cabg: cdbfilerepverify:00001450:  logMessage, 
-cabg: cdbfilerepverify:00001451:  (long unsigned int) strlen(logMessage)))); 
-cabg: cdbfilerepverify:00001457:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001458:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001459:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
-cabg: cdbfilerepverify:00001460:  logControl.logOptions.logPath, 
-cabg: cdbfilerepverify:00001461:  logMessage, 
-cabg: cdbfilerepverify:00001462:  (int) strlen(logMessage)))); 
-cabg: cdbfilerepverify:00001588:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001589:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001590:  "request '%s' aborted because inprogress request '%s' has priority " 
-cabg: cdbfilerepverify:00001591:  "verification aborted", 
-cabg: cdbfilerepverify:00001592:  request->logControl.logOptions.token, token), 
-cabg: cdbfilerepverify:00001593:  errhint("rerun new request when inprogress request is complete"))); 
-cabg: cdbfilerepverify:00001794:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001795:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001796:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001797:  "could not create directory '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00001798:  "verification aborted, " 
-cabg: cdbfilerepverify:00001799:  "results not reported", 
-cabg: cdbfilerepverify:00001800:  VERIFYDIR, 
-cabg: cdbfilerepverify:00001801:  token), 
-cabg: cdbfilerepverify:00001802:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00001819:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001820:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001821:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001822:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00001823:  "verification aborted, " 
-cabg: cdbfilerepverify:00001824:  "results not reported", 
-cabg: cdbfilerepverify:00001825:  (filename == NULL) ? "<null>" : filename, 
-cabg: cdbfilerepverify:00001826:  token), 
-cabg: cdbfilerepverify:00001827:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00001842:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001843:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00001844:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001845:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00001846:  "verification aborted, " 
-cabg: cdbfilerepverify:00001847:  "results not reported", 
-cabg: cdbfilerepverify:00001848:  (filename == NULL) ? "<null>" : filename, 
-cabg: cdbfilerepverify:00001849:  token), 
-cabg: cdbfilerepverify:00001850:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00001897:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001898:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001899:  "could not resume verification token '%s' retry number '%d' " 
-cabg: cdbfilerepverify:00001900:  "verification aborted", 
-cabg: cdbfilerepverify:00001901:  request->fileRepVerifyArguments.token, 
-cabg: cdbfilerepverify:00001902:  request->numAutoRestarts), 
-cabg: cdbfilerepverify:00001903:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00001947:  ereport(WARNING, 
-cabg: cdbfilerepverify:00001948:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00001949:  "no verification in progress"))); 
-cabg: cdbfilerepverify:00002263:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002264:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00002265:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002266:  "could not open file '%s' : %m " 
-cabg: cdbfilerepverify:00002267:  "verification aborted ", 
-cabg: cdbfilerepverify:00002268:  request->logControl.logOptions.resultsPath), 
-cabg: cdbfilerepverify:00002269:  errhint("address file system failure and run gpverify"))); 
-cabg: cdbfilerepverify:00002278:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002279:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00002280:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002281:  "could not write to file '%s' data '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00002282:  "verification aborted", 
-cabg: cdbfilerepverify:00002283:  request->logControl.logOptions.resultsPath, 
-cabg: cdbfilerepverify:00002284:  result, 
-cabg: cdbfilerepverify:00002285:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00002286:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002294:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002295:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00002296:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002297:  "could not write to file '%s' data '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00002298:  "verification aborted", 
-cabg: cdbfilerepverify:00002299:  request->logControl.logOptions.resultsPath, 
-cabg: cdbfilerepverify:00002300:  result, 
-cabg: cdbfilerepverify:00002301:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00002302:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002431:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002432:  (errmsg("invalid verification request, " 
-cabg: cdbfilerepverify:00002433:  "could not find directory '%s' verification token '%s' " 
-cabg: cdbfilerepverify:00002434:  "verification aborted", 
-cabg: cdbfilerepverify:00002435:  args->directoryTree, 
-cabg: cdbfilerepverify:00002436:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002437:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002461:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002462:  (errmsg("invalid verification request, " 
-cabg: cdbfilerepverify:00002463:  "could not find file '%s' verification token '%s' " 
-cabg: cdbfilerepverify:00002464:  "verification aborted", 
-cabg: cdbfilerepverify:00002465:  args->compareFile, 
-cabg: cdbfilerepverify:00002466:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002467:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002507:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002508:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002509:  "could not allocate memory to start verification token '%s' " 
-cabg: cdbfilerepverify:00002510:  "verification aborted", 
-cabg: cdbfilerepverify:00002511:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002512:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002535:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002536:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002537:  "could not allocate memory to start verification token '%s' " 
-cabg: cdbfilerepverify:00002538:  "verification aborted", 
-cabg: cdbfilerepverify:00002539:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002540:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002557:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002558:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002559:  "could not allocate memory to start verification token '%s' " 
-cabg: cdbfilerepverify:00002560:  "verification aborted", 
-cabg: cdbfilerepverify:00002561:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002562:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002609:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002610:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002611:  "could not allocate memory to start verification token '%s' " 
-cabg: cdbfilerepverify:00002612:  "verification aborted", 
-cabg: cdbfilerepverify:00002613:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002614:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002636:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002637:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002638:  "could not allocate memory to start verification token '%s' " 
-cabg: cdbfilerepverify:00002639:  "verification aborted", 
-cabg: cdbfilerepverify:00002640:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002641:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00002659:  ereport(WARNING, 
-cabg: cdbfilerepverify:00002660:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00002661:  "could not allocate memory to start verification token '%s' " 
-cabg: cdbfilerepverify:00002662:  "verification aborted", 
-cabg: cdbfilerepverify:00002663:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00002664:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00003252:  ereport(WARNING, 
-cabg: cdbfilerepverify:00003253:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00003254:  "unable to complete verification request with token '%s'" 
-cabg: cdbfilerepverify:00003255:  "verification aborted, ", 
-cabg: cdbfilerepverify:00003256:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00003257:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00003882:  ereport(WARNING, 
-cabg: cdbfilerepverify:00003883:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00003884:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00003885:  "verification aborted", 
-cabg: cdbfilerepverify:00003886:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00003887:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004560:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004561:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004562:  "unable to complete verification request with token '%s'" 
-cabg: cdbfilerepverify:00004563:  "verification aborted, ", 
-cabg: cdbfilerepverify:00004564:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00004565:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004811:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004812:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00004813:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004814:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00004815:  "verification aborted", 
-cabg: cdbfilerepverify:00004816:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004817:  token), 
-cabg: cdbfilerepverify:00004818:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004827:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004828:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00004829:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004830:  "checkpoint file empty '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00004831:  "verification aborted", 
-cabg: cdbfilerepverify:00004832:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004833:  token), 
-cabg: cdbfilerepverify:00004834:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004843:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004844:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00004845:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004846:  "could not seek to begin of file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00004847:  "verification aborted", 
-cabg: cdbfilerepverify:00004848:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004849:  token), 
-cabg: cdbfilerepverify:00004850:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004862:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004863:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00004864:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004865:  "could not read from file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00004866:  "verification aborted", 
-cabg: cdbfilerepverify:00004867:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004868:  token), 
-cabg: cdbfilerepverify:00004869:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004878:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004879:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004880:  "could not match verification request between expected '%s' and checkpoint token '%s' file '%s' " 
+cabg: cdbfilerepverify:00000594:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000595:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000596:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000597:  "could not write to file '%s' data '%s' length '%lu' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00000598:  "verification aborted", 
+cabg: cdbfilerepverify:00000599:  logControl.logOptions.fixPath, 
+cabg: cdbfilerepverify:00000600:  fixMessage, 
+cabg: cdbfilerepverify:00000601:  (long unsigned int) strlen(fixMessage), 
+cabg: cdbfilerepverify:00000602:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00000603:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000608:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000609:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000610:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000611:  "could not flush (fsync) to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00000612:  "verification aborted", 
+cabg: cdbfilerepverify:00000613:  logControl.logOptions.fixPath, 
+cabg: cdbfilerepverify:00000614:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00000615:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000640:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000641:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000642:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000643:  "could not create directory '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00000644:  "verification aborted", 
+cabg: cdbfilerepverify:00000645:  VERIFYDIR, 
+cabg: cdbfilerepverify:00000646:  token), 
+cabg: cdbfilerepverify:00000647:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000664:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000665:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000666:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000667:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00000668:  "verification aborted", 
+cabg: cdbfilerepverify:00000669:  (fileName == NULL) ? "<null>" : fileName, 
+cabg: cdbfilerepverify:00000670:  token), 
+cabg: cdbfilerepverify:00000671:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000681:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000682:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000683:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000684:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00000685:  "verification aborted", 
+cabg: cdbfilerepverify:00000686:  (fileName == NULL) ? "<null>" : fileName, 
+cabg: cdbfilerepverify:00000687:  token), 
+cabg: cdbfilerepverify:00000688:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000694:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000695:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000696:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000697:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00000698:  "verification aborted", 
+cabg: cdbfilerepverify:00000699:  (fileName == NULL) ? "<null>" : fileName, 
+cabg: cdbfilerepverify:00000700:  token), 
+cabg: cdbfilerepverify:00000701:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000727:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000728:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000729:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000730:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00000731:  "verification aborted", 
+cabg: cdbfilerepverify:00000732:  (fileName == NULL) ? "<null>" : fileName), 
+cabg: cdbfilerepverify:00000733:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000741:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000742:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000743:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000744:  "in progress file empty '%s' : %m " 
+cabg: cdbfilerepverify:00000745:  "verification aborted", 
+cabg: cdbfilerepverify:00000746:  (fileName == NULL) ? "<null>" : fileName), 
+cabg: cdbfilerepverify:00000747:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000756:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000757:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000758:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000759:  "could not seek to begin of file '%s' : %m " 
+cabg: cdbfilerepverify:00000760:  "verification aborted", 
+cabg: cdbfilerepverify:00000761:  (fileName == NULL) ? "<null>" : fileName), 
+cabg: cdbfilerepverify:00000762:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000771:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000772:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000773:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000774:  "could not read from file '%s' verification token : %m " 
+cabg: cdbfilerepverify:00000775:  "verification aborted", 
+cabg: cdbfilerepverify:00000776:  (fileName == NULL) ? "<null>" : fileName), 
+cabg: cdbfilerepverify:00000777:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000798:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000799:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000800:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000801:  "could not read from file '%s' verification token : %m " 
+cabg: cdbfilerepverify:00000802:  "verification aborted", 
+cabg: cdbfilerepverify:00000803:  (fileName == NULL) ? "<null>" : fileName), 
+cabg: cdbfilerepverify:00000804:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000828:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000829:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000830:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000831:  "could not create directory '%s' : %m " 
+cabg: cdbfilerepverify:00000832:  "verification aborted", 
+cabg: cdbfilerepverify:00000833:  VERIFYDIR), 
+cabg: cdbfilerepverify:00000834:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000851:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000852:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000853:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000854:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00000855:  "verification aborted", 
+cabg: cdbfilerepverify:00000856:  fileName), 
+cabg: cdbfilerepverify:00000857:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000866:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000867:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000868:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000869:  "could not write to file '%s' : %m " 
+cabg: cdbfilerepverify:00000870:  "verification aborted", 
+cabg: cdbfilerepverify:00000871:  fileName), 
+cabg: cdbfilerepverify:00000872:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000894:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000895:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000896:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000897:  "could not create directory '%s' : %m " 
+cabg: cdbfilerepverify:00000898:  "verification aborted ", 
+cabg: cdbfilerepverify:00000899:  VERIFYDIR), 
+cabg: cdbfilerepverify:00000900:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000938:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000939:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000940:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000941:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00000942:  "verification aborted ", 
+cabg: cdbfilerepverify:00000943:  logControl->logOptions.logPath), 
+cabg: cdbfilerepverify:00000944:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000952:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000953:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000954:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000955:  "could not seek to end of file '%s' : %m " 
+cabg: cdbfilerepverify:00000956:  "verification aborted", 
+cabg: cdbfilerepverify:00000957:  logControl->logOptions.logPath), 
+cabg: cdbfilerepverify:00000958:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00000971:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000972:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000973:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000974:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00000975:  "verification aborted ", 
+cabg: cdbfilerepverify:00000976:  logControl->logOptions.fixPath), 
+cabg: cdbfilerepverify:00000977:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00000984:  ereport(WARNING, 
+cabg: cdbfilerepverify:00000985:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00000986:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00000987:  "could not seek to end of file '%s' : %m " 
+cabg: cdbfilerepverify:00000988:  "verification aborted", 
+cabg: cdbfilerepverify:00000989:  logControl->logOptions.fixPath), 
+cabg: cdbfilerepverify:00000990:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00001005:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001006:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001007:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001008:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00001009:  "verification aborted ", 
+cabg: cdbfilerepverify:00001010:  logControl->logOptions.chkpntPath), 
+cabg: cdbfilerepverify:00001011:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00001018:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001019:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001020:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001021:  "could not seek to end of file '%s' : %m " 
+cabg: cdbfilerepverify:00001022:  "verification aborted", 
+cabg: cdbfilerepverify:00001023:  logControl->logOptions.chkpntPath), 
+cabg: cdbfilerepverify:00001024:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00001037:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001038:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001039:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001040:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00001041:  "verification aborted ", 
+cabg: cdbfilerepverify:00001042:  logControl->logOptions.externalTablePath), 
+cabg: cdbfilerepverify:00001043:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00001055:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001056:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001057:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001058:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00001059:  "verification aborted ", 
+cabg: cdbfilerepverify:00001060:  logControl->logOptions.resultsPath), 
+cabg: cdbfilerepverify:00001061:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00001436:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001437:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001438:  errmsg("could not write to file '%s' data '%p' dataLength '%lu' : %m", 
+cabg: cdbfilerepverify:00001439:  logControl.logOptions.logPath, 
+cabg: cdbfilerepverify:00001440:  logMessage, 
+cabg: cdbfilerepverify:00001441:  (long unsigned int) strlen(logMessage)))); 
+cabg: cdbfilerepverify:00001447:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001448:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001449:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
+cabg: cdbfilerepverify:00001450:  logControl.logOptions.logPath, 
+cabg: cdbfilerepverify:00001451:  logMessage, 
+cabg: cdbfilerepverify:00001452:  (int) strlen(logMessage)))); 
+cabg: cdbfilerepverify:00001578:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001579:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001580:  "request '%s' aborted because inprogress request '%s' has priority " 
+cabg: cdbfilerepverify:00001581:  "verification aborted", 
+cabg: cdbfilerepverify:00001582:  request->logControl.logOptions.token, token), 
+cabg: cdbfilerepverify:00001583:  errhint("rerun new request when inprogress request is complete"))); 
+cabg: cdbfilerepverify:00001784:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001785:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001786:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001787:  "could not create directory '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00001788:  "verification aborted, " 
+cabg: cdbfilerepverify:00001789:  "results not reported", 
+cabg: cdbfilerepverify:00001790:  VERIFYDIR, 
+cabg: cdbfilerepverify:00001791:  token), 
+cabg: cdbfilerepverify:00001792:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00001809:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001810:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001811:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001812:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00001813:  "verification aborted, " 
+cabg: cdbfilerepverify:00001814:  "results not reported", 
+cabg: cdbfilerepverify:00001815:  (filename == NULL) ? "<null>" : filename, 
+cabg: cdbfilerepverify:00001816:  token), 
+cabg: cdbfilerepverify:00001817:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00001832:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001833:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00001834:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001835:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00001836:  "verification aborted, " 
+cabg: cdbfilerepverify:00001837:  "results not reported", 
+cabg: cdbfilerepverify:00001838:  (filename == NULL) ? "<null>" : filename, 
+cabg: cdbfilerepverify:00001839:  token), 
+cabg: cdbfilerepverify:00001840:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00001887:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001888:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001889:  "could not resume verification token '%s' retry number '%d' " 
+cabg: cdbfilerepverify:00001890:  "verification aborted", 
+cabg: cdbfilerepverify:00001891:  request->fileRepVerifyArguments.token, 
+cabg: cdbfilerepverify:00001892:  request->numAutoRestarts), 
+cabg: cdbfilerepverify:00001893:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00001937:  ereport(WARNING, 
+cabg: cdbfilerepverify:00001938:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00001939:  "no verification in progress"))); 
+cabg: cdbfilerepverify:00002255:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002256:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00002257:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002258:  "could not open file '%s' : %m " 
+cabg: cdbfilerepverify:00002259:  "verification aborted ", 
+cabg: cdbfilerepverify:00002260:  request->logControl.logOptions.resultsPath), 
+cabg: cdbfilerepverify:00002261:  errhint("address file system failure and run gpverify"))); 
+cabg: cdbfilerepverify:00002270:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002271:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00002272:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002273:  "could not write to file '%s' data '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00002274:  "verification aborted", 
+cabg: cdbfilerepverify:00002275:  request->logControl.logOptions.resultsPath, 
+cabg: cdbfilerepverify:00002276:  result, 
+cabg: cdbfilerepverify:00002277:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00002278:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002286:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002287:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00002288:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002289:  "could not write to file '%s' data '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00002290:  "verification aborted", 
+cabg: cdbfilerepverify:00002291:  request->logControl.logOptions.resultsPath, 
+cabg: cdbfilerepverify:00002292:  result, 
+cabg: cdbfilerepverify:00002293:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00002294:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002430:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002431:  (errmsg("invalid verification request, " 
+cabg: cdbfilerepverify:00002432:  "could not find directory '%s' verification token '%s' " 
+cabg: cdbfilerepverify:00002433:  "verification aborted", 
+cabg: cdbfilerepverify:00002434:  args->directoryTree, 
+cabg: cdbfilerepverify:00002435:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002436:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002460:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002461:  (errmsg("invalid verification request, " 
+cabg: cdbfilerepverify:00002462:  "could not find file '%s' verification token '%s' " 
+cabg: cdbfilerepverify:00002463:  "verification aborted", 
+cabg: cdbfilerepverify:00002464:  args->compareFile, 
+cabg: cdbfilerepverify:00002465:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002466:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002506:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002507:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002508:  "could not allocate memory to start verification token '%s' " 
+cabg: cdbfilerepverify:00002509:  "verification aborted", 
+cabg: cdbfilerepverify:00002510:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002511:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002534:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002535:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002536:  "could not allocate memory to start verification token '%s' " 
+cabg: cdbfilerepverify:00002537:  "verification aborted", 
+cabg: cdbfilerepverify:00002538:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002539:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002556:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002557:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002558:  "could not allocate memory to start verification token '%s' " 
+cabg: cdbfilerepverify:00002559:  "verification aborted", 
+cabg: cdbfilerepverify:00002560:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002561:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002608:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002609:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002610:  "could not allocate memory to start verification token '%s' " 
+cabg: cdbfilerepverify:00002611:  "verification aborted", 
+cabg: cdbfilerepverify:00002612:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002613:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002635:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002636:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002637:  "could not allocate memory to start verification token '%s' " 
+cabg: cdbfilerepverify:00002638:  "verification aborted", 
+cabg: cdbfilerepverify:00002639:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002640:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00002658:  ereport(WARNING, 
+cabg: cdbfilerepverify:00002659:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00002660:  "could not allocate memory to start verification token '%s' " 
+cabg: cdbfilerepverify:00002661:  "verification aborted", 
+cabg: cdbfilerepverify:00002662:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00002663:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00003259:  ereport(WARNING, 
+cabg: cdbfilerepverify:00003260:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00003261:  "unable to complete verification request with token '%s'" 
+cabg: cdbfilerepverify:00003262:  "verification aborted, ", 
+cabg: cdbfilerepverify:00003263:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00003264:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00003885:  ereport(WARNING, 
+cabg: cdbfilerepverify:00003886:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00003887:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00003888:  "verification aborted", 
+cabg: cdbfilerepverify:00003889:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00003890:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004566:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004567:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004568:  "unable to complete verification request with token '%s'" 
+cabg: cdbfilerepverify:00004569:  "verification aborted, ", 
+cabg: cdbfilerepverify:00004570:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00004571:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004826:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004827:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00004828:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004829:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00004830:  "verification aborted", 
+cabg: cdbfilerepverify:00004831:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00004832:  token), 
+cabg: cdbfilerepverify:00004833:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004842:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004843:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00004844:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004845:  "checkpoint file empty '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00004846:  "verification aborted", 
+cabg: cdbfilerepverify:00004847:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00004848:  token), 
+cabg: cdbfilerepverify:00004849:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004858:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004859:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00004860:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004861:  "could not seek to begin of file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00004862:  "verification aborted", 
+cabg: cdbfilerepverify:00004863:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00004864:  token), 
+cabg: cdbfilerepverify:00004865:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004877:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004878:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00004879:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004880:  "could not read from file '%s' verification token '%s' : %m " 
 cabg: cdbfilerepverify:00004881:  "verification aborted", 
-cabg: cdbfilerepverify:00004882:  token, 
-cabg: cdbfilerepverify:00004883:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004884:  restore.logControl.logOptions.token), 
-cabg: cdbfilerepverify:00004885:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004898:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004899:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004900:  "could not match verification checkpoint version expected '%d' actual '%d' file '%s' " 
-cabg: cdbfilerepverify:00004901:  "verification token '%s' " 
-cabg: cdbfilerepverify:00004902:  "verification aborted", 
-cabg: cdbfilerepverify:00004903:  CHECKPOINT_VERSION_ID, 
-cabg: cdbfilerepverify:00004904:  request->checkpointVersion, 
-cabg: cdbfilerepverify:00004905:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004906:  token), 
-cabg: cdbfilerepverify:00004907:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004923:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004924:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004925:  "could not allocate memory to resume verification token '%s' " 
-cabg: cdbfilerepverify:00004926:  "verification aborted", 
-cabg: cdbfilerepverify:00004927:  token), 
-cabg: cdbfilerepverify:00004928:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004949:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004950:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00004951:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004952:  "could not read from file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00004953:  "verification aborted", 
-cabg: cdbfilerepverify:00004954:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004955:  token), 
-cabg: cdbfilerepverify:00004956:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004967:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004968:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004969:  "could not allocate memory to resume verification token '%s' " 
-cabg: cdbfilerepverify:00004970:  "verification aborted", 
-cabg: cdbfilerepverify:00004971:  token), 
-cabg: cdbfilerepverify:00004972:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00004985:  ereport(WARNING, 
-cabg: cdbfilerepverify:00004986:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00004987:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00004988:  "could not read from file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00004989:  "verification aborted", 
-cabg: cdbfilerepverify:00004990:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00004991:  token), 
-cabg: cdbfilerepverify:00004992:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005009:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005010:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005011:  "could not allocate memory to resume verification token '%s' " 
-cabg: cdbfilerepverify:00005012:  "verification aborted", 
-cabg: cdbfilerepverify:00005013:  token), 
-cabg: cdbfilerepverify:00005014:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005034:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005035:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005036:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005037:  "could not read from file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005038:  "verification aborted", 
-cabg: cdbfilerepverify:00005039:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00005040:  token), 
-cabg: cdbfilerepverify:00005041:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005052:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005053:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005054:  "could not allocate memory to resume verification token '%s' " 
-cabg: cdbfilerepverify:00005055:  "verification aborted", 
-cabg: cdbfilerepverify:00005056:  token), 
-cabg: cdbfilerepverify:00005057:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005070:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005071:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005072:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005073:  "could not read from file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005074:  "verification aborted", 
-cabg: cdbfilerepverify:00005075:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
-cabg: cdbfilerepverify:00005076:  token), 
-cabg: cdbfilerepverify:00005077:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005111:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005112:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005113:  "resume information is not valid " 
-cabg: cdbfilerepverify:00005114:  "verification aborted"), 
-cabg: cdbfilerepverify:00005115:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005199:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005200:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005201:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005202:  "could not seek to begin of file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005203:  "verification aborted", 
-cabg: cdbfilerepverify:00005204:  request->logControl.logOptions.chkpntPath, 
-cabg: cdbfilerepverify:00005205:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00005206:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005215:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005216:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005217:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005218:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005219:  "verification aborted", 
-cabg: cdbfilerepverify:00005220:  request->logControl.logOptions.chkpntPath, 
-cabg: cdbfilerepverify:00005221:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00005222:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005242:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005243:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005244:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005245:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005246:  "verification aborted", 
-cabg: cdbfilerepverify:00005247:  request->logControl.logOptions.chkpntPath, 
-cabg: cdbfilerepverify:00005248:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00005249:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005259:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005260:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005261:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005262:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005263:  "verification aborted", 
-cabg: cdbfilerepverify:00005264:  request->logControl.logOptions.chkpntPath, 
-cabg: cdbfilerepverify:00005265:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00005266:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005281:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005282:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005283:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005284:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005285:  "verification aborted", 
-cabg: cdbfilerepverify:00005286:  request->logControl.logOptions.chkpntPath, 
-cabg: cdbfilerepverify:00005287:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00005288:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005297:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005298:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005299:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005300:  "could not write to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005301:  "verification aborted", 
-cabg: cdbfilerepverify:00005302:  request->logControl.logOptions.chkpntPath, 
-cabg: cdbfilerepverify:00005303:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00005304:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005314:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005315:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00005316:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005317:  "could not flush (fsync) to file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00005318:  "verification aborted", 
-cabg: cdbfilerepverify:00005319:  request->logControl.logOptions.chkpntPath, 
-cabg: cdbfilerepverify:00005320:  request->fileRepVerifyArguments.token), 
-cabg: cdbfilerepverify:00005321:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005629:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005630:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00005631:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00005632:  "verification aborted", 
-cabg: cdbfilerepverify:00005633:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00005634:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00005732:  ereport(WARNING, 
-cabg: cdbfilerepverify:00005733:  (errmsg("mirror failure, " 
-cabg: cdbfilerepverify:00005734:  "could not complete operation on mirror, " 
-cabg: cdbfilerepverify:00005735:  "failover requested"), 
-cabg: cdbfilerepverify:00005736:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepverify:00005737:  FileRep_errdetail(fileRepIdentifier, 
-cabg: cdbfilerepverify:00005738:  fileRepRelationType, 
-cabg: cdbfilerepverify:00005739:  FileRepOperationVerify, 
-cabg: cdbfilerepverify:00005740:  FILEREP_UNDEFINED), 
-cabg: cdbfilerepverify:00005741:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepverify:00005742:  FileRep_errdetail_ShmemAck(), 
-cabg: cdbfilerepverify:00005743:  FileRep_errcontext())); 
-cabg: cdbfilerepverify:00006407:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006408:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006409:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00006410:  "verification aborted", 
-cabg: cdbfilerepverify:00006411:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006412:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006509:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006510:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00006511:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006512:  "could not find file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00006513:  "verification aborted ", 
-cabg: cdbfilerepverify:00006514:  fileName, 
-cabg: cdbfilerepverify:00006515:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006516:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004882:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00004883:  token), 
+cabg: cdbfilerepverify:00004884:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004893:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004894:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004895:  "could not match verification request between expected '%s' and checkpoint token '%s' file '%s' " 
+cabg: cdbfilerepverify:00004896:  "verification aborted", 
+cabg: cdbfilerepverify:00004897:  token, 
+cabg: cdbfilerepverify:00004898:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00004899:  restore.logControl.logOptions.token), 
+cabg: cdbfilerepverify:00004900:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004913:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004914:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004915:  "could not match verification checkpoint version expected '%d' actual '%d' file '%s' " 
+cabg: cdbfilerepverify:00004916:  "verification token '%s' " 
+cabg: cdbfilerepverify:00004917:  "verification aborted", 
+cabg: cdbfilerepverify:00004918:  CHECKPOINT_VERSION_ID, 
+cabg: cdbfilerepverify:00004919:  request->checkpointVersion, 
+cabg: cdbfilerepverify:00004920:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00004921:  token), 
+cabg: cdbfilerepverify:00004922:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004938:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004939:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004940:  "could not allocate memory to resume verification token '%s' " 
+cabg: cdbfilerepverify:00004941:  "verification aborted", 
+cabg: cdbfilerepverify:00004942:  token), 
+cabg: cdbfilerepverify:00004943:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004964:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004965:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00004966:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004967:  "could not read from file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00004968:  "verification aborted", 
+cabg: cdbfilerepverify:00004969:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00004970:  token), 
+cabg: cdbfilerepverify:00004971:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00004982:  ereport(WARNING, 
+cabg: cdbfilerepverify:00004983:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00004984:  "could not allocate memory to resume verification token '%s' " 
+cabg: cdbfilerepverify:00004985:  "verification aborted", 
+cabg: cdbfilerepverify:00004986:  token), 
+cabg: cdbfilerepverify:00004987:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005000:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005001:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005002:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005003:  "could not read from file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005004:  "verification aborted", 
+cabg: cdbfilerepverify:00005005:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00005006:  token), 
+cabg: cdbfilerepverify:00005007:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005024:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005025:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005026:  "could not allocate memory to resume verification token '%s' " 
+cabg: cdbfilerepverify:00005027:  "verification aborted", 
+cabg: cdbfilerepverify:00005028:  token), 
+cabg: cdbfilerepverify:00005029:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005049:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005050:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005051:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005052:  "could not read from file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005053:  "verification aborted", 
+cabg: cdbfilerepverify:00005054:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00005055:  token), 
+cabg: cdbfilerepverify:00005056:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005067:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005068:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005069:  "could not allocate memory to resume verification token '%s' " 
+cabg: cdbfilerepverify:00005070:  "verification aborted", 
+cabg: cdbfilerepverify:00005071:  token), 
+cabg: cdbfilerepverify:00005072:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005085:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005086:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005087:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005088:  "could not read from file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005089:  "verification aborted", 
+cabg: cdbfilerepverify:00005090:  (chkpntPath == NULL) ? "<null>" : chkpntPath, 
+cabg: cdbfilerepverify:00005091:  token), 
+cabg: cdbfilerepverify:00005092:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005126:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005127:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005128:  "resume information is not valid " 
+cabg: cdbfilerepverify:00005129:  "verification aborted"), 
+cabg: cdbfilerepverify:00005130:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005219:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005220:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005221:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005222:  "could not seek to begin of file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005223:  "verification aborted", 
+cabg: cdbfilerepverify:00005224:  request->logControl.logOptions.chkpntPath, 
+cabg: cdbfilerepverify:00005225:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00005226:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005235:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005236:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005237:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005238:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005239:  "verification aborted", 
+cabg: cdbfilerepverify:00005240:  request->logControl.logOptions.chkpntPath, 
+cabg: cdbfilerepverify:00005241:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00005242:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005262:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005263:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005264:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005265:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005266:  "verification aborted", 
+cabg: cdbfilerepverify:00005267:  request->logControl.logOptions.chkpntPath, 
+cabg: cdbfilerepverify:00005268:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00005269:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005279:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005280:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005281:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005282:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005283:  "verification aborted", 
+cabg: cdbfilerepverify:00005284:  request->logControl.logOptions.chkpntPath, 
+cabg: cdbfilerepverify:00005285:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00005286:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005301:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005302:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005303:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005304:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005305:  "verification aborted", 
+cabg: cdbfilerepverify:00005306:  request->logControl.logOptions.chkpntPath, 
+cabg: cdbfilerepverify:00005307:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00005308:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005317:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005318:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005319:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005320:  "could not write to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005321:  "verification aborted", 
+cabg: cdbfilerepverify:00005322:  request->logControl.logOptions.chkpntPath, 
+cabg: cdbfilerepverify:00005323:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00005324:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005334:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005335:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00005336:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005337:  "could not flush (fsync) to file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00005338:  "verification aborted", 
+cabg: cdbfilerepverify:00005339:  request->logControl.logOptions.chkpntPath, 
+cabg: cdbfilerepverify:00005340:  request->fileRepVerifyArguments.token), 
+cabg: cdbfilerepverify:00005341:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005651:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005652:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00005653:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00005654:  "verification aborted", 
+cabg: cdbfilerepverify:00005655:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00005656:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00005755:  ereport(WARNING, 
+cabg: cdbfilerepverify:00005756:  (errmsg("mirror failure, " 
+cabg: cdbfilerepverify:00005757:  "could not complete operation on mirror, " 
+cabg: cdbfilerepverify:00005758:  "failover requested"), 
+cabg: cdbfilerepverify:00005759:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepverify:00005760:  FileRep_errdetail(fileRepIdentifier, 
+cabg: cdbfilerepverify:00005761:  fileRepRelationType, 
+cabg: cdbfilerepverify:00005762:  FileRepOperationVerify, 
+cabg: cdbfilerepverify:00005763:  FILEREP_UNDEFINED), 
+cabg: cdbfilerepverify:00005764:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepverify:00005765:  FileRep_errdetail_ShmemAck(), 
+cabg: cdbfilerepverify:00005766:  FileRep_errcontext())); 
+cabg: cdbfilerepverify:00006432:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006433:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006434:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00006435:  "verification aborted", 
+cabg: cdbfilerepverify:00006436:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006437:  errhint("run gpverify"))); 
 cabg: cdbfilerepverify:00006536:  ereport(WARNING, 
 cabg: cdbfilerepverify:00006537:  (errcode_for_file_access(), 
 cabg: cdbfilerepverify:00006538:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006539:  "not a regular file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00006539:  "could not find file '%s' verification token '%s' : %m " 
 cabg: cdbfilerepverify:00006540:  "verification aborted ", 
 cabg: cdbfilerepverify:00006541:  fileName, 
 cabg: cdbfilerepverify:00006542:  logControl.logOptions.token), 
 cabg: cdbfilerepverify:00006543:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006581:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006582:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00006583:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006584:  "length '" INT64_FORMAT "' bigger than '%d' file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00006585:  "verification aborted ", 
-cabg: cdbfilerepverify:00006586:  dataLength, 
-cabg: cdbfilerepverify:00006587:  BLCKSZ, 
-cabg: cdbfilerepverify:00006588:  fileName, 
-cabg: cdbfilerepverify:00006589:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006590:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006606:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006607:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00006608:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006609:  "mirror file '%s' is shorter ' " INT64_FORMAT " ' than primary offset ' " INT64_FORMAT " ' length '" INT64_FORMAT "' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00006610:  "verification aborted ", 
-cabg: cdbfilerepverify:00006611:  fileName, 
-cabg: cdbfilerepverify:00006612:  info.st_size, 
-cabg: cdbfilerepverify:00006613:  fileOffset, 
-cabg: cdbfilerepverify:00006614:  dataLength, 
-cabg: cdbfilerepverify:00006615:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006616:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006655:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006656:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006657:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00006658:  "verification aborted", 
-cabg: cdbfilerepverify:00006659:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006660:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006686:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006687:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00006688:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006689:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00006690:  "verification aborted ", 
-cabg: cdbfilerepverify:00006691:  fileName, 
-cabg: cdbfilerepverify:00006692:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006693:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006725:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006726:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00006727:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006728:  "could not read file '%s' offset '" INT64_FORMAT "' length requested '" INT64_FORMAT "' " 
-cabg: cdbfilerepverify:00006729:  "length read '%u' : %m " 
-cabg: cdbfilerepverify:00006730:  "verification aborted", 
-cabg: cdbfilerepverify:00006731:  fileName, 
-cabg: cdbfilerepverify:00006732:  fileOffset, 
-cabg: cdbfilerepverify:00006733:  dataLength, 
-cabg: cdbfilerepverify:00006734:  bytesRead), 
-cabg: cdbfilerepverify:00006735:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006846:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006847:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006848:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00006849:  "verification aborted", 
-cabg: cdbfilerepverify:00006850:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006851:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006939:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006940:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006941:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00006942:  "verification aborted", 
-cabg: cdbfilerepverify:00006943:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006944:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00006954:  ereport(WARNING, 
-cabg: cdbfilerepverify:00006955:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00006956:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00006957:  "could not read directory '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00006958:  "verification aborted", 
-cabg: cdbfilerepverify:00006959:  directoryName, 
-cabg: cdbfilerepverify:00006960:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00006961:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007033:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007034:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007035:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007036:  "could not read directory '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007037:  "verification aborted", 
-cabg: cdbfilerepverify:00007038:  directoryName, 
-cabg: cdbfilerepverify:00007039:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007040:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007070:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007071:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007072:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007073:  "could not stat file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007074:  "verification aborted", 
-cabg: cdbfilerepverify:00007075:  child_path, 
-cabg: cdbfilerepverify:00007076:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007077:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007172:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007173:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007174:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00007175:  "verification aborted", 
-cabg: cdbfilerepverify:00007176:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007177:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007235:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007236:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007237:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00007238:  "verification aborted", 
-cabg: cdbfilerepverify:00007239:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007240:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007252:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007253:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007254:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00007255:  "verification aborted", 
-cabg: cdbfilerepverify:00007256:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007257:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006563:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006564:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00006565:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006566:  "not a regular file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00006567:  "verification aborted ", 
+cabg: cdbfilerepverify:00006568:  fileName, 
+cabg: cdbfilerepverify:00006569:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006570:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006608:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006609:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00006610:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006611:  "length '" INT64_FORMAT "' bigger than '%d' file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00006612:  "verification aborted ", 
+cabg: cdbfilerepverify:00006613:  dataLength, 
+cabg: cdbfilerepverify:00006614:  BLCKSZ, 
+cabg: cdbfilerepverify:00006615:  fileName, 
+cabg: cdbfilerepverify:00006616:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006617:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006633:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006634:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00006635:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006636:  "mirror file '%s' is shorter ' " INT64_FORMAT " ' than primary offset ' " INT64_FORMAT " ' length '" INT64_FORMAT "' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00006637:  "verification aborted ", 
+cabg: cdbfilerepverify:00006638:  fileName, 
+cabg: cdbfilerepverify:00006639:  info.st_size, 
+cabg: cdbfilerepverify:00006640:  fileOffset, 
+cabg: cdbfilerepverify:00006641:  dataLength, 
+cabg: cdbfilerepverify:00006642:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006643:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006682:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006683:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006684:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00006685:  "verification aborted", 
+cabg: cdbfilerepverify:00006686:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006687:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006713:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006714:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00006715:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006716:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00006717:  "verification aborted ", 
+cabg: cdbfilerepverify:00006718:  fileName, 
+cabg: cdbfilerepverify:00006719:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006720:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006752:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006753:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00006754:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006755:  "could not read file '%s' offset '" INT64_FORMAT "' length requested '" INT64_FORMAT "' " 
+cabg: cdbfilerepverify:00006756:  "length read '%u' : %m " 
+cabg: cdbfilerepverify:00006757:  "verification aborted", 
+cabg: cdbfilerepverify:00006758:  fileName, 
+cabg: cdbfilerepverify:00006759:  fileOffset, 
+cabg: cdbfilerepverify:00006760:  dataLength, 
+cabg: cdbfilerepverify:00006761:  bytesRead), 
+cabg: cdbfilerepverify:00006762:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006873:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006874:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006875:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00006876:  "verification aborted", 
+cabg: cdbfilerepverify:00006877:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006878:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00006963:  ereport(WARNING, 
+cabg: cdbfilerepverify:00006964:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00006965:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00006966:  "verification aborted", 
+cabg: cdbfilerepverify:00006967:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00006968:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007009:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007010:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007011:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007012:  "could not read directory '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007013:  "verification aborted", 
+cabg: cdbfilerepverify:00007014:  directoryName, 
+cabg: cdbfilerepverify:00007015:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007016:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007076:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007077:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007078:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007079:  "could not stat file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007080:  "verification aborted", 
+cabg: cdbfilerepverify:00007081:  child_path, 
+cabg: cdbfilerepverify:00007082:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007083:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007196:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007197:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007198:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00007199:  "verification aborted", 
+cabg: cdbfilerepverify:00007200:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007201:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007259:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007260:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007261:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00007262:  "verification aborted", 
+cabg: cdbfilerepverify:00007263:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007264:  errhint("run gpverify"))); 
 cabg: cdbfilerepverify:00007276:  ereport(WARNING, 
 cabg: cdbfilerepverify:00007277:  (errmsg("verification failure, " 
 cabg: cdbfilerepverify:00007278:  "could not allocate memory to run verification token '%s' " 
 cabg: cdbfilerepverify:00007279:  "verification aborted", 
 cabg: cdbfilerepverify:00007280:  logControl.logOptions.token), 
 cabg: cdbfilerepverify:00007281:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007293:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007294:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007295:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00007296:  "verification aborted", 
-cabg: cdbfilerepverify:00007297:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007298:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007552:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007553:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007554:  "could not allocate memory to run verification token '%s' " 
-cabg: cdbfilerepverify:00007555:  "verification aborted", 
-cabg: cdbfilerepverify:00007556:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007557:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007641:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007642:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007643:  "maximum restarts exceeded when comparing directory contents for '%s' run verification token '%s' " 
-cabg: cdbfilerepverify:00007644:  "verification aborted", 
-cabg: cdbfilerepverify:00007645:  primaryDirectoryName, 
-cabg: cdbfilerepverify:00007646:  request->logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007647:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007902:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007903:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007904:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007905:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007906:  "verification aborted", 
-cabg: cdbfilerepverify:00007907:  primaryFilename, 
-cabg: cdbfilerepverify:00007908:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007909:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007929:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007930:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007931:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007932:  "could not stat file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007933:  "verification aborted", 
-cabg: cdbfilerepverify:00007934:  primaryFilename, 
-cabg: cdbfilerepverify:00007935:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007936:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007943:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007944:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007945:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007946:  "not a regular file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007947:  "verification aborted", 
-cabg: cdbfilerepverify:00007948:  primaryFilename, 
-cabg: cdbfilerepverify:00007949:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007950:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007972:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007973:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007974:  "could not allocate memory for file '%s' to run verification token '%s' " 
-cabg: cdbfilerepverify:00007975:  "verification aborted", 
-cabg: cdbfilerepverify:00007976:  primaryFilename, 
-cabg: cdbfilerepverify:00007977:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007978:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00007986:  ereport(WARNING, 
-cabg: cdbfilerepverify:00007987:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00007988:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00007989:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00007990:  "verification aborted", 
-cabg: cdbfilerepverify:00007991:  primaryFilename, 
-cabg: cdbfilerepverify:00007992:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00007993:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008174:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008175:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008176:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008177:  "response from mirror is empty file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008178:  "verification aborted", 
-cabg: cdbfilerepverify:00008179:  primaryFilename, 
-cabg: cdbfilerepverify:00008180:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008181:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008232:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008233:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008234:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008235:  "invalid buffer pool page file '%s' blkno '%d' " 
-cabg: cdbfilerepverify:00008236:  "verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008237:  "verification aborted", 
-cabg: cdbfilerepverify:00008238:  primaryFilename, 
-cabg: cdbfilerepverify:00008239:  blkno, 
-cabg: cdbfilerepverify:00008240:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008241:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008252:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008253:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008254:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008255:  "could not read file '%s' offset '" INT64_FORMAT "' length requested '" INT64_FORMAT "' " 
-cabg: cdbfilerepverify:00008256:  "length read '" INT64_FORMAT "' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008257:  "verification aborted", 
-cabg: cdbfilerepverify:00008258:  primaryFilename, 
-cabg: cdbfilerepverify:00008259:  fileOffset, 
-cabg: cdbfilerepverify:00008260:  dataLengthLocal, 
-cabg: cdbfilerepverify:00008261:  bytesRead, 
-cabg: cdbfilerepverify:00008262:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008263:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008601:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008602:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008603:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008604:  "response from mirror is empty file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00008605:  "verification aborted", 
-cabg: cdbfilerepverify:00008606:  primaryFilename, 
-cabg: cdbfilerepverify:00008607:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00008608:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00008806:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008807:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00008808:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008809:  "could not compare verification type '%s' : %m " 
-cabg: cdbfilerepverify:00008810:  "verification aborted", 
-cabg: cdbfilerepverify:00008811:  FileRepOperationVerificationTypeToString[fileRepMessageHeader->fileRepOperationDescription.verify.type]), 
-cabg: cdbfilerepverify:00008812:  errhint("run gpverify"), 
-cabg: cdbfilerepverify:00008813:  FileRep_errdetail( 
-cabg: cdbfilerepverify:00008814:  fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepverify:00008815:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepverify:00008816:  fileRepMessageHeader->fileRepOperation, 
-cabg: cdbfilerepverify:00008817:  fileRepMessageHeader->messageCount), 
-cabg: cdbfilerepverify:00008818:  FileRep_errcontext())); 
-cabg: cdbfilerepverify:00008924:  ereport(WARNING, 
-cabg: cdbfilerepverify:00008925:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00008926:  "could not compute summary for relation file '%s' " 
-cabg: cdbfilerepverify:00008927:  "verification aborted", 
-cabg: cdbfilerepverify:00008928:  relpath(relfilenodeTable[row].relFileNode)), 
-cabg: cdbfilerepverify:00008929:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00009002:  ereport(WARNING, 
-cabg: cdbfilerepverify:00009003:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00009004:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00009005:  "could not stat file '%s' : %m " 
-cabg: cdbfilerepverify:00009006:  "verification aborted", 
-cabg: cdbfilerepverify:00009007:  relpath(relfilenodeTable[row].relFileNode)), 
-cabg: cdbfilerepverify:00009008:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00009828:  ereport(WARNING, 
-cabg: cdbfilerepverify:00009829:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00009830:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00009831:  "could not read directory '%s' : %m " 
-cabg: cdbfilerepverify:00009832:  "verification aborted", 
-cabg: cdbfilerepverify:00009833:  currentDirectoryName), 
-cabg: cdbfilerepverify:00009834:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00009894:  ereport(WARNING, 
-cabg: cdbfilerepverify:00009895:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00009896:  errmsg("could not stat file '%s/%s' : %m", 
-cabg: cdbfilerepverify:00009897:  child_path, 
-cabg: cdbfilerepverify:00009898:  de->d_name), 
-cabg: cdbfilerepverify:00009899:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010025:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010026:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010027:  "could not parse file '%s' " 
-cabg: cdbfilerepverify:00010028:  "verification aborted", 
-cabg: cdbfilerepverify:00010029:  child_path), 
-cabg: cdbfilerepverify:00010030:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010420:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010421:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010422:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010423:  "could not stat file '%s' : %m " 
-cabg: cdbfilerepverify:00010424:  "verification aborted", 
-cabg: cdbfilerepverify:00010425:  primaryBaseDir), 
-cabg: cdbfilerepverify:00010426:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007300:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007301:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007302:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00007303:  "verification aborted", 
+cabg: cdbfilerepverify:00007304:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007305:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007317:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007318:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007319:  "could not allocate memory to run verification token '%s' " 
+cabg: cdbfilerepverify:00007320:  "verification aborted", 
+cabg: cdbfilerepverify:00007321:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007322:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007632:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007633:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007634:  "maximum restarts exceeded when comparing directory contents for '%s' run verification token '%s' " 
+cabg: cdbfilerepverify:00007635:  "verification aborted", 
+cabg: cdbfilerepverify:00007636:  primaryDirectoryName, 
+cabg: cdbfilerepverify:00007637:  request->logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007638:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007901:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007902:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007903:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007904:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007905:  "verification aborted", 
+cabg: cdbfilerepverify:00007906:  primaryFilename, 
+cabg: cdbfilerepverify:00007907:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007908:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007928:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007929:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007930:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007931:  "could not stat file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007932:  "verification aborted", 
+cabg: cdbfilerepverify:00007933:  primaryFilename, 
+cabg: cdbfilerepverify:00007934:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007935:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007942:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007943:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007944:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007945:  "not a regular file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007946:  "verification aborted", 
+cabg: cdbfilerepverify:00007947:  primaryFilename, 
+cabg: cdbfilerepverify:00007948:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007949:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007971:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007972:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007973:  "could not allocate memory for file '%s' to run verification token '%s' " 
+cabg: cdbfilerepverify:00007974:  "verification aborted", 
+cabg: cdbfilerepverify:00007975:  primaryFilename, 
+cabg: cdbfilerepverify:00007976:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007977:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00007985:  ereport(WARNING, 
+cabg: cdbfilerepverify:00007986:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00007987:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00007988:  "could not open file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00007989:  "verification aborted", 
+cabg: cdbfilerepverify:00007990:  primaryFilename, 
+cabg: cdbfilerepverify:00007991:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00007992:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008173:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008174:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008175:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008176:  "response from mirror is empty file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008177:  "verification aborted", 
+cabg: cdbfilerepverify:00008178:  primaryFilename, 
+cabg: cdbfilerepverify:00008179:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008180:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008231:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008232:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008233:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008234:  "invalid buffer pool page file '%s' blkno '%d' " 
+cabg: cdbfilerepverify:00008235:  "verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008236:  "verification aborted", 
+cabg: cdbfilerepverify:00008237:  primaryFilename, 
+cabg: cdbfilerepverify:00008238:  blkno, 
+cabg: cdbfilerepverify:00008239:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008240:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008251:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008252:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008253:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008254:  "could not read file '%s' offset '" INT64_FORMAT "' length requested '" INT64_FORMAT "' " 
+cabg: cdbfilerepverify:00008255:  "length read '" INT64_FORMAT "' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008256:  "verification aborted", 
+cabg: cdbfilerepverify:00008257:  primaryFilename, 
+cabg: cdbfilerepverify:00008258:  fileOffset, 
+cabg: cdbfilerepverify:00008259:  dataLengthLocal, 
+cabg: cdbfilerepverify:00008260:  bytesRead, 
+cabg: cdbfilerepverify:00008261:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008262:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008608:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008609:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008610:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008611:  "response from mirror is empty file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00008612:  "verification aborted", 
+cabg: cdbfilerepverify:00008613:  primaryFilename, 
+cabg: cdbfilerepverify:00008614:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00008615:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00008813:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008814:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00008815:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008816:  "could not compare verification type '%s' : %m " 
+cabg: cdbfilerepverify:00008817:  "verification aborted", 
+cabg: cdbfilerepverify:00008818:  FileRepOperationVerificationTypeToString[fileRepMessageHeader->fileRepOperationDescription.verify.type]), 
+cabg: cdbfilerepverify:00008819:  errhint("run gpverify"), 
+cabg: cdbfilerepverify:00008820:  FileRep_errdetail( 
+cabg: cdbfilerepverify:00008821:  fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepverify:00008822:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepverify:00008823:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepverify:00008824:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepverify:00008825:  FileRep_errcontext())); 
+cabg: cdbfilerepverify:00008931:  ereport(WARNING, 
+cabg: cdbfilerepverify:00008932:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00008933:  "could not compute summary for relation file '%s' " 
+cabg: cdbfilerepverify:00008934:  "verification aborted", 
+cabg: cdbfilerepverify:00008935:  relpath(relfilenodeTable[row].relFileNode)), 
+cabg: cdbfilerepverify:00008936:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00009009:  ereport(WARNING, 
+cabg: cdbfilerepverify:00009010:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00009011:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00009012:  "could not stat file '%s' : %m " 
+cabg: cdbfilerepverify:00009013:  "verification aborted", 
+cabg: cdbfilerepverify:00009014:  relpath(relfilenodeTable[row].relFileNode)), 
+cabg: cdbfilerepverify:00009015:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00009640:  ereport(WARNING, 
+cabg: cdbfilerepverify:00009641:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00009642:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00009643:  "could not read directory '%s' : %m " 
+cabg: cdbfilerepverify:00009644:  "verification aborted", 
+cabg: cdbfilerepverify:00009645:  currentDirectoryName), 
+cabg: cdbfilerepverify:00009646:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00009756:  ereport(WARNING, 
+cabg: cdbfilerepverify:00009757:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00009758:  errmsg("could not stat file '%s/%s' : %m", 
+cabg: cdbfilerepverify:00009759:  child_path, 
+cabg: cdbfilerepverify:00009760:  de->d_name), 
+cabg: cdbfilerepverify:00009761:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00009873:  ereport(WARNING, 
+cabg: cdbfilerepverify:00009874:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00009875:  "could not parse file '%s' " 
+cabg: cdbfilerepverify:00009876:  "verification aborted", 
+cabg: cdbfilerepverify:00009877:  child_path), 
+cabg: cdbfilerepverify:00009878:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010265:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010266:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010267:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010268:  "could not stat file '%s' : %m " 
+cabg: cdbfilerepverify:00010269:  "verification aborted", 
+cabg: cdbfilerepverify:00010270:  primaryBaseDir), 
+cabg: cdbfilerepverify:00010271:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010280:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010281:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010282:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010283:  "not a directory '%s' : %m " 
+cabg: cdbfilerepverify:00010284:  "verification aborted", 
+cabg: cdbfilerepverify:00010285:  primaryBaseDir), 
+cabg: cdbfilerepverify:00010286:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010317:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010318:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010319:  "could not parse file '%s' " 
+cabg: cdbfilerepverify:00010320:  "verification aborted", 
+cabg: cdbfilerepverify:00010321:  primaryBaseDir), 
+cabg: cdbfilerepverify:00010322:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010394:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010395:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010396:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010397:  "could not stat file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00010398:  "verification aborted", 
+cabg: cdbfilerepverify:00010399:  fileName, 
+cabg: cdbfilerepverify:00010400:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00010401:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010416:  ereport(WARNING, 
+cabg: cdbfilerepverify:00010417:  (errcode_for_file_access(), 
+cabg: cdbfilerepverify:00010418:  errmsg("verification failure, " 
+cabg: cdbfilerepverify:00010419:  "not a regular file '%s' verification token '%s' : %m " 
+cabg: cdbfilerepverify:00010420:  "verification aborted", 
+cabg: cdbfilerepverify:00010421:  fileName, 
+cabg: cdbfilerepverify:00010422:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00010423:  errhint("run gpverify"))); 
 cabg: cdbfilerepverify:00010435:  ereport(WARNING, 
 cabg: cdbfilerepverify:00010436:  (errcode_for_file_access(), 
 cabg: cdbfilerepverify:00010437:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010438:  "not a directory '%s' : %m " 
+cabg: cdbfilerepverify:00010438:  "could not open file '%s' verification token '%s' : %m " 
 cabg: cdbfilerepverify:00010439:  "verification aborted", 
-cabg: cdbfilerepverify:00010440:  primaryBaseDir), 
-cabg: cdbfilerepverify:00010441:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010472:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010473:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010474:  "could not parse file '%s' " 
-cabg: cdbfilerepverify:00010475:  "verification aborted", 
-cabg: cdbfilerepverify:00010476:  primaryBaseDir), 
-cabg: cdbfilerepverify:00010477:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010543:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010544:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010545:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010546:  "could not stat file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00010547:  "verification aborted", 
-cabg: cdbfilerepverify:00010548:  fileName, 
-cabg: cdbfilerepverify:00010549:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00010550:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010565:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010566:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010567:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010568:  "not a regular file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00010569:  "verification aborted", 
-cabg: cdbfilerepverify:00010570:  fileName, 
-cabg: cdbfilerepverify:00010571:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00010572:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00010584:  ereport(WARNING, 
-cabg: cdbfilerepverify:00010585:  (errcode_for_file_access(), 
-cabg: cdbfilerepverify:00010586:  errmsg("verification failure, " 
-cabg: cdbfilerepverify:00010587:  "could not open file '%s' verification token '%s' : %m " 
-cabg: cdbfilerepverify:00010588:  "verification aborted", 
-cabg: cdbfilerepverify:00010589:  fileName, 
-cabg: cdbfilerepverify:00010590:  logControl.logOptions.token), 
-cabg: cdbfilerepverify:00010591:  errhint("run gpverify"))); 
-cabg: cdbfilerepverify:00011338:  ereport(WARNING, 
-cabg: cdbfilerepverify:00011339:  (errmsg("verification failure, " 
-cabg: cdbfilerepverify:00011340:  "could not allocate memory to run verification " 
-cabg: cdbfilerepverify:00011341:  "verification aborted"), 
-cabg: cdbfilerepverify:00011342:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00010440:  fileName, 
+cabg: cdbfilerepverify:00010441:  logControl.logOptions.token), 
+cabg: cdbfilerepverify:00010442:  errhint("run gpverify"))); 
+cabg: cdbfilerepverify:00011196:  ereport(WARNING, 
+cabg: cdbfilerepverify:00011197:  (errmsg("verification failure, " 
+cabg: cdbfilerepverify:00011198:  "could not allocate memory to run verification " 
+cabg: cdbfilerepverify:00011199:  "verification aborted"), 
+cabg: cdbfilerepverify:00011200:  errhint("run gpverify"))); 
 aaaaa GP_IGNORE: caag: cdbfts - ./backend/cdb/cdbfts.c
 caag: cdbfts:00000085:  elog(FATAL, "FTS: could not initialize fault tolerance manager share memory"); 
 caag: cdbfts:00000243:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
@@ -7450,120 +7436,120 @@ cabj: cdbtargeteddispatch:00000539:  elog(ERROR, "Invalid plan node %d", nodeTag
 aaaaa GP_IGNORE: caai: cdbtimer - ./backend/cdb/cdbtimer.c
 caai: cdbtimer:00000097:  elog( FATAL, "Old timer values not provided" ); 
 aaaaa GP_IGNORE: caaf: cdbtm - ./backend/cdb/cdbtm.c
-caaf: cdbtm:00000177:  elog(FATAL, "Expected segment distributed transaction context to be '%s', found '%s'", 
-caaf: cdbtm:00000178:  DtxContextToString(requiredCurrentContext), 
-caaf: cdbtm:00000179:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00000321:  elog(FATAL, "getDtxLogInfo found current distributed transaction is NULL"); 
-caaf: cdbtm:00000502:  elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail); 
-caaf: cdbtm:00000514:  elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')", 
-caaf: cdbtm:00000515:  DtxStateToString(currentGxact->state), debugCaller, debugDetail); 
-caaf: cdbtm:00000545:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00000546:  currentGxact->gid))); 
-caaf: cdbtm:00000621:  elog(ERROR, "The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000622:  currentGxact->gid); 
-caaf: cdbtm:00000699:  elog(WARNING, "The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000700:  currentGxact->gid); 
-caaf: cdbtm:00000711:  elog(NOTICE, "Releasing segworker group to retry broadcast."); 
-caaf: cdbtm:00000790:  elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000791:  currentGxact->gid); 
-caaf: cdbtm:00000796:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
-caaf: cdbtm:00000844:  elog(WARNING, "The distributed transaction '%s' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000845:  abortString, currentGxact->gid); 
-caaf: cdbtm:00000855:  elog(NOTICE, "Releasing segworker groups to retry broadcast."); 
-caaf: cdbtm:00000973:  elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.", 
-caaf: cdbtm:00000974:  prepareKind, currentGxact->gid); 
-caaf: cdbtm:00000976:  elog(NOTICE, "Retry of the distributed transaction '%s Prepared' broadcast succeeded to the segments for gid = %s.", 
-caaf: cdbtm:00000977:  prepareKind, currentGxact->gid); 
-caaf: cdbtm:00001049:  elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", gid); 
-caaf: cdbtm:00001074:  elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s. System will retry again later", gid); 
-caaf: cdbtm:00001166:  elog(WARNING, "Releasing segworker groups since one or more segment connections failed. This will abort the transactions in the segments that did not get prepared."); 
-caaf: cdbtm:00001191:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
-caaf: cdbtm:00001205:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
-caaf: cdbtm:00001206:  currentGxact->gid); 
-caaf: cdbtm:00001250:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
-caaf: cdbtm:00001251:  currentGxact->gid); 
-caaf: cdbtm:00001434:  elog(FATAL, "DTM initialization: failure during startup/recovery, could not retry, check segment status"); 
-caaf: cdbtm:00001453:  elog(FATAL, "DTM initialization: failure during startup/recovery, retry failed, check segment status"); 
-caaf: cdbtm:00001503:  elog(FATAL, "could not initialize transaction manager share memory"); 
-caaf: cdbtm:00001765:  ereport(ERROR, 
-caaf: cdbtm:00001766:  (errcode_for_file_access(), 
-caaf: cdbtm:00001767:  errmsg("could not create save DTM redo file \"%s\"", 
-caaf: cdbtm:00001768:  path))); 
-caaf: cdbtm:00001796:  ereport(ERROR, 
-caaf: cdbtm:00001797:  (errcode_for_file_access(), 
-caaf: cdbtm:00001798:  errmsg("could not write save DTM redo file : %m"))); 
-caaf: cdbtm:00001851:  elog(ERROR, "Bad redo length (expected %d and found %d)", 
-caaf: cdbtm:00001852:  (int)sizeof(TMGXACT_UTILITY_MODE_REDO), read_len); 
-caaf: cdbtm:00001856:  ereport(ERROR, 
-caaf: cdbtm:00001857:  (errcode_for_file_access(), 
-caaf: cdbtm:00001858:  errmsg("error reading DTM redo file: %m"))); 
-caaf: cdbtm:00001934:  ereport(FATAL, 
-caaf: cdbtm:00001935:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00001936:  max_tm_gxacts), 
-caaf: cdbtm:00001937:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002355:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
-caaf: cdbtm:00002356:  DtxStateToString(state)); 
-caaf: cdbtm:00002360:  elog(FATAL, "Cannot also be inserting COMMITTED into log buffer from another process with TM lock held"); 
-caaf: cdbtm:00002364:  elog(FATAL, "Cannot also be inserting FORGET COMMITTED into log buffer from another process with TM lock held"); 
-caaf: cdbtm:00002397:  elog(ERROR, "Too many distributed transactions for snapshot"); 
-caaf: cdbtm:00002481:  ereport(FATAL, 
-caaf: cdbtm:00002482:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00002483:  max_tm_gxacts), 
-caaf: cdbtm:00002484:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002543:  elog(FATAL, "releaseGxact expected currentGxact to not be NULL"); 
-caaf: cdbtm:00002751:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
-caaf: cdbtm:00002752:  DtxStateToString(state)); 
-caaf: cdbtm:00002756:  elog(FATAL, "Cannot also be buffering COMMITTED from another process with TM lock held"); 
-caaf: cdbtm:00002760:  elog(FATAL, "Cannot also be buffering FORGET COMMITTED from another process with TM lock held"); 
-caaf: cdbtm:00002842:  ereport(FATAL, 
-caaf: cdbtm:00002843:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
-caaf: cdbtm:00002966:  elog(NOTICE, "Releasing segworker groups for deferred recovery."); 
-caaf: cdbtm:00003096:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caaf: cdbtm:00003097:  errmsg("DTM Log recovery failed. There are still unresolved " 
-caaf: cdbtm:00003098:  "in-doubt transactions on some of the segment databaes " 
-caaf: cdbtm:00003099:  "that were not able to be resolved for an unknown reason. "), 
-caaf: cdbtm:00003100:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
-caaf: cdbtm:00003101:  indoubtBuff.data), 
-caaf: cdbtm:00003102:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
-caaf: cdbtm:00003103:  " an Administrator will need to resolve these transactions " 
-caaf: cdbtm:00003104:  " manually."))); 
-caaf: cdbtm:00003154:  ereport(ERROR, 
-caaf: cdbtm:00003155:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
-caaf: cdbtm:00003156:  errdetail("%s", errbuf.data))); 
-caaf: cdbtm:00003167:  elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok"); 
-caaf: cdbtm:00003235:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caaf: cdbtm:00003236:  errmsg("Unable to collect list of prepared transactions " 
-caaf: cdbtm:00003237:  "from all segment databases."), 
-caaf: cdbtm:00003238:  errdetail("%s", errmsgbuf.data))); 
-caaf: cdbtm:00003272:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaf: cdbtm:00003273:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
-caaf: cdbtm:00003577:  elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'", 
-caaf: cdbtm:00003578:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003691:  elog(ERROR, "setupQEDtxContext not expecting distributed begin or snapshot when no Snapshot slot exists"); 
-caaf: cdbtm:00003756:  elog(ERROR, "Starting an explicit distributed transaction in segment -- cannot already be in a transaction"); 
-caaf: cdbtm:00003780:  elog(ERROR, 
-caaf: cdbtm:00003781:  "Going to start a local implicit transaction in segment using a distribute " 
-caaf: cdbtm:00003782:  "snapshot -- cannot already be in a transaction"); 
-caaf: cdbtm:00003810:  elog(NOTICE, "We should have left this transition state '%s' at the end of the previous command...", 
-caaf: cdbtm:00003811:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003817:  elog(ERROR, "Cannot have an explicit BEGIN statement..."); 
-caaf: cdbtm:00003822:  elog(ERROR, "We should have left this transition state '%s' at the end of the previous command", 
-caaf: cdbtm:00003823:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003840:  elog(ERROR, "We should not be trying to execute a query in state '%s'", 
-caaf: cdbtm:00003841:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00003879:  elog(FATAL, "Expected currentGxact to be NULL at this point. Found gid =%s, gxid = %u (state = %s, caller = %s)", 
-caaf: cdbtm:00003880:  currentGxact->gid, currentGxact->gxid, DtxStateToString(currentGxact->state), debugCaller); 
-caaf: cdbtm:00003951:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00003952:  currentGxact->gid))); 
-caaf: cdbtm:00003987:  elog(ERROR, "Prepare of distributed transaction %s failed", gid); 
-caaf: cdbtm:00004101:  elog(FATAL, "Unexpected segment distributed transaction context: '%s'", 
-caaf: cdbtm:00004102:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00004130:  elog(ERROR, "Distributed transaction %s not found", gid); 
-caaf: cdbtm:00004144:  elog(FATAL, "Unexpected segment distribute transaction context: '%s'", 
-caaf: cdbtm:00004145:  DtxContextToString(DistributedTransactionContext)); 
-caaf: cdbtm:00004161:  elog(ERROR, "Distributed transaction %s not found", gid); 
-caaf: cdbtm:00004221:  elog(ERROR, "Unrecognized dtx protocol command: %d", 
-caaf: cdbtm:00004222:  (int) dtxProtocolCommand); 
+caaf: cdbtm:00000178:  elog(FATAL, "Expected segment distributed transaction context to be '%s', found '%s'", 
+caaf: cdbtm:00000179:  DtxContextToString(requiredCurrentContext), 
+caaf: cdbtm:00000180:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00000322:  elog(FATAL, "getDtxLogInfo found current distributed transaction is NULL"); 
+caaf: cdbtm:00000503:  elog(ERROR, "DTM transaction is not active (%s, detail = '%s')", debugCaller, debugDetail); 
+caaf: cdbtm:00000515:  elog(ERROR, "DTM transaction is not active (state = %s, %s, detail = '%s')", 
+caaf: cdbtm:00000516:  DtxStateToString(currentGxact->state), debugCaller, debugDetail); 
+caaf: cdbtm:00000546:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00000547:  currentGxact->gid))); 
+caaf: cdbtm:00000622:  elog(ERROR, "The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000623:  currentGxact->gid); 
+caaf: cdbtm:00000700:  elog(WARNING, "The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000701:  currentGxact->gid); 
+caaf: cdbtm:00000712:  elog(NOTICE, "Releasing segworker group to retry broadcast."); 
+caaf: cdbtm:00000791:  elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000792:  currentGxact->gid); 
+caaf: cdbtm:00000797:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
+caaf: cdbtm:00000845:  elog(WARNING, "The distributed transaction '%s' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000846:  abortString, currentGxact->gid); 
+caaf: cdbtm:00000856:  elog(NOTICE, "Releasing segworker groups to retry broadcast."); 
+caaf: cdbtm:00000974:  elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.", 
+caaf: cdbtm:00000975:  prepareKind, currentGxact->gid); 
+caaf: cdbtm:00000977:  elog(NOTICE, "Retry of the distributed transaction '%s Prepared' broadcast succeeded to the segments for gid = %s.", 
+caaf: cdbtm:00000978:  prepareKind, currentGxact->gid); 
+caaf: cdbtm:00001050:  elog(FATAL, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = %s.", gid); 
+caaf: cdbtm:00001075:  elog(FATAL, "Crash recovery retry of the distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = %s. System will retry again later", gid); 
+caaf: cdbtm:00001167:  elog(WARNING, "Releasing segworker groups since one or more segment connections failed. This will abort the transactions in the segments that did not get prepared."); 
+caaf: cdbtm:00001192:  elog(NOTICE, "Releasing segworker groups to finish aborting the transaction."); 
+caaf: cdbtm:00001206:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
+caaf: cdbtm:00001207:  currentGxact->gid); 
+caaf: cdbtm:00001251:  elog(FATAL, "Unable to complete the 'Abort Prepared' broadcast for gid '%s'", 
+caaf: cdbtm:00001252:  currentGxact->gid); 
+caaf: cdbtm:00001449:  elog(FATAL, "DTM initialization: failure during startup/recovery, could not retry, check segment status"); 
+caaf: cdbtm:00001468:  elog(FATAL, "DTM initialization: failure during startup/recovery, retry failed, check segment status"); 
+caaf: cdbtm:00001518:  elog(FATAL, "could not initialize transaction manager share memory"); 
+caaf: cdbtm:00001780:  ereport(ERROR, 
+caaf: cdbtm:00001781:  (errcode_for_file_access(), 
+caaf: cdbtm:00001782:  errmsg("could not create save DTM redo file \"%s\"", 
+caaf: cdbtm:00001783:  path))); 
+caaf: cdbtm:00001811:  ereport(ERROR, 
+caaf: cdbtm:00001812:  (errcode_for_file_access(), 
+caaf: cdbtm:00001813:  errmsg("could not write save DTM redo file : %m"))); 
+caaf: cdbtm:00001866:  elog(ERROR, "Bad redo length (expected %d and found %d)", 
+caaf: cdbtm:00001867:  (int)sizeof(TMGXACT_UTILITY_MODE_REDO), read_len); 
+caaf: cdbtm:00001871:  ereport(ERROR, 
+caaf: cdbtm:00001872:  (errcode_for_file_access(), 
+caaf: cdbtm:00001873:  errmsg("error reading DTM redo file: %m"))); 
+caaf: cdbtm:00001949:  ereport(FATAL, 
+caaf: cdbtm:00001950:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00001951:  max_tm_gxacts), 
+caaf: cdbtm:00001952:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002370:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
+caaf: cdbtm:00002371:  DtxStateToString(state)); 
+caaf: cdbtm:00002375:  elog(FATAL, "Cannot also be inserting COMMITTED into log buffer from another process with TM lock held"); 
+caaf: cdbtm:00002379:  elog(FATAL, "Cannot also be inserting FORGET COMMITTED into log buffer from another process with TM lock held"); 
+caaf: cdbtm:00002412:  elog(ERROR, "Too many distributed transactions for snapshot"); 
+caaf: cdbtm:00002496:  ereport(FATAL, 
+caaf: cdbtm:00002497:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00002498:  max_tm_gxacts), 
+caaf: cdbtm:00002499:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002558:  elog(FATAL, "releaseGxact expected currentGxact to not be NULL"); 
+caaf: cdbtm:00002766:  elog(FATAL, "Should not see this transitional state with TM lock held -- dtx state \"%s\" not expected here", 
+caaf: cdbtm:00002767:  DtxStateToString(state)); 
+caaf: cdbtm:00002771:  elog(FATAL, "Cannot also be buffering COMMITTED from another process with TM lock held"); 
+caaf: cdbtm:00002775:  elog(FATAL, "Cannot also be buffering FORGET COMMITTED from another process with TM lock held"); 
+caaf: cdbtm:00002857:  ereport(FATAL, 
+caaf: cdbtm:00002858:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
+caaf: cdbtm:00002981:  elog(NOTICE, "Releasing segworker groups for deferred recovery."); 
+caaf: cdbtm:00003111:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caaf: cdbtm:00003112:  errmsg("DTM Log recovery failed. There are still unresolved " 
+caaf: cdbtm:00003113:  "in-doubt transactions on some of the segment databaes " 
+caaf: cdbtm:00003114:  "that were not able to be resolved for an unknown reason. "), 
+caaf: cdbtm:00003115:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
+caaf: cdbtm:00003116:  indoubtBuff.data), 
+caaf: cdbtm:00003117:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
+caaf: cdbtm:00003118:  " an Administrator will need to resolve these transactions " 
+caaf: cdbtm:00003119:  " manually."))); 
+caaf: cdbtm:00003169:  ereport(ERROR, 
+caaf: cdbtm:00003170:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
+caaf: cdbtm:00003171:  errdetail("%s", errbuf.data))); 
+caaf: cdbtm:00003182:  elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok"); 
+caaf: cdbtm:00003250:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caaf: cdbtm:00003251:  errmsg("Unable to collect list of prepared transactions " 
+caaf: cdbtm:00003252:  "from all segment databases."), 
+caaf: cdbtm:00003253:  errdetail("%s", errmsgbuf.data))); 
+caaf: cdbtm:00003287:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaf: cdbtm:00003288:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
+caaf: cdbtm:00003592:  elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'", 
+caaf: cdbtm:00003593:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003706:  elog(ERROR, "setupQEDtxContext not expecting distributed begin or snapshot when no Snapshot slot exists"); 
+caaf: cdbtm:00003771:  elog(ERROR, "Starting an explicit distributed transaction in segment -- cannot already be in a transaction"); 
+caaf: cdbtm:00003795:  elog(ERROR, 
+caaf: cdbtm:00003796:  "Going to start a local implicit transaction in segment using a distribute " 
+caaf: cdbtm:00003797:  "snapshot -- cannot already be in a transaction"); 
+caaf: cdbtm:00003825:  elog(NOTICE, "We should have left this transition state '%s' at the end of the previous command...", 
+caaf: cdbtm:00003826:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003832:  elog(ERROR, "Cannot have an explicit BEGIN statement..."); 
+caaf: cdbtm:00003837:  elog(ERROR, "We should have left this transition state '%s' at the end of the previous command", 
+caaf: cdbtm:00003838:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003855:  elog(ERROR, "We should not be trying to execute a query in state '%s'", 
+caaf: cdbtm:00003856:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00003894:  elog(FATAL, "Expected currentGxact to be NULL at this point. Found gid =%s, gxid = %u (state = %s, caller = %s)", 
+caaf: cdbtm:00003895:  currentGxact->gid, currentGxact->gxid, DtxStateToString(currentGxact->state), debugCaller); 
+caaf: cdbtm:00003966:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00003967:  currentGxact->gid))); 
+caaf: cdbtm:00004002:  elog(ERROR, "Prepare of distributed transaction %s failed", gid); 
+caaf: cdbtm:00004116:  elog(FATAL, "Unexpected segment distributed transaction context: '%s'", 
+caaf: cdbtm:00004117:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00004145:  elog(ERROR, "Distributed transaction %s not found", gid); 
+caaf: cdbtm:00004159:  elog(FATAL, "Unexpected segment distribute transaction context: '%s'", 
+caaf: cdbtm:00004160:  DtxContextToString(DistributedTransactionContext)); 
+caaf: cdbtm:00004176:  elog(ERROR, "Distributed transaction %s not found", gid); 
+caaf: cdbtm:00004236:  elog(ERROR, "Unrecognized dtx protocol command: %d", 
+caaf: cdbtm:00004237:  (int) dtxProtocolCommand); 
 aaaaa GP_IGNORE: caba: cdbtmutils - ./backend/cdb/cdbtmutils.c
 caba: cdbtmutils:00000056:  elog(ERROR, "Bad distributed transaction identifier \"%s\"", gid); 
 caba: cdbtmutils:00000129:  elog(NOTICE, "%s --> Now would be a good time to debug pid = %d", caller, MyProcPid); 
@@ -8095,25 +8081,25 @@ aaaf: alter:00000194:  (int) stmt->objectType);
 aaaf: alter:00000272:  elog(ERROR, "unrecognized AlterOwnerStmt type: %d", 
 aaaf: alter:00000273:  (int) stmt->objectType); 
 aaaaa GP_IGNORE: aaah: analyze - ./backend/commands/analyze.c
-aaah: analyze:00000466:  ereport(WARNING, 
-aaah: analyze:00000467:  (errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables", 
-aaah: analyze:00000468:  RelationGetRelationName(candidateRelation)))); 
-aaah: analyze:00000536:  ereport(WARNING, 
-aaah: analyze:00000537:  (errmsg("Skipping \"%s\" --- only table or database owner can analyze it", 
-aaah: analyze:00000538:  RelationGetRelationName(candidateRelation)))); 
-aaah: analyze:00000609:  ereport(ERROR, 
-aaah: analyze:00000610:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00000611:  errmsg("Attribute %s has been dropped in relation %s.", 
-aaah: analyze:00000612:  attributeName, get_rel_name(relationOid)))); 
-aaah: analyze:00000626:  ereport(ERROR, 
-aaah: analyze:00000627:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00000628:  errmsg("Relation %s does not have an attribute named %s.", 
-aaah: analyze:00000629:  get_rel_name(relationOid),attributeName))); 
-aaah: analyze:00001019:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaah: analyze:00001020:  errmsg("Unable to connect to execute internal query."))); 
-aaah: analyze:00001232:  elog(ERROR, "ANALYZE unable to generate accurate statistics on table %s.%s. Try lowering gp_analyze_relative_error", 
-aaah: analyze:00001233:  quote_identifier(schemaName), 
-aaah: analyze:00001234:  quote_identifier(tableName)); 
+aaah: analyze:00000470:  ereport(WARNING, 
+aaah: analyze:00000471:  (errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables", 
+aaah: analyze:00000472:  RelationGetRelationName(candidateRelation)))); 
+aaah: analyze:00000540:  ereport(WARNING, 
+aaah: analyze:00000541:  (errmsg("Skipping \"%s\" --- only table or database owner can analyze it", 
+aaah: analyze:00000542:  RelationGetRelationName(candidateRelation)))); 
+aaah: analyze:00000613:  ereport(ERROR, 
+aaah: analyze:00000614:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00000615:  errmsg("Attribute %s has been dropped in relation %s.", 
+aaah: analyze:00000616:  attributeName, get_rel_name(relationOid)))); 
+aaah: analyze:00000630:  ereport(ERROR, 
+aaah: analyze:00000631:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00000632:  errmsg("Relation %s does not have an attribute named %s.", 
+aaah: analyze:00000633:  get_rel_name(relationOid),attributeName))); 
+aaah: analyze:00001023:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaah: analyze:00001024:  errmsg("Unable to connect to execute internal query."))); 
+aaah: analyze:00001329:  elog(ERROR, "ANALYZE unable to generate accurate statistics on table %s.%s. Try lowering gp_analyze_relative_error", 
+aaah: analyze:00001330:  quote_identifier(schemaName), 
+aaah: analyze:00001331:  quote_identifier(tableName)); 
 aaaaa GP_IGNORE: aaaf: async - ./backend/commands/async.c
 aaaf: async:00000342:  ereport(ERROR, 
 aaaf: async:00000343:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -23671,114 +23657,114 @@ maai: miscinit:00000238:  errmsg("out of memory")));
 maai: miscinit:00000246:  ereport(FATAL, 
 maai: miscinit:00000247:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 maai: miscinit:00000248:  errmsg("out of memory"))); 
-maai: miscinit:00000433:  ereport(FATAL, 
-maai: miscinit:00000434:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-maai: miscinit:00000435:  errmsg("role \"%s\" does not exist", rolename), 
-maai: miscinit:00000436:  errOmitLocation(true), errSendAlert(false))); 
-maai: miscinit:00000464:  ereport(FATAL, 
-maai: miscinit:00000465:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-maai: miscinit:00000466:  errmsg("role \"%s\" is not permitted to log in", 
-maai: miscinit:00000467:  rolename), 
-maai: miscinit:00000468:  errOmitLocation(true))); 
-maai: miscinit:00000478:  ereport(FATAL, 
-maai: miscinit:00000479:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-maai: miscinit:00000480:  errmsg("Upgrade in progress, connection refused"), 
-maai: miscinit:00000481:  errOmitLocation(true), 
-maai: miscinit:00000482:  errSendAlert(false))); 
-maai: miscinit:00000492:  ereport(FATAL, 
-maai: miscinit:00000493:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-maai: miscinit:00000494:  errmsg("Maintenance mode: connected by superuser only"), 
-maai: miscinit:00000495:  errOmitLocation(true), 
-maai: miscinit:00000496:  errSendAlert(false))); 
-maai: miscinit:00000516:  ereport(FATAL, 
-maai: miscinit:00000517:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-maai: miscinit:00000518:  errmsg("too many connections for role \"%s\"", 
-maai: miscinit:00000519:  rolename), 
-maai: miscinit:00000520:  errOmitLocation(true))); 
-maai: miscinit:00000595:  ereport(ERROR, 
-maai: miscinit:00000596:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-maai: miscinit:00000597:  errmsg("permission denied to set session authorization"), 
-maai: miscinit:00000598:  errOmitLocation(true))); 
-maai: miscinit:00000686:  ereport(ERROR, 
-maai: miscinit:00000687:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-maai: miscinit:00000688:  errmsg("invalid role OID: %u", roleid))); 
-maai: miscinit:00000778:  ereport(FATAL, 
-maai: miscinit:00000779:  (errcode_for_file_access(), 
-maai: miscinit:00000780:  errmsg("could not create lock file \"%s\": %m", 
-maai: miscinit:00000781:  filename))); 
-maai: miscinit:00000792:  ereport(FATAL, 
-maai: miscinit:00000793:  (errcode_for_file_access(), 
-maai: miscinit:00000794:  errmsg("could not open lock file \"%s\": %m", 
-maai: miscinit:00000795:  filename))); 
-maai: miscinit:00000798:  ereport(FATAL, 
-maai: miscinit:00000799:  (errcode_for_file_access(), 
-maai: miscinit:00000800:  errmsg("could not read lock file \"%s\": %m", 
-maai: miscinit:00000801:  filename))); 
-maai: miscinit:00000811:  elog(FATAL, "bogus data in lock file \"%s\": \"%s\"", 
-maai: miscinit:00000812:  filename, buffer); 
-maai: miscinit:00000861:  ereport(FATAL, 
-maai: miscinit:00000862:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
-maai: miscinit:00000863:  errmsg("lock file \"%s\" already exists", 
-maai: miscinit:00000864:  filename), 
-maai: miscinit:00000865:  isDDLock ? 
-maai: miscinit:00000866:  (encoded_pid < 0 ? 
-maai: miscinit:00000867:  errhint("Is another postgres (PID %d) running in data directory \"%s\"?", 
-maai: miscinit:00000868:  (int) other_pid, refName) : 
-maai: miscinit:00000869:  errhint("Is another postmaster (PID %d) running in data directory \"%s\"?", 
-maai: miscinit:00000870:  (int) other_pid, refName)) : 
-maai: miscinit:00000871:  (encoded_pid < 0 ? 
-maai: miscinit:00000872:  errhint("Is another postgres (PID %d) using socket file \"%s\"?", 
-maai: miscinit:00000873:  (int) other_pid, refName) : 
-maai: miscinit:00000874:  errhint("Is another postmaster (PID %d) using socket file \"%s\"?", 
-maai: miscinit:00000875:  (int) other_pid, refName)), 
-maai: miscinit:00000876:  errOmitLocation(true))); 
-maai: miscinit:00000901:  ereport(FATAL, 
-maai: miscinit:00000902:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
-maai: miscinit:00000903:  errmsg("pre-existing shared memory block " 
-maai: miscinit:00000904:  "(key %lu, ID %lu) is still in use", 
-maai: miscinit:00000905:  id1, id2), 
-maai: miscinit:00000906:  errhint("If you're sure there are no old " 
-maai: miscinit:00000907:  "server processes still running, remove " 
-maai: miscinit:00000908:  "the shared memory block with " 
-maai: miscinit:00000909:  "the command \"ipcclean\", \"ipcrm\", " 
-maai: miscinit:00000910:  "or just delete the file \"%s\".", 
-maai: miscinit:00000911:  filename))); 
-maai: miscinit:00000922:  ereport(FATAL, 
-maai: miscinit:00000923:  (errcode_for_file_access(), 
-maai: miscinit:00000924:  errmsg("could not remove old lock file \"%s\": %m", 
-maai: miscinit:00000925:  filename), 
-maai: miscinit:00000926:  errhint("The file seems accidentally left over, but " 
-maai: miscinit:00000927:  "it could not be removed. Please remove the file " 
-maai: miscinit:00000928:  "by hand and try again."))); 
-maai: miscinit:00000946:  ereport(FATAL, 
-maai: miscinit:00000947:  (errcode_for_file_access(), 
-maai: miscinit:00000948:  errmsg("could not write lock file \"%s\": %m", filename))); 
-maai: miscinit:00000956:  ereport(FATAL, 
-maai: miscinit:00000957:  (errcode_for_file_access(), 
-maai: miscinit:00000958:  errmsg("could not write lock file \"%s\": %m", filename))); 
-maai: miscinit:00000967:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-maai: miscinit:00000968:  errmsg("Create lock file failed: out of memory"))); 
-maai: miscinit:00001161:  ereport(FATAL, 
-maai: miscinit:00001162:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maai: miscinit:00001163:  errmsg("\"%s\" is not a valid data directory", 
-maai: miscinit:00001164:  path), 
-maai: miscinit:00001165:  errdetail("File \"%s\" is missing.", full_path))); 
-maai: miscinit:00001167:  ereport(FATAL, 
-maai: miscinit:00001168:  (errcode_for_file_access(), 
-maai: miscinit:00001169:  errmsg("could not open file \"%s\": %m", full_path))); 
+maai: miscinit:00000440:  ereport(FATAL, 
+maai: miscinit:00000441:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+maai: miscinit:00000442:  errmsg("role \"%s\" does not exist", rolename), 
+maai: miscinit:00000443:  errOmitLocation(true), errSendAlert(false))); 
+maai: miscinit:00000471:  ereport(FATAL, 
+maai: miscinit:00000472:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+maai: miscinit:00000473:  errmsg("role \"%s\" is not permitted to log in", 
+maai: miscinit:00000474:  rolename), 
+maai: miscinit:00000475:  errOmitLocation(true))); 
+maai: miscinit:00000485:  ereport(FATAL, 
+maai: miscinit:00000486:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+maai: miscinit:00000487:  errmsg("Upgrade in progress, connection refused"), 
+maai: miscinit:00000488:  errOmitLocation(true), 
+maai: miscinit:00000489:  errSendAlert(false))); 
+maai: miscinit:00000499:  ereport(FATAL, 
+maai: miscinit:00000500:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+maai: miscinit:00000501:  errmsg("Maintenance mode: connected by superuser only"), 
+maai: miscinit:00000502:  errOmitLocation(true), 
+maai: miscinit:00000503:  errSendAlert(false))); 
+maai: miscinit:00000523:  ereport(FATAL, 
+maai: miscinit:00000524:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+maai: miscinit:00000525:  errmsg("too many connections for role \"%s\"", 
+maai: miscinit:00000526:  rolename), 
+maai: miscinit:00000527:  errOmitLocation(true))); 
+maai: miscinit:00000602:  ereport(ERROR, 
+maai: miscinit:00000603:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+maai: miscinit:00000604:  errmsg("permission denied to set session authorization"), 
+maai: miscinit:00000605:  errOmitLocation(true))); 
+maai: miscinit:00000693:  ereport(ERROR, 
+maai: miscinit:00000694:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+maai: miscinit:00000695:  errmsg("invalid role OID: %u", roleid))); 
+maai: miscinit:00000785:  ereport(FATAL, 
+maai: miscinit:00000786:  (errcode_for_file_access(), 
+maai: miscinit:00000787:  errmsg("could not create lock file \"%s\": %m", 
+maai: miscinit:00000788:  filename))); 
+maai: miscinit:00000799:  ereport(FATAL, 
+maai: miscinit:00000800:  (errcode_for_file_access(), 
+maai: miscinit:00000801:  errmsg("could not open lock file \"%s\": %m", 
+maai: miscinit:00000802:  filename))); 
+maai: miscinit:00000805:  ereport(FATAL, 
+maai: miscinit:00000806:  (errcode_for_file_access(), 
+maai: miscinit:00000807:  errmsg("could not read lock file \"%s\": %m", 
+maai: miscinit:00000808:  filename))); 
+maai: miscinit:00000818:  elog(FATAL, "bogus data in lock file \"%s\": \"%s\"", 
+maai: miscinit:00000819:  filename, buffer); 
+maai: miscinit:00000868:  ereport(FATAL, 
+maai: miscinit:00000869:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
+maai: miscinit:00000870:  errmsg("lock file \"%s\" already exists", 
+maai: miscinit:00000871:  filename), 
+maai: miscinit:00000872:  isDDLock ? 
+maai: miscinit:00000873:  (encoded_pid < 0 ? 
+maai: miscinit:00000874:  errhint("Is another postgres (PID %d) running in data directory \"%s\"?", 
+maai: miscinit:00000875:  (int) other_pid, refName) : 
+maai: miscinit:00000876:  errhint("Is another postmaster (PID %d) running in data directory \"%s\"?", 
+maai: miscinit:00000877:  (int) other_pid, refName)) : 
+maai: miscinit:00000878:  (encoded_pid < 0 ? 
+maai: miscinit:00000879:  errhint("Is another postgres (PID %d) using socket file \"%s\"?", 
+maai: miscinit:00000880:  (int) other_pid, refName) : 
+maai: miscinit:00000881:  errhint("Is another postmaster (PID %d) using socket file \"%s\"?", 
+maai: miscinit:00000882:  (int) other_pid, refName)), 
+maai: miscinit:00000883:  errOmitLocation(true))); 
+maai: miscinit:00000908:  ereport(FATAL, 
+maai: miscinit:00000909:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
+maai: miscinit:00000910:  errmsg("pre-existing shared memory block " 
+maai: miscinit:00000911:  "(key %lu, ID %lu) is still in use", 
+maai: miscinit:00000912:  id1, id2), 
+maai: miscinit:00000913:  errhint("If you're sure there are no old " 
+maai: miscinit:00000914:  "server processes still running, remove " 
+maai: miscinit:00000915:  "the shared memory block with " 
+maai: miscinit:00000916:  "the command \"ipcclean\", \"ipcrm\", " 
+maai: miscinit:00000917:  "or just delete the file \"%s\".", 
+maai: miscinit:00000918:  filename))); 
+maai: miscinit:00000929:  ereport(FATAL, 
+maai: miscinit:00000930:  (errcode_for_file_access(), 
+maai: miscinit:00000931:  errmsg("could not remove old lock file \"%s\": %m", 
+maai: miscinit:00000932:  filename), 
+maai: miscinit:00000933:  errhint("The file seems accidentally left over, but " 
+maai: miscinit:00000934:  "it could not be removed. Please remove the file " 
+maai: miscinit:00000935:  "by hand and try again."))); 
+maai: miscinit:00000953:  ereport(FATAL, 
+maai: miscinit:00000954:  (errcode_for_file_access(), 
+maai: miscinit:00000955:  errmsg("could not write lock file \"%s\": %m", filename))); 
+maai: miscinit:00000963:  ereport(FATAL, 
+maai: miscinit:00000964:  (errcode_for_file_access(), 
+maai: miscinit:00000965:  errmsg("could not write lock file \"%s\": %m", filename))); 
+maai: miscinit:00000974:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+maai: miscinit:00000975:  errmsg("Create lock file failed: out of memory"))); 
+maai: miscinit:00001168:  ereport(FATAL, 
+maai: miscinit:00001169:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maai: miscinit:00001170:  errmsg("\"%s\" is not a valid data directory", 
+maai: miscinit:00001171:  path), 
+maai: miscinit:00001172:  errdetail("File \"%s\" is missing.", full_path))); 
 maai: miscinit:00001174:  ereport(FATAL, 
-maai: miscinit:00001175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maai: miscinit:00001176:  errmsg("\"%s\" is not a valid data directory", 
-maai: miscinit:00001177:  path), 
-maai: miscinit:00001178:  errdetail("File \"%s\" does not contain valid data.", 
-maai: miscinit:00001179:  full_path), 
-maai: miscinit:00001180:  errhint("You may need to run gprecoversegment.sh"))); 
-maai: miscinit:00001185:  ereport(FATAL, 
-maai: miscinit:00001186:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maai: miscinit:00001187:  errmsg("database files are incompatible with server"), 
-maai: miscinit:00001188:  errdetail("The data directory was initialized by PostgreSQL version %ld.%ld, " 
-maai: miscinit:00001189:  "which is not compatible with this version %s.", 
-maai: miscinit:00001190:  file_major, file_minor, version_string))); 
+maai: miscinit:00001175:  (errcode_for_file_access(), 
+maai: miscinit:00001176:  errmsg("could not open file \"%s\": %m", full_path))); 
+maai: miscinit:00001181:  ereport(FATAL, 
+maai: miscinit:00001182:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maai: miscinit:00001183:  errmsg("\"%s\" is not a valid data directory", 
+maai: miscinit:00001184:  path), 
+maai: miscinit:00001185:  errdetail("File \"%s\" does not contain valid data.", 
+maai: miscinit:00001186:  full_path), 
+maai: miscinit:00001187:  errhint("You may need to run gprecoversegment.sh"))); 
+maai: miscinit:00001192:  ereport(FATAL, 
+maai: miscinit:00001193:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maai: miscinit:00001194:  errmsg("database files are incompatible with server"), 
+maai: miscinit:00001195:  errdetail("The data directory was initialized by PostgreSQL version %ld.%ld, " 
+maai: miscinit:00001196:  "which is not compatible with this version %s.", 
+maai: miscinit:00001197:  file_major, file_minor, version_string))); 
 aaaaa GP_IGNORE: paai: postinit - ./backend/utils/init/postinit.c
 paai: postinit:00000091:  ereport(FATAL, 
 paai: postinit:00000092:  (errcode_for_file_access(), 
@@ -24023,112 +24009,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006715:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006716:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006729:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006730:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006743:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006744:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006774:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006775:  conf->gen.name, str); 
-gaad: guc:00007032:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007049:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007066:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007097:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007953:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00008063:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00008064:  " in a future release.", name); 
-gaad: guc:00008072:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00008073:  name); 
-gaad: guc:00008547:  ereport(ERROR, 
-gaad: guc:00008548:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008549:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008551:  ereport(ERROR, 
-gaad: guc:00008552:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008553:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008587:  ereport(ERROR, 
-gaad: guc:00008588:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008589:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008591:  ereport(ERROR, 
-gaad: guc:00008592:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008593:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008662:  ereport(ERROR, 
-gaad: guc:00008663:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008664:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008671:  ereport(ERROR, 
-gaad: guc:00008672:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008673:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008686:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008733:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008734:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008791:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008817:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008818:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008844:  ereport(ERROR, 
-gaad: guc:00008845:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008846:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008908:  ereport(ERROR, 
-gaad: guc:00008909:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008910:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009229:  ereport(ERROR, 
-gaad: guc:00009230:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009231:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009233:  ereport(ERROR, 
-gaad: guc:00009234:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009235:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00010004:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010037:  ereport(FATAL, 
-gaad: guc:00010038:  (errcode_for_file_access(), 
-gaad: guc:00010039:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00010040:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00010052:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00010054:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010056:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010147:  ereport(WARNING, 
-gaad: guc:00010148:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010149:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010343:  ereport(ERROR, 
-gaad: guc:00010344:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010345:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010366:  ereport(ERROR, 
-gaad: guc:00010367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010368:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010369:  tok))); 
-gaad: guc:00010395:  ereport(ERROR, 
-gaad: guc:00010396:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010397:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010398:  value))); 
-gaad: guc:00010830:  ereport(ERROR, 
-gaad: guc:00010831:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010832:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010906:  ereport(ERROR, 
-gaad: guc:00010907:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010908:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010917:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010927:  ereport(ERROR, 
-gaad: guc:00010928:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010929:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010940:  ereport(ERROR, 
-gaad: guc:00010941:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010942:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010957:  ereport(ERROR, 
-gaad: guc:00010958:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010959:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010960:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010961:  "\"log_dispatch_stats\", " 
-gaad: guc:00010962:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010977:  ereport(ERROR, 
-gaad: guc:00010978:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010979:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010980:  "\"log_statement_stats\", " 
-gaad: guc:00010981:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010982:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010997:  ereport(ERROR, 
-gaad: guc:00010998:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010999:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011396:  elog(ERROR, 
-gaad: guc:00011397:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011398:  show_allow_system_table_mods()); 
+gaad: guc:00006722:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006723:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006736:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006737:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006750:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006751:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006781:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006782:  conf->gen.name, str); 
+gaad: guc:00007039:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007056:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007073:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007104:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007960:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00008070:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00008071:  " in a future release.", name); 
+gaad: guc:00008079:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00008080:  name); 
+gaad: guc:00008554:  ereport(ERROR, 
+gaad: guc:00008555:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008556:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008558:  ereport(ERROR, 
+gaad: guc:00008559:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008560:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008594:  ereport(ERROR, 
+gaad: guc:00008595:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008596:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008598:  ereport(ERROR, 
+gaad: guc:00008599:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008600:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008669:  ereport(ERROR, 
+gaad: guc:00008670:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008671:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008678:  ereport(ERROR, 
+gaad: guc:00008679:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008680:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008693:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008740:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008741:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008798:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008824:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008825:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008851:  ereport(ERROR, 
+gaad: guc:00008852:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008853:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008915:  ereport(ERROR, 
+gaad: guc:00008916:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008917:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009236:  ereport(ERROR, 
+gaad: guc:00009237:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009238:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009240:  ereport(ERROR, 
+gaad: guc:00009241:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009242:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00010011:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010044:  ereport(FATAL, 
+gaad: guc:00010045:  (errcode_for_file_access(), 
+gaad: guc:00010046:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00010047:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00010059:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00010061:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010063:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010154:  ereport(WARNING, 
+gaad: guc:00010155:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010156:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010350:  ereport(ERROR, 
+gaad: guc:00010351:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010352:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010373:  ereport(ERROR, 
+gaad: guc:00010374:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010375:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010376:  tok))); 
+gaad: guc:00010402:  ereport(ERROR, 
+gaad: guc:00010403:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010404:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010405:  value))); 
+gaad: guc:00010837:  ereport(ERROR, 
+gaad: guc:00010838:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010839:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010913:  ereport(ERROR, 
+gaad: guc:00010914:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010915:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010924:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010934:  ereport(ERROR, 
+gaad: guc:00010935:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010936:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010947:  ereport(ERROR, 
+gaad: guc:00010948:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010949:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010964:  ereport(ERROR, 
+gaad: guc:00010965:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010966:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010967:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010968:  "\"log_dispatch_stats\", " 
+gaad: guc:00010969:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010984:  ereport(ERROR, 
+gaad: guc:00010985:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010986:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010987:  "\"log_statement_stats\", " 
+gaad: guc:00010988:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010989:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00011004:  ereport(ERROR, 
+gaad: guc:00011005:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011006:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011403:  elog(ERROR, 
+gaad: guc:00011404:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011405:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
