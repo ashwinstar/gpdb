@@ -414,6 +414,42 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	return result;
 }
 
+/*
+ * containIsNullVar
+ *   Return true if the given node contains "is null" on a Var.
+ */
+static bool
+containIsNullVar(PlannerGlobal *glob,
+				 Node *node)
+{
+	List *nullTestList = extract_nodes(glob, node, T_NullTest);
+	bool found = false;
+
+	ListCell *lc = NULL;
+	foreach (lc, nullTestList)
+	{
+		NullTest *nullTest = (NullTest *)lfirst(lc);
+		if (nullTest->nulltesttype != IS_NULL)
+		{
+			continue;
+		}
+		
+		found = contains_node_type(glob, (Node *)nullTest->arg, T_Var);
+		if (found)
+		{
+			break;
+		}
+	}
+	
+	if (nullTestList != NULL)
+	{
+		list_free(nullTestList);
+	}
+
+	return found;
+}
+
+
 /*--------------------
  * subquery_planner
  *	  Invokes the planner on a subquery.  We recurse to here for each
@@ -661,19 +697,21 @@ subquery_planner(PlannerGlobal *glob,
 	 * as Node *.
 	 */
 	newHaving = NIL;
+	bool isGroupExt = contain_extended_grouping(parse->groupClause);
 	foreach(l, (List *) parse->havingQual)
 	{
 		Node	   *havingclause = (Node *) lfirst(l);
+		
 
 		if (contain_agg_clause(havingclause) ||
 			contain_volatile_functions(havingclause) ||
-			contain_subplans(havingclause))
+			contain_subplans(havingclause) ||
+			(isGroupExt && containIsNullVar(glob, havingclause)))
 		{
 			/* keep it in HAVING */
 			newHaving = lappend(newHaving, havingclause);
 		}
-		else if (parse->groupClause && 
-				 !contain_extended_grouping(parse->groupClause))
+		else if (parse->groupClause && !isGroupExt)
 		{
 			/* move it to WHERE */
 			parse->jointree->quals = (Node *)
