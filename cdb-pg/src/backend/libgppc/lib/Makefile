@@ -5,11 +5,11 @@
 #
 #-------------------------------------------------------------------------
 
-# GPPC is ready to build against installed backend, so that we can try
-# against different backend release without switching source tree.
+# GPPC is ready to build against installed backend, so that we can try it
+# against different backend releases without switching source tree.
 # This means GPPC should build and work with older releases without
-# source modified and we really need to keep it identical between
-# different backend release branches. This makes our life easier.
+# source modified and we need to keep it identical between different
+# backend release branches.
 # We achieve to build with another backend release by PGXS. Everything
 # GPPC needs (i.e. headers and makefiles) are installed along with pg_config.
 ifdef USE_PGXS
