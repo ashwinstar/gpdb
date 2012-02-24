@@ -1571,6 +1571,38 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ReindexStmt:
+		if (gp_new_reindex_database)
+			{
+				ReindexStmt *stmt = (ReindexStmt *) parsetree;
+
+				switch (stmt->kind)
+				{
+					case OBJECT_INDEX:
+						ReindexIndex(stmt);
+						break;
+					case OBJECT_TABLE:
+						ReindexTable(stmt);
+						break;
+					case OBJECT_DATABASE:
+						/*
+						 * REINDEX DATABASE will execute/dispatch REINDEX TABLE on
+						 * each table found in pg_class.
+						 */
+						ReindexDatabaseNew(stmt);
+						break;
+					default:
+						elog(ERROR, "unrecognized object type: %d",
+							 (int) stmt->kind);
+						break;
+				}
+
+				if (stmt->kind != OBJECT_DATABASE &&
+					Gp_role == GP_ROLE_DISPATCH)
+				{
+					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+				}
+			}
+		else
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 

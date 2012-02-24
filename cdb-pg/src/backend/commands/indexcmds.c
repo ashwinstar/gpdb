@@ -1590,6 +1590,162 @@ ReindexTable(ReindexStmt *stmt)
  * separate transaction, so we can release the lock on it right away.
  */
 void
+ReindexDatabaseNew(ReindexStmt *stmt)
+{
+	Relation	relationRelation;
+	HeapScanDesc scan;
+	HeapTuple	tuple;
+	MemoryContext private_context;
+	MemoryContext old;
+	List	   *relids = NIL;
+	ListCell   *l;
+	bool do_system = stmt->do_system;
+	bool do_user = stmt->do_user;
+	const char *databaseName = stmt->name;
+
+	AssertArg(databaseName);
+
+	if (strcmp(databaseName, get_database_name(MyDatabaseId)) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("can only reindex the currently open database")));
+
+	if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+					   databaseName);
+
+	/*
+	 * We cannot run inside a user transaction block; if we were inside a
+	 * transaction, then our commit- and start-transaction-command calls would
+	 * not have the intended effect!
+	 */
+	PreventTransactionChain((void *) databaseName, "REINDEX DATABASE");
+
+	/*
+	 * Create a memory context that will survive forced transaction commits we
+	 * do below.  Since it is a child of PortalContext, it will go away
+	 * eventually even if we suffer an error; there's no need for special
+	 * abort cleanup logic.
+	 */
+	private_context = AllocSetContextCreate(PortalContext,
+											"ReindexDatabase",
+											ALLOCSET_DEFAULT_MINSIZE,
+											ALLOCSET_DEFAULT_INITSIZE,
+											ALLOCSET_DEFAULT_MAXSIZE);
+
+	/*
+	 * We always want to reindex pg_class first.  This ensures that if there
+	 * is any corruption in pg_class' indexes, they will be fixed before we
+	 * process any other tables.  This is critical because reindexing itself
+	 * will try to update pg_class.
+	 */
+	if (do_system)
+	{
+		old = MemoryContextSwitchTo(private_context);
+		relids = lappend_oid(relids, RelationRelationId);
+		MemoryContextSwitchTo(old);
+	}
+
+	/*
+	 * Scan pg_class to build a list of the relations we need to reindex.
+	 *
+	 * We only consider plain relations here (toast rels will be processed
+	 * indirectly by reindex_relation).
+	 */
+	relationRelation = heap_open(RelationRelationId, AccessShareLock);
+	scan = heap_beginscan(relationRelation, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Form_pg_class classtuple = (Form_pg_class) GETSTRUCT(tuple);
+
+		if (classtuple->relkind != RELKIND_RELATION)
+			continue;
+
+		/* Skip temp tables of other backends; we can't reindex them at all */
+		if (isOtherTempNamespace(classtuple->relnamespace))
+			continue;
+
+		/* Check user/system classification, and optionally skip */
+		if (IsSystemClass(classtuple))
+		{
+			if (!do_system)
+				continue;
+		}
+		else
+		{
+			if (!do_user)
+				continue;
+		}
+
+		if (IsUnderPostmaster)	/* silently ignore shared tables */
+		{
+			if (classtuple->relisshared)
+				continue;
+		}
+
+		if (HeapTupleGetOid(tuple) == RelationRelationId)
+			continue;			/* got it already */
+
+		old = MemoryContextSwitchTo(private_context);
+		relids = lappend_oid(relids, HeapTupleGetOid(tuple));
+		MemoryContextSwitchTo(old);
+	}
+	heap_endscan(scan);
+	heap_close(relationRelation, AccessShareLock);
+
+	/*
+	 * Now reindex each rel in a separate distibuted transaction so the OIDs
+	 * chosen in the master are used for the new index objects on each segment.
+	 */
+	CommitTransactionCommand();
+	foreach(l, relids)
+	{
+		Oid			relid = lfirst_oid(l);
+		bool		reindexed;
+		ReindexStmt *reindexTableStmt;
+
+		reindexTableStmt = makeNode(ReindexStmt);
+		reindexTableStmt->kind = OBJECT_TABLE;
+		reindexTableStmt->relation = makeNode(RangeVar);
+		reindexTableStmt->relation->schemaname = get_namespace_name(get_rel_namespace(relid));
+		reindexTableStmt->relation->relname = get_rel_name(relid);
+		reindexTableStmt->name = NULL;
+		reindexTableStmt->do_system = false;
+		reindexTableStmt->do_user = false;
+		reindexTableStmt->new_ind_oids = NIL;
+
+		StartTransactionCommand();
+		/* functions in indexes may want a snapshot set */
+		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+		reindexed = reindex_relation(relid, true, true, true, &reindexTableStmt->new_ind_oids,
+							 		 (Gp_role == GP_ROLE_DISPATCH));
+
+		/*
+		 * This dispatch will create a distributed transaction for the REINDEX TABLE
+		 */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			CdbDispatchUtilityStatement((Node *) reindexTableStmt, "ProcessUtility");
+		}
+
+		if (reindexed)
+			ereport(NOTICE,
+					(errmsg("table \"%s\" was reindexed",
+							get_rel_name(relid))));
+		CommitTransactionCommand();
+	}
+	StartTransactionCommand();
+
+	MemoryContextDelete(private_context);
+}
+/*
+ * ReindexDatabase
+ *		Recreate indexes of a database.
+ *
+ * To reduce the probability of deadlocks, each table is reindexed in a
+ * separate transaction, so we can release the lock on it right away.
+ */
+void
 ReindexDatabase(ReindexStmt *stmt)
 {
 	Relation	relationRelation;
