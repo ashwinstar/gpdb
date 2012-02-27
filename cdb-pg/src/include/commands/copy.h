@@ -39,7 +39,6 @@ typedef enum EolType
 {
 	EOL_UNKNOWN,
 	EOL_LF,
-	EOL_CR,
 	EOL_CRLF
 } EolType;
 

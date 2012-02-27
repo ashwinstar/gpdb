@@ -290,17 +290,17 @@ format 'text' ( delimiter '|' newline 'lf');
 
 create external table ext_newline2(like ext_newline1)
 location('gpfdist://@hostname@:7070/nation.tbl' )
-format 'text' ( delimiter '|' newline 'cr');
+format 'text' ( delimiter '|' newline 'cr'); -- should fail with invalid newline. MPP-13736
 
 create external table ext_willfail(a int)
 location('gpfdist://@hostname@:7070/nation.tbl' )
 format 'text' ( delimiter '|' newline 'blah'); -- should fail with invalid newline.
 
 select * from ext_newline1; -- should pass. using the correct linefeed. file has 'lf'.
-select * from ext_newline2; -- should fail. using an incorrect linefeed. file has 'lf'.
+select * from ext_newline2; -- should fail. using an incorrect linefeed. file has 'lf'. MPP-13736 - ext_newline2  should not be exist
 
 drop external table ext_newline1;
-drop external table ext_newline2;
+drop external table ext_newline2; -- MPP-13736 - ext_newline2  should not be exist
 
 -- MPP-6698
 create external table ext_mpp6698(a text)

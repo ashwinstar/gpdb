@@ -492,21 +492,27 @@ COPY copy_regression_newline from stdin with delimiter '|' newline 'lf';
 -- positive: csv
 COPY copy_regression_newline from stdin with delimiter '|' newline 'lf' csv;
 -- negative: text
-COPY copy_regression_newline from stdin with delimiter '|' newline 'cr';
-ERROR:  extra data after last expected column
-CONTEXT:  COPY copy_regression_newline, line 1: "1|1
+COPY copy_regression_newline from stdin with delimiter '|' newline 'cr'; -- should fail MPP-13736
+ERROR:  invalid value for NEWLINE (cr)
+HINT:  valid options are: 'LF', 'CRLF'
+1|1
 2|2
-"
+\.
+invalid command \.
 -- negative: csv
 COPY copy_regression_newline from stdin with delimiter '|' newline 'cr' csv;
-ERROR:  extra data after last expected column
-CONTEXT:  COPY copy_regression_newline, line 1: "1|1
+ERROR:  syntax error at or near "1"
+LINE 1: 1|1
+        ^
+1|1
 2|2
-"
+\.
+invalid command \.
 -- negative: invalid newline
 COPY copy_regression_newline from stdin with delimiter '|' newline 'blah';
-ERROR:  invalid value for NEWLINE (blah)
-HINT:  valid options are: 'LF', 'CRLF', 'CR'
+ERROR:  syntax error at or near "1"
+LINE 1: 1|1
+        ^
 -- negative: newline not yet supported for COPY TO
 COPY copy_regression_newline to stdout with delimiter '|' newline 'blah';
 ERROR:  newline currently available for data loading only, not unloading
