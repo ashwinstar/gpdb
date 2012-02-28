@@ -28,10 +28,10 @@ GPSMON_OBJS=gpsmon.o gpmonlib.o
 SIGTEST_OBJS=sigartest.o
 SNMPTEST_OBJS=snmptest.o
 
-INCS=-I$(EXT_DIR)/include -I$(EXT_DIR)/include/apr-1 -I$(BLD_TOP)/cdb-pg/src/include -I$(LIBPQ_DIR)
+INCS=-I$(EXT_DIR)/include -I$(EXT_DIR)/include/apr-1 -I$(BLD_TOP)/cdb-pg/src/include -I$(BLD_TOP)/$(BUILDDIR)/src/include -I$(LIBPQ_DIR) -I$(BLD_TOP)/$(BUILDDIR)/src/interfaces/libpq/
 LIBS=-L$(EXT_DIR)/lib -laprutil-1 -lapr-1 -levent $$($(EXT_DIR)/bin/apu-1-config --libs) $$($(EXT_DIR)/bin/apr-1-config --libs) 
 GPSMON_LIBS=
-GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq -lm -lsnmp $(CONNECTEMCLIB)
+GPMMON_LIBS=-L$(LIBPQ_DIR) -L$(BLD_TOP)/$(BUILDDIR)/src/interfaces/libpq/ -lpq -lm -lsnmp $(CONNECTEMCLIB)
 CFLAGS=$(OPT) $$($(EXT_DIR)/bin/apr-1-config --cflags) -Werror -Wall
 CPPFLAGS=$$($(EXT_DIR)/bin/apr-1-config --cppflags) -D$(BLD_ARCH)
 

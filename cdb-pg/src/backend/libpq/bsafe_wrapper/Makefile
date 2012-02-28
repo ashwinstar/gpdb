@@ -4,6 +4,7 @@ subdir = src/backend/libpq/bsafe_wrapper
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
+
 NAME= bsafe_wrapper
 SO_MAJOR_VERSION= 1
 SO_MINOR_VERSION= 0
@@ -14,6 +15,7 @@ PLATFORM_Linux=PLATFORM_LINUX
 PLATFORM_SunOS=PLATFORM_SOLARIS
 
 RSA_PLATFORM=$(PLATFORM_$(SYSTEM_NAME))
+
 
 # Flags for RSA BSAFE. Yes, this quantity of flags is totally gross
 # but we cannot do anything about it.
@@ -41,7 +43,6 @@ backend_src = $(top_srcdir)/src/backend
 ifeq ($(PORTNAME), darwin)
 	override LINK.shared += -undefined dynamic_lookup
 endif
-
 
 install: install-lib
 
