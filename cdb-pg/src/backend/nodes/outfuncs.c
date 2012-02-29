@@ -32,6 +32,7 @@
 #include "lib/stringinfo.h"
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
+#include "utils/builtins.h"
 #include "utils/datum.h"
 #include "cdb/cdbgang.h"
 
@@ -1291,6 +1292,17 @@ _outSetToDefault(StringInfo str, SetToDefault *node)
 
 	WRITE_OID_FIELD(typeId);
 	WRITE_INT_FIELD(typeMod);
+}
+
+static void
+_outCurrentOfExpr(StringInfo str, CurrentOfExpr *node)
+{
+	WRITE_NODE_TYPE("CURRENTOFEXPR");
+
+	WRITE_STRING_FIELD(cursor_name);
+	WRITE_INT_FIELD(cvarno);
+
+	/* some attributes omitted as they're bound only just before executor dispatch */
 }
 
 static void
@@ -2732,6 +2744,7 @@ _outDeclareCursorStmt(StringInfo str, DeclareCursorStmt *node)
 	WRITE_STRING_FIELD(portalname);
 	WRITE_INT_FIELD(options);
 	WRITE_NODE_FIELD(query);
+	WRITE_BOOL_FIELD(is_simply_updatable);
 }
 
 static void
@@ -3968,6 +3981,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SetToDefault:
 				_outSetToDefault(str, obj);
+				break;
+			case T_CurrentOfExpr:
+				_outCurrentOfExpr(str, obj);
 				break;
 			case T_TargetEntry:
 				_outTargetEntry(str, obj);

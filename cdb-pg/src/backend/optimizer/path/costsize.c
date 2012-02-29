@@ -2256,6 +2256,11 @@ cost_qual_eval_walker(Node *node,  cost_qual_eval_context *context)
 
 		context->total.per_tuple += cpu_operator_cost * list_length(rcexpr->opnos);
 	}
+	else if (IsA(node, CurrentOfExpr)) 
+	{
+		/* This is noticeably more expensive than a typical operator */
+		context->total.per_tuple += 100 * cpu_operator_cost;
+	}
 	else if (IsA(node, SubLink))
 	{
 		/* This routine should not be applied to un-planned expressions */

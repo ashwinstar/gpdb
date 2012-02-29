@@ -1043,6 +1043,33 @@ typedef struct SetToDefault
 	int			location;		/* token location, or -1 if unknown */
 } SetToDefault;
 
+/*
+ * Node representing [WHERE] CURRENT OF cursor_name
+ *
+ * CURRENT OF is a bit like a Var, in that it carries the rangetable index
+ * of the target relation being constrained; this aids placing the expression
+ * correctly during planning.  We can assume however that its "levelsup" is
+ * always zero, due to the syntactic constraints on where it can appear.
+ *
+ * CURRENT OF is a bit like a stable function, in that it must be evaluated
+ * once during constant folding to give the QEs a consistent view of the query.
+ * To accomplish this, during constant folding, we evaluate the CURRENT OF
+ * expression into constant values of gp_segment_id, ctid, and tableoid; then,
+ * we bind these constant values into the CurrentOfExpr here for consumption
+ * by the QEs.
+ */
+typedef struct CurrentOfExpr
+{
+	Expr    		xpr;
+	char     		*cursor_name;  	/* name of referenced cursor */
+	/* for planning */
+	Index    		cvarno;      	/* RT index of target relation */
+	/* for constant folding */
+	int		 		gp_segment_id;
+	ItemPointerData	ctid;
+	Oid				tableoid;
+} CurrentOfExpr;
+
 /*--------------------
  * TargetEntry -
  *	   a target entry (used in query target lists)

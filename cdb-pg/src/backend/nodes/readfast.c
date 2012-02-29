@@ -219,6 +219,7 @@ _readDeclareCursorStmt(const char ** str)
 	READ_STRING_FIELD(portalname);
 	READ_INT_FIELD(options);
 	READ_NODE_FIELD(query);
+	READ_BOOL_FIELD(is_simply_updatable);
 
 	READ_DONE();
 }
@@ -1581,6 +1582,23 @@ _readSetToDefault(const char ** str)
 
 	READ_OID_FIELD(typeId);
 	READ_INT_FIELD(typeMod);
+
+	READ_DONE();
+}
+
+/*
+ * _readCurrentOfExpr
+ */
+static CurrentOfExpr *
+_readCurrentOfExpr(const char ** str)
+{
+	READ_LOCALS(CurrentOfExpr);
+
+	READ_STRING_FIELD(cursor_name);
+	READ_UINT_FIELD(cvarno);
+	READ_INT_FIELD(gp_segment_id);
+	READ_BINARY_FIELD(ctid, sizeof(ItemPointerData));	
+	READ_UINT_FIELD(tableoid);
 
 	READ_DONE();
 }
@@ -3882,6 +3900,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_SetToDefault:
 				return_value = _readSetToDefault(str);
+				break;
+			case T_CurrentOfExpr:
+				return_value = _readCurrentOfExpr(str);
 				break;
 			case T_TargetEntry:
 				return_value = _readTargetEntry(str);

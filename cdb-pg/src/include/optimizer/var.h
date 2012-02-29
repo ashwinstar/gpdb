@@ -20,9 +20,11 @@
 
 typedef bool (*Cdb_walk_vars_callback_Aggref)(Aggref *aggref, void *context, int sublevelsup);
 typedef bool (*Cdb_walk_vars_callback_Var)(Var *var, void *context, int sublevelsup);
+typedef bool (*Cdb_walk_vars_callback_CurrentOf)(CurrentOfExpr *expr, void *context, int sublevelsup);
 bool        cdb_walk_vars(Node                         *node,
                           Cdb_walk_vars_callback_Var    callback_var,
                           Cdb_walk_vars_callback_Aggref callback_aggref,
+                          Cdb_walk_vars_callback_CurrentOf callback_currentof,
                           void                         *context,
                           int                           levelsup);
 

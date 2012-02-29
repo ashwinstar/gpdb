@@ -454,6 +454,23 @@ _readDeclareCursorStmt(void)
 	READ_STRING_FIELD(portalname);
 	READ_INT_FIELD(options);
 	READ_NODE_FIELD(query);
+	READ_BOOL_FIELD(is_simply_updatable);
+
+	READ_DONE();
+}
+
+/*
+ * _readCurrentOfExpr
+ */
+static CurrentOfExpr *
+_readCurrentOfExpr(void)
+{
+	READ_LOCALS(CurrentOfExpr);
+
+	READ_STRING_FIELD(cursor_name);
+	READ_INT_FIELD(cvarno);
+
+	/* some attributes omitted as they're bound only just before executor dispatch */
 
 	READ_DONE();
 }
@@ -3011,6 +3028,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"CREATETRIGSTMT", (ReadFn)_readCreateTrigStmt},
+	{"CURRENTOFEXPR", (ReadFn)_readCurrentOfExpr},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DEFINESTMT", (ReadFn)_readDefineStmt},

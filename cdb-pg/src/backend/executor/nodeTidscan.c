@@ -63,8 +63,8 @@ TidListCreate(TidScanState *tidstate)
 
 	/*
 	 * We initialize the array with enough slots for the case that all quals
-	 * are simple OpExprs.	If there's any ScalarArrayOpExprs, we may have to
-	 * enlarge the array.
+	 * are simple OpExprs, or just one CurrentOfExpr. If there's any ScalarArrayOpExprs, 
+	 * we may have to enlarge the array.
 	 */
 	numAllocTids = list_length(evalList);
 	tidList = (ItemPointerData *)
@@ -150,6 +150,16 @@ TidListCreate(TidScanState *tidstate)
 			pfree(ipdatums);
 			pfree(ipnulls);
 		}
+		else if (expr && IsA(expr, CurrentOfExpr))
+		{
+			/* 
+			 * CURRENT OF must be the only expr. This allows us to avoid
+			 * a repalloc of the tidList. 
+			 */
+			Insist(list_length(evalList) == 1);	
+			CurrentOfExpr *cexpr = (CurrentOfExpr *) expr;
+			tidList[numTids++] = cexpr->ctid;
+		} 
 		else
 			elog(ERROR, "could not identify CTID expression");
 	}

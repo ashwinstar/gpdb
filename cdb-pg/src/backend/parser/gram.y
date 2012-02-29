@@ -354,7 +354,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <node>	columnDef ExtcolumnDef
 %type <node>	cdb_string
 %type <defelt>	def_elem old_aggr_elem keyvalue_pair
-%type <node>	def_arg columnElem where_clause
+%type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr simple_func func_expr AexprConst indirection_el
 				columnref in_expr having_clause func_table array_expr
 %type <list>	window_definition_list window_clause
@@ -8582,7 +8582,7 @@ returning_clause:
  *****************************************************************************/
 
 DeleteStmt: DELETE_P FROM relation_expr_opt_alias
-			using_clause where_clause returning_clause
+			using_clause where_or_current_clause returning_clause
 				{
 					DeleteStmt *n = makeNode(DeleteStmt);
 					n->relation = $3;
@@ -8646,7 +8646,7 @@ opt_nowait:	NOWAIT							{ $$ = TRUE; }
 UpdateStmt: UPDATE relation_expr_opt_alias
 			SET set_clause_list
 			from_clause
-			where_clause
+			where_or_current_clause
 			returning_clause
 				{
 					UpdateStmt *n = makeNode(UpdateStmt);
@@ -9757,6 +9757,17 @@ func_table: func_expr								{ $$ = $1; }
 where_clause:
 			WHERE a_expr							{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
+/* variant for UPDATE and DELETE */
+where_or_current_clause: 
+			where_clause							{ $$ = $1; }
+			| WHERE CURRENT OF name
+				{
+					CurrentOfExpr *n = makeNode(CurrentOfExpr);
+					n->cursor_name = $4;
+					$$ = (Node *) n;
+				}
 		;
 
 

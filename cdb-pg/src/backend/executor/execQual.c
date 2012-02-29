@@ -4158,6 +4158,54 @@ ExecEvalRelabelType(GenericExprState *exprstate,
 }
 
 
+/* ----------------------------------------------------------------
+ *    ExecEvalCurrentOfExpr
+ *
+ *    Evaluate CURRENT OF
+ *
+ *    Constant folding must have bound observed values of 
+ * 	gp_segment_id, ctid, and tableoid into the CurrentOfExpr for
+ *	this function's consumption.
+ * ----------------------------------------------------------------
+ */
+static Datum
+ExecEvalCurrentOfExpr(ExprState *exprstate, ExprContext *econtext,
+						bool *isNull, ExprDoneCond *isDone)
+{
+	CurrentOfExpr 	*cexpr = (CurrentOfExpr *) exprstate->expr;
+	bool 			result = false;
+	TupleTableSlot	*slot;
+
+	if (isDone)
+		*isDone = ExprSingleResult;
+	*isNull = false;
+
+	Assert(cexpr->cvarno != INNER);
+	Assert(cexpr->cvarno != OUTER);
+
+	slot = econtext->ecxt_scantuple;
+	Assert(!TupIsNull(slot));
+	Insist(TupHasHeapTuple(slot));
+
+	if (cexpr->gp_segment_id == Gp_segment &&
+		ItemPointerEquals(&cexpr->ctid, slot_get_ctid(slot)))
+	{
+		/*
+ 		 * If tableoid is InvalidOid, this implies that constant folding had
+		 * had determined tableoid was not necessary in uniquely identifying a tuple.
+		 * Otherwise, the given tuple's tableoid must match the CURRENT OF tableoid.
+		 */
+		if (!OidIsValid(cexpr->tableoid) ||
+			cexpr->tableoid == slot->tts_tableOid)
+		{
+			result = true;
+		}
+	}
+
+	return BoolGetDatum(result);
+}
+
+
 /*
  * ExecEvalExprSwitchContext
  *
@@ -4795,6 +4843,10 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				cstate->constraints = GetDomainConstraints(ctest->resulttype);
 				state = (ExprState *) cstate;
 			}
+			break;
+		case T_CurrentOfExpr:
+			state = (ExprState *) makeNode(ExprState);
+			state->evalfunc = ExecEvalCurrentOfExpr;
 			break;
 		case T_TargetEntry:
 			{
