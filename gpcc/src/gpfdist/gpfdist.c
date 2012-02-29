@@ -2071,7 +2071,9 @@ http_setup(void)
 
 			if (bind(f, rp->ai_addr, rp->ai_addrlen) != 0)
 			{
-				gwarning(FLINE, "bind function failed\n");
+				if(opt.v || opt.V){
+					gwarning(FLINE, "bind function failed, %s (errno=%d)\n",strerror(errno), errno);
+				}
 			
 				/* failed on bind, maybe this address family isn't supported */
 				close(f);
