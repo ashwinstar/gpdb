@@ -8335,7 +8335,7 @@ caae: copy:00000307:  ereport(ERROR, \
 caae: copy:00000308:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
 caae: copy:00000309:  (errmsg("%s", finalmsg) \ 
 caae: copy:00000310:  ),errOmitLocation(true))); \ 
-caae: copy:00000311: } 
+caae: copy:00000311:  } 
 caae: copy:00000312:  
 caae: copy:00000313: /* 
 caae: copy:00000314:  * Send copy start/stop messages for frontend copies. These have changed 
@@ -8452,245 +8452,248 @@ caae: copy:00000879:  errmsg("fill missing fields only available for data loadin
 caae: copy:00000888:  ereport(ERROR, 
 caae: copy:00000889:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
 caae: copy:00000890:  errmsg("newline currently available for data loading only, not unloading"))); 
-caae: copy:00000897:  ereport(ERROR, 
-caae: copy:00000898:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caae: copy:00000899:  errmsg("invalid value for NEWLINE (%s)", newline), 
-caae: copy:00000900:  errhint("valid options are: 'LF', 'CRLF', 'CR'"))); 
-caae: copy:00000966:  ereport(ERROR, 
-caae: copy:00000967:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00000968:  errmsg("BINARY is not supported"))); 
-caae: copy:00000973:  ereport(ERROR, 
-caae: copy:00000974:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00000975:  errmsg("conflicting or redundant options"))); 
-caae: copy:00000981:  ereport(ERROR, 
-caae: copy:00000982:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00000983:  errmsg("conflicting or redundant options"))); 
-caae: copy:00000989:  ereport(ERROR, 
-caae: copy:00000990:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00000991:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001006:  ereport(ERROR, 
-caae: copy:00001007:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001008:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001014:  ereport(ERROR, 
-caae: copy:00001015:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001016:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001022:  ereport(ERROR, 
-caae: copy:00001023:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001024:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001030:  ereport(ERROR, 
-caae: copy:00001031:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001032:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001038:  ereport(ERROR, 
-caae: copy:00001039:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001040:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001046:  ereport(ERROR, 
-caae: copy:00001047:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001048:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001054:  ereport(ERROR, 
-caae: copy:00001055:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001056:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001062:  ereport(ERROR, 
-caae: copy:00001063:  (errcode(ERRCODE_SYNTAX_ERROR), 
-caae: copy:00001064:  errmsg("conflicting or redundant options"))); 
-caae: copy:00001068:  elog(ERROR, "option \"%s\" not recognized", 
-caae: copy:00001069:  defel->defname); 
-caae: copy:00001105:  ereport(ERROR, 
-caae: copy:00001106:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001107:  errmsg("COPY single row error handling only available using COPY FROM"))); 
-caae: copy:00001117:  ereport(ERROR, 
-caae: copy:00001118:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001119:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
-caae: copy:00001174:  ereport(ERROR, 
-caae: copy:00001175:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caae: copy:00001176:  errmsg("must be superuser to COPY to or from a file"), 
-caae: copy:00001177:  errhint("Anyone can COPY to stdout or from stdin. " 
-caae: copy:00001178:  "psql's \\copy command also works for anyone."))); 
-caae: copy:00001206:  ereport(ERROR, 
-caae: copy:00001207:  (errcode(ERRCODE_INVALID_NAME), 
-caae: copy:00001208:  errmsg("relative path not allowed for COPY to file"))); 
-caae: copy:00001215:  ereport(ERROR, 
-caae: copy:00001216:  (errcode_for_file_access(), 
-caae: copy:00001217:  errmsg("could not open file \"%s\" for writing: %m", 
-caae: copy:00001218:  cstate->filename), 
-caae: copy:00001219:  errOmitLocation(true))); 
-caae: copy:00001228:  ereport(ERROR, 
-caae: copy:00001229:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001230:  errmsg("\"%s\" is a directory", cstate->filename))); 
-caae: copy:00001260:  ereport(ERROR, 
-caae: copy:00001261:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
-caae: copy:00001262:  errmsg("transaction is read-only"))); 
-caae: copy:00001266:  ereport(ERROR, 
-caae: copy:00001267:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00001268:  errmsg("table \"%s\" does not have OIDs", 
-caae: copy:00001269:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001286:  ereport(ERROR, 
-caae: copy:00001287:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001288:  errmsg("COPY (SELECT) WITH OIDS is not supported"), 
-caae: copy:00001289:  errOmitLocation(true))); 
-caae: copy:00001292:  ereport(ERROR, 
-caae: copy:00001293:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001294:  errmsg("COPY (SELECT INTO) is not supported"), 
-caae: copy:00001295:  errOmitLocation(true))); 
-caae: copy:00001323:  elog(ERROR, "unexpected rewrite result"); 
-caae: copy:00001379:  ereport(ERROR, 
-caae: copy:00001380:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-caae: copy:00001381:  errmsg("FORCE QUOTE column \"%s\" not referenced by COPY", 
-caae: copy:00001382:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
-caae: copy:00001401:  ereport(ERROR, 
-caae: copy:00001402:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-caae: copy:00001403:  errmsg("FORCE NOT NULL column \"%s\" not referenced by COPY", 
-caae: copy:00001404:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
-caae: copy:00001461:  ereport(ERROR, 
-caae: copy:00001462:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001463:  errmsg("cannot copy to view \"%s\"", 
-caae: copy:00001464:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001466:  ereport(ERROR, 
-caae: copy:00001467:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001468:  errmsg("cannot copy to sequence \"%s\"", 
-caae: copy:00001469:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001471:  ereport(ERROR, 
-caae: copy:00001472:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001473:  errmsg("cannot copy to non-table relation \"%s\"", 
-caae: copy:00001474:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001478:  ereport(ERROR, 
-caae: copy:00001479:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001480:  errmsg("COPY single row error handling only available for distributed user tables"))); 
-caae: copy:00001496:  ereport(ERROR, 
-caae: copy:00001497:  (errcode_for_file_access(), 
-caae: copy:00001498:  errmsg("could not open file \"%s\" for reading: %m", 
-caae: copy:00001499:  cstate->filename), 
-caae: copy:00001500:  errOmitLocation(true))); 
-caae: copy:00001509:  ereport(ERROR, 
-caae: copy:00001510:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001511:  errmsg("\"%s\" is a directory", cstate->filename))); 
-caae: copy:00001587:  ereport(ERROR, 
-caae: copy:00001588:  (errcode_for_file_access(), 
-caae: copy:00001589:  errmsg("could not write to file \"%s\": %m", 
-caae: copy:00001590:  cstate->filename))); 
-caae: copy:00001665:  ereport(ERROR, 
-caae: copy:00001666:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001667:  errmsg("cannot copy from view \"%s\"", 
-caae: copy:00001668:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001669:  errhint("Try the COPY (SELECT ...) TO variant."), 
-caae: copy:00001670:  errOmitLocation(true))); 
-caae: copy:00001672:  ereport(ERROR, 
-caae: copy:00001673:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001674:  errmsg("cannot copy from sequence \"%s\"", 
-caae: copy:00001675:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001676:  errOmitLocation(true))); 
-caae: copy:00001678:  ereport(ERROR, 
-caae: copy:00001679:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001680:  errmsg("cannot copy from non-table relation \"%s\"", 
-caae: copy:00001681:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001682:  errOmitLocation(true))); 
-caae: copy:00001686:  ereport(ERROR, 
-caae: copy:00001687:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001688:  errmsg("cannot copy from external relation \"%s\"", 
-caae: copy:00001689:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001690:  errhint("Try the COPY (SELECT ...) TO variant."), 
-caae: copy:00001691:  errOmitLocation(true))); 
-caae: copy:00001731:  ereport(ERROR, 
-caae: copy:00001732:  (errcode_for_file_access(), 
-caae: copy:00001733:  errmsg("could not write to file \"%s\": %m", 
-caae: copy:00001734:  cstate->filename))); 
-caae: copy:00001963:  ereport(ERROR, 
-caae: copy:00001964:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00001965:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00001967:  ereport(ERROR, 
-caae: copy:00001968:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00001969:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00002180:  elog(ERROR, "OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE"); 
-caae: copy:00003100:  ereport(ERROR, 
-caae: copy:00003101:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003102:  errmsg("null OID in COPY data."))); 
-caae: copy:00003134:  ereport(ERROR, 
-caae: copy:00003135:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003136:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00003356:  elog(FATAL, "Bad or undefined policy. (%p)", part_policy); 
-caae: copy:00003485:  ereport(ERROR, 
-caae: copy:00003486:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003487:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003488:  errOmitLocation(true))); 
-caae: copy:00003490:  ereport(ERROR, 
-caae: copy:00003491:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00003492:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003493:  errOmitLocation(true))); 
-caae: copy:00003865:  ereport(ERROR, 
-caae: copy:00003866:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003867:  errmsg("null OID in COPY data."))); 
-caae: copy:00003895:  ereport(ERROR, 
-caae: copy:00003896:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003897:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00004086:  elog(ERROR, "triggers are not supported on tables that use column-oriented storage"); 
-caae: copy:00004662:  ereport(ERROR, 
-caae: copy:00004663:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004664:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004794:  ereport(ERROR, 
-caae: copy:00004795:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004796:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004976:  ereport(ERROR, 
-caae: copy:00004977:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004978:  errmsg("extra data after last expected column"), 
-caae: copy:00004979:  errOmitLocation(true))); 
-caae: copy:00005026:  ereport(ERROR, 
-caae: copy:00005027:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005028:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005029:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005030:  errOmitLocation(true))); 
-caae: copy:00005033:  ereport(ERROR, 
-caae: copy:00005034:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005035:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005036:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005037:  errOmitLocation(true))); 
-caae: copy:00005044:  ereport(ERROR, 
-caae: copy:00005045:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005046:  errmsg("extra data after last expected column"), 
-caae: copy:00005047:  errOmitLocation(true))); 
-caae: copy:00005344:  ereport(ERROR, 
-caae: copy:00005345:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005346:  errmsg("extra data after last expected column"), 
-caae: copy:00005347:  errOmitLocation(true))); 
-caae: copy:00005357:  ereport(ERROR, 
-caae: copy:00005358:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005359:  errmsg("unterminated CSV quoted field"), 
-caae: copy:00005360:  errOmitLocation(true))); 
-caae: copy:00005375:  ereport(ERROR, 
-caae: copy:00005376:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005377:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005378:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005379:  errOmitLocation(true))); 
-caae: copy:00005382:  ereport(ERROR, 
-caae: copy:00005383:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005384:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005385:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005386:  errOmitLocation(true))); 
-caae: copy:00005417:  ereport(ERROR, 
-caae: copy:00005418:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005419:  errmsg("extra data after last expected column"), 
-caae: copy:00005420:  errOmitLocation(true))); 
-caae: copy:00005903:  ereport(ERROR, 
-caae: copy:00005904:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005905:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-caae: copy:00005906:  name, RelationGetRelationName(rel)), 
-caae: copy:00005907:  errOmitLocation(true))); 
-caae: copy:00005909:  ereport(ERROR, 
-caae: copy:00005910:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005911:  errmsg("column \"%s\" does not exist", 
-caae: copy:00005912:  name), 
-caae: copy:00005913:  errOmitLocation(true))); 
-caae: copy:00005917:  ereport(ERROR, 
-caae: copy:00005918:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-caae: copy:00005919:  errmsg("column \"%s\" specified more than once", 
-caae: copy:00005920:  name))); 
-caae: copy:00005983:  ereport(ERROR, 
-caae: copy:00005984:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-caae: copy:00005985:  errmsg("COPY metadata not found. This probably means that there is a " 
-caae: copy:00005986:  "mixture of newline types in the data. Use the NEWLINE keyword " 
-caae: copy:00005987:  "in order to resolve this reliably."))); 
-caae: copy:00006668:  ereport(ERROR, 
-caae: copy:00006669:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caae: copy:00006670:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
-caae: copy:00006671:  cstate->eol_str))); 
+caae: copy:00000896:  ereport(ERROR, 
+caae: copy:00000897:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caae: copy:00000898:  errmsg("invalid value for NEWLINE (%s)", newline), 
+caae: copy:00000899:  errhint("valid options are: 'LF', 'CRLF'"))); 
+caae: copy:00000965:  ereport(ERROR, 
+caae: copy:00000966:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00000967:  errmsg("BINARY is not supported"))); 
+caae: copy:00000972:  ereport(ERROR, 
+caae: copy:00000973:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00000974:  errmsg("conflicting or redundant options"))); 
+caae: copy:00000980:  ereport(ERROR, 
+caae: copy:00000981:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00000982:  errmsg("conflicting or redundant options"))); 
+caae: copy:00000988:  ereport(ERROR, 
+caae: copy:00000989:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00000990:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001005:  ereport(ERROR, 
+caae: copy:00001006:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001007:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001013:  ereport(ERROR, 
+caae: copy:00001014:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001015:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001021:  ereport(ERROR, 
+caae: copy:00001022:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001023:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001029:  ereport(ERROR, 
+caae: copy:00001030:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001031:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001037:  ereport(ERROR, 
+caae: copy:00001038:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001039:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001045:  ereport(ERROR, 
+caae: copy:00001046:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001047:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001053:  ereport(ERROR, 
+caae: copy:00001054:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001055:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001061:  ereport(ERROR, 
+caae: copy:00001062:  (errcode(ERRCODE_SYNTAX_ERROR), 
+caae: copy:00001063:  errmsg("conflicting or redundant options"))); 
+caae: copy:00001067:  elog(ERROR, "option \"%s\" not recognized", 
+caae: copy:00001068:  defel->defname); 
+caae: copy:00001104:  ereport(ERROR, 
+caae: copy:00001105:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001106:  errmsg("COPY single row error handling only available using COPY FROM"))); 
+caae: copy:00001116:  ereport(ERROR, 
+caae: copy:00001117:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001118:  errmsg("KEEP may only be specified with a LOG INTO errortable clause"))); 
+caae: copy:00001173:  ereport(ERROR, 
+caae: copy:00001174:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caae: copy:00001175:  errmsg("must be superuser to COPY to or from a file"), 
+caae: copy:00001176:  errhint("Anyone can COPY to stdout or from stdin. " 
+caae: copy:00001177:  "psql's \\copy command also works for anyone."))); 
+caae: copy:00001205:  ereport(ERROR, 
+caae: copy:00001206:  (errcode(ERRCODE_INVALID_NAME), 
+caae: copy:00001207:  errmsg("relative path not allowed for COPY to file"))); 
+caae: copy:00001214:  ereport(ERROR, 
+caae: copy:00001215:  (errcode_for_file_access(), 
+caae: copy:00001216:  errmsg("could not open file \"%s\" for writing: %m", 
+caae: copy:00001217:  cstate->filename), 
+caae: copy:00001218:  errOmitLocation(true))); 
+caae: copy:00001227:  ereport(ERROR, 
+caae: copy:00001228:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001229:  errmsg("\"%s\" is a directory", cstate->filename))); 
+caae: copy:00001259:  ereport(ERROR, 
+caae: copy:00001260:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+caae: copy:00001261:  errmsg("transaction is read-only"))); 
+caae: copy:00001265:  ereport(ERROR, 
+caae: copy:00001266:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00001267:  errmsg("table \"%s\" does not have OIDs", 
+caae: copy:00001268:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001285:  ereport(ERROR, 
+caae: copy:00001286:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001287:  errmsg("COPY (SELECT) WITH OIDS is not supported"), 
+caae: copy:00001288:  errOmitLocation(true))); 
+caae: copy:00001291:  ereport(ERROR, 
+caae: copy:00001292:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001293:  errmsg("COPY (SELECT INTO) is not supported"), 
+caae: copy:00001294:  errOmitLocation(true))); 
+caae: copy:00001322:  elog(ERROR, "unexpected rewrite result"); 
+caae: copy:00001378:  ereport(ERROR, 
+caae: copy:00001379:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+caae: copy:00001380:  errmsg("FORCE QUOTE column \"%s\" not referenced by COPY", 
+caae: copy:00001381:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+caae: copy:00001400:  ereport(ERROR, 
+caae: copy:00001401:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+caae: copy:00001402:  errmsg("FORCE NOT NULL column \"%s\" not referenced by COPY", 
+caae: copy:00001403:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+caae: copy:00001460:  ereport(ERROR, 
+caae: copy:00001461:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001462:  errmsg("cannot copy to view \"%s\"", 
+caae: copy:00001463:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001465:  ereport(ERROR, 
+caae: copy:00001466:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001467:  errmsg("cannot copy to sequence \"%s\"", 
+caae: copy:00001468:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001470:  ereport(ERROR, 
+caae: copy:00001471:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001472:  errmsg("cannot copy to non-table relation \"%s\"", 
+caae: copy:00001473:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001477:  ereport(ERROR, 
+caae: copy:00001478:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001479:  errmsg("COPY single row error handling only available for distributed user tables"))); 
+caae: copy:00001495:  ereport(ERROR, 
+caae: copy:00001496:  (errcode_for_file_access(), 
+caae: copy:00001497:  errmsg("could not open file \"%s\" for reading: %m", 
+caae: copy:00001498:  cstate->filename), 
+caae: copy:00001499:  errOmitLocation(true))); 
+caae: copy:00001508:  ereport(ERROR, 
+caae: copy:00001509:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001510:  errmsg("\"%s\" is a directory", cstate->filename))); 
+caae: copy:00001586:  ereport(ERROR, 
+caae: copy:00001587:  (errcode_for_file_access(), 
+caae: copy:00001588:  errmsg("could not write to file \"%s\": %m", 
+caae: copy:00001589:  cstate->filename))); 
+caae: copy:00001664:  ereport(ERROR, 
+caae: copy:00001665:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001666:  errmsg("cannot copy from view \"%s\"", 
+caae: copy:00001667:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001668:  errhint("Try the COPY (SELECT ...) TO variant."), 
+caae: copy:00001669:  errOmitLocation(true))); 
+caae: copy:00001671:  ereport(ERROR, 
+caae: copy:00001672:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001673:  errmsg("cannot copy from sequence \"%s\"", 
+caae: copy:00001674:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001675:  errOmitLocation(true))); 
+caae: copy:00001677:  ereport(ERROR, 
+caae: copy:00001678:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001679:  errmsg("cannot copy from non-table relation \"%s\"", 
+caae: copy:00001680:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001681:  errOmitLocation(true))); 
+caae: copy:00001685:  ereport(ERROR, 
+caae: copy:00001686:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001687:  errmsg("cannot copy from external relation \"%s\"", 
+caae: copy:00001688:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001689:  errhint("Try the COPY (SELECT ...) TO variant."), 
+caae: copy:00001690:  errOmitLocation(true))); 
+caae: copy:00001730:  ereport(ERROR, 
+caae: copy:00001731:  (errcode_for_file_access(), 
+caae: copy:00001732:  errmsg("could not write to file \"%s\": %m", 
+caae: copy:00001733:  cstate->filename))); 
+caae: copy:00001962:  ereport(ERROR, 
+caae: copy:00001963:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00001964:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00001966:  ereport(ERROR, 
+caae: copy:00001967:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00001968:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00002179:  elog(ERROR, "OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE"); 
+caae: copy:00003099:  ereport(ERROR, 
+caae: copy:00003100:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003101:  errmsg("null OID in COPY data."))); 
+caae: copy:00003133:  ereport(ERROR, 
+caae: copy:00003134:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003135:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00003355:  elog(FATAL, "Bad or undefined policy. (%p)", part_policy); 
+caae: copy:00003484:  ereport(ERROR, 
+caae: copy:00003485:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003486:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003487:  errOmitLocation(true))); 
+caae: copy:00003489:  ereport(ERROR, 
+caae: copy:00003490:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00003491:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003492:  errOmitLocation(true))); 
+caae: copy:00003864:  ereport(ERROR, 
+caae: copy:00003865:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003866:  errmsg("null OID in COPY data."))); 
+caae: copy:00003894:  ereport(ERROR, 
+caae: copy:00003895:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003896:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00004085:  elog(ERROR, "triggers are not supported on tables that use column-oriented storage"); 
+caae: copy:00004657:  ereport(ERROR, 
+caae: copy:00004658:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004659:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004785:  ereport(ERROR, 
+caae: copy:00004786:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004787:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004805:  ereport(ERROR, 
+caae: copy:00004806:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caae: copy:00004807:  errmsg("internal error in DetectLineEnd. Trying to set NEWLINE"))); 
+caae: copy:00004967:  ereport(ERROR, 
+caae: copy:00004968:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004969:  errmsg("extra data after last expected column"), 
+caae: copy:00004970:  errOmitLocation(true))); 
+caae: copy:00005017:  ereport(ERROR, 
+caae: copy:00005018:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005019:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005020:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005021:  errOmitLocation(true))); 
+caae: copy:00005024:  ereport(ERROR, 
+caae: copy:00005025:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005026:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005027:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005028:  errOmitLocation(true))); 
+caae: copy:00005035:  ereport(ERROR, 
+caae: copy:00005036:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005037:  errmsg("extra data after last expected column"), 
+caae: copy:00005038:  errOmitLocation(true))); 
+caae: copy:00005335:  ereport(ERROR, 
+caae: copy:00005336:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005337:  errmsg("extra data after last expected column"), 
+caae: copy:00005338:  errOmitLocation(true))); 
+caae: copy:00005348:  ereport(ERROR, 
+caae: copy:00005349:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005350:  errmsg("unterminated CSV quoted field"), 
+caae: copy:00005351:  errOmitLocation(true))); 
+caae: copy:00005366:  ereport(ERROR, 
+caae: copy:00005367:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005368:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005369:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005370:  errOmitLocation(true))); 
+caae: copy:00005373:  ereport(ERROR, 
+caae: copy:00005374:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005375:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005376:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005377:  errOmitLocation(true))); 
+caae: copy:00005408:  ereport(ERROR, 
+caae: copy:00005409:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005410:  errmsg("extra data after last expected column"), 
+caae: copy:00005411:  errOmitLocation(true))); 
+caae: copy:00005894:  ereport(ERROR, 
+caae: copy:00005895:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005896:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+caae: copy:00005897:  name, RelationGetRelationName(rel)), 
+caae: copy:00005898:  errOmitLocation(true))); 
+caae: copy:00005900:  ereport(ERROR, 
+caae: copy:00005901:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005902:  errmsg("column \"%s\" does not exist", 
+caae: copy:00005903:  name), 
+caae: copy:00005904:  errOmitLocation(true))); 
+caae: copy:00005908:  ereport(ERROR, 
+caae: copy:00005909:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+caae: copy:00005910:  errmsg("column \"%s\" specified more than once", 
+caae: copy:00005911:  name))); 
+caae: copy:00005974:  ereport(ERROR, 
+caae: copy:00005975:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+caae: copy:00005976:  errmsg("COPY metadata not found. This probably means that there is a " 
+caae: copy:00005977:  "mixture of newline types in the data. Use the NEWLINE keyword " 
+caae: copy:00005978:  "in order to resolve this reliably."))); 
+caae: copy:00006651:  ereport(ERROR, 
+caae: copy:00006652:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caae: copy:00006653:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+caae: copy:00006654:  cstate->eol_str))); 
 aaaaa GP_IGNORE: daba: dbcommands - ./backend/commands/dbcommands.c
 daba: dbcommands:00000196:  elog(ERROR, "Failed to fetch gp_relation_node tuple at TID %s", 
 daba: dbcommands:00000197:  ItemPointerToString(&tuple.t_self)); 
@@ -9632,9 +9635,15 @@ iaaj: indexcmds:00001581:  stmt->relation->relname)));
 iaaj: indexcmds:00001609:  ereport(ERROR, 
 iaaj: indexcmds:00001610:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 iaaj: indexcmds:00001611:  errmsg("can only reindex the currently open database"))); 
-iaaj: indexcmds:00001706:  ereport(NOTICE, 
-iaaj: indexcmds:00001707:  (errmsg("table \"%s\" was reindexed", 
-iaaj: indexcmds:00001708:  get_rel_name(relid)))); 
+iaaj: indexcmds:00001732:  ereport(NOTICE, 
+iaaj: indexcmds:00001733:  (errmsg("table \"%s\" was reindexed", 
+iaaj: indexcmds:00001734:  get_rel_name(relid)))); 
+iaaj: indexcmds:00001765:  ereport(ERROR, 
+iaaj: indexcmds:00001766:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+iaaj: indexcmds:00001767:  errmsg("can only reindex the currently open database"))); 
+iaaj: indexcmds:00001862:  ereport(NOTICE, 
+iaaj: indexcmds:00001863:  (errmsg("table \"%s\" was reindexed", 
+iaaj: indexcmds:00001864:  get_rel_name(relid)))); 
 aaaaa GP_IGNORE: laai: lockcmds - ./backend/commands/lockcmds.c
 laai: lockcmds:00000071:  ereport(ERROR, 
 laai: lockcmds:00000072:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
@@ -14211,37 +14220,37 @@ paah: planner:00000146:  elog(NOTICE, "unable to load optimizer library");
 paah: planner:00000160:  elog(NOTICE, "unable to load orca function from library %s", error); 
 paah: planner:00000206:  elog(NOTICE, "Optimizer successfully produced plan"); 
 paah: planner:00000210:  elog(NOTICE, "Falling back to planner"); 
-paah: planner:00000744:  elog(ERROR, "failure repartitioning plan"); 
-paah: planner:00000907:  elog(ERROR, "unrecognized node type: %d", 
-paah: planner:00000908:  (int) nodeTag(jtnode)); 
-paah: planner:00001022:  ereport(ERROR, ( 
-paah: planner:00001023:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001024:  errmsg("incompatible loci in target inheritance set") )); 
-paah: planner:00001100:  ereport(ERROR, ( 
-paah: planner:00001101:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001102:  errmsg("unexpected locus assigned to target inheritance set") )); 
-paah: planner:00001242:  ereport(ERROR, 
-paah: planner:00001243:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001244:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001316:  ereport(ERROR, 
-paah: planner:00001317:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001318:  errmsg("maximum number of grouping columns exceeded (max: %d)", 
-paah: planner:00001319:  MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION))); 
-paah: planner:00001894:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001895:  errmsg("unexpected input locus to distinct"))); 
-paah: planner:00002919:  elog(ERROR, "failed to locate grouping columns"); 
-paah: planner:00002958:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00002963:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003036:  elog(ERROR, "invalid grouping set"); 
-paah: planner:00003174:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003183:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003193:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003237:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003252:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003266:  elog(ERROR,"invalid grouping set"); 
-paah: planner:00003272:  elog(ERROR,"invalid grouping set list"); 
-paah: planner:00003292:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
-paah: planner:00003361:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00000782:  elog(ERROR, "failure repartitioning plan"); 
+paah: planner:00000945:  elog(ERROR, "unrecognized node type: %d", 
+paah: planner:00000946:  (int) nodeTag(jtnode)); 
+paah: planner:00001060:  ereport(ERROR, ( 
+paah: planner:00001061:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001062:  errmsg("incompatible loci in target inheritance set") )); 
+paah: planner:00001138:  ereport(ERROR, ( 
+paah: planner:00001139:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001140:  errmsg("unexpected locus assigned to target inheritance set") )); 
+paah: planner:00001308:  ereport(ERROR, 
+paah: planner:00001309:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001310:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+paah: planner:00001382:  ereport(ERROR, 
+paah: planner:00001383:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001384:  errmsg("maximum number of grouping columns exceeded (max: %d)", 
+paah: planner:00001385:  MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION))); 
+paah: planner:00001960:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001961:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00002985:  elog(ERROR, "failed to locate grouping columns"); 
+paah: planner:00003024:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003029:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003102:  elog(ERROR, "invalid grouping set"); 
+paah: planner:00003240:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003249:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003259:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003303:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003318:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003332:  elog(ERROR,"invalid grouping set"); 
+paah: planner:00003338:  elog(ERROR,"invalid grouping set list"); 
+paah: planner:00003358:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00003427:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000868:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000964:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
@@ -14360,20 +14369,20 @@ paaj: preptlist:00000399:  elog(ERROR, "targetlist is not sorted correctly");
 aaaaa GP_IGNORE: paaj: prepunion - ./backend/optimizer/prep/prepunion.c
 paaj: prepunion:00000257:  elog(ERROR, "unrecognized node type: %d", 
 paaj: prepunion:00000258:  (int) nodeTag(setOp)); 
-paaj: prepunion:00000451:  elog(ERROR, "unrecognized set op: %d", 
-paaj: prepunion:00000452:  (int) op->op); 
-paaj: prepunion:00001049:  elog(ERROR, "attribute \"%s\" of relation \"%s\" does not match parent's type", 
-paaj: prepunion:00001050:  attname, RelationGetRelationName(newrelation)); 
-paaj: prepunion:00001062:  elog(ERROR, "could not find inherited attribute \"%s\" of relation \"%s\"", 
-paaj: prepunion:00001063:  attname, RelationGetRelationName(newrelation)); 
-paaj: prepunion:00001157:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001158:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
-paaj: prepunion:00001162:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001163:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
-paaj: prepunion:00001473:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001474:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
-paaj: prepunion:00001477:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001478:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
+paaj: prepunion:00000452:  elog(ERROR, "unrecognized set op: %d", 
+paaj: prepunion:00000453:  (int) op->op); 
+paaj: prepunion:00001050:  elog(ERROR, "attribute \"%s\" of relation \"%s\" does not match parent's type", 
+paaj: prepunion:00001051:  attname, RelationGetRelationName(newrelation)); 
+paaj: prepunion:00001063:  elog(ERROR, "could not find inherited attribute \"%s\" of relation \"%s\"", 
+paaj: prepunion:00001064:  attname, RelationGetRelationName(newrelation)); 
+paaj: prepunion:00001158:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001159:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
+paaj: prepunion:00001163:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001164:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
+paaj: prepunion:00001474:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001475:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
+paaj: prepunion:00001478:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001479:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
 aaaaa GP_IGNORE: caah: clauses - ./backend/optimizer/util/clauses.c
 caah: clauses:00000427:  ereport(ERROR, 
 caah: clauses:00000428:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -19060,24 +19069,26 @@ uaah: utility:00001486:  (int) stmt->removeType);
 uaah: utility:00001563:  ereport(ERROR, 
 uaah: utility:00001564:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
 uaah: utility:00001565:  errmsg("must be superuser to do CHECKPOINT"))); 
-uaah: utility:00001589:  elog(ERROR, "unrecognized object type: %d", 
-uaah: utility:00001590:  (int) stmt->kind); 
-uaah: utility:00001648:  elog(ERROR, "unrecognized node type: %d", 
-uaah: utility:00001649:  (int) nodeTag(parsetree)); 
-uaah: utility:00002474:  elog(WARNING, "unrecognized commandType: %d", 
-uaah: utility:00002475:  (int) query->commandType); 
-uaah: utility:00002487:  elog(WARNING, "unrecognized node type: %d", 
-uaah: utility:00002488:  (int) nodeTag(parsetree)); 
-uaah: utility:00002853:  elog(WARNING, "unrecognized node type: %d", 
-uaah: utility:00002854:  (int) nodeTag(parsetree)); 
-uaah: utility:00002898:  elog(WARNING, "unrecognized commandType: %d", 
-uaah: utility:00002899:  (int) parsetree->commandType); 
-uaah: utility:00002924:  elog(WARNING, "into specified on utility statement type: %d", 
-uaah: utility:00002925:  (int) stmt->utilityStmt->type); 
-uaah: utility:00002927:  elog(WARNING, "unexpected utility statement type: %d", 
-uaah: utility:00002928:  (int) stmt->utilityStmt->type); 
-uaah: utility:00002944:  elog(WARNING, "expected commandType: %d", 
-uaah: utility:00002945:  (int) stmt->commandType); 
+uaah: utility:00001594:  elog(ERROR, "unrecognized object type: %d", 
+uaah: utility:00001595:  (int) stmt->kind); 
+uaah: utility:00001621:  elog(ERROR, "unrecognized object type: %d", 
+uaah: utility:00001622:  (int) stmt->kind); 
+uaah: utility:00001680:  elog(ERROR, "unrecognized node type: %d", 
+uaah: utility:00001681:  (int) nodeTag(parsetree)); 
+uaah: utility:00002506:  elog(WARNING, "unrecognized commandType: %d", 
+uaah: utility:00002507:  (int) query->commandType); 
+uaah: utility:00002519:  elog(WARNING, "unrecognized node type: %d", 
+uaah: utility:00002520:  (int) nodeTag(parsetree)); 
+uaah: utility:00002885:  elog(WARNING, "unrecognized node type: %d", 
+uaah: utility:00002886:  (int) nodeTag(parsetree)); 
+uaah: utility:00002930:  elog(WARNING, "unrecognized commandType: %d", 
+uaah: utility:00002931:  (int) parsetree->commandType); 
+uaah: utility:00002956:  elog(WARNING, "into specified on utility statement type: %d", 
+uaah: utility:00002957:  (int) stmt->utilityStmt->type); 
+uaah: utility:00002959:  elog(WARNING, "unexpected utility statement type: %d", 
+uaah: utility:00002960:  (int) stmt->utilityStmt->type); 
+uaah: utility:00002976:  elog(WARNING, "expected commandType: %d", 
+uaah: utility:00002977:  (int) stmt->commandType); 
 aaaaa GP_IGNORE: aaad: acl - ./backend/utils/adt/acl.c
 aaad: acl:00000155:  ereport(ERROR, 
 aaad: acl:00000156:  (errcode(ERRCODE_NAME_TOO_LONG), 
@@ -24009,112 +24020,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006722:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006723:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006736:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006737:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006750:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006751:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006781:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006782:  conf->gen.name, str); 
-gaad: guc:00007039:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007056:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007073:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007104:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007960:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00008070:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00008071:  " in a future release.", name); 
-gaad: guc:00008079:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00008080:  name); 
-gaad: guc:00008554:  ereport(ERROR, 
-gaad: guc:00008555:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008556:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008558:  ereport(ERROR, 
-gaad: guc:00008559:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008560:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008594:  ereport(ERROR, 
-gaad: guc:00008595:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008596:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008598:  ereport(ERROR, 
-gaad: guc:00008599:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008600:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008669:  ereport(ERROR, 
-gaad: guc:00008670:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008671:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008678:  ereport(ERROR, 
-gaad: guc:00008679:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008680:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008693:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008740:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008741:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008798:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008824:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008825:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008851:  ereport(ERROR, 
-gaad: guc:00008852:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008853:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008915:  ereport(ERROR, 
-gaad: guc:00008916:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008917:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009236:  ereport(ERROR, 
-gaad: guc:00009237:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009238:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009240:  ereport(ERROR, 
-gaad: guc:00009241:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009242:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00010011:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010044:  ereport(FATAL, 
-gaad: guc:00010045:  (errcode_for_file_access(), 
-gaad: guc:00010046:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00010047:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00010059:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00010061:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010063:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010154:  ereport(WARNING, 
-gaad: guc:00010155:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010156:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010350:  ereport(ERROR, 
-gaad: guc:00010351:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010352:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010373:  ereport(ERROR, 
-gaad: guc:00010374:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010375:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010376:  tok))); 
-gaad: guc:00010402:  ereport(ERROR, 
-gaad: guc:00010403:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010404:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010405:  value))); 
-gaad: guc:00010837:  ereport(ERROR, 
-gaad: guc:00010838:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010839:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010913:  ereport(ERROR, 
-gaad: guc:00010914:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010915:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010924:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010934:  ereport(ERROR, 
-gaad: guc:00010935:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010936:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010947:  ereport(ERROR, 
-gaad: guc:00010948:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010949:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010964:  ereport(ERROR, 
-gaad: guc:00010965:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010966:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010967:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010968:  "\"log_dispatch_stats\", " 
-gaad: guc:00010969:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010984:  ereport(ERROR, 
-gaad: guc:00010985:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010986:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010987:  "\"log_statement_stats\", " 
-gaad: guc:00010988:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010989:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00011004:  ereport(ERROR, 
-gaad: guc:00011005:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00011006:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011403:  elog(ERROR, 
-gaad: guc:00011404:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011405:  show_allow_system_table_mods()); 
+gaad: guc:00006733:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006734:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006747:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006748:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006761:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006762:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006792:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006793:  conf->gen.name, str); 
+gaad: guc:00007050:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007067:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007084:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007115:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007971:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00008081:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00008082:  " in a future release.", name); 
+gaad: guc:00008090:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00008091:  name); 
+gaad: guc:00008565:  ereport(ERROR, 
+gaad: guc:00008566:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008567:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008569:  ereport(ERROR, 
+gaad: guc:00008570:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008571:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008605:  ereport(ERROR, 
+gaad: guc:00008606:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008607:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008609:  ereport(ERROR, 
+gaad: guc:00008610:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008611:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008680:  ereport(ERROR, 
+gaad: guc:00008681:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008682:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008689:  ereport(ERROR, 
+gaad: guc:00008690:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008691:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008704:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008751:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008752:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008809:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008835:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008836:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008862:  ereport(ERROR, 
+gaad: guc:00008863:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008864:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008926:  ereport(ERROR, 
+gaad: guc:00008927:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008928:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009247:  ereport(ERROR, 
+gaad: guc:00009248:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009249:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009251:  ereport(ERROR, 
+gaad: guc:00009252:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009253:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00010022:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010055:  ereport(FATAL, 
+gaad: guc:00010056:  (errcode_for_file_access(), 
+gaad: guc:00010057:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00010058:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00010070:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00010072:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010074:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010165:  ereport(WARNING, 
+gaad: guc:00010166:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010167:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010361:  ereport(ERROR, 
+gaad: guc:00010362:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010363:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010384:  ereport(ERROR, 
+gaad: guc:00010385:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010386:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010387:  tok))); 
+gaad: guc:00010413:  ereport(ERROR, 
+gaad: guc:00010414:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010415:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010416:  value))); 
+gaad: guc:00010848:  ereport(ERROR, 
+gaad: guc:00010849:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010850:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010924:  ereport(ERROR, 
+gaad: guc:00010925:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010926:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010935:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010945:  ereport(ERROR, 
+gaad: guc:00010946:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010947:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010958:  ereport(ERROR, 
+gaad: guc:00010959:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010960:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010975:  ereport(ERROR, 
+gaad: guc:00010976:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010977:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010978:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010979:  "\"log_dispatch_stats\", " 
+gaad: guc:00010980:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010995:  ereport(ERROR, 
+gaad: guc:00010996:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010997:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010998:  "\"log_statement_stats\", " 
+gaad: guc:00010999:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00011000:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00011015:  ereport(ERROR, 
+gaad: guc:00011016:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011017:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011414:  elog(ERROR, 
+gaad: guc:00011415:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011416:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
