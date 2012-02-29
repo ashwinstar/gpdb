@@ -1183,6 +1183,34 @@ void grouping_planner_output_asserts(PlannerInfo *root, Plan *plan)
 }
 #endif
 
+/*
+ * getAnySubplan
+ *   Return one subplan for the given node.
+ *
+ * If the given node is an Append, the first subplan is returned.
+ * If the given node is a SubqueryScan, its subplan is returned.
+ * Otherwise, the lefttree of the given node is returned.
+ */
+static Plan *
+getAnySubplan(Plan *node)
+{
+	Assert(is_plan_node((Node *)node));
+	
+	if (IsA(node, Append))
+	{
+		Append *append = (Append*)node;
+		Assert(list_length(append->appendplans) > 0);
+		return (Plan *)linitial(append->appendplans);
+	}
+
+	else if (IsA(node, SubqueryScan))
+	{
+		SubqueryScan *subqueryScan = (SubqueryScan *)node;
+		return subqueryScan->subplan;
+	}
+	
+	return node->lefttree;
+}
 
 /*--------------------
  * grouping_planner
@@ -1827,7 +1855,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
      */
     if (!result_plan->flow)
         result_plan->flow = pull_up_Flow(result_plan,
-                                         result_plan->lefttree,
+                                         getAnySubplan(result_plan),
                                          (current_pathkeys != NIL));
 
 	/*
