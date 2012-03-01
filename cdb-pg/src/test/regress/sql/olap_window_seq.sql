@@ -1496,3 +1496,19 @@ select id, seq, clickdate, sum(val) over
 	(partition by id order by clickdate range
 	between interval '0 seconds' following and '1000 seconds' following) from esc176_1;
 -- End of MPP-13969
+
+drop table if exists test;
+create table test (n numeric, d date);
+insert into test values (12, '2011-05-01'), (34, '2011-05-02'), (89, '2011-05-03');
+
+select stddev(n) over(order by d range interval '1 day' preceding), n from test;
+select stddev(n) over(order by d range interval '1 day' preceding),
+       sum(n) over(order by d range interval '1 day' preceding),
+       avg(n) over(order by d range interval '1 day' preceding), n from test;
+select stddev(n) over(order by d range interval '2 day' preceding),
+       sum(n) over(order by d range interval '2 day' preceding),
+       avg(n) over(order by d range interval '2 day' preceding), n from test;
+select stddev(n) over(order by d range between current row and interval '1 day' following),
+       sum(n) over(order by d range between current row and interval '1 day' following),
+       avg(n) over(order by d range between current row and interval '1 day' following), n from test;
+
