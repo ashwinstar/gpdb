@@ -48,15 +48,22 @@ static bool	plr_be_init_done = false;
 /* namespace OID for the PL/R language handler function */
 static Oid plr_nspOid = InvalidOid;
 
-/* 
- * A global variable defined by R runtime that controls whether signals are 
- * handled by R's handlers or ignored.
- * By default, R initializes it to FALSE. In PLR, the better option is to 
- * disable R's handler so that the embedding process can have more control 
- * over how the signals are processed. 
- */ 
-extern Rboolean R_interrupts_suspended; 
-
+/* A global variable defined by R runtime that controls whether R's own
+ * signal handlers are installed or not.
+ * By default, R initializes it to 1. In plr, the better option is not to
+ * install R's own signal handlers so that the embedding process can have
+ * more control over how the signals are processed.
+ *
+ * There is another global variable R_interrupts_suspended that controls whether
+ * R's own signal handlers (whether it is installed is
+ * controlled by R_SignalHandlers) are used to deal with signals.
+ * Set R_interrupts_suspended to TRUE only prevents R from running it's own
+ * handlers; R's handlers still are registered and override postgres' handlers.
+ *
+ * It's preferred to set R_SignalHandlers to 0 so that R's signal handlers are not
+ * installed at all.
+ */
+extern int R_SignalHandlers;
 
 /*
  * defines
@@ -201,6 +208,9 @@ plr_call_handler(PG_FUNCTION_ARGS)
 {
 	Datum			retval;
 
+	/* reset to 0 to make sure that R's signal handlers are not installed. */
+	R_SignalHandlers = 0;
+	
 	/* save caller's context */
 	plr_caller_context = CurrentMemoryContext;
 
@@ -211,9 +221,6 @@ plr_call_handler(PG_FUNCTION_ARGS)
 
 	/* initialize R if needed */
 	plr_init_all(fcinfo->flinfo->fn_oid);
-
-	/* reset the flag to TRUE to make sure that R's handlers are disabled. */ 
-	R_interrupts_suspended = true; 
 
 	if (CALLED_AS_TRIGGER(fcinfo))
 		retval = plr_trigger_handler(fcinfo);
@@ -402,11 +409,6 @@ plr_init(void)
 	 */
 	R_Interactive = false;
 #endif
-
-	/* 
-	 * This will instruct the RVM to bypass its own signal handlers. 
-	 */
-	R_interrupts_suspended = true; 
 
 	plr_pm_init_done = true;
 }
