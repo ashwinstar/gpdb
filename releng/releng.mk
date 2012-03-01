@@ -10,13 +10,54 @@
 
 .PHONY: opt_write_test sync_tools clean_tools
 
+#-------------------------------------------------------------------------------------
+# machine and OS properties
+#-------------------------------------------------------------------------------------
+
+UNAME = $(shell uname)
+UNAME_P = $(shell uname -p)
+
+UNAME_ALL = $(UNAME).$(UNAME_P)
+
+ARCH_FLAGS = -m$(BLD_BITS)
+
+# shared lib support
+ifeq (Darwin, $(UNAME))
+	LDSFX = dylib
+else
+	LDSFX = so
+endif
+
 ##-------------------------------------------------------------------------------------
 ## dependent modules
 ##
 ## NOTE: Dependent project module version is kept in $(BLD_TOP)/releng/make/dependencies/ivy.xml
 ##-------------------------------------------------------------------------------------
 
-GREP_SED_VAR = $(BLD_TOP)/releng/make/dependencies/ivy.xml | sed -e 's|\(.*\)rev="\(.*\)" conf\(.*\)|\2|'
+ifeq "$(BLD_ARCH)" "osx105_x86"
+EXTRA_EXT=_32
+endif
+
+BLD_TYPE=debug
+
+OBJDIR_DEFAULT = .obj.$(UNAME_ALL)$(ARCH_FLAGS).$(BLD_TYPE)
+
+GREP_SED_VAR = $(BLD_TOP)/releng/make/dependencies/ivy.xml | sed -e 's|\(.*\)rev="\(.*\)"[ ]*conf\(.*\)|\2|'
+
+XERCES_VER  = $(shell grep "\"xerces-c\""   $(GREP_SED_VAR))
+LIBGPOS_VER = $(shell grep "\"libgpos\""    $(GREP_SED_VAR))
+OPTIMIZER_VER = $(shell grep "\"optimizer\""  $(GREP_SED_VAR))
+
+XERCES =  /opt/releng/tools/xerces/xerces-c/$(XERCES_VER)/$(BLD_ARCH)$(EXTRA_EXT)
+XERCES_LIBDIR = $(XERCES)/lib
+
+LIBGPOS = /opt/releng/tools/emc/libgpos/$(LIBGPOS_VER)/$(BLD_ARCH)$(EXTRA_EXT)/libgpos
+LIBGPOS_LIBDIR = $(LIBGPOS)/$(OBJDIR_DEFAULT)
+
+OPTIMIZER = /opt/releng/tools/emc/optimizer/$(OPTIMIZER_VER)/$(BLD_ARCH)$(EXTRA_EXT)
+LIBGPOPT_LIBDIR = $(OPTIMIZER)//libgpopt/$(OBJDIR_DEFAULT)
+LIBGPOPTUDF_LIBDIR = $(OPTIMIZER)/libgpoptudf/$(OBJDIR_DEFAULT)
+LIBNAUCRATES_LIBDIR = $(OPTIMIZER)/libnaucrates/$(OBJDIR_DEFAULT)
 
 ## ---------------------------------------
 ## R-Project support

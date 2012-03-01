@@ -197,6 +197,9 @@ planner(Query *parse, int cursorOptions,
 	 */
 	if (gp_optimizer)
 	{
+		/* fold all constant expressions */
+		parse = fold_constants(parse, boundParams);
+
 		result = optimizer(parse);
 
 		if (gp_log_optimizer)

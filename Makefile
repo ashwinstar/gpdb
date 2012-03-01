@@ -1460,3 +1460,26 @@ endif
 endif
 
 ## ----------------------------------------------------------------------
+## Target to install GPDB udfs. Currently, this only works on Mac OSX 
+## and Linux
+## ----------------------------------------------------------------------
+
+GPOPTUTILS_NAMESPACE = gpoptutils
+
+PGDATABASE := template1
+
+install_udfs: 
+	for b in libnaucrates libgpopt libgpoptudf; do \
+		rm -f $(INSTLOC)/lib/$$b.$(LDSFX); \
+		echo "Linking $$b"; \
+		ln -s $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(INSTLOC)/lib ; \
+	done
+	rm -f $(INSTLOC)/lib/libgpos.$(LDSFX);
+	ln -s $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX) $(INSTLOC)/lib;
+	rm -f $(INSTLOC)/lib/libxerces-c-3.1.$(LDSFX);
+	ln -s $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(INSTLOC)/lib;
+	source $(INSTLOC)/greenplum_path.sh
+	sed -e "s|%%CURRENT_DIRECTORY%%|$${GPHOME}/lib|g; s|%%GPOPTUTILS_NAMESPACE%%|${GPOPTUTILS_NAMESPACE}|g; s|%%EXT%%|$(LDSFX)|g" $(OPTIMIZER)/libgpoptudf/examples/load.sql.in > /tmp/load.sql
+	psql $(PGDATABASE) -a -f /tmp/load.sql
+
+## ----------------------------------------------------------------------

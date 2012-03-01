@@ -620,9 +620,18 @@ bool		gp_cte_sharing = false;
 /* ORCA related gucs */
 bool		gp_optimizer;
 bool		gp_log_optimizer;
-bool		gp_opt_trace_query;
-bool		gp_opt_trace_plan;
-bool		gp_opt_trace_xform;
+bool		gp_opt_print_query;
+bool		gp_opt_print_plan;
+bool		gp_opt_print_xform;
+bool		gp_opt_disable_xform_result_printing;
+bool		gp_opt_print_memo_after_exploration;
+bool		gp_opt_print_memo_after_implementation;
+bool		gp_opt_print_memo_after_optimization;
+bool		gp_opt_print_job_scheduler;
+bool		gp_opt_print_expression_properties;
+bool		gp_opt_print_group_properties;
+bool		gp_opt_print_optimization_context;
+bool		gp_opt_parallel;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -3309,32 +3318,123 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_opt_trace_query", PGC_USERSET, LOGGING_WHAT,
+		{"gp_opt_print_query", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Prints the optimizer's input query expression tree."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_opt_trace_query,
+		&gp_opt_print_query,
 		false, NULL, NULL
 	},
 
 	{
-		{"gp_opt_trace_plan", PGC_USERSET, LOGGING_WHAT,
+		{"gp_opt_print_plan", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Prints the plan expression tree produced by the optimizer."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_opt_trace_plan,
+		&gp_opt_print_plan,
 		false, NULL, NULL
 	},
 	
 	{
-		{"gp_opt_trace_xform", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Prints the input and output expression trees of the optimizer transformations."),
+		{"gp_opt_print_xform", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints optimizer transformation information."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_opt_trace_xform,
+		&gp_opt_print_xform,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_disable_xform_result_printing", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Disable printing the input and output of optimizer transformations."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_disable_xform_result_printing,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_print_memo_after_exploration", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimizer memo structure after the exploration phase."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_memo_after_exploration,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_print_memo_after_implementation", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimizer memo structure after the implementation phase."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_memo_after_implementation,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_print_memo_after_optimization", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimizer memo structure after optimization."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_memo_after_optimization,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_print_job_scheduler", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print the jobs in the scheduler on each job completion."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_job_scheduler,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_print_expression_properties", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print expression properties."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_expression_properties,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_print_group_properties", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print group properties."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_group_properties,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_print_optimization_context", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print the optimization context."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_optimization_context,
+		false, NULL, NULL
+	},
+	
+	
+	{
+		{"gp_opt_parallel", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Enable using threads in optimization engine."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_parallel,
 		false, NULL, NULL
 	},
 

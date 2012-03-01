@@ -51,10 +51,11 @@
 typedef struct
 {
 	ParamListInfo boundParams;
-	PlannerGlobal *glob;
 	List	   *active_fns;
 	Node	   *case_val;
 	bool		transform_stable_funcs;
+	bool		recurse_queries; /* recurse into query structures */
+	bool		transform_saop; /* transform scalar array ops */
 } eval_const_expressions_context;
 
 typedef struct
@@ -1490,6 +1491,32 @@ rowtype_field_matches(Oid rowtypeid, int fieldnum,
 }
 
 
+/**
+ * fold_constants
+ *
+ * Recurses into query tree and folds all constant expressions.
+ */
+Query *fold_constants(Query *q, ParamListInfo boundParams)
+{
+	eval_const_expressions_context context;
+
+	context.boundParams = boundParams;
+	context.active_fns = NIL;	/* nothing being recursively simplified */
+	context.case_val = NULL;	/* no CASE being examined */
+	context.transform_stable_funcs = true;	/* safe transformations only */
+	context.recurse_queries = true; /* recurse into query structures */
+	context.transform_saop = false; /* do not transform scalar array ops */
+
+	return (Query *) query_or_expression_tree_mutator
+						(
+						(Node *) q,
+						eval_const_expressions_mutator,
+						&context,
+						0
+						);
+}
+
+
 /*--------------------
  * eval_const_expressions
  *
@@ -1529,16 +1556,17 @@ eval_const_expressions(PlannerInfo *root, Node *node)
 	if (root)
 	{
 		context.boundParams = root->glob->boundParams;	/* bound Params */
-		context.glob = root->glob; /* for inlined-function dependencies */
 	}
 	else
 	{
 		context.boundParams = NULL;
-		context.glob = NULL;
 	}
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.transform_stable_funcs = true;	/* safe transformations only */
+	context.recurse_queries = false; /* do not recurse into query structures */
+	context.transform_saop = true; 	/* transform scalar array ops */
+
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -1567,6 +1595,9 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.transform_stable_funcs = true;	/* unsafe transformations OK */
+	context.recurse_queries = false; /* do not recurse into query structures */
+	context.transform_saop = true; 	/* transform scalar array ops */
+
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -2109,7 +2140,7 @@ eval_const_expressions_mutator(Node *node,
 
         return (Node *) saop; /* this has been walked and is a new one */
 	}
-	if (IsA(node, ArrayExpr))
+	if (IsA(node, ArrayExpr) && context->transform_saop)
 	{
 		ArrayExpr  *arrayexpr = (ArrayExpr *) node;
 		ArrayExpr  *newarray;
@@ -2368,6 +2399,18 @@ eval_const_expressions_mutator(Node *node,
 		newbtest->arg = (Expr *) arg;
 		newbtest->booltesttype = btest->booltesttype;
 		return (Node *) newbtest;
+	}
+
+	/* recurse into query structure if requested */
+	if (IsA(node, Query) && context->recurse_queries)
+	{
+		return (Node *)
+					query_tree_mutator
+					(
+					(Query *) node,
+					eval_const_expressions_mutator,
+					(void *) context,
+					0);
 	}
 
 	/*

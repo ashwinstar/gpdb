@@ -64,8 +64,8 @@ typedef struct PartitionHashState
 /* part rule update */
 typedef struct part_rule_cxt
 {
-	Oid old;
-	Oid new;
+	Oid old_oid;
+	Oid new_oid;
 } part_rule_cxt;
 
 

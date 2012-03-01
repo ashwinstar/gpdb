@@ -14239,39 +14239,39 @@ pabc: plangroupext:00000281:  ));
 aaaaa GP_IGNORE: paah: planner - ./backend/optimizer/plan/planner.c
 paah: planner:00000146:  elog(NOTICE, "unable to load optimizer library"); 
 paah: planner:00000160:  elog(NOTICE, "unable to load orca function from library %s", error); 
-paah: planner:00000206:  elog(NOTICE, "Optimizer successfully produced plan"); 
-paah: planner:00000210:  elog(NOTICE, "Falling back to planner"); 
-paah: planner:00000782:  elog(ERROR, "failure repartitioning plan"); 
-paah: planner:00000945:  elog(ERROR, "unrecognized node type: %d", 
-paah: planner:00000946:  (int) nodeTag(jtnode)); 
-paah: planner:00001060:  ereport(ERROR, ( 
-paah: planner:00001061:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001062:  errmsg("incompatible loci in target inheritance set") )); 
-paah: planner:00001138:  ereport(ERROR, ( 
-paah: planner:00001139:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001140:  errmsg("unexpected locus assigned to target inheritance set") )); 
-paah: planner:00001280:  ereport(ERROR, 
-paah: planner:00001281:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001282:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001354:  ereport(ERROR, 
-paah: planner:00001355:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001356:  errmsg("maximum number of grouping columns exceeded (max: %d)", 
-paah: planner:00001357:  MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION))); 
-paah: planner:00001932:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001933:  errmsg("unexpected input locus to distinct"))); 
-paah: planner:00002957:  elog(ERROR, "failed to locate grouping columns"); 
-paah: planner:00002996:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003001:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003074:  elog(ERROR, "invalid grouping set"); 
-paah: planner:00003212:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003221:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003231:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003275:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003290:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003304:  elog(ERROR,"invalid grouping set"); 
-paah: planner:00003310:  elog(ERROR,"invalid grouping set list"); 
-paah: planner:00003330:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
-paah: planner:00003399:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00000209:  elog(NOTICE, "Optimizer successfully produced plan"); 
+paah: planner:00000213:  elog(NOTICE, "Falling back to planner"); 
+paah: planner:00000785:  elog(ERROR, "failure repartitioning plan"); 
+paah: planner:00000948:  elog(ERROR, "unrecognized node type: %d", 
+paah: planner:00000949:  (int) nodeTag(jtnode)); 
+paah: planner:00001063:  ereport(ERROR, ( 
+paah: planner:00001064:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001065:  errmsg("incompatible loci in target inheritance set") )); 
+paah: planner:00001141:  ereport(ERROR, ( 
+paah: planner:00001142:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001143:  errmsg("unexpected locus assigned to target inheritance set") )); 
+paah: planner:00001311:  ereport(ERROR, 
+paah: planner:00001312:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001313:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+paah: planner:00001385:  ereport(ERROR, 
+paah: planner:00001386:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001387:  errmsg("maximum number of grouping columns exceeded (max: %d)", 
+paah: planner:00001388:  MAX_GROUPING_ATTRS_IN_GROUPING_EXTENSION))); 
+paah: planner:00001963:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001964:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00002988:  elog(ERROR, "failed to locate grouping columns"); 
+paah: planner:00003027:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003032:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003105:  elog(ERROR, "invalid grouping set"); 
+paah: planner:00003243:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003252:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003262:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003306:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003321:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003335:  elog(ERROR,"invalid grouping set"); 
+paah: planner:00003341:  elog(ERROR,"invalid grouping set list"); 
+paah: planner:00003361:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00003430:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000868:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000964:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
@@ -14390,48 +14390,48 @@ paaj: preptlist:00000414:  elog(ERROR, "targetlist is not sorted correctly");
 aaaaa GP_IGNORE: paaj: prepunion - ./backend/optimizer/prep/prepunion.c
 paaj: prepunion:00000257:  elog(ERROR, "unrecognized node type: %d", 
 paaj: prepunion:00000258:  (int) nodeTag(setOp)); 
-paaj: prepunion:00000451:  elog(ERROR, "unrecognized set op: %d", 
-paaj: prepunion:00000452:  (int) op->op); 
-paaj: prepunion:00001049:  elog(ERROR, "attribute \"%s\" of relation \"%s\" does not match parent's type", 
-paaj: prepunion:00001050:  attname, RelationGetRelationName(newrelation)); 
-paaj: prepunion:00001062:  elog(ERROR, "could not find inherited attribute \"%s\" of relation \"%s\"", 
-paaj: prepunion:00001063:  attname, RelationGetRelationName(newrelation)); 
-paaj: prepunion:00001157:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001158:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
-paaj: prepunion:00001162:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001163:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
-paaj: prepunion:00001481:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001482:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
-paaj: prepunion:00001485:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
-paaj: prepunion:00001486:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
+paaj: prepunion:00000452:  elog(ERROR, "unrecognized set op: %d", 
+paaj: prepunion:00000453:  (int) op->op); 
+paaj: prepunion:00001050:  elog(ERROR, "attribute \"%s\" of relation \"%s\" does not match parent's type", 
+paaj: prepunion:00001051:  attname, RelationGetRelationName(newrelation)); 
+paaj: prepunion:00001063:  elog(ERROR, "could not find inherited attribute \"%s\" of relation \"%s\"", 
+paaj: prepunion:00001064:  attname, RelationGetRelationName(newrelation)); 
+paaj: prepunion:00001158:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001159:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
+paaj: prepunion:00001163:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001164:  var->varattno, get_rel_name(appinfo->parent_reloid)); 
+paaj: prepunion:00001482:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001483:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
+paaj: prepunion:00001486:  elog(ERROR, "attribute %d of relation \"%s\" does not exist", 
+paaj: prepunion:00001487:  tle->resno, get_rel_name(apprelinfo->parent_reloid)); 
 aaaaa GP_IGNORE: caah: clauses - ./backend/optimizer/util/clauses.c
-caah: clauses:00000427:  ereport(ERROR, 
-caah: clauses:00000428:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caah: clauses:00000429:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
-caah: clauses:00000459:  elog(ERROR, "cache lookup failed for aggregate %u", 
-caah: clauses:00000460:  aggref->aggfnoid); 
-caah: clauses:00000527:  ereport(ERROR, 
-caah: clauses:00000528:  (errcode(ERRCODE_GROUPING_ERROR), 
-caah: clauses:00000529:  errmsg("aggregate function calls may not be nested"))); 
-caah: clauses:00001291:  elog(ERROR, "cannot commute non-binary-operator clause"); 
-caah: clauses:00001296:  elog(ERROR, "could not find commutator for operator %u", 
-caah: clauses:00001297:  clause->opno); 
-caah: clauses:00001325:  elog(ERROR, "expected a RowCompareExpr"); 
-caah: clauses:00001335:  elog(ERROR, "could not find commutator for operator %u", 
-caah: clauses:00001336:  lfirst_oid(l)); 
-caah: clauses:00001358:  elog(ERROR, "unexpected RowCompare type: %d", 
-caah: clauses:00001359:  (int) clause->rctype); 
-caah: clauses:00001892:  elog(ERROR, "unrecognized boolop: %d", 
-caah: clauses:00001893:  (int) expr->boolop); 
-caah: clauses:00002306:  elog(ERROR, "unrecognized nulltesttype: %d", 
-caah: clauses:00002307:  (int) ntest->nulltesttype); 
-caah: clauses:00002358:  elog(ERROR, "unrecognized booltesttype: %d", 
-caah: clauses:00002359:  (int) btest->booltesttype); 
-caah: clauses:00002669:  elog(ERROR, "cache lookup failed for function %u", funcid); 
-caah: clauses:00002885:  elog(ERROR, "null prosrc for function %u", funcid); 
-caah: clauses:00003085:  elog(ERROR, "unexpected paramkind: %d", (int) param->paramkind); 
-caah: clauses:00003087:  elog(ERROR, "invalid paramid: %d", param->paramid); 
-caah: clauses:00003121:  elog(ERROR, "null prosrc"); 
+caah: clauses:00000428:  ereport(ERROR, 
+caah: clauses:00000429:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caah: clauses:00000430:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
+caah: clauses:00000460:  elog(ERROR, "cache lookup failed for aggregate %u", 
+caah: clauses:00000461:  aggref->aggfnoid); 
+caah: clauses:00000528:  ereport(ERROR, 
+caah: clauses:00000529:  (errcode(ERRCODE_GROUPING_ERROR), 
+caah: clauses:00000530:  errmsg("aggregate function calls may not be nested"))); 
+caah: clauses:00001292:  elog(ERROR, "cannot commute non-binary-operator clause"); 
+caah: clauses:00001297:  elog(ERROR, "could not find commutator for operator %u", 
+caah: clauses:00001298:  clause->opno); 
+caah: clauses:00001326:  elog(ERROR, "expected a RowCompareExpr"); 
+caah: clauses:00001336:  elog(ERROR, "could not find commutator for operator %u", 
+caah: clauses:00001337:  lfirst_oid(l)); 
+caah: clauses:00001359:  elog(ERROR, "unexpected RowCompare type: %d", 
+caah: clauses:00001360:  (int) clause->rctype); 
+caah: clauses:00001923:  elog(ERROR, "unrecognized boolop: %d", 
+caah: clauses:00001924:  (int) expr->boolop); 
+caah: clauses:00002337:  elog(ERROR, "unrecognized nulltesttype: %d", 
+caah: clauses:00002338:  (int) ntest->nulltesttype); 
+caah: clauses:00002389:  elog(ERROR, "unrecognized booltesttype: %d", 
+caah: clauses:00002390:  (int) btest->booltesttype); 
+caah: clauses:00002712:  elog(ERROR, "cache lookup failed for function %u", funcid); 
+caah: clauses:00002928:  elog(ERROR, "null prosrc for function %u", funcid); 
+caah: clauses:00003128:  elog(ERROR, "unexpected paramkind: %d", (int) param->paramkind); 
+caah: clauses:00003130:  elog(ERROR, "invalid paramid: %d", param->paramid); 
+caah: clauses:00003164:  elog(ERROR, "null prosrc"); 
 aaaaa GP_IGNORE: paai: pathnode - ./backend/optimizer/util/pathnode.c
 paai: pathnode:00000117:  elog(ERROR, "unrecognized pathnode: %d", (int)s->type); 
 paai: pathnode:00000284:  elog(ERROR, "unrecognized path type: %d", (int)path->pathtype); 
@@ -21042,157 +21042,157 @@ naag: notxin:00000078:  errmsg("column \"%s\" of relation \"%s\" does not exist"
 naag: notxin:00000079:  attribute, 
 naag: notxin:00000080:  RelationGetRelationName(relation_to_scan)))); 
 aaaaa GP_IGNORE: naah: numeric - ./backend/utils/adt/numeric.c
-naah: numeric:00000452:  ereport(ERROR, 
-naah: numeric:00000453:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
-naah: numeric:00000454:  errmsg("invalid length in external \"numeric\" value"), 
-naah: numeric:00000455:  errOmitLocation(true))); 
-naah: numeric:00000464:  ereport(ERROR, 
-naah: numeric:00000465:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
-naah: numeric:00000466:  errmsg("invalid sign in external \"numeric\" value"), 
-naah: numeric:00000467:  errOmitLocation(true))); 
-naah: numeric:00000475:  ereport(ERROR, 
-naah: numeric:00000476:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
-naah: numeric:00000477:  errmsg("invalid digit in external \"numeric\" value"), 
-naah: numeric:00000478:  errOmitLocation(true))); 
-naah: numeric:00000875:  ereport(ERROR, 
-naah: numeric:00000876:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
-naah: numeric:00000877:  errmsg("count must be greater than zero"), 
-naah: numeric:00000878:  errOmitLocation(true))); 
-naah: numeric:00000889:  ereport(ERROR, 
-naah: numeric:00000890:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
-naah: numeric:00000891:  errmsg("lower bound cannot equal upper bound"), 
-naah: numeric:00000892:  errOmitLocation(true))); 
-naah: numeric:00001536:  ereport(ERROR, 
-naah: numeric:00001537:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00001538:  errmsg("value overflows numeric format"), 
-naah: numeric:00001539:  errOmitLocation(true))); 
-naah: numeric:00001809:  ereport(ERROR, 
-naah: numeric:00001810:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
-naah: numeric:00001811:  errmsg("invalid argument for power function"), 
-naah: numeric:00001812:  errOmitLocation(true))); 
-naah: numeric:00001864:  ereport(ERROR, 
-naah: numeric:00001865:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naah: numeric:00001866:  errmsg("cannot convert NaN to integer"), 
-naah: numeric:00001867:  errOmitLocation(true))); 
-naah: numeric:00001888:  ereport(ERROR, 
-naah: numeric:00001889:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00001890:  errmsg("integer out of range"), 
-naah: numeric:00001891:  errOmitLocation(true))); 
-naah: numeric:00001898:  ereport(ERROR, 
-naah: numeric:00001899:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00001900:  errmsg("integer out of range"), 
-naah: numeric:00001901:  errOmitLocation(true))); 
-naah: numeric:00001932:  ereport(ERROR, 
-naah: numeric:00001933:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naah: numeric:00001934:  errmsg("cannot convert NaN to bigint"), 
-naah: numeric:00001935:  errOmitLocation(true))); 
-naah: numeric:00001941:  ereport(ERROR, 
-naah: numeric:00001942:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00001943:  errmsg("bigint out of range"), 
-naah: numeric:00001944:  errOmitLocation(true))); 
-naah: numeric:00001977:  ereport(ERROR, 
-naah: numeric:00001978:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naah: numeric:00001979:  errmsg("cannot convert NaN to smallint"), 
-naah: numeric:00001980:  errOmitLocation(true))); 
-naah: numeric:00001986:  ereport(ERROR, 
-naah: numeric:00001987:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00001988:  errmsg("smallint out of range"), 
-naah: numeric:00001989:  errOmitLocation(true))); 
-naah: numeric:00001996:  ereport(ERROR, 
-naah: numeric:00001997:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00001998:  errmsg("smallint out of range"), 
-naah: numeric:00001999:  errOmitLocation(true))); 
-naah: numeric:00002180:  elog(ERROR, "expected 3-element numeric array"); 
-naah: numeric:00002356:  elog(ERROR, "expected 3-element numeric array"); 
-naah: numeric:00002608:  elog(ERROR, "internal error: inversion function called with NULL " 
-naah: numeric:00002609:  "transition value but non-NULL argument"); 
-naah: numeric:00002639:  elog(ERROR, "internal error: inversion function called with NULL " 
-naah: numeric:00002640:  "transition value but non-NULL argument"); 
-naah: numeric:00002671:  elog(ERROR, "internal error: inversion function called with NULL " 
-naah: numeric:00002672:  "transition value but non-NULL argument"); 
-naah: numeric:00003325:  ereport(ERROR, 
-naah: numeric:00003326:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-naah: numeric:00003327:  errmsg("invalid input syntax for type numeric: \"%s\"", str), 
-naah: numeric:00003328:  errOmitLocation(true))); 
-naah: numeric:00003352:  ereport(ERROR, 
-naah: numeric:00003353:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-naah: numeric:00003354:  errmsg("invalid input syntax for type numeric: \"%s\"", 
-naah: numeric:00003355:  str), 
-naah: numeric:00003356:  errOmitLocation(true))); 
-naah: numeric:00003377:  ereport(ERROR, 
-naah: numeric:00003378:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-naah: numeric:00003379:  errmsg("invalid input syntax for type numeric: \"%s\"", 
-naah: numeric:00003380:  str), 
-naah: numeric:00003381:  errOmitLocation(true))); 
-naah: numeric:00003385:  ereport(ERROR, 
-naah: numeric:00003386:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-naah: numeric:00003387:  errmsg("invalid input syntax for type numeric: \"%s\"", 
-naah: numeric:00003388:  str), 
-naah: numeric:00003389:  errOmitLocation(true))); 
-naah: numeric:00003400:  ereport(ERROR, 
-naah: numeric:00003401:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-naah: numeric:00003402:  errmsg("invalid input syntax for type numeric: \"%s\"", 
-naah: numeric:00003403:  str), 
-naah: numeric:00003404:  errOmitLocation(true))); 
-naah: numeric:00003778:  ereport(ERROR, 
-naah: numeric:00003779:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00003780:  errmsg("value overflows numeric format"), 
-naah: numeric:00003781:  errdetail("Overflowing value: %s", ntp), 
-naah: numeric:00003782:  errOmitLocation(true) 
-naah: numeric:00003783:  )); 
-naah: numeric:00003855:  ereport(ERROR, 
-naah: numeric:00003856:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00003857:  errmsg("value overflows numeric format"), 
-naah: numeric:00003858:  errdetail("Overflowing value: %s", ntp), 
-naah: numeric:00003859:  errOmitLocation(true) 
-naah: numeric:00003860:  )); 
-naah: numeric:00003933:  ereport(ERROR, 
-naah: numeric:00003934:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00003935:  errmsg("numeric field overflow"), 
-naah: numeric:00003936:  errdetail("A field with precision %d, scale %d must round to an absolute value less than %s%d. Rounded overflowing value: %s", 
-naah: numeric:00003937:  precision, scale, 
-naah: numeric:00003938:  /* Display 10^0 as 1 */ 
-naah: numeric:00003939:  maxdigits ? "10^" : "", 
-naah: numeric:00003940:  maxdigits ? maxdigits : 1, 
-naah: numeric:00003941:  ntp 
-naah: numeric:00003942:  ), 
-naah: numeric:00003943:  errOmitLocation(true))); 
-naah: numeric:00004087:  ereport(ERROR, 
-naah: numeric:00004088:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-naah: numeric:00004089:  errmsg("invalid input syntax for type double precision: \"%s\"", 
-naah: numeric:00004090:  tmp), 
-naah: numeric:00004091:  errOmitLocation(true))); 
-naah: numeric:00004114:  ereport(ERROR, 
-naah: numeric:00004115:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-naah: numeric:00004116:  errmsg("invalid input syntax for type double precision: \"%s\"", 
-naah: numeric:00004117:  tmp), 
-naah: numeric:00004118:  errOmitLocation(true))); 
-naah: numeric:00004641:  ereport(ERROR, 
-naah: numeric:00004642:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-naah: numeric:00004643:  errmsg("division by zero"), 
-naah: numeric:00004644:  errOmitLocation(true))); 
-naah: numeric:00005052:  ereport(ERROR, 
-naah: numeric:00005053:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
-naah: numeric:00005054:  errmsg("cannot take square root of a negative number"), 
-naah: numeric:00005055:  errOmitLocation(true))); 
-naah: numeric:00005139:  ereport(ERROR, 
-naah: numeric:00005140:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naah: numeric:00005141:  errmsg("argument for function \"exp\" too big"), 
-naah: numeric:00005142:  errOmitLocation(true))); 
-naah: numeric:00005263:  ereport(ERROR, 
-naah: numeric:00005264:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG), 
-naah: numeric:00005265:  errmsg("cannot take logarithm of zero"), 
-naah: numeric:00005266:  errOmitLocation(true))); 
-naah: numeric:00005268:  ereport(ERROR, 
-naah: numeric:00005269:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG), 
-naah: numeric:00005270:  errmsg("cannot take logarithm of a negative number"), 
-naah: numeric:00005271:  errOmitLocation(true))); 
-naah: numeric:00005512:  ereport(ERROR, 
-naah: numeric:00005513:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
-naah: numeric:00005514:  errmsg("zero raised to zero is undefined"), 
-naah: numeric:00005515:  errOmitLocation(true))); 
-naah: numeric:00006078:  elog(ERROR, "expected 3-element numeric array"); 
-naah: numeric:00006087:  elog(ERROR, "expected 3-element numeric array"); 
+naah: numeric:00000451:  ereport(ERROR, 
+naah: numeric:00000452:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+naah: numeric:00000453:  errmsg("invalid length in external \"numeric\" value"), 
+naah: numeric:00000454:  errOmitLocation(true))); 
+naah: numeric:00000463:  ereport(ERROR, 
+naah: numeric:00000464:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+naah: numeric:00000465:  errmsg("invalid sign in external \"numeric\" value"), 
+naah: numeric:00000466:  errOmitLocation(true))); 
+naah: numeric:00000474:  ereport(ERROR, 
+naah: numeric:00000475:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+naah: numeric:00000476:  errmsg("invalid digit in external \"numeric\" value"), 
+naah: numeric:00000477:  errOmitLocation(true))); 
+naah: numeric:00000874:  ereport(ERROR, 
+naah: numeric:00000875:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
+naah: numeric:00000876:  errmsg("count must be greater than zero"), 
+naah: numeric:00000877:  errOmitLocation(true))); 
+naah: numeric:00000888:  ereport(ERROR, 
+naah: numeric:00000889:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION), 
+naah: numeric:00000890:  errmsg("lower bound cannot equal upper bound"), 
+naah: numeric:00000891:  errOmitLocation(true))); 
+naah: numeric:00001535:  ereport(ERROR, 
+naah: numeric:00001536:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00001537:  errmsg("value overflows numeric format"), 
+naah: numeric:00001538:  errOmitLocation(true))); 
+naah: numeric:00001808:  ereport(ERROR, 
+naah: numeric:00001809:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
+naah: numeric:00001810:  errmsg("invalid argument for power function"), 
+naah: numeric:00001811:  errOmitLocation(true))); 
+naah: numeric:00001863:  ereport(ERROR, 
+naah: numeric:00001864:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naah: numeric:00001865:  errmsg("cannot convert NaN to integer"), 
+naah: numeric:00001866:  errOmitLocation(true))); 
+naah: numeric:00001887:  ereport(ERROR, 
+naah: numeric:00001888:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00001889:  errmsg("integer out of range"), 
+naah: numeric:00001890:  errOmitLocation(true))); 
+naah: numeric:00001897:  ereport(ERROR, 
+naah: numeric:00001898:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00001899:  errmsg("integer out of range"), 
+naah: numeric:00001900:  errOmitLocation(true))); 
+naah: numeric:00001931:  ereport(ERROR, 
+naah: numeric:00001932:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naah: numeric:00001933:  errmsg("cannot convert NaN to bigint"), 
+naah: numeric:00001934:  errOmitLocation(true))); 
+naah: numeric:00001940:  ereport(ERROR, 
+naah: numeric:00001941:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00001942:  errmsg("bigint out of range"), 
+naah: numeric:00001943:  errOmitLocation(true))); 
+naah: numeric:00001976:  ereport(ERROR, 
+naah: numeric:00001977:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naah: numeric:00001978:  errmsg("cannot convert NaN to smallint"), 
+naah: numeric:00001979:  errOmitLocation(true))); 
+naah: numeric:00001985:  ereport(ERROR, 
+naah: numeric:00001986:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00001987:  errmsg("smallint out of range"), 
+naah: numeric:00001988:  errOmitLocation(true))); 
+naah: numeric:00001995:  ereport(ERROR, 
+naah: numeric:00001996:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00001997:  errmsg("smallint out of range"), 
+naah: numeric:00001998:  errOmitLocation(true))); 
+naah: numeric:00002179:  elog(ERROR, "expected 3-element numeric array"); 
+naah: numeric:00002355:  elog(ERROR, "expected 3-element numeric array"); 
+naah: numeric:00002607:  elog(ERROR, "internal error: inversion function called with NULL " 
+naah: numeric:00002608:  "transition value but non-NULL argument"); 
+naah: numeric:00002638:  elog(ERROR, "internal error: inversion function called with NULL " 
+naah: numeric:00002639:  "transition value but non-NULL argument"); 
+naah: numeric:00002670:  elog(ERROR, "internal error: inversion function called with NULL " 
+naah: numeric:00002671:  "transition value but non-NULL argument"); 
+naah: numeric:00003324:  ereport(ERROR, 
+naah: numeric:00003325:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+naah: numeric:00003326:  errmsg("invalid input syntax for type numeric: \"%s\"", str), 
+naah: numeric:00003327:  errOmitLocation(true))); 
+naah: numeric:00003351:  ereport(ERROR, 
+naah: numeric:00003352:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+naah: numeric:00003353:  errmsg("invalid input syntax for type numeric: \"%s\"", 
+naah: numeric:00003354:  str), 
+naah: numeric:00003355:  errOmitLocation(true))); 
+naah: numeric:00003376:  ereport(ERROR, 
+naah: numeric:00003377:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+naah: numeric:00003378:  errmsg("invalid input syntax for type numeric: \"%s\"", 
+naah: numeric:00003379:  str), 
+naah: numeric:00003380:  errOmitLocation(true))); 
+naah: numeric:00003384:  ereport(ERROR, 
+naah: numeric:00003385:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+naah: numeric:00003386:  errmsg("invalid input syntax for type numeric: \"%s\"", 
+naah: numeric:00003387:  str), 
+naah: numeric:00003388:  errOmitLocation(true))); 
+naah: numeric:00003399:  ereport(ERROR, 
+naah: numeric:00003400:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+naah: numeric:00003401:  errmsg("invalid input syntax for type numeric: \"%s\"", 
+naah: numeric:00003402:  str), 
+naah: numeric:00003403:  errOmitLocation(true))); 
+naah: numeric:00003777:  ereport(ERROR, 
+naah: numeric:00003778:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00003779:  errmsg("value overflows numeric format"), 
+naah: numeric:00003780:  errdetail("Overflowing value: %s", ntp), 
+naah: numeric:00003781:  errOmitLocation(true) 
+naah: numeric:00003782:  )); 
+naah: numeric:00003854:  ereport(ERROR, 
+naah: numeric:00003855:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00003856:  errmsg("value overflows numeric format"), 
+naah: numeric:00003857:  errdetail("Overflowing value: %s", ntp), 
+naah: numeric:00003858:  errOmitLocation(true) 
+naah: numeric:00003859:  )); 
+naah: numeric:00003932:  ereport(ERROR, 
+naah: numeric:00003933:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00003934:  errmsg("numeric field overflow"), 
+naah: numeric:00003935:  errdetail("A field with precision %d, scale %d must round to an absolute value less than %s%d. Rounded overflowing value: %s", 
+naah: numeric:00003936:  precision, scale, 
+naah: numeric:00003937:  /* Display 10^0 as 1 */ 
+naah: numeric:00003938:  maxdigits ? "10^" : "", 
+naah: numeric:00003939:  maxdigits ? maxdigits : 1, 
+naah: numeric:00003940:  ntp 
+naah: numeric:00003941:  ), 
+naah: numeric:00003942:  errOmitLocation(true))); 
+naah: numeric:00004086:  ereport(ERROR, 
+naah: numeric:00004087:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+naah: numeric:00004088:  errmsg("invalid input syntax for type double precision: \"%s\"", 
+naah: numeric:00004089:  tmp), 
+naah: numeric:00004090:  errOmitLocation(true))); 
+naah: numeric:00004113:  ereport(ERROR, 
+naah: numeric:00004114:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+naah: numeric:00004115:  errmsg("invalid input syntax for type double precision: \"%s\"", 
+naah: numeric:00004116:  tmp), 
+naah: numeric:00004117:  errOmitLocation(true))); 
+naah: numeric:00004640:  ereport(ERROR, 
+naah: numeric:00004641:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+naah: numeric:00004642:  errmsg("division by zero"), 
+naah: numeric:00004643:  errOmitLocation(true))); 
+naah: numeric:00005051:  ereport(ERROR, 
+naah: numeric:00005052:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION), 
+naah: numeric:00005053:  errmsg("cannot take square root of a negative number"), 
+naah: numeric:00005054:  errOmitLocation(true))); 
+naah: numeric:00005138:  ereport(ERROR, 
+naah: numeric:00005139:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naah: numeric:00005140:  errmsg("argument for function \"exp\" too big"), 
+naah: numeric:00005141:  errOmitLocation(true))); 
+naah: numeric:00005262:  ereport(ERROR, 
+naah: numeric:00005263:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG), 
+naah: numeric:00005264:  errmsg("cannot take logarithm of zero"), 
+naah: numeric:00005265:  errOmitLocation(true))); 
+naah: numeric:00005267:  ereport(ERROR, 
+naah: numeric:00005268:  (errcode(ERRCODE_INVALID_ARGUMENT_FOR_LOG), 
+naah: numeric:00005269:  errmsg("cannot take logarithm of a negative number"), 
+naah: numeric:00005270:  errOmitLocation(true))); 
+naah: numeric:00005511:  ereport(ERROR, 
+naah: numeric:00005512:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+naah: numeric:00005513:  errmsg("zero raised to zero is undefined"), 
+naah: numeric:00005514:  errOmitLocation(true))); 
+naah: numeric:00006077:  elog(ERROR, "expected 3-element numeric array"); 
+naah: numeric:00006086:  elog(ERROR, "expected 3-element numeric array"); 
 aaaaa GP_IGNORE: naai: numutils - ./backend/utils/adt/numutils.c
 naai: numutils:00000049:  elog(ERROR, "NULL pointer"); 
 naai: numutils:00000051:  ereport(ERROR, 
@@ -24046,112 +24046,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006733:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006734:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006747:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006748:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006761:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006762:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006792:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006793:  conf->gen.name, str); 
-gaad: guc:00007050:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007067:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007084:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007115:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007971:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00008081:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00008082:  " in a future release.", name); 
-gaad: guc:00008090:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00008091:  name); 
-gaad: guc:00008565:  ereport(ERROR, 
-gaad: guc:00008566:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008567:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008569:  ereport(ERROR, 
-gaad: guc:00008570:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008571:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008605:  ereport(ERROR, 
-gaad: guc:00008606:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008607:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008609:  ereport(ERROR, 
-gaad: guc:00008610:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008611:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008680:  ereport(ERROR, 
-gaad: guc:00008681:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008682:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008689:  ereport(ERROR, 
-gaad: guc:00008690:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008691:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008704:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008751:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008752:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008809:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008835:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008836:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008862:  ereport(ERROR, 
-gaad: guc:00008863:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008864:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008926:  ereport(ERROR, 
-gaad: guc:00008927:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008928:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00009247:  ereport(ERROR, 
-gaad: guc:00009248:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00009249:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00009251:  ereport(ERROR, 
-gaad: guc:00009252:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00009253:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00010022:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010055:  ereport(FATAL, 
-gaad: guc:00010056:  (errcode_for_file_access(), 
-gaad: guc:00010057:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00010058:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00010070:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00010072:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010074:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00010165:  ereport(WARNING, 
-gaad: guc:00010166:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00010167:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00010361:  ereport(ERROR, 
-gaad: guc:00010362:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010363:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00010384:  ereport(ERROR, 
-gaad: guc:00010385:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010386:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00010387:  tok))); 
-gaad: guc:00010413:  ereport(ERROR, 
-gaad: guc:00010414:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010415:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00010416:  value))); 
-gaad: guc:00010848:  ereport(ERROR, 
-gaad: guc:00010849:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010850:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010924:  ereport(ERROR, 
-gaad: guc:00010925:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010926:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010935:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010945:  ereport(ERROR, 
-gaad: guc:00010946:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010947:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010958:  ereport(ERROR, 
-gaad: guc:00010959:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010960:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010975:  ereport(ERROR, 
-gaad: guc:00010976:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010977:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010978:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010979:  "\"log_dispatch_stats\", " 
-gaad: guc:00010980:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010995:  ereport(ERROR, 
-gaad: guc:00010996:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010997:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010998:  "\"log_statement_stats\", " 
-gaad: guc:00010999:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00011000:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00011015:  ereport(ERROR, 
-gaad: guc:00011016:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00011017:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
-gaad: guc:00011414:  elog(ERROR, 
-gaad: guc:00011415:  "Unknown system table modification policy. (Current policy: '%s')", 
-gaad: guc:00011416:  show_allow_system_table_mods()); 
+gaad: guc:00006833:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006834:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006847:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006848:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006861:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006862:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006892:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006893:  conf->gen.name, str); 
+gaad: guc:00007150:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007167:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007184:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007215:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00008071:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00008181:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00008182:  " in a future release.", name); 
+gaad: guc:00008190:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00008191:  name); 
+gaad: guc:00008665:  ereport(ERROR, 
+gaad: guc:00008666:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008667:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008669:  ereport(ERROR, 
+gaad: guc:00008670:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008671:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008705:  ereport(ERROR, 
+gaad: guc:00008706:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008707:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008709:  ereport(ERROR, 
+gaad: guc:00008710:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008711:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008780:  ereport(ERROR, 
+gaad: guc:00008781:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008782:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008789:  ereport(ERROR, 
+gaad: guc:00008790:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008791:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008804:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008851:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008852:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008909:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008935:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008936:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008962:  ereport(ERROR, 
+gaad: guc:00008963:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008964:  errmsg("SET requires parameter name"))); 
+gaad: guc:00009026:  ereport(ERROR, 
+gaad: guc:00009027:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00009028:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00009347:  ereport(ERROR, 
+gaad: guc:00009348:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00009349:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00009351:  ereport(ERROR, 
+gaad: guc:00009352:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00009353:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00010122:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010155:  ereport(FATAL, 
+gaad: guc:00010156:  (errcode_for_file_access(), 
+gaad: guc:00010157:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00010158:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00010170:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00010172:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010174:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00010265:  ereport(WARNING, 
+gaad: guc:00010266:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00010267:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00010461:  ereport(ERROR, 
+gaad: guc:00010462:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010463:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00010484:  ereport(ERROR, 
+gaad: guc:00010485:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010486:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00010487:  tok))); 
+gaad: guc:00010513:  ereport(ERROR, 
+gaad: guc:00010514:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010515:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00010516:  value))); 
+gaad: guc:00010948:  ereport(ERROR, 
+gaad: guc:00010949:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010950:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00011024:  ereport(ERROR, 
+gaad: guc:00011025:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011026:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00011035:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00011045:  ereport(ERROR, 
+gaad: guc:00011046:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011047:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00011058:  ereport(ERROR, 
+gaad: guc:00011059:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011060:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00011075:  ereport(ERROR, 
+gaad: guc:00011076:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011077:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00011078:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00011079:  "\"log_dispatch_stats\", " 
+gaad: guc:00011080:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00011095:  ereport(ERROR, 
+gaad: guc:00011096:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011097:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00011098:  "\"log_statement_stats\", " 
+gaad: guc:00011099:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00011100:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00011115:  ereport(ERROR, 
+gaad: guc:00011116:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00011117:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00011514:  elog(ERROR, 
+gaad: guc:00011515:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00011516:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
