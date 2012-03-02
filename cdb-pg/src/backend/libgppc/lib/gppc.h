@@ -739,7 +739,7 @@ typedef enum GppcEncoding
 	GPPC_WIN1258 = 19,				/* Windows-1258 */
 	GPPC_WIN866 = 20,				/* (MS-DOS CP866) */
 	GPPC_WIN874 = 21,				/* windows-874 */
-	GPPC_KOI8R = 22,					/* KOI8-R */
+	GPPC_KOI8R = 22,				/* KOI8-R */
 	GPPC_WIN1251 = 23,				/* windows-1251 */
 	GPPC_WIN1252 = 24,				/* windows-1252 */
 	GPPC_ISO_8859_5 = 25,			/* ISO-8859-5 */
@@ -763,9 +763,5 @@ GppcEncoding GppcGetDatabaseEncoding(void);
  * \brief Returns maximum byte size of database encoding in a character.
  */
 int GppcDatabaseEncodingMaxLength(void);
-
-#ifdef BOOL_DEFINED
-#undef bool
-#endif
 
 #endif   /* GPPC_H */
