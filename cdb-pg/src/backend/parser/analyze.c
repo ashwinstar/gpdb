@@ -359,14 +359,6 @@ parse_analyze_varparams(Node *parseTree, const char *sourceText,
 	*paramTypes = pstate->p_paramtypes;
 	*numParams = pstate->p_numparams;
 
-	if (pstate->p_hasDynamicFunction)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INDETERMINATE_DATATYPE),
-				 errmsg("PREPARE statements cannot include calls to "
-						"dynamically typed function")));
-	}
-
 	free_parsestate(&pstate);
 
 	/* make sure all is well with parameter types */
