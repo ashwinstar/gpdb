@@ -287,6 +287,15 @@ UPDATE uctest SET f2 = f2 + 10 WHERE CURRENT OF c;
 COMMIT;
 SELECT * FROM uctest ORDER BY 1, 2, 3;
 
+-- naive PREPARE usage
+PREPARE ucplan AS UPDATE uctest SET f2 = f2 * -1 WHERE CURRENT OF a;
+BEGIN;
+DECLARE a CURSOR FOR SELECT * FROM uctest WHERE f1 = 3;
+FETCH 1 FROM a;
+EXECUTE ucplan;
+COMMIT;
+SELECT * FROM uctest ORDER BY 1, 2, 3;
+
 --
 -- Negative
 --

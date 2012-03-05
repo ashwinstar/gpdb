@@ -400,7 +400,7 @@ FETCH 1 FROM c;
 (1 row)
 
 UPDATE rank SET rank = rank + 1 WHERE CURRENT OF c;
-ERROR:  moving tuple from partition "rank_1_prt_3" to partition "rank_1_prt_4" not supported  (seg0 localhost:40000 pid=1418)
+ERROR:  moving tuple from partition "rank_1_prt_3" to partition "rank_1_prt_4" not supported  (seg0 localhost:40000 pid=50839)
 ROLLBACK;
 -- Partitioning: AO part
 CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
@@ -626,6 +626,27 @@ SELECT * FROM uctest ORDER BY 1, 2, 3;
  100 | 110 | hundred
 (4 rows)
 
+-- naive PREPARE usage
+PREPARE ucplan AS UPDATE uctest SET f2 = f2 * -1 WHERE CURRENT OF a;
+BEGIN;
+DECLARE a CURSOR FOR SELECT * FROM uctest WHERE f1 = 3;
+FETCH 1 FROM a;
+ f1 | f2 |  f3   
+----+----+-------
+  3 | 42 | three
+(1 row)
+
+EXECUTE ucplan;
+COMMIT;
+SELECT * FROM uctest ORDER BY 1, 2, 3;
+ f1  | f2  |   f3    
+-----+-----+---------
+   1 |   1 | one
+   2 |   8 | two
+   3 | -42 | three
+ 100 | 110 | hundred
+(4 rows)
+
 --
 -- Negative
 --
@@ -640,9 +661,9 @@ ERROR:  cursor "cx" is held from a previous transaction
 BEGIN;
 DECLARE c CURSOR FOR SELECT * FROM uctest where f1 = 3;
 FETCH 1 from c;
- f1 | f2 |  f3   
-----+----+-------
-  3 | 42 | three
+ f1 | f2  |  f3   
+----+-----+-------
+  3 | -42 | three
 (1 row)
 
 DELETE FROM uctest2 WHERE CURRENT OF c; 
@@ -714,7 +735,7 @@ FETCH ALL FROM c1;
  f1  | f2  |   f3    
 -----+-----+---------
    1 |   1 | one
-   3 |  42 | three
+   3 | -42 | three
    2 |   8 | two
  100 | 110 | hundred
 (4 rows)
@@ -734,9 +755,9 @@ CREATE RULE ucrule AS ON DELETE TO ucview DO INSTEAD
 BEGIN;
 DECLARE c1 CURSOR FOR SELECT * FROM ucview WHERE f1 = 3;
 FETCH 1 FROM c1;
- f1 | f2 |  f3   
-----+----+-------
-  3 | 42 | three
+ f1 | f2  |  f3   
+----+-----+-------
+  3 | -42 | three
 (1 row)
 
 DELETE FROM ucview WHERE CURRENT OF c1;
