@@ -4185,20 +4185,30 @@ ExecEvalCurrentOfExpr(ExprState *exprstate, ExprContext *econtext,
 
 	slot = econtext->ecxt_scantuple;
 	Assert(!TupIsNull(slot));
-	Insist(TupHasHeapTuple(slot));
 
-	if (cexpr->gp_segment_id == Gp_segment &&
-		ItemPointerEquals(&cexpr->ctid, slot_get_ctid(slot)))
+	/* 
+	 * The currently scanned tuple must use heap storage for it to possibly
+	 * satisfy the CURRENT OF qualification. Despite our grand attempts during
+	 * parsing and constant folding to demand heap storage, the scanning of an 
+	 * AO part is still possible, when the current row uses heap storage, but the 
+	 * CURRENT OF invocation uses an unpruned scan of the partition table, yielding 
+	 * tuples from the AO parts before the desired heap tuple.
+	 */
+	if (TupHasHeapTuple(slot))
 	{
-		/*
- 		 * If tableoid is InvalidOid, this implies that constant folding had
-		 * had determined tableoid was not necessary in uniquely identifying a tuple.
-		 * Otherwise, the given tuple's tableoid must match the CURRENT OF tableoid.
-		 */
-		if (!OidIsValid(cexpr->tableoid) ||
-			cexpr->tableoid == slot->tts_tableOid)
+		if (cexpr->gp_segment_id == Gp_segment &&
+			ItemPointerEquals(&cexpr->ctid, slot_get_ctid(slot)))
 		{
-			result = true;
+			/*
+			 * If tableoid is InvalidOid, this implies that constant folding had
+			 * had determined tableoid was not necessary in uniquely identifying a tuple.
+			 * Otherwise, the given tuple's tableoid must match the CURRENT OF tableoid.
+			 */
+			if (!OidIsValid(cexpr->tableoid) ||
+				cexpr->tableoid == slot->tts_tableOid)
+			{
+				result = true;
+			}
 		}
 	}
 

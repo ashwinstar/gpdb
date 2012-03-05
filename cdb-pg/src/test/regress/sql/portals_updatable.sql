@@ -165,6 +165,16 @@ DECLARE c CURSOR FOR SELECT * FROM rank_1_prt_extra WHERE rank = 10;
 DELETE FROM rank WHERE CURRENT OF c;	-- error out on wrong table
 ROLLBACK;
 
+-- Partitioning, negative, cursor-agnostic: cannot update distribution key
+UPDATE rank SET id = id + 1 WHERE CURRENT OF c;
+
+-- Partitioning, negative, cursor-agnostic: cannot move tuple across partitions
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM rank WHERE rank = 1;
+FETCH 1 FROM c;
+UPDATE rank SET rank = rank + 1 WHERE CURRENT OF c;
+ROLLBACK;
+
 -- Partitioning: AO part
 CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
 INSERT INTO aopart SELECT * FROM rank_1_prt_2;
@@ -185,15 +195,56 @@ FETCH 1 FROM c;
 DELETE FROM rank WHERE CURRENT OF c;
 ROLLBACK;
 
--- Partitioning, negative, cursor-agnostic: cannot update distribution key
-UPDATE rank SET id = id + 1 WHERE CURRENT OF c;
-
--- Partitioning, negative, cursor-agnostic: cannot move tuple across partitions
+-- Partitioning: mostly AO parts
+--  Despite some non-determinism, this should cover the case in which AO parts
+--  are scanned by the segments. Despite our grand attempts to disallow AO/CO tables,
+--  the executor will need to cope with AO tuples, for cases just like this.
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_2;
+ALTER TABLE rank EXCHANGE PARTITION FOR (0) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_3;
+ALTER TABLE rank EXCHANGE PARTITION FOR (1) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_4;
+ALTER TABLE rank EXCHANGE PARTITION FOR (2) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_5;
+ALTER TABLE rank EXCHANGE PARTITION FOR (3) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_6;
+ALTER TABLE rank EXCHANGE PARTITION FOR (4) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_7;
+ALTER TABLE rank EXCHANGE PARTITION FOR (5) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_8;
+ALTER TABLE rank EXCHANGE PARTITION FOR (6) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_9;
+ALTER TABLE rank EXCHANGE PARTITION FOR (7) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_10;
+ALTER TABLE rank EXCHANGE PARTITION FOR (8) WITH TABLE aopart;
+DROP TABLE aopart;
+CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
+INSERT INTO aopart SELECT * FROM rank_1_prt_11;
+ALTER TABLE rank EXCHANGE PARTITION FOR (9) WITH TABLE aopart;
 BEGIN;
-DECLARE c CURSOR FOR SELECT * FROM rank WHERE rank = 1;
+DECLARE c CURSOR FOR SELECT * FROM rank WHERE rank = 10;    -- isolate the remaining heap part
 FETCH 1 FROM c;
-UPDATE rank SET rank = rank + 1 WHERE CURRENT OF c;
-ROLLBACK;
+UPDATE rank SET f = f * -1 WHERE CURRENT OF c;
+COMMIT;
+SELECT * FROM rank ORDER BY 1, 2, 3;
 
 -- Partitioning, sub-partitioning
 CREATE TABLE bar (a int, b int, c int, d int)
