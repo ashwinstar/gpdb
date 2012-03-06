@@ -53,4 +53,8 @@ GP_VERSION_NUM := $(shell test -f $(gppc_config_path) && \
 	(grep 'define  *GP_VERSION_NUM' $(gppc_config_path) \
 		| sed 's/^[^0-9]*\([0-9]*\)/\1/') || echo 0)
 
+ifeq ($(shell test $(GP_VERSION_NUM) -ge 40200 && echo yes),yes)
+REGRESS += tablefunc
+endif
+
 installcheck: install

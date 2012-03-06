@@ -10,6 +10,54 @@
 #include <string.h>
 #include "gppc.h"
 
+GPPC_FUNCTION_INFO(oidcheckfunc);
+GppcDatum oidcheckfunc(GPPC_FUNCTION_ARGS);
+
+GppcDatum oidcheckfunc(GPPC_FUNCTION_ARGS)
+{
+	char	   *arg = GppcTextGetCString(GPPC_GETARG_TEXT(0));
+
+	/*
+	 * We use INT4 as the result type, because  RETURN_OID macros are not prepared.
+	 */
+	if (strcmp("bool", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidBool);
+	else if (strcmp("char", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidChar);
+	else if (strcmp("int2", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidInt2);
+	else if (strcmp("int4", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidInt4);
+	else if (strcmp("int8", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidInt8);
+	else if (strcmp("float4", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidFloat4);
+	else if (strcmp("float8", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidFloat8);
+	else if (strcmp("text", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidText);
+	else if (strcmp("varchar", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidVarChar);
+	else if (strcmp("bpchar", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidBpChar);
+	else if (strcmp("bytea", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidBytea);
+	else if (strcmp("numeric", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidNumeric);
+	else if (strcmp("date", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidDate);
+	else if (strcmp("time", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidTime);
+	else if (strcmp("timetz", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidTimeTz);
+	else if (strcmp("timestamp", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidTimestamp);
+	else if (strcmp("timestamptz", arg) == 0)
+		GPPC_RETURN_INT4(GppcOidTimestampTz);
+
+	GPPC_RETURN_NULL();
+}
+
 GPPC_FUNCTION_INFO(boolfunc);
 GppcDatum boolfunc(GPPC_FUNCTION_ARGS);
 
@@ -232,3 +280,551 @@ GppcDatum argisnullfunc(GPPC_FUNCTION_ARGS)
 	else
 		GPPC_RETURN_BOOL(false);
 }
+
+GPPC_FUNCTION_INFO(byteafunc1);
+GppcDatum byteafunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum byteafunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcBytea		bytea = GPPC_GETARG_BYTEA_COPY(0);
+	char		   *mem = GppcGetByteaPointer(bytea);
+
+	mem[0]++;
+
+	GPPC_RETURN_BYTEA(bytea);
+}
+
+GPPC_FUNCTION_INFO(numericfunc1);
+GppcDatum numericfunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum numericfunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcNumeric		numeric = GPPC_GETARG_NUMERIC(0);
+	char		   *str;
+
+	str = GppcNumericGetCString(numeric);
+	if (strlen(str) > 0 && ('0' <= str[0] && str[0] <= '8'))
+		str[0]++;
+	
+	GPPC_RETURN_NUMERIC(GppcCStringGetNumeric(str));
+}
+
+GPPC_FUNCTION_INFO(datefunc1);
+GppcDatum datefunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum datefunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcDate		arg = GPPC_GETARG_DATE(0);
+	GppcTm			tm;
+
+	GppcDateGetTm(arg, &tm);
+	tm.tm_year += 1;
+	tm.tm_mon += 1;
+	tm.tm_mday += 1;
+
+	GPPC_RETURN_DATE(GppcTmGetDate(&tm));
+}
+
+GPPC_FUNCTION_INFO(timefunc1);
+GppcDatum timefunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum timefunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcTime		arg = GPPC_GETARG_TIME(0);
+	GppcTm			tm;
+
+	GppcTimeGetTm(arg, &tm);
+	tm.tm_hour += 1;
+	tm.tm_min += 1;
+	tm.tm_sec += 1;
+
+	GPPC_RETURN_TIME(GppcTmGetTime(&tm));
+}
+
+GPPC_FUNCTION_INFO(timetzfunc1);
+GppcDatum timetzfunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum timetzfunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcTimeTz		arg = GPPC_GETARG_TIMETZ(0);
+	GppcTm			tm;
+
+	GppcTimeTzGetTm(arg, &tm);
+	tm.tm_hour += 1;
+	tm.tm_min += 1;
+	tm.tm_sec += 1;
+
+	GPPC_RETURN_TIMETZ(GppcTmGetTimeTz(&tm));
+}
+
+GPPC_FUNCTION_INFO(timestampfunc1);
+GppcDatum timestampfunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum timestampfunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcTimestamp	arg = GPPC_GETARG_TIMESTAMP(0);
+	GppcTm			tm;
+
+	GppcTimestampGetTm(arg, &tm);
+	tm.tm_year += 1;
+	tm.tm_mon += 1;
+	tm.tm_mday += 1;
+	tm.tm_hour += 1;
+	tm.tm_min += 1;
+	tm.tm_sec += 1;
+
+	GPPC_RETURN_TIMESTAMP(GppcTmGetTimestamp(&tm));
+}
+
+GPPC_FUNCTION_INFO(timestamptzfunc1);
+GppcDatum timestamptzfunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum timestamptzfunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcTimestampTz	arg = GPPC_GETARG_TIMESTAMPTZ(0);
+	GppcTm			tm;
+
+	GppcTimestampTzGetTm(arg, &tm);
+	tm.tm_year += 1;
+	tm.tm_mon += 1;
+	tm.tm_mday += 1;
+	tm.tm_hour += 1;
+	tm.tm_min += 1;
+	tm.tm_sec += 1;
+
+	GPPC_RETURN_TIMESTAMPTZ(GppcTmGetTimestampTz(&tm));
+}
+
+/*
+ * SPI test 1: run query, get the attribute by number at the final row as string
+ */
+GPPC_FUNCTION_INFO(spifunc1);
+GppcDatum spifunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum spifunc1(GPPC_FUNCTION_ARGS)
+{
+	char		   *query = GppcTextGetCString(GPPC_GETARG_TEXT(0));
+	GppcInt4		attno = GPPC_GETARG_INT4(1);
+	GppcSPIResult	result;
+	char		   *val = NULL;
+
+	if (GppcSPIConnect() < 0)
+		GppcReport(GPPC_ERROR, "connect error");
+
+	result = GppcSPIExec(query, 0);
+	while (result->current < result->processed)
+	{
+		val = GppcSPIGetValue(result, attno, true);
+		result->current++;
+	}
+
+	GppcSPIFinish();
+
+	if (val)
+		GPPC_RETURN_TEXT(GppcCStringGetText(val));
+	else
+		GPPC_RETURN_NULL();
+}
+
+/*
+ * SPI test 2: run query, get the attribute by name at the final row as string
+ */
+GPPC_FUNCTION_INFO(spifunc2);
+GppcDatum spifunc2(GPPC_FUNCTION_ARGS);
+
+GppcDatum spifunc2(GPPC_FUNCTION_ARGS)
+{
+	char		   *query = GppcTextGetCString(GPPC_GETARG_TEXT(0));
+	char		   *attname = GppcTextGetCString(GPPC_GETARG_TEXT(1));
+	GppcSPIResult	result;
+	char		   *val = NULL;
+
+	if (GppcSPIConnect() < 0)
+		GppcReport(GPPC_ERROR, "connect error");
+
+	result = GppcSPIExec(query, 0);
+	while (result->current < result->processed)
+	{
+		val = GppcSPIGetValueByName(result, attname, true);
+		result->current++;
+	}
+
+	GppcSPIFinish();
+
+	if (val)
+		GPPC_RETURN_TEXT(GppcCStringGetText(val));
+	else
+		GPPC_RETURN_NULL();
+}
+
+/*
+ * SPI test 3: run query, get the attribute by number at the final row as datum
+ */
+GPPC_FUNCTION_INFO(spifunc3);
+GppcDatum spifunc3(GPPC_FUNCTION_ARGS);
+
+GppcDatum spifunc3(GPPC_FUNCTION_ARGS)
+{
+	char		   *query = GppcTextGetCString(GPPC_GETARG_TEXT(0));
+	GppcInt4		attno = GPPC_GETARG_INT4(1);
+	GppcSPIResult	result;
+	GppcDatum		datum;
+	bool			isnull = true;
+
+	if (GppcSPIConnect() < 0)
+		GppcReport(GPPC_ERROR, "connect error");
+
+	result = GppcSPIExec(query, 0);
+	while (result->current < result->processed)
+	{
+		datum = GppcSPIGetDatum(result, attno, &isnull, true);
+		result->current++;
+	}
+
+	GppcSPIFinish();
+
+	if (!isnull)
+		GPPC_RETURN_TEXT(GppcDatumGetText(datum));
+	else
+		GPPC_RETURN_NULL();
+}
+
+/*
+ * SPI test 4: run query, get the attribute by name at the final row as datum
+ */
+GPPC_FUNCTION_INFO(spifunc4);
+GppcDatum spifunc4(GPPC_FUNCTION_ARGS);
+
+GppcDatum spifunc4(GPPC_FUNCTION_ARGS)
+{
+	char		   *query = GppcTextGetCString(GPPC_GETARG_TEXT(0));
+	char		   *attname = GppcTextGetCString(GPPC_GETARG_TEXT(1));
+	GppcSPIResult	result;
+	GppcDatum		datum;
+	bool			isnull = true;
+
+	if (GppcSPIConnect() < 0)
+		GppcReport(GPPC_ERROR, "connect error");
+
+	result = GppcSPIExec(query, 0);
+	while (result->current < result->processed)
+	{
+		datum = GppcSPIGetDatumByName(result, attname, &isnull, true);
+		result->current++;
+	}
+
+	GppcSPIFinish();
+
+	if (!isnull)
+		GPPC_RETURN_TEXT(GppcDatumGetText(datum));
+	else
+		GPPC_RETURN_NULL();
+}
+
+/*
+ * The error handler.  We can call GppcReport with INFO when ERROR, since it's not
+ * infinite recursion.  For test purpose, set 'x' to message when WARNING.
+ */
+static void
+errorcallback(GppcReportInfo info, void *arg)
+{
+	GppcReportLevel		elevel = GppcGetReportLevel(info);
+
+	if (elevel == GPPC_WARNING)
+		memset(GppcGetTextPointer(arg), 'x', GppcGetTextLength(arg));
+	else if (elevel == GPPC_ERROR)
+		GppcReport(GPPC_INFO, "inside callback: %s", GppcTextGetCString(arg));
+}
+
+GPPC_FUNCTION_INFO(errorcallbackfunc1);
+GppcDatum errorcallbackfunc1(GPPC_FUNCTION_ARGS);
+
+GppcDatum
+errorcallbackfunc1(GPPC_FUNCTION_ARGS)
+{
+	GppcText		arg = GPPC_GETARG_TEXT_COPY(0);
+	char		   *carg = GppcTextGetCString(arg);
+	GppcReportCallbackState	cbinfo;
+
+	cbinfo = GppcInstallReportCallback(errorcallback, arg);
+
+	if (strcmp(carg, "info") == 0)
+		GppcReport(GPPC_INFO, "info emit");
+	else if (strcmp(carg, "warning") == 0)
+		GppcReport(GPPC_WARNING, "warning emit");
+	else if (strcmp(carg, "error") == 0)
+		GppcReport(GPPC_ERROR, "error emit");
+
+	GppcUninstallReportCallback(cbinfo);
+
+	GPPC_RETURN_TEXT(arg);
+}
+
+#if GP_VERSION_NUM >= 40200
+GPPC_FUNCTION_INFO(tablefunc_describe);
+GppcDatum tablefunc_describe(GPPC_FUNCTION_ARGS);
+
+GppcDatum
+tablefunc_describe(GPPC_FUNCTION_ARGS)
+{
+	GppcTupleDesc	tdesc;
+	GppcInt4		avalue;
+	bool			isnull, iserror;
+	GppcTupleDesc	odesc;
+
+	/* Fetch and validate input */
+	if (GPPC_NARGS() != 1 || GPPC_ARGISNULL(0))
+		GppcReport(GPPC_ERROR, "invalid invocation of describe");
+
+	/* Now get the tuple descriptor for the ANYTABLE we received */
+	tdesc = GPPC_TF_INPUT_DESC(0, &iserror);
+
+	if (iserror)
+		GppcReport(GPPC_ERROR, "cannot build tuple descriptor");
+
+	avalue = GPPC_TF_GETARG_INT4(1, &isnull, &iserror);
+	if (iserror)
+		GppcReport(GPPC_ERROR, "function is mal-declared");
+	if (isnull)
+		GppcReport(GPPC_ERROR, "the second argument should not be NULL");
+
+	if (avalue < 1 || avalue > GppcTupleDescNattrs(tdesc))
+		GppcReport(GPPC_ERROR, "invalid column position %d", avalue);
+
+	/* Build an output tuple a single column based on the column number above */
+	odesc = GppcCreateTemplateTupleDesc(1);
+	GppcTupleDescInitEntry(odesc, 1,
+						   GppcTupleDescAttrName(tdesc, avalue - 1),
+						   GppcTupleDescAttrType(tdesc, avalue - 1),
+						   GppcTupleDescAttrTypmod(tdesc, avalue - 1));
+
+	/* Finally return that tupdesc */
+	GPPC_RETURN_TUPLEDESC(odesc);
+}
+
+GPPC_FUNCTION_INFO(tablefunc_project);
+GppcDatum tablefunc_project(GPPC_FUNCTION_ARGS);
+
+GppcDatum
+tablefunc_project(GPPC_FUNCTION_ARGS)
+{
+	GppcFuncCallContext	fctx;
+	GppcAnyTable	scan;
+	GppcTupleDesc	out_tupdesc, in_tupdesc;
+	GppcHeapTuple	tuple;
+	int				position;
+	GppcDatum		values[1];
+	bool			nulls[1];
+	GppcDatum		result;
+
+	/*
+	 * Sanity checking, shouldn't occur if our CREATE FUNCTION in SQL is done
+	 * correctly.
+	 */
+	if (GPPC_NARGS() != 2 || GPPC_ARGISNULL(0) || GPPC_ARGISNULL(1))
+		GppcReport(GPPC_ERROR, "invalid invocation of project");
+	scan = GPPC_GETARG_ANYTABLE(0);
+	position = GPPC_GETARG_INT4(1);
+
+	/* Basic set-returning function (SRF) protocol, setup the context */
+	if (GPPC_SRF_IS_FIRSTCALL())
+	{
+		fctx = GPPC_SRF_FIRSTCALL_INIT();
+	}
+	fctx = GPPC_SRF_PERCALL_SETUP();
+
+	/* Get the next value from the input scan */
+	out_tupdesc = GPPC_SRF_RESULT_DESC();
+	in_tupdesc = GppcAnyTableGetTupleDesc(scan);
+	tuple = GppcAnyTableGetNextTuple(scan);
+
+	/* Based on what the describe callback should have setup */
+	if (position < 1 || position > GppcTupleDescNattrs(in_tupdesc))
+		GppcReport(GPPC_ERROR, "invalid column position(%d)", position);
+	if (GppcTupleDescNattrs(out_tupdesc) != 1)
+		GppcReport(GPPC_ERROR, "invalid column length in out_tupdesc");
+	if (GppcTupleDescAttrType(out_tupdesc, 0) !=
+			GppcTupleDescAttrType(in_tupdesc, 0))
+		GppcReport(GPPC_ERROR, "type mismatch");
+
+	/* check for end of scan */
+	if (tuple == NULL)
+		GPPC_SRF_RETURN_DONE(fctx);
+
+	/* Construct the output tuple and convert to a datum */
+	values[0] = GppcGetAttributeByNum(tuple, position, &nulls[0]);
+	result = GppcBuildHeapTupleDatum(out_tupdesc, values, nulls);
+
+	/* Return the next result */
+	GPPC_SRF_RETURN_NEXT(fctx, result);
+}
+
+GPPC_FUNCTION_INFO(describe_spi);
+GppcDatum describe_spi(GPPC_FUNCTION_ARGS);
+
+GppcDatum describe_spi(GPPC_FUNCTION_ARGS)
+{
+	GppcTupleDesc	tdesc, odesc;
+	GppcSPIResult	result;
+	bool			isnull, iserror;
+	char		   *query;
+	char		   *colname = NULL;
+	GppcDatum		d_colname;
+
+	tdesc = GPPC_TF_INPUT_DESC(0, &iserror);
+
+	if (GppcSPIConnect() < 0)
+		GppcReport(GPPC_ERROR, "unable to connect to SPI");
+
+	/* Get query string */
+	query = GppcTextGetCString(GPPC_TF_GETARG_TEXT(1, &isnull, &iserror));
+	if (isnull || iserror)
+		GppcReport(GPPC_ERROR, "invalid invocation of describe_spi");
+
+	result = GppcSPIExec(query, 0);
+	if (result->processed > 0)
+		colname = GppcSPIGetValue(result, 1, true);
+	if (colname == NULL)
+		colname = "?column?";
+	GppcSPIFinish();
+
+	/* Build tuple desc */
+	odesc = GppcCreateTemplateTupleDesc(1);
+	GppcTupleDescInitEntry(odesc, 1,
+						   colname, GppcOidText, -1);
+
+	d_colname = GppcTextGetDatum(GppcCStringGetText(colname));
+	/* Pass the query to project */
+	GPPC_TF_SET_USERDATA(GppcDatumGetByteaCopy(d_colname));
+
+	GPPC_RETURN_TUPLEDESC(odesc);
+}
+
+GPPC_FUNCTION_INFO(project_spi);
+GppcDatum project_spi(GPPC_FUNCTION_ARGS);
+
+GppcDatum project_spi(GPPC_FUNCTION_ARGS)
+{
+	GppcFuncCallContext	fctx;
+	GppcAnyTable		scan;
+	GppcTupleDesc		odesc, idesc;
+	GppcHeapTuple		tuple;
+	char				colname[255];
+	GppcDatum			values[1];
+	bool				isnull[1];
+	GppcDatum			result;
+
+	scan = GPPC_GETARG_ANYTABLE(0);
+	/* Get the user context from the describe function */
+	strcpy(colname,
+		   GppcTextGetCString(GppcDatumGetText(GppcByteaGetDatum(GPPC_TF_GET_USERDATA()))));
+
+	if (GPPC_SRF_IS_FIRSTCALL())
+	{
+		fctx = GPPC_SRF_FIRSTCALL_INIT();
+	}
+	fctx = GPPC_SRF_PERCALL_SETUP();
+
+	/* Get the next value from the input scan */
+	odesc = GPPC_SRF_RESULT_DESC();
+	idesc = GppcAnyTableGetTupleDesc(scan);
+	tuple = GppcAnyTableGetNextTuple(scan);
+
+	if (tuple == NULL)
+		GPPC_SRF_RETURN_DONE(fctx);
+
+	values[0] = GppcGetAttributeByNum(tuple, 1, &isnull[0]);
+	if (!isnull[0])
+		values[0] = GppcTextGetDatum(GppcCStringGetText(
+				strcat(colname, GppcTextGetCString(GppcDatumGetText(values[0])))));
+
+	result = GppcBuildHeapTupleDatum(odesc, values, isnull);
+	GPPC_SRF_RETURN_NEXT(fctx, result);
+}
+
+typedef struct MySession
+{
+	GppcReportCallbackState	cbstate;
+	char				   *message;
+} MySession;
+
+static void
+tfcallback(GppcReportInfo info, void *arg)
+{
+	GppcReportLevel		elevel = GppcGetReportLevel(info);
+
+	if (elevel == GPPC_ERROR)
+	{
+		MySession			   *sess;
+
+		sess = (MySession *) arg;
+		GppcReport(GPPC_INFO, "message: %s", sess->message);
+		GppcFree(sess);
+	}
+}
+
+GPPC_FUNCTION_INFO(project_errorcallback);
+GppcDatum project_errorcallback(GPPC_FUNCTION_ARGS);
+
+GppcDatum project_errorcallback(GPPC_FUNCTION_ARGS)
+{
+	GppcFuncCallContext	fctx;
+	GppcAnyTable		scan;
+	GppcTupleDesc		odesc, idesc;
+	GppcHeapTuple		tuple;
+	GppcDatum		   *values;
+	bool			   *isnull;
+	int					i, attnum;
+	GppcDatum			result;
+
+	scan = GPPC_GETARG_ANYTABLE(0);
+
+	if (GPPC_SRF_IS_FIRSTCALL())
+	{
+		MySession				   *sess;
+
+		fctx = GPPC_SRF_FIRSTCALL_INIT();
+		sess = (MySession *) GppcSRFAlloc(fctx, sizeof(MySession));
+		sess->cbstate = GppcInstallReportCallback(tfcallback, sess);
+		sess->message = GppcSRFAlloc(fctx, 255);
+		strcpy(sess->message, "Hello, world!");
+
+		/* Save session in the SRF context */
+		GppcSRFSave(fctx, sess);
+	}
+	fctx = GPPC_SRF_PERCALL_SETUP();
+
+	/*
+	 * Return the input tuple as is, but it seems
+	 * TableFunction doesn't accept tuples with <idesc>, so copy
+	 * everything to a new tuple.
+	 */
+	odesc = GPPC_SRF_RESULT_DESC();
+	idesc = GppcAnyTableGetTupleDesc(scan);
+	tuple = GppcAnyTableGetNextTuple(scan);
+
+	if (tuple == NULL)
+	{
+		/* End of the input scan */
+		MySession				   *sess;
+
+		sess = (MySession *) GppcSRFRestore(fctx);
+		GppcUninstallReportCallback(sess->cbstate);
+		GppcFree(sess);
+		GPPC_SRF_RETURN_DONE(fctx);
+	}
+
+	attnum = GppcTupleDescNattrs(idesc);
+	values = GppcAlloc(sizeof(GppcDatum) * attnum);
+	isnull = GppcAlloc(sizeof(bool) * attnum);
+	for (i = 0; i < attnum; i++)
+	{
+		values[i] = GppcGetAttributeByNum(tuple, 1, &isnull[i]);
+		if (i == 0 && isnull[0])
+			GppcReport(GPPC_ERROR, "first attribute is NULL");
+	}
+
+	result = GppcBuildHeapTupleDatum(odesc, values, isnull);
+	GPPC_SRF_RETURN_NEXT(fctx, result);
+}
+#endif  /* GP_VERSION_NUM >= 40200 */

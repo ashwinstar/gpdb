@@ -1,3 +1,4 @@
+CREATE FUNCTION oidcheckfunc(text) RETURNS int4 AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION boolfunc(bool) RETURNS bool AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION charfunc("char") RETURNS "char" AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION int2mulfunc(int2, int2) RETURNS int2 AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
@@ -15,8 +16,36 @@ CREATE FUNCTION bpchardoublefunc(char) RETURNS char AS '$libdir/gppc_test' LANGU
 CREATE FUNCTION bpchargenfunc() RETURNS char AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION bpcharcopyfunc(text, bool) RETURNS text AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION errfunc1(text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
-CREATE FUNCTION argisnullfunc(int) RETURNS BOOL AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE;
+CREATE FUNCTION argisnullfunc(int) RETURNS bool AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE;
+CREATE FUNCTION byteafunc1(bytea) RETURNS bytea AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION numericfunc1(numeric) RETURNS numeric AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION datefunc1(date) RETURNS date AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION timefunc1(time) RETURNS time AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION timetzfunc1(timetz) RETURNS timetz AS '$libdir/gppc_test' LANGUAGE c STABLE STRICT;
+CREATE FUNCTION timestampfunc1(timestamp) RETURNS timestamp AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION timestamptzfunc1(timestamptz) RETURNS timestamptz AS '$libdir/gppc_test' LANGUAGE c STABLE STRICT;
+CREATE FUNCTION spifunc1(text, int) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
+CREATE FUNCTION spifunc2(text, text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
+CREATE FUNCTION spifunc3(text, int) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
+CREATE FUNCTION spifunc4(text, text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
+CREATE FUNCTION errorcallbackfunc1(text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
 
+SELECT oidcheckfunc('bool'),
+	oidcheckfunc('char'),
+	oidcheckfunc('int2'),
+	oidcheckfunc('int4'),
+	oidcheckfunc('int8'),
+	oidcheckfunc('float4'),
+	oidcheckfunc('float8'),
+	oidcheckfunc('text'),
+	oidcheckfunc('varchar'),
+	oidcheckfunc('bpchar'),
+	oidcheckfunc('bytea'),
+	oidcheckfunc('numeric'),
+	oidcheckfunc('time'),
+	oidcheckfunc('timetz'),
+	oidcheckfunc('timestamp'),
+	oidcheckfunc('timestamptz');
 SELECT boolfunc(true and true);
 SELECT charfunc('a');
 SELECT int2mulfunc(2::int2, 3::int2);
@@ -35,3 +64,16 @@ SELECT bpchargenfunc();
 SELECT bpcharcopyfunc('white', true), bpcharcopyfunc('white', false);
 SELECT errfunc1('The quick brown fox jumps over the lazy dog');
 SELECT argisnullfunc(0), argisnullfunc(NULL);
+SELECT byteafunc1(E'\\244\\233abc');
+SELECT numericfunc1(1000);
+SELECT datefunc1('2011-02-24');
+SELECT timefunc1('15:00:01');
+SELECT timetzfunc1('15:00:01 UTC');
+SELECT timestampfunc1('2011-02-24 15:00:01');
+SELECT timestamptzfunc1('2011-02-24 15:00:01 UTC');
+SELECT spifunc1($$select i, i * 2 from generate_series(1, 10)i order by 1$$, 2);
+SELECT spifunc2($$select i, i * 2 as val from generate_series(1, 10)i order by 1$$, 'val');
+SELECT spifunc3($$select i, 'foo' || i as val from generate_series(1, 10)i order by 1$$, 2);
+SELECT spifunc4($$select i, 'foo' || i as val from generate_series(1, 10)i order by 1$$, 'val');
+SELECT errorcallbackfunc1('warning');
+SELECT errorcallbackfunc1('error');
