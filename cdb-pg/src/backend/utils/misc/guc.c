@@ -339,6 +339,7 @@ bool 		gp_before_filespace_setup = false;
 bool		gp_startup_integrity_checks = true;
 bool		gp_change_tracking = true;
 bool		gp_persistent_skip_free_list = false;
+bool		gp_persistent_repair_global_sequence = false;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = false;
 bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
@@ -3006,6 +3007,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+	{
+		{"gp_persistent_repair_global_sequence", PGC_SUSET, UNGROUPED,
+			gettext_noop("Repair a global sequence number to use the maximum scanned value."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_persistent_repair_global_sequence,
+		false, NULL, NULL
+	},
+		
 	{
 		{"filerep_crc_on", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("enable adler 32 crc in filerep"),
