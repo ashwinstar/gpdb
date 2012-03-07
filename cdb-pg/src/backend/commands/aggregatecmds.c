@@ -56,6 +56,8 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 	AclResult	aclresult;
 	List	   *transfuncName = NIL;
 	List	   *prelimfuncName = NIL; /* MPP */
+	List       *invtransfuncName = NIL; /* MPP */
+	List       *invprelimfuncName = NIL; /* MPP */
 	List	   *finalfuncName = NIL;
 	List	   *sortoperatorName = NIL;
 	TypeName   *baseType = NULL;
@@ -104,6 +106,10 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "prefunc") == 0) /* MPP */
 			prelimfuncName = defGetQualifiedName(defel);
+		else if (pg_strcasecmp(defel->defname, "invprefunc") == 0) /* MPP */
+			invprelimfuncName = defGetQualifiedName(defel);
+		else if (pg_strcasecmp(defel->defname, "invsfunc") == 0) /* MPP */
+			invtransfuncName = defGetQualifiedName(defel);
 		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "oid") == 0) /* OID */
 		{
 			int64 oid = defGetInt64(defel);
@@ -136,6 +142,10 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("ordered aggregate prefunc is not supported")));
+	if (ordered && invprelimfuncName != NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("ordered aggregate invprefunc is not supported")));
 
 	/*
 	 * look up the aggregate's input datatype(s).
@@ -216,7 +226,9 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 									aggArgTypes,	/* input data type(s) */
 									numArgs,
 									transfuncName,	/* step function name */
+									invtransfuncName, /* inverse step function */
 									prelimfuncName,	/* prelim function name */
+									invprelimfuncName, /* inverse prelim func */
 									finalfuncName,	/* final function name */
 									sortoperatorName, /* sort operator name */
 									transTypeId,	/* transition data type */

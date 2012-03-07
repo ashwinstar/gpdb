@@ -100,7 +100,127 @@ create ordered aggregate should_error(integer,integer,text) (
    initcond = '{}'
 );
 
+-- Test cases around prelimary and inverse functions
+create aggregate my_average1(bigint) (
+   stype      = bytea,
+   initcond   = '',
+   sfunc      = int8_avg_accum,
+   invsfunc   = int8_avg_decum,
+   prefunc    = int8_avg_amalg,
+   invprefunc = int8_avg_demalg,
+   finalfunc  = int8_avg
+);
 
+-- ERROR: an sfunc is manditory
+create aggregate should_error(bigint) (
+   stype      = bytea,
+   initcond   = '',
+--   sfunc      = int8_avg_accum,
+   invsfunc   = int8_avg_decum,
+   prefunc    = int8_avg_amalg,
+   invprefunc = int8_avg_demalg,
+   finalfunc  = int8_avg
+);
+DROP AGGREGATE IF EXISTS should_error(bigint);
+
+-- ERROR: need prefunc to support invprefunc
+create aggregate should_error(bigint) (
+   stype      = bytea,
+   initcond   = '',
+   sfunc      = int8_avg_accum,
+   invsfunc   = int8_avg_decum,
+--   prefunc    = int8_avg_amalg,
+   invprefunc = int8_avg_demalg,
+   finalfunc  = int8_avg
+);
+DROP AGGREGATE IF EXISTS should_error(bigint);
+
+create aggregate my_average2(bigint) (
+   stype      = bytea,
+   initcond   = '',
+   sfunc      = int8_avg_accum,
+   invsfunc   = int8_avg_decum,
+   prefunc    = int8_avg_amalg,
+--   invprefunc = int8_avg_demalg,
+   finalfunc  = int8_avg
+);
+
+create aggregate my_average3(bigint) (
+   stype      = bytea,
+   initcond   = '',
+   sfunc      = int8_avg_accum,
+--   invsfunc   = int8_avg_decum,
+   prefunc    = int8_avg_amalg,
+   invprefunc = int8_avg_demalg,
+   finalfunc  = int8_avg
+); 
+
+create aggregate my_average4(bigint) (
+   stype      = bytea,
+   initcond   = '',
+   sfunc      = int8_avg_accum,
+--   invsfunc   = int8_avg_decum,
+   prefunc    = int8_avg_amalg,
+--   invprefunc = int8_avg_demalg,
+   finalfunc  = int8_avg
+); 
+
+
+
+-- All 4 valid combinations should produce identical results
+create table aggtest1 as select i::bigint from generate_series(1,10) i;
+--begin_equivalent
+SELECT avg(i) from aggtest1;
+SELECT avg(i) from generate_series(1,10) i;
+select my_average1(i) from aggtest1;
+SELECT my_average1(i) from generate_series(1,10) i;
+select my_average2(i) from aggtest1;
+SELECT my_average2(i) from generate_series(1,10) i;
+select my_average3(i) from aggtest1;
+SELECT my_average3(i) from generate_series(1,10) i;
+select my_average4(i) from aggtest1;
+SELECT my_average4(i) from generate_series(1,10) i;
+--end_equivalent
+
+--begin_equivalent
+SELECT i%2, avg(i) from aggtest1 group by rollup (i%2);
+SELECT i%2, avg(i) from generate_series(1,10) i group by rollup (i%2);
+select i%2, my_average1(i) from aggtest1 group by rollup (i%2);
+SELECT i%2, my_average1(i) from generate_series(1,10) i group by rollup (i%2);
+select i%2, my_average2(i) from aggtest1 group by rollup (i%2);
+SELECT i%2, my_average2(i) from generate_series(1,10) i group by rollup (i%2);
+select i%2, my_average3(i) from aggtest1 group by rollup (i%2);
+SELECT i%2, my_average3(i) from generate_series(1,10) i group by rollup (i%2);
+select i%2, my_average4(i) from aggtest1 group by rollup (i%2);
+SELECT i%2, my_average4(i) from generate_series(1,10) i group by rollup (i%2);
+--end_equivalent
+
+--begin_equivalent
+SELECT avg(i) over (w) from aggtest1 window w as (order by i rows between 2 preceding and 2 following);
+SELECT avg(i) over (w) from generate_series(1,10) i window w as (order by i rows between 2 preceding and 2 following);
+select my_average1(i) over (w) from aggtest1 window w as (order by i rows between 2 preceding and 2 following);
+SELECT my_average1(i) over (w) from generate_series(1,10) i window w as (order by i rows between 2 preceding and 2 following);
+select my_average2(i) over (w) from aggtest1 window w as (order by i rows between 2 preceding and 2 following);
+SELECT my_average2(i) over (w) from generate_series(1,10) i window w as (order by i rows between 2 preceding and 2 following);
+select my_average3(i) over (w) from aggtest1 window w as (order by i rows between 2 preceding and 2 following);
+SELECT my_average3(i) over (w) from generate_series(1,10) i window w as (order by i rows between 2 preceding and 2 following);
+select my_average4(i) over (w) from aggtest1 window w as (order by i rows between 2 preceding and 2 following);
+SELECT my_average4(i) over (w) from generate_series(1,10) i window w as (order by i rows between 2 preceding and 2 following);
+--end_equivalent
+
+SELECT * FROM pg_aggregate where aggfnoid in (
+        'avg(bigint)'::regprocedure::regproc,
+        'my_average1'::regproc,
+        'my_average2'::regproc,
+        'my_average3'::regproc,
+        'my_average4'::regproc
+  );
+
+DROP AGGREGATE IF EXISTS my_average1(bigint);
+DROP AGGREGATE IF EXISTS my_average2(bigint);
+DROP AGGREGATE IF EXISTS my_average3(bigint);
+DROP AGGREGATE IF EXISTS my_average4(bigint);
+DROP TABLE IF EXISTS aggtest1;
 
 -- Comments on aggregates
 COMMENT ON AGGREGATE nosuchagg (*) IS 'should fail';

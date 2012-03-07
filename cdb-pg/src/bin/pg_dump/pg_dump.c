@@ -6749,13 +6749,17 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 	int			i_aggtranstype;
 	int			i_agginitval;
 	int			i_aggprelimfn;
+	int			i_agginvtransfn;
+	int			i_agginvprelimfn;
 	int			i_convertok;
 	const char *aggtransfn;
 	const char *aggfinalfn;
 	const char *aggsortop;
 	const char *aggtranstype;
 	const char *agginitval;
+	const char *agginvtransfn;
 	const char *aggprelimfn;
+	const char *agginvprelimfn;
 	bool		convertok;
 
 	/* Skip if not to be dumped */
@@ -6774,12 +6778,14 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 					  "aggfinalfn, aggtranstype::pg_catalog.regtype, "
 					  "aggsortop::pg_catalog.regoperator, "
 					  "agginitval, "
-					  "%s, "
+					  "%s, %s, %s, "
 					  "'t'::boolean as convertok "
 					  "from pg_catalog.pg_aggregate a, pg_catalog.pg_proc p "
 					  "where a.aggfnoid = p.oid "
 					  "and p.oid = '%u'::pg_catalog.oid",
+					  (isGPbackend ? "agginvtransfn" : "NULL as agginvtransfn"),
 					  (isGPbackend ? "aggprelimfn" : "NULL as aggprelimfn"),
+					  (isGPbackend ? "agginvprelimfn" : "NULL as agginvprelimfn"),
 					  agginfo->aggfn.dobj.catId.oid);
 
 	res = PQexec(g_conn, query->data);
@@ -6799,7 +6805,9 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 	i_aggsortop = PQfnumber(res, "aggsortop");
 	i_aggtranstype = PQfnumber(res, "aggtranstype");
 	i_agginitval = PQfnumber(res, "agginitval");
+	i_agginvtransfn = PQfnumber(res, "agginvtransfn");
 	i_aggprelimfn = PQfnumber(res, "aggprelimfn");
+	i_agginvprelimfn = PQfnumber(res, "agginvprelimfn");
 	i_convertok = PQfnumber(res, "convertok");
 
 	aggtransfn = PQgetvalue(res, 0, i_aggtransfn);
@@ -6807,7 +6815,9 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 	aggsortop = PQgetvalue(res, 0, i_aggsortop);
 	aggtranstype = PQgetvalue(res, 0, i_aggtranstype);
 	agginitval = PQgetvalue(res, 0, i_agginitval);
+	agginvtransfn = PQgetvalue(res, 0, i_agginvtransfn);
 	aggprelimfn = PQgetvalue(res, 0, i_aggprelimfn);
+	agginvprelimfn = PQgetvalue(res, 0, i_agginvprelimfn);
 	convertok = (PQgetvalue(res, 0, i_convertok)[0] == 't');
 
 	aggsig = format_aggregate_signature(agginfo, fout, true);
@@ -6831,11 +6841,25 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 		appendStringLiteralAH(details, agginitval, fout);
 	}
 
+	if (!PQgetisnull(res, 0, i_agginvtransfn))
+	{
+		if (strcmp(agginvtransfn, "-") != 0)
+			appendPQExpBuffer(details, ",\n    INVSFUNC = %s",
+							  agginvtransfn);
+	}
+
 	if (!PQgetisnull(res, 0, i_aggprelimfn))
 	{
 		if (strcmp(aggprelimfn, "-") != 0)
 			appendPQExpBuffer(details, ",\n    PREFUNC = %s",
 							  aggprelimfn);
+	}
+
+	if (!PQgetisnull(res, 0, i_agginvprelimfn))
+	{
+		if (strcmp(agginvprelimfn, "-") != 0)
+			appendPQExpBuffer(details, ",\n    INVPREFUNC = %s",
+							  agginvprelimfn);
 	}
 
 	if (strcmp(aggfinalfn, "-") != 0)
