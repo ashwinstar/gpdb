@@ -1704,6 +1704,11 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 		bool		reindexed;
 		ReindexStmt *reindexTableStmt;
 
+		setupRegularDtxContext();
+		StartTransactionCommand();
+		/* functions in indexes may want a snapshot set */
+		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+
 		reindexTableStmt = makeNode(ReindexStmt);
 		reindexTableStmt->kind = OBJECT_TABLE;
 		reindexTableStmt->relation = makeNode(RangeVar);
@@ -1714,11 +1719,9 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 		reindexTableStmt->do_user = false;
 		reindexTableStmt->new_ind_oids = NIL;
 
-		StartTransactionCommand();
-		/* functions in indexes may want a snapshot set */
-		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		reindexed = reindex_relation(relid, true, true, true, &reindexTableStmt->new_ind_oids,
-							 		 (Gp_role == GP_ROLE_DISPATCH));
+		reindexed = reindex_relation_ignore_nonexist(
+								relid, true, true, true, &reindexTableStmt->new_ind_oids,
+							 	(Gp_role == GP_ROLE_DISPATCH));
 
 		/*
 		 * This dispatch will create a distributed transaction for the REINDEX TABLE
@@ -1734,6 +1737,7 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 							get_rel_name(relid))));
 		CommitTransactionCommand();
 	}
+	setupRegularDtxContext();
 	StartTransactionCommand();
 
 	MemoryContextDelete(private_context);
