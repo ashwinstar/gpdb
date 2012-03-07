@@ -48,10 +48,6 @@
 #include "utils/builtins.h"
 #include "sendalert_common.h"
 
-#if USE_CONNECTEMC
-extern EmcConnectModeType_t gp_emcconnect_transport;
-#endif
-
 extern int	PostPortNumber;
 
 #if USE_EMAIL
@@ -116,10 +112,6 @@ extern pg_time_t	MyStartTime;
 #endif
 
 
-
-#if USE_CONNECTEMC
-static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom);
-#endif
 
 int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		const PipeProtoChunk * saved_chunks_in)
@@ -544,69 +536,6 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * 
 }
 #endif
 
-#if USE_CONNECTEMC
-static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom)
-{
-	int retVal = 0;
-
-	char msg[2048];
-	EmcConnectStatus status = EMC_CONNECT_STATUS_OK; // we will mark status the same for all GPDB dial homes... severity distinguishes the level
-	char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
-	struct stat statbuf;
-
-	if (gp_emcconnect_transport == EMCCONNECT_MODE_TYPE_OFF) {
-		return retVal;
-	}
-
-	myhostname[0] = '\0';
-	strcpy(msg,subject); /* subject is no more than 128 bytes */
-	if (errorData->error_detail != NULL && strlen(errorData->error_detail) > 0)
-	{
-		strcat(msg,"\n");
-		strncat(msg,errorData->error_detail,500);
-	}
-
-	{
-		char portnum[16];
-		myhostname[0] = '\0';
-
-		if (gethostname(myhostname, sizeof(myhostname)) == 0)
-		{
-			strcat(myhostname," on port ");
-			pg_ltoa(PostPortNumber,portnum);
-			strcat(myhostname,portnum);
-		}
-	}
-
-	/*
-	 * Connect EMC is usually in /opt/connectemc, but Ivan was talking about having it in /opt/greenplum/connectemc,
-	 * so to be safe, allow for either.
-	 */
-	if (stat("/opt/connectemc",&statbuf) != 0)
-		if (stat("/opt/greenplum/connectemc",&statbuf) != 0)
-		{
-			/* Connect EMC is not installed */
-			return -1;
-		}
-
-	elog(DEBUG1, "Sending via connectEMC: %s", subject);
-	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_GPDB, symptom,
-									status,
-									severity,
-									EMC_CONNECT_ORIGIN_GPDBALERTS,
-									gp_emcconnect_transport,
-									GP_VERSION,
-									"GPDB notification", // display name 
-									"", // snmpoid
-									myhostname,
-									msg);
-	if (retVal)
-		elog(LOG,"Error (%d) creating EMC Connect XML Event File from sendalert", retVal);
-
-	return retVal;
-}
-#endif
-
 #if USE_EMAIL
 static int send_alert_via_email(const GpErrorData * errorData,
 		const char * subject, const char * email_priority)
@@ -929,9 +858,6 @@ int send_alert(const GpErrorData * errorData)
 	char email_priority[2];
 	bool send_via_snmp = true;
 	char snmp_severity[2];
-	bool send_via_connectemc = false;
-	EmcConnectSeverity connectemc_severity;
-	EmcConnectDetailedSymptom connectemc_symptom;
 
 	static char previous_subject[128];
 	pg_time_t current_time;
@@ -956,10 +882,7 @@ int send_alert(const GpErrorData * errorData)
 						&send_via_email,
 						email_priority,
 						&send_via_snmp,
-						snmp_severity,
-						&send_via_connectemc,
-						&connectemc_severity,
-						&connectemc_symptom);
+						snmp_severity);
 
 
 	/*
@@ -1044,15 +967,6 @@ int send_alert(const GpErrorData * errorData)
 	else
 		elog(DEBUG4,"Not sending via e-mail");
 
-#endif
-
-#if USE_CONNECTEMC
-	/* Connect EMC is only available on RHEL5 64 systems */
-
-	if (send_via_connectemc)
-		send_alert_via_connect_emc(errorData, subject, connectemc_severity, connectemc_symptom);
-	else
-		elog(DEBUG5,"Not sending via connect emc");
 #endif
 
 	return 0;
