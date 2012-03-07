@@ -30,7 +30,9 @@ EXTRA_CLEAN+=$(LIBGPPC_RPM) $(LIBGPPC_GPPKG)# gppkg_spec.yml.in
 include $(BLD_TOP)/releng/gppkg.mk
 
 gppkg_spec.yml.in: gppkg_spec.yml.source.in
-	sed 's/#gpver/$(GP_VERSION_NUM)/g' $< > $@
+	cat $< | sed 's/#gpver/$(GP_VERSION_NUM)/g' | \
+		sed 's/#gppcver/$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)/g' > $@
+	 
 
 gppkg: 
 	$(MAKE) $(LIBGPPC_RPM) RPM_FLAGS=$(LIBGPPC_RPM_FLAGS)
