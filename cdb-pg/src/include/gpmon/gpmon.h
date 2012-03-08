@@ -16,7 +16,6 @@ extern apr_int64_t gpmon_tick;
 typedef struct gpmon_packet_t gpmon_packet_t;
 typedef struct gpmon_qlogkey_t gpmon_qlogkey_t;
 typedef struct gpmon_qlog_t gpmon_qlog_t;
-typedef struct gpmon_qexeckey_t gpmon_qexeckey_t;
 typedef struct gpmon_qexec_t gpmon_qexec_t;
 typedef struct gpmon_hello_t gpmon_hello_t;
 typedef struct gpmon_metrics_t gpmon_metrics_t;
@@ -126,7 +125,7 @@ struct gpmon_metrics_t
 
 struct gpmon_qlogkey_t {
     /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
-    apr_int32_t tmid;  /* transaction time */
+	apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int32_t ccnt; /* command count */
 };
@@ -134,10 +133,10 @@ struct gpmon_qlogkey_t {
 /* process metrics ... filled in by gpsmon */
 typedef struct gpmon_proc_metrics_t gpmon_proc_metrics_t;
 struct gpmon_proc_metrics_t {
-    apr_int32_t fd_cnt;		/* # opened files / sockets etc */
-    float       cpu_pct;	/* cpu usage % */
+    apr_uint32_t fd_cnt;		/* # opened files / sockets etc */
+    float        cpu_pct;	/* cpu usage % */
     struct {
-		apr_int64_t size, resident, share;
+    	apr_uint64_t size, resident, share;
     } mem;
 };
 
@@ -169,20 +168,22 @@ struct gpmon_qlog_t
          QEXEC
    ------------------------------------------------------------------ */
 
+typedef struct gpmon_qexec_hash_key_t {
+	apr_int16_t segid;	/* segment id */
+	apr_int32_t pid; 	/* process id */
+	apr_int16_t nid;	/* plan node id */
+}gpmon_qexec_hash_key_t;
 
 /* XXX According to CK.
  * QE will NOT need to touch anything begin with _
  */
-struct gpmon_qexeckey_t {
+typedef struct gpmon_qexeckey_t {
     /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int16_t ccnt;	/* command count */
-    apr_int16_t segid;	/* segment id */
-    apr_int32_t pid; 	/* process id */
-    apr_int16_t nid;	/* plan node id */
-    apr_int16_t zero;		/* unused */
-};
+    gpmon_qexec_hash_key_t hash_key;
+}gpmon_qexeckey_t;
 
 
 enum {
@@ -210,11 +211,11 @@ struct gpmon_qexec_t {
 	apr_uint16_t			nodeType; 					/* using enum PerfmonNodeType */
 	apr_byte_t 				status;    /* node status using PerfmonNodeStatus */
 	apr_int32_t 			tstart, tduration; /* start (wall clock) time and duration.  XXX Leave as 0 for now. */
-	apr_int64_t 			p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */
-	apr_int64_t				_cpu_elapsed; /* CPU elapsed for iter */
+	apr_uint64_t 			p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */
+	apr_uint64_t			_cpu_elapsed; /* CPU elapsed for iter */
 	gpmon_proc_metrics_t 	_p_metrics;
-	apr_int64_t 			rowsout, rowsout_est;
-	apr_int64_t 			measures[GPMON_QEXEC_M_COUNT];
+	apr_uint64_t 			rowsout, rowsout_est;
+	apr_uint64_t 			measures[GPMON_QEXEC_M_COUNT];
 	char 					relation_name[SCAN_REL_NAME_BUF_SIZE];
 };
 

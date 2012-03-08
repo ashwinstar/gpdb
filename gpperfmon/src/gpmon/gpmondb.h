@@ -81,6 +81,8 @@ APR_DECLARE (apr_status_t) gpdb_harvest_one(const char* table);
 
 APR_DECLARE (apr_status_t) gpdb_harvest_healthdata();
 
+APR_DECLARE (apr_status_t) remove_segid_constraint(void);
+
 
 #endif /* GPMONDB_H */
 

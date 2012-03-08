@@ -736,13 +736,32 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 {
 	PGconn* conn = 0;
 	PGresult* result = 0;
-	const int QRYBUFSIZ = 1024;
+	const int QRYBUFSIZ = 1792;
 	char qrybuf[QRYBUFSIZ];
 	const char* QRYFMT = "insert into %s_history select * from _%s_tail;";
 	const char* errmsg;
 	apr_status_t res = APR_SUCCESS;
 
-	snprintf(qrybuf, QRYBUFSIZ, QRYFMT, tbl, tbl);
+	if (strcmp(tbl, "iterators") == 0) { //this is to leave the cpu percentage out of iterators history
+		const char* ITERQRYFMT = "insert into %s_history (ctime, tmid, ssid, ccnt, segid, pid, nid, pnid, hostname, ntype, nstatus, tstart, "
+		"tduration, pmemsize, pmemmax, memsize, memresid, memshare, cpu_elapsed, cpu_currpct, phase, rows_out, rows_out_est, m0_name, m0_unit, m0_val, "
+		"m0_est, m1_name, m1_unit, m1_val, m1_est, m2_name, m2_unit, m2_val, m2_est, m3_name, m3_unit, m3_val, m3_est, m4_name, m4_unit, "
+		"m4_val, m4_est, m5_name, m5_unit, m5_val, m5_est, m6_name, m6_unit, m6_val, m6_est, m7_name, m7_unit, m7_val, m7_est, m8_name, "
+		"m8_unit, m8_val, m8_est, m9_name, m9_unit, m9_val, m9_est, m10_name, m10_unit, m10_val, m10_est, m11_name, m11_unit, m11_val, "
+		"m11_est, m12_name, m12_unit, m12_val, m12_est, m13_name, m13_unit, m13_val, m13_est, m14_name, m14_unit, m14_val, m14_est, m15_name, "
+		"m15_unit, m15_val, m15_est, t0_name, t0_val) select ctime, tmid, ssid, ccnt, segid, pid, nid, pnid, hostname, ntype, nstatus, tstart, "
+		"tduration, pmemsize, pmemmax, memsize, memresid, memshare, cpu_elapsed, 0, phase, rows_out, rows_out_est, m0_name, m0_unit, m0_val, "
+		"m0_est, m1_name, m1_unit, m1_val, m1_est, m2_name, m2_unit, m2_val, m2_est, m3_name, m3_unit, m3_val, m3_est, m4_name, m4_unit, "
+		"m4_val, m4_est, m5_name, m5_unit, m5_val, m5_est, m6_name, m6_unit, m6_val, m6_est, m7_name, m7_unit, m7_val, m7_est, m8_name, "
+		"m8_unit, m8_val, m8_est, m9_name, m9_unit, m9_val, m9_est, m10_name, m10_unit, m10_val, m10_est, m11_name, m11_unit, m11_val, "
+		"m11_est, m12_name, m12_unit, m12_val, m12_est, m13_name, m13_unit, m13_val, m13_est, m14_name, m14_unit, m14_val, m14_est, "
+		"m15_name, m15_unit, m15_val, m15_est, t0_name, t0_val from _%s_tail;";
+
+		snprintf(qrybuf, QRYBUFSIZ, ITERQRYFMT, tbl, tbl);
+	}
+	else {
+		snprintf(qrybuf, QRYBUFSIZ, QRYFMT, tbl, tbl);
+	}
 
 	errmsg = gpdb_exec(&conn, &result, qrybuf);
 	if (errmsg)
@@ -753,6 +772,30 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 	else
 	{
 		TR1(("load completed OK: %s\n", tbl));
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+	return res;
+}
+
+/**
+ * This function removes the not null constraint from the segid column so that we can set it to null when the segment aggregation flag is true
+ */
+apr_status_t remove_segid_constraint(void)
+{
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	const char* ALTERSTR = "alter table iterators_history alter column segid drop not null;";
+	const char* errmsg;
+	apr_status_t res = APR_SUCCESS;
+
+	errmsg = gpdb_exec(&conn, &result, ALTERSTR);
+	if (errmsg) {
+		res = 1;
+		gpmon_warningx(FLINE, 0, "---- Alter FAILED ---- on command: %s with error %s\n", ALTERSTR, errmsg);
+	} else {
+		TR1(("remove_segid_constraint: alter completed OK\n"));
 	}
 
 	PQclear(result);
