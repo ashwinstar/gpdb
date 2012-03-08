@@ -4751,7 +4751,7 @@ ReleaseSavepoint(List *options)
 	TransactionState target,
 		xact;
 	ListCell   *cell;
-	char	   *name = NULL;
+	const char	   *name = NULL;
 
 	switch (s->blockState)
 	{
@@ -4884,7 +4884,7 @@ RollbackToSavepoint(List *options)
 	TransactionState target,
 		xact;
 	ListCell   *cell;
-	char	   *name = NULL;
+	const char *name = NULL;
 
 	switch (s->blockState)
 	{

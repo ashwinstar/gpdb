@@ -614,7 +614,7 @@ BuildDescFromLists(List *names, List *types, List *typmods)
 	l3 = list_head(typmods);
 	foreach(l1, names)
 	{
-		char	   *attname = strVal(lfirst(l1));
+		const char *attname = strVal(lfirst(l1));
 		Oid			atttypid;
 		int32		atttypmod;
 

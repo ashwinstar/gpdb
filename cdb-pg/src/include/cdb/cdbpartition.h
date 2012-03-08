@@ -163,7 +163,7 @@ extern Oid  rel_partition_get_master(Oid relid);
 
 extern char *
 ChoosePartitionName(const char *tablename, int partDepth,
-					const char *partname, Oid namespace);
+					const char *partname, Oid nameSpace);
 
 extern Oid selectPartition(PartitionNode *partnode, Datum *values,
 						   bool *isnull, TupleDesc tupdesc,
@@ -210,7 +210,7 @@ basic_AT_oids(Relation rel, AlterTableCmd *cmd);
 
 extern AlterTableCmd *basic_AT_cmd(AlterTableCmd *cmd);
 extern bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
-extern bool is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw);
+extern bool is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool dothrow);
 
 extern char *
 ChooseConstraintNameForPartitionEarly(Relation rel, ConstrType contype, Node *expr);

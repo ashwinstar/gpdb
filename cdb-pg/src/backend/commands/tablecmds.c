@@ -9957,7 +9957,7 @@ ATExecDropCluster(Relation rel)
  * settable by the current user.
  */
 Oid
-get_settable_tablespace_oid(char *tablespacename)
+get_settable_tablespace_oid(const char *tablespacename)
 {
 	Oid			tablespaceId;
 	AclResult	aclresult;

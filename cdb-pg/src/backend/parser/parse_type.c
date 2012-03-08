@@ -190,12 +190,12 @@ appendTypeNameToBuffer(const TypeName *typname, StringInfo string)
  * it is mostly used for reporting lookup errors.
  */
 char *
-TypeNameToString(const TypeName *typename)
+TypeNameToString(const TypeName *typeName)
 {
 	StringInfoData string;
 
 	initStringInfo(&string);
-	appendTypeNameToBuffer(typename, &string);
+	appendTypeNameToBuffer(typeName, &string);
 	return string.data;
 }
 

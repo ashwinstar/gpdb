@@ -50,12 +50,12 @@ makeFloat(char *numericStr)
  * Caller is responsible for passing a palloc'd string.
  */
 Value *
-makeString(char *str)
+makeString(const char *str)
 {
 	Value	   *v = makeNode(Value);
 
 	v->type = T_String;
-	v->val.str = str;
+	v->val.str = (char *)str;
 	return v;
 }
 

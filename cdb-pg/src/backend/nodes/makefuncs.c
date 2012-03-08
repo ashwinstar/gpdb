@@ -347,11 +347,11 @@ makeFuncExpr(Oid funcid, Oid rettype, List *args, CoercionForm fformat)
  * and no special action.
  */
 DefElem *
-makeDefElem(char *name, Node *arg)
+makeDefElem(const char *name, Node *arg)
 {
 	DefElem    *res = makeNode(DefElem);
 
-	res->defname = name;
+	res->defname = (char *)name;
 	res->arg = arg;
 	res->defaction = DEFELEM_UNSPEC;
 	return res;
@@ -368,7 +368,7 @@ makeDefElemExtended(/*char *nameSpace, */char *name, Node *arg,
 	DefElem    *res = makeNode(DefElem);
 
 	/*res->defnamespace = nameSpace;*/
-	res->defname = name;
+	res->defname = (char *)name;
 	res->arg = arg;
 	res->defaction = defaction;
 

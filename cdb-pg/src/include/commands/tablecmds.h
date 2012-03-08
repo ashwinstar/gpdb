@@ -87,7 +87,7 @@ extern void find_composite_type_dependencies(Oid typeOid,
 											 const char *origTblName,
 											 const char *origTypeName);
 
-extern AttrNumber *varattnos_map(TupleDesc old, TupleDesc new);
+extern AttrNumber *varattnos_map(TupleDesc oldt, TupleDesc newt);
 extern AttrNumber *varattnos_map_schema(TupleDesc old, List *schema);
 extern void change_varattnos_of_a_node(Node *node, const AttrNumber *newattno);
 
@@ -109,7 +109,7 @@ extern Oid  rel_partition_get_master(Oid relid);
 
 extern void PartitionRangeItemIsValid(ParseState *pstate, PartitionRangeItem *pri);
 
-extern Oid get_settable_tablespace_oid(char *tablespacename);
+extern Oid get_settable_tablespace_oid(const char *tablespacename);
 
 extern List *
 MergeAttributes(List *schema, List *supers, bool istemp, bool isPartitioned,

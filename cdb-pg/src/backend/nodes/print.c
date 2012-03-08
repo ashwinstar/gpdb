@@ -31,7 +31,7 @@
  *	  print contents of Node to stdout
  */
 void
-print(void *obj)
+print(const void *obj)
 {
 	char	   *s;
 	char	   *f;
@@ -50,7 +50,7 @@ print(void *obj)
  *	  pretty-print contents of Node to stdout
  */
 void
-pprint(void *obj)
+pprint(const void *obj)
 {
 	char	   *s;
 	char	   *f;
@@ -69,7 +69,7 @@ pprint(void *obj)
  *	  send pretty-printed contents of Node to postmaster log
  */
 void
-elog_node_display(int lev, const char *title, void *obj, bool pretty)
+elog_node_display(int lev, const char *title, const void *obj, bool pretty)
 {
 	char	   *s;
 	char	   *f;
@@ -251,7 +251,7 @@ pretty_format_node_dump(const char *dump)
  *	  print contents of range table
  */
 void
-print_rt(List *rtable)
+print_rt(const List *rtable)
 {
 	ListCell   *l;
 	int			i = 1;
@@ -320,7 +320,7 @@ print_rt(List *rtable)
  *	  print an expression
  */
 void
-print_expr(Node *expr, List *rtable)
+print_expr(const Node *expr, const List *rtable)
 {
 	if (expr == NULL)
 	{
@@ -422,7 +422,7 @@ print_expr(Node *expr, List *rtable)
  *	  pathkeys list of list of PathKeyItems
  */
 void
-print_pathkeys(List *pathkeys, List *rtable)
+print_pathkeys(const List *pathkeys, const List *rtable)
 {
 	ListCell   *i;
 
@@ -453,7 +453,7 @@ print_pathkeys(List *pathkeys, List *rtable)
  *	  print targetlist in a more legible way.
  */
 void
-print_tl(List *tlist, List *rtable)
+print_tl(const List *tlist, const List *rtable)
 {
 	ListCell   *tl;
 

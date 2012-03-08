@@ -4529,12 +4529,12 @@ _outNode(StringInfo str, void *obj)
  *	   returns the ascii representation of the Node as a palloc'd string
  */
 char *
-nodeToString(void *obj)
+nodeToString(const void *obj)
 {
 	StringInfoData str;
 
 	/* see stringinfo.h for an explanation of this maneuver */
 	initStringInfo(&str);
-	_outNode(&str, obj);
+	_outNode(&str, (void *)obj);
 	return str.data;
 }
