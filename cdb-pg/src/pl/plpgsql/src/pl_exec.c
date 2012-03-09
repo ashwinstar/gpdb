@@ -22,6 +22,7 @@
 #include "access/transam.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "executor/spi_priv.h"
 #include "funcapi.h"
 #include "optimizer/clauses.h"
@@ -174,6 +175,8 @@ static bool compatible_tupdesc(TupleDesc td1, TupleDesc td2);
 static void exec_set_found(PLpgSQL_execstate *estate, bool state);
 static void plpgsql_create_econtext(PLpgSQL_execstate *estate);
 static void free_var(PLpgSQL_var *var);
+static void exec_check_cache_plan(PLpgSQL_expr *expr);
+static void exec_free_plan(PLpgSQL_expr *expr);
 
 
 /* ----------
@@ -1819,6 +1822,9 @@ exec_stmt_fors(PLpgSQL_execstate *estate, PLpgSQL_stmt_fors *stmt)
 	 */
 	exec_set_found(estate, found);
 
+	/* Clear out the cached plan if needed */
+	exec_free_plan(stmt->query); 
+
 	return rc;
 }
 
@@ -2368,6 +2374,18 @@ exec_prepare_plan(PLpgSQL_execstate *estate,
 	exec_simple_check_plan(expr);
 
 	SPI_freeplan(plan);
+
+	if (Gp_role != GP_ROLE_EXECUTE && expr->expr_simple_expr == NULL)
+	{
+		/* 
+		 * if we are not in EXECUTE mode, check if plan should be cached. 
+		 * note, we don't check for simple expressions, as simple 
+		 * expressions are not evaluated via the SPI interface and we don't 
+		 * free the plans for them. 
+		 */
+		exec_check_cache_plan(expr);
+	}
+
 	pfree(argtypes);
 }
 
@@ -2585,6 +2603,9 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 					 errmsg("query has no destination for result data"),
 					 (rc == SPI_OK_SELECT) ? errhint("If you want to discard the results of a SELECT, use PERFORM instead.") : 0));
 	}
+
+	/* Clear out the cached plan if needed */
+	exec_free_plan(expr); 
 
 	pfree(values);
 	pfree(nulls);
@@ -3144,6 +3165,9 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 	curvar->value = DirectFunctionCall1(textin, CStringGetDatum((char *) portal->name));
 	curvar->isnull = false;
 	curvar->freeval = true;
+
+	/* Clear out the cached plan if needed */
+	exec_free_plan(query);
 
 	return PLPGSQL_RC_OK;
 }
@@ -4018,6 +4042,9 @@ exec_run_select(PLpgSQL_execstate *estate,
 	estate->eval_tuptable = SPI_tuptable;
 	estate->eval_processed = SPI_processed;
 	estate->eval_lastoid = SPI_lastoid;
+
+	/* Clear out the cached plan if needed */
+	exec_free_plan(expr); 
 
 	pfree(values);
 	pfree(nulls);
@@ -4933,3 +4960,78 @@ free_var(PLpgSQL_var *var)
 		var->freeval = false;
 	}
 }
+
+
+
+/* ----------
+ * exec_check_cache_plan -		Check if a plan can be cached
+ * 
+ * This routine checks if plan can be cached to avoid stale 
+ * plan issues as seen with MPP-16204.
+ *
+ * 	- If the input expr contains only UTILITY statements, the routine 
+ *	  sets cachable to true.
+ * ----------
+ */
+static void
+exec_check_cache_plan(PLpgSQL_expr *expr)
+{
+	_SPI_plan	*spi_plan = (_SPI_plan *) expr->plan; 
+	PlannedStmt	*stmt = NULL; 
+	Plan		*plan = NULL; 
+	ListCell	*plan_list_item = NULL;
+
+	/* 
+	 * we can have multiple PlannedStmt. Walk all of them
+	 */
+	foreach (plan_list_item, spi_plan->ptlist)
+	{
+		if (IsA((lfirst(plan_list_item)), PlannedStmt))
+		{
+			stmt = (PlannedStmt *)lfirst(plan_list_item);
+			plan = stmt ? stmt->planTree : NULL;
+		}
+		else
+		{
+			/* UTILITY statements */
+		  	plan = NULL;
+		}
+
+		if (plan == NULL)
+		{
+			continue;	
+		}
+		else
+		{
+			expr->cachable = false;
+			return;
+		}
+	}
+
+ 	expr->cachable = true;
+	return; 
+}
+
+/* 
+ * exec_free_plan
+ * 
+ * This routine frees the plan cached by PL/pgSQL under the following 
+ * conditions 
+ *	- the use_count is 0 . This is to protect the plan under recursive 
+ *	  invocations and
+ *	- exec_check_cache_plan has indicated that it is not safe to cache the 
+ * 	  plan and
+ *	- we are not in EXECUTE mode
+*/
+static void
+exec_free_plan(PLpgSQL_expr *expr)
+{
+	if (((_SPI_plan *)expr->plan)->use_count == 0 
+		&& !expr->cachable 
+		&& Gp_role != GP_ROLE_EXECUTE) 
+	{
+		SPI_freeplan(expr->plan);
+		expr->plan = NULL;
+	}
+}
+

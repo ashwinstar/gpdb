@@ -174,6 +174,7 @@ typedef struct PLpgSQL_expr
 	int			exprno;
 	char	   *query;
 	void	   *plan;
+	bool			cachable;			/* true if plan can be cached */
 	Oid		   *plan_argtypes;
 	/* fields for "simple expression" fast-path execution: */
 	Expr	   *expr_simple_expr;		/* NULL means not a simple expr */
