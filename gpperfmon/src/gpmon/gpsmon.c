@@ -26,6 +26,12 @@
 #define APPLIANCE_FILE "/etc/gpdb-appliance-version"
 #define APPLIANCE_HOSTNAME_FILE "/etc/gpnode"
 
+
+/* Macros for min because solaris doesn't have it. */
+#ifndef MIN
+#define	MIN(a,b) (((a)<(b))?(a):(b))
+#endif /* MIN */
+
 /* Temporary global memory to store the qexec line for a send*/
 char	qexec_smon_temp_line[QEXEC_MAX_ROW_BUF_SIZE];
 
