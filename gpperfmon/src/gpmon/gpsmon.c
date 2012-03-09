@@ -418,10 +418,10 @@ static apr_uint64_t metric_diff_calc( sigar_uint64_t newval, apr_uint64_t oldval
 	{
 		diff = newval - oldval;
 	}
-	if(diff > 1000000000000000000  ) {
-		TR0(("Crazy high value for diff! new value=%" APR_UINT64_T_FMT ", old value=%" APR_UINT64_T_FMT ", diff=%" APR_UINT64_T_FMT "  for %s metric %s.\n",
+	/*if(diff > 1000000000000000000  ) {
+		TR0(("Crazy high value for diff! new value=%" APR_UINT64_T_FMT ", old value=%" APR_UINT64_T_FMT ", diff=%" APR_UINT64_T_FMT "  for %s metric %s; assume the value was reset and set diff to new value.\n",
 				newval, oldval, name_for_log, value_name_for_log));
-	}
+	}*/
 
 	return diff;
 }
