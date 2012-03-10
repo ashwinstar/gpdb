@@ -424,11 +424,13 @@ static apr_uint64_t metric_diff_calc( sigar_uint64_t newval, apr_uint64_t oldval
 	{
 		diff = newval - oldval;
 	}
-	/*if(diff > 1000000000000000000  ) {
+#if defined(rhel4_x86_64) || defined(rhel5_x86_64) || defined(rhel6_x86_64) || defined(sol10_x86_64) || defined(suse10_x86_64)
+	// Add this debug on 64 bit machines to try and debug strange values we are seeing
+	if(diff > 1000000000000000000  ) {
 		TR0(("Crazy high value for diff! new value=%" APR_UINT64_T_FMT ", old value=%" APR_UINT64_T_FMT ", diff=%" APR_UINT64_T_FMT "  for %s metric %s; assume the value was reset and set diff to new value.\n",
 				newval, oldval, name_for_log, value_name_for_log));
-	}*/
-
+	}
+#endif
 	return diff;
 }
 #endif
@@ -930,7 +932,9 @@ static void qexec_agg_packets(qexec_agg_t* qexec_agg, apr_hash_t* pidtab, gpmon_
 
 	/* Loop through the inner hash table and aggregate the packets */
 	for (hi = apr_hash_first(0, qexec_agg->qexecaggtab); hi; hi = apr_hash_next(hi)) {
-		apr_hash_this(hi, 0, 0, (void**)(&qexec_iter));
+		void* vptr;
+		apr_hash_this(hi, 0, 0, &vptr);
+		qexec_iter = vptr;
 		//TR0(("packet %d: relation_name %s pkttype %d pnid = %d, key is ssid=%d, tmid=%d, ccnt=%d, nid=%d, segid=%d, pid = %d, status = %d\n", (qexec_counter+1),qexec_iter->relation_name,
 		//		qexec_iter->nodeType, qexec_iter->pnid, qexec_iter->key.ssid, qexec_iter->key.tmid, qexec_iter->key.ccnt, qexec_iter->key.hash_key.nid, qexec_iter->key.hash_key.segid, qexec_iter->key.hash_key.pid, qexec_iter->status));
 		if (0==qexec_counter) { // Only need to do these once since it should be all the same
@@ -1118,17 +1122,19 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		{
 			gpmon_qexec_t* qexec;
 			gpmon_qexec_t qexec_local;
+			void *vptr;
 
 			if (opt.iterator_aggregate) { //Create the aggregated packet to send
 				qexec_agg_t* qexec_agg;
 
-				apr_hash_this(hi, 0, 0, (void**)(&qexec_agg));
+				apr_hash_this(hi, 0, 0, &vptr);
+				qexec_agg = vptr;
 				/* Loop through the inner hash table and aggregate the packets */
 				qexec_agg_packets(qexec_agg, pidtab, &qexec_local);
 				qexec = &qexec_local;
 			} else {
-				apr_hash_this(hi, 0, 0, (void**)(&qexec));
-
+				apr_hash_this(hi, 0, 0, &vptr);
+				qexec = vptr;
 				/* fill in _p_metrics */
 				pidrec = apr_hash_get(pidtab, &qexec->key.hash_key.pid, sizeof(qexec->key.hash_key.pid));
 				if (pidrec) {
@@ -2271,14 +2277,34 @@ void gx_main(int port, apr_int64_t signature)
 		/* get pid metrics */
 		for (hi = apr_hash_first(0, gx.qexectab); hi; hi = apr_hash_next(hi))
 		{
-			void* vptr;
-			gpmon_qexec_t* rec;
-			apr_hash_this(hi, 0, 0, &vptr);
-			rec = vptr;
-			get_pid_metrics(rec->key.hash_key.pid,
-					rec->key.tmid,
-					rec->key.ssid,
-					rec->key.ccnt);
+			if (opt.iterator_aggregate) {
+				qexec_agg_t* qexec_agg;
+				void* vptr;
+				apr_hash_index_t* hj;
+
+				apr_hash_this(hi, 0, 0, &vptr);
+				qexec_agg = vptr;
+
+				for (hj = apr_hash_first(0, qexec_agg->qexecaggtab); hj; hj = apr_hash_next(hj)) {
+					gpmon_qexec_t* rec;
+
+					apr_hash_this(hj, 0, 0, &vptr);
+					rec = vptr;
+					get_pid_metrics(rec->key.hash_key.pid,
+							rec->key.tmid,
+							rec->key.ssid,
+							rec->key.ccnt);
+				}
+			} else {
+				void* vptr;
+				gpmon_qexec_t* rec;
+				apr_hash_this(hi, 0, 0, &vptr);
+				rec = vptr;
+				get_pid_metrics(rec->key.hash_key.pid,
+						rec->key.tmid,
+						rec->key.ssid,
+						rec->key.ccnt);
+			}
 		}
 
 		/* check log size */
