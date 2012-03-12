@@ -167,3 +167,4 @@ test: role
 test: rle
 ignore: tpch500GB_orca
 test: portals_updatable
+test: plpgsql_cache
