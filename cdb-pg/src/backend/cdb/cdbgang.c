@@ -1892,7 +1892,7 @@ getCdbProcessesForQD(int isPrimary)
 
 	if (!isPrimary)
 	{
-		elog(FATAL, "getCdbProcessesForQD: unsupported request for master mirror process");
+		elog(FATAL, "unsupported request for master mirror process");
 	}
 
 	if (cdb_component_dbs == NULL)
@@ -2719,7 +2719,7 @@ resetSessionForPrimaryGangLoss(void)
 
 			OldTempNamespace = ResetTempNamespace();
 
-			elog(WARNING, "Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)",
+			elog(WARNING, "Any temporary tables for this session have been dropped because the segworker group was disconnected (session id = %d)",
 				 gp_session_id);
 		}
 		else
