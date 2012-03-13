@@ -427,12 +427,27 @@ GetRealCmax(TransactionId xmin, CommandId combocid)
 void
 dumpSharedComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax, CommandId combocid)
 {
+	/*
+	 * In any given segment, there are many readers, but only one writer. The combo cid file information
+	 * is stored in the MyProc of the writer process, and is referenced by reader process via lockHolderProcPtr.
+	 * The writer will setup and/or dump combocids to a combo cid file when appropriate. The writer keeps track
+	 * of the number of entries in the combo cid file in MyProc->combocid_map_count. Readers reference the
+	 * count via lockHolderProcPtr->combocid_map_count.
+	 *
+	 * Since combo cid file entries are always appended to the end of a combo cid file and because there
+	 * is only one writer, it is not necessary to lock the combo cid file during reading or writing. A
+	 * new combo cid will not become visable to the reader until the combocid_map_count variable has been
+	 * incremented.
+	 */
+
 	ComboCidEntryData entry;
 
 	Assert(Gp_role != GP_ROLE_EXECUTE || Gp_is_writer);
 
 	if (combocid_map == NULL)
 	{
+		/* This is the first time a combo cid is to be written by this writer. */
+
 		MemoryContext oldCtx;
 
 		MyProc->combocid_map_count = 0;
@@ -461,10 +476,11 @@ dumpSharedComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax, Com
 		elog(ERROR, "Combocid map I/O error!");
 	}
 
-	MyProc->combocid_map_count += 1;
-
 	/* flush our output */
 	BufFileFlush(combocid_map);
+
+	/* Increment combocid count to make new combocid visible to Readers */
+	MyProc->combocid_map_count += 1;
 }
 
 void
