@@ -40,7 +40,6 @@ typedef struct DatumStreamWrite
 	DatumStreamVersion	datumStreamVersion;
 
 	bool	rle_want_compression;
-	bool	delta_want_compression;
 
 	int32	maxAoBlockSize;
 	int32	maxAoHeaderSize;
@@ -79,7 +78,7 @@ typedef struct DatumStreamRead
 	/*--------------------------------------------------------------------------
 	 * Information for reading blocks.
 	 */
-
+	 
 	/* Information collected and adjusted for the current block. */
 	int64 blockFirstRowNum;
 	int64 blockFileOffset;
@@ -133,7 +132,6 @@ typedef struct DatumStreamRead
 	DatumStreamTypeInfo	typeInfo;
 
 	bool	rle_can_have_compression;
-	bool	delta_can_have_compression;
 
 	int32	maxAoBlockSize;
 	int32	maxDataBlockSize;

@@ -293,36 +293,10 @@ static void init_datumstream_typeinfo(
     typeInfo->byval = attr->attbyval;
 }
 
-/* 
- * DeltaRange compression supported for folowing datatypes
- * INTEGER, BIGINT, DATE, TIME and TIMESTAMP
- */
-static bool is_deltarange_compression_supported (Form_pg_attribute attr)
-{
-	switch(attr->atttypid)
-	{
-		case INT4OID:
-		case INT8OID:
-		case DATEOID:
-		case TIMEOID:
-		case TIMESTAMPOID:
-		case TIMESTAMPTZOID:
-			/* 
-			 * FIXED length attributes and max with 8bytes length
-			 * supported for DeltaRange
-			 */
-			Assert( (attr->attlen >= 4) && (attr->attlen <= 8));
-			Assert (attr->attbyval);
-			return true;
-	}
-	return false;
-}
-
 static void init_datumstream_info(
 	DatumStreamTypeInfo 		*typeInfo,				// OUTPUT
 	DatumStreamVersion			*datumStreamVersion,	// OUTPUT
 	bool						*rle_compression,		// OUTPUT
-	bool						*delta_compression,		// OUTPUT
 	AppendOnlyStorageAttributes	*ao_attr,				// OUTPUT
 	int32						*maxAoBlockSize,		// OUTPUT
 	char 						*compName, 
@@ -370,7 +344,7 @@ static void init_datumstream_info(
 		 * Optionally, BULK Compression by the AppendOnlyStorage layer may be performed
 		 * as a second compression on the "Access Method" (first) compressed block.
 		 */
-		*datumStreamVersion = DatumStreamVersion_Dense_Enhanced;
+		*datumStreamVersion = DatumStreamVersion_Dense;
 		*rle_compression = true;
 
 		ao_attr->checksum = checksum;
@@ -412,13 +386,6 @@ static void init_datumstream_info(
 							compLevel)));
 
 		}
-
-		/* 
-		 * Check if for this dataype delta encoding is supported.
-		 * With RLE this layer also does Delta range encoding
-		 */
-		*delta_compression = is_deltarange_compression_supported(attr);
-
 	}
     else if (compName == NULL || pg_strcasecmp(compName, "none") == 0)
 	{
@@ -481,7 +448,6 @@ DatumStreamWrite *create_datumstreamwrite(
 					&acc->typeInfo,
 					&acc->datumStreamVersion,
 					&acc->rle_want_compression,
-					&acc->delta_want_compression,
 					&acc->ao_attr,
 					&acc->maxAoBlockSize,
 					compName, 
@@ -560,7 +526,6 @@ DatumStreamWrite *create_datumstreamwrite(
 		break;
 
 	case DatumStreamVersion_Dense:
-	case DatumStreamVersion_Dense_Enhanced:
 		initialMaxDatumPerBlock = 	INITIALDATUM_PER_AOCS_DENSE_BLOCK;
 		maxDatumPerBlock = 			MAXDATUM_PER_AOCS_DENSE_BLOCK;
 
@@ -584,7 +549,6 @@ DatumStreamWrite *create_datumstreamwrite(
 							&acc->typeInfo,
 							acc->datumStreamVersion,
 							acc->rle_want_compression,
-							acc->delta_want_compression,
 							initialMaxDatumPerBlock,
 							maxDatumPerBlock,
 							acc->maxAoBlockSize - acc->maxAoHeaderSize,
@@ -618,7 +582,6 @@ DatumStreamRead *create_datumstreamread(
 					&acc->typeInfo,
 					&acc->datumStreamVersion,
 					&acc->rle_can_have_compression,
-					&acc->delta_can_have_compression,
 					&acc->ao_attr,
 					&acc->maxAoBlockSize,
 					compName, 
@@ -942,7 +905,6 @@ int64 datumstreamwrite_block(DatumStreamWrite *acc)
 		return datumstreamwrite_block_orig(acc);
 
 	case DatumStreamVersion_Dense:
-	case DatumStreamVersion_Dense_Enhanced:
 		return datumstreamwrite_block_dense(acc);
 
 	default:
@@ -968,8 +930,7 @@ int64 datumstreamwrite_lob(DatumStreamWrite *acc, Datum d)
 
     Assert(acc);
 	Assert(acc->datumStreamVersion == DatumStreamVersion_Original ||
-		   acc->datumStreamVersion == DatumStreamVersion_Dense ||
-		   acc->datumStreamVersion == DatumStreamVersion_Dense_Enhanced);
+		   acc->datumStreamVersion == DatumStreamVersion_Dense);
 
     if (acc->typeInfo.datumlen >= 0)
 	{

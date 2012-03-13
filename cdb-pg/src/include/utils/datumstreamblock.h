@@ -18,11 +18,7 @@ typedef enum DatumStreamVersion
 											 * done by this module.
 											 */
 
-	DatumStreamVersion_Dense_Enhanced = 2,  /* Version used for RLE_TYPE compression enhanced 
-											 *  with Delta Range done by this module.
-											 */
-											   
-	MaxDatumStreamVersion                   /* must always be last */
+	MaxDatumStreamVersion                    /* must always be last */
 } DatumStreamVersion;
 
 /* 
@@ -109,38 +105,13 @@ typedef struct DatumStreamBlock_Rle_Extension
 						 */
 } DatumStreamBlock_Rle_Extension;
 
-/* 
- * Datum Stream Block extension to Rle_Extension with DeltaRange.
- * bytes more.
- */
-typedef struct DatumStreamBlock_Delta_Extension
-{
-	int32   delta_bitmap_count;
-						/*
-						 * Number of bits in the delta bit-map.
-						 */
-
-	int32 	deltas_count;
-						/*
-						 * Total number of items stored with delta.
-						 *
-						 * Also, the count of the ON bits in the Delta bit-map.
-						 */
-
-	int32 	deltas_size;
-						/*
-						 * Total size of the delta counts array, where you account for
-						 * the different 1, 2, 3, and 4 byte encoding size of each delta.
-						 */
-} DatumStreamBlock_Delta_Extension;
-
 
 /* Flags */
 enum {
-    DSB_HAS_NULLBITMAP =		0x1,
-	DSB_HAS_RLE_COMPRESSION =	0x2,
-	DSB_HAS_DELTA_COMPRESSION = 0x4,
+    DSB_HAS_NULLBITMAP = 		0x1,
+	DSB_HAS_RLE_COMPRESSION = 	0x2,
 };
+
 
 typedef struct DatumStreamBitMapWrite
 {
@@ -162,10 +133,8 @@ typedef struct DatumStreamBitMapRead
 	uint8	*bytePointer;
 	int32	bitCount;
 	int32	bitPosition;
-#ifdef USE_ASSERT_CHECKING
-	int32	readBitOnCount;
-#endif
 } DatumStreamBitMapRead;
+
 
 // Inline Forwards.
 static inline void DatumStreamBitMapRead_Init(
@@ -181,14 +150,6 @@ static inline void DatumStreamBitMapRead_Next(
 
 static inline bool DatumStreamBitMapRead_CurrentIsOn(
 	DatumStreamBitMapRead 	*bmr);
-
-#ifdef USE_ASSERT_CHECKING
-static inline int32 DatumStreamBitMapRead_OnSeenCount(
-	DatumStreamBitMapRead   *bmr)
-{
-	return bmr->readBitOnCount;
-}
-#endif
 
 /*
  * DatumStreamBitMap routines.
@@ -416,11 +377,6 @@ static inline void DatumStreamBitMapRead_Init(
 	bmr->byteBit = 0;
 	bmr->bitCount = bitCount;
 	bmr->bitPosition = -1;
-
-#ifdef USE_ASSERT_CHECKING
-	bmr->readBitOnCount = 0;
-#endif
-
 }
 
 static inline bool DatumStreamBitMapRead_IsExhausted(
@@ -488,13 +444,6 @@ static inline void DatumStreamBitMapRead_Next(
 	    }
 	}
 	bmr->bitPosition++;
-
-#ifdef USE_ASSERT_CHECKING
-	if (DatumStreamBitMapRead_CurrentIsOn(bmr))
-	{
-		bmr->readBitOnCount++;
-	}
-#endif
 }
 
 static inline int32 DatumStreamBitMapRead_Size(
@@ -674,194 +623,6 @@ inline static int32 DatumStreamInt32Compress_Decode(
 	return value;
 }
 
-/*
- * DatumStreamBlockInt32CompressReserved3.
- */
-#define Int32CompressReserved3_MaxByteLen 4
-#define Int32CompressReserved3_1ByteLimit 0x1F
-#define Int32CompressReserved3_2ByteLimit 0x1FFF
-#define Int32CompressReserved3_3ByteLimit 0x1FFFFF
-#define Int32CompressReserved3_4ByteLimit 0x1FFFFFFF
-#define Int32CompressReserved3_LenFieldMask 0xC0
-#define Int32CompressReserved3_LenFieldShift 6
-#define Int32CompressReserved3_ReservedFieldMask 0xE0
-#define Int32CompressReserved3_SignPositiveMask 0x20
-
-inline static int32 DatumStreamInt32CompressReserved3_Decode(
-	uint8 	*buffer,
-	int32	*byteLen,
-	bool    *sign);
-#ifdef USE_ASSERT_CHECKING
-// Currently only used in an Assert expression.
-inline static int32 DatumStreamInt32CompressReserved3_DecodeLen(
-	uint8 	*buffer);
-#endif
-
-inline static int32 DatumStreamInt32CompressReserved3_Size(int32 value)
-{
-	if (value <= Int32CompressReserved3_1ByteLimit)
-	{
-		return 1;
-	}
-	else if (value <= Int32CompressReserved3_2ByteLimit)
-	{
-		return 2;
-	}
-	else if (value <= Int32CompressReserved3_3ByteLimit)
-	{
-		return 3;
-	}
-	else
-	{
-		Assert(value <= Int32CompressReserved3_4ByteLimit);
-		return 4;
-	}
-}
-
-inline static int32 DatumStreamInt32CompressReserved3_Encode(
-	uint8 	*buffer,
-	int32 	value,
-	bool    sign)
-{
-	int32	byteLen;
-
-	if (value <= Int32CompressReserved3_1ByteLimit)
-	{
-		buffer[0] = (uint8)value;
-		byteLen = 1;
-	}
-	else if (value <= Int32CompressReserved3_2ByteLimit)
-	{
-		buffer[0] = (1 << Int32CompressReserved3_LenFieldShift) | (uint8)(value >> 8);
-		buffer[1] = (uint8)(value);
-		byteLen = 2;
-	}
-	else if (value <= Int32CompressReserved3_3ByteLimit)
-	{
-		buffer[0] = (2 << Int32CompressReserved3_LenFieldShift) | (uint8)(value >> 16);
-		buffer[1] = (uint8)(value >> 8);
-		buffer[2] = (uint8)(value);
-		byteLen = 3;
-	}
-	else
-	{
-		Assert(value <= Int32CompressReserved3_4ByteLimit);
-
-		buffer[0] = (3 << Int32CompressReserved3_LenFieldShift) | (uint8)(value >> 24);
-		buffer[1] = (uint8)(value >> 16);
-		buffer[2] = (uint8)(value >> 8);
-		buffer[3] = (uint8)(value);
-		byteLen = 4;
-	}
-
-	// Set the sign bit if positive
-	if (sign)
-	{
- 		buffer[0] = buffer[0] | Int32CompressReserved3_SignPositiveMask;
-	}
-#ifdef USE_ASSERT_CHECKING
-	{
-		int32 decodeLen;
-		int32 decodedValue;
-		int32 decodedLen;
-		bool decodedSign;
-
-		decodeLen = DatumStreamInt32CompressReserved3_DecodeLen(buffer);
-		if (decodeLen != byteLen)
-		{
-			elog(ERROR, "integer compress Reserved3 encode / decode length difference (expected %d, found %d)",
-				 byteLen, decodeLen);
-		}
-
-		decodedValue = DatumStreamInt32CompressReserved3_Decode(buffer, &decodedLen, &decodedSign);
-		if (decodedValue != value)
-		{
-			elog(ERROR, "integer compress Reserved3 encode / decode value difference (expected %d, found %d)",
-				 value, decodedValue);
-		}
-
-		if ( decodedSign != sign )
-		{
-			elog(ERROR, "integer compress Reserved3 encode / decode sign difference (expected %d, found %d)", 
-				sign, decodedSign);
-		}
-
-		if (decodedLen != byteLen)
-		{
-			elog(ERROR, "integer compress Reserved3 encode / decode length difference #2 (expected %d, found %d)",
-				 byteLen, decodedLen);
-		}
-	}
-#endif
-	return byteLen;
-}
-
-#ifdef USE_ASSERT_CHECKING
-// Currently only used in an Assert expression.
-inline static int32 DatumStreamInt32CompressReserved3_DecodeLen(
-	uint8 	*buffer)
-{
-	uint8	masked;
-	uint8	lenFieldOnly;
-
-	masked = (buffer[0] & Int32CompressReserved3_LenFieldMask);
-	lenFieldOnly = masked >> Int32CompressReserved3_LenFieldShift;
-
-	return lenFieldOnly + 1;
-}
-#endif
-
-inline static int32 DatumStreamInt32CompressReserved3_Decode(
-	uint8 	*buffer,
-	int32	*byteLen,
-	bool    *sign)
-{
-	uint8	masked;
-	uint8	lenFieldOnly;
-	int32	len;
-	int32	value = 0;
-
-	masked = (buffer[0] & Int32CompressReserved3_LenFieldMask);
-	lenFieldOnly = masked >> Int32CompressReserved3_LenFieldShift;
-	len = lenFieldOnly + 1;
-
-	if ( buffer[0] & Int32CompressReserved3_SignPositiveMask )
-		*sign = true; // Positive
-	else
-		*sign = false; // Negative
-
-	switch (len)
-	{
-	case 1:
-		value = (buffer[0] & ~Int32CompressReserved3_ReservedFieldMask);
-		break;
-	case 2:
-		value = ((int32)(buffer[0] & ~Int32CompressReserved3_ReservedFieldMask) << 8) |
-				buffer[1];
-		break;
-	case 3:
-		value = ((int32)(buffer[0] & ~Int32CompressReserved3_ReservedFieldMask) << 16) |
-				((int32)buffer[1] << 8) |
-				buffer[2];
-		break;
-	case 4:
-		value = ((int32)(buffer[0] & ~Int32CompressReserved3_ReservedFieldMask) << 24) |
-				((int32)buffer[1] << 16) |
-				((int32)buffer[2] << 8) |
-				buffer[3];
-		break;
-	default:
-		ereport(FATAL,
-				(errmsg("Unexpected compressed integer byte length %d", 
-			 			len)));
-		break;
-	}
-
-	*byteLen = len;
-
-	return value;
-}
-
 typedef struct DatumStreamTypeInfo
 {
     /* Info determined by schema */
@@ -892,7 +653,6 @@ typedef struct DatumStreamBlockWrite
 	DatumStreamVersion	datumStreamVersion;
 
 	bool	rle_want_compression;
-	bool	delta_want_compression;
 
 	int32	initialMaxDatumPerBlock;
 	int32	maxDatumPerBlock;
@@ -929,18 +689,6 @@ typedef struct DatumStreamBlockWrite
 	int32 	rle_repeatcounts_count;
 	int32 	rle_repeatcounts_current_size;
 
-	/* Delta Range variables */
-	bool delta_has_compression;
-	bool not_first_datum;
-
-	// 8 bytes is max length Delta Compression supports
-	uint8 compare_item[8];
-
-	DatumStreamBitMapWrite  delta_bitmap;
-
-	int32 deltas_count;
-	int32 deltas_current_size;
-
     /* Common buffers */
     MemoryContext memctxt;
 
@@ -957,14 +705,6 @@ typedef struct DatumStreamBlockWrite
 
     int32 *rle_repeatcounts;
     int32  rle_repeatcounts_maxcount;
-
-	/* Delta Range buffers */
-	uint8 *delta_bitmap_buffer;
-	int32  delta_bitmap_buffer_size;
-
-	int32 *deltas;
-	bool  *delta_sign;
-	int32  deltas_maxcount;
 
     /* EOF of current file */
 	int64 savings;
@@ -1018,19 +758,11 @@ typedef struct DatumStreamBlockRead
 
     uint8	*rle_compress_beginp;
 	uint8	*rle_repeatcountsp;
-	uint8	*delta_beginp;
-	uint8	*delta_deltasp;
-	uint8	delta_datum_p[8];
 
 	int32 	rle_norepeats_null_bitmap_count;
 	int32 	rle_compress_bitmap_count;
 	int32 	rle_repeatcounts_count;
 	int32 	rle_repeatcounts_size;
-
-	bool	delta_item;
-	int32	delta_bitmap_count;
-	int32	deltas_count;
-	int32	deltas_size;
 
 	/* Dense write variables */
 	bool 	rle_block_was_compressed;
@@ -1042,10 +774,6 @@ typedef struct DatumStreamBlockRead
 	int32	rle_repeated_item_count;
 
 	int32	rle_total_repeat_items_read;
-
-	/* Delta varibales */
-	bool 	delta_block_was_compressed;
-	DatumStreamBitMapRead	delta_bitmap;
 
 	/*
 	 * Keep less frequently accessed fields down here for possible better CPU data cache
@@ -1107,8 +835,7 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 #endif
 
 #ifdef USE_ASSERT_CHECKING
-	if ((dsr->datumStreamVersion == DatumStreamVersion_Dense) ||
-		(dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced))
+	if (dsr->datumStreamVersion == DatumStreamVersion_Dense)
 	{
 		DatumStreamBlockRead_CheckDenseGetInvariant(dsr);
 	}
@@ -1142,8 +869,6 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 #ifdef USE_ASSERT_CHECKING
 		int32 varLen;
 #endif
-		Assert (dsr->delta_item == false);
-
 		*datum = PointerGetDatum(dsr->datump);
 		Assert(VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTERNAL_D(*datum));
 	
@@ -1215,8 +940,6 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 	}
 	else if (!dsr->typeInfo.byval)
 	{
-		Assert (dsr->delta_item == false);
-
 		*datum = PointerGetDatum(dsr->datump);
 		
 			// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
@@ -1241,72 +964,54 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 	}
 	else
 	{
-		if (! dsr->delta_item)
+		/*
+		 * Performance is so critical we don't use a switch statement here.
+		 */
+		if (dsr->typeInfo.datumlen == 1)
 		{
-			/*
-			 * Performance is so critical we don't use a switch statement here.
-			 */
-			if (dsr->typeInfo.datumlen == 1)
-			{
-				*datum = *(uint8 *) dsr->datump;
-			}
-			else if (dsr->typeInfo.datumlen == 2)
-			{
-				Assert(IsAligned(dsr->datump, 2));
-				*datum = *(uint16 *) dsr->datump;
-			}
-			else if (dsr->typeInfo.datumlen == 4)
-			{
-				Assert(IsAligned(dsr->datump, 4));
-				*datum = *(uint32 *) dsr->datump;
-			}
-			else if (dsr->typeInfo.datumlen == 8)
-			{
-				Assert(IsAligned(dsr->datump, 8) || IsAligned(dsr->datump, 4));
-				*datum = *(Datum *) dsr->datump;
-			}
-			else
-			{
-				*datum = 0;
-				Assert(false);
-			}
-
-			// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
-#ifdef USE_ASSERT_CHECKING
-			if (Debug_appendonly_print_scan_tuple)
-			{
-				ereport(LOG,
-						(errmsg("Datum stream block %s read is returning fixed-length item #%d "
-								"(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", integer " INT64_FORMAT ")",			
-								DatumStreamVersion_String(dsr->datumStreamVersion),
-								dsr->physical_datum_index,
-								dsr->nth,
-								dsr->typeInfo.datumlen,
-								dsr->datump,
-								(int64)(dsr->datump - dsr->datum_beginp),
-								(int64)*datum),
-						 errOmitLocation(true),
-						 errdetail_datumstreamblockread(dsr),
-						 errcontext_datumstreamblockread(dsr)));
-			}
-#endif
+			*datum = *(uint8 *) dsr->datump;
+		}
+		else if (dsr->typeInfo.datumlen == 2)
+		{
+			Assert(IsAligned(dsr->datump, 2));
+			*datum = *(uint16 *) dsr->datump;
+		}
+		else if (dsr->typeInfo.datumlen == 4)
+		{
+			Assert(IsAligned(dsr->datump, 4));
+			*datum = *(uint32 *) dsr->datump;
+		}
+		else if (dsr->typeInfo.datumlen == 8)
+		{
+			Assert(IsAligned(dsr->datump, 8) || IsAligned(dsr->datump, 4));
+			*datum = *(Datum *) dsr->datump;
 		}
 		else
 		{
-			if ( dsr->typeInfo.datumlen == 4)
-			{
-				*datum = *(uint32 *) &dsr->delta_datum_p;
-			}
-			else if (dsr->typeInfo.datumlen == 8) 
-			{
-				*datum = *(Datum *) &dsr->delta_datum_p;
-			}
-			else
-			{
-				*datum = 0;
-				Assert(false);
-			}
+			*datum = 0;
+			Assert(false);
 		}
+
+			// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+#ifdef USE_ASSERT_CHECKING
+		if (Debug_appendonly_print_scan_tuple)
+		{
+			ereport(LOG,
+					(errmsg("Datum stream block %s read is returning fixed-length item #%d "
+							"(nth %d, item size %d, item begin %p, item offset " INT64_FORMAT ", integer " INT64_FORMAT ")",			
+							DatumStreamVersion_String(dsr->datumStreamVersion),
+							dsr->physical_datum_index,
+							dsr->nth,
+							dsr->typeInfo.datumlen,
+							dsr->datump,
+							(int64)(dsr->datump - dsr->datum_beginp),
+							(int64)*datum),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockread(dsr),
+					 errcontext_datumstreamblockread(dsr)));
+		}
+#endif
+		
 	}
 
 	return 0;
@@ -1469,115 +1174,6 @@ inline static int DatumStreamBlockRead_AdvanceOrig(DatumStreamBlockRead *dsr)
 	}
 
     return 1;
-}
-
-typedef enum Delta_Compression_status
-{
-	DELTA_COMPRESSION_OK = 0,
-	DELTA_COMPRESSION_NOT_APPLIED = 1,
-	DELTA_COMPRESSION_ERROR = 2,
-
-} Delta_Compression_status;
-
-inline static Delta_Compression_status 
-DatumStreamBlockRead_AdvanceDenseDelta(DatumStreamBlockRead *dsr)
-{
-	int64 delta;
-	bool sign;
-	int32 byteLen;
-
-	if (!dsr->delta_block_was_compressed)
-	{
-		return DELTA_COMPRESSION_NOT_APPLIED;
-	}
-
-	Assert( (dsr->typeInfo.datumlen >= 4) && (dsr->typeInfo.datumlen <= 8));
-	Assert (dsr->typeInfo.byval);
-
-	DatumStreamBitMapRead_Next(&dsr->delta_bitmap);
-	Assert(DatumStreamBitMapRead_InRange(&dsr->delta_bitmap));
-
-	if (!DatumStreamBitMapRead_CurrentIsOn(&dsr->delta_bitmap))
-	{
-		/*
-		 * NOT Delta Item
-		 */
-		dsr->delta_item = false;
-
-		uint8 *d;
-
-		if ( dsr->physical_datum_index == -1 )
-		{
-			d = dsr->datump; 
-		}
-		else
-		{
-			d = dsr->datump + dsr->typeInfo.datumlen;
-		}
-
-		memcpy(&dsr->delta_datum_p, d, dsr->typeInfo.datumlen);
-
-		return DELTA_COMPRESSION_NOT_APPLIED;
-	}
-
-	dsr->delta_item = true;
-
-	/*
-	 * delta_datum_p should contain the current datum value
-	 * So, lets read the delta value and sign and compute it
-	 */
-	delta = DatumStreamInt32CompressReserved3_Decode(dsr->delta_deltasp, &byteLen, &sign);
-	dsr->delta_deltasp += byteLen;
-
-	if (dsr->typeInfo.datumlen == 4)
-	{
-		if ( sign )
-		{
-			// Add delta
-			*(uint32*) (&dsr->delta_datum_p) += delta;
-		}
-		else
-		{
-			// Substract delta
-			*(uint32*) (&dsr->delta_datum_p) -= delta;
-		}
-	}
-	else if (dsr->typeInfo.datumlen == 8)
-	{
-		if ( sign )
-		{
-			// Add delta
-			*(Datum*) (&dsr->delta_datum_p) += delta;
-		}
-		else
-		{
-			// Substract delta
-			*(Datum*) (&dsr->delta_datum_p) -= delta;
-		}
-	}
-	else
-	{
-		*(Datum*) (&dsr->delta_datum_p) = 0;
-		Assert(false);
-	}
-
-#ifdef USE_ASSERT_CHECKING
-	if (Debug_appendonly_print_scan_tuple)
-	{
-		ereport(LOG,
-				(errmsg("Datum stream block read Delta value "
-					    "(nth %d, logical row count %d, delta " INT64_FORMAT ", sign %d)",
-					    dsr->nth,
-					    dsr->logical_row_count,
-					    delta,
-					    sign),
-				 errOmitLocation(true),
-				 errdetail_datumstreamblockread(dsr),
-				 errcontext_datumstreamblockread(dsr)));
-	}
-#endif
-
-	return DELTA_COMPRESSION_OK;
 }
 
 inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
@@ -1776,11 +1372,6 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 		 */
 	}
 
-	if (DatumStreamBlockRead_AdvanceDenseDelta(dsr) == DELTA_COMPRESSION_OK)
-	{
-		return 1;
-	}
-
 	Assert(dsr->datump >= dsr->datum_beginp);
 	Assert (dsr->datump < dsr->datum_afterp);
 
@@ -1886,7 +1477,7 @@ inline static int DatumStreamBlockRead_AdvanceDense(DatumStreamBlockRead *dsr)
 
 inline static int DatumStreamBlockRead_Advance(DatumStreamBlockRead *dsr)
 {
-	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
+		// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
 #ifdef USE_ASSERT_CHECKING
 	if (strncmp(dsr->eyecatcher, DatumStreamBlockRead_Eyecatcher, DatumStreamBlockRead_EyecatcherLen) != 0)
 		elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)");
@@ -1898,16 +1489,18 @@ inline static int DatumStreamBlockRead_Advance(DatumStreamBlockRead *dsr)
 	}
 	else
 	{
-		Assert((dsr->datumStreamVersion == DatumStreamVersion_Dense) ||
-			(dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced));
+		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense);
 		return DatumStreamBlockRead_AdvanceDense(dsr);
 	}
 }
+
+
 
 inline static int DatumStreamBlockRead_Nth(DatumStreamBlockRead *dsr)
 {
 	return dsr->nth;
 }
+
 
 extern void DatumStreamBlockRead_GetReadyOrig(
 	DatumStreamBlockRead	*dsr,
@@ -1949,8 +1542,7 @@ DatumStreamBlockRead_GetReady(
 	}
 	else
 	{
-		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense ||
-			(dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced));
+		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense);
 		return DatumStreamBlockRead_GetReadyDense(
 												dsr, 
 												buffer, 
@@ -1973,8 +1565,7 @@ inline static void DatumStreamBlockRead_Reset(DatumStreamBlockRead *dsr)
 	}
 	else
 	{
-		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense ||
-			(dsr->datumStreamVersion == DatumStreamVersion_Dense_Enhanced));
+		Assert(dsr->datumStreamVersion == DatumStreamVersion_Dense);
 		DatumStreamBlockRead_ResetDense(dsr);
 	}
 }
@@ -1997,7 +1588,6 @@ extern void DatumStreamBlockWrite_Init(
 	DatumStreamTypeInfo 	*typeInfo,
 	DatumStreamVersion		datumStreamVersion,
 	bool 					rle_want_compression,
-	bool					delta_want_compression,
 	int32					initialMaxDatumPerBlock,
 	int32					maxDatumPerBlock,
 	int32					maxDataBlockSize,
