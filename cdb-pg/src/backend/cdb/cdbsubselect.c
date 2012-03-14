@@ -1821,7 +1821,9 @@ static Node *make_outer_nonnull_clause(SubLink *sublink)
 {
 	Node *outerNonNullClause = NULL;
 
-	Assert(nodeTag(sublink->testexpr) == T_BoolExpr || nodeTag(sublink->testexpr) == T_OpExpr);
+	Assert(IsA(sublink->testexpr, BoolExpr) || 
+			IsA(sublink->testexpr, OpExpr) ||
+			IsA(sublink->testexpr, RowCompareExpr));
 
 	switch(nodeTag(sublink->testexpr))
 	{
@@ -1869,6 +1871,32 @@ static Node *make_outer_nonnull_clause(SubLink *sublink)
 				outerNonNullClause = (Node *) nullTest; /* represents foo(a) is not null OR bar(b) is not null */
 				break;
 			}
+			
+		case T_RowCompareExpr:
+			{
+				/* 
+				 * This is the case when the testexpr involves multiple columns
+				 * such as (a,b) < all (select max(a),min(b) from m)
+				 */
+				List *exprList = NIL;
+				RowCompareExpr *rowcompExpr = (RowCompareExpr *) sublink->testexpr;
+				
+				ListCell *lc = NULL;
+				foreach (lc, rowcompExpr->largs)
+				{
+					Expr *expr = (Expr *) lfirst(lc);
+					
+					NullTest *nullTest = makeNode(NullTest);
+					nullTest->arg = expr;
+					nullTest->nulltesttype = IS_NOT_NULL; /* nullTest represents expr is not null */
+					
+					exprList = lappend(exprList, nullTest);
+				}
+				outerNonNullClause = (Node *) make_orclause(exprList); /* represents a is not null OR b is not null */
+				break;
+			
+			}
+		
 		default:
 			Assert(false && "Unsupported sublink expression");
 		
