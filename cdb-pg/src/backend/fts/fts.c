@@ -280,7 +280,7 @@ ftsMain(int argc, char *argv[])
 	BaseInit();
 
 	/* See InitPostgres()... */
-	InitProcess();	
+	InitProcess();
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 
@@ -692,7 +692,7 @@ probePublishUpdate(uint8 *probe_results)
 			continue;
 		}
 
-		Assert(failover_strategy == 'f' || failover_strategy == 's');
+		Assert(failover_strategy == 'f');
 		Assert(mirror != NULL);
 
 		/* changes required for primary and mirror */
@@ -719,24 +719,11 @@ probePublishUpdate(uint8 *probe_results)
 			     primary->segindex, primary->dbid, mirror->dbid);
 		}
 
-		if (failover_strategy == 'f')
-		{
-			/* get current state */
-			stateOld = FtsGetPairStateFilerep(primary, mirror);
+		/* get current state */
+		stateOld = FtsGetPairStateFilerep(primary, mirror);
 
-			/* get new state */
-			stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
-		}
-		else
-		{
-			Assert(failover_strategy == 's');
-
-			/* get current state */
-			stateOld = FtsGetPairStateSAN(primary, mirror);
-
-			/* get new state */
-			stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
-		}
+		/* get new state */
+		stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
 
 		/* check if transition is required */
 		if (stateNew != stateOld)
@@ -825,14 +812,8 @@ transition
 	}
 
 	/* get new state for primary and mirror */
-	if (failover_strategy == 'f')
-	{
-		stateNew = FtsTransitionFilerep(stateOld, trans);
-	}
-	else
-	{
-		stateNew = FtsTransitionSAN(stateOld, trans);
-	}
+	Assert(failover_strategy == 'f');
+	stateNew = FtsTransitionFilerep(stateOld, trans);
 
 	/* check if transition is required */
 	if (stateNew != stateOld)
@@ -850,14 +831,7 @@ transition
 			elog(LOG, "FTS: state machine transition from %d to %d.", stateOld, stateNew);
 		}
 
-		if (failover_strategy == 'f')
-		{
-			FtsResolveStateFilerep(&pairState);
-		}
-		else
-		{
-			FtsResolveStateSAN(&pairState);
-		}
+		FtsResolveStateFilerep(&pairState);
 
 		buildSegmentStateChange(primary, changesPrimary, pairState.statePrimary);
 		buildSegmentStateChange(mirror, changesMirror, pairState.stateMirror);
@@ -879,8 +853,6 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 	Assert(changes != NULL);
 
 	PGconn *entryConn = NULL;
-	char timestamp_str[TIMESTAMP_BUF_SIZE];
-
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
 	if (entryDB->dbid != GpIdentity.dbid)
@@ -914,16 +886,10 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 
 	if (commit)
 	{
-		if (failover_strategy == 'f')
-		{
-			/* FILEREP response */
-			FtsFailoverFilerep(changes, changeEntries);
-		}
-		else if (failover_strategy == 's')
-		{
-			/* SAN response */
-			FtsFailoverSAN(changes, changeEntries, timestamp_str);
-		}
+		Assert(failover_strategy == 'f');
+
+		/* FILEREP response */
+		FtsFailoverFilerep(changes, changeEntries);
 	}
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
@@ -1046,7 +1012,6 @@ FtsIsSegmentAlive(CdbComponentDatabaseInfo *segInfo)
 				return true;
 			/* fallthrough */
 		case 'n':
-		case 's':
 			if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
 				return true;
 			break;
