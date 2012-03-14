@@ -234,7 +234,10 @@ Prepend(PGPROC *myProc)
 	}
 
 	/* Atomically increment numFreeProcs */
-	gp_atomic_add_32(&ProcGlobal->numFreeProcs, 1);
+	if (myProc->isQueryProc)
+	{
+		gp_atomic_add_32(&ProcGlobal->numFreeProcs, 1);
+	}
 }
 
 
@@ -244,7 +247,7 @@ Prepend(PGPROC *myProc)
  * Use compare_and_swap to avoid using lock and guarantee atomic operation.
  */
 static PGPROC *
-RemoveFirst()
+RemoveFirst(bool isQueryProc)
 {
 	volatile PROC_HDR *procglobal = ProcGlobal;
 	SHMEM_OFFSET myOffset;
@@ -254,7 +257,10 @@ RemoveFirst()
 	 * Decrement numFreeProcs before removing the first entry from the
 	 * free list.
 	 */
-	gp_atomic_add_32(&procglobal->numFreeProcs, -1);
+	if (isQueryProc)
+	{
+		gp_atomic_add_32(&procglobal->numFreeProcs, -1);
+	}
 
 	int32 casResult = false;
 	while(!casResult)
@@ -280,7 +286,7 @@ RemoveFirst()
 
 	}
 
-	if (freeProc == NULL)
+	if (freeProc == NULL && isQueryProc)
 	{
 		/*
 		 * Increment numFreeProcs since we didn't remove any entry from
@@ -296,7 +302,7 @@ RemoveFirst()
  * InitProcess -- initialize a per-process data structure for this backend
  */
 void
-InitProcess(void)
+InitProcess(bool isQueryProc)
 {
 	/* use volatile pointer to prevent code rearrangement */
 	volatile PROC_HDR *procglobal = ProcGlobal;
@@ -312,7 +318,7 @@ InitProcess(void)
 	if (MyProc != NULL)
 		elog(ERROR, "you already exist");
 
-	MyProc = RemoveFirst();
+	MyProc = RemoveFirst(isQueryProc);
 	
 	if (MyProc == NULL)
 	{
@@ -350,6 +356,7 @@ InitProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->inVacuum = false;
+	MyProc->isQueryProc = isQueryProc;
 	MyProc->postmasterResetRequired = true;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
@@ -513,6 +520,7 @@ InitAuxiliaryProcess(void)
     MyProc->mppSessionId = 0;
     MyProc->mppIsWriter = false;
 	MyProc->inVacuum = false;
+	MyProc->isQueryProc = false;
 	MyProc->postmasterResetRequired = true;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;

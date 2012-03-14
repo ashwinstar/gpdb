@@ -1157,7 +1157,7 @@ NON_EXEC_STATIC void BackoffSweeperMain(int argc, char *argv[])
 	BaseInit();
 
 	/* See InitPostgres()... */
-	InitProcess();
+	InitProcess(false /*isQueryProc*/);
 
 	SetProcessingMode(NormalProcessing);
 

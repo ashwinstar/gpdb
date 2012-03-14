@@ -514,7 +514,7 @@ CheckerModeMain(void)
 	/*
 	 * Do backend-like initialization for bootstrap mode
 	 */
-	InitProcess();
+	InitProcess(false /*isQueryProc*/);
 	InitPostgres(NULL, InvalidOid, NULL, NULL);
 	proc_exit(0);
 }
@@ -538,7 +538,7 @@ BootstrapModeMain(void)
 	/*
 	 * Do backend-like initialization for bootstrap mode
 	 */
-	InitProcess();
+	InitProcess(false /*isQuery*/);
 	InitPostgres(NULL, InvalidOid, NULL, NULL);
 
 	/* Initialize stuff for bootstrap-file processing */

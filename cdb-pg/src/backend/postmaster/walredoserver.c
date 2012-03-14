@@ -303,7 +303,7 @@ static void
 WalRedoServer_ServicePostgresInit(void)
 {
 	/* See InitPostgres()... */
-    InitProcess();	
+    InitProcess(false /*isQueryProc*/);
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 

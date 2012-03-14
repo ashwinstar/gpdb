@@ -93,6 +93,7 @@ struct PGPROC
     int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
     bool		mppIsWriter;	/* The writer gang member, holder of locks */
 	bool		postmasterResetRequired; /* Whether postmaster reset is required when this child exits */
+	bool		isQueryProc;		/* is this a QD or a QE process */
 
 	bool		inVacuum;		/* true if current xact is a LAZY VACUUM */
 
@@ -214,7 +215,7 @@ extern volatile bool cancel_from_timeout;
 extern int	ProcGlobalSemas(void);
 extern Size ProcGlobalShmemSize(void);
 extern void InitProcGlobal(int mppLocalProcessCounter);
-extern void InitProcess(void);
+extern void InitProcess(bool isQueryProc);
 extern void InitProcessPhase2(void);
 extern void InitAuxiliaryProcess(void);
 extern bool HaveNFreeProcs(int n);

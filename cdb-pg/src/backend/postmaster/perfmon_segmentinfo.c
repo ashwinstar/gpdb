@@ -133,7 +133,7 @@ NON_EXEC_STATIC void SegmentInfoSenderMain(int argc, char *argv[])
 	BaseInit();
 
 	/* See InitPostgres()... */
-	InitProcess();
+	InitProcess(false /*isQueryProc*/);
 
 	SetProcessingMode(NormalProcessing);
 

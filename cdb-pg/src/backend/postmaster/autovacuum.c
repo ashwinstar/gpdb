@@ -399,7 +399,7 @@ AutoVacMain(int argc, char *argv[])
 	 * had to do some stuff with LWLocks).
 	 */
 #ifndef EXEC_BACKEND
-	InitProcess();
+	InitProcess(false /*isQueryProc*/);
 #endif
 
 	/*

@@ -4285,9 +4285,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 */
 #ifdef EXEC_BACKEND
 	if (!IsUnderPostmaster)
-		InitProcess();
+		InitProcess(false /*isQueryProc*/);
 #else
-	InitProcess();
+	InitProcess(true /*isQueryProc*/);
 #endif
 
 	/*
@@ -5856,7 +5856,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	 * The syncmaster process needs access to synchronization primitives
 	 * which require that Process structures be configured and assigned.
 	 */
-	InitProcess();
+	InitProcess(false /*isQueryProc*/);
 
 	SetProcessingMode(NormalProcessing);
 

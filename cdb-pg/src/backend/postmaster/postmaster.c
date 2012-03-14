@@ -7209,7 +7209,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitShmemAccess(UsedShmemSegAddr);
 
 		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitProcess();
+		InitProcess(false /*isQueryProc*/);
 
 		/*
 		 * Attach process to shared data structures.  If testing EXEC_BACKEND
@@ -7253,7 +7253,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitShmemAccess(UsedShmemSegAddr);
 
 		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitProcess();
+		InitProcess(false /*isQueryProc*/);
 
 		/* Attach process to shared data structures */
 		CreateSharedMemoryAndSemaphores(false, 0);
