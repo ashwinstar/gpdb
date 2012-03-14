@@ -1,6 +1,7 @@
 COMMAND NAME: gpkill
 
-Checks or terminates a Greenplum Database process. 
+Checks or terminates a Greenplum Database process or
+list of processes. 
 Users other than the superuser can only use gpkill 
 to terminate their own processes.
 
@@ -17,7 +18,8 @@ DESCRIPTION
 *****************************************************
 
 
-This utility checks or terminates a Greenplum process. 
+This utility checks or terminates a Greenplum process
+or list of processes. 
 If the process is a critical Greenplum Database process 
 or a system process that is not part of Greenplum, gpkill 
 does not terminate it.
