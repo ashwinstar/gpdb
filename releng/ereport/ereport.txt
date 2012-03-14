@@ -5872,10 +5872,10 @@ caah: cdbgang:00001294:  elog(FATAL, "Master callback dispatched with invalid op
 caah: cdbgang:00001626:  elog(ERROR, "could not temporarily connect to one or more segments"); 
 caah: cdbgang:00001828:  elog(ERROR, "required segment is unavailable"); 
 caah: cdbgang:00001832:  elog(ERROR, "required segment IP is unavailable"); 
-caah: cdbgang:00001895:  elog(FATAL, "getCdbProcessesForQD: unsupported request for master mirror process"); 
+caah: cdbgang:00001895:  elog(FATAL, "unsupported request for master mirror process"); 
 caah: cdbgang:00001902:  elog(ERROR, PACKAGE_NAME " schema not populated"); 
 caah: cdbgang:00002426:  elog(ERROR, "could not temporarily connect to one or more segments"); 
-caah: cdbgang:00002722:  elog(WARNING, "Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)", 
+caah: cdbgang:00002722:  elog(WARNING, "Any temporary tables for this session have been dropped because the segworker group was disconnected (session id = %d)", 
 caah: cdbgang:00002723:  gp_session_id); 
 aaaaa GP_IGNORE: cabh: cdbglobalsequence - ./backend/cdb/cdbglobalsequence.c
 cabh: cdbglobalsequence:00000072:  elog(ERROR, "Failed to build global sequence tuple"); 
@@ -13641,36 +13641,36 @@ aaaaa GP_IGNORE: faad: fts - ./backend/fts/fts.c
 faad: fts:00000324:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
 faad: fts:00000325:  errmsg("database 'postgres' does not exist"))); 
 faad: fts:00000351:  elog(FATAL, "bad backend id: %d", MyBackendId); 
-faad: fts:00001180:  ereport(LOG, 
-faad: fts:00001181:  (errmsg("FTS: resynchronization of mirror (dbid=%d, content=%d) on %s:%d has completed.", 
-faad: fts:00001182:  mirror->dbid, mirror->segindex, mirror->address, mirror->port ), 
-faad: fts:00001183:  errSendAlert(true))); 
-faad: fts:00001223:  elog(FATAL, "FTS: detected invalid state for content=%d: " 
-faad: fts:00001224:  "primary (dbid=%d, mode='%c', status='%c'), " 
-faad: fts:00001225:  "mirror (dbid=%d, mode='%c', status='%c'), " 
-faad: fts:00001226:  "shutting down master.", 
-faad: fts:00001227:  primary->segindex, 
-faad: fts:00001228:  primary->dbid, 
-faad: fts:00001229:  primary->mode, 
-faad: fts:00001230:  primary->status, 
-faad: fts:00001231:  mirror->dbid, 
-faad: fts:00001232:  mirror->mode, 
-faad: fts:00001233:  mirror->status 
-faad: fts:00001234:  ); 
-faad: fts:00001255:  elog(FATAL, "FTS: failed to create self-connection buffer."); 
-faad: fts:00001286:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001287:  errmsg("FTS: out of memory"))); 
-faad: fts:00001293:  elog(FATAL, "FTS: failed to connect to entry-db, error: %s.", error_message); 
-faad: fts:00001308:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001309:  errmsg("FTS: out of memory"))); 
-faad: fts:00001315:  elog(FATAL, "FTS: failed to start transaction to entry-db, error: %s.", error_message); 
-faad: fts:00001341:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001342:  errmsg("FTS: out of memory"))); 
-faad: fts:00001348:  elog(FATAL, "FTS: query '%s' failed to execute to entry-db, error: %s.", 
-faad: fts:00001349:  query, error_message); 
-faad: fts:00001374:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001375:  errmsg("FTS: out of memory"))); 
-faad: fts:00001381:  elog(FATAL, "FTS: connection to master failed to %s, error: %s.", stmt, error_message); 
+faad: fts:00001145:  ereport(LOG, 
+faad: fts:00001146:  (errmsg("FTS: resynchronization of mirror (dbid=%d, content=%d) on %s:%d has completed.", 
+faad: fts:00001147:  mirror->dbid, mirror->segindex, mirror->address, mirror->port ), 
+faad: fts:00001148:  errSendAlert(true))); 
+faad: fts:00001188:  elog(FATAL, "FTS: detected invalid state for content=%d: " 
+faad: fts:00001189:  "primary (dbid=%d, mode='%c', status='%c'), " 
+faad: fts:00001190:  "mirror (dbid=%d, mode='%c', status='%c'), " 
+faad: fts:00001191:  "shutting down master.", 
+faad: fts:00001192:  primary->segindex, 
+faad: fts:00001193:  primary->dbid, 
+faad: fts:00001194:  primary->mode, 
+faad: fts:00001195:  primary->status, 
+faad: fts:00001196:  mirror->dbid, 
+faad: fts:00001197:  mirror->mode, 
+faad: fts:00001198:  mirror->status 
+faad: fts:00001199:  ); 
+faad: fts:00001220:  elog(FATAL, "FTS: failed to create self-connection buffer."); 
+faad: fts:00001251:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001252:  errmsg("FTS: out of memory"))); 
+faad: fts:00001258:  elog(FATAL, "FTS: failed to connect to entry-db, error: %s.", error_message); 
+faad: fts:00001273:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001274:  errmsg("FTS: out of memory"))); 
+faad: fts:00001280:  elog(FATAL, "FTS: failed to start transaction to entry-db, error: %s.", error_message); 
+faad: fts:00001306:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001307:  errmsg("FTS: out of memory"))); 
+faad: fts:00001313:  elog(FATAL, "FTS: query '%s' failed to execute to entry-db, error: %s.", 
+faad: fts:00001314:  query, error_message); 
+faad: fts:00001339:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001340:  errmsg("FTS: out of memory"))); 
+faad: fts:00001346:  elog(FATAL, "FTS: connection to master failed to %s, error: %s.", stmt, error_message); 
 aaaaa GP_IGNORE: faba: ftsfilerep - ./backend/fts/ftsfilerep.c
 faba: ftsfilerep:00000489:  ereport(LOG, 
 faba: ftsfilerep:00000490:  (errmsg("FTS: mirror (dbid=%d) on %s:%d taking over as primary in change-tracking mode.", 
@@ -13685,26 +13685,6 @@ faba: ftsfilerep:00000540:  elog(ERROR, "FTS: segment transition failed: %s (exi
 faba: ftsfilerep:00000585:  elog(FATAL, "FTS: could not find entry for dbid %d.", dbid); 
 aaaaa GP_IGNORE: faai: ftsprobe - ./backend/fts/ftsprobe.c
 faai: ftsprobe:00000145:  elog(ERROR, "FTS: segment configuration has not been loaded to shared memory"); 
-aaaaa GP_IGNORE: faag: ftssan - ./backend/fts/ftssan.c
-faag: ftssan:00000339:  elog(ERROR, "getMounts_forDbid: failed dbid lookup in segment configuration"); 
-faag: ftssan:00000371:  elog(FATAL, "Fault reponse error: %s IS NULL", #ATTR); \ 
-faag: ftssan:00000372:  } 
-faag: ftssan:00000373:  
-faag: ftssan:00000374: #define get_config_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_segment_configuration_, ATTR, tuple, rel) 
-faag: ftssan:00000375:  
-faag: ftssan:00000376: static void 
-faag: ftssan:00000377: startSegmentForDbid(int dbid) 
-faag: ftssan:00000378: { 
-faag: ftssan:00000379:  Relation conf_rel, fse_rel; 
-faag: ftssan:00000411:  elog(ERROR, "startSegment_forDbid: failed dbid lookup in segment configuration"); 
-faag: ftssan:00000438:  elog(ERROR, "filespace lookup failure for dbid %d", dbid); 
-faag: ftssan:00000477:  ereport(LOG, 
-faag: ftssan:00000478:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
-faag: ftssan:00000479:  host, port ), 
-faag: ftssan:00000480:  errSendAlert(true))); 
-faag: ftssan:00000522:  elog(ERROR, "getMounts_forDbid: failed dbid lookup in segment configuration"); 
-faag: ftssan:00000588:  elog(ERROR, "Could not issue command: %m"); 
-faag: ftssan:00000593:  elog(ERROR, "gp_mount_agent failed!"); 
 aaaaa GP_IGNORE: saba: stringinfo - ./backend/lib/stringinfo.c
 saba: stringinfo:00000281:  elog(ERROR, "invalid string enlargement request size: %d", needed); 
 saba: stringinfo:00000283:  ereport(ERROR, 
@@ -22815,27 +22795,27 @@ dabb: datumstream:00000260:  (errmsg("Nth called after large datum stream object
 dabb: datumstream:00000264:  ereport(FATAL, 
 dabb: datumstream:00000265:  (errmsg("Unexpected large datum stream state %d", 
 dabb: datumstream:00000266:  acc->largeObjectState))); 
-dabb: datumstream:00000410:  ereport(ERROR, 
-dabb: datumstream:00000411:  (errmsg("Unexpected compresslevel %d", 
-dabb: datumstream:00000412:  compLevel))); 
-dabb: datumstream:00000574:  ereport(ERROR, 
-dabb: datumstream:00000575:  (errmsg("Unexpected datum stream version %d", 
-dabb: datumstream:00000576:  acc->datumStreamVersion))); 
-dabb: datumstream:00000784:  elog(ERROR, "Did not find gp_relation_node entry for relfilenode %u, segment file #%d, logical eof " INT64_FORMAT, 
-dabb: datumstream:00000785:  relFileNode.relNode, 
-dabb: datumstream:00000786:  segmentFileNum, 
-dabb: datumstream:00000787:  eof); 
-dabb: datumstream:00000949:  elog(ERROR, "Unexpected datum stream version %d", 
-dabb: datumstream:00000950:  acc->datumStreamVersion); 
-dabb: datumstream:00000976:  elog(ERROR, "Large object must be variable length objects (varlena)"); 
-dabb: datumstream:00000983:  elog(ERROR, "Expected large object / variable length objects (varlena) to be de-toasted and/or de-compressed at this point"); 
-dabb: datumstream:00001091:  elog(ERROR, 
-dabb: datumstream:00001092:  "Unexpected Append-Only Column Store executor kind %d", 
-dabb: datumstream:00001093:  acc->getBlockInfo.execBlockKind); 
-dabb: datumstream:00001152:  elog(ERROR, "Large object must be variable length objects (varlena)"); 
-dabb: datumstream:00001189:  elog(ERROR, 
-dabb: datumstream:00001190:  "Unexpected Append-Only Column Store executor kind %d", 
-dabb: datumstream:00001191:  acc->getBlockInfo.execBlockKind); 
+dabb: datumstream:00000384:  ereport(ERROR, 
+dabb: datumstream:00000385:  (errmsg("Unexpected compresslevel %d", 
+dabb: datumstream:00000386:  compLevel))); 
+dabb: datumstream:00000539:  ereport(ERROR, 
+dabb: datumstream:00000540:  (errmsg("Unexpected datum stream version %d", 
+dabb: datumstream:00000541:  acc->datumStreamVersion))); 
+dabb: datumstream:00000747:  elog(ERROR, "Did not find gp_relation_node entry for relfilenode %u, segment file #%d, logical eof " INT64_FORMAT, 
+dabb: datumstream:00000748:  relFileNode.relNode, 
+dabb: datumstream:00000749:  segmentFileNum, 
+dabb: datumstream:00000750:  eof); 
+dabb: datumstream:00000911:  elog(ERROR, "Unexpected datum stream version %d", 
+dabb: datumstream:00000912:  acc->datumStreamVersion); 
+dabb: datumstream:00000937:  elog(ERROR, "Large object must be variable length objects (varlena)"); 
+dabb: datumstream:00000944:  elog(ERROR, "Expected large object / variable length objects (varlena) to be de-toasted and/or de-compressed at this point"); 
+dabb: datumstream:00001052:  elog(ERROR, 
+dabb: datumstream:00001053:  "Unexpected Append-Only Column Store executor kind %d", 
+dabb: datumstream:00001054:  acc->getBlockInfo.execBlockKind); 
+dabb: datumstream:00001113:  elog(ERROR, "Large object must be variable length objects (varlena)"); 
+dabb: datumstream:00001150:  elog(ERROR, 
+dabb: datumstream:00001151:  "Unexpected Append-Only Column Store executor kind %d", 
+dabb: datumstream:00001152:  acc->getBlockInfo.execBlockKind); 
 aaaaa GP_IGNORE: dabg: datumstreamblock - ./backend/utils/datumstream/datumstreamblock.c
 dabg: datumstreamblock:00000067:  elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)"); 
 dabg: datumstreamblock:00000086:  elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)"); 
@@ -22855,635 +22835,500 @@ dabg: datumstreamblock:00000187:  DatumStreamVersion_Original),
 dabg: datumstreamblock:00000188:  errOmitLocation(false), 
 dabg: datumstreamblock:00000189:  errdetail_datumstreamblockread(dsr), 
 dabg: datumstreamblock:00000190:  errcontext_datumstreamblockread(dsr))); 
-dabg: datumstreamblock:00000403:  ereport(ERROR, 
-dabg: datumstreamblock:00000404:  (errmsg("Nth position %d expected to match physical datum index %d + delta ON count %d when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00000405:  "(logical row count %d, physical datum count %d)", 
-dabg: datumstreamblock:00000406:  dsr->nth, 
-dabg: datumstreamblock:00000407:  dsr->physical_datum_index, 
-dabg: datumstreamblock:00000408:  currentDeltaBitMapOnCount, 
-dabg: datumstreamblock:00000409:  dsr->logical_row_count, 
-dabg: datumstreamblock:00000410:  dsr->physical_datum_count), 
-dabg: datumstreamblock:00000411:  errOmitLocation(false), 
-dabg: datumstreamblock:00000412:  errdetail_datumstreamblockread(dsr), 
-dabg: datumstreamblock:00000413:  errcontext_datumstreamblockread(dsr))); 
-dabg: datumstreamblock:00000427:  ereport(ERROR, 
-dabg: datumstreamblock:00000428:  (errmsg("NULL bit-map ON count does not match when Dense block does not have RLE_TYPE compression. Found %d, expected %d", 
-dabg: datumstreamblock:00000429:  currentNullOnCount, 
-dabg: datumstreamblock:00000430:  expectedNullOnCount), 
-dabg: datumstreamblock:00000431:  errOmitLocation(false), 
-dabg: datumstreamblock:00000432:  errdetail_datumstreamblockread(dsr), 
-dabg: datumstreamblock:00000433:  errcontext_datumstreamblockread(dsr))); 
+dabg: datumstreamblock:00000379:  ereport(ERROR, 
+dabg: datumstreamblock:00000380:  (errmsg("Nth position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000381:  "(logical row count %d, physical datum count %d)", 
+dabg: datumstreamblock:00000382:  dsr->nth, 
+dabg: datumstreamblock:00000383:  dsr->physical_datum_index, 
+dabg: datumstreamblock:00000384:  dsr->logical_row_count, 
+dabg: datumstreamblock:00000385:  dsr->physical_datum_count), 
+dabg: datumstreamblock:00000386:  errOmitLocation(false), 
+dabg: datumstreamblock:00000387:  errdetail_datumstreamblockread(dsr), 
+dabg: datumstreamblock:00000388:  errcontext_datumstreamblockread(dsr))); 
+dabg: datumstreamblock:00000404:  ereport(ERROR, 
+dabg: datumstreamblock:00000405:  (errmsg("NULL bit-map ON count does not match when Dense block does not have RLE_TYPE compression. Found %d, expected %d", 
+dabg: datumstreamblock:00000406:  currentNullOnCount, 
+dabg: datumstreamblock:00000407:  expectedNullOnCount), 
+dabg: datumstreamblock:00000408:  errOmitLocation(false), 
+dabg: datumstreamblock:00000409:  errdetail_datumstreamblockread(dsr), 
+dabg: datumstreamblock:00000410:  errcontext_datumstreamblockread(dsr))); 
+dabg: datumstreamblock:00000423:  ereport(ERROR, 
+dabg: datumstreamblock:00000424:  (errmsg("COMPRESS bit-map position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000425:  "(logical row count %d, physical datum count %d)", 
+dabg: datumstreamblock:00000426:  currentCompressBitMapPosition, 
+dabg: datumstreamblock:00000427:  dsr->physical_datum_index, 
+dabg: datumstreamblock:00000428:  dsr->logical_row_count, 
+dabg: datumstreamblock:00000429:  dsr->physical_datum_count), 
+dabg: datumstreamblock:00000430:  errOmitLocation(false), 
+dabg: datumstreamblock:00000431:  errdetail_datumstreamblockread(dsr), 
+dabg: datumstreamblock:00000432:  errcontext_datumstreamblockread(dsr))); 
 dabg: datumstreamblock:00000446:  ereport(ERROR, 
-dabg: datumstreamblock:00000447:  (errmsg("COMPRESS bit-map position %d expected to match physical datum index %d + delta ON count %d when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00000448:  "(logical row count %d, physical datum count %d)", 
-dabg: datumstreamblock:00000449:  currentCompressBitMapPosition, 
-dabg: datumstreamblock:00000450:  dsr->physical_datum_index, 
-dabg: datumstreamblock:00000451:  currentDeltaBitMapOnCount, 
-dabg: datumstreamblock:00000452:  dsr->logical_row_count, 
-dabg: datumstreamblock:00000453:  dsr->physical_datum_count), 
-dabg: datumstreamblock:00000454:  errOmitLocation(false), 
-dabg: datumstreamblock:00000455:  errdetail_datumstreamblockread(dsr), 
-dabg: datumstreamblock:00000456:  errcontext_datumstreamblockread(dsr))); 
-dabg: datumstreamblock:00000468:  ereport(ERROR, 
-dabg: datumstreamblock:00000469:  (errmsg("Nth position %d expected to match " 
-dabg: datumstreamblock:00000470:  "current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 " 
-dabg: datumstreamblock:00000471:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00000472:  "(logical row count %d, physical datum count %d)", 
-dabg: datumstreamblock:00000473:  dsr->nth, 
-dabg: datumstreamblock:00000474:  currentCompressBitMapOffCount, 
-dabg: datumstreamblock:00000475:  dsr->rle_total_repeat_items_read, 
-dabg: datumstreamblock:00000476:  dsr->logical_row_count, 
-dabg: datumstreamblock:00000477:  dsr->physical_datum_count), 
-dabg: datumstreamblock:00000478:  errOmitLocation(false), 
-dabg: datumstreamblock:00000479:  errdetail_datumstreamblockread(dsr), 
-dabg: datumstreamblock:00000480:  errcontext_datumstreamblockread(dsr))); 
-dabg: datumstreamblock:00000491:  ereport(ERROR, 
-dabg: datumstreamblock:00000492:  (errmsg("Nth position %d expected to match current NULL bit-map ON count %d + " 
-dabg: datumstreamblock:00000493:  "current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 " 
-dabg: datumstreamblock:00000494:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00000495:  "(logical row count %d, physical datum count %d)", 
-dabg: datumstreamblock:00000496:  dsr->nth, 
-dabg: datumstreamblock:00000497:  currentNullBitMapOnCount, 
-dabg: datumstreamblock:00000498:  currentCompressBitMapOffCount, 
-dabg: datumstreamblock:00000499:  dsr->rle_total_repeat_items_read, 
-dabg: datumstreamblock:00000500:  dsr->logical_row_count, 
-dabg: datumstreamblock:00000501:  dsr->physical_datum_count), 
-dabg: datumstreamblock:00000502:  errOmitLocation(false), 
-dabg: datumstreamblock:00000503:  errdetail_datumstreamblockread(dsr), 
-dabg: datumstreamblock:00000504:  errcontext_datumstreamblockread(dsr))); 
-dabg: datumstreamblock:00000515:  ereport(ERROR, 
-dabg: datumstreamblock:00000516:  (errmsg("DELTA bit-map position %d expected to match physical datum index %d + delta ON count %d " 
-dabg: datumstreamblock:00000517:  "(logical row count %d, physical datum count %d)", 
-dabg: datumstreamblock:00000518:  currentDeltaBitMapPosition, 
-dabg: datumstreamblock:00000519:  dsr->physical_datum_index, 
-dabg: datumstreamblock:00000520:  currentDeltaBitMapOnCount, 
-dabg: datumstreamblock:00000521:  dsr->logical_row_count, 
-dabg: datumstreamblock:00000522:  dsr->physical_datum_count), 
-dabg: datumstreamblock:00000523:  errOmitLocation(false), 
-dabg: datumstreamblock:00000524:  errdetail_datumstreamblockread(dsr), 
-dabg: datumstreamblock:00000525:  errcontext_datumstreamblockread(dsr))); 
-dabg: datumstreamblock:00000536:  elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00000604:  elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00000952:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00000971:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00001013:  ereport(ERROR, 
-dabg: datumstreamblock:00001014:  (errmsg("Nth position %d expected to match physical datum count %d + Delta On count %d when Dense block does not have RLE_TYPE compression and does not have NULLs", 
-dabg: datumstreamblock:00001015:  dsw->nth, 
-dabg: datumstreamblock:00001016:  dsw->physical_datum_count, 
-dabg: datumstreamblock:00001017:  currentDeltaBitMapOnCount), 
-dabg: datumstreamblock:00001018:  errOmitLocation(false), 
-dabg: datumstreamblock:00001019:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001020:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001034:  ereport(ERROR, 
-dabg: datumstreamblock:00001035:  (errmsg("NULL bit-map ON count does not match when Dense block does not have RLE_TYPE compression. Found %d, expected %d", 
-dabg: datumstreamblock:00001036:  currentNullOnCount, 
-dabg: datumstreamblock:00001037:  expectedNullOnCount), 
-dabg: datumstreamblock:00001038:  errOmitLocation(false), 
-dabg: datumstreamblock:00001039:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001040:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001056:  ereport(ERROR, 
-dabg: datumstreamblock:00001057:  (errmsg("COMPRESS bit-map position %d expected to match physical datum count %d - 1 when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00001058:  "(Nth %d)", 
-dabg: datumstreamblock:00001059:  currentCompressBitMapPosition, 
-dabg: datumstreamblock:00001060:  dsw->physical_datum_count, 
-dabg: datumstreamblock:00001061:  dsw->nth), 
-dabg: datumstreamblock:00001062:  errOmitLocation(false), 
-dabg: datumstreamblock:00001063:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001064:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001071:  ereport(ERROR, 
-dabg: datumstreamblock:00001072:  (errmsg("Nth position %d expected to match " 
-dabg: datumstreamblock:00001073:  "current COMPRESS bit-map OFF count %d + total repeat items written %d " 
-dabg: datumstreamblock:00001074:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00001075:  "(physical datum count %d)", 
-dabg: datumstreamblock:00001076:  dsw->nth, 
-dabg: datumstreamblock:00001077:  currentCompressBitMapOffCount, 
-dabg: datumstreamblock:00001078:  dsw->rle_total_repeat_items_written, 
-dabg: datumstreamblock:00001079:  dsw->physical_datum_count), 
-dabg: datumstreamblock:00001080:  errOmitLocation(false), 
-dabg: datumstreamblock:00001081:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001082:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001095:  ereport(ERROR, 
-dabg: datumstreamblock:00001096:  (errmsg("Nth position %d expected to match current NULL bit-map ON count %d + " 
-dabg: datumstreamblock:00001097:  "current COMPRESS bit-map OFF count %d + total repeat items written %d " 
-dabg: datumstreamblock:00001098:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00001099:  "(physical datum count %d)", 
-dabg: datumstreamblock:00001100:  dsw->nth, 
-dabg: datumstreamblock:00001101:  currentNullBitMapOnCount, 
-dabg: datumstreamblock:00001102:  currentCompressBitMapOffCount, 
-dabg: datumstreamblock:00001103:  dsw->rle_total_repeat_items_written, 
-dabg: datumstreamblock:00001104:  dsw->physical_datum_count), 
-dabg: datumstreamblock:00001105:  errOmitLocation(false), 
-dabg: datumstreamblock:00001106:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001107:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001113:  ereport(ERROR, 
-dabg: datumstreamblock:00001114:  (errmsg("Current NULL bit-map count %d expected to match current NULL bit-map ON count %d + " 
-dabg: datumstreamblock:00001115:  "current COMPRESS bit-map count %d " 
-dabg: datumstreamblock:00001116:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00001117:  "(total repeat items written %d, physical datum count %d)", 
-dabg: datumstreamblock:00001118:  currentNullBitMapCount, 
-dabg: datumstreamblock:00001119:  currentNullBitMapOnCount, 
-dabg: datumstreamblock:00001120:  currentCompressBitMapCount, 
-dabg: datumstreamblock:00001121:  dsw->rle_total_repeat_items_written, 
-dabg: datumstreamblock:00001122:  dsw->physical_datum_count), 
-dabg: datumstreamblock:00001123:  errOmitLocation(false), 
-dabg: datumstreamblock:00001124:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001125:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001134:  ereport(ERROR, 
-dabg: datumstreamblock:00001135:  (errmsg("DELTA bit-map position %d expected to match physical datum count %d - 1 + %d Delta On " 
-dabg: datumstreamblock:00001136:  "count, when Dense block does not have RLE_TYPE compression and does not have NULLs " 
-dabg: datumstreamblock:00001137:  "(Nth %d)", 
-dabg: datumstreamblock:00001138:  currentDeltaBitMapPosition, 
-dabg: datumstreamblock:00001139:  dsw->physical_datum_count, 
-dabg: datumstreamblock:00001140:  currentDeltaBitMapOnCount, 
-dabg: datumstreamblock:00001141:  dsw->nth), 
-dabg: datumstreamblock:00001142:  errOmitLocation(false), 
-dabg: datumstreamblock:00001143:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001144:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001151:  ereport(ERROR, 
-dabg: datumstreamblock:00001152:  (errmsg("Current DELTA bit-map count %d expected to match current COMPRESS bit-map count %d " 
-dabg: datumstreamblock:00001153:  "(total repeat items written %d, physical datum count %d)", 
-dabg: datumstreamblock:00001154:  currentDeltaBitMapCount, 
-dabg: datumstreamblock:00001155:  currentCompressBitMapCount, 
-dabg: datumstreamblock:00001156:  dsw->rle_total_repeat_items_written, 
-dabg: datumstreamblock:00001157:  dsw->physical_datum_count), 
-dabg: datumstreamblock:00001158:  errOmitLocation(false), 
-dabg: datumstreamblock:00001159:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001160:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001234:  ereport(FATAL, 
-dabg: datumstreamblock:00001235:  (errmsg("fixed length type has unexpected length %d", 
-dabg: datumstreamblock:00001236:  dsw->typeInfo->datumlen), 
-dabg: datumstreamblock:00001237:  errOmitLocation(false), 
-dabg: datumstreamblock:00001238:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001239:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001293:  ereport(FATAL, 
-dabg: datumstreamblock:00001294:  (errmsg("fixed length type has unexpected length %d", 
-dabg: datumstreamblock:00001295:  dsw->typeInfo->datumlen), 
-dabg: datumstreamblock:00001296:  errOmitLocation(false), 
-dabg: datumstreamblock:00001297:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001298:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00001319:  ereport(ERROR, 
-dabg: datumstreamblock:00001320:  (errmsg("Datum stream write %s block problem growing NULL bit-map buffer " 
-dabg: datumstreamblock:00001321:  "(current logical row count %d, physical datum count %d, " 
-dabg: datumstreamblock:00001322:  "null bit-map count %d, old NULL bit-map count %d)", 
-dabg: datumstreamblock:00001323:  DatumStreamVersion_String(dsw->datumStreamVersion), 
-dabg: datumstreamblock:00001324:  dsw->nth + 1, 
-dabg: datumstreamblock:00001325:  dsw->physical_datum_count, 
-dabg: datumstreamblock:00001326:  DatumStreamBitMapWrite_Count(&dsw->null_bitmap), 
-dabg: datumstreamblock:00001327:  dsw->always_null_bitmap_count), 
-dabg: datumstreamblock:00001328:  errOmitLocation(true), 
-dabg: datumstreamblock:00001329:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00001330:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00002824:  ereport(FATAL, 
-dabg: datumstreamblock:00002825:  (errmsg("Delta Compression maintain, fixed length type has unexpected length %d", 
-dabg: datumstreamblock:00002826:  dsw->typeInfo->datumlen), 
-dabg: datumstreamblock:00002827:  errOmitLocation(false), 
-dabg: datumstreamblock:00002828:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00002829:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00003032:  ereport(FATAL, 
-dabg: datumstreamblock:00003033:  (errmsg("Delta compression fixed length type has unexpected length %d", 
-dabg: datumstreamblock:00003034:  dsw->typeInfo->datumlen), 
-dabg: datumstreamblock:00003035:  errOmitLocation(false), 
-dabg: datumstreamblock:00003036:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00003037:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00003061:  ereport(FATAL, 
-dabg: datumstreamblock:00003062:  (errmsg("Delta Compression fixed length type has unexpected length %d", 
-dabg: datumstreamblock:00003063:  dsw->typeInfo->datumlen), 
-dabg: datumstreamblock:00003064:  errOmitLocation(false), 
-dabg: datumstreamblock:00003065:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00003066:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00003363:  elog(ERROR, "Last data item size %d doesn't match type datum length %d", 
-dabg: datumstreamblock:00003364:  dsw->rle_last_item_size, 
-dabg: datumstreamblock:00003365:  dsw->typeInfo->datumlen); 
-dabg: datumstreamblock:00003396:  ereport(FATAL, 
-dabg: datumstreamblock:00003397:  (errmsg("fixed length type has strange length %d", 
-dabg: datumstreamblock:00003398:  dsw->typeInfo->datumlen), 
-dabg: datumstreamblock:00003399:  errOmitLocation(false), 
-dabg: datumstreamblock:00003400:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00003401:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00003500:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00003524:  ereport(FATAL, 
-dabg: datumstreamblock:00003525:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00003526:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00003527:  errOmitLocation(false), 
-dabg: datumstreamblock:00003528:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00003529:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00003537:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00003546:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00003612:  ereport(FATAL, 
-dabg: datumstreamblock:00003613:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00003614:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00003615:  errOmitLocation(false), 
-dabg: datumstreamblock:00003616:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00003617:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00003986:  ereport(ERROR, 
-dabg: datumstreamblock:00003987:  (errmsg("Formatted datum stream write metasize size different (expected %d, found " INT64_FORMAT ")", 
-dabg: datumstreamblock:00003988:  metadataSize, 
-dabg: datumstreamblock:00003989:  formattedMetadataSize), 
+dabg: datumstreamblock:00000447:  (errmsg("Nth position %d expected to match " 
+dabg: datumstreamblock:00000448:  "current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 " 
+dabg: datumstreamblock:00000449:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000450:  "(logical row count %d, physical datum count %d)", 
+dabg: datumstreamblock:00000451:  dsr->nth, 
+dabg: datumstreamblock:00000452:  currentCompressBitMapOffCount, 
+dabg: datumstreamblock:00000453:  dsr->rle_total_repeat_items_read, 
+dabg: datumstreamblock:00000454:  dsr->logical_row_count, 
+dabg: datumstreamblock:00000455:  dsr->physical_datum_count), 
+dabg: datumstreamblock:00000456:  errOmitLocation(false), 
+dabg: datumstreamblock:00000457:  errdetail_datumstreamblockread(dsr), 
+dabg: datumstreamblock:00000458:  errcontext_datumstreamblockread(dsr))); 
+dabg: datumstreamblock:00000471:  ereport(ERROR, 
+dabg: datumstreamblock:00000472:  (errmsg("Nth position %d expected to match current NULL bit-map ON count %d + " 
+dabg: datumstreamblock:00000473:  "current COMPRESS bit-map OFF count %d + total repeat items read %d - 1 " 
+dabg: datumstreamblock:00000474:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000475:  "(logical row count %d, physical datum count %d)", 
+dabg: datumstreamblock:00000476:  dsr->nth, 
+dabg: datumstreamblock:00000477:  currentNullBitMapOnCount, 
+dabg: datumstreamblock:00000478:  currentCompressBitMapOffCount, 
+dabg: datumstreamblock:00000479:  dsr->rle_total_repeat_items_read, 
+dabg: datumstreamblock:00000480:  dsr->logical_row_count, 
+dabg: datumstreamblock:00000481:  dsr->physical_datum_count), 
+dabg: datumstreamblock:00000482:  errOmitLocation(false), 
+dabg: datumstreamblock:00000483:  errdetail_datumstreamblockread(dsr), 
+dabg: datumstreamblock:00000484:  errcontext_datumstreamblockread(dsr))); 
+dabg: datumstreamblock:00000496:  elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00000553:  elog(FATAL, "DatumStreamBlockRead data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00000800:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00000819:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00000837:  ereport(ERROR, 
+dabg: datumstreamblock:00000838:  (errmsg("Nth position %d expected to match physical datum count %d - 1 when Dense block does not have RLE_TYPE compression and does not have NULLs", 
+dabg: datumstreamblock:00000839:  dsw->nth, 
+dabg: datumstreamblock:00000840:  dsw->physical_datum_count), 
+dabg: datumstreamblock:00000841:  errOmitLocation(false), 
+dabg: datumstreamblock:00000842:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00000843:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00000857:  ereport(ERROR, 
+dabg: datumstreamblock:00000858:  (errmsg("NULL bit-map ON count does not match when Dense block does not have RLE_TYPE compression. Found %d, expected %d", 
+dabg: datumstreamblock:00000859:  currentNullOnCount, 
+dabg: datumstreamblock:00000860:  expectedNullOnCount), 
+dabg: datumstreamblock:00000861:  errOmitLocation(false), 
+dabg: datumstreamblock:00000862:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00000863:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00000877:  ereport(ERROR, 
+dabg: datumstreamblock:00000878:  (errmsg("COMPRESS bit-map position %d expected to match physical datum count %d - 1 when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000879:  "(Nth %d)", 
+dabg: datumstreamblock:00000880:  currentCompressBitMapPosition, 
+dabg: datumstreamblock:00000881:  dsw->physical_datum_count, 
+dabg: datumstreamblock:00000882:  dsw->nth), 
+dabg: datumstreamblock:00000883:  errOmitLocation(false), 
+dabg: datumstreamblock:00000884:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00000885:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00000897:  ereport(ERROR, 
+dabg: datumstreamblock:00000898:  (errmsg("Nth position %d expected to match " 
+dabg: datumstreamblock:00000899:  "current COMPRESS bit-map OFF count %d + total repeat items written %d " 
+dabg: datumstreamblock:00000900:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000901:  "(physical datum count %d)", 
+dabg: datumstreamblock:00000902:  dsw->nth, 
+dabg: datumstreamblock:00000903:  currentCompressBitMapOffCount, 
+dabg: datumstreamblock:00000904:  dsw->rle_total_repeat_items_written, 
+dabg: datumstreamblock:00000905:  dsw->physical_datum_count), 
+dabg: datumstreamblock:00000906:  errOmitLocation(false), 
+dabg: datumstreamblock:00000907:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00000908:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00000921:  ereport(ERROR, 
+dabg: datumstreamblock:00000922:  (errmsg("Nth position %d expected to match current NULL bit-map ON count %d + " 
+dabg: datumstreamblock:00000923:  "current COMPRESS bit-map OFF count %d + total repeat items written %d " 
+dabg: datumstreamblock:00000924:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000925:  "(physical datum count %d)", 
+dabg: datumstreamblock:00000926:  dsw->nth, 
+dabg: datumstreamblock:00000927:  currentNullBitMapOnCount, 
+dabg: datumstreamblock:00000928:  currentCompressBitMapOffCount, 
+dabg: datumstreamblock:00000929:  dsw->rle_total_repeat_items_written, 
+dabg: datumstreamblock:00000930:  dsw->physical_datum_count), 
+dabg: datumstreamblock:00000931:  errOmitLocation(false), 
+dabg: datumstreamblock:00000932:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00000933:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00000939:  ereport(ERROR, 
+dabg: datumstreamblock:00000940:  (errmsg("Current NULL bit-map count %d expected to match current NULL bit-map ON count %d + " 
+dabg: datumstreamblock:00000941:  "current COMPRESS bit-map count %d " 
+dabg: datumstreamblock:00000942:  "when Dense block does not have RLE_TYPE compression and does not have NULLs " 
+dabg: datumstreamblock:00000943:  "(total repeat items written %d, physical datum count %d)", 
+dabg: datumstreamblock:00000944:  currentNullBitMapCount, 
+dabg: datumstreamblock:00000945:  currentNullBitMapOnCount, 
+dabg: datumstreamblock:00000946:  currentCompressBitMapCount, 
+dabg: datumstreamblock:00000947:  dsw->rle_total_repeat_items_written, 
+dabg: datumstreamblock:00000948:  dsw->physical_datum_count), 
+dabg: datumstreamblock:00000949:  errOmitLocation(false), 
+dabg: datumstreamblock:00000950:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00000951:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00001025:  ereport(FATAL, 
+dabg: datumstreamblock:00001026:  (errmsg("fixed length type has unexpected length %d", 
+dabg: datumstreamblock:00001027:  dsw->typeInfo->datumlen), 
+dabg: datumstreamblock:00001028:  errOmitLocation(false), 
+dabg: datumstreamblock:00001029:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00001030:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00001084:  ereport(FATAL, 
+dabg: datumstreamblock:00001085:  (errmsg("fixed length type has unexpected length %d", 
+dabg: datumstreamblock:00001086:  dsw->typeInfo->datumlen), 
+dabg: datumstreamblock:00001087:  errOmitLocation(false), 
+dabg: datumstreamblock:00001088:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00001089:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00001110:  ereport(ERROR, 
+dabg: datumstreamblock:00001111:  (errmsg("Datum stream write %s block problem growing NULL bit-map buffer " 
+dabg: datumstreamblock:00001112:  "(current logical row count %d, physical datum count %d, " 
+dabg: datumstreamblock:00001113:  "null bit-map count %d, old NULL bit-map count %d)", 
+dabg: datumstreamblock:00001114:  DatumStreamVersion_String(dsw->datumStreamVersion), 
+dabg: datumstreamblock:00001115:  dsw->nth + 1, 
+dabg: datumstreamblock:00001116:  dsw->physical_datum_count, 
+dabg: datumstreamblock:00001117:  DatumStreamBitMapWrite_Count(&dsw->null_bitmap), 
+dabg: datumstreamblock:00001118:  dsw->always_null_bitmap_count), 
+dabg: datumstreamblock:00001119:  errOmitLocation(true), 
+dabg: datumstreamblock:00001120:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00001121:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00002514:  elog(ERROR, "Last data item size %d doesn't match type datum length %d", 
+dabg: datumstreamblock:00002515:  dsw->rle_last_item_size, 
+dabg: datumstreamblock:00002516:  dsw->typeInfo->datumlen); 
+dabg: datumstreamblock:00002547:  ereport(FATAL, 
+dabg: datumstreamblock:00002548:  (errmsg("fixed length type has strange length %d", 
+dabg: datumstreamblock:00002549:  dsw->typeInfo->datumlen), 
+dabg: datumstreamblock:00002550:  errOmitLocation(false), 
+dabg: datumstreamblock:00002551:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00002552:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00002632:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00002655:  ereport(FATAL, 
+dabg: datumstreamblock:00002656:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00002657:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00002658:  errOmitLocation(false), 
+dabg: datumstreamblock:00002659:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00002660:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00002668:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00002677:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00002724:  ereport(FATAL, 
+dabg: datumstreamblock:00002725:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00002726:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00002727:  errOmitLocation(false), 
+dabg: datumstreamblock:00002728:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00002729:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00003016:  ereport(ERROR, 
+dabg: datumstreamblock:00003017:  (errmsg("Formatted datum stream write metasize size different (expected %d, found " INT64_FORMAT ")", 
+dabg: datumstreamblock:00003018:  metadataSize, 
+dabg: datumstreamblock:00003019:  formattedMetadataSize), 
+dabg: datumstreamblock:00003020:  errOmitLocation(false), 
+dabg: datumstreamblock:00003021:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00003022:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00003037:  ereport(ERROR, 
+dabg: datumstreamblock:00003038:  (errmsg("Formatted datum stream MAXALIGN metadata size %d + physical datum size %d " 
+dabg: datumstreamblock:00003039:  "(total %d, metadata size %d, header size %d, null size %d, RLE_TYPE size %d) would exceed maximum data blocksize %d)", 
+dabg: datumstreamblock:00003040:  metadataMaxAlignSize, 
+dabg: datumstreamblock:00003041:  dense.physical_data_size, 
+dabg: datumstreamblock:00003042:  metadataMaxAlignSize + dense.physical_data_size, 
+dabg: datumstreamblock:00003043:  metadataSize, 
+dabg: datumstreamblock:00003044:  headerSize, 
+dabg: datumstreamblock:00003045:  nullSize, 
+dabg: datumstreamblock:00003046:  rleSize, 
+dabg: datumstreamblock:00003047:  dsw->maxDataBlockSize), 
+dabg: datumstreamblock:00003048:  errOmitLocation(false), 
+dabg: datumstreamblock:00003049:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00003050:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00003205:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00003216:  ereport(FATAL, 
+dabg: datumstreamblock:00003217:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00003218:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00003219:  errOmitLocation(false), 
+dabg: datumstreamblock:00003220:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00003221:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00003370:  ereport(FATAL, 
+dabg: datumstreamblock:00003371:  (errmsg("Unexpected datum stream version %d", 
+dabg: datumstreamblock:00003372:  dsw->datumStreamVersion), 
+dabg: datumstreamblock:00003373:  errOmitLocation(false), 
+dabg: datumstreamblock:00003374:  errdetail_datumstreamblockwrite(dsw), 
+dabg: datumstreamblock:00003375:  errcontext_datumstreamblockwrite(dsw))); 
+dabg: datumstreamblock:00003389:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
+dabg: datumstreamblock:00003461:  ereport(ERROR, 
+dabg: datumstreamblock:00003462:  (errmsg("Bad datum stream %s variable-length item zero padding byte at offset %d is not zero (begin offset %d, physical item index #%d)", 
+dabg: datumstreamblock:00003463:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003464:  currentOffset, 
+dabg: datumstreamblock:00003465:  saveBeginOffset, 
+dabg: datumstreamblock:00003466:  count), 
+dabg: datumstreamblock:00003467:  errOmitLocation(false), 
+dabg: datumstreamblock:00003468:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003469:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003491:  ereport(ERROR, 
+dabg: datumstreamblock:00003492:  (errmsg("Bad datum stream %s variable-length item at physical offset %d is corrupt (varlena is EXTERNAL, physical item index #%d)", 
+dabg: datumstreamblock:00003493:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003494:  currentOffset, 
+dabg: datumstreamblock:00003495:  count), 
+dabg: datumstreamblock:00003496:  errOmitLocation(false), 
+dabg: datumstreamblock:00003497:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003498:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003512:  ereport(ERROR, 
+dabg: datumstreamblock:00003513:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. SHORT varlena VARSIZE too short (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
+dabg: datumstreamblock:00003514:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003515:  currentOffset, 
+dabg: datumstreamblock:00003516:  varLen, 
+dabg: datumstreamblock:00003517:  remainingSize, 
+dabg: datumstreamblock:00003518:  physicalDataSize, 
+dabg: datumstreamblock:00003519:  count, 
+dabg: datumstreamblock:00003520:  VarlenaInfoToString(p)), 
+dabg: datumstreamblock:00003521:  errOmitLocation(false), 
+dabg: datumstreamblock:00003522:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003523:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003527:  ereport(ERROR, 
+dabg: datumstreamblock:00003528:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. SHORT varlena size bad (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
+dabg: datumstreamblock:00003529:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003530:  currentOffset, 
+dabg: datumstreamblock:00003531:  varLen, 
+dabg: datumstreamblock:00003532:  remainingSize, 
+dabg: datumstreamblock:00003533:  physicalDataSize, 
+dabg: datumstreamblock:00003534:  count, 
+dabg: datumstreamblock:00003535:  VarlenaInfoToString(p)), 
+dabg: datumstreamblock:00003536:  errOmitLocation(false), 
+dabg: datumstreamblock:00003537:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003538:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003545:  ereport(ERROR, 
+dabg: datumstreamblock:00003546:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Remaining length %d too short for regular varlena 4 byte header (physical item index #%d)", 
+dabg: datumstreamblock:00003547:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003548:  currentOffset, 
+dabg: datumstreamblock:00003549:  remainingSize, 
+dabg: datumstreamblock:00003550:  count), 
+dabg: datumstreamblock:00003551:  errOmitLocation(false), 
+dabg: datumstreamblock:00003552:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003553:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003558:  ereport(ERROR, 
+dabg: datumstreamblock:00003559:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Not aligned on at least a 2 byte boundary for regular varlena header (physical item index #%d)", 
+dabg: datumstreamblock:00003560:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003561:  currentOffset, 
+dabg: datumstreamblock:00003562:  count), 
+dabg: datumstreamblock:00003563:  errOmitLocation(false), 
+dabg: datumstreamblock:00003564:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003565:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003572:  ereport(ERROR, 
+dabg: datumstreamblock:00003573:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Regular varlena VARSIZE too short (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
+dabg: datumstreamblock:00003574:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003575:  currentOffset, 
+dabg: datumstreamblock:00003576:  varLen, 
+dabg: datumstreamblock:00003577:  remainingSize, 
+dabg: datumstreamblock:00003578:  physicalDataSize, 
+dabg: datumstreamblock:00003579:  count, 
+dabg: datumstreamblock:00003580:  VarlenaInfoToString(p)), 
+dabg: datumstreamblock:00003581:  errOmitLocation(false), 
+dabg: datumstreamblock:00003582:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003583:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003587:  ereport(ERROR, 
+dabg: datumstreamblock:00003588:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Regular varlena length bad (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
+dabg: datumstreamblock:00003589:  DatumStreamVersion_String(datumStreamVersion), 
+dabg: datumstreamblock:00003590:  currentOffset, 
+dabg: datumstreamblock:00003591:  varLen, 
+dabg: datumstreamblock:00003592:  remainingSize, 
+dabg: datumstreamblock:00003593:  physicalDataSize, 
+dabg: datumstreamblock:00003594:  count, 
+dabg: datumstreamblock:00003595:  VarlenaInfoToString(p)), 
+dabg: datumstreamblock:00003596:  errOmitLocation(false), 
+dabg: datumstreamblock:00003597:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003598:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003639:  ereport(ERROR, 
+dabg: datumstreamblock:00003640:  (errmsg("Bad datum stream Original block header size. Found %d and expected the size to be at least %d", 
+dabg: datumstreamblock:00003641:  bufferSize, 
+dabg: datumstreamblock:00003642:  minHeaderSize), 
+dabg: datumstreamblock:00003643:  errOmitLocation(false), 
+dabg: datumstreamblock:00003644:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003645:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003654:  ereport(ERROR, 
+dabg: datumstreamblock:00003655:  (errmsg("Bad datum stream Original block version. Found %d and expected %d", 
+dabg: datumstreamblock:00003656:  blockOrig->version, 
+dabg: datumstreamblock:00003657:  DatumStreamVersion_Original), 
+dabg: datumstreamblock:00003658:  errOmitLocation(false), 
+dabg: datumstreamblock:00003659:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003660:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003724:  ereport(ERROR, 
+dabg: datumstreamblock:00003725:  (errmsg("Bad datum stream Dense block header size. Found %d and expected the size to be at least %d", 
+dabg: datumstreamblock:00003726:  bufferSize, 
+dabg: datumstreamblock:00003727:  minHeaderSize), 
+dabg: datumstreamblock:00003728:  errOmitLocation(false), 
+dabg: datumstreamblock:00003729:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003730:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003739:  ereport(ERROR, 
+dabg: datumstreamblock:00003740:  (errmsg("Bad datum stream Dense block version. Found %d and expected %d", 
+dabg: datumstreamblock:00003741:  blockDense->orig_4_bytes.version, 
+dabg: datumstreamblock:00003742:  DatumStreamVersion_Dense), 
+dabg: datumstreamblock:00003743:  errOmitLocation(false), 
+dabg: datumstreamblock:00003744:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003745:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003763:  ereport(ERROR, 
+dabg: datumstreamblock:00003764:  (errmsg("Logical row count is negative and is expected to be greater than 0. (%d)", 
+dabg: datumstreamblock:00003765:  blockDense->logical_row_count), 
+dabg: datumstreamblock:00003766:  errOmitLocation(false), 
+dabg: datumstreamblock:00003767:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003768:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003772:  ereport(ERROR, 
+dabg: datumstreamblock:00003773:  (errmsg("Logical row count is zero and is expected to be at greater than 0"), 
+dabg: datumstreamblock:00003774:  errOmitLocation(false), 
+dabg: datumstreamblock:00003775:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003776:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003780:  ereport(ERROR, 
+dabg: datumstreamblock:00003781:  (errmsg("Logical row count does not match expected value (found %d, expected %d)", 
+dabg: datumstreamblock:00003782:  blockDense->logical_row_count, 
+dabg: datumstreamblock:00003783:  expectedRowCount), 
+dabg: datumstreamblock:00003784:  errOmitLocation(false), 
+dabg: datumstreamblock:00003785:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003786:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003794:  ereport(ERROR, 
+dabg: datumstreamblock:00003795:  (errmsg("Physical datum count is negative and is expected to be at least greater than or equal to 0. (%d)", 
+dabg: datumstreamblock:00003796:  blockDense->physical_datum_count), 
+dabg: datumstreamblock:00003797:  errOmitLocation(false), 
+dabg: datumstreamblock:00003798:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003799:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003807:  ereport(ERROR, 
+dabg: datumstreamblock:00003808:  (errmsg("Physical data size is negative and is expected to be at least greater than or equal to 0. (%d)", 
+dabg: datumstreamblock:00003809:  blockDense->physical_data_size), 
+dabg: datumstreamblock:00003810:  errOmitLocation(false), 
+dabg: datumstreamblock:00003811:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003812:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003819:  ereport(ERROR, 
+dabg: datumstreamblock:00003820:  (errmsg("Physical data size is zero and is expected to be at least greater than 0 since physical datum count is %d", 
+dabg: datumstreamblock:00003821:  blockDense->physical_datum_count), 
+dabg: datumstreamblock:00003822:  errOmitLocation(false), 
+dabg: datumstreamblock:00003823:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003824:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003829:  ereport(ERROR, 
+dabg: datumstreamblock:00003830:  (errmsg("Physical data size %d is greater than buffer size %d", 
+dabg: datumstreamblock:00003831:  blockDense->physical_data_size, 
+dabg: datumstreamblock:00003832:  bufferSize), 
+dabg: datumstreamblock:00003833:  errOmitLocation(false), 
+dabg: datumstreamblock:00003834:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003835:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003843:  ereport(ERROR, 
+dabg: datumstreamblock:00003844:  (errmsg("More physical items %d than physical bytes %d", 
+dabg: datumstreamblock:00003845:  blockDense->physical_datum_count, 
+dabg: datumstreamblock:00003846:  blockDense->physical_data_size), 
+dabg: datumstreamblock:00003847:  errOmitLocation(false), 
+dabg: datumstreamblock:00003848:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003849:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003863:  ereport(ERROR, 
+dabg: datumstreamblock:00003864:  (errmsg("Physical size doesn't match calculations for %d count of fixed-size %d items " 
+dabg: datumstreamblock:00003865:  "(found " INT64_FORMAT ", expected %d)", 
+dabg: datumstreamblock:00003866:  blockDense->physical_datum_count, 
+dabg: datumstreamblock:00003867:  typeInfo->datumlen, 
+dabg: datumstreamblock:00003868:  calculatedDataSize, 
+dabg: datumstreamblock:00003869:  blockDense->physical_data_size), 
+dabg: datumstreamblock:00003870:  errOmitLocation(false), 
+dabg: datumstreamblock:00003871:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003872:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003881:  ereport(ERROR, 
+dabg: datumstreamblock:00003882:  (errmsg("Physical data size %d is expected to be at 0 since physical datum count is 0", 
+dabg: datumstreamblock:00003883:  blockDense->physical_data_size), 
+dabg: datumstreamblock:00003884:  errOmitLocation(false), 
+dabg: datumstreamblock:00003885:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003886:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003898:  ereport(ERROR, 
+dabg: datumstreamblock:00003899:  (errmsg("Logical row count expected to match physical datum count when block does not have NULLs " 
+dabg: datumstreamblock:00003900:  "(logical row count %d, physical datum count %d)", 
+dabg: datumstreamblock:00003901:  blockDense->logical_row_count, 
+dabg: datumstreamblock:00003902:  blockDense->physical_datum_count), 
+dabg: datumstreamblock:00003903:  errOmitLocation(false), 
+dabg: datumstreamblock:00003904:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003905:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003922:  ereport(ERROR, 
+dabg: datumstreamblock:00003923:  (errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d", 
+dabg: datumstreamblock:00003924:  alignedHeaderSize, 
+dabg: datumstreamblock:00003925:  bufferSize), 
+dabg: datumstreamblock:00003926:  errOmitLocation(false), 
+dabg: datumstreamblock:00003927:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003928:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003937:  ereport(ERROR, 
+dabg: datumstreamblock:00003938:  (errmsg("NULL bit-map ON count does not match. Found %d, expected %d", 
+dabg: datumstreamblock:00003939:  actualNullOnCount, 
+dabg: datumstreamblock:00003940:  expectedNullOnCount), 
+dabg: datumstreamblock:00003941:  errOmitLocation(false), 
+dabg: datumstreamblock:00003942:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003943:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003972:  ereport(ERROR, 
+dabg: datumstreamblock:00003973:  (errmsg("Bad datum stream RLE_TYPE block header extension size. Found %d and expected the size to be at least %d", 
+dabg: datumstreamblock:00003974:  bufferSize, 
+dabg: datumstreamblock:00003975:  headerSize), 
+dabg: datumstreamblock:00003976:  errOmitLocation(false), 
+dabg: datumstreamblock:00003977:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003978:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003987:  ereport(ERROR, 
+dabg: datumstreamblock:00003988:  (errmsg("RLE_TYPE NULL bit-map count is expected to be 0 when there are no NULLs. (%d)", 
+dabg: datumstreamblock:00003989:  rleExtension->norepeats_null_bitmap_count), 
 dabg: datumstreamblock:00003990:  errOmitLocation(false), 
-dabg: datumstreamblock:00003991:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00003992:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004007:  ereport(ERROR, 
-dabg: datumstreamblock:00004008:  (errmsg("Formatted datum stream MAXALIGN metadata size %d + physical datum size %d " 
-dabg: datumstreamblock:00004009:  "(total %d, metadata size %d, header size %d, null size %d, RLE_TYPE size %d) would exceed maximum data blocksize %d)", 
-dabg: datumstreamblock:00004010:  metadataMaxAlignSize, 
-dabg: datumstreamblock:00004011:  dense.physical_data_size, 
-dabg: datumstreamblock:00004012:  metadataMaxAlignSize + dense.physical_data_size, 
-dabg: datumstreamblock:00004013:  metadataSize, 
-dabg: datumstreamblock:00004014:  headerSize, 
-dabg: datumstreamblock:00004015:  nullSize, 
-dabg: datumstreamblock:00004016:  rleSize, 
-dabg: datumstreamblock:00004017:  dsw->maxDataBlockSize), 
-dabg: datumstreamblock:00004018:  errOmitLocation(false), 
-dabg: datumstreamblock:00004019:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004020:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004192:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00004204:  ereport(FATAL, 
-dabg: datumstreamblock:00004205:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00004206:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00004207:  errOmitLocation(false), 
-dabg: datumstreamblock:00004208:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004209:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004404:  ereport(FATAL, 
-dabg: datumstreamblock:00004405:  (errmsg("Unexpected datum stream version %d", 
-dabg: datumstreamblock:00004406:  dsw->datumStreamVersion), 
-dabg: datumstreamblock:00004407:  errOmitLocation(false), 
-dabg: datumstreamblock:00004408:  errdetail_datumstreamblockwrite(dsw), 
-dabg: datumstreamblock:00004409:  errcontext_datumstreamblockwrite(dsw))); 
-dabg: datumstreamblock:00004423:  elog(FATAL, "DatumStreamBlockWrite data structure not valid (eyecatcher)"); 
-dabg: datumstreamblock:00004504:  ereport(ERROR, 
-dabg: datumstreamblock:00004505:  (errmsg("Bad datum stream %s variable-length item zero padding byte at offset %d is not zero (begin offset %d, physical item index #%d)", 
-dabg: datumstreamblock:00004506:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004507:  currentOffset, 
-dabg: datumstreamblock:00004508:  saveBeginOffset, 
-dabg: datumstreamblock:00004509:  count), 
-dabg: datumstreamblock:00004510:  errOmitLocation(false), 
-dabg: datumstreamblock:00004511:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004512:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004534:  ereport(ERROR, 
-dabg: datumstreamblock:00004535:  (errmsg("Bad datum stream %s variable-length item at physical offset %d is corrupt (varlena is EXTERNAL, physical item index #%d)", 
-dabg: datumstreamblock:00004536:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004537:  currentOffset, 
-dabg: datumstreamblock:00004538:  count), 
-dabg: datumstreamblock:00004539:  errOmitLocation(false), 
-dabg: datumstreamblock:00004540:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004541:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004555:  ereport(ERROR, 
-dabg: datumstreamblock:00004556:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. SHORT varlena VARSIZE too short (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
-dabg: datumstreamblock:00004557:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004558:  currentOffset, 
-dabg: datumstreamblock:00004559:  varLen, 
-dabg: datumstreamblock:00004560:  remainingSize, 
-dabg: datumstreamblock:00004561:  physicalDataSize, 
-dabg: datumstreamblock:00004562:  count, 
-dabg: datumstreamblock:00004563:  VarlenaInfoToString(p)), 
-dabg: datumstreamblock:00004564:  errOmitLocation(false), 
-dabg: datumstreamblock:00004565:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004566:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004570:  ereport(ERROR, 
-dabg: datumstreamblock:00004571:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. SHORT varlena size bad (size %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
-dabg: datumstreamblock:00004572:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004573:  currentOffset, 
-dabg: datumstreamblock:00004574:  varLen, 
-dabg: datumstreamblock:00004575:  remainingSize, 
-dabg: datumstreamblock:00004576:  physicalDataSize, 
-dabg: datumstreamblock:00004577:  count, 
-dabg: datumstreamblock:00004578:  VarlenaInfoToString(p)), 
-dabg: datumstreamblock:00004579:  errOmitLocation(false), 
-dabg: datumstreamblock:00004580:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004581:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004588:  ereport(ERROR, 
-dabg: datumstreamblock:00004589:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Remaining length %d too short for regular varlena 4 byte header (physical item index #%d)", 
-dabg: datumstreamblock:00004590:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004591:  currentOffset, 
-dabg: datumstreamblock:00004592:  remainingSize, 
-dabg: datumstreamblock:00004593:  count), 
-dabg: datumstreamblock:00004594:  errOmitLocation(false), 
-dabg: datumstreamblock:00004595:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004596:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004601:  ereport(ERROR, 
-dabg: datumstreamblock:00004602:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Not aligned on at least a 2 byte boundary for regular varlena header (physical item index #%d)", 
-dabg: datumstreamblock:00004603:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004604:  currentOffset, 
-dabg: datumstreamblock:00004605:  count), 
-dabg: datumstreamblock:00004606:  errOmitLocation(false), 
-dabg: datumstreamblock:00004607:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004608:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004615:  ereport(ERROR, 
-dabg: datumstreamblock:00004616:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Regular varlena VARSIZE too short (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
-dabg: datumstreamblock:00004617:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004618:  currentOffset, 
-dabg: datumstreamblock:00004619:  varLen, 
-dabg: datumstreamblock:00004620:  remainingSize, 
-dabg: datumstreamblock:00004621:  physicalDataSize, 
-dabg: datumstreamblock:00004622:  count, 
-dabg: datumstreamblock:00004623:  VarlenaInfoToString(p)), 
-dabg: datumstreamblock:00004624:  errOmitLocation(false), 
-dabg: datumstreamblock:00004625:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004626:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004630:  ereport(ERROR, 
-dabg: datumstreamblock:00004631:  (errmsg("Bad datum stream %s variable-length item at physical offset %d. Regular varlena length bad (length %d, remaining size %d, physical size %d, physical item index #%d, varlena: %s)", 
-dabg: datumstreamblock:00004632:  DatumStreamVersion_String(datumStreamVersion), 
-dabg: datumstreamblock:00004633:  currentOffset, 
-dabg: datumstreamblock:00004634:  varLen, 
-dabg: datumstreamblock:00004635:  remainingSize, 
-dabg: datumstreamblock:00004636:  physicalDataSize, 
-dabg: datumstreamblock:00004637:  count, 
-dabg: datumstreamblock:00004638:  VarlenaInfoToString(p)), 
-dabg: datumstreamblock:00004639:  errOmitLocation(false), 
-dabg: datumstreamblock:00004640:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004641:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004682:  ereport(ERROR, 
-dabg: datumstreamblock:00004683:  (errmsg("Bad datum stream Original block header size. Found %d and expected the size to be at least %d", 
-dabg: datumstreamblock:00004684:  bufferSize, 
-dabg: datumstreamblock:00004685:  minHeaderSize), 
-dabg: datumstreamblock:00004686:  errOmitLocation(false), 
-dabg: datumstreamblock:00004687:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004688:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004697:  ereport(ERROR, 
-dabg: datumstreamblock:00004698:  (errmsg("Bad datum stream Original block version. Found %d and expected %d", 
-dabg: datumstreamblock:00004699:  blockOrig->version, 
-dabg: datumstreamblock:00004700:  DatumStreamVersion_Original), 
-dabg: datumstreamblock:00004701:  errOmitLocation(false), 
-dabg: datumstreamblock:00004702:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004703:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004764:  ereport(ERROR, 
-dabg: datumstreamblock:00004765:  (errmsg("DELTA bit-map count is negative or 0 and is expected to be greater than 0. (%d)", 
-dabg: datumstreamblock:00004766:  deltaExtension->delta_bitmap_count), 
-dabg: datumstreamblock:00004767:  errOmitLocation(false), 
-dabg: datumstreamblock:00004768:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004769:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004774:  ereport(ERROR, 
-dabg: datumstreamblock:00004775:  (errmsg("DELTA deltas count is negative or 0 and is expected to be greater than 0. (%d)", 
-dabg: datumstreamblock:00004776:  deltaExtension->deltas_count), 
-dabg: datumstreamblock:00004777:  errOmitLocation(false), 
-dabg: datumstreamblock:00004778:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004779:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004784:  ereport(ERROR, 
-dabg: datumstreamblock:00004785:  (errmsg("DELTA deltas size is negative or 0 and is expected to be greater than 0. (%d)", 
-dabg: datumstreamblock:00004786:  deltaExtension->deltas_size), 
-dabg: datumstreamblock:00004787:  errOmitLocation(false), 
-dabg: datumstreamblock:00004788:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004789:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004796:  ereport(ERROR, 
-dabg: datumstreamblock:00004797:  (errmsg("DELTA delta_bitmap count (%d) is expected to equal to RLE_TYPE compress bitmap count (%d)", 
-dabg: datumstreamblock:00004798:  deltaExtension->delta_bitmap_count, 
-dabg: datumstreamblock:00004799:  rleExtension->compress_bitmap_count), 
-dabg: datumstreamblock:00004800:  errOmitLocation(false), 
-dabg: datumstreamblock:00004801:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004802:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004811:  ereport(ERROR, 
-dabg: datumstreamblock:00004812:  (errmsg("Expected RLE_TYPE header with DELTA size %d including NULL bit-map is larger than buffer size %d", 
-dabg: datumstreamblock:00004813:  headerSize, 
-dabg: datumstreamblock:00004814:  bufferSize), 
-dabg: datumstreamblock:00004815:  errOmitLocation(false), 
-dabg: datumstreamblock:00004816:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004817:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004824:  ereport(ERROR, 
-dabg: datumstreamblock:00004825:  (errmsg("DELTA extension header bit-map ON count does not match DELTA bit-map ON count. Found %d, expected %d", 
-dabg: datumstreamblock:00004826:  actualDeltasOnCount, 
-dabg: datumstreamblock:00004827:  deltaExtension->deltas_count), 
-dabg: datumstreamblock:00004828:  errOmitLocation(false), 
-dabg: datumstreamblock:00004829:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004830:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004841:  ereport(ERROR, 
-dabg: datumstreamblock:00004842:  (errmsg("Expected RLE_TYPE DELTA header size %d including deltas size is larger than buffer size %d", 
-dabg: datumstreamblock:00004843:  alignedHeaderSize, 
-dabg: datumstreamblock:00004844:  bufferSize), 
-dabg: datumstreamblock:00004845:  errOmitLocation(false), 
-dabg: datumstreamblock:00004846:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004847:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004866:  ereport(ERROR, 
-dabg: datumstreamblock:00004867:  (errmsg("Bad DELTA type deltas size. Found %d, expected %d", 
-dabg: datumstreamblock:00004868:  totalDeltasSize, 
-dabg: datumstreamblock:00004869:  deltaExtension->deltas_size), 
-dabg: datumstreamblock:00004870:  errOmitLocation(false), 
-dabg: datumstreamblock:00004871:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004872:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004910:  ereport(ERROR, 
-dabg: datumstreamblock:00004911:  (errmsg("Bad datum stream Dense block header size. Found %d and expected the size to be at least %d", 
-dabg: datumstreamblock:00004912:  bufferSize, 
-dabg: datumstreamblock:00004913:  minHeaderSize), 
-dabg: datumstreamblock:00004914:  errOmitLocation(false), 
-dabg: datumstreamblock:00004915:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004916:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004926:  ereport(ERROR, 
-dabg: datumstreamblock:00004927:  (errmsg("Bad datum stream Dense block version. Found %d and expected %d", 
-dabg: datumstreamblock:00004928:  blockDense->orig_4_bytes.version, 
-dabg: datumstreamblock:00004929:  DatumStreamVersion_Dense_Enhanced), 
-dabg: datumstreamblock:00004930:  errOmitLocation(false), 
-dabg: datumstreamblock:00004931:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004932:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004951:  ereport(ERROR, 
-dabg: datumstreamblock:00004952:  (errmsg("Logical row count is negative and is expected to be greater than 0. (%d)", 
-dabg: datumstreamblock:00004953:  blockDense->logical_row_count), 
-dabg: datumstreamblock:00004954:  errOmitLocation(false), 
-dabg: datumstreamblock:00004955:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004956:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004960:  ereport(ERROR, 
-dabg: datumstreamblock:00004961:  (errmsg("Logical row count is zero and is expected to be at greater than 0"), 
-dabg: datumstreamblock:00004962:  errOmitLocation(false), 
-dabg: datumstreamblock:00004963:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004964:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004968:  ereport(ERROR, 
-dabg: datumstreamblock:00004969:  (errmsg("Logical row count does not match expected value (found %d, expected %d)", 
-dabg: datumstreamblock:00004970:  blockDense->logical_row_count, 
-dabg: datumstreamblock:00004971:  expectedRowCount), 
-dabg: datumstreamblock:00004972:  errOmitLocation(false), 
-dabg: datumstreamblock:00004973:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004974:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004982:  ereport(ERROR, 
-dabg: datumstreamblock:00004983:  (errmsg("Physical datum count is negative and is expected to be at least greater than or equal to 0. (%d)", 
-dabg: datumstreamblock:00004984:  blockDense->physical_datum_count), 
-dabg: datumstreamblock:00004985:  errOmitLocation(false), 
-dabg: datumstreamblock:00004986:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00004987:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00004995:  ereport(ERROR, 
-dabg: datumstreamblock:00004996:  (errmsg("Physical data size is negative and is expected to be at least greater than or equal to 0. (%d)", 
-dabg: datumstreamblock:00004997:  blockDense->physical_data_size), 
-dabg: datumstreamblock:00004998:  errOmitLocation(false), 
-dabg: datumstreamblock:00004999:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005000:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005007:  ereport(ERROR, 
-dabg: datumstreamblock:00005008:  (errmsg("Physical data size is zero and is expected to be at least greater than 0 since physical datum count is %d", 
-dabg: datumstreamblock:00005009:  blockDense->physical_datum_count), 
-dabg: datumstreamblock:00005010:  errOmitLocation(false), 
-dabg: datumstreamblock:00005011:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005012:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005017:  ereport(ERROR, 
-dabg: datumstreamblock:00005018:  (errmsg("Physical data size %d is greater than buffer size %d", 
-dabg: datumstreamblock:00005019:  blockDense->physical_data_size, 
-dabg: datumstreamblock:00005020:  bufferSize), 
-dabg: datumstreamblock:00005021:  errOmitLocation(false), 
-dabg: datumstreamblock:00005022:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005023:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005031:  ereport(ERROR, 
-dabg: datumstreamblock:00005032:  (errmsg("More physical items %d than physical bytes %d", 
-dabg: datumstreamblock:00005033:  blockDense->physical_datum_count, 
-dabg: datumstreamblock:00005034:  blockDense->physical_data_size), 
-dabg: datumstreamblock:00005035:  errOmitLocation(false), 
-dabg: datumstreamblock:00005036:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005037:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005051:  ereport(ERROR, 
-dabg: datumstreamblock:00005052:  (errmsg("Physical size doesn't match calculations for %d count of fixed-size %d items " 
-dabg: datumstreamblock:00005053:  "(found " INT64_FORMAT ", expected %d)", 
-dabg: datumstreamblock:00005054:  blockDense->physical_datum_count, 
-dabg: datumstreamblock:00005055:  typeInfo->datumlen, 
-dabg: datumstreamblock:00005056:  calculatedDataSize, 
-dabg: datumstreamblock:00005057:  blockDense->physical_data_size), 
-dabg: datumstreamblock:00005058:  errOmitLocation(false), 
-dabg: datumstreamblock:00005059:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005060:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005069:  ereport(ERROR, 
-dabg: datumstreamblock:00005070:  (errmsg("Physical data size %d is expected to be at 0 since physical datum count is 0", 
-dabg: datumstreamblock:00005071:  blockDense->physical_data_size), 
-dabg: datumstreamblock:00005072:  errOmitLocation(false), 
-dabg: datumstreamblock:00005073:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005074:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005087:  ereport(ERROR, 
-dabg: datumstreamblock:00005088:  (errmsg("Bad datum stream DELTA block header extension size. Found %d and expected the size to be at least %d", 
-dabg: datumstreamblock:00005089:  bufferSize, 
-dabg: datumstreamblock:00005090:  headerSize), 
-dabg: datumstreamblock:00005091:  errOmitLocation(false), 
-dabg: datumstreamblock:00005092:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005093:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005112:  ereport(ERROR, 
-dabg: datumstreamblock:00005113:  (errmsg("Logical row count expected to match physical datum count when block does not have NULLs " 
-dabg: datumstreamblock:00005114:  "(logical row count %d, physical datum count %d + deltaOnCount %d)", 
-dabg: datumstreamblock:00005115:  blockDense->logical_row_count, 
-dabg: datumstreamblock:00005116:  blockDense->physical_datum_count, 
-dabg: datumstreamblock:00005117:  deltaOnCount), 
-dabg: datumstreamblock:00005118:  errOmitLocation(false), 
-dabg: datumstreamblock:00005119:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005120:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005139:  ereport(ERROR, 
-dabg: datumstreamblock:00005140:  (errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d", 
-dabg: datumstreamblock:00005141:  alignedHeaderSize, 
-dabg: datumstreamblock:00005142:  bufferSize), 
-dabg: datumstreamblock:00005143:  errOmitLocation(false), 
-dabg: datumstreamblock:00005144:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005145:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005152:  ereport(ERROR, 
-dabg: datumstreamblock:00005153:  (errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d", 
-dabg: datumstreamblock:00005154:  headerSize, 
-dabg: datumstreamblock:00005155:  bufferSize), 
-dabg: datumstreamblock:00005156:  errOmitLocation(false), 
-dabg: datumstreamblock:00005157:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005158:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005168:  ereport(ERROR, 
-dabg: datumstreamblock:00005169:  (errmsg("NULL bit-map ON count does not match. Found %d, expected %d", 
-dabg: datumstreamblock:00005170:  actualNullOnCount, 
-dabg: datumstreamblock:00005171:  expectedNullOnCount), 
-dabg: datumstreamblock:00005172:  errOmitLocation(false), 
-dabg: datumstreamblock:00005173:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005174:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005203:  ereport(ERROR, 
-dabg: datumstreamblock:00005204:  (errmsg("Bad datum stream RLE_TYPE block header extension size. Found %d and expected the size to be at least %d", 
-dabg: datumstreamblock:00005205:  bufferSize, 
-dabg: datumstreamblock:00005206:  headerSize), 
-dabg: datumstreamblock:00005207:  errOmitLocation(false), 
-dabg: datumstreamblock:00005208:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005209:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005218:  ereport(ERROR, 
-dabg: datumstreamblock:00005219:  (errmsg("RLE_TYPE NULL bit-map count is expected to be 0 when there are no NULLs. (%d)", 
-dabg: datumstreamblock:00005220:  rleExtension->norepeats_null_bitmap_count), 
-dabg: datumstreamblock:00005221:  errOmitLocation(false), 
-dabg: datumstreamblock:00005222:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005223:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005230:  ereport(ERROR, 
-dabg: datumstreamblock:00005231:  (errmsg("RLE_TYPE NULL bit-map count is negative or 0 and is expected to be greater than 0 when there are NULLs. (%d)", 
-dabg: datumstreamblock:00005232:  rleExtension->norepeats_null_bitmap_count), 
-dabg: datumstreamblock:00005233:  errOmitLocation(false), 
-dabg: datumstreamblock:00005234:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005235:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005241:  ereport(ERROR, 
-dabg: datumstreamblock:00005242:  (errmsg("RLE_TYPE COMPRESS bit-map count is negative or 0 and is expected to be greater than 0. (%d)", 
-dabg: datumstreamblock:00005243:  rleExtension->compress_bitmap_count), 
-dabg: datumstreamblock:00005244:  errOmitLocation(false), 
-dabg: datumstreamblock:00005245:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005246:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005251:  ereport(ERROR, 
-dabg: datumstreamblock:00005252:  (errmsg("RLE_TYPE repeats count is negative or 0 and is expected to be greater than 0. (%d)", 
-dabg: datumstreamblock:00005253:  rleExtension->repeatcounts_count), 
-dabg: datumstreamblock:00005254:  errOmitLocation(false), 
-dabg: datumstreamblock:00005255:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005256:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005261:  ereport(ERROR, 
-dabg: datumstreamblock:00005262:  (errmsg("RLE_TYPE repeats size is negative or 0 and is expected to be greater than 0. (%d)", 
-dabg: datumstreamblock:00005263:  rleExtension->repeatcounts_size), 
-dabg: datumstreamblock:00005264:  errOmitLocation(false), 
-dabg: datumstreamblock:00005265:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005266:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005277:  ereport(ERROR, 
-dabg: datumstreamblock:00005278:  (errmsg("Bad datum stream RLE_TYPE DELTA block header extension size. Found %d and expected the size to be at least %d", 
-dabg: datumstreamblock:00005279:  bufferSize, 
-dabg: datumstreamblock:00005280:  headerSize), 
-dabg: datumstreamblock:00005281:  errOmitLocation(false), 
-dabg: datumstreamblock:00005282:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005283:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005303:  ereport(ERROR, 
-dabg: datumstreamblock:00005304:  (errmsg("Bad NULL bit-map size %d with RLE_TYPE compression extension header is larger than buffer size %d", 
-dabg: datumstreamblock:00005305:  headerSize, 
-dabg: datumstreamblock:00005306:  bufferSize), 
-dabg: datumstreamblock:00005307:  errOmitLocation(false), 
-dabg: datumstreamblock:00005308:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005309:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005322:  ereport(ERROR, 
-dabg: datumstreamblock:00005323:  (errmsg("Expected RLE_TYPE header size %d including NULL bit-map is larger than buffer size %d", 
-dabg: datumstreamblock:00005324:  headerSize, 
-dabg: datumstreamblock:00005325:  bufferSize), 
-dabg: datumstreamblock:00005326:  errOmitLocation(false), 
-dabg: datumstreamblock:00005327:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005328:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005335:  ereport(ERROR, 
-dabg: datumstreamblock:00005336:  (errmsg("RLE_TYPE COMPRESS bit-map ON count does not match COMPRESS bit-map ON count. Found %d, expected %d", 
-dabg: datumstreamblock:00005337:  actualCompressOnCount, 
-dabg: datumstreamblock:00005338:  rleExtension->repeatcounts_count), 
-dabg: datumstreamblock:00005339:  errOmitLocation(false), 
-dabg: datumstreamblock:00005340:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005341:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005354:  ereport(ERROR, 
-dabg: datumstreamblock:00005355:  (errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d", 
-dabg: datumstreamblock:00005356:  alignedHeaderSize, 
-dabg: datumstreamblock:00005357:  bufferSize), 
-dabg: datumstreamblock:00005358:  errOmitLocation(false), 
-dabg: datumstreamblock:00005359:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005360:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005367:  ereport(ERROR, 
-dabg: datumstreamblock:00005368:  (errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d", 
-dabg: datumstreamblock:00005369:  headerSize, 
-dabg: datumstreamblock:00005370:  bufferSize), 
-dabg: datumstreamblock:00005371:  errOmitLocation(false), 
-dabg: datumstreamblock:00005372:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005373:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005395:  ereport(ERROR, 
-dabg: datumstreamblock:00005396:  (errmsg("Bad RLE_TYPE repeats count size. Found %d, expected %d", 
-dabg: datumstreamblock:00005397:  totalRepeatCountsSize, 
-dabg: datumstreamblock:00005398:  rleExtension->repeatcounts_size), 
-dabg: datumstreamblock:00005399:  errOmitLocation(false), 
-dabg: datumstreamblock:00005400:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005401:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005414:  ereport(ERROR, 
-dabg: datumstreamblock:00005415:  (errmsg("Logical row count, COMPRESS bit-map count, and total repeat count for RLE_TYPE compression do not add up properly. Found %d, expected %d. " 
-dabg: datumstreamblock:00005416:  "(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)", 
-dabg: datumstreamblock:00005417:  actualNullOnCount, 
-dabg: datumstreamblock:00005418:  expectedNullOnCount, 
-dabg: datumstreamblock:00005419:  blockDense->logical_row_count, 
-dabg: datumstreamblock:00005420:  rleExtension->compress_bitmap_count, 
-dabg: datumstreamblock:00005421:  totalRepeatCount), 
-dabg: datumstreamblock:00005422:  errOmitLocation(false), 
-dabg: datumstreamblock:00005423:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005424:  errcontextCallback(errcontextArg))); 
-dabg: datumstreamblock:00005431:  ereport(ERROR, 
-dabg: datumstreamblock:00005432:  (errmsg("NULL bit-map ON count for RLE_TYPE compression does not match. Found %d, expected %d. " 
-dabg: datumstreamblock:00005433:  "(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)", 
-dabg: datumstreamblock:00005434:  actualNullOnCount, 
-dabg: datumstreamblock:00005435:  expectedNullOnCount, 
-dabg: datumstreamblock:00005436:  blockDense->logical_row_count, 
-dabg: datumstreamblock:00005437:  rleExtension->compress_bitmap_count, 
-dabg: datumstreamblock:00005438:  totalRepeatCount), 
-dabg: datumstreamblock:00005439:  errOmitLocation(false), 
-dabg: datumstreamblock:00005440:  errdetailCallback(errdetailArg), 
-dabg: datumstreamblock:00005441:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003991:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00003992:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00003999:  ereport(ERROR, 
+dabg: datumstreamblock:00004000:  (errmsg("RLE_TYPE NULL bit-map count is negative or 0 and is expected to be greater than 0 when there are NULLs. (%d)", 
+dabg: datumstreamblock:00004001:  rleExtension->norepeats_null_bitmap_count), 
+dabg: datumstreamblock:00004002:  errOmitLocation(false), 
+dabg: datumstreamblock:00004003:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004004:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004010:  ereport(ERROR, 
+dabg: datumstreamblock:00004011:  (errmsg("RLE_TYPE COMPRESS bit-map count is negative or 0 and is expected to be greater than 0. (%d)", 
+dabg: datumstreamblock:00004012:  rleExtension->compress_bitmap_count), 
+dabg: datumstreamblock:00004013:  errOmitLocation(false), 
+dabg: datumstreamblock:00004014:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004015:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004020:  ereport(ERROR, 
+dabg: datumstreamblock:00004021:  (errmsg("RLE_TYPE repeats count is negative or 0 and is expected to be greater than 0. (%d)", 
+dabg: datumstreamblock:00004022:  rleExtension->repeatcounts_count), 
+dabg: datumstreamblock:00004023:  errOmitLocation(false), 
+dabg: datumstreamblock:00004024:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004025:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004030:  ereport(ERROR, 
+dabg: datumstreamblock:00004031:  (errmsg("RLE_TYPE repeats size is negative or 0 and is expected to be greater than 0. (%d)", 
+dabg: datumstreamblock:00004032:  rleExtension->repeatcounts_size), 
+dabg: datumstreamblock:00004033:  errOmitLocation(false), 
+dabg: datumstreamblock:00004034:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004035:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004053:  ereport(ERROR, 
+dabg: datumstreamblock:00004054:  (errmsg("Bad NULL bit-map size %d with RLE_TYPE compression extension header is larger than buffer size %d", 
+dabg: datumstreamblock:00004055:  headerSize, 
+dabg: datumstreamblock:00004056:  bufferSize), 
+dabg: datumstreamblock:00004057:  errOmitLocation(false), 
+dabg: datumstreamblock:00004058:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004059:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004072:  ereport(ERROR, 
+dabg: datumstreamblock:00004073:  (errmsg("Expected RLE_TYPE header size %d including NULL bit-map is larger than buffer size %d", 
+dabg: datumstreamblock:00004074:  headerSize, 
+dabg: datumstreamblock:00004075:  bufferSize), 
+dabg: datumstreamblock:00004076:  errOmitLocation(false), 
+dabg: datumstreamblock:00004077:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004078:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004085:  ereport(ERROR, 
+dabg: datumstreamblock:00004086:  (errmsg("RLE_TYPE COMPRESS bit-map ON count does not match COMPRESS bit-map ON count. Found %d, expected %d", 
+dabg: datumstreamblock:00004087:  actualCompressOnCount, 
+dabg: datumstreamblock:00004088:  rleExtension->repeatcounts_count), 
+dabg: datumstreamblock:00004089:  errOmitLocation(false), 
+dabg: datumstreamblock:00004090:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004091:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004102:  ereport(ERROR, 
+dabg: datumstreamblock:00004103:  (errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d", 
+dabg: datumstreamblock:00004104:  alignedHeaderSize, 
+dabg: datumstreamblock:00004105:  bufferSize), 
+dabg: datumstreamblock:00004106:  errOmitLocation(false), 
+dabg: datumstreamblock:00004107:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004108:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004128:  ereport(ERROR, 
+dabg: datumstreamblock:00004129:  (errmsg("Bad RLE_TYPE repeats count size. Found %d, expected %d", 
+dabg: datumstreamblock:00004130:  totalRepeatCountsSize, 
+dabg: datumstreamblock:00004131:  rleExtension->repeatcounts_size), 
+dabg: datumstreamblock:00004132:  errOmitLocation(false), 
+dabg: datumstreamblock:00004133:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004134:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004147:  ereport(ERROR, 
+dabg: datumstreamblock:00004148:  (errmsg("Logical row count, COMPRESS bit-map count, and total repeat count for RLE_TYPE compression do not add up properly. Found %d, expected %d. " 
+dabg: datumstreamblock:00004149:  "(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)", 
+dabg: datumstreamblock:00004150:  actualNullOnCount, 
+dabg: datumstreamblock:00004151:  expectedNullOnCount, 
+dabg: datumstreamblock:00004152:  blockDense->logical_row_count, 
+dabg: datumstreamblock:00004153:  rleExtension->compress_bitmap_count, 
+dabg: datumstreamblock:00004154:  totalRepeatCount), 
+dabg: datumstreamblock:00004155:  errOmitLocation(false), 
+dabg: datumstreamblock:00004156:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004157:  errcontextCallback(errcontextArg))); 
+dabg: datumstreamblock:00004164:  ereport(ERROR, 
+dabg: datumstreamblock:00004165:  (errmsg("NULL bit-map ON count for RLE_TYPE compression does not match. Found %d, expected %d. " 
+dabg: datumstreamblock:00004166:  "(logical row count %d, COMPRESS bit-map count %d, total repeat count %d)", 
+dabg: datumstreamblock:00004167:  actualNullOnCount, 
+dabg: datumstreamblock:00004168:  expectedNullOnCount, 
+dabg: datumstreamblock:00004169:  blockDense->logical_row_count, 
+dabg: datumstreamblock:00004170:  rleExtension->compress_bitmap_count, 
+dabg: datumstreamblock:00004171:  totalRepeatCount), 
+dabg: datumstreamblock:00004172:  errOmitLocation(false), 
+dabg: datumstreamblock:00004173:  errdetailCallback(errdetailArg), 
+dabg: datumstreamblock:00004174:  errcontextCallback(errcontextArg))); 
 aaaaa GP_IGNORE: eaae: elog - ./backend/utils/error/elog.c
 eaae: elog:00000191:  ereport(ERROR, (errmsg_internal("errstart was not called"))); \ 
 eaae: elog:00000192:  } \ 
@@ -24700,11 +24545,11 @@ aaaaa GP_IGNORE: caai: combocid - ./backend/utils/time/combocid.c
 caai: combocid:00000244:  elog(ERROR, "EntryReader qExec tried to allocate a Combo Command Id"); 
 caai: combocid:00000246:  elog(ERROR, "Reader qExec tried to allocate a Combo Command Id"); 
 caai: combocid:00000350:  elog(ERROR, "getSharedComboCidEntry: NO LOCK HOLDER POINTER."); 
-caai: combocid:00000461:  elog(ERROR, "Combocid map I/O error!"); 
-caai: combocid:00000485:  elog(ERROR, "loadSharedComboCommandId: NO LOCK HOLDER POINTER."); 
-caai: combocid:00000502:  elog(ERROR, "loadSharedComboCommandId: seek to beginning failed."); 
-caai: combocid:00000515:  elog(ERROR, "loadSharedComboCommandId: read failed I/O error."); 
-caai: combocid:00000553:  elog(ERROR, "loadSharedComboCommandId: no combocid entry found for %u/%u", xmin, combocid); 
+caai: combocid:00000476:  elog(ERROR, "Combocid map I/O error!"); 
+caai: combocid:00000501:  elog(ERROR, "loadSharedComboCommandId: NO LOCK HOLDER POINTER."); 
+caai: combocid:00000518:  elog(ERROR, "loadSharedComboCommandId: seek to beginning failed."); 
+caai: combocid:00000531:  elog(ERROR, "loadSharedComboCommandId: read failed I/O error."); 
+caai: combocid:00000569:  elog(ERROR, "loadSharedComboCommandId: no combocid entry found for %u/%u", xmin, combocid); 
 aaaaa GP_IGNORE: taaf: tqual - ./backend/utils/time/tqual.c
 taaf: tqual:00000319:  elog(ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump()); 
 taaf: tqual:00000354:  ereport(FATAL, 
