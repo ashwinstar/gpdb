@@ -792,7 +792,6 @@ void cdbdisp_getStatementStats(CdbDispatchResults *results)
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchResult *resultEnd = cdbdisp_resultEnd(results, -1);
 	PGresult *pgresult;
-	int totalRejected = 0;
 	CdbQEStatementStats *sstats;
 
 	sstats = makeNode(CdbQEStatementStats);
