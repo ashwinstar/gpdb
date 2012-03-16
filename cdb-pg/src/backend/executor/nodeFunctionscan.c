@@ -277,7 +277,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
-		SPIPushMemoryReserved(((Plan *)node)->operatorMemKB * 1024L);
+		SPI_ReserveMemory(((Plan *)node)->operatorMemKB * 1024L);
 	}
 
 	return scanstate;
@@ -329,11 +329,6 @@ ExecEndFunctionScan(FunctionScanState *node)
 	ExecEagerFreeFunctionScan(node);
 
 	EndPlanStateGpmonPkt(&node->ss.ps);
-
-	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-	{
-		SPIPopMemoryReserved();
-	}
 }
 
 /* ----------------------------------------------------------------

@@ -398,9 +398,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 	BackoffStateInit();
 	
-	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
-		SPIInitMemoryReservedStack();
+		SPI_InitMemoryReservation();
 	}
 	
 	/*
