@@ -454,6 +454,7 @@ typedef enum NodeTag
 	
     /* CDB: tags for random other stuff */
     T_CdbExplain_StatHdr = 950,             /* in cdb/cdbexplain.c */
+    T_CdbQEStatementStats,
 } NodeTag;
 
 /*

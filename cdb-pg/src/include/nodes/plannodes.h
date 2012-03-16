@@ -1023,6 +1023,23 @@ typedef struct PlanInvalItem
  */
 	
 
+
+typedef struct CdbQEStatementStats
+{
+	NodeTag		type;
+	int32		segindex;
+	int32		sliceIndex;
+	int32		pad;
+	long utime_sec;
+	long utime_msec;
+	long stime_sec;
+	long stime_msec;
+	long blocksread;
+	long blockswritten;
+} CdbQEStatementStats;
+
+
+
 #endif   /* PLANNODES_H */
 
 

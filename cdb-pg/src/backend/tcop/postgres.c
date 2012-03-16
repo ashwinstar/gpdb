@@ -1308,6 +1308,9 @@ exec_mpp_query(const char *query_string,
 				 Debug_dtm_action, commandTag);
 		}
 		
+		if (save_log_statement_stats)
+			SendUsageToQD();
+
 		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
 		 * one EndCommand report for each raw parsetree, thus one for each SQL
@@ -5334,6 +5337,8 @@ ShowUsage(const char *title)
 					 r.ru_majflt, r.ru_minflt,
 					 r.ru_nswap - Save_r.ru_nswap,
 					 r.ru_nswap);
+#if !defined(__linux__)
+	/* Linux does not support these... But Solaris does */
 	appendStringInfo(&str,
 		 "!\t%ld [%ld] signals rcvd, %ld/%ld [%ld/%ld] messages rcvd/sent\n",
 					 r.ru_nsignals - Save_r.ru_nsignals,
@@ -5341,6 +5346,7 @@ ShowUsage(const char *title)
 					 r.ru_msgrcv - Save_r.ru_msgrcv,
 					 r.ru_msgsnd - Save_r.ru_msgsnd,
 					 r.ru_msgrcv, r.ru_msgsnd);
+#endif
 	appendStringInfo(&str,
 			 "!\t%ld/%ld [%ld/%ld] voluntary/involuntary context switches\n",
 					 r.ru_nvcsw - Save_r.ru_nvcsw,
@@ -5362,6 +5368,54 @@ ShowUsage(const char *title)
 			 errOmitLocation(true)));
 
 	pfree(str.data);
+}
+
+extern void SendUsageToQD(void)
+{
+	struct rusage r;
+	StringInfoData buf;
+	CdbQEStatementStats *sstats;
+
+	sstats = makeNode(CdbQEStatementStats);
+
+	/* Reserve buffer space for the message header. */
+	pq_beginmessage(&buf, 'Y');
+
+	sstats->segindex = Gp_segment;
+	sstats->sliceIndex = currentSliceId;
+
+	getrusage(RUSAGE_SELF, &r);
+
+	/* Avoid negative fractional seconds */
+	if (r.ru_utime.tv_usec < Save_r.ru_utime.tv_usec)
+	{
+		r.ru_utime.tv_sec--;
+		r.ru_utime.tv_usec += 1000000;
+	}
+	if (r.ru_stime.tv_usec < Save_r.ru_stime.tv_usec)
+	{
+		r.ru_stime.tv_sec--;
+		r.ru_stime.tv_usec += 1000000;
+	}
+
+	sstats->utime_sec = r.ru_utime.tv_sec - Save_r.ru_utime.tv_sec;
+	/*
+	 * Round to milliseconds.  Linux doesn't have any better resolution than this with getrusage,
+	 * and even if it did, it's not clear it would be useful.
+	 */
+	sstats->utime_msec = (r.ru_utime.tv_usec - Save_r.ru_utime.tv_usec + 500)/ 1000;
+	sstats->stime_sec = r.ru_stime.tv_sec - Save_r.ru_stime.tv_sec;
+	sstats->stime_msec = (r.ru_stime.tv_usec - Save_r.ru_stime.tv_usec + 500)/ 1000;
+
+	/* Filesystem physical I/Os */
+	sstats->blocksread = r.ru_inblock - Save_r.ru_inblock;
+	sstats->blockswritten = r.ru_oublock - Save_r.ru_oublock;
+
+	appendBinaryStringInfo(&buf, (char *) sstats, sizeof(CdbQEStatementStats));
+
+	/* Send message to qDisp process. */
+	pq_endmessage(&buf);
+
 }
 
 /*

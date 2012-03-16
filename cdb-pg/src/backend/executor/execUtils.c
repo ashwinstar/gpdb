@@ -2048,6 +2048,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 								 estate->es_processed);
 		}
 
+		/* Gather the per-QE per-Slice statement statistics */
+		cdbdisp_getStatementStats(pr);
+
 		/*
 		 * Check and free the results of all gangs. If any QE had an
 		 * error, report it and exit to our error handler via PG_THROW.

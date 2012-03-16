@@ -270,6 +270,9 @@ HTAB *process_aotupcounts(PartitionNode *parts, HTAB *ht,
 void
 cdbdisp_sumRejectedRows(CdbDispatchResults *results);
 
+void
+cdbdisp_getStatementStats(CdbDispatchResults *results);
+
 /*
  * max of the lastOid values returned from the QEs
  */
