@@ -3943,6 +3943,18 @@ caah: cdbdisp:00004461:  (int) pParms->mppDispatchCommandType);
 aaaaa GP_IGNORE: cabh: cdbdispatchresult - ./backend/cdb/cdbdispatchresult.c
 cabh: cdbdispatchresult:00000109:  /* caller is responsible for cleanup -- can't elog(ERROR, ...) from here. */ 
 cabh: cdbdispatchresult:00000110:  return NULL; 
+cabh: cdbdispatchresult:00000819:  elog(NOTICE, 
+cabh: cdbdispatchresult:00000820:  "Segdb %d Slice %d CPU User %ld.%03ld System %ld.%03ld Total %ld.%03ld PhysIO blocks Read %ld blocks written %ld", 
+cabh: cdbdispatchresult:00000821:  sstats->segindex, 
+cabh: cdbdispatchresult:00000822:  sstats->sliceIndex, 
+cabh: cdbdispatchresult:00000823:  sstats->utime_sec, 
+cabh: cdbdispatchresult:00000824:  sstats->utime_msec, 
+cabh: cdbdispatchresult:00000825:  sstats->stime_sec, 
+cabh: cdbdispatchresult:00000826:  sstats->stime_msec, 
+cabh: cdbdispatchresult:00000827:  sstats->utime_sec + sstats->stime_sec + ((sstats->utime_msec + sstats->stime_msec) / 1000), 
+cabh: cdbdispatchresult:00000828:  (sstats->utime_msec + sstats->stime_msec) % 1000, 
+cabh: cdbdispatchresult:00000829:  sstats->blocksread, 
+cabh: cdbdispatchresult:00000830:  sstats->blockswritten); 
 aaaaa GP_IGNORE: cacc: cdbdistributedsnapshot - ./backend/cdb/cdbdistributedsnapshot.c
 cacc: cdbdistributedsnapshot:00000263:  elog(ERROR,"Invalid distributed snapshot (maxCount %d, count %d)", 
 cacc: cdbdistributedsnapshot:00000264:  source->header.maxCount, source->header.count); 
@@ -12030,94 +12042,94 @@ taah: trigger:00000272:  ereport(ERROR,
 taah: trigger:00000273:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
 taah: trigger:00000274:  errmsg("trigger \"%s\" for relation \"%s\" already exists", 
 taah: trigger:00000275:  trigname, stmt->relation->relname))); 
-taah: trigger:00000294:  ereport(WARNING, 
-taah: trigger:00000295:  (errmsg("changing return type of function %s from \"opaque\" to \"trigger\"", 
-taah: trigger:00000296:  NameListToString(stmt->funcname)))); 
-taah: trigger:00000300:  ereport(ERROR, 
-taah: trigger:00000301:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-taah: trigger:00000302:  errmsg("function %s must return type \"trigger\"", 
-taah: trigger:00000303:  NameListToString(stmt->funcname)))); 
-taah: trigger:00000415:  elog(ERROR, "cache lookup failed for relation %u", 
-taah: trigger:00000416:  RelationGetRelid(rel)); 
-taah: trigger:00000504:  ereport(ERROR, 
-taah: trigger:00000505:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00000506:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
-taah: trigger:00000507:  trigname, get_rel_name(relid)))); 
-taah: trigger:00000509:  ereport(NOTICE, 
-taah: trigger:00000510:  (errmsg("trigger \"%s\" for table \"%s\" does not exist, skipping", 
+taah: trigger:00000298:  ereport(WARNING, 
+taah: trigger:00000299:  (errmsg("changing return type of function %s from \"opaque\" to \"trigger\"", 
+taah: trigger:00000300:  NameListToString(stmt->funcname)))); 
+taah: trigger:00000304:  ereport(ERROR, 
+taah: trigger:00000305:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+taah: trigger:00000306:  errmsg("function %s must return type \"trigger\"", 
+taah: trigger:00000307:  NameListToString(stmt->funcname)))); 
+taah: trigger:00000419:  elog(ERROR, "cache lookup failed for relation %u", 
+taah: trigger:00000420:  RelationGetRelid(rel)); 
+taah: trigger:00000508:  ereport(ERROR, 
+taah: trigger:00000509:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00000510:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
 taah: trigger:00000511:  trigname, get_rel_name(relid)))); 
-taah: trigger:00000566:  elog(ERROR, "could not find tuple for trigger %u", trigOid); 
-taah: trigger:00000576:  ereport(ERROR, 
-taah: trigger:00000577:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taah: trigger:00000578:  errmsg("\"%s\" is not a table", 
-taah: trigger:00000579:  RelationGetRelationName(rel)))); 
-taah: trigger:00000582:  ereport(ERROR, 
-taah: trigger:00000583:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taah: trigger:00000584:  errmsg("permission denied: \"%s\" is a system catalog", 
-taah: trigger:00000585:  RelationGetRelationName(rel)))); 
-taah: trigger:00000608:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-taah: trigger:00000612:  elog(ERROR, "relation \"%s\" has reltriggers = 0", 
-taah: trigger:00000613:  RelationGetRelationName(rel)); 
-taah: trigger:00000683:  ereport(ERROR, 
-taah: trigger:00000684:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taah: trigger:00000685:  errmsg("trigger \"%s\" for relation \"%s\" already exists", 
-taah: trigger:00000686:  newname, RelationGetRelationName(targetrel)))); 
-taah: trigger:00000725:  ereport(ERROR, 
-taah: trigger:00000726:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00000727:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
-taah: trigger:00000728:  oldname, RelationGetRelationName(targetrel)))); 
-taah: trigger:00000802:  ereport(ERROR, 
-taah: trigger:00000803:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taah: trigger:00000804:  errmsg("permission denied: \"%s\" is a system trigger", 
-taah: trigger:00000805:  NameStr(oldtrig->tgname)))); 
-taah: trigger:00000834:  ereport(ERROR, 
-taah: trigger:00000835:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00000836:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
-taah: trigger:00000837:  tgname, RelationGetRelationName(rel)))); 
-taah: trigger:00000897:  elog(ERROR, "too many trigger records found for relation \"%s\"", 
-taah: trigger:00000898:  RelationGetRelationName(relation)); 
-taah: trigger:00000933:  elog(ERROR, "tgargs is null in trigger for relation \"%s\"", 
-taah: trigger:00000934:  RelationGetRelationName(relation)); 
-taah: trigger:00000953:  elog(ERROR, "%d trigger record(s) not found for relation \"%s\"", 
-taah: trigger:00000954:  ntrigs - found, 
-taah: trigger:00000955:  RelationGetRelationName(relation)); 
-taah: trigger:00001327:  ereport(ERROR, 
-taah: trigger:00001328:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001329:  errmsg("trigger function %u returned null value", 
-taah: trigger:00001330:  fcinfo.flinfo->fn_oid))); 
-taah: trigger:00001385:  ereport(ERROR, 
-taah: trigger:00001386:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001387:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
-taah: trigger:00001451:  elog(ERROR, "Trigger is not supported on AOCS yet"); 
-taah: trigger:00001501:  ereport(ERROR, 
-taah: trigger:00001502:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001503:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
-taah: trigger:00001632:  ereport(ERROR, 
-taah: trigger:00001633:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001634:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
-taah: trigger:00001765:  ereport(ERROR, 
-taah: trigger:00001766:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-taah: trigger:00001767:  errmsg("could not serialize access due to concurrent update"))); 
-taah: trigger:00001794:  elog(ERROR, "unrecognized heap_lock_tuple status: %u", test); 
-taah: trigger:00002117:  elog(ERROR, "could not find trigger %u", tgoid); 
-taah: trigger:00002138:  elog(ERROR, "failed to fetch old tuple for AFTER trigger"); 
-taah: trigger:00002147:  elog(ERROR, "failed to fetch new tuple for AFTER trigger"); 
-taah: trigger:00002406:  elog(ERROR, "relation %u has no triggers", 
-taah: trigger:00002407:  event->ate_relid); 
-taah: trigger:00003040:  ereport(ERROR, 
-taah: trigger:00003041:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taah: trigger:00003042:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
-taah: trigger:00003043:  constraint->catalogname, constraint->schemaname, 
-taah: trigger:00003044:  constraint->relname))); 
-taah: trigger:00003134:  ereport(ERROR, 
-taah: trigger:00003135:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taah: trigger:00003136:  errmsg("constraint \"%s\" is not deferrable", 
-taah: trigger:00003137:  constraint->relname))); 
-taah: trigger:00003160:  ereport(ERROR, 
-taah: trigger:00003161:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00003162:  errmsg("constraint \"%s\" does not exist", 
-taah: trigger:00003163:  constraint->relname))); 
-taah: trigger:00003319:  elog(ERROR, "AfterTriggerSaveEvent() called outside of transaction"); 
+taah: trigger:00000513:  ereport(NOTICE, 
+taah: trigger:00000514:  (errmsg("trigger \"%s\" for table \"%s\" does not exist, skipping", 
+taah: trigger:00000515:  trigname, get_rel_name(relid)))); 
+taah: trigger:00000570:  elog(ERROR, "could not find tuple for trigger %u", trigOid); 
+taah: trigger:00000580:  ereport(ERROR, 
+taah: trigger:00000581:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taah: trigger:00000582:  errmsg("\"%s\" is not a table", 
+taah: trigger:00000583:  RelationGetRelationName(rel)))); 
+taah: trigger:00000586:  ereport(ERROR, 
+taah: trigger:00000587:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taah: trigger:00000588:  errmsg("permission denied: \"%s\" is a system catalog", 
+taah: trigger:00000589:  RelationGetRelationName(rel)))); 
+taah: trigger:00000612:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+taah: trigger:00000616:  elog(ERROR, "relation \"%s\" has reltriggers = 0", 
+taah: trigger:00000617:  RelationGetRelationName(rel)); 
+taah: trigger:00000687:  ereport(ERROR, 
+taah: trigger:00000688:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taah: trigger:00000689:  errmsg("trigger \"%s\" for relation \"%s\" already exists", 
+taah: trigger:00000690:  newname, RelationGetRelationName(targetrel)))); 
+taah: trigger:00000729:  ereport(ERROR, 
+taah: trigger:00000730:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00000731:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
+taah: trigger:00000732:  oldname, RelationGetRelationName(targetrel)))); 
+taah: trigger:00000806:  ereport(ERROR, 
+taah: trigger:00000807:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taah: trigger:00000808:  errmsg("permission denied: \"%s\" is a system trigger", 
+taah: trigger:00000809:  NameStr(oldtrig->tgname)))); 
+taah: trigger:00000838:  ereport(ERROR, 
+taah: trigger:00000839:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00000840:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
+taah: trigger:00000841:  tgname, RelationGetRelationName(rel)))); 
+taah: trigger:00000901:  elog(ERROR, "too many trigger records found for relation \"%s\"", 
+taah: trigger:00000902:  RelationGetRelationName(relation)); 
+taah: trigger:00000937:  elog(ERROR, "tgargs is null in trigger for relation \"%s\"", 
+taah: trigger:00000938:  RelationGetRelationName(relation)); 
+taah: trigger:00000957:  elog(ERROR, "%d trigger record(s) not found for relation \"%s\"", 
+taah: trigger:00000958:  ntrigs - found, 
+taah: trigger:00000959:  RelationGetRelationName(relation)); 
+taah: trigger:00001331:  ereport(ERROR, 
+taah: trigger:00001332:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001333:  errmsg("trigger function %u returned null value", 
+taah: trigger:00001334:  fcinfo.flinfo->fn_oid))); 
+taah: trigger:00001389:  ereport(ERROR, 
+taah: trigger:00001390:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001391:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
+taah: trigger:00001455:  elog(ERROR, "Trigger is not supported on AOCS yet"); 
+taah: trigger:00001505:  ereport(ERROR, 
+taah: trigger:00001506:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001507:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
+taah: trigger:00001636:  ereport(ERROR, 
+taah: trigger:00001637:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001638:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
+taah: trigger:00001769:  ereport(ERROR, 
+taah: trigger:00001770:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+taah: trigger:00001771:  errmsg("could not serialize access due to concurrent update"))); 
+taah: trigger:00001798:  elog(ERROR, "unrecognized heap_lock_tuple status: %u", test); 
+taah: trigger:00002121:  elog(ERROR, "could not find trigger %u", tgoid); 
+taah: trigger:00002142:  elog(ERROR, "failed to fetch old tuple for AFTER trigger"); 
+taah: trigger:00002151:  elog(ERROR, "failed to fetch new tuple for AFTER trigger"); 
+taah: trigger:00002410:  elog(ERROR, "relation %u has no triggers", 
+taah: trigger:00002411:  event->ate_relid); 
+taah: trigger:00003044:  ereport(ERROR, 
+taah: trigger:00003045:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taah: trigger:00003046:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
+taah: trigger:00003047:  constraint->catalogname, constraint->schemaname, 
+taah: trigger:00003048:  constraint->relname))); 
+taah: trigger:00003138:  ereport(ERROR, 
+taah: trigger:00003139:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taah: trigger:00003140:  errmsg("constraint \"%s\" is not deferrable", 
+taah: trigger:00003141:  constraint->relname))); 
+taah: trigger:00003164:  ereport(ERROR, 
+taah: trigger:00003165:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00003166:  errmsg("constraint \"%s\" does not exist", 
+taah: trigger:00003167:  constraint->relname))); 
+taah: trigger:00003323:  elog(ERROR, "AfterTriggerSaveEvent() called outside of transaction"); 
 aaaaa GP_IGNORE: taai: typecmds - ./backend/commands/typecmds.c
 taai: typecmds:00000142:  ereport(ERROR, 
 taai: typecmds:00000143:  (errcode(ERRCODE_INVALID_NAME), 
@@ -13261,7 +13273,7 @@ aaaaa GP_IGNORE: eaba: exectuples - ./backend/executor/execTuples.c
 eaba: exectuples:00000312:  elog(ERROR, "plan requires more slots than are available"); 
 eaba: exectuples:00001501:  elog(ERROR, "Invalid attnum: %d", attnum); 
 aaaaa GP_IGNORE: eaaj: executils - ./backend/executor/execUtils.c
-eaaj: executils:00002350:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eaaj: executils:00002353:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 aaaaa GP_IGNORE: faaj: functions - ./backend/executor/functions.c
 faaj: functions:00000133:  elog(ERROR, "function cannot execute on segment because it issues a non-SELECT statement"); 
 faaj: functions:00000151:  elog(ERROR, "function cannot execute on segment because it accesses relation \"%s.%s\"", 
@@ -18475,20 +18487,20 @@ aaaaa GP_IGNORE: paae: proc - ./backend/storage/lmgr/proc.c
 paae: proc:00000181:  ereport(FATAL, 
 paae: proc:00000182:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 paae: proc:00000183:  errmsg("out of shared memory"))); 
-paae: proc:00000313:  elog(ERROR, "you already exist"); 
-paae: proc:00000319:  ereport(FATAL, 
-paae: proc:00000320:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-paae: proc:00000321:  errmsg("sorry, too many clients already"))); 
-paae: proc:00000474:  elog(ERROR, "you already exist"); 
-paae: proc:00000493:  elog(FATAL, "all AuxiliaryProcs are in use"); 
-paae: proc:00000982:  elog(FATAL, "could not set timer for process wakeup"); 
-paae: proc:00001010:  elog(FATAL, "could not disable timer for process wakeup"); 
-paae: proc:00001615:  ereport(ERROR, 
-paae: proc:00001616:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED), 
-paae: proc:00001617:  errmsg("deadlock detected, locking against self"), 
-paae: proc:00001618:  errOmitLocation(true))); 
-paae: proc:00001625:  elog(FATAL, "could not set timer for (resource lock) process wakeup"); 
-paae: proc:00001633:  elog(FATAL, "could not disable timer for (resource lock) process wakeup"); 
+paae: proc:00000319:  elog(ERROR, "you already exist"); 
+paae: proc:00000325:  ereport(FATAL, 
+paae: proc:00000326:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paae: proc:00000327:  errmsg("sorry, too many clients already"))); 
+paae: proc:00000481:  elog(ERROR, "you already exist"); 
+paae: proc:00000500:  elog(FATAL, "all AuxiliaryProcs are in use"); 
+paae: proc:00000990:  elog(FATAL, "could not set timer for process wakeup"); 
+paae: proc:00001018:  elog(FATAL, "could not disable timer for process wakeup"); 
+paae: proc:00001623:  ereport(ERROR, 
+paae: proc:00001624:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED), 
+paae: proc:00001625:  errmsg("deadlock detected, locking against self"), 
+paae: proc:00001626:  errOmitLocation(true))); 
+paae: proc:00001633:  elog(FATAL, "could not set timer for (resource lock) process wakeup"); 
+paae: proc:00001641:  elog(FATAL, "could not disable timer for (resource lock) process wakeup"); 
 aaaaa GP_IGNORE: saae: spin - ./backend/storage/lmgr/spin.c
 saae: spin:00000083:  elog(ERROR, "spin.c does not support S_LOCK_FREE()"); 
 aaaaa GP_IGNORE: baah: bufpage - ./backend/storage/page/bufpage.c
@@ -18780,175 +18792,175 @@ paai: postgres:00001220:  errmsg("current transaction is aborted, "
 paai: postgres:00001221:  "commands ignored until end of transaction block"))); 
 paai: postgres:00001307:  elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s", 
 paai: postgres:00001308:  Debug_dtm_action, commandTag); 
-paai: postgres:00001400:  elog(ERROR,"Raise ERROR for debug_dtm_action = %d, debug_dtm_action_protocol = %s", 
-paai: postgres:00001401:  Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand)); 
-paai: postgres:00001420:  elog(ERROR,"Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s", 
-paai: postgres:00001421:  Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand)); 
-paai: postgres:00001470:  elog(NOTICE, "running query (sessionId, commandId): (%d, %d)", 
-paai: postgres:00001471:  MyProc->mppSessionId, gp_command_count); 
-paai: postgres:00001584:  elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s", 
-paai: postgres:00001585:  Debug_dtm_action, commandTag); 
-paai: postgres:00001610:  ereport(ERROR, 
-paai: postgres:00001611:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
-paai: postgres:00001612:  errmsg("current transaction is aborted, " 
-paai: postgres:00001613:  "commands ignored until end of transaction block"), 
-paai: postgres:00001614:  errOmitLocation(true))); 
-paai: postgres:00001754:  elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s", 
-paai: postgres:00001755:  Debug_dtm_action, commandTag); 
-paai: postgres:00001906:  ereport(ERROR, 
-paai: postgres:00001907:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00001908:  errmsg("cannot insert multiple commands into a prepared statement"))); 
-paai: postgres:00001931:  ereport(ERROR, 
-paai: postgres:00001932:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
-paai: postgres:00001933:  errmsg("current transaction is aborted, " 
-paai: postgres:00001934:  "commands ignored until end of transaction block"))); 
-paai: postgres:00001968:  ereport(ERROR, 
-paai: postgres:00001969:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
-paai: postgres:00001970:  errmsg("could not determine data type of parameter $%d", 
-paai: postgres:00001971:  i + 1))); 
-paai: postgres:00002136:  ereport(ERROR, 
-paai: postgres:00002137:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
-paai: postgres:00002138:  errmsg("unnamed prepared statement does not exist"))); 
-paai: postgres:00002178:  ereport(ERROR, 
-paai: postgres:00002179:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00002180:  errmsg("bind message has %d parameter formats but %d parameters", 
-paai: postgres:00002181:  numPFormats, numParams))); 
-paai: postgres:00002184:  ereport(ERROR, 
-paai: postgres:00002185:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00002186:  errmsg("bind message supplies %d parameters, but prepared statement \"%s\" requires %d", 
-paai: postgres:00002187:  numParams, stmt_name, list_length(pstmt->argtype_list)))); 
-paai: postgres:00002200:  ereport(ERROR, 
-paai: postgres:00002201:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
-paai: postgres:00002202:  errmsg("current transaction is aborted, " 
-paai: postgres:00002203:  "commands ignored until end of transaction block"))); 
-paai: postgres:00002331:  ereport(ERROR, 
-paai: postgres:00002332:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
-paai: postgres:00002333:  errmsg("incorrect binary data format in bind parameter %d", 
-paai: postgres:00002334:  paramno + 1))); 
-paai: postgres:00002338:  ereport(ERROR, 
-paai: postgres:00002339:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00002340:  errmsg("unsupported format code: %d", 
-paai: postgres:00002341:  pformat))); 
-paai: postgres:00002500:  elog(NOTICE, "running query (sessionId, commandId): (%d, %d)", 
-paai: postgres:00002501:  MyProc->mppSessionId, gp_command_count); 
-paai: postgres:00002513:  ereport(ERROR, 
-paai: postgres:00002514:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
-paai: postgres:00002515:  errmsg("portal \"%s\" does not exist", portal_name))); 
-paai: postgres:00002619:  ereport(ERROR, 
-paai: postgres:00002620:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
-paai: postgres:00002621:  errmsg("current transaction is aborted, " 
-paai: postgres:00002622:  "commands ignored until end of transaction block"))); 
-paai: postgres:00002915:  ereport(ERROR, 
-paai: postgres:00002916:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
-paai: postgres:00002917:  errmsg("unnamed prepared statement does not exist"))); 
-paai: postgres:00002931:  ereport(ERROR, 
-paai: postgres:00002932:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
-paai: postgres:00002933:  errmsg("current transaction is aborted, " 
-paai: postgres:00002934:  "commands ignored until end of transaction block"))); 
-paai: postgres:00002987:  ereport(ERROR, 
-paai: postgres:00002988:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
-paai: postgres:00002989:  errmsg("portal \"%s\" does not exist", portal_name))); 
-paai: postgres:00003001:  ereport(ERROR, 
-paai: postgres:00003002:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
-paai: postgres:00003003:  errmsg("current transaction is aborted, " 
-paai: postgres:00003004:  "commands ignored until end of transaction block"))); 
-paai: postgres:00003401:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-paai: postgres:00003402:  errFatalReturn(gp_reraise_signal), 
-paai: postgres:00003403:  errOmitLocation(true), 
-paai: postgres:00003404:  errmsg("Unexpected internal error: %s received signal %s", 
-paai: postgres:00003405:  processName, signame), 
-paai: postgres:00003406:  errdetail("(interrupt holdoff count %d, critical section count %d)", 
-paai: postgres:00003407:  InterruptHoldoffCount, CritSectionCount))); 
-paai: postgres:00003438:  ereport(ERROR, 
-paai: postgres:00003439:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
-paai: postgres:00003440:  errmsg("floating-point exception"), 
-paai: postgres:00003441:  errdetail("An invalid floating-point operation was signaled. " 
-paai: postgres:00003442:  "This probably means an out-of-range result or an " 
-paai: postgres:00003443:  "invalid operation, such as division by zero."))); 
-paai: postgres:00003500:  ereport(FATAL, 
-paai: postgres:00003501:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
-paai: postgres:00003502:  errmsg("terminating connection due to administrator command"), 
-paai: postgres:00003503:  errSendAlert(false))); 
-paai: postgres:00003515:  ereport(ERROR, 
-paai: postgres:00003516:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
-paai: postgres:00003517:  errmsg("canceling MPP operation"))); 
-paai: postgres:00003519:  ereport(ERROR, 
-paai: postgres:00003520:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003521:  errmsg("canceling statement due to statement timeout"))); 
-paai: postgres:00003523:  ereport(ERROR, 
-paai: postgres:00003524:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003525:  errmsg("canceling statement due to user request"))); 
-paai: postgres:00003606:  ereport(ERROR, 
-paai: postgres:00003607:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
-paai: postgres:00003608:  errmsg("stack depth limit exceeded"), 
-paai: postgres:00003609:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
-paai: postgres:00003610:  "after ensuring the platform's stack depth limit is adequate."))); 
-paai: postgres:00003802:  elog(FATAL, "%s: could not locate my own executable path", 
-paai: postgres:00003803:  argv[0]); 
-paai: postgres:00004045:  ereport(ERROR, 
-paai: postgres:00004046:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004047:  errmsg("--%s requires a value", 
-paai: postgres:00004048:  optarg))); 
-paai: postgres:00004050:  ereport(ERROR, 
-paai: postgres:00004051:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004052:  errmsg("-c %s requires a value", 
-paai: postgres:00004053:  optarg))); 
-paai: postgres:00004093:  ereport(FATAL, 
-paai: postgres:00004094:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00004095:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004213:  ereport(FATAL, 
-paai: postgres:00004214:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004215:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004216:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004226:  ereport(FATAL, 
-paai: postgres:00004227:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004228:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004229:  argv[0]), 
-paai: postgres:00004230:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004236:  ereport(FATAL, 
-paai: postgres:00004237:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004238:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004239:  argv[0]))); 
-paai: postgres:00004620:  elog(FATAL, "could not set timer for client wait timeout"); 
-paai: postgres:00005075:  ereport(ERROR, 
-paai: postgres:00005076:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005077:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00005078:  close_type))); 
-paai: postgres:00005112:  ereport(ERROR, 
-paai: postgres:00005113:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005114:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005115:  describe_type))); 
-paai: postgres:00005169:  ereport(FATAL, 
-paai: postgres:00005170:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005171:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005172:  firstchar,firstchar))); 
-paai: postgres:00005467:  elog(FATAL, "%s: could not locate my own executable path", 
-paai: postgres:00005468:  argv[0]); 
-paai: postgres:00005673:  ereport(ERROR, 
-paai: postgres:00005674:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005675:  errmsg("--%s requires a value", 
-paai: postgres:00005676:  optarg))); 
-paai: postgres:00005678:  ereport(ERROR, 
-paai: postgres:00005679:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005680:  errmsg("-c %s requires a value", 
-paai: postgres:00005681:  optarg))); 
-paai: postgres:00005794:  ereport(FATAL, 
-paai: postgres:00005795:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005796:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005797:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005808:  ereport(FATAL, 
-paai: postgres:00005809:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005810:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005811:  argv[0]), 
-paai: postgres:00005812:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005818:  ereport(FATAL, 
-paai: postgres:00005819:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005820:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005821:  argv[0]))); 
-paai: postgres:00006144:  ereport(FATAL, 
-paai: postgres:00006145:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006146:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006147:  firstchar))); 
+paai: postgres:00001403:  elog(ERROR,"Raise ERROR for debug_dtm_action = %d, debug_dtm_action_protocol = %s", 
+paai: postgres:00001404:  Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand)); 
+paai: postgres:00001423:  elog(ERROR,"Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s", 
+paai: postgres:00001424:  Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand)); 
+paai: postgres:00001473:  elog(NOTICE, "running query (sessionId, commandId): (%d, %d)", 
+paai: postgres:00001474:  MyProc->mppSessionId, gp_command_count); 
+paai: postgres:00001587:  elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s", 
+paai: postgres:00001588:  Debug_dtm_action, commandTag); 
+paai: postgres:00001613:  ereport(ERROR, 
+paai: postgres:00001614:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+paai: postgres:00001615:  errmsg("current transaction is aborted, " 
+paai: postgres:00001616:  "commands ignored until end of transaction block"), 
+paai: postgres:00001617:  errOmitLocation(true))); 
+paai: postgres:00001757:  elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s", 
+paai: postgres:00001758:  Debug_dtm_action, commandTag); 
+paai: postgres:00001909:  ereport(ERROR, 
+paai: postgres:00001910:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00001911:  errmsg("cannot insert multiple commands into a prepared statement"))); 
+paai: postgres:00001934:  ereport(ERROR, 
+paai: postgres:00001935:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+paai: postgres:00001936:  errmsg("current transaction is aborted, " 
+paai: postgres:00001937:  "commands ignored until end of transaction block"))); 
+paai: postgres:00001971:  ereport(ERROR, 
+paai: postgres:00001972:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+paai: postgres:00001973:  errmsg("could not determine data type of parameter $%d", 
+paai: postgres:00001974:  i + 1))); 
+paai: postgres:00002139:  ereport(ERROR, 
+paai: postgres:00002140:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+paai: postgres:00002141:  errmsg("unnamed prepared statement does not exist"))); 
+paai: postgres:00002181:  ereport(ERROR, 
+paai: postgres:00002182:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00002183:  errmsg("bind message has %d parameter formats but %d parameters", 
+paai: postgres:00002184:  numPFormats, numParams))); 
+paai: postgres:00002187:  ereport(ERROR, 
+paai: postgres:00002188:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00002189:  errmsg("bind message supplies %d parameters, but prepared statement \"%s\" requires %d", 
+paai: postgres:00002190:  numParams, stmt_name, list_length(pstmt->argtype_list)))); 
+paai: postgres:00002203:  ereport(ERROR, 
+paai: postgres:00002204:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+paai: postgres:00002205:  errmsg("current transaction is aborted, " 
+paai: postgres:00002206:  "commands ignored until end of transaction block"))); 
+paai: postgres:00002334:  ereport(ERROR, 
+paai: postgres:00002335:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+paai: postgres:00002336:  errmsg("incorrect binary data format in bind parameter %d", 
+paai: postgres:00002337:  paramno + 1))); 
+paai: postgres:00002341:  ereport(ERROR, 
+paai: postgres:00002342:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00002343:  errmsg("unsupported format code: %d", 
+paai: postgres:00002344:  pformat))); 
+paai: postgres:00002503:  elog(NOTICE, "running query (sessionId, commandId): (%d, %d)", 
+paai: postgres:00002504:  MyProc->mppSessionId, gp_command_count); 
+paai: postgres:00002516:  ereport(ERROR, 
+paai: postgres:00002517:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
+paai: postgres:00002518:  errmsg("portal \"%s\" does not exist", portal_name))); 
+paai: postgres:00002622:  ereport(ERROR, 
+paai: postgres:00002623:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+paai: postgres:00002624:  errmsg("current transaction is aborted, " 
+paai: postgres:00002625:  "commands ignored until end of transaction block"))); 
+paai: postgres:00002918:  ereport(ERROR, 
+paai: postgres:00002919:  (errcode(ERRCODE_UNDEFINED_PSTATEMENT), 
+paai: postgres:00002920:  errmsg("unnamed prepared statement does not exist"))); 
+paai: postgres:00002934:  ereport(ERROR, 
+paai: postgres:00002935:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+paai: postgres:00002936:  errmsg("current transaction is aborted, " 
+paai: postgres:00002937:  "commands ignored until end of transaction block"))); 
+paai: postgres:00002990:  ereport(ERROR, 
+paai: postgres:00002991:  (errcode(ERRCODE_UNDEFINED_CURSOR), 
+paai: postgres:00002992:  errmsg("portal \"%s\" does not exist", portal_name))); 
+paai: postgres:00003004:  ereport(ERROR, 
+paai: postgres:00003005:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
+paai: postgres:00003006:  errmsg("current transaction is aborted, " 
+paai: postgres:00003007:  "commands ignored until end of transaction block"))); 
+paai: postgres:00003404:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+paai: postgres:00003405:  errFatalReturn(gp_reraise_signal), 
+paai: postgres:00003406:  errOmitLocation(true), 
+paai: postgres:00003407:  errmsg("Unexpected internal error: %s received signal %s", 
+paai: postgres:00003408:  processName, signame), 
+paai: postgres:00003409:  errdetail("(interrupt holdoff count %d, critical section count %d)", 
+paai: postgres:00003410:  InterruptHoldoffCount, CritSectionCount))); 
+paai: postgres:00003441:  ereport(ERROR, 
+paai: postgres:00003442:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+paai: postgres:00003443:  errmsg("floating-point exception"), 
+paai: postgres:00003444:  errdetail("An invalid floating-point operation was signaled. " 
+paai: postgres:00003445:  "This probably means an out-of-range result or an " 
+paai: postgres:00003446:  "invalid operation, such as division by zero."))); 
+paai: postgres:00003503:  ereport(FATAL, 
+paai: postgres:00003504:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
+paai: postgres:00003505:  errmsg("terminating connection due to administrator command"), 
+paai: postgres:00003506:  errSendAlert(false))); 
+paai: postgres:00003518:  ereport(ERROR, 
+paai: postgres:00003519:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+paai: postgres:00003520:  errmsg("canceling MPP operation"))); 
+paai: postgres:00003522:  ereport(ERROR, 
+paai: postgres:00003523:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003524:  errmsg("canceling statement due to statement timeout"))); 
+paai: postgres:00003526:  ereport(ERROR, 
+paai: postgres:00003527:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003528:  errmsg("canceling statement due to user request"))); 
+paai: postgres:00003609:  ereport(ERROR, 
+paai: postgres:00003610:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+paai: postgres:00003611:  errmsg("stack depth limit exceeded"), 
+paai: postgres:00003612:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
+paai: postgres:00003613:  "after ensuring the platform's stack depth limit is adequate."))); 
+paai: postgres:00003805:  elog(FATAL, "%s: could not locate my own executable path", 
+paai: postgres:00003806:  argv[0]); 
+paai: postgres:00004048:  ereport(ERROR, 
+paai: postgres:00004049:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004050:  errmsg("--%s requires a value", 
+paai: postgres:00004051:  optarg))); 
+paai: postgres:00004053:  ereport(ERROR, 
+paai: postgres:00004054:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004055:  errmsg("-c %s requires a value", 
+paai: postgres:00004056:  optarg))); 
+paai: postgres:00004096:  ereport(FATAL, 
+paai: postgres:00004097:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00004098:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+paai: postgres:00004216:  ereport(FATAL, 
+paai: postgres:00004217:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004218:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004219:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004229:  ereport(FATAL, 
+paai: postgres:00004230:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004231:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004232:  argv[0]), 
+paai: postgres:00004233:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004239:  ereport(FATAL, 
+paai: postgres:00004240:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004241:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004242:  argv[0]))); 
+paai: postgres:00004623:  elog(FATAL, "could not set timer for client wait timeout"); 
+paai: postgres:00005078:  ereport(ERROR, 
+paai: postgres:00005079:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005080:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00005081:  close_type))); 
+paai: postgres:00005115:  ereport(ERROR, 
+paai: postgres:00005116:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005117:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005118:  describe_type))); 
+paai: postgres:00005172:  ereport(FATAL, 
+paai: postgres:00005173:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005174:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005175:  firstchar,firstchar))); 
+paai: postgres:00005521:  elog(FATAL, "%s: could not locate my own executable path", 
+paai: postgres:00005522:  argv[0]); 
+paai: postgres:00005727:  ereport(ERROR, 
+paai: postgres:00005728:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005729:  errmsg("--%s requires a value", 
+paai: postgres:00005730:  optarg))); 
+paai: postgres:00005732:  ereport(ERROR, 
+paai: postgres:00005733:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005734:  errmsg("-c %s requires a value", 
+paai: postgres:00005735:  optarg))); 
+paai: postgres:00005848:  ereport(FATAL, 
+paai: postgres:00005849:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005850:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005851:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005862:  ereport(FATAL, 
+paai: postgres:00005863:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005864:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005865:  argv[0]), 
+paai: postgres:00005866:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005872:  ereport(FATAL, 
+paai: postgres:00005873:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005874:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005875:  argv[0]))); 
+paai: postgres:00006198:  ereport(FATAL, 
+paai: postgres:00006199:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006200:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006201:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000116:  elog(NOTICE, "running query (sessionId, commandId): (%d, %d)", 
 paag: pquery:00000117:  MyProc->mppSessionId, gp_command_count); 
