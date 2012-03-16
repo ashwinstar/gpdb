@@ -235,7 +235,7 @@ class GPUpgrade(GPUpgradeBase):
                     msg += ": %s" % str(args)
                 parser.error(msg)
         except Exception, e:
-            usage()
+            usage(EXECNAME)
             raise UpgradeError('Error parsing input: ' + str(e))
 
         if options.directory:

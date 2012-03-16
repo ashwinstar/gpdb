@@ -333,14 +333,14 @@ class GPUpgrade(GPUpgradeBase):
                 sys.exit(0)
 
             if len(args) != 2:
-                usage()
+                usage(EXECNAME)
                 msg = "incorrect number of arguments"
                 if len(args) > 0:
                     msg += ": %s" % str(args)
                 parser.error(msg)
 
         except Exception, e:
-            usage()
+            usage(EXECNAME)
             raise UpgradeError('Error parsing input: ' + str(e))
 
         if options.revert:
