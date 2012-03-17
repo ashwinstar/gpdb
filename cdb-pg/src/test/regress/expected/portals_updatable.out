@@ -400,7 +400,7 @@ FETCH 1 FROM c;
 (1 row)
 
 UPDATE rank SET rank = rank + 1 WHERE CURRENT OF c;
-ERROR:  moving tuple from partition "rank_1_prt_3" to partition "rank_1_prt_4" not supported  (seg0 localhost:40000 pid=50839)
+ERROR:  moving tuple from partition "rank_1_prt_3" to partition "rank_1_prt_4" not supported  (seg0 localhost:40000 pid=38939)
 ROLLBACK;
 -- Partitioning: AO part
 CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
@@ -681,6 +681,12 @@ DECLARE c CURSOR FOR SELECT * FROM uctest JOIN uctest2 USING (f1);
 DELETE FROM uctest WHERE CURRENT OF c;
 ERROR:  cursor "c" is not a simply updatable scan of table "uctest"
 ROLLBACK;
+-- Negative: cursor with subquery
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest WHERE f1 in (SELECT f1 FROM uctest);
+DELETE FROM uctest WHERE CURRENT OF c;
+ERROR:  cursor "c" is not a simply updatable scan of table "uctest"
+ROLLBACK;
 -- Negative: cursor is on aggregation
 BEGIN;
 DECLARE c CURSOR FOR SELECT count(*) FROM uctest;
@@ -735,8 +741,8 @@ FETCH ALL FROM c1;
  f1  | f2  |   f3    
 -----+-----+---------
    1 |   1 | one
-   3 | -42 | three
    2 |   8 | two
+   3 | -42 | three
  100 | 110 | hundred
 (4 rows)
 

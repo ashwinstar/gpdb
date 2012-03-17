@@ -11641,6 +11641,7 @@ isSimplyUpdatableQuery(Query *query)
 		query->groupClause == NIL &&
 		query->havingQual == NULL &&
 		!query->hasAggs &&
+		!query->hasSubLinks &&
 		query->distinctClause == NIL &&
 		list_length(query->rtable) == 1)
 	{

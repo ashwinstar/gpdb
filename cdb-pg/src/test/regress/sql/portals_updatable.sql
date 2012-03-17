@@ -326,6 +326,12 @@ DECLARE c CURSOR FOR SELECT * FROM uctest JOIN uctest2 USING (f1);
 DELETE FROM uctest WHERE CURRENT OF c;
 ROLLBACK;
 
+-- Negative: cursor with subquery
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest WHERE f1 in (SELECT f1 FROM uctest);
+DELETE FROM uctest WHERE CURRENT OF c;
+ROLLBACK;
+
 -- Negative: cursor is on aggregation
 BEGIN;
 DECLARE c CURSOR FOR SELECT count(*) FROM uctest;
