@@ -1110,4 +1110,8 @@ extern bool gpvars_assign_statement_mem(int newval, bool doit, GucSource source 
 
 extern void increment_command_count(void);
 
+/*
+ * switch to control inverse distribution function strategy.
+ */
+extern char *gp_idf_deduplicate_str;
 #endif   /* GPVARS_H */

@@ -1372,5 +1372,37 @@ typedef struct WindowKey
 	WindowFrame	   *frame;		/* NULL or framing for WindowKey */
 } WindowKey;
 
+/*
+ * PercKind
+ * Represent function type of PercentileExpr
+ */
+typedef enum PercKind
+{
+	PERC_MEDIAN,
+	PERC_CONT,
+	PERC_DISC
+} PercKind;
+
+/*
+ * PercentileExpr
+ *
+ * This represents expressions for percentile_cont, percentile_disc and median.
+ * They could be expressed as normal Aggref, but at present we are not able
+ * to change the catalog, so we introduce this dedicated node.  As such, the node
+ * is treated as Aggref in any cases.  Since we don't support Var in its
+ * argument, we don't need var-level field here.
+ */
+typedef struct PercentileExpr
+{
+	NodeTag			type;
+	Oid				perctype;		/* result type */
+	List		   *args;			/* list of argument expression */
+	PercKind		perckind;		/* type of percentile function */
+	List		   *sortClause;		/* ORDER BY clause */
+	List		   *sortTargets;	/* target list for ORDER BY clause */
+	Expr		   *pcExpr;			/* peer count expression */
+	Expr		   *tcExpr;			/* total count expression */
+	int				location;		/* token location, or -1 if unknown */
+} PercentileExpr;
 
 #endif   /* PRIMNODES_H */

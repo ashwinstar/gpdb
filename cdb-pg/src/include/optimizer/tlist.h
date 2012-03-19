@@ -30,6 +30,8 @@ extern Node *get_sortgroupclause_expr(SortClause *sortClause,
 						 List *targetList);
 extern List *get_sortgrouplist_exprs(List *sortClauses,
 						List *targetList);
+extern AttrNumber *get_sortgrouplist_colidx(List *sortClauses,
+						List *targetList, Oid **oplist);
 
 extern List *get_grouplist_exprs(List *groupClause, List *targetList);
 extern List *get_sortgroupclauses_tles(List *clauses, List *targetList);

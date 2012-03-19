@@ -481,6 +481,22 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_PercentileExpr:
+			{
+				PercentileExpr *perc = (PercentileExpr *) node;
+
+				if (walker((Node *) perc->args, context))
+					return true;
+				if (walker((Node *) perc->sortClause, context))
+					return true;
+				if (walker((Node *) perc->sortTargets, context))
+					return true;
+				if (walker((Node *) perc->pcExpr, context))
+					return true;
+				if (walker((Node *) perc->tcExpr, context))
+					return true;
+			}
+			break;
 
 		default:
             ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -1443,6 +1459,21 @@ expression_tree_mutator(Node *node,
 
 				return (Node *) newnode;
 
+			}
+		case T_PercentileExpr:
+			{
+				PercentileExpr *perc = (PercentileExpr *) node;
+				PercentileExpr *newnode;
+
+				FLATCOPY(newnode, perc, PercentileExpr);
+
+				MUTATE(newnode->args, perc->args, List *);
+				MUTATE(newnode->sortClause, perc->sortClause, List *);
+				MUTATE(newnode->sortTargets, perc->sortTargets, List *);
+				MUTATE(newnode->pcExpr, perc->pcExpr, Expr *);
+				MUTATE(newnode->tcExpr, perc->tcExpr, Expr *);
+
+				return (Node *) newnode;
 			}
 		case T_SortClause:
 			{

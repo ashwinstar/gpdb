@@ -1975,6 +1975,23 @@ _copyWindowFrameEdge(const WindowFrameEdge *from)
 	return newnode;
 }
 
+static PercentileExpr *
+_copyPercentileExpr(const PercentileExpr *from)
+{
+	PercentileExpr *newnode = makeNode(PercentileExpr);
+
+	COPY_SCALAR_FIELD(perctype);
+	COPY_NODE_FIELD(args);
+	COPY_SCALAR_FIELD(perckind);
+	COPY_NODE_FIELD(sortClause);
+	COPY_NODE_FIELD(sortTargets);
+	COPY_NODE_FIELD(pcExpr);
+	COPY_NODE_FIELD(tcExpr);
+	COPY_SCALAR_FIELD(location);
+
+	return newnode;
+}
+
 static RowMarkClause *
 _copyRowMarkClause(const RowMarkClause *from)
 {
@@ -4683,6 +4700,9 @@ copyObject(const void *from)
 			break;
 		case T_WindowFrameEdge:
 			retval = _copyWindowFrameEdge(from);
+			break;
+		case T_PercentileExpr:
+			retval = _copyPercentileExpr(from);
 			break;
 		case T_RowMarkClause:
 			retval = _copyRowMarkClause(from);

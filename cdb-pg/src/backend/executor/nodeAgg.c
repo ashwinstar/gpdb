@@ -60,6 +60,14 @@
  *	  example.	Notice that advance_transition_function() is coded to avoid a
  *	  data copy step when the previous transition value pointer is returned.
  *
+ *	  In Greenplum 4.2.2, we add PercentileExpr support along with Aggref.
+ *	  It is used to implement inverse distribution function support, namely
+ *	  percentile_cont, percentile_disc and median.  The semantics for them
+ *	  is almost same as Aggref, where the aggregate process is handled by
+ *	  an individual function and the expression node only returns a pre-computed
+ *	  result.  PercentileExpr is used in Agg node because we cannot change
+ *	  the catalog in this release, and it may be removed and integrated to
+ *	  standard Aggref itself.
  *
  * Portions Copyright (c) 2007-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
@@ -82,6 +90,7 @@
 #include "executor/nodeAgg.h"
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_agg.h"
@@ -124,6 +133,22 @@ typedef struct AggHashEntryData
 	AggStatePerGroupData pergroup[1];	/* VARIABLE LENGTH ARRAY */
 } AggHashEntryData;				/* VARIABLE LENGTH STRUCT */
 
+/*
+ * Information for percentile functions.
+ * The prev_value is only for percentile_cont, where we need to remember the
+ * prior value to interpolate two values.  The target position is the
+ * row position we want given the total row count and percentage.
+ * The ceiled and floored target positions are rounded target positions.
+ * The row number tracks the current logical row position.
+ */
+typedef struct
+{
+	Datum		prev_value;		/* the target value at the prior row */
+	float8		tp;				/* target position */
+	float8		ctp;			/* ceiled target position */
+	float8		ftp;			/* floored target position */
+	int64		rn;				/* current row number */
+} PercentileInfo;
 
 static void advance_transition_function(AggState *aggstate,
 										AggStatePerAgg peraggstate,
@@ -150,6 +175,8 @@ static int count_extra_agg_slots(Node *node);
 static bool count_extra_agg_slots_walker(Node *node, int *count);
 static TupleTableSlot *computeTupleWithFinalAggregate(AggState *aggstate,
 													  TupleTableSlot *firstSlot);
+static Datum percentile_cont_trans(PG_FUNCTION_ARGS);
+static Datum percentile_disc_trans(PG_FUNCTION_ARGS);
 
 
 Datum
@@ -482,9 +509,18 @@ advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup,
 		AggStatePerAgg peraggstate = &aggstate->peragg[aggno];
 		AggStatePerGroup pergroupstate = &pergroup[aggno];
 		Aggref	   *aggref = peraggstate->aggref;
+		PercentileExpr *perc = peraggstate->perc;
 		int			i;
 		TupleTableSlot *slot;
-		int nargs = list_length(aggref->args);
+		int nargs;
+
+		if (aggref)
+			nargs = list_length(aggref->args);
+		else
+		{
+			Assert (perc);
+			nargs = list_length(perc->args);
+		}
 
 		/* Evaluate the current input expressions for this aggregate */
 		slot = ExecProject(peraggstate->evalproj, NULL);
@@ -494,7 +530,8 @@ advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup,
 		{
 			/* DISTINCT and/or ORDER BY case */
 			Assert(slot->PRIVATE_tts_nvalid == peraggstate->numInputs);
-			
+			Assert(!perc);
+
 			/*
 			 * If the transfn is strict, we want to check for nullity before
 			 * storing the row in the sorter, to save space if there are a lot
@@ -547,12 +584,32 @@ advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup,
 			/* Load values into fcinfo */
 			/* Start from 1, since the 0th arg will be the transition value */
 			Assert(slot->PRIVATE_tts_nvalid >= nargs);
-			for (i = 0; i < nargs; i++)
+			if (aggref)
 			{
-				fcinfo.arg[i + 1] = slot_getattr(slot, i+1, &isnull);
-				fcinfo.argnull[i + 1] = isnull;
+				for (i = 0; i < nargs; i++)
+				{
+					fcinfo.arg[i + 1] = slot_getattr(slot, i+1, &isnull);
+					fcinfo.argnull[i + 1] = isnull;
+				}
+
 			}
-			
+			else
+			{
+				/*
+				 * In case of percentile functions, put everything into
+				 * fcinfo's argument since there should be the required
+				 * attributes as arguments in the tuple.
+				 */
+				int		natts;
+
+				Assert(perc);
+				natts = slot->tts_tupleDescriptor->natts;
+				for (i = 0; i < natts; i++)
+				{
+					fcinfo.arg[i + 1] = slot_getattr(slot, i + 1, &isnull);
+					fcinfo.argnull[i + 1] = isnull;
+				}
+			}
 			advance_transition_function(aggstate, peraggstate, pergroupstate,
 										&fcinfo, mem_manager);
 		}
@@ -1937,7 +1994,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	 * get the count of aggregates in targetlist and quals
 	 */
 	numaggs = aggstate->numaggs;
-	Assert(numaggs == list_length(aggstate->aggs));
+	Assert(numaggs == list_length(aggstate->aggs) + list_length(aggstate->percs));
 	if (numaggs <= 0)
 	{
 		/*
@@ -2367,6 +2424,116 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		ReleaseSysCache(aggTuple);
 	}
 
+	/*
+	 * Process percentile expressions.  These are treated separately from
+	 * Aggref expressions at the moment as we cannot change the catalog, but
+	 * this will be incorporated into the existing Agggref architecture
+	 * when we can change the catalog.  The operation for percentile functions
+	 * is very similar to the Aggref operation except that there is no
+	 * function oid for transition function.  We manually manupilate
+	 * FmgrInfo without the oid.
+	 * In case the Agg handles PercentileExpr, there shouldn't be Aggref
+	 * in conjunction with PercentileExpr in the target list (and havingQual),
+	 * or vice versa, from the current design of percentile functions.
+	 * However, we don't assert anything to keep that assumption, for the
+	 * later extensibility.
+	 */
+	foreach (l, aggstate->percs)
+	{
+		PercentileExprState *percstate = (PercentileExprState *) lfirst(l);
+		PercentileExpr	   *perc = (PercentileExpr *) percstate->xprstate.expr;
+		AggStatePerAgg		peraggstate;
+		FmgrInfo		   *transfn;
+		int					numArguments;
+		int					i;
+
+		/* Look for a previous duplicate aggregate */
+		for (i = 0; i <= aggno; i++)
+		{
+			/*
+			 * In practice, percentile expression doesn't contain
+			 * volatile functions since everything is evaluated and
+			 * becomes Var during the preprocess such as ordering operations.
+			 * However, adding a check for volatile may be robust and
+			 * consistent with Aggref initialization.
+			 */
+			if (equal(perc, peragg[i].perc) &&
+				!contain_volatile_functions((Node *) perc))
+				break;
+		}
+		if (i <= aggno)
+		{
+			/* Found a match to an existing entry, so just mark it */
+			percstate->aggno = i;
+			continue;
+		}
+
+		/* Nope, so assign a new PerAgg record */
+		peraggstate = &peragg[++aggno];
+
+		/* Mark Aggref state node with assigned index in the result array */
+		percstate->aggno = aggno;
+
+		/* Fill in the peraggstate data */
+		peraggstate->percstate = percstate;
+		peraggstate->perc = perc;
+		/*
+		 * numArguments = arg + ORDER BY + pc + tc
+		 * See notes on percentile_cont_trans() and ExecInitExpr() for
+		 * PercentileExpr.
+		 */
+		numArguments = list_length(perc->args) + list_length(perc->sortClause) + 2;
+		peraggstate->numArguments = numArguments;
+
+		/*
+		 * Set up transfn.  In general, we should use fmgr_info, but we don't
+		 * have the catalog function (thus no oid for functions) due to the
+		 * difficulity of changing the catalog at the moment.  This should
+		 * be cleaned when we can change the catalog.
+		 */
+		transfn = &peraggstate->transfn;
+		transfn->fn_nargs = list_length(perc->args) + 1;
+		transfn->fn_strict = false;
+		transfn->fn_retset = false;
+		transfn->fn_mcxt = CurrentMemoryContext;
+		transfn->fn_addr = perc->perckind == PERC_DISC ?
+			percentile_disc_trans : percentile_cont_trans;
+		transfn->fn_oid = InvalidOid;
+		transfn->fn_expr = (Node *) perc;
+
+		get_typlenbyval(perc->perctype,
+						&peraggstate->resulttypeLen,
+						&peraggstate->resulttypeByVal);
+		get_typlenbyval(perc->perctype,
+						&peraggstate->transtypeLen,
+						&peraggstate->transtypeByVal);
+
+		/*
+		 * Hard code for the known information.
+		 */
+		peraggstate->initValueIsNull = true;
+		peraggstate->initValue = (Datum) 0;
+
+		peraggstate->finalfn_oid = InvalidOid;
+		peraggstate->prelimfn_oid = InvalidOid;
+
+		/*
+		 * Get a tupledesc corresponding to the inputs (including sort
+		 * expressions) of the agg.
+		 */
+		peraggstate->evaldesc = ExecTypeFromTL(percstate->tlist, false);
+
+		/* Create slot we're going to do argument evaluation in */
+		peraggstate->evalslot = ExecInitExtraTupleSlot(estate);
+		ExecSetSlotDescriptor(peraggstate->evalslot, peraggstate->evaldesc);
+
+		/* Set up projection info for evaluation */
+		peraggstate->evalproj = ExecBuildProjectionInfo(percstate->args,
+														aggstate->tmpcontext,
+														peraggstate->evalslot,
+														NULL);
+	}
+
 	/* Update numaggs to match number of unique aggregates found */
 	aggstate->numaggs = aggno + 1;
 	
@@ -2738,6 +2905,72 @@ combineAggrefArgs(Aggref *aggref, List **sort_clauses)
 }
 
 /*
+ * Combine the argument and ordering expression with the peer count
+ * and the total count, to create the TupleTableSlot for this
+ * expression.  This is similar to ordered aggregate Aggref,
+ * but the difference is that PercentileExpr will accept those
+ * additional values as the arguments to the transition function.
+ */
+List *
+combinePercentileArgs(PercentileExpr *p)
+{
+	List			   *tlist;
+	ListCell		   *l;
+	AttrNumber			resno;
+	TargetEntry		   *tle;
+
+	tlist = NIL;
+	resno = 1;
+	foreach (l, p->args)
+	{
+		Expr		   *arg = lfirst(l);
+
+		tle = makeTargetEntry((Expr *) arg,
+							  resno++,
+							  NULL,
+							  false);
+		tlist = lappend(tlist, tle);
+	}
+
+	/*
+	 * Extract ordering expressions from sortTargets.
+	 */
+	foreach (l, p->sortClause)
+	{
+		SortClause	   *sc = lfirst(l);
+		TargetEntry	   *sc_tle;
+
+		sc_tle = get_sortgroupclause_tle(sc, p->sortTargets);
+		tle = flatCopyTargetEntry(sc_tle);
+		tle->resno = resno++;
+
+		tlist = lappend(tlist, tle);
+	}
+
+	/*
+	 * peer count expresssion.
+	 */
+	Assert(p->pcExpr);
+	tle = makeTargetEntry((Expr *) p->pcExpr,
+						  resno++,
+						  "peer_count",
+						  false);
+	tlist = lappend(tlist, tle);
+
+	/*
+	 * total count expresssion.
+	 */
+	Assert(p->tcExpr);
+	tle = makeTargetEntry((Expr *) p->tcExpr,
+						  resno++,
+						  "total_count",
+						  false);
+	tlist = lappend(tlist, tle);
+
+	return tlist;
+}
+
+/*
  * Subroutines for ExecCountSlotsAgg.
  */
 int
@@ -2756,6 +2989,10 @@ count_extra_agg_slots_walker(Node *node, int *count)
  		return false;
 	
 	if (IsA(node, Aggref))
+	{
+		(*count)++;
+	}
+	else if (IsA(node, PercentileExpr))
 	{
 		(*count)++;
 	}
@@ -2810,4 +3047,189 @@ ExecEagerFreeAgg(AggState *node)
 		pfree(node->grp_firstTuple);
 		node->grp_firstTuple = NULL;
 	}
+}
+
+/*
+ * transition function for percentile_cont().
+ *
+ * The actual arguments are:
+ *		(state_value, percentage, target_value, peer_count, total_count)
+ *
+ * The result of percentile_cont() is the interpolated value from
+ * value expressions at consecutive rows that are indicated by the
+ * argument, in the order specified by the WITHIN GROUP.
+ *
+ * We compute these values at the first stage of this transition:
+ *
+ *	tp = (total_count - 1) * percentage + 1
+ *	ftp = floor(tp)
+ *	ctp = ceil(tp)
+ *	rn0 = (current logical row position)
+ *	rn1 = rn0 + peer_count
+ *	tv = (target value)
+ *
+ * And the result is calculated as:
+ *
+ *	result = SUM(
+ *		CASE
+ *			WHEN rn0 <= ftp AND rn1 > ctp THEN tv
+ *			WHEN rn0 <= ftp AND rn1 > ftp THEN tv * (ctp - tp)
+ *			WHEN rn0 >= ctp THEN tv * (tp - ftp)
+ *		END
+ *	)
+ *
+ * Note that we use FmgrInfo's fn_extra to store the per-group information.
+ * fn_extra is not initialized by the executor in the group boundaries,
+ * so we clean it when the value is found.  That said, we assume we
+ * always found the required value in each group, and if not, something
+ * is wrong.
+ */
+static Datum
+percentile_cont_trans(PG_FUNCTION_ARGS)
+{
+	int64				pc = PG_GETARG_INT64(3);
+	int64				rn0, rn1;
+	PercentileInfo	   *info;
+
+	if (!PG_ARGISNULL(0))
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
+
+	/* Ignore NULL inputs for percentage and target value */
+	if (PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	if (!fcinfo->flinfo->fn_extra)
+	{
+		float8				percentage = PG_GETARG_FLOAT8(1);
+		int64				tc = PG_GETARG_INT64(4);
+
+		if (percentage < 0.0 || percentage > 1.0)
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					 errmsg("input is out of range"),
+					 errhint("Argument to percentile function must be between 0.0 and 1.0.")));
+		info = (PercentileInfo *) MemoryContextAllocZero(
+				fcinfo->flinfo->fn_mcxt, sizeof(PercentileInfo));
+		info->tp = (tc - 1) * percentage + 1;
+		info->ftp = floor(info->tp);
+		info->ctp = ceil(info->tp);
+		info->rn = 1;
+		fcinfo->flinfo->fn_extra = info;
+	}
+	else
+		info = (PercentileInfo *) fcinfo->flinfo->fn_extra;
+
+	rn0 = info->rn;
+	rn1 = rn0 + pc;
+	info->rn += pc;
+	if (rn0 <= info->ftp && rn1 > info->ctp)
+	{
+		/* Clean up, so the next group can see NULL for fn_extra */
+		pfree(info);
+		fcinfo->flinfo->fn_extra = NULL;
+
+		PG_RETURN_DATUM(PG_GETARG_DATUM(2));
+	}
+	else if (rn0 <= info->ftp && rn1 > info->ftp)
+	{
+		info->prev_value = PG_GETARG_DATUM(2);
+	}
+	else if (rn0 >= info->ctp)
+	{
+		float8		prev = DatumGetFloat8(info->prev_value);
+		float8		tv = PG_GETARG_FLOAT8(2);
+		float8		tp = info->tp;
+		float8		ctp = info->ctp;
+		float8		ftp = info->ftp;
+
+		/* Clean up, so the next group can see NULL for fn_extra */
+		pfree(info);
+		fcinfo->flinfo->fn_extra = NULL;
+
+		PG_RETURN_FLOAT8(prev * (ctp - tp) + tv * (tp - ftp));
+	}
+
+	PG_RETURN_NULL();
+}
+
+/*
+ * transition function for percentile_disc().
+ *
+ * The actual arguments are:
+ *		(state_value, percentage, target_value, peer_count, total_count)
+ *
+ * The result of percentile_disc() is the the first value whose position
+ * in the cumulative distribution of values, specified by the WITHIN GROUP
+ * clause, is equal to or greater than the percentage specified.  And
+ * the definition of the cumulative distribution, i.e. CUME_DIST(), is
+ * following.
+ *
+ *	count(*) OVER (ORDER BY tv) / count(*) OVER ()
+ *
+ * Let accum_count be the numerator and total_count be the denominator.
+ * Let p be the percentage given as the argument.  Now, the result of
+ * percentile_disc() is at the first row position that satisfies
+ *
+ *	p >= accum_count / total_count
+ *
+ * Converting this to
+ *
+ *	p * total_count >= accum_count
+ *
+ * and because the left hand side is fraction row position, we take ceil
+ *
+ *	ceil(p * total_count)
+ *
+ * This is the row position where the result is at.
+ */
+static Datum
+percentile_disc_trans(PG_FUNCTION_ARGS)
+{
+	int64				pc = PG_GETARG_INT64(3);
+	int64				rn0, rn1;
+	PercentileInfo	   *info;
+
+	if (!PG_ARGISNULL(0))
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
+
+	/* Ignore NULL inputs for percentage and target value */
+	if (PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	if (!fcinfo->flinfo->fn_extra)
+	{
+		float8				percentage = PG_GETARG_FLOAT8(1);
+		int64				tc = PG_GETARG_INT64(4);
+
+		if (percentage < 0.0 || percentage > 1.0)
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					 errmsg("input is out of range"),
+					 errhint("Argument to percentile function must be between 0.0 and 1.0.")));
+		info = (PercentileInfo *) MemoryContextAllocZero(
+				fcinfo->flinfo->fn_mcxt, sizeof(PercentileInfo));
+		if (percentage == 0.0)
+			info->tp = 1.0;
+		else
+			info->tp = ceil(tc * percentage);
+		info->ctp = info->ftp = info->tp;
+		info->rn = 1;
+		fcinfo->flinfo->fn_extra = info;
+	}
+	else
+		info = (PercentileInfo *) fcinfo->flinfo->fn_extra;
+
+	rn0 = info->rn;
+	rn1 = rn0 + pc;
+	info->rn += pc;
+	if (rn0 <= info->tp && rn1 > info->tp)
+	{
+		/* Clean up, so the next group can see NULL for fn_extra */
+		pfree(info);
+		fcinfo->flinfo->fn_extra = NULL;
+
+		PG_RETURN_DATUM(PG_GETARG_DATUM(2));
+	}
+
+	PG_RETURN_NULL();
 }

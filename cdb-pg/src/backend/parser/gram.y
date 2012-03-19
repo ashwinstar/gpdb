@@ -520,8 +520,8 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOG_P LOGIN_P
 
-	MAPPING MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MISSING MODE MODIFY 
-	MONTH_P MOVE
+	MAPPING MASTER MATCH MAXVALUE MEDIAN MERGE MINUTE_P MINVALUE MIRROR
+	MISSING MODE MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEWLINE NEXT NO NOCREATEDB NOCREATEEXTTABLE
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
@@ -530,8 +530,8 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDERED OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING POSITION
-	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
+	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PERCENTILE_CONT PERCENTILE_DISC
+	PLACING POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROTOCOL
 
 	QUEUE QUOTE
@@ -561,7 +561,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	VACUUM VALID VALIDATION VALIDATOR VALUE_P VALUES VARCHAR VARYING
 	VERBOSE VERSION_P VIEW VOLATILE
 
-	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRAPPER WRITABLE WRITE
+	WEB WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITABLE WRITE
 
 	YEAR_P
 
@@ -863,6 +863,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc VOLATILE
 			%nonassoc WEB
 			%nonassoc WITH
+			%nonassoc WITHIN
 			%nonassoc WITHOUT
 			%nonassoc WORK
 			%nonassoc WRAPPER
@@ -890,6 +891,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc INTEGER
 			%nonassoc INTERVAL
 			%nonassoc LEAST
+			%nonassoc MEDIAN
 			%nonassoc NATIONAL
 			%nonassoc NCHAR
 			%nonassoc NONE
@@ -897,6 +899,8 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc NUMERIC
 			%nonassoc OUT_P
 			%nonassoc OVERLAY
+			%nonassoc PERCENTILE_CONT
+			%nonassoc PERCENTILE_DISC
 			%nonassoc POSITION
 			%nonassoc PRECISION
 			%nonassoc REAL
@@ -11549,6 +11553,52 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					GroupId *gid = makeNode(GroupId);
 					$$ = (Node *)gid;
 				}
+			| MEDIAN '(' a_expr ')'
+				{
+					/*
+					 * MEDIAN is parsed as an alias to percentile_cont(0.5).
+					 * We keep track of original expression to deparse
+					 * it later in views, etc.
+					 */
+					PercentileExpr *n = makeNode(PercentileExpr);
+					SortBy		   *sortby;
+
+					n->perctype = UNKNOWNOID;
+					n->args = list_make1(makeAConst(makeFloat(pstrdup("0.5")), @1));
+					n->perckind = PERC_MEDIAN;
+					sortby = makeNode(SortBy);
+					sortby->node = $3;
+					sortby->sortby_kind = SORTBY_ASC;
+					sortby->useOp = NIL;
+					n->sortClause = list_make1(sortby);
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| PERCENTILE_CONT '(' a_expr ')' WITHIN GROUP_P '(' ORDER BY sortby_list ')'
+				{
+					/*
+					 * PERCENTILE_CONT and PERCENTILE_DISC are supported as
+					 * grammer for now.  When it comes to catalog support,
+					 * we'll be able to remove this grammer.
+					 */
+					PercentileExpr *n = makeNode(PercentileExpr);
+					n->perctype = UNKNOWNOID;
+					n->args = list_make1($3);
+					n->perckind = PERC_CONT;
+					n->sortClause = $10;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| PERCENTILE_DISC '(' a_expr ')' WITHIN GROUP_P '(' ORDER BY sortby_list ')'
+				{
+					PercentileExpr *n = makeNode(PercentileExpr);
+					n->perctype = UNKNOWNOID;
+					n->args = list_make1($3);
+					n->perckind = PERC_DISC;
+					n->sortClause = $10;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
 		;
 
 /*
@@ -12915,6 +12965,7 @@ col_name_keyword:
 			| INTEGER
 			| INTERVAL
 			| LEAST
+			| MEDIAN
 			| NATIONAL
 			| NCHAR
 			| NONE
@@ -12922,6 +12973,8 @@ col_name_keyword:
 			| NUMERIC
 			| OUT_P
 			| OVERLAY
+			| PERCENTILE_CONT
+			| PERCENTILE_DISC
 			| POSITION
 			| PRECISION
 			| REAL
@@ -13068,6 +13121,7 @@ reserved_keyword:
 			| USING
 			| WINDOW
 			| WITH
+			| WITHIN
 			| WHEN
 			| WHERE
 		;

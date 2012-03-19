@@ -278,8 +278,6 @@ static Node *translate_upper_vars_sequential(Node *node, WindowContext *context)
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
 static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno, bool no_nulls);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
-static Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query, List **p_pathkeys, 
-       const char *alias_name, List *col_names, Query **query_p);
 static Plan *add_join_to_wrapper(PlannerInfo *root, Plan *plan, Query *query, List *join_tlist,
 								 unsigned partkey_len, 
 								 const char *alias_name, List *col_names, 
@@ -4017,6 +4015,22 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	
 	Assert( query_p != NULL );
 	
+	/*
+	 * If NIL passed for col_names, generates it from subplan's targetlist.
+	 */
+	if (col_names == NIL)
+	{
+		ListCell	   *l;
+
+		foreach (l, plan->targetlist)
+		{
+			TargetEntry	   *tle = lfirst(l);
+			Value		   *col_name;
+
+			col_name = get_tle_name(tle, query->rtable, NULL);
+			col_names = lappend(col_names, col_name);
+		}
+	}
 	/* Make the subquery RTE. Note that this will include a Query derived
 	 * from the input Query.
 	 */
@@ -4024,7 +4038,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	eref->aliasname = pstrdup(alias_name);
 	eref->colnames = col_names;
 
-	rte = package_plan_as_rte(query, plan, eref, *p_pathkeys);
+	rte = package_plan_as_rte(query, plan, eref, p_pathkeys ? *p_pathkeys : NIL);
 	
 	/* Make the target list for the plan and for the wrapper Query
 	 * that will correspond to it.
@@ -4085,7 +4099,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 									  subq_tlist);
 
 	/* Construct the new pathkeys */
-	if (*p_pathkeys != NULL)
+	if (p_pathkeys != NULL)
 		*p_pathkeys = reconstruct_pathkeys(root, *p_pathkeys, resno_map,
 										   ((SubqueryScan *)plan)->subplan->targetlist,
 										   subq_tlist);

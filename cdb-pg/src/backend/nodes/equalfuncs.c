@@ -2261,6 +2261,21 @@ _equalWindowFrameEdge(const WindowFrameEdge *a, const WindowFrameEdge *b)
 }
 
 static bool
+_equalPercentileExpr(const PercentileExpr *a, const PercentileExpr *b)
+{
+	COMPARE_SCALAR_FIELD(perctype);
+	COMPARE_NODE_FIELD(args);
+	COMPARE_SCALAR_FIELD(perckind);
+	COMPARE_NODE_FIELD(sortClause);
+	COMPARE_NODE_FIELD(sortTargets);
+	COMPARE_NODE_FIELD(pcExpr);
+	COMPARE_NODE_FIELD(tcExpr);
+	/* do not compare 'location' field */
+
+	return true;
+}
+
+static bool
 _equalRowMarkClause(const RowMarkClause *a, const RowMarkClause *b)
 {
 	COMPARE_SCALAR_FIELD(rti);
@@ -2996,6 +3011,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_WindowFrameEdge:
 			retval = _equalWindowFrameEdge(a, b);
+			break;
+		case T_PercentileExpr:
+			retval = _equalPercentileExpr(a, b);
 			break;
 		case T_RowMarkClause:
 			retval = _equalRowMarkClause(a, b);

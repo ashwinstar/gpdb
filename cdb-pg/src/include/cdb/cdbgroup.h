@@ -64,4 +64,7 @@ extern List *reconstruct_pathkeys(PlannerInfo *root, List *pathkeys, int *resno_
 								  List *orig_tlist, List *new_tlist);
 extern List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols, bool return_resno);
 
+extern Plan *within_agg_planner(PlannerInfo *root, AggClauseCounts *agg_counts,
+								GroupContext *group_context);
+
 #endif   /* CDBGROUP_H */

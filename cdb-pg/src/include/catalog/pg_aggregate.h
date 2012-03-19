@@ -136,6 +136,11 @@ typedef FormData_pg_aggregate *Form_pg_aggregate;
 
 /* TIDYCAT_END_CODEGEN */
 
+/*
+ * Constant definitions of pg_proc.oid for aggregate functions.
+ */
+#define AGGFNOID_COUNT_ANY 2147 /* returns INT8OID */
+#define AGGFNOID_SUM_BIGINT 2107 /* returns NUMERICOID */
 
 /* ----------------
  * initial contents of pg_aggregate

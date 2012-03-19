@@ -45,7 +45,15 @@ typedef struct AggStatePerAggData
 	AggrefExprState *aggrefstate;
 	Aggref	   *aggref;
 
-	/* number of input arguments for aggregate */
+	/* Links to PercentileExpr expr and state nodes this working state is for */
+	PercentileExprState *percstate;
+	PercentileExpr	   *perc;
+
+	/*
+	 * number of input arguments for aggregate.  It's usually length of
+	 * the argument list supplied in SQL, but in case of PercentileExpr,
+	 * it includes sort list, pcExpr and tcExpr.
+	 */
 	int			numArguments;
 	
 	/* number of inputs including ORDER BY expressions */
@@ -208,5 +216,6 @@ static inline gpmon_packet_t * GpmonPktFromAggState(AggState *node)
 }
 
 extern List *combineAggrefArgs(Aggref *aggref, List **sort_clauses);
+extern List *combinePercentileArgs(PercentileExpr *p);
 
 #endif   /* NODEAGG_H */
