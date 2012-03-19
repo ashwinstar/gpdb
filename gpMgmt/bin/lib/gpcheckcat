@@ -1979,6 +1979,49 @@ def removeSchema(seg, db, schemaid):
     
 
 #############
+'''
+Produce repair scripts to remove dangling entries of gp_fastsequence:
+	- one file per segment dbid
+	- contains DELETE statements to remove catalog entry
+'''
+def removeFastSequence(db):
+    '''
+    MPP-14758: gp_fastsequence does not get cleanup after a failed transaction (AO/CO)
+    Note: this is slightly different from the normal foreign key check 
+          because it streches the cross reference across segments. 
+          This makes it safe in the event of cross consistency issues with pg_class, 
+          but may not repair some issues when there are cross consistency problems
+    '''
+    try:
+        qry = """ 
+              SELECT dbid, objid 
+                FROM gp_segment_configuration AS cfg JOIN
+			         (SELECT gp_segment_id, objid
+                        FROM (select gp_segment_id, objid from gp_fastsequence
+                              union
+                              select gp_segment_id, objid from gp_dist_random('gp_fastsequence')) AS fs
+                        LEFT OUTER JOIN 
+                             (select oid from pg_class 
+                              union
+                              select oid from gp_dist_random('pg_class')) AS c
+                        ON (fs.objid = c.oid)
+                     WHERE c.oid IS NULL) AS r
+                  ON r.gp_segment_id = cfg.content 
+               WHERE cfg.role = 'p';
+              """
+        curs = db.query(qry)
+        for row in curs.dictresult():
+            seg     = row['dbid']				# dbid of targetted segment
+            name    = 'gp_fastsequence tuple'	# for comment purposes 
+            table   = 'gp_fastsequence' 		# table name
+            cols    = {'objid': row['objid']} 	# column name and value
+            objname = 'gp_fastsequence'			# for comment purposes 
+            buildRemove(seg, name, table, cols, objname)
+    except Exception, e:
+        logger.error('removeFastSequence: ' + str(e))
+
+
+#############
 def removeTable(seg, db, reloid):
     try:
         # see if table has a toast table and if so, remove that
@@ -2993,6 +3036,10 @@ def checkTableForeignKey(cat):
                     log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
                 processForeignKeyResult(catname, len(fklist), pkcatname, fields, curs.getresult())
 
+                if catname == 'gp_fastsequence' and pkcatname == 'pg_class':
+                    setError(ERROR_REMOVE)
+                    removeFastSequence(db)
+
         except Exception, e:
             setError(ERROR_NOREPAIR)
             GV.foreignKeyStatus = False
@@ -3748,7 +3795,7 @@ def runAllTests():
 
             file.close()
 
-            script += '%secho "Repairing segment %i"\n' % (maybeRemove, seg)
+            script += '\n%secho "Repairing segment %i"' % (maybeRemove, seg)
             script += '''
 {maybe}env PGOPTIONS="-c gp_session_role=utility {guc}" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
 '''.format(

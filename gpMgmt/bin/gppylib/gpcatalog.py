@@ -302,11 +302,11 @@ class GPCatalog():
         # pg_class:
         #   - relfilenode should generally be consistent, but may not be (jira?)
         #   - relpages/reltuples/relfrozenxid are all vacumm/analyze related
-        #   - relhasindex is only cleared when vacuum completes
+        #   - relhasindex/relhaspkey are only cleared when vacuum completes
         #   - relowner has its own checks:
         #       => may want to separate out "owner" columns like acl and oid
         self._tables['pg_class']._setKnownDifferences(
-            "relfilenode relpages reltuples relhasindex relowner relfrozenxid")
+            "relfilenode relpages reltuples relhasindex relhaspkey relowner relfrozenxid")
 
         # pg_type: typowner has its own checks:
         #       => may want to separate out "owner" columns like acl and oid
@@ -521,6 +521,8 @@ class GPCatalogTable():
             self._coltypes[attname] = typname
 
         # If a primary key was not specified try to locate a unique index
+        # If a table has mutiple matching indexes, we'll pick the first index 
+        # order by indkey to avoid the issue of MPP-16663. 
         if self._pkey == []:
             qry = """
             SELECT attname FROM (
@@ -529,7 +531,7 @@ class GPCatalogTable():
                 FROM pg_index 
                 WHERE indisunique and not (indkey @> '-2'::int2vector) and
                       indrelid = 'pg_catalog.{catname}'::regclass
-                ORDER BY indisprimary DESC LIMIT 1
+                ORDER BY indkey LIMIT 1
               ) index_keys
             ) unnested_index_keys
             JOIN pg_attribute ON (attnum = keynum)
