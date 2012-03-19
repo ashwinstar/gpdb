@@ -2435,6 +2435,7 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2476,6 +2477,7 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
@@ -2495,6 +2497,7 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2549,6 +2552,7 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
@@ -2568,6 +2572,7 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2620,6 +2625,7 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
@@ -2639,6 +2645,7 @@ def checkPersistentTables():
             when p.persistent_state = 3 then 'drop pending'
             when p.persistent_state = 4 then 'abort create'
             when p.persistent_state = 5 then 'JIT create pending'
+            when p.persistent_state = 6 then 'bulk load create pending'
             else 'unknown state: ' || p.persistent_state
        end as persistent_state,
        case when p.mirror_existence_state = 0 then 'mirror free'
@@ -2746,6 +2753,7 @@ def checkPersistentTables():
              when p.persistent_state = 3 then 'drop pending'
              when p.persistent_state = 4 then 'abort create'
              when p.persistent_state = 5 then 'JIT create pending'
+             when p.persistent_state = 6 then 'bulk load create pending'
              else 'unknown state: ' || p.persistent_state
         end as persistent_state,
         p.persistent_serial_num, s.sequence_num
