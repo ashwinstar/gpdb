@@ -530,9 +530,9 @@ errorcallback(GppcReportInfo info, void *arg)
 {
 	GppcReportLevel		elevel = GppcGetReportLevel(info);
 
-	if (elevel == GPPC_WARNING)
+	if (elevel == GPPC_WARNING && arg)
 		memset(GppcGetTextPointer(arg), 'x', GppcGetTextLength(arg));
-	else if (elevel == GPPC_ERROR)
+	else if (elevel == GPPC_ERROR && arg)
 		GppcReport(GPPC_INFO, "inside callback: %s", GppcTextGetCString(arg));
 }
 
@@ -571,6 +571,10 @@ tablefunc_describe(GPPC_FUNCTION_ARGS)
 	GppcInt4		avalue;
 	bool			isnull, iserror;
 	GppcTupleDesc	odesc;
+	GppcReportCallbackState	cbstate;
+
+	/* For a test purpose to make sure it's working in the describe func */
+	cbstate = GppcInstallReportCallback(errorcallback, NULL);
 
 	/* Fetch and validate input */
 	if (GPPC_NARGS() != 1 || GPPC_ARGISNULL(0))
@@ -597,6 +601,8 @@ tablefunc_describe(GPPC_FUNCTION_ARGS)
 						   GppcTupleDescAttrName(tdesc, avalue - 1),
 						   GppcTupleDescAttrType(tdesc, avalue - 1),
 						   GppcTupleDescAttrTypmod(tdesc, avalue - 1));
+
+	GppcUninstallReportCallback(cbstate);
 
 	/* Finally return that tupdesc */
 	GPPC_RETURN_TUPLEDESC(odesc);

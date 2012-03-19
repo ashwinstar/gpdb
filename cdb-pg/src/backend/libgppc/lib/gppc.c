@@ -1313,6 +1313,7 @@ GppcInstallReportCallback(void (*func)(GppcReportInfo, void *), void *arg)
 			((GppcReportCallbackState) errcontext->arg)->func == func &&
 			((GppcReportCallbackState) errcontext->arg)->arg == arg)
 			return (GppcReportCallbackState) errcontext;
+		errcontext = errcontext->previous;
 	}
 	/*
 	 * Allocate it in ErrorContext as the caller may expect it to live longer.
