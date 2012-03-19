@@ -29,6 +29,7 @@ CREATE FUNCTION spifunc2(text, text) RETURNS text AS '$libdir/gppc_test' LANGUAG
 CREATE FUNCTION spifunc3(text, int) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
 CREATE FUNCTION spifunc4(text, text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
 CREATE FUNCTION errorcallbackfunc1(text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
+CREATE FUNCTION test_encoding_name() RETURNS text AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE;
 
 SELECT oidcheckfunc('bool'),
 	oidcheckfunc('char'),
@@ -77,3 +78,4 @@ SELECT spifunc3($$select i, 'foo' || i as val from generate_series(1, 10)i order
 SELECT spifunc4($$select i, 'foo' || i as val from generate_series(1, 10)i order by 1$$, 'val');
 SELECT errorcallbackfunc1('warning');
 SELECT errorcallbackfunc1('error');
+SELECT test_encoding_name();

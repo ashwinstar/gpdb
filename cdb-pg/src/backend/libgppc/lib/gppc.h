@@ -1973,6 +1973,18 @@ const char *GppcTupleDescAttrName(GppcTupleDesc tupdesc, int16_t attno);
 GppcOid GppcTupleDescAttrType(GppcTupleDesc tupdesc, int16_t attno);
 
 /**
+ * \brief Returns the attribute type length in the descriptor.
+ * \param tupdesc the tuple descriptor.
+ * \param attno attribute position, starting from 0.
+ *
+ * \sa GppcTupleDescAttrTypmod()
+ *
+ * Returns the byte length of the data type from the tuple descriptor or -1 if
+ * the type is variable length.
+ */
+int16_t GppcTupleDescAttrLen(GppcTupleDesc tupdesc, int16_t attno);
+
+/**
  * \brief Returns the attribute type modifier oid in the descriptor.
  * \param tupdesc the tuple descriptor.
  * \param attno attribute position, starting from 0.
@@ -2030,6 +2042,13 @@ GppcEncoding GppcGetDatabaseEncoding(void);
  * \brief Returns maximum byte size of database encoding in a character.
  */
 int GppcDatabaseEncodingMaxLength(void);
+
+/**
+ * \brief Translates a ::GppcEncoding value to a human readable encoding name.
+ *
+ * If enc is not a valid GppcEncoding value, NULL is returned.
+ */
+const char *GppcDatabaseEncodingName(GppcEncoding enc);
 
 /**
  * @}

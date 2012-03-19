@@ -29,6 +29,7 @@ CREATE FUNCTION spifunc2(text, text) RETURNS text AS '$libdir/gppc_test' LANGUAG
 CREATE FUNCTION spifunc3(text, int) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
 CREATE FUNCTION spifunc4(text, text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
 CREATE FUNCTION errorcallbackfunc1(text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
+CREATE FUNCTION test_encoding_name() RETURNS text AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE;
 SELECT oidcheckfunc('bool'),
       oidcheckfunc('char'),
       oidcheckfunc('int2'),
@@ -234,4 +235,10 @@ WARNING:  warning emit
 
 SELECT errorcallbackfunc1('error');
 INFO:  inside callback: error
-ERROR:  error emit (SOMEFILE:SOMEFUNC)
+ERROR:  error emit (gppc.c:1270)
+SELECT test_encoding_name();
+ test_encoding_name 
+--------------------
+ UTF-8
+(1 row)
+

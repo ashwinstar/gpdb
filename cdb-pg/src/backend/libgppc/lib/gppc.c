@@ -1464,11 +1464,19 @@ GppcTupleDescAttrType(GppcTupleDesc tupdesc, int16_t attno)
 }
 
 /* attno starts from 0 */
-GppcInt4
+int32_t
 GppcTupleDescAttrTypmod(GppcTupleDesc tupdesc, int16_t attno)
 {
 	CHECK_TUPLEDESC_ATTNO(tupdesc, attno);
-	return (GppcInt4) ((TupleDesc) tupdesc)->attrs[attno]->atttypmod;
+	return (int32_t) ((TupleDesc) tupdesc)->attrs[attno]->atttypmod;
+}
+
+/* attno starts from 0 */
+int16_t
+GppcTupleDescAttrLen(GppcTupleDesc tupdesc, int16_t attno)
+{
+	CHECK_TUPLEDESC_ATTNO(tupdesc, attno);
+	return (int16_t) ((TupleDesc) tupdesc)->attrs[attno]->attlen;
 }
 
 /*
@@ -1489,4 +1497,25 @@ int
 GppcDatabaseEncodingMaxLength(void)
 {
 	return pg_database_encoding_max_length();
+}
+
+/*
+ * Translates a GppcEncoding value to a human readable string.
+ */
+const char *
+GppcDatabaseEncodingName(GppcEncoding enc)
+{
+	int i = 0;
+
+	/* 
+	 * Inconvenient that we cannot look up enc as an offset into
+	 * pg_enc2gettext_tbl but I'd rather leave that table in tack.
+	 */
+	while (pg_enc2gettext_tbl[i].encoding)
+	{
+		if (pg_enc2gettext_tbl[i].encoding == enc)
+			return pg_enc2gettext_tbl[i].name;
+		i++;
+	}
+	return NULL;
 }

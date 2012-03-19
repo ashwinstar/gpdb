@@ -595,6 +595,9 @@ tablefunc_describe(GPPC_FUNCTION_ARGS)
 	if (avalue < 1 || avalue > GppcTupleDescNattrs(tdesc))
 		GppcReport(GPPC_ERROR, "invalid column position %d", avalue);
 
+	/* Print out the attlen -- just an excuse to use GppcTupleDescAttrLen() */
+	GppcReport(GPPC_INFO, "attlen is %d", GppcTupleDescAttrLen(tdesc, avalue - 1));
+
 	/* Build an output tuple a single column based on the column number above */
 	odesc = GppcCreateTemplateTupleDesc(1);
 	GppcTupleDescInitEntry(odesc, 1,
@@ -834,3 +837,19 @@ GppcDatum project_errorcallback(GPPC_FUNCTION_ARGS)
 	GPPC_SRF_RETURN_NEXT(fctx, result);
 }
 #endif  /* GP_VERSION_NUM >= 40200 */
+
+GPPC_FUNCTION_INFO(test_encoding_name);
+GppcDatum test_encoding_name(GPPC_FUNCTION_ARGS);
+
+GppcDatum
+test_encoding_name(GPPC_FUNCTION_ARGS)
+{
+	GppcText res;
+	const char *str = GppcDatabaseEncodingName(GPPC_UTF8);
+	size_t len = strlen(str);
+
+	res = GppcAllocText(len);
+	memcpy(GppcGetTextPointer(res), str, len);
+	
+	GPPC_RETURN_TEXT(res);
+}

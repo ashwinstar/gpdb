@@ -4,6 +4,9 @@ CREATE FUNCTION describe_spi(internal) RETURNS internal AS '$libdir/gppc_test' L
 CREATE FUNCTION project_spi(anytable, text) RETURNS SETOF record AS '$libdir/gppc_test' LANGUAGE c WITH(describe=describe_spi);
 CREATE FUNCTION project_errorcallback(anytable, OUT int, OUT int) RETURNS SETOF record AS '$libdir/gppc_test' LANGUAGE c;
 SELECT * FROM tablefunc_project(TABLE(SELECT a, a / 10 FROM generate_series(1, 10)a SCATTER BY a), 2) ORDER BY 1;
+INFO:  attlen is 4
+LINE 1: SELECT * FROM tablefunc_project(TABLE(SELECT a, a / 10 FROM ...
+                      ^
  ?column? 
 ----------
         0
