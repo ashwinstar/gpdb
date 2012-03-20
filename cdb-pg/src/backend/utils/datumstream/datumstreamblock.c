@@ -355,6 +355,16 @@ void DatumStreamBlockRead_Init(
 	Assert(dsr->rle_repeatcounts_index == 0);
 	Assert(!dsr->rle_in_repeated_item);
 	Assert(dsr->rle_repeated_item_count == 0);
+
+	Assert(dsr->delta_beginp == NULL);
+	Assert(dsr->delta_deltasp == NULL);
+	Assert(*(Datum*)&dsr->delta_datum_p == 0);
+	Assert(dsr->delta_bitmap_count == 0);
+	Assert(dsr->deltas_count == 0);
+	Assert(dsr->deltas_size == 0);
+	Assert(dsr->delta_block_was_compressed == false);
+	Assert(dsr->delta_item == false);
+
 }
 
 void DatumStreamBlockRead_Finish(
@@ -370,17 +380,32 @@ void DatumStreamBlockRead_Finish(
 void DatumStreamBlockRead_CheckDenseGetInvariant(
 	DatumStreamBlockRead	*dsr) 
 {
+	int32 total_datum_index;
+	int32 currentDeltaBitMapOnCount;
+
+	total_datum_index = dsr->physical_datum_index;
+	if (dsr->delta_block_was_compressed)
+	{
+		currentDeltaBitMapOnCount = DatumStreamBitMapRead_OnSeenCount(&dsr->delta_bitmap);
+		total_datum_index += currentDeltaBitMapOnCount;
+	}
+	else
+	{
+		currentDeltaBitMapOnCount = 0;
+	}
+
 	if (!dsr->rle_block_was_compressed)
 	{
 		if (!dsr->has_null)
 		{
-			if (dsr->nth != dsr->physical_datum_index)
+			if (dsr->nth != total_datum_index)
 			{
 				ereport(ERROR,
-						(errmsg("Nth position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
+						(errmsg("Nth position %d expected to match physical datum index %d + delta ON count %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
 								"(logical row count %d, physical datum count %d)",
 								dsr->nth,
 								dsr->physical_datum_index,
+								currentDeltaBitMapOnCount,
 								dsr->logical_row_count,
 								dsr->physical_datum_count),
 						 errOmitLocation(false),
@@ -393,11 +418,9 @@ void DatumStreamBlockRead_CheckDenseGetInvariant(
 			int32 currentNullOnCount;
 			int32 expectedNullOnCount;
 
-			currentNullOnCount = DatumStreamBitMap_CountOn(
-												dsr->null_bitmap_beginp,
-												DatumStreamBitMapRead_Position(&dsr->null_bitmap) + 1);
+			currentNullOnCount = DatumStreamBitMapRead_OnSeenCount(&dsr->null_bitmap);
 
-			expectedNullOnCount = dsr->nth - dsr->physical_datum_index;
+			expectedNullOnCount = dsr->nth - total_datum_index;
 
 			if (currentNullOnCount != expectedNullOnCount)
 			{
@@ -418,13 +441,14 @@ void DatumStreamBlockRead_CheckDenseGetInvariant(
 
 		currentCompressBitMapPosition = DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap);
 
-		if (currentCompressBitMapPosition != dsr->physical_datum_index)
+		if (currentCompressBitMapPosition != total_datum_index)
 		{
 			ereport(ERROR,
-					(errmsg("COMPRESS bit-map position %d expected to match physical datum index %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
+					(errmsg("COMPRESS bit-map position %d expected to match physical datum index %d + delta ON count %d when Dense block does not have RLE_TYPE compression and does not have NULLs "
 							"(logical row count %d, physical datum count %d)",
 							currentCompressBitMapPosition,
 							dsr->physical_datum_index,
+							currentDeltaBitMapOnCount,
 							dsr->logical_row_count,
 							dsr->physical_datum_count),
 					 errOmitLocation(false),
@@ -434,10 +458,8 @@ void DatumStreamBlockRead_CheckDenseGetInvariant(
 
 
 		currentCompressBitMapOffCount = 
-								DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap) + 1
-							  - DatumStreamBitMap_CountOn(
-												dsr->rle_compress_beginp,
-												DatumStreamBitMapRead_Position(&dsr->rle_compress_bitmap) + 1);
+								currentCompressBitMapPosition + 1
+							  - DatumStreamBitMapRead_OnSeenCount(&dsr->rle_compress_bitmap);
 
 		if (!dsr->has_null)
 		{
@@ -462,9 +484,7 @@ void DatumStreamBlockRead_CheckDenseGetInvariant(
 		{
 			int32 currentNullBitMapOnCount;
 
-			currentNullBitMapOnCount = DatumStreamBitMap_CountOn(
-												dsr->null_bitmap_beginp,
-												DatumStreamBitMapRead_Position(&dsr->null_bitmap) + 1);
+			currentNullBitMapOnCount = DatumStreamBitMapRead_OnSeenCount(&dsr->null_bitmap);
 			
 			if (dsr->nth != currentNullBitMapOnCount + currentCompressBitMapOffCount + dsr->rle_total_repeat_items_read - 1)
 			{
@@ -483,6 +503,26 @@ void DatumStreamBlockRead_CheckDenseGetInvariant(
 						 errdetail_datumstreamblockread(dsr),
 						 errcontext_datumstreamblockread(dsr)));
 			}
+		}
+	}
+
+	if (dsr->delta_block_was_compressed)
+	{
+		int32 currentDeltaBitMapPosition;
+		currentDeltaBitMapPosition = DatumStreamBitMapRead_Position(&dsr->delta_bitmap);
+		if (currentDeltaBitMapPosition != total_datum_index)
+		{
+			ereport(ERROR,
+					(errmsg("DELTA bit-map position %d expected to match physical datum index %d + delta ON count %d "
+							"(logical row count %d, physical datum count %d)",
+							currentDeltaBitMapPosition,
+							dsr->physical_datum_index,
+							currentDeltaBitMapOnCount,
+							dsr->logical_row_count,
+							dsr->physical_datum_count),
+					 errOmitLocation(false),
+					 errdetail_datumstreamblockread(dsr),
+					 errcontext_datumstreamblockread(dsr)));
 		}
 	}
 }
@@ -515,6 +555,9 @@ void DatumStreamBlockRead_ResetDense(DatumStreamBlockRead *dsr)
 	dsr->datum_afterp = NULL;
 	dsr->rle_compress_beginp = NULL;
 	dsr->rle_repeatcountsp = NULL;
+	dsr->delta_beginp = NULL;
+	dsr->delta_deltasp = NULL;
+	*(Datum*)&dsr->delta_datum_p = 0;
 
 	dsr->buffer_beginp = NULL;
     dsr->datump = NULL;
@@ -526,6 +569,13 @@ void DatumStreamBlockRead_ResetDense(DatumStreamBlockRead *dsr)
 	dsr->rle_repeated_item_count = 0;
 
 	dsr->rle_total_repeat_items_read = 0;
+
+	dsr->delta_bitmap_count = 0;
+	dsr->deltas_count = 0;
+	dsr->deltas_size = 0;
+
+	dsr->delta_block_was_compressed = false;
+	dsr->delta_item = false;
 }
 
 void
@@ -546,6 +596,7 @@ DatumStreamBlockRead_GetReadyDense(
 	
 	DatumStreamBlock_Dense *blockDense;
 	DatumStreamBlock_Rle_Extension *rleExtension;
+	DatumStreamBlock_Delta_Extension *deltaExtension;
 	
 	// PERFORMANCE EXPERIMENT: Only do integrity and trace checking for DEBUG builds...
 #ifdef USE_ASSERT_CHECKING
@@ -613,6 +664,22 @@ DatumStreamBlockRead_GetReadyDense(
 	else
 	{
 		rleExtension = NULL;
+	}
+
+	// Delta
+	dsr->delta_block_was_compressed = ((blockDense->orig_4_bytes.flags & DSB_HAS_DELTA_COMPRESSION) != 0);
+	if (dsr->delta_block_was_compressed)
+	{
+		deltaExtension = (DatumStreamBlock_Delta_Extension *) p;
+		p += sizeof(DatumStreamBlock_Delta_Extension);
+				
+		dsr->delta_bitmap_count = deltaExtension->delta_bitmap_count;
+		dsr->deltas_count = deltaExtension->deltas_count;
+		dsr->deltas_size = deltaExtension->deltas_size;
+	}
+	else
+	{
+		deltaExtension = NULL;
 	}
 
     /* Set up acc */
@@ -780,6 +847,91 @@ DatumStreamBlockRead_GetReadyDense(
 #endif
 	}
 
+	if (dsr->delta_block_was_compressed)
+	{
+		/*
+		 * Delta compression was used for this block.
+		 */
+		dsr->delta_beginp = p;
+				
+		DatumStreamBitMapRead_Init(
+							&dsr->delta_bitmap,
+							dsr->delta_beginp,
+							dsr->delta_bitmap_count);
+
+		p += DatumStreamBitMapRead_Size(&dsr->delta_bitmap);
+
+		/*
+		 * Start our decompression of deltas at beginning.
+		 */
+		dsr->delta_deltasp = p;
+
+		p += dsr->deltas_size;
+				
+		unalignedHeaderSize = p - dsr->buffer_beginp;
+		alignedHeaderSize = MAXALIGN(unalignedHeaderSize);
+
+		/*
+		 * Skip over alignment padding.
+		 */
+		dsr->datum_beginp = dsr->buffer_beginp + alignedHeaderSize;
+		dsr->datum_afterp = dsr->datum_beginp + dsr->physical_data_size;
+
+		if (Debug_appendonly_print_scan)
+		{
+			if (!dsr->has_null)
+			{
+				ereport(LOG,
+						(errmsg("Datum stream block read unpack Dense with NO NULLs and Delta compression "
+							    "(logical row count %d, physical data size = %d, "
+							    "delta bit-map count %d, delta bit-map size %d, "
+							    "deltas count %d, deltas size %d, "
+							    "unaligned header size %d, aligned header size %d, "
+							    "datum begin %p, datum after %p)",
+							    dsr->logical_row_count,
+							    dsr->physical_data_size,
+							    DatumStreamBitMapRead_Count(&dsr->delta_bitmap),
+							    DatumStreamBitMapRead_Size(&dsr->delta_bitmap),
+							    dsr->deltas_count,
+							    dsr->deltas_size,
+							    unalignedHeaderSize,
+							    alignedHeaderSize,
+							    dsr->datum_beginp,
+							    dsr->datum_afterp),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+			else
+			{
+				ereport(LOG,
+						(errmsg("Datum stream block read unpack Dense with NULLs and DELTA compression "
+							    "(logical row count %d, physical data size = %d, "
+							    "norepeats NULL bit-map count %d, norepeats NULL bit-map size %d, "
+							    "delta bit-map count %d, delta bit-map size %d, "
+							    "deltas count %d, deltas size %d, "
+							    "unaligned header size %d, aligned header size %d, "
+							    "null begin %p, datum begin %p, datum after %p)",
+							    dsr->logical_row_count,
+							    dsr->physical_data_size,
+							    DatumStreamBitMapRead_Count(&dsr->null_bitmap),
+							    DatumStreamBitMapRead_Size(&dsr->null_bitmap),
+							    DatumStreamBitMapRead_Count(&dsr->delta_bitmap),
+							    DatumStreamBitMapRead_Size(&dsr->delta_bitmap),
+							    dsr->deltas_count,
+							    dsr->deltas_size,
+							    unalignedHeaderSize,
+							    alignedHeaderSize,
+							    dsr->null_bitmap_beginp,
+							    dsr->datum_beginp,
+							    dsr->datum_afterp),
+						 errOmitLocation(true),
+						 errdetail_datumstreamblockread(dsr),
+						 errcontext_datumstreamblockread(dsr)));
+			}
+		}
+	}
+
 	dsr->datump = dsr->datum_beginp;
 }
 
@@ -828,16 +980,41 @@ static int errcontext_datumstreamblockwrite_callback(
 static void DatumStreamBlockWrite_CheckDenseInvariant(
 	DatumStreamBlockWrite	*dsw) 
 {
+	int32 total_datum_count = 0;
+
+	int32 currentCompressBitMapPosition = 0;
+	int32 currentCompressBitMapCount = 0;
+	int32 currentCompressBitMapOffCount = 0;
+	int32 rle_total_repeat_items = 0;
+
+	int32 currentDeltaBitMapPosition = 0;
+	int32 currentDeltaBitMapCount = 0;
+	int32 currentDeltaBitMapOffCount = 0;
+	int32 currentDeltaBitMapOnCount = 0;
+
+	if (dsw->delta_has_compression)
+	{
+		currentDeltaBitMapPosition = DatumStreamBitMapWrite_Count(&dsw->delta_bitmap) - 1;
+		currentDeltaBitMapCount = DatumStreamBitMapWrite_Count(&dsw->delta_bitmap);
+		currentDeltaBitMapOffCount = 
+								currentDeltaBitMapCount
+							  - DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap);
+		currentDeltaBitMapOnCount = DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap);
+	}
+
+	total_datum_count = dsw->physical_datum_count + currentDeltaBitMapOnCount;
+
 	if (!dsw->rle_has_compression)
 	{
 		if (!dsw->has_null)
 		{
-			if (dsw->nth != dsw->physical_datum_count)
+			if (dsw->nth != total_datum_count)
 			{
 				ereport(ERROR,
-						(errmsg("Nth position %d expected to match physical datum count %d - 1 when Dense block does not have RLE_TYPE compression and does not have NULLs",
+						(errmsg("Nth position %d expected to match physical datum count %d + Delta On count %d when Dense block does not have RLE_TYPE compression and does not have NULLs",
 								dsw->nth,
-								dsw->physical_datum_count),
+								dsw->physical_datum_count,
+								currentDeltaBitMapOnCount),
 						 errOmitLocation(false),
 						 errdetail_datumstreamblockwrite(dsw),
 						 errcontext_datumstreamblockwrite(dsw)));
@@ -850,7 +1027,7 @@ static void DatumStreamBlockWrite_CheckDenseInvariant(
 
 			currentNullOnCount = DatumStreamBitMapWrite_OnCount(&dsw->null_bitmap);
 
-			expectedNullOnCount = dsw->nth - dsw->physical_datum_count;
+			expectedNullOnCount = dsw->nth - total_datum_count;
 
 			if (currentNullOnCount != expectedNullOnCount)
 			{
@@ -864,15 +1041,17 @@ static void DatumStreamBlockWrite_CheckDenseInvariant(
 			}
 		}
 	}
-	else
+
+	if (dsw->rle_has_compression)
 	{
-		int32 currentCompressBitMapPosition;
-		int32 currentCompressBitMapCount;
-		int32 currentCompressBitMapOffCount;
-
 		currentCompressBitMapPosition = DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap) - 1;
+		currentCompressBitMapCount = DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap);
+		currentCompressBitMapOffCount = 
+								currentCompressBitMapCount
+							  - DatumStreamBitMapWrite_OnCount(&dsw->rle_compress_bitmap);
+		rle_total_repeat_items = dsw->rle_total_repeat_items_written;
 
-		if (currentCompressBitMapPosition != dsw->physical_datum_count - 1)
+		if (currentCompressBitMapPosition != (dsw->physical_datum_count - 1) + currentDeltaBitMapOnCount)
 		{
 			ereport(ERROR,
 					(errmsg("COMPRESS bit-map position %d expected to match physical datum count %d - 1 when Dense block does not have RLE_TYPE compression and does not have NULLs "
@@ -884,11 +1063,6 @@ static void DatumStreamBlockWrite_CheckDenseInvariant(
 					 errdetail_datumstreamblockwrite(dsw),
 					 errcontext_datumstreamblockwrite(dsw)));
 		}
-
-		currentCompressBitMapCount = DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap);
-		currentCompressBitMapOffCount = 
-								currentCompressBitMapCount
-							  - DatumStreamBitMapWrite_OnCount(&dsw->rle_compress_bitmap);
 
 		if (!dsw->has_null)
 		{
@@ -943,6 +1117,41 @@ static void DatumStreamBlockWrite_CheckDenseInvariant(
 								"(total repeat items written %d, physical datum count %d)",
 								currentNullBitMapCount,
 								currentNullBitMapOnCount,
+								currentCompressBitMapCount,
+								dsw->rle_total_repeat_items_written,
+								dsw->physical_datum_count),
+						 errOmitLocation(false),
+						 errdetail_datumstreamblockwrite(dsw),
+						 errcontext_datumstreamblockwrite(dsw)));
+			}
+		}
+	}
+
+	if (dsw->delta_has_compression)
+	{
+		if (currentDeltaBitMapPosition != (dsw->physical_datum_count - 1) + currentDeltaBitMapOnCount)
+		{
+			ereport(ERROR,
+					(errmsg("DELTA bit-map position %d expected to match physical datum count %d - 1 + %d Delta On "
+					"count, when Dense block does not have RLE_TYPE compression and does not have NULLs "
+							"(Nth %d)",
+							currentDeltaBitMapPosition,
+							dsw->physical_datum_count,
+							currentDeltaBitMapOnCount,
+							dsw->nth),
+					 errOmitLocation(false),
+					 errdetail_datumstreamblockwrite(dsw),
+					 errcontext_datumstreamblockwrite(dsw)));
+		}
+
+		if (dsw->rle_has_compression)
+		{
+			if (currentDeltaBitMapCount != currentCompressBitMapCount)
+			{
+				ereport(ERROR,
+						(errmsg("Current DELTA bit-map count %d expected to match current COMPRESS bit-map count %d "
+								"(total repeat items written %d, physical datum count %d)",
+								currentDeltaBitMapCount,
 								currentCompressBitMapCount,
 								dsw->rle_total_repeat_items_written,
 								dsw->physical_datum_count),
@@ -1531,14 +1740,22 @@ static void DatumStreamBlockWrite_MakeCompressBitMapSpace(
 	int32 newCompressBitMapSize;
 
 	Assert(dsw->physical_datum_count >= 1);
-	
+
+	int32 deltaBitMapOnCount = 0;
+
+	if (dsw->delta_has_compression)
+	{
+		deltaBitMapOnCount = DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap); 
+	}
+
 	if (!dsw->rle_has_compression)
 	{
-		newCompressBitMapSize = DatumStreamBitMap_Size(dsw->physical_datum_count);
+		newCompressBitMapSize = DatumStreamBitMap_Size(dsw->physical_datum_count + deltaBitMapOnCount);
 	}
 	else
 	{
-		Assert(DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap) == dsw->physical_datum_count);
+		Assert(DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap) == 
+			(dsw->physical_datum_count + deltaBitMapOnCount));
 		newCompressBitMapSize = DatumStreamBitMapWrite_NextSize(&dsw->rle_compress_bitmap);
 	}
 	
@@ -1628,7 +1845,8 @@ static void DatumStreamBlockWrite_MakeCompressBitMapSpace(
 		/*
 		 * First COMPRESS bit-map entry. Zero fill the COMPRESS bit-map out and set the position.
 		 */
-		DatumStreamBitMapWrite_ZeroFill(&dsw->rle_compress_bitmap, /* bitIndex */ dsw->physical_datum_count - 1);
+		DatumStreamBitMapWrite_ZeroFill(&dsw->rle_compress_bitmap, 
+			/* bitIndex */ dsw->physical_datum_count - 1 + deltaBitMapOnCount);
 
 		/*
 		 * Trace the zero fill out of the NULL bit-map buffer.
@@ -1639,11 +1857,12 @@ static void DatumStreamBlockWrite_MakeCompressBitMapSpace(
 			{
 				ereport(LOG,
 						(errmsg("Datum stream write Dense block formatted RLE_TYPE block zero fill out COMPRESS bit-map "
-								 "(current logical row count %d, physical datum count %d, "
+								 "(current logical row count %d, physical datum count %d, delta bit-map ON count %d,"
 								 "compression bit-map count %d, compression bit-map ON count %d, compression bit-map size %d, compression bit-map max size %d, "
 								 "repeat counts count %d, repeat count size %d)",
 								 dsw->nth + 1,
 								 dsw->physical_datum_count,
+								 deltaBitMapOnCount,
 								 DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap),
 								 DatumStreamBitMapWrite_OnCount(&dsw->rle_compress_bitmap),
 								 DatumStreamBitMapWrite_Size(&dsw->rle_compress_bitmap),
@@ -1658,12 +1877,13 @@ static void DatumStreamBlockWrite_MakeCompressBitMapSpace(
 			{
 				ereport(LOG,
 						(errmsg("Datum stream write Dense block formatted RLE_TYPE block with NULLs zero fill out COMPRESS bit-map "
-								 "(current logical row count %d, physical datum count %d, "
+								 "(current logical row count %d, physical datum count %d, delta bit-map ON count %d,"
 								 "null bit-map count %d, null bit-map size %d, "
 								 "compression bit-map count %d, compression bit-map ON count %d, compression bit-map size %d, compression bit-map max size %d, "
 								 "repeat counts count %d, repeat count size %d)",
 								 dsw->nth + 1,
 								 dsw->physical_datum_count,
+								 deltaBitMapOnCount,
 								 DatumStreamBitMapWrite_Count(&dsw->null_bitmap),
 								 DatumStreamBitMapWrite_Size(&dsw->null_bitmap),
 								 DatumStreamBitMapWrite_Count(&dsw->rle_compress_bitmap),
@@ -1695,6 +1915,7 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
     int32	headerSize;
 	int32	nullSize;
 	int32	rleSize;
+	int32   deltaSize;
 	int32	alignedHeaderSize;
 	int32	currentDataSize;
 	int32	newTotalSize;
@@ -1735,10 +1956,33 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
 		rleSize = 0;
 	}
 
+	// Add in Delta Compression structures
+	if (dsw->delta_has_compression)
+	{
+		/*
+		 * Add in Delta bitmap but CURRENT deltas array byte lengths.
+		 */
+		headerSize += sizeof(DatumStreamBlock_Delta_Extension);
+
+		/*
+		 * NEW delta bitmap byte size since we don't add bits when NULL;
+		 */
+		deltaSize = DatumStreamBitMapWrite_NextSize(&dsw->delta_bitmap);
+
+		/*
+		 * CURRENT deltas size.
+		 */
+		deltaSize += dsw->deltas_current_size;
+	}
+	else
+	{
+		deltaSize = 0;
+	}
+
 	/*
 	 * Align headers and meta-data (e.g. NULL bit-maps, etc).
 	 */
-	alignedHeaderSize = MAXALIGN(headerSize + nullSize + rleSize);
+	alignedHeaderSize = MAXALIGN(headerSize + nullSize + rleSize + deltaSize);
 
 	/*
 	 * Data.
@@ -1757,7 +2001,8 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
 				(errmsg("Datum stream block write checking Dense new NULL space "
 						 "(nth %d, configured datum length %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
 						 "has RLE_TYPE compression %s, "
-						 "headerSize %d, nullSize %d, rleSize %d, dataSize %d, "
+						 "has DELTA compression %s, "
+						 "headerSize %d, nullSize %d, rleSize %d, deltaSize %d, dataSize %d, "
 						 "aligned header size %d, new total size %d, "
 						 "maxdatasz %d, "
 						 "result %s)",
@@ -1767,9 +2012,11 @@ static bool DatumStreamBlockWrite_DenseHasSpaceNull(
 						 (int64)(dsw->datump - dsw->datum_buffer),	 
 						 dsw->physical_datum_count,
 						 (dsw->rle_has_compression ? "true" : "false"),
+						 (dsw->delta_has_compression ? "true" : "false"),
 						 headerSize,
 						 nullSize,
 						 rleSize,
+						 deltaSize,
 						 currentDataSize,
 						 alignedHeaderSize,
 						 newTotalSize,
@@ -1794,10 +2041,12 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
     int32	headerSize;
 	int32	nullSize;
 	int32	rleSize;
+	int32   deltaSize;
 	int32	alignedHeaderSize;
 	int32	currentDataSize;
 	int32	newTotalSize;
 	bool	result;
+	int32   total_datum_count;
 
     if(dsw->nth + 1 >= dsw->maxDatumPerBlock)
 	{
@@ -1821,20 +2070,47 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
 		nullSize = 0;
 	}
 
+	total_datum_count = dsw->physical_datum_count;
+
+	// Add in Delta Compression structures
+	if (dsw->delta_has_compression)
+	{
+		/*
+		 * Add in Delta bitmap but CURRENT deltas array byte lengths.
+		 */
+		headerSize += sizeof(DatumStreamBlock_Delta_Extension);
+
+		/*
+		 * NEW delta bitmap byte size since we don't add bits when NULL;
+		 */
+		deltaSize = DatumStreamBitMapWrite_NextSize(&dsw->delta_bitmap);
+
+		/*
+		 * CURRENT deltas size.
+		 */
+		deltaSize += dsw->deltas_current_size;
+
+		total_datum_count += DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap);
+	}
+	else
+	{
+		deltaSize = 0;
+	}
+
 	headerSize += sizeof(DatumStreamBlock_Rle_Extension);
 	if (newRepeat)
 	{
 		/*
 		 * NEW compressbitmap byte size.
 		 */
-		rleSize = DatumStreamBitMap_Size(dsw->physical_datum_count + 1);
+		rleSize = DatumStreamBitMap_Size(total_datum_count + 1);
 	}
 	else
 	{
 		/*
 		 * CURRENT compressbitmap byte size.
 		 */
-		rleSize = DatumStreamBitMap_Size(dsw->physical_datum_count);
+		rleSize = DatumStreamBitMap_Size(total_datum_count);
 	}
 
 	/*
@@ -1845,7 +2121,7 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
 	/*
 	 * Align headers and meta-data (e.g. NULL bit-maps, etc).
 	 */
-	alignedHeaderSize = MAXALIGN(headerSize + nullSize + rleSize);
+	alignedHeaderSize = MAXALIGN(headerSize + nullSize + rleSize + deltaSize);
 
 	/*
 	 * Data.
@@ -1864,7 +2140,8 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
 				(errmsg("Datum stream block write checking Dense %s Repeat space "
 						 "(nth %d, configured datum length %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
 						 "has RLE_TYPE compression %s, "
-						 "headerSize %d, nullSize %d, rleSize %d, dataSize %d, "
+						 "has DELTA compression %s, "
+						 "headerSize %d, nullSize %d, rleSize %d, deltaSize %d, dataSize %d, "
 						 "aligned header size %d, new total size %d, "
 						 "maxdatasz %d, "
 						 "result %s)",
@@ -1875,9 +2152,143 @@ static bool DatumStreamBlockWrite_DenseHasSpaceRepeat(
 						 (int64)(dsw->datump - dsw->datum_buffer),
 						 dsw->physical_datum_count,
 						 (dsw->rle_has_compression ? "true" : "false"),
+						 (dsw->delta_has_compression ? "true" : "false"),
 						 headerSize,
 						 nullSize,
 						 rleSize,
+						 deltaSize,
+						 currentDataSize,
+						 alignedHeaderSize,
+						 newTotalSize,
+						 dsw->maxDataBlockSize,
+						 (result ? "true" : "false")),
+				 errOmitLocation(true),
+				 errdetail_datumstreamblockwrite(dsw),
+				 errcontext_datumstreamblockwrite(dsw)));
+	}
+
+	return result;
+}
+
+/*
+ * Can we add the delta bit-map and deltas array for RLE_TYPE with Delta?
+ */
+static bool DatumStreamBlockWrite_DenseHasSpaceDelta(
+	DatumStreamBlockWrite	*dsw) 
+{
+    int32	headerSize;
+	int32	nullSize;
+	int32	rleSize;
+	int32   deltaSize;
+	int32	alignedHeaderSize;
+	int32	currentDataSize;
+	int32	newTotalSize;
+	bool	result;
+	int32   total_datum_count;
+
+    if(dsw->nth + 1 >= dsw->maxDatumPerBlock)
+	{
+        return false;
+	}
+
+	headerSize = sizeof(DatumStreamBlock_Dense);
+
+	/*
+	 * Add in NULL bit-map, extra DatumStreamBlock_Rle struct, compress bit-map, repeated counts...
+	 */
+    if (dsw->has_null)
+	{
+		/*
+		 * The first item already incremented always_null_bitmap_count.
+		 */
+		nullSize = DatumStreamBitMap_Size(dsw->always_null_bitmap_count);
+	}
+	else
+	{
+		nullSize = 0;
+	}
+
+	if (dsw->rle_has_compression)
+	{
+		/*
+		 * Add in NEW compress bitmap but CURRENT repeated count array byte lengths.
+		 */
+		headerSize += sizeof(DatumStreamBlock_Rle_Extension);
+
+		/*
+		 * NEW compressbitmap byte size since we don't add bits when NULL;
+		 */
+		rleSize = DatumStreamBitMapWrite_NextSize(&dsw->rle_compress_bitmap);
+
+		/*
+		 * CURRENT repeat counts size.
+		 */
+		rleSize += dsw->rle_repeatcounts_current_size;
+	}
+	else
+	{
+		rleSize = 0;
+	}
+
+	total_datum_count = dsw->physical_datum_count;
+	if (dsw->delta_has_compression)
+	{
+		total_datum_count += DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap);
+	}
+
+	/*
+	 * Add in Delta bitmap but CURRENT deltas array byte lengths.
+	 */
+	headerSize += sizeof(DatumStreamBlock_Delta_Extension);
+
+	/*
+	 * NEW delta bitmap byte size;
+	 */
+	deltaSize = DatumStreamBitMap_Size(total_datum_count + 1);
+
+	/*
+	 * NEW deltas size.	For simplicity, assume it will be the largest delta integer possible.
+	 */
+	deltaSize += dsw->deltas_current_size + Int32CompressReserved3_MaxByteLen;
+
+	/*
+	 * Align headers and meta-data (e.g. NULL bit-maps, etc).
+	 */
+	alignedHeaderSize = MAXALIGN(headerSize + nullSize + rleSize + deltaSize);
+
+	/*
+	 * Data.
+	 */
+	currentDataSize = (dsw->datump - dsw->datum_buffer);
+
+	/*
+	 * Total.
+	 */
+	newTotalSize = (alignedHeaderSize + currentDataSize);
+    result = (newTotalSize <= dsw->maxDataBlockSize);
+
+	if (Debug_appendonly_print_insert_tuple)
+	{
+		ereport(LOG,
+				(errmsg("Datum stream block write checking Dense DELTA space "
+						 "(nth %d, configured datum length %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
+						 "has RLE_TYPE compression %s, "
+						 "has DELTA compression %s, "
+						 "headerSize %d, nullSize %d, rleSize %d, deltaSize %d, dataSize %d, "
+						 "aligned header size %d, new total size %d, "
+						 "maxdatasz %d, "
+						 "result %s)",
+						 dsw->nth,
+						 dsw->typeInfo->datumlen,
+						 dsw->datump,
+						 (int64)(dsw->datump - dsw->datum_buffer),
+						 dsw->physical_datum_count,
+						 (dsw->rle_has_compression ? "true" : "false"),
+						 (dsw->delta_has_compression ? "true" : "false"),
+						 headerSize,
+						 nullSize,
+						 rleSize,
+						 deltaSize,
 						 currentDataSize,
 						 alignedHeaderSize,
 						 newTotalSize,
@@ -1901,6 +2312,7 @@ static bool DatumStreamBlockWrite_DenseHasSpaceItem(
     int32	headerSize;
 	int32	nullSize;
 	int32	rleSize;
+	int32   deltaSize;
 	int32	alignedHeaderSize;
 	int32	currentDataSize;
 	int32	newTotalSize;
@@ -1948,10 +2360,32 @@ static bool DatumStreamBlockWrite_DenseHasSpaceItem(
 		rleSize = 0;
 	}
 
+	if (dsw->delta_has_compression)
+	{
+		/*
+		 * Add in Delta bitmap but CURRENT deltas array byte lengths.
+		 */
+		headerSize += sizeof(DatumStreamBlock_Delta_Extension);
+
+		/*
+		 * NEW delta bitmap byte size since we don't add bits when NULL;
+		 */
+		deltaSize = DatumStreamBitMapWrite_NextSize(&dsw->delta_bitmap);
+
+		/*
+		 * CURRENT deltas size.
+		 */
+		deltaSize += dsw->deltas_current_size;
+	}
+	else
+	{
+		deltaSize = 0;
+	}
+
 	/*
 	 * Align headers and meta-data (e.g. NULL bit-maps, etc).
 	 */
-	alignedHeaderSize = MAXALIGN(headerSize + nullSize + rleSize);
+	alignedHeaderSize = MAXALIGN(headerSize + nullSize + rleSize + deltaSize);
 
 	/*
 	 * Data.
@@ -1970,7 +2404,8 @@ static bool DatumStreamBlockWrite_DenseHasSpaceItem(
 				(errmsg("Datum stream block write checking Dense new item space for "
 						 "(nth %d, item size %d, configured datum length %d, item begin %p, item offset " INT64_FORMAT ", physical datum count %d, "
 						 "has RLE_TYPE compression %s, "
-						 "headerSize %d, nullSize %d, rleSize %d, current dataSize %d, "
+						 "has DELTA compression %s, "
+						 "headerSize %d, nullSize %d, rleSize %d, deltaSize %d, current dataSize %d, "
 						 "aligned header size %d, new total size %d, "
 						 "maxdatasz %d, "
 						 "result %s)",
@@ -1981,9 +2416,11 @@ static bool DatumStreamBlockWrite_DenseHasSpaceItem(
 						 (int64)(dsw->datump - dsw->datum_buffer),
 						 dsw->physical_datum_count,
 						 (dsw->rle_has_compression ? "true" : "false"),
+						 (dsw->delta_has_compression ? "true" : "false"),
 						 headerSize,
 						 nullSize,
 						 rleSize,
+						 deltaSize,
 						 currentDataSize,
 						 alignedHeaderSize,
 						 newTotalSize,
@@ -2086,7 +2523,7 @@ static void DatumStreamBlockWrite_DenseIncrItem(
 	dsw->always_null_bitmap_count++;
 
 	/*
-	 * Maintain compression data structures.
+	 * Maintain RLE compression data structures.
 	 */
 	if (dsw->rle_want_compression)
 	{
@@ -2230,6 +2667,411 @@ static bool DatumStreamBlockWrite_RleMarkRepeat(
 	return true;
 }
 
+static void DatumStreamBlockWrite_MakeDeltaCompressBitMapSpace(
+	DatumStreamBlockWrite 	*dsw) 
+{
+	int32 newCompressBitMapSize;
+
+	Assert(dsw->physical_datum_count >= 1);
+	
+	if (!dsw->delta_has_compression)
+	{
+		newCompressBitMapSize = DatumStreamBitMap_Size(dsw->physical_datum_count);
+	}
+	else
+	{
+		newCompressBitMapSize = DatumStreamBitMapWrite_NextSize(&dsw->delta_bitmap);
+	}
+	
+	/*
+	 * Buffer big enough?
+	 */
+	if (newCompressBitMapSize > dsw->delta_bitmap_buffer_size)
+	{
+		int32	newBufferSize;
+		void	*newBuffer;
+		MemoryContext oldCtxt;
+		
+		/*
+		 * Grow the Delta bit-map.
+		 */
+		newBufferSize = dsw->delta_bitmap_buffer_size * 2;
+		if (newBufferSize < newCompressBitMapSize)
+		{
+			newBufferSize = newCompressBitMapSize + dsw->initialMaxDatumPerBlock;
+		}
+
+		oldCtxt = MemoryContextSwitchTo(dsw->memctxt);
+		newBuffer = palloc(newBufferSize);
+		
+		DatumStreamBitMapWrite_CopyToLargerBuffer(
+											&dsw->delta_bitmap,
+											newBuffer,
+											newBufferSize);
+		pfree(dsw->delta_bitmap_buffer);
+		MemoryContextSwitchTo(oldCtxt);
+
+		dsw->delta_bitmap_buffer = newBuffer;
+		dsw->delta_bitmap_buffer_size = newBufferSize;
+
+		/*
+		 * Trace the growth of the Delta bit-map buffer.
+		 */
+		if (Debug_appendonly_print_insert)
+		{
+			ereport(LOG,
+					(errmsg("Datum stream write Dense block formatted RLE_TYPE block grew Delta COMPRESS bit-map buffer "
+							 "(current logical row count %d, physical datum count %d, "
+							 "delta bit-map count %d, delta bit-map ON count %d, delta bit-map size %d, delta bit-map max size %d, "
+							 "repeat counts count %d, repeat count size %d)",
+							 dsw->nth + 1,
+							 dsw->physical_datum_count,
+							 DatumStreamBitMapWrite_Count(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_Size(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_MaxSize(&dsw->delta_bitmap),
+							 dsw->deltas_count,
+							 dsw->deltas_current_size),
+					errOmitLocation(true),
+					errdetail_datumstreamblockwrite(dsw),
+					errcontext_datumstreamblockwrite(dsw)));
+		}
+	}
+
+	if (!dsw->delta_has_compression)
+	{
+		/*
+		 * First delta bit-map entry. Zero fill the delta COMPRESS bit-map out and set the position.
+		 */
+		DatumStreamBitMapWrite_ZeroFill(&dsw->delta_bitmap, /* bitIndex */ dsw->physical_datum_count);
+
+		/*
+		 * Trace the zero fill out of the NULL bit-map buffer.
+		 */
+		if (Debug_appendonly_print_insert)
+		{
+			ereport(LOG,
+					(errmsg("Datum stream write Dense block formatted RLE_TYPE Delta block zero fill out DELTA bit-map "
+							 "(current logical row count %d, physical datum count %d, "
+							 "delta bit-map count %d, delta bit-map ON count %d, delta bit-map size %d, delta bit-map max size %d, "
+							 "deltas count %d, deltas size %d)",
+							 dsw->nth + 1,
+							 dsw->physical_datum_count,
+							 DatumStreamBitMapWrite_Count(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_Size(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_MaxSize(&dsw->delta_bitmap),
+							 dsw->deltas_count,
+							 dsw->deltas_current_size),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockwrite(dsw),
+					 errcontext_datumstreamblockwrite(dsw)));
+		}
+	}
+	else
+	{
+		Assert(dsw->nth > 0);
+		if (Debug_appendonly_print_insert)
+		{
+			ereport(LOG,
+					(errmsg("Datum stream write Dense block formatted RLE_TYPE Delta block DELTA bit-map "
+							 "(current logical row count %d, physical datum count %d, "
+							 "delta bit-map count %d, delta bit-map ON count %d, delta bit-map size %d, delta bit-map max size %d, "
+							 "deltas count %d, deltas size %d)",
+							 dsw->nth + 1,
+							 dsw->physical_datum_count,
+							 DatumStreamBitMapWrite_Count(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_Size(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_MaxSize(&dsw->delta_bitmap),
+							 dsw->deltas_count,
+							 dsw->deltas_current_size),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockwrite(dsw),
+					 errcontext_datumstreamblockwrite(dsw)));
+		}
+	}
+}
+
+static inline void DatumStreamBlockWrite_DeltaMaintain(
+	DatumStreamBlockWrite *dsw,
+	Datum					d )
+{
+	if (!dsw->delta_want_compression)
+		return;
+
+	if (Debug_appendonly_print_insert_tuple)
+	{
+		ereport(LOG,
+				(errmsg("Datum stream insert Delta Maintain = " INT64_FORMAT, d),
+				 errOmitLocation(true),
+				 errdetail_datumstreamblockwrite(dsw),
+				 errcontext_datumstreamblockwrite(dsw)));		
+	}
+
+	/*
+	 * Maintain Delta compression data structures.
+	 */
+	switch(dsw->typeInfo->datumlen)
+	{
+		case 4:
+			*(uint32 *) (&dsw->compare_item) = DatumGetUInt32(d);
+			break;
+		case 8:
+			*(Datum *) (&dsw->compare_item) = d;
+			break;
+		default:
+			ereport(FATAL,
+				(errmsg("Delta Compression maintain, fixed length type has unexpected length %d", 
+				dsw->typeInfo->datumlen),
+				errOmitLocation(false),
+				errdetail_datumstreamblockwrite(dsw),
+				errcontext_datumstreamblockwrite(dsw)));
+			break;
+	}
+	
+	/*
+	 * Add a 0 bit in Delta Bitmap
+	 * Zero fill out, if necessary.
+	 */
+	if ( dsw->delta_has_compression )
+	{
+		DatumStreamBlockWrite_MakeDeltaCompressBitMapSpace(dsw);
+		DatumStreamBitMapWrite_AddBit(&dsw->delta_bitmap, /* on */ false);
+	}
+}
+
+static inline void DatumStreamBlockWrite_DeltaAdd(
+	DatumStreamBlockWrite 	*dsw,
+	int64                   delta,
+	bool					sign )
+{
+	if (Debug_appendonly_print_insert_tuple)
+	{
+		ereport(LOG,
+				(errmsg("Datum stream insert Delta Add = " INT64_FORMAT " sign = %d", 
+				delta, sign),
+				 errOmitLocation(true),
+				 errdetail_datumstreamblockwrite(dsw),
+				 errcontext_datumstreamblockwrite(dsw)));		
+	}
+
+	/*
+	 * Zero fill out, if necessary.
+	 */
+	DatumStreamBlockWrite_MakeDeltaCompressBitMapSpace(dsw);
+	// Set delta_has_compression after calling ~_MakeDeltaBitMapSpace above.
+	dsw->delta_has_compression = true;
+
+	/*
+	 * Maintain NULL data structures.
+	 */
+	if (dsw->has_null)
+	{
+		DatumStreamBlockWrite_MakeNullBitMapSpace(dsw);
+
+		DatumStreamBitMapWrite_AddBit(&dsw->null_bitmap, /* on */ false);
+	}
+
+	/*
+	 * Always maintain this NULL bit-map counter even if we don't have NULLs yet and/or RLE_TYPE compression yet.
+	 */
+	dsw->always_null_bitmap_count++;
+
+	/*
+	 * Maintain RLE compression data structures.
+	 */
+	Assert (dsw->rle_want_compression == true);
+	if (dsw->rle_last_item_is_repeated)
+	{
+		Assert(dsw->rle_has_compression);
+		DatumStreamBlockWrite_RleFinalizeRepeatCountSize(dsw);
+	}
+
+	// RLE last item now should be the current datum
+	dsw->rle_last_item = &dsw->compare_item[0];
+	dsw->rle_last_item_size = dsw->typeInfo->datumlen;
+		
+	if (dsw->rle_has_compression)
+	{
+		DatumStreamBlockWrite_MakeCompressBitMapSpace(dsw);
+
+		/*
+		 * New items start off with their bit as OFF.
+		 */
+		DatumStreamBitMapWrite_AddBit(&dsw->rle_compress_bitmap, /* on */ false);
+	}
+
+	// Add a set bit to delta bitmap... This needs to happen after MakeCompressBitMapSpace
+	DatumStreamBitMapWrite_AddBit(&dsw->delta_bitmap, /* on */ true);
+
+	if (dsw->deltas_count + 1 >= dsw->deltas_maxcount)
+	{
+			int32	oldBufferSize;
+			int32	newBufferSize;
+			void	*newBuffer;
+			MemoryContext oldCtxt;
+		
+			/*
+			 * Grow the delta and delta_sign array.
+			 */
+			oldBufferSize = dsw->deltas_maxcount * Int32Compress_MaxByteLen;
+			newBufferSize = oldBufferSize * 2;
+
+			oldCtxt = MemoryContextSwitchTo(dsw->memctxt);
+			newBuffer = palloc(newBufferSize);
+		
+			memcpy(newBuffer, dsw->deltas, oldBufferSize);
+			
+			pfree(dsw->deltas);
+			MemoryContextSwitchTo(oldCtxt);
+
+			dsw->deltas = newBuffer;
+
+			// Grow the delta_sign buffer as well
+			oldBufferSize = dsw->deltas_maxcount * sizeof(bool);
+			newBufferSize = oldBufferSize * 2;
+
+			oldCtxt = MemoryContextSwitchTo(dsw->memctxt);
+			newBuffer = palloc(newBufferSize);
+		
+			memcpy(newBuffer, dsw->delta_sign, oldBufferSize);
+			
+			pfree(dsw->delta_sign);
+			MemoryContextSwitchTo(oldCtxt);
+
+			dsw->delta_sign = newBuffer;
+
+
+			dsw->deltas_maxcount *= 2;
+	}
+
+	/*
+	 * Store the delta and sign.
+	 */
+	dsw->deltas[dsw->deltas_count] = delta;
+	dsw->delta_sign[dsw->deltas_count] = sign;
+
+	dsw->deltas_current_size += 
+		DatumStreamInt32CompressReserved3_Size(dsw->deltas[dsw->deltas_count]);
+	dsw->deltas_count++;
+
+	/*
+	 * In the end, we use delta_savings to estimate the eofUncompress.
+	 */
+	dsw->savings += dsw->typeInfo->datumlen;;
+
+	/*
+	 * Advance our overall count of items.
+	 *
+	 */
+	++dsw->nth;
+
+    Assert(dsw->nth <= dsw->maxDatumPerBlock);
+}
+
+#define MAX_DELTA_SUPPORTED_DELTA_COMPRESSION 0x1FFFFFFF
+
+static Delta_Compression_status DatumStreamBlockWrite_PerformDeltaCompression(
+	DatumStreamBlockWrite 	*dsw,
+	Datum 					d)
+{
+	int64 delta;
+	bool positive_delta = true;
+
+	if ( !dsw->delta_want_compression )
+	{
+		return DELTA_COMPRESSION_NOT_APPLIED;
+	}
+
+	/*
+	 * Check if its first non-NULL datum of the block then
+	 * just need to add a starting 0 bit in deltaBit map and return
+	 * as first value will always be stored as physical datum
+	 */
+	if ( dsw->not_first_datum == false )
+	{
+		dsw->not_first_datum = true;
+		return DELTA_COMPRESSION_NOT_APPLIED;
+	}
+
+	// Here means, we have compare value stored to calculate the Delta
+	switch(dsw->typeInfo->datumlen)
+	{
+		case 4:
+			if ( (*(uint32*) (&dsw->compare_item)) <= DatumGetUInt32(d) )
+			{
+				// Positive delta
+				delta = DatumGetUInt32(d) - (*(uint32*) (&dsw->compare_item));
+				positive_delta = true;
+			}
+			else
+			{
+				// Negative Delta
+				delta = (*(uint32*) (&dsw->compare_item)) - DatumGetUInt32(d);
+				positive_delta = false;
+			}
+			break;
+
+		case 8:
+			if ( (*(Datum*) (&dsw->compare_item)) <= d )
+			{
+				// Positive delta
+				delta = d - (*(Datum*) (&dsw->compare_item));
+				positive_delta = true;
+			}
+			else
+			{
+				// Negative Delta
+				delta = (*(Datum*) (&dsw->compare_item)) - d;
+				positive_delta = false;
+			}
+
+			break;
+		default:
+			ereport(FATAL,
+				(errmsg("Delta compression fixed length type has unexpected length %d", 
+				dsw->typeInfo->datumlen),
+				errOmitLocation(false),
+				errdetail_datumstreamblockwrite(dsw),
+				errcontext_datumstreamblockwrite(dsw)));
+			break;
+	}
+
+	if ( delta > MAX_DELTA_SUPPORTED_DELTA_COMPRESSION )
+	{
+		return DELTA_COMPRESSION_NOT_APPLIED;
+	}
+
+	if (!DatumStreamBlockWrite_DenseHasSpaceDelta(dsw))
+	{
+		return DELTA_COMPRESSION_ERROR;
+	}
+
+	// Update the compare_item now to be new value
+	switch(dsw->typeInfo->datumlen)
+	{
+		case 4:
+			*(uint32 *) (&dsw->compare_item) = DatumGetUInt32(d);
+			break;
+		case 8:
+			*(Datum *) (&dsw->compare_item) = d;
+			break;
+		default:
+			ereport(FATAL,
+				(errmsg("Delta Compression fixed length type has unexpected length %d", 
+				dsw->typeInfo->datumlen),
+				errOmitLocation(false),
+				errdetail_datumstreamblockwrite(dsw),
+				errcontext_datumstreamblockwrite(dsw)));
+			break;
+	}
+
+	DatumStreamBlockWrite_DeltaAdd(dsw, delta, positive_delta);
+
+	return DELTA_COMPRESSION_OK;
+}
+
 /*
  * The Dense and optially RLE_TYPE version of datumstream_put.
  */
@@ -2247,6 +3089,8 @@ static int DatumStreamBlockWrite_PutDense(
 
     Assert(dsw);
 	*toFree = NULL;
+
+	Delta_Compression_status delta_status;
 
 #ifdef USE_ASSERT_CHECKING
 	DatumStreamBlockWrite_CheckDenseInvariant(dsw);
@@ -2289,6 +3133,11 @@ static int DatumStreamBlockWrite_PutDense(
 	havePreviousValueToLookAt = 
 		(dsw->rle_want_compression &&
 		 dsw->rle_last_item != NULL);
+
+	/*
+	 * All the DetaRange datatypes supported have FIXED length and 
+	 * hence don't need to check for the same in the below Variable length for DeltaRange
+	 */
 
     if(dsw->typeInfo->datumlen < 0)
     {
@@ -2596,7 +3445,25 @@ static int DatumStreamBlockWrite_PutDense(
 		 * Fall through and see if there is enough space for new item.
 		 */
 	}
-	
+
+	/*
+	 * RLE done with its checks and if we are here means not repeated/exceding the MAX_REPEAT_COUNT
+	 * in either case, now should check for Delta if supported and if it falls within range, 
+	 * should store Delta instead of storing the pysical datum
+	 */
+	delta_status = DatumStreamBlockWrite_PerformDeltaCompression( dsw, d );
+	// Should return from here if we have performed DeltaCompression
+	switch(delta_status)
+	{
+		case DELTA_COMPRESSION_OK:
+			return 0;
+		case DELTA_COMPRESSION_ERROR:
+			return -1;
+		case DELTA_COMPRESSION_NOT_APPLIED:
+			break;
+			 // FALL through
+	}
+
     if (!DatumStreamBlockWrite_DenseHasSpaceItem(dsw, dsw->typeInfo->datumlen))
 	{
 		/*
@@ -2613,7 +3480,8 @@ static int DatumStreamBlockWrite_PutDense(
 	DatumStreamBlockWrite_PutFixedLength(dsw, d);
 
 	DatumStreamBlockWrite_DenseIncrItem(dsw, rle_last_item, dsw->typeInfo->datumlen);
-	
+	DatumStreamBlockWrite_DeltaMaintain(dsw, d);
+
 	if (Debug_appendonly_print_insert_tuple)
 	{
 		DatumStreamBlockWrite_PutFixedLengthTrace(dsw, item_beginp);
@@ -2637,6 +3505,7 @@ int DatumStreamBlockWrite_Put(
 		return DatumStreamBlockWrite_PutOrig(dsw, datum, null, toFree);
 
 	case DatumStreamVersion_Dense:
+	case DatumStreamVersion_Dense_Enhanced:
 		{
 			int result;
 
@@ -2697,6 +3566,7 @@ void DatumStreamBlockWrite_GetReady(
 		break;
 
 	case DatumStreamVersion_Dense:
+	case DatumStreamVersion_Dense_Enhanced:
 		dsw->datump = dsw->datum_buffer;
 
 		if (dsw->rle_want_compression)
@@ -2718,6 +3588,24 @@ void DatumStreamBlockWrite_GetReady(
 			dsw->rle_repeatcounts_count = 0;
 			dsw->rle_repeatcounts_current_size = 0;
 		}
+
+		if (dsw->delta_want_compression)
+		{
+			/* Set up for RLETYPE with delta compression */
+			dsw->delta_has_compression = false;
+
+			DatumStreamBitMapWrite_Init(
+							&dsw->delta_bitmap, 
+							dsw->delta_bitmap_buffer,
+							dsw->delta_bitmap_buffer_size);
+			
+			dsw->deltas_count = 0;
+			dsw->deltas_current_size = 0;
+
+			dsw->not_first_datum = false;
+			*(Datum*)&dsw->compare_item = 0;
+		}
+
 		break;
 
 	default:
@@ -2862,19 +3750,23 @@ static int64 DatumStreamBlockWrite_BlockDense(
     uint8 *p = NULL;
     DatumStreamBlock_Dense dense;
     DatumStreamBlock_Rle_Extension rle_extension;
+	DatumStreamBlock_Delta_Extension delta_extension;
 	int32 headerSize;
 	int32 nullSize;
 	int32 rleSize;
+	int32 deltaSize;
 	int32 metadataSize;
 	int32 metadataMaxAlignSize;
 	int32 nullPadSize;
 	int32 pad;
 	int32 rowCount;
 	int32 totalRepeatCountsSize;
+	int32 totalDeltasSize;
 	int64 formattedMetadataSize;
 	bool minimalIntegrityChecks;
 
 	totalRepeatCountsSize = 0;
+	totalDeltasSize = 0;
 
 	/*
 	 * Maintain compression data structures.
@@ -2888,11 +3780,16 @@ static int64 DatumStreamBlockWrite_BlockDense(
     p = buffer;
 
     /* First fill in orig header portion */
-    dense.orig_4_bytes.version = DatumStreamVersion_Dense;
+    dense.orig_4_bytes.version = dsw->datumStreamVersion;
     dense.orig_4_bytes.flags = dsw->has_null ? DSB_HAS_NULLBITMAP : 0;
 	if (dsw->rle_has_compression)
 	{
 		dense.orig_4_bytes.flags |= DSB_HAS_RLE_COMPRESSION;
+	}
+
+	if (dsw->delta_has_compression)
+	{
+		dense.orig_4_bytes.flags |= DSB_HAS_DELTA_COMPRESSION;
 	}
 
     dense.logical_row_count = dsw->nth;
@@ -2959,9 +3856,47 @@ static int64 DatumStreamBlockWrite_BlockDense(
 	}
 
 	/*
+	 * Add in extra DatumStreamBlock_Delta struct, Delta bit-map, deltas...
+	 */
+
+	if (dsw->delta_has_compression)
+	{
+		/*
+		 * Add in Delta bitmap and deltas byte lengths,
+		 * if we have done compression in this block.
+		 */
+		headerSize += sizeof(DatumStreamBlock_Delta_Extension);
+
+		/*
+		 * Delta bit-map byte size since we don't add bits when NULL;
+		 */
+		deltaSize = DatumStreamBitMapWrite_Size(&dsw->delta_bitmap);
+
+		delta_extension.delta_bitmap_count= 
+			DatumStreamBitMapWrite_Count(&dsw->delta_bitmap);
+
+		/*
+		 * Repeat counts count and size.
+		 */
+		deltaSize += dsw->deltas_current_size;
+
+		delta_extension.deltas_count = dsw->deltas_count;
+		delta_extension.deltas_size = dsw->deltas_current_size;
+
+		/*
+		 * We charge the compression metadata size against the RLE_TYPE with Delta savings.
+		 */
+		dsw->savings -= (sizeof(DatumStreamBlock_Delta_Extension) + deltaSize);
+	}
+	else
+	{
+		deltaSize = 0;
+	}
+
+	/*
 	 * Align headers and meta-data (e.g. NULL bit-maps, etc).
 	 */
-	metadataSize = headerSize + nullSize + rleSize;
+	metadataSize = headerSize + nullSize + rleSize + deltaSize;
 	metadataMaxAlignSize = MAXALIGN(metadataSize);
 
     memcpy(p, &dense, sizeof(DatumStreamBlock_Dense));
@@ -2972,7 +3907,13 @@ static int64 DatumStreamBlockWrite_BlockDense(
 		memcpy(p, &rle_extension, sizeof(DatumStreamBlock_Rle_Extension));
 		p += sizeof(DatumStreamBlock_Rle_Extension);
 	}
-	
+
+	if (dsw->delta_has_compression)
+	{
+		memcpy(p, &delta_extension, sizeof(DatumStreamBlock_Delta_Extension));
+		p += sizeof(DatumStreamBlock_Delta_Extension);
+	}
+
 	if (dsw->has_null)
 	{
 	    memcpy(p, dsw->null_bitmap_buffer, DatumStreamBitMapWrite_Size(&dsw->null_bitmap));
@@ -3004,6 +3945,35 @@ static int64 DatumStreamBlockWrite_BlockDense(
 			byteLen = DatumStreamInt32Compress_Encode(p, dsw->rle_repeatcounts[i]);
 			p += byteLen;
 			totalRepeatCountsSize += byteLen;
+		}
+	}
+
+	// Add Delta compress bitmap and Deltas
+    if (dsw->delta_has_compression)
+	{
+		int i;
+
+		/*
+		 * Compress bit-map.
+		 */
+	    memcpy(p, dsw->delta_bitmap_buffer, DatumStreamBitMapWrite_Size(&dsw->delta_bitmap));
+	    p += DatumStreamBitMapWrite_Size(&dsw->delta_bitmap);
+
+		/*
+		 * Write out optimal Deltas integer sizes.
+		 */
+		Assert(totalDeltasSize == 0);
+		for (i = 0; i < dsw->deltas_count; i++)
+		{
+			int byteLen;
+
+			Assert(totalDeltasSize + 
+				   DatumStreamInt32CompressReserved3_Size(dsw->deltas[i]) 
+				   <= dsw->deltas_current_size);
+
+			byteLen = DatumStreamInt32CompressReserved3_Encode(p, dsw->deltas[i], dsw->delta_sign[i]);
+			p += byteLen;
+			totalDeltasSize += byteLen;
 		}
 	}
 
@@ -3172,6 +4142,23 @@ static int64 DatumStreamBlockWrite_BlockDense(
 						 errcontext_datumstreamblockwrite(dsw)));
 			}
 		}
+		
+		if (dsw->delta_has_compression)
+		{
+			ereport(LOG,
+					(errmsg("Datum stream write Dense block formatted RLE_TYPE with DELTA compression "
+							 "delta bit-map count %d, delta bit-map ON count %d, delta bit-map size %d, "
+							 "deltas count %d, deltas size %d, output deltas size %d)",
+							 DatumStreamBitMapWrite_Count(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_OnCount(&dsw->delta_bitmap),
+							 DatumStreamBitMapWrite_Size(&dsw->delta_bitmap),
+							 dsw->deltas_count,
+							 dsw->deltas_current_size,
+							 totalDeltasSize),
+					 errOmitLocation(true),
+					 errdetail_datumstreamblockwrite(dsw),
+					 errcontext_datumstreamblockwrite(dsw)));
+		}
 	}
 
 #ifdef USE_ASSERT_CHECKING
@@ -3210,6 +4197,7 @@ int64 DatumStreamBlockWrite_Block(
 		return DatumStreamBlockWrite_BlockOrig(dsw, buffer);
 
 	case DatumStreamVersion_Dense:
+	case DatumStreamVersion_Dense_Enhanced:
 		return DatumStreamBlockWrite_BlockDense(dsw, buffer);
 
 	default:
@@ -3228,6 +4216,7 @@ void DatumStreamBlockWrite_Init(
 	DatumStreamTypeInfo 		*typeInfo,
 	DatumStreamVersion			datumStreamVersion,
 	bool 						rle_want_compression,
+	bool						delta_want_compression,
 	int32						initialMaxDatumPerBlock,
 	int32						maxDatumPerBlock,
 	int32						maxDataBlockSize,
@@ -3243,6 +4232,7 @@ void DatumStreamBlockWrite_Init(
 	dsw->datumStreamVersion = datumStreamVersion;
 
 	dsw->rle_want_compression = rle_want_compression;
+	dsw->delta_want_compression = delta_want_compression;
 
 	dsw->initialMaxDatumPerBlock = initialMaxDatumPerBlock;
 	dsw->maxDatumPerBlock = maxDatumPerBlock;
@@ -3299,6 +4289,7 @@ void DatumStreamBlockWrite_Init(
 		break;
 
 	case DatumStreamVersion_Dense:
+	case DatumStreamVersion_Dense_Enhanced:
 		if (Debug_datumstream_write_use_small_initial_buffers)
 		{
 			dsw->null_bitmap_buffer_size = 64;
@@ -3346,6 +4337,49 @@ void DatumStreamBlockWrite_Init(
 			Assert(dsw->rle_repeatcounts_count == 0);
 			Assert(dsw->rle_repeatcounts_maxcount == 0);
 			Assert(dsw->rle_repeatcounts == NULL);
+		}
+
+		if (dsw->delta_want_compression)
+		{
+			/*
+			 * Start with lower than MAX, since MAX is huge.
+			 */
+			if (Debug_datumstream_write_use_small_initial_buffers)
+			{
+				dsw->delta_bitmap_buffer_size = 8;
+			}
+			else
+			{
+				dsw->delta_bitmap_buffer_size = (dsw->initialMaxDatumPerBlock + 1) / 8;
+			}
+			dsw->delta_bitmap_buffer = palloc(dsw->delta_bitmap_buffer_size);
+
+			/*
+			 * Worst case delta encoding is all datums in block having small
+			 * Start with lower than MAX, since MAX is huge.
+			 */
+			dsw->rle_repeatcounts_count = 0;
+			if (Debug_datumstream_write_use_small_initial_buffers)
+			{
+				dsw->deltas_maxcount = 16;
+			}
+			else
+			{
+				dsw->deltas_maxcount = dsw->initialMaxDatumPerBlock;
+			}
+			dsw->deltas = 
+						palloc(dsw->deltas_maxcount * Int32Compress_MaxByteLen);
+			dsw->delta_sign =
+						palloc(dsw->deltas_maxcount * sizeof(bool));
+		}
+		else
+		{
+			Assert(dsw->delta_bitmap_buffer_size == 0);
+			Assert(dsw->delta_bitmap_buffer == NULL);
+			Assert(dsw->deltas_count == 0);
+			Assert(dsw->deltas_maxcount == 0);
+			Assert(dsw->deltas == NULL);
+			Assert(dsw->delta_sign == NULL);
 		}
 
 		if (Debug_appendonly_print_insert)
@@ -3400,6 +4434,15 @@ void DatumStreamBlockWrite_Finish(
 
 	if (dsw->rle_repeatcounts != NULL)
 		pfree(dsw->rle_repeatcounts);
+
+	if (dsw->delta_bitmap_buffer != NULL)
+		pfree(dsw->delta_bitmap_buffer);
+
+	if (dsw->deltas != NULL)
+		pfree(dsw->deltas);
+
+	if (dsw->delta_sign != NULL)
+		pfree(dsw->delta_sign);
 
 	MemoryContextSwitchTo(oldCtxt);
 }
@@ -3696,6 +4739,140 @@ static void DatumStreamBlock_IntegrityCheckOrig(
 	}
 }
 
+static void DatumStreamBlock_IntegrityCheckDenseDelta(
+	DatumStreamBlock_Delta_Extension	*deltaExtension,
+	uint8								*p,
+	int32								bufferSize,
+	int32								headerSize,
+	DatumStreamBlock_Rle_Extension 		*rleExtension,
+	int									(*errdetailCallback) (void *errdetailArg),
+	void	   							*errdetailArg,
+	int									(*errcontextCallback) (void *errcontextArg),
+	void	   							*errcontextArg)
+{
+	int32 deltaBitMapSize;
+	int32 actualDeltasOnCount;
+	int32 totalDeltasSize;
+	int32 alignedHeaderSize;
+	int i;
+		
+	Assert(deltaExtension != NULL);
+	Assert(p != NULL);
+
+	if (deltaExtension->delta_bitmap_count <= 0)
+	{
+		ereport(ERROR,
+				(errmsg("DELTA bit-map count is negative or 0 and is expected to be greater than 0. (%d)",
+						 deltaExtension->delta_bitmap_count),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	if (deltaExtension->deltas_count <= 0)
+	{
+		ereport(ERROR,
+				(errmsg("DELTA deltas count is negative or 0 and is expected to be greater than 0. (%d)",
+					 deltaExtension->deltas_count),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	if (deltaExtension->deltas_size <= 0)
+	{
+		ereport(ERROR,
+				(errmsg("DELTA deltas size is negative or 0 and is expected to be greater than 0. (%d)",
+						 deltaExtension->deltas_size),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	if (rleExtension != NULL)
+	{
+		if (deltaExtension->delta_bitmap_count != rleExtension->compress_bitmap_count)
+		{
+			ereport(ERROR,
+					(errmsg("DELTA delta_bitmap count (%d) is expected to equal to RLE_TYPE compress bitmap count (%d)",
+							 deltaExtension->delta_bitmap_count,
+							 rleExtension->compress_bitmap_count),
+					 errOmitLocation(false),
+					 errdetailCallback(errdetailArg),
+					 errcontextCallback(errcontextArg)));
+		}
+	}
+
+	deltaBitMapSize = DatumStreamBitMap_Size(deltaExtension->delta_bitmap_count);
+	headerSize += deltaBitMapSize;
+
+	if (bufferSize < headerSize)
+	{
+		ereport(ERROR,
+				(errmsg("Expected RLE_TYPE header with DELTA size %d including NULL bit-map is larger than buffer size %d",
+						headerSize,
+						bufferSize),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	actualDeltasOnCount = DatumStreamBitMap_CountOn(p, deltaExtension->delta_bitmap_count);
+
+	if (actualDeltasOnCount != deltaExtension->deltas_count)
+	{
+		ereport(ERROR,
+				(errmsg("DELTA extension header bit-map ON count does not match DELTA bit-map ON count.  Found %d, expected %d",
+						actualDeltasOnCount,
+						deltaExtension->deltas_count),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	p += deltaBitMapSize;
+
+	headerSize += deltaExtension->deltas_size;
+
+	alignedHeaderSize = MAXALIGN(headerSize);
+
+	if (bufferSize < alignedHeaderSize)
+	{
+		ereport(ERROR,
+				(errmsg("Expected RLE_TYPE DELTA header size %d including deltas size is larger than buffer size %d",
+						alignedHeaderSize,
+						bufferSize),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+
+	totalDeltasSize = 0;
+	for (i = 0; i < deltaExtension->deltas_count; i++)
+	{
+		int32 deltasCount;
+		int byteLen;
+		bool sign;
+			
+		deltasCount = DatumStreamInt32CompressReserved3_Decode(p, &byteLen, &sign);
+		// UNDONE: Range check repeatCount
+
+		totalDeltasSize += byteLen;
+		p += byteLen;
+	}
+
+	if (totalDeltasSize != deltaExtension->deltas_size)
+	{
+		ereport(ERROR,
+				(errmsg("Bad DELTA type deltas size.  Found %d, expected %d",
+						totalDeltasSize,
+						deltaExtension->deltas_size),
+				 errOmitLocation(false),
+				 errdetailCallback(errdetailArg),
+				 errcontextCallback(errcontextArg)));
+	}
+}
+
 static void DatumStreamBlock_IntegrityCheckDense(
 	uint8						*buffer,
 	int32 						bufferSize,
@@ -3716,8 +4893,17 @@ static void DatumStreamBlock_IntegrityCheckDense(
 
 	bool hasNull;
 	bool hasRleCompression;
+	bool hasDeltaCompression;
 
 	int32 alignedHeaderSize;
+	int32 deltaOnCount;
+	DatumStreamBlock_Delta_Extension *deltaExtension;
+	DatumStreamBlock_Rle_Extension *rleExtension;
+
+	deltaExtension = NULL;
+	rleExtension = NULL;
+
+	alignedHeaderSize = 0;
 
 	if (bufferSize < minHeaderSize)
 	{
@@ -3734,12 +4920,13 @@ static void DatumStreamBlock_IntegrityCheckDense(
 	headerSize = minHeaderSize;
 	p = buffer + headerSize;
 
-	if (blockDense->orig_4_bytes.version != DatumStreamVersion_Dense)
+	if ((blockDense->orig_4_bytes.version != DatumStreamVersion_Dense) &&
+		(blockDense->orig_4_bytes.version != DatumStreamVersion_Dense_Enhanced))
 	{
 		ereport(ERROR,
 				(errmsg("Bad datum stream Dense block version.  Found %d and expected %d",
 					    blockDense->orig_4_bytes.version,
-					    DatumStreamVersion_Dense),
+					    DatumStreamVersion_Dense_Enhanced),
 				 errOmitLocation(false),
 				 errdetailCallback(errdetailArg),
 				 errcontextCallback(errcontextArg)));
@@ -3754,6 +4941,7 @@ static void DatumStreamBlock_IntegrityCheckDense(
 
 	hasNull = ((blockDense->orig_4_bytes.flags & DSB_HAS_NULLBITMAP) != 0);
 	hasRleCompression = ((blockDense->orig_4_bytes.flags & DSB_HAS_RLE_COMPRESSION) != 0);
+	hasDeltaCompression = ((blockDense->orig_4_bytes.flags & DSB_HAS_DELTA_COMPRESSION) != 0);
 
 	/*
 	 * Verify logical row count.
@@ -3889,17 +5077,44 @@ static void DatumStreamBlock_IntegrityCheckDense(
 
 	if (!hasRleCompression)
 	{
+		int32 total_datum_count;
+		if (hasDeltaCompression)
+		{
+			headerSize += sizeof(DatumStreamBlock_Delta_Extension);
+
+			if (bufferSize < headerSize)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream DELTA block header extension size. Found %d and expected the size to be at least %d",
+								bufferSize,
+								headerSize),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+
+			deltaExtension = (DatumStreamBlock_Delta_Extension *) p;
+			p += sizeof(DatumStreamBlock_Delta_Extension);
+			deltaOnCount = deltaExtension->deltas_count;
+		}
+		else
+		{
+			deltaOnCount = 0;
+		}
+		total_datum_count = blockDense->physical_datum_count + deltaOnCount;
+
 		if (!hasNull)
 		{
 			alignedHeaderSize = MAXALIGN(headerSize);
 
-			if (blockDense->logical_row_count != blockDense->physical_datum_count)
+			if (blockDense->logical_row_count != total_datum_count)
 			{
 				ereport(ERROR,
 						(errmsg("Logical row count expected to match physical datum count when block does not have NULLs "
-								"(logical row count %d, physical datum count %d)",
+								"(logical row count %d, physical datum count %d + deltaOnCount %d)",
 								blockDense->logical_row_count,
-								blockDense->physical_datum_count),
+								blockDense->physical_datum_count,
+								deltaOnCount),
 						 errOmitLocation(false),
 						 errdetailCallback(errdetailArg),
 						 errcontextCallback(errcontextArg)));
@@ -3915,22 +5130,38 @@ static void DatumStreamBlock_IntegrityCheckDense(
 			nullBitMapSize = DatumStreamBitMap_Size(blockDense->logical_row_count);
 			headerSize += nullBitMapSize;
 
-			alignedHeaderSize = MAXALIGN(headerSize);
-
-			if (bufferSize < alignedHeaderSize)
+			if (!hasDeltaCompression)
 			{
-				ereport(ERROR,
-						(errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d",
-								alignedHeaderSize,
-								bufferSize),
-						 errOmitLocation(false),
-						 errdetailCallback(errdetailArg),
-						 errcontextCallback(errcontextArg)));
+				alignedHeaderSize = MAXALIGN(headerSize);
+
+				if (bufferSize < alignedHeaderSize)
+				{
+					ereport(ERROR,
+							(errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d",
+									alignedHeaderSize,
+									bufferSize),
+							 errOmitLocation(false),
+							 errdetailCallback(errdetailArg),
+							 errcontextCallback(errcontextArg)));
+				}
+			}
+			else
+			{
+				if (bufferSize < headerSize)
+				{
+					ereport(ERROR,
+							(errmsg("Expected header size %d including NULL bit-map is larger than buffer size %d",
+									headerSize,
+									bufferSize),
+							 errOmitLocation(false),
+							 errdetailCallback(errdetailArg),
+							 errcontextCallback(errcontextArg)));
+				}
 			}
 
 			actualNullOnCount = DatumStreamBitMap_CountOn(p, blockDense->logical_row_count);
 
-			expectedNullOnCount = blockDense->logical_row_count - blockDense->physical_datum_count;
+			expectedNullOnCount = blockDense->logical_row_count - total_datum_count;
 
 			if (actualNullOnCount != expectedNullOnCount)
 			{
@@ -4037,6 +5268,25 @@ static void DatumStreamBlock_IntegrityCheckDense(
 
 		p += sizeof(DatumStreamBlock_Rle_Extension);
 
+		if (hasDeltaCompression)
+		{
+			headerSize += sizeof(DatumStreamBlock_Delta_Extension);
+
+			if (bufferSize < headerSize)
+			{
+				ereport(ERROR,
+						(errmsg("Bad datum stream RLE_TYPE DELTA block header extension size. Found %d and expected the size to be at least %d",
+								bufferSize,
+								headerSize),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+
+			deltaExtension = (DatumStreamBlock_Delta_Extension *) p;
+			p += sizeof(DatumStreamBlock_Delta_Extension);
+		}
+
 		if (!hasNull)
 		{
 			actualNullOnCount = 0;
@@ -4095,17 +5345,34 @@ static void DatumStreamBlock_IntegrityCheckDense(
 
 		headerSize += rleExtension->repeatcounts_size;
 
-		alignedHeaderSize = MAXALIGN(headerSize);
-
-		if (bufferSize < alignedHeaderSize)
+		if (!hasDeltaCompression)
 		{
-			ereport(ERROR,
-					(errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d",
-							alignedHeaderSize,
-							bufferSize),
-					 errOmitLocation(false),
-					 errdetailCallback(errdetailArg),
-					 errcontextCallback(errcontextArg)));
+			alignedHeaderSize = MAXALIGN(headerSize);
+
+			if (bufferSize < alignedHeaderSize)
+			{
+				ereport(ERROR,
+						(errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d",
+								alignedHeaderSize,
+								bufferSize),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		}
+		else
+		{
+			if (bufferSize < headerSize)
+			{
+				ereport(ERROR,
+						(errmsg("Expected RLE_TYPE header size %d including repeat counts is larger than buffer size %d",
+								headerSize,
+								bufferSize),
+						 errOmitLocation(false),
+						 errdetailCallback(errdetailArg),
+						 errcontextCallback(errcontextArg)));
+			}
+		
 		}
 
 		totalRepeatCount = 0;
@@ -4175,9 +5442,21 @@ static void DatumStreamBlock_IntegrityCheckDense(
 			}
 		}
 
-		p = buffer + rleExtension->repeatcounts_size;
-
 		// UNDONE: Verify zero padding
+	}
+
+	if (hasDeltaCompression)
+	{
+		DatumStreamBlock_IntegrityCheckDenseDelta(
+												deltaExtension, 
+												p,
+												bufferSize,
+												headerSize,
+												rleExtension,
+												errdetailCallback, 
+												errdetailArg, 
+												errcontextCallback,
+												errcontextArg);
 	}
 
 	if (typeInfo->datumlen < 0)
@@ -4189,7 +5468,7 @@ static void DatumStreamBlock_IntegrityCheckDense(
 		DatumStreamBlock_IntegrityCheckVarlena(
 											buffer + alignedHeaderSize,
 											blockDense->physical_data_size,
-											DatumStreamVersion_Dense,
+											blockDense->orig_4_bytes.version,
 											typeInfo,
 											errdetailCallback,
 											errdetailArg,
@@ -4204,6 +5483,7 @@ char *DatumStreamVersion_String(DatumStreamVersion datumStreamVersion)
 	{
 	case DatumStreamVersion_Original:	return "Original";
 	case DatumStreamVersion_Dense:		return "Dense";
+	case DatumStreamVersion_Dense_Enhanced: return "Dense_Enhanced";
 	default:
 		return "Unknown";
 	}
