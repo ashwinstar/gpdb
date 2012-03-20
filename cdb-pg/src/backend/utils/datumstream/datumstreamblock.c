@@ -2818,7 +2818,7 @@ static inline void DatumStreamBlockWrite_DeltaMaintain(
 			*(uint32 *) (&dsw->compare_item) = DatumGetUInt32(d);
 			break;
 		case 8:
-			*(Datum *) (&dsw->compare_item) = d;
+			dsw->compare_item = d;
 			break;
 		default:
 			ereport(FATAL,
@@ -2889,7 +2889,7 @@ static inline void DatumStreamBlockWrite_DeltaAdd(
 	}
 
 	// RLE last item now should be the current datum
-	dsw->rle_last_item = &dsw->compare_item[0];
+	dsw->rle_last_item = (uint8*)&dsw->compare_item;
 	dsw->rle_last_item_size = dsw->typeInfo->datumlen;
 		
 	if (dsw->rle_has_compression)
@@ -2999,31 +2999,31 @@ static Delta_Compression_status DatumStreamBlockWrite_PerformDeltaCompression(
 	switch(dsw->typeInfo->datumlen)
 	{
 		case 4:
-			if ( (*(uint32*) (&dsw->compare_item)) <= DatumGetUInt32(d) )
+			if ( DatumGetUInt32(dsw->compare_item) <= DatumGetUInt32(d) )
 			{
 				// Positive delta
-				delta = DatumGetUInt32(d) - (*(uint32*) (&dsw->compare_item));
+				delta = DatumGetUInt32(d) - DatumGetUInt32(dsw->compare_item);
 				positive_delta = true;
 			}
 			else
 			{
 				// Negative Delta
-				delta = (*(uint32*) (&dsw->compare_item)) - DatumGetUInt32(d);
+				delta = DatumGetUInt32(dsw->compare_item) - DatumGetUInt32(d);
 				positive_delta = false;
 			}
 			break;
 
 		case 8:
-			if ( (*(Datum*) (&dsw->compare_item)) <= d )
+			if ( dsw->compare_item <= d )
 			{
 				// Positive delta
-				delta = d - (*(Datum*) (&dsw->compare_item));
+				delta = d - dsw->compare_item;
 				positive_delta = true;
 			}
 			else
 			{
 				// Negative Delta
-				delta = (*(Datum*) (&dsw->compare_item)) - d;
+				delta = dsw->compare_item - d;
 				positive_delta = false;
 			}
 
@@ -3055,7 +3055,7 @@ static Delta_Compression_status DatumStreamBlockWrite_PerformDeltaCompression(
 			*(uint32 *) (&dsw->compare_item) = DatumGetUInt32(d);
 			break;
 		case 8:
-			*(Datum *) (&dsw->compare_item) = d;
+			dsw->compare_item = d;
 			break;
 		default:
 			ereport(FATAL,
@@ -3603,7 +3603,7 @@ void DatumStreamBlockWrite_GetReady(
 			dsw->deltas_current_size = 0;
 
 			dsw->not_first_datum = false;
-			*(Datum*)&dsw->compare_item = 0;
+			dsw->compare_item = 0;
 		}
 
 		break;
@@ -4358,7 +4358,7 @@ void DatumStreamBlockWrite_Init(
 			 * Worst case delta encoding is all datums in block having small
 			 * Start with lower than MAX, since MAX is huge.
 			 */
-			dsw->rle_repeatcounts_count = 0;
+			dsw->deltas_count = 0;
 			if (Debug_datumstream_write_use_small_initial_buffers)
 			{
 				dsw->deltas_maxcount = 16;

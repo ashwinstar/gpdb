@@ -934,7 +934,7 @@ typedef struct DatumStreamBlockWrite
 	bool not_first_datum;
 
 	// 8 bytes is max length Delta Compression supports
-	uint8 compare_item[8];
+	Datum compare_item;
 
 	DatumStreamBitMapWrite  delta_bitmap;
 
@@ -1020,7 +1020,7 @@ typedef struct DatumStreamBlockRead
 	uint8	*rle_repeatcountsp;
 	uint8	*delta_beginp;
 	uint8	*delta_deltasp;
-	uint8	delta_datum_p[8];
+	Datum	delta_datum_p;
 
 	int32 	rle_norepeats_null_bitmap_count;
 	int32 	rle_compress_bitmap_count;
@@ -1295,11 +1295,11 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 		{
 			if ( dsr->typeInfo.datumlen == 4)
 			{
-				*datum = *(uint32 *) &dsr->delta_datum_p;
+				*datum = (uint32)dsr->delta_datum_p;
 			}
 			else if (dsr->typeInfo.datumlen == 8) 
 			{
-				*datum = *(Datum *) &dsr->delta_datum_p;
+				*datum = dsr->delta_datum_p;
 			}
 			else
 			{
@@ -1534,12 +1534,12 @@ DatumStreamBlockRead_AdvanceDenseDelta(DatumStreamBlockRead *dsr)
 		if ( sign )
 		{
 			// Add delta
-			*(uint32*) (&dsr->delta_datum_p) += delta;
+			*(uint32*)(&dsr->delta_datum_p) += delta;
 		}
 		else
 		{
 			// Substract delta
-			*(uint32*) (&dsr->delta_datum_p) -= delta;
+			*(uint32*)(&dsr->delta_datum_p) -= delta;
 		}
 	}
 	else if (dsr->typeInfo.datumlen == 8)
@@ -1547,17 +1547,17 @@ DatumStreamBlockRead_AdvanceDenseDelta(DatumStreamBlockRead *dsr)
 		if ( sign )
 		{
 			// Add delta
-			*(Datum*) (&dsr->delta_datum_p) += delta;
+			dsr->delta_datum_p += delta;
 		}
 		else
 		{
 			// Substract delta
-			*(Datum*) (&dsr->delta_datum_p) -= delta;
+			dsr->delta_datum_p -= delta;
 		}
 	}
 	else
 	{
-		*(Datum*) (&dsr->delta_datum_p) = 0;
+		dsr->delta_datum_p = 0;
 		Assert(false);
 	}
 

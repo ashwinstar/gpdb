@@ -348,6 +348,7 @@ static void init_datumstream_info(
 	 * Assume the folowing unless modified below.
 	 */
 	*rle_compression = false;
+	*delta_compression = false;
 
 	ao_attr->compress = false;
 	ao_attr->compressType = NULL;
