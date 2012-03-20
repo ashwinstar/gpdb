@@ -766,23 +766,23 @@ end loop;
 return 1;
 end;
 $$ language 'plpgsql';
-select catdump.dump_to_table('4.2', 'pg_catalog');
+select catdump.dump_to_table('5.0', 'pg_catalog');
  dump_to_table 
 ---------------
              1
 (1 row)
 
 --
--- Now, load the 4.1 catalog into catdump.ddl
+-- Now, load the 4.2 catalog into catdump.ddl
 --
-drop external table cat41;
-ERROR:  table "cat41" does not exist
-create external table cat41(stmt text) location('file://@hostname@@abs_srcdir@/data/upgrade42/catalog41/4_1_dump.txt')
+drop external table cat42;
+ERROR:  table "cat42" does not exist
+create external table cat42(stmt text) location('file://@hostname@@abs_srcdir@/data/upgrade_paris/catalog42/4_2_dump.txt')
 format 'TEXT' (delimiter 'OFF');
-insert into catdump.ddl SELECT distinct '4.1u', stmt from cat41;
-drop external table cat41;
+insert into catdump.ddl SELECT distinct '4.2u', stmt from cat42;
+drop external table cat42;
 --
--- Create the upgrade schema and fill that schema with 4.1 cat
+-- Create the upgrade schema and fill that schema with 4.2 cat
 -- then execute the upgrade script
 --
 drop schema upg_catalog cascade;
@@ -792,7 +792,7 @@ SET SEARCH_PATH to upg_catalog;
 drop external table execCmd;
 ERROR:  table "execcmd" does not exist
 create external web table execCmd(a text)
-execute 'psql -p $GP_MASTER_PORT -f @abs_builddir@/data/upg_catupgrade_42.sql $GP_DATABASE $GP_USER >@abs_builddir@/data/upgrade_exec.log 2>@abs_builddir@/data/upgrade_err.log;'
+execute 'psql -p $GP_MASTER_PORT -f @abs_builddir@/data/upg_catupgrade_50.sql $GP_DATABASE $GP_USER >@abs_builddir@/data/upgrade_exec.log 2>@abs_builddir@/data/upgrade_err.log;'
 on master format 'text';
 select * from execCmd; 
  a 
@@ -802,7 +802,7 @@ select * from execCmd;
 --
 -- Dump the upgraded upg_catalog to catdump
 --
-select catdump.dump_to_table('4.1u', 'upg_catalog');
+select catdump.dump_to_table('4.2u', 'upg_catalog');
  dump_to_table 
 ---------------
              1
@@ -812,26 +812,19 @@ select catdump.dump_to_table('4.1u', 'upg_catalog');
 --  Tidy up the dumped text
 --
 update catdump.DDL set stmt = regexp_replace(ltrim(rtrim(stmt)), 'upg_catalog', 'pg_catalog', 'ig');
-select stmt from catdump.DDL where ver = '4.1u'
+select stmt from catdump.DDL where ver = '4.2u'
 except
-select stmt from catdump.DDL where ver = '4.2'
+select stmt from catdump.DDL where ver = '5.0'
 order by 1;
                                                                                                  stmt                                                                                                 
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE TYPE pg_catalog.anytable(   INPUT = pg_catalog.anytable_in,   OUTPUT = pg_catalog.anytable_out,   INTERNALLENGTH = VARIABLE,   STORAGE = extended,   DELIMITER = ',',   ALIGNMENT = double );
- CREATE UNIQUE INDEX pg_language_name_index ON pg_catalog.pg_language USING btree(lanname);
-(2 rows)
+------
+(0 rows)
 
-select stmt from catdump.DDL where ver = '4.2'
+select stmt from catdump.DDL where ver = '5.0'
 except
-select stmt from catdump.DDL where ver = '4.1u'
+select stmt from catdump.DDL where ver = '4.2u'
 order by 1;
                                                                                                                  stmt                                                                                                                 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE AGGREGATE pg_catalog.pg_partition_oid(pg_catalog.oid, pg_catalog.record) (   SFUNC     = pg_partition_oid_transfn,   STYPE     = pg_catalog.internal,   FINALFUNC = pg_partition_oid_finalfn );
- CREATE TYPE pg_catalog.anytable(   INPUT = pg_catalog.anytable_in,   OUTPUT = pg_catalog.anytable_out,   INTERNALLENGTH = VARIABLE,   STORAGE = extended,   DELIMITER = ',',   ALIGNMENT = double ); DROP TYPE pg_catalog._anytable;
- CREATE UNIQUE INDEX pg_compression_oid_index ON pg_catalog.pg_compression USING btree(oid);
- CREATE UNIQUE INDEX pg_extprotocol_oid_index ON pg_catalog.pg_extprotocol USING btree(oid);
- CREATE UNIQUE INDEX pg_language_lanname_index ON pg_catalog.pg_language USING btree(lanname);
-(5 rows)
+------
+(0 rows)
 

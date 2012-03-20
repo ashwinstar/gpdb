@@ -22,9 +22,9 @@ DATADIR=$(top_srcdir)/src/test/regress/data
 
 UPGRADEFILES = $(DATADIR)/upgrade/upg2_catupgrade.sql \
 			   $(DATADIR)/upgrade/upg2_catupgrade_check.sql \
-			   $(DATADIR)/upgrade42/upg2_catupgrade_42.sql
+			   $(DATADIR)/upgrade_paris/upg2_catupgrade_paris.sql
 
-DATAFILES = $(DATADIR)/upgrade42/pg_compression.data
+DATAFILES = 
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade
@@ -63,7 +63,7 @@ gpmodcat_clean:
 	rm -f crc32c.c
 	
 upgradesql_clean:
-	rm -f $(DATADIR)/upgrade42/*.sql
+	rm -f $(DATADIR)/upgrade_paris/*.sql
 
 gpmodcat_install: gpmodcatversion
 	$(INSTALL_PROGRAM) gpmodcatversion$(X) \
@@ -76,7 +76,9 @@ installdirs:
 installupgradefiles: $(UPGRADEFILES) $(DATAFILES)
 	@for i in $^; \
 	do \
-		$(INSTALL_DATA) $$i '$(DESTDIR)$(datadir)/upgrade/'`basename $$i`; \
+		j=`basename $$i`; \
+		k=`echo $$j | sed -e s/paris/50/g`; \
+		$(INSTALL_DATA) $$i '$(DESTDIR)$(datadir)/upgrade/'$$k; \
 	done
 
 gpmodcat_unistall:
