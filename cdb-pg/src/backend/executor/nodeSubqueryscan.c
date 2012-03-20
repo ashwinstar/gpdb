@@ -237,7 +237,9 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 * global state is already set up by the code that called us.
 	 */
 	sp_estate->es_sliceTable = estate->es_sliceTable;
-	sp_estate->current_slice_no = estate->current_slice_no;
+	sp_estate->currentSliceIdInPlan = estate->currentSliceIdInPlan;
+	sp_estate->currentExecutingSliceId = estate->currentExecutingSliceId;
+	sp_estate->rootSliceId = estate->currentExecutingSliceId;
 	
 	/* 
 	 * also load shared nodes list 

@@ -284,7 +284,9 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 
 	estate->dispatcherState = palloc0(sizeof(struct CdbDispatcherState));
 
-	estate->current_slice_no = 0;
+	estate->currentSliceIdInPlan = 0;
+	estate->currentExecutingSliceId = 0;
+	estate->rootSliceId = 0;
 
 	/*
 	 * Return the executor state structure
