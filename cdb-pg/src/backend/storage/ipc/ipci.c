@@ -271,6 +271,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	InitShmemIndex();
 
+	primaryMirrorModeShmemInit();
+
 	/*
 	 * Set up xlog, clog, and buffers
 	 */
@@ -349,7 +351,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 * Set up interprocess signaling mechanisms
 	 */
 	PMSignalShmemInit();
-	primaryMirrorModeShmemInit();
 	BgWriterShmemInit();
 	CheckpointShmemInit();
 	//AutoVacuumShmemInit();

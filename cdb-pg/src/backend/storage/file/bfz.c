@@ -10,6 +10,7 @@
 #include "utils/memutils.h"		/* For MemoryContext stuff */
 #include "cdb/cdbvars.h"
 #include "executor/execWorkfile.h"
+#include "postmaster/primary_mirror_mode.h"
 
 typedef pg_crc32 BFZ_CHECKSUM_TYPE;
 
@@ -254,7 +255,11 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 
 	thiz->filename = palloc0(MAXPGPATH);
 	
-	snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR, DatabasePath);
+	if (snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR, getCurrentTempFilePath) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/PG_TEMP_FILES_DIR", getCurrentTempFilePath)));
+	}
+
 	mkdir(thiz->filename, 0777);
 
 	char tempfileprefix[MAXPGPATH];
@@ -262,10 +267,16 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 	int len = GetTempFilePrefix(tempfileprefix, MAXPGPATH, filePrefix);
 	insist_log(len <= MAXPGPATH - 1, "could not generate temporary file name");
 
-	snprintf(thiz->filename, MAXPGPATH, "%s/%s.%s",
-			DatabasePath,
+	if (snprintf(thiz->filename, MAXPGPATH, "%s/%s.%s",
+			getCurrentTempFilePath,
 			tempfileprefix,
-			BFZ_MKTEMP_MASK);
+			BFZ_MKTEMP_MASK) > MAXPGPATH)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s.%s",
+                        getCurrentTempFilePath,
+                        tempfileprefix,
+                        BFZ_MKTEMP_MASK)));
+	}
 
 #ifdef WIN32
 	{
@@ -280,7 +291,7 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 	if (thiz->fd == -1)
 		ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
-				errmsg("could not create temporary file: %m")));
+				errmsg("could not create temporary file %s: %m", thiz->filename)));
 
 	RegisterXactCallbackOnce(bfz_close_callback, thiz);
 

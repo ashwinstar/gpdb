@@ -31,6 +31,7 @@
 
 #include "utils/debugbreak.h"
 #include "utils/tuplesort.h"
+#include "postmaster/primary_mirror_mode.h"
 
 static TupleTableSlot *ShareInputNext(ShareInputScanState *node);
 
@@ -475,11 +476,16 @@ void shareinput_create_bufname_prefix(char* p, int size, int share_id)
  */
 static void sisc_lockname(char* p, int size, int share_id, const char* name)
 {
-	snprintf(p, size,
+	if (snprintf(p, size,
 			"%s/%s/%s_gpcdb2.sisc_%d_%d_%d_%d_%s",
-			DatabasePath, PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX, 
+			getCurrentTempFilePath, PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX, 
 			Gp_segment, gp_session_id, gp_command_count, share_id, name
-			);
+			) > size)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s/%s_gpcdb2.sisc_%d_%d_%d_%d_%s",
+                        getCurrentTempFilePath, PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX,
+                        Gp_segment, gp_session_id, gp_command_count, share_id, name)));
+	}
 }
 
 typedef struct ShareInput_Lk_Context 
@@ -550,7 +556,10 @@ static void create_tmp_fifo(const char *fifoname)
 	{
 		/* first try may be due to pgsql_tmp dir is not created yet. */
 		char tmpdir[MAXPGPATH];
-		snprintf(tmpdir, MAXPGPATH, "%s/%s", DatabasePath, PG_TEMP_FILES_DIR);
+		if (snprintf(tmpdir, MAXPGPATH, "%s/%s", getCurrentTempFilePath, PG_TEMP_FILES_DIR) > MAXPGPATH)
+		{
+			ereport(ERROR, (errmsg("cannot create dir path %s/%s", getCurrentTempFilePath, PG_TEMP_FILES_DIR)));
+		}
 		mkdir(tmpdir, S_IRWXU);
 
 		/* then try it again */

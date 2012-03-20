@@ -57,6 +57,7 @@
 #include "access/xlog_internal.h"
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
+#include "postmaster/primary_mirror_mode.h"
 
 extern int	optind;
 extern char *optarg;
@@ -76,6 +77,9 @@ static void KillExistingXLOG(void);
 static void WriteEmptyXLOG(void);
 static void usage(void);
 
+#ifndef BUFFER_LEN
+#define BUFFER_LEN (2 * (MAXPGPATH))
+#endif
 
 int
 main(int argc, char *argv[])
@@ -774,8 +778,12 @@ WriteEmptyXLOG(void)
 	XLogRecord *record;
 	pg_crc32	crc;
 	char		path[MAXPGPATH];
+	char 		newPath[MAXPGPATH];
 	int			fd;
 	int			nbytes;
+	FILE		*fp = NULL;
+	char 		*pch = NULL;
+	char 		buf[BUFFER_LEN];
 
 	/* Use malloc() to ensure buffer is MAXALIGNED */
 	buffer = (char *) malloc(XLOG_BLCKSZ);
@@ -819,8 +827,35 @@ WriteEmptyXLOG(void)
 	*/
 	record->xl_crc = crc;
 
+	/* 
+	 * If we make the filespace for transaction files configurable, then
+	 * pg_resetxlog should pick up the XLOG files from the right location.
+	 * Check the flat file for determining the right location of XLOG files
+	 */
+	fp = fopen(TXN_FILESPACE_FLATFILE, "r");
+	if (fp)
+        {
+                MemSet(buf, 0, BUFFER_LEN);
+                if (fgets(buf, BUFFER_LEN, fp))
+			;	/* First line is Filespace OID, skip it */
+
+                MemSet(buf, 0, BUFFER_LEN);
+                if (fgets(buf, BUFFER_LEN, fp))
+                {
+                        buf[strlen(buf)-1]='\0';
+                        pch = strtok(buf, " ");	/* The first part is DBID. Skip it */
+                        pch = strtok(NULL, " ");
+                        sprintf(newPath,"%s/%s", pch, XLOGDIR);
+                }
+	}
+	else
+	{
+		/* No flat file. Use the default pg_system filespace */
+		sprintf(newPath, "%s", XLOGDIR);
+	}
+
 	/* Write the first page */
-	XLogFilePath(path, ControlFile.checkPointCopy.ThisTimeLineID,
+	XLogFilePath2(newPath, ControlFile.checkPointCopy.ThisTimeLineID,
 				 newXlogId, newXlogSeg);
 
 	unlink(path);

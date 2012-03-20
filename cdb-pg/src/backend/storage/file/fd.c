@@ -235,7 +235,6 @@ static File AllocateVfd(void);
 static void FreeVfd(File file);
 
 static int	FileAccess(File file);
-static char *make_database_relative(const char *filename);
 static void AtProcExit_Files(int code, Datum arg);
 static void CleanupTempFiles(bool isProcExit);
 static void RemovePgTempFilesInDir(const char *tmpdirname);
@@ -748,23 +747,6 @@ FreeVfd(File file)
 	VfdCache[0].nextFree = file;
 }
 
-/*
- * make_database_relative()
- *		Prepend DatabasePath to the given file name.
- *
- * Result is a palloc'd string.
- */
-static char *
-make_database_relative(const char *filename)
-{
-	char	   *buf;
-
-	Assert(!is_absolute_path(filename));
-	buf = (char *) palloc(strlen(DatabasePath) + strlen(filename) + 2);
-	sprintf(buf, "%s/%s", DatabasePath, filename);
-	return buf;
-}
-
 /* returns 0 on success, -1 on re-open failure (with errno set) */
 static int
 FileAccess(File file)
@@ -873,9 +855,11 @@ PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 
 /*
  * open a file in the database directory ($PGDATA/base/DIROID/)
- *
+ * if we are using the system default filespace. Otherwise open
+ * the file in the filespace configured for temporary files.
  * The passed name MUST be a relative path.  Effectively, this
- * prepends DatabasePath to it and then acts like PathNameOpenFile.
+ * prepends DatabasePath or path of the filespace to it and then 
+ * acts like PathNameOpenFile.
  */
 File
 FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
@@ -883,7 +867,13 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 	File		fd;
 	char	   *fname;
 
-	fname = make_database_relative(fileName);
+	Assert(!is_absolute_path(fileName));
+	fname = (char*)palloc(PATH_MAX);
+	if (snprintf(fname, PATH_MAX, "%s/%s", getCurrentTempFilePath, fileName) > PATH_MAX)
+	{
+		ereport(ERROR, (errmsg("cannot generate path %s/%s", getCurrentTempFilePath,
+                        fileName)));
+	}
 	fd = PathNameOpenFile(fname, fileFlags, fileMode);
 	pfree(fname);
 	return fd;
@@ -988,7 +978,8 @@ OpenTemporaryFile(const char   *fileName,
 		 * just did the same thing.  If it doesn't work then we'll bomb out on
 		 * the second create attempt, instead.
 		 */
-		dirpath = make_database_relative(PG_TEMP_FILES_DIR);
+		dirpath = (char*)palloc(PATH_MAX);
+		snprintf(dirpath, PATH_MAX, "%s/%s", getCurrentTempFilePath, PG_TEMP_FILES_DIR);
 		mkdir(dirpath, S_IRWXU);
 		pfree(dirpath);
 

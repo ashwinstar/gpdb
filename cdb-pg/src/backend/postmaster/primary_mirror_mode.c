@@ -14,9 +14,14 @@
 #include "access/xlog.h"
 #include "utils/guc.h"
 #include "utils/netcheck.h"
+#include "catalog/pg_filespace.h"
+#include "cdb/cdbpersistentfilespace.h"
+#include "cdb/cdbvars.h"
 #include <string.h>
+#include "access/slru.h"
+#include "access/xlog_internal.h"
 
-
+#define BUFFER_LEN (2 * (MAXPGPATH))
 /**
  * todo MIRRORING Review setup of signal handlers here --
  *                if we are inside a transition will we quit out properly on shutdown?
@@ -183,6 +188,19 @@ typedef struct PMModuleState
      */
     volatile bool isIOSuspended;
 
+	/*  Filespace details for temp files */
+        volatile char tempFilespacePath[MAXPGPATH];
+        volatile char peerTempFilespacePath[MAXPGPATH];
+        volatile Oid tempFilespaceOID;
+
+        volatile bool isUsingDefaultFilespaceForTempFiles;
+
+        /* Filespace details for transaction files */
+        volatile char txnFilespacePath[MAXPGPATH];
+        volatile char peerTxnFilespacePath[MAXPGPATH];
+        volatile Oid txnFilespaceOID;
+        volatile bool isUsingDefaultFilespaceForTxnFiles;
+
 } PMModuleState;
 
 static volatile PMModuleState *pmModuleState = NULL;
@@ -228,6 +246,8 @@ typedef struct PMLocalState
 
 PMLocalState pmLocalState;
 bool gHaveInitializedLocalState = false;
+
+static int isAbsolutePath(const char *path);
 
 /**
  * Extra result information that can be returned to the calling script so it
@@ -913,6 +933,17 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->transitionNumberCounter = 1;
 	pmModuleState->isInFaultFromPostmasterReset = false;
 	pmModuleState->isIOSuspended = false;
+
+	pmModuleState->tempFilespacePath[0] = '\0';
+        pmModuleState->peerTempFilespacePath[0] = '\0';
+        pmModuleState->tempFilespaceOID = 0;
+        pmModuleState->isUsingDefaultFilespaceForTempFiles = 1;
+        pmModuleState->txnFilespacePath[0] = '\0';
+        pmModuleState->peerTxnFilespacePath[0] = '\0';
+        pmModuleState->txnFilespaceOID = SYSTEMFILESPACE_OID;
+        pmModuleState->isUsingDefaultFilespaceForTxnFiles = 1;
+
+        primaryMirrorPopulateFilespaceInfo();
 
 	clearTransitionArgs(&pmModuleState->requestedTransition);
 
@@ -2194,5 +2225,380 @@ pid_t primaryMirrorGetBGWriterPID(void)
 
 	/* fetching single int field, no need for fancy locking */
 	return pmModuleState->bgWriterPID;
+}
+
+Oid
+primaryMirrorGetTempFilespaceOID(void)
+{
+        assertModuleInitialized();
+        return pmModuleState->tempFilespaceOID;
+}
+
+Oid
+primaryMirrorGetTxnFilespaceOID(void)
+{
+        assertModuleInitialized();
+        return pmModuleState->txnFilespaceOID;
+}
+
+char*
+primaryMirrorGetTxnFilespacePath(void)
+{
+        assertModuleInitialized();
+        return (char*)pmModuleState->txnFilespacePath;
+}
+
+char*
+primaryMirrorGetTempFilespacePath(void)
+{
+        assertModuleInitialized();
+        return (char*)pmModuleState->tempFilespacePath;
+}
+
+bool
+primaryMirrorIsUsingDefaultFilespaceForTempFiles(void)
+{
+        assertModuleInitialized();
+        return pmModuleState->isUsingDefaultFilespaceForTempFiles;
+}
+
+bool
+primaryMirrorIsUsingDefaultFilespaceForTxnFiles(void)
+{
+	assertModuleInitialized();
+	return pmModuleState->isUsingDefaultFilespaceForTxnFiles;
+}
+
+/* The caller needs to free the memory of the return value */
+char*
+makeRelativeToTxnFilespace(char *path)
+{
+        char *fullPath = NULL;
+
+        assertModuleInitialized();
+        fullPath = (char*)palloc(MAXPGPATH);
+
+        if (pmModuleState->isUsingDefaultFilespaceForTxnFiles)
+	{
+                if (snprintf(fullPath, MAXPGPATH, "%s", path) > MAXPGPATH)
+		{
+			ereport(ERROR, (errmsg("cannot form path %s\n", path)));
+		}
+	}
+        else
+	{
+                if (snprintf(fullPath, MAXPGPATH, "%s/%s", primaryMirrorGetTxnFilespacePath(), path) > MAXPGPATH)
+		{
+			ereport(ERROR, (errmsg("cannot form path %s/%s", primaryMirrorGetTxnFilespacePath(), path)));
+		}
+	}
+
+        return fullPath;
+}
+
+char*
+primaryMirrorGetPeerTxnFilespacePath(void)
+{
+        assertModuleInitialized();
+
+        return (char *)pmModuleState->peerTxnFilespacePath;
+}
+
+char*
+makeRelativeToPeerTxnFilespace(char *path)
+{
+        char *fullPath = NULL;
+
+        assertModuleInitialized();
+        fullPath = (char*)palloc(MAXPGPATH);
+
+        if (pmModuleState->isUsingDefaultFilespaceForTxnFiles)
+                sprintf(fullPath, "%s", path);
+        else
+                sprintf(fullPath, "%s/%s", primaryMirrorGetPeerTxnFilespacePath(), path);
+        return fullPath;
+}
+
+/* 
+ * Check if the filespace information is consistent between persistant node filespace info
+ * and the values read from the flat files 
+ */
+bool
+isFilespaceInfoConsistent(void)
+{
+        char *primaryFilespaceLocation = NULL;
+        char *mirrorFilespaceLocation = NULL;
+        Oid filespaceOid = primaryMirrorGetTxnFilespaceOID();
+        bool ret = true;
+
+        if (pmModuleState->isUsingDefaultFilespaceForTxnFiles == 1)
+        {
+                /* Using default filespace */
+                Insist(pmModuleState->txnFilespacePath[0] == '\0');
+                Insist(pmModuleState->peerTxnFilespacePath[0] == '\0');
+                return true;
+        }
+
+        Insist(pmModuleState->isUsingDefaultFilespaceForTxnFiles == 0);
+
+        /* Use the oid to retrieve the paths on primary and mirror */
+        PersistentFilespace_GetPrimaryAndMirror(
+                filespaceOid,
+                &primaryFilespaceLocation,
+                &mirrorFilespaceLocation);
+
+        /* Compare the values with shared memory contents */
+        if (strncmp(primaryFilespaceLocation, (char*)pmModuleState->txnFilespacePath, MAXPGPATH))
+        {
+                ereport(gp_temporary_files_filespace_repair ? WARNING : ERROR, (errcode(ERRCODE_RAISE_EXCEPTION),
+			errmsg("Transaction files filespace Inconsistent. Filespace oid %d filespace flatfile locations - local:%s peer %s, "
+                                "Filespace gp_persistent_filespace_node locations - local:%s peer:%s", filespaceOid, (char*)pmModuleState->txnFilespacePath,
+                                (char*)pmModuleState->peerTxnFilespacePath, primaryFilespaceLocation, mirrorFilespaceLocation), errSendAlert(true)));
+                ret = false;
+                goto cleanup;
+        }
+
+        /* See if the mirror is configured */
+        if (mirrorFilespaceLocation)
+        {
+                Insist(pmModuleState->peerTxnFilespacePath[0]);
+                if (strncmp(mirrorFilespaceLocation, (char*)pmModuleState->peerTxnFilespacePath, MAXPGPATH))
+                {
+			ereport(gp_temporary_files_filespace_repair ? WARNING : ERROR, (errcode(ERRCODE_RAISE_EXCEPTION),
+                        errmsg("Transaction files filespace Inconsistent. Filespace oid %d filespace flatfile locations - local:%s peer %s, "
+                                "Filespace gp_persistent_filespace_node locations - local:%s peer:%s", filespaceOid, (char*)pmModuleState->txnFilespacePath,
+                                (char*)pmModuleState->peerTxnFilespacePath, primaryFilespaceLocation, mirrorFilespaceLocation), errSendAlert(true)));
+
+                        ret = false;
+                        goto cleanup;
+                }
+        }
+
+        if (primaryFilespaceLocation)
+                pfree(primaryFilespaceLocation);
+        if (mirrorFilespaceLocation)
+                pfree(mirrorFilespaceLocation);
+
+        filespaceOid = primaryMirrorGetTempFilespaceOID();
+        ret = true;
+
+        if (pmModuleState->isUsingDefaultFilespaceForTempFiles)
+        {
+                Insist(pmModuleState->tempFilespacePath[0] == '\0');
+                Insist(pmModuleState->peerTempFilespacePath[0] == '\0');
+                return true;
+        }
+
+        Insist(pmModuleState->isUsingDefaultFilespaceForTempFiles == 0);
+
+        /* Use the oid to retrieve the paths on primary and mirror */
+        PersistentFilespace_GetPrimaryAndMirror(
+                filespaceOid,
+                &primaryFilespaceLocation,
+                &mirrorFilespaceLocation);
+
+        /* Compare the values with shared memory contents */
+        if (strncmp(primaryFilespaceLocation, (char*)pmModuleState->tempFilespacePath, MAXPGPATH))
+        {
+		ereport(gp_temporary_files_filespace_repair ? WARNING :ERROR, (errcode(ERRCODE_RAISE_EXCEPTION),
+                        errmsg("Temporary files filespace Inconsistent. Filespace oid %d filespace flatfile locations - local:%s peer %s, "
+                                "Filespace gp_persistent_filespace_node locations - local:%s peer:%s", filespaceOid, (char*)pmModuleState->txnFilespacePath,
+                                (char*)pmModuleState->peerTxnFilespacePath, primaryFilespaceLocation, mirrorFilespaceLocation), errSendAlert(true)));
+                ret = false;
+                goto cleanup;
+        }
+
+        /* Check if the mirror is configured as well */
+        if (mirrorFilespaceLocation)
+        {
+                Insist(pmModuleState->peerTempFilespacePath[0]);
+                if (strncmp(mirrorFilespaceLocation, (char*)pmModuleState->peerTempFilespacePath, MAXPGPATH))
+                {
+			ereport(gp_temporary_files_filespace_repair ? WARNING :ERROR, (errcode(ERRCODE_RAISE_EXCEPTION),
+                        errmsg("Temporary files filespace Inconsistent. Filespace oid %d filespace flatfile locations - local:%s peer %s, "
+                                "Filespace gp_persistent_filespace_node locations - local:%s peer:%s", filespaceOid, (char*)pmModuleState->txnFilespacePath,
+                                (char*)pmModuleState->peerTxnFilespacePath, primaryFilespaceLocation, mirrorFilespaceLocation), errSendAlert(true)));
+
+                        ret = false;
+                        goto cleanup;
+                }
+        }
+
+cleanup:
+        if (primaryFilespaceLocation)
+                pfree(primaryFilespaceLocation);
+        if (mirrorFilespaceLocation)
+                pfree(mirrorFilespaceLocation);
+
+        return ret;
+}
+
+void
+primaryMirrorPopulateFilespaceInfo(void)
+{
+        char buffer[BUFFER_LEN];
+        int dbId = 0;
+        int peerDbId = 0;
+        char filespacePath[MAXPGPATH];
+        char peerFilespacePath[MAXPGPATH];
+        char *pch = NULL;
+        FILE *fp = NULL;
+
+        /* Read the temp filespace details from gp_temporary_files_filespace flat file */
+        fp = fopen(TEMPFILES_FILESPACE_FLATFILE, "r");
+        if (fp)
+        {
+                MemSet(buffer, 0, BUFFER_LEN);
+                if (fgets(buffer, BUFFER_LEN, fp))
+                        pmModuleState->tempFilespaceOID = atoi(buffer);
+
+                MemSet(buffer, 0, BUFFER_LEN);
+                if (fgets(buffer, BUFFER_LEN, fp))
+                {
+                        buffer[strlen(buffer)-1]='\0';
+                        pch = strtok(buffer, " ");
+                        dbId = atoi(pch);
+                        pch = strtok(NULL, " ");
+                        strcpy(filespacePath, pch);
+                }
+
+                /* Check if there is an entry for the mirror temp filespace as well */
+                MemSet(buffer, 0, MAXPGPATH);
+                if (fgets(buffer, MAXPGPATH, fp))
+                {
+                        buffer[strlen(buffer)-1]='\0';
+                        pch = strtok(buffer, " ");
+                        peerDbId = atoi(pch);
+                        pch = strtok(NULL, " ");
+                        strcpy(peerFilespacePath, pch);
+                }
+
+                /* Populate the local and peer filepsace paths */
+                if (dbId == GpIdentity.dbid)
+                {
+                        strcpy((char*)&(pmModuleState->tempFilespacePath[0]), filespacePath);
+                        strcpy((char*)&(pmModuleState->peerTempFilespacePath[0]), peerFilespacePath);
+                }
+                else
+                {
+                        Insist(peerDbId == GpIdentity.dbid);
+                        strcpy((char*)&(pmModuleState->tempFilespacePath[0]), peerFilespacePath);
+                        strcpy((char*)&(pmModuleState->peerTempFilespacePath[0]), filespacePath);
+                }
+
+		 /* If we have a valid path name */
+                if  (pmModuleState->tempFilespacePath[0])
+                        pmModuleState->isUsingDefaultFilespaceForTempFiles = 0;
+
+                fclose(fp);
+
+		ereport(LOG, (errmsg("temporary files filespace configuration: Filespace OID %d Filespace locations - local:%s peer:%s\n", 
+					pmModuleState->tempFilespaceOID, pmModuleState->tempFilespacePath, pmModuleState->peerTempFilespacePath)));
+        }
+	else
+		ereport(LOG, (errmsg("temporary files using default filespace")));
+
+	/* Populate the transaction filespace info */
+        fp = fopen(TXN_FILESPACE_FLATFILE, "r");
+        if (fp)
+        {
+                MemSet(buffer, 0, BUFFER_LEN);
+                if (fgets(buffer, BUFFER_LEN, fp))
+                        pmModuleState->txnFilespaceOID = atoi(buffer);
+
+                MemSet(buffer, 0, BUFFER_LEN);
+                if (fgets(buffer, BUFFER_LEN, fp))
+                {
+                        buffer[strlen(buffer)-1]='\0';
+                        pch = strtok(buffer, " ");
+                        dbId = atoi(pch);
+                        pch = strtok(NULL, " ");
+                        strcpy(filespacePath, pch);
+                }
+
+                /* Check if there is an entry for the mirror transaction filespace as well */
+                MemSet(buffer, 0, MAXPGPATH);
+                if (fgets(buffer, MAXPGPATH, fp))
+                {
+                        buffer[strlen(buffer)-1]='\0';
+                        pch = strtok(buffer, " ");
+                        peerDbId = atoi(pch);
+                        pch = strtok(NULL, " ");
+                        strcpy(peerFilespacePath, pch);
+                }
+
+                /* Populate the local and peer filepsace paths */
+                if (dbId == GpIdentity.dbid)
+                {
+                        strcpy((char*)&(pmModuleState->txnFilespacePath[0]), filespacePath);
+                        strcpy((char*)&(pmModuleState->peerTxnFilespacePath[0]), peerFilespacePath);
+                }
+                else
+                {
+                        if (peerDbId)
+                        {
+                                Insist(peerDbId == GpIdentity.dbid);
+                                strcpy((char*)&(pmModuleState->txnFilespacePath[0]), peerFilespacePath);
+                                strcpy((char*)&(pmModuleState->peerTxnFilespacePath[0]), filespacePath);
+                        }
+		 }
+
+                /* If we have a valid path name */
+                if (pmModuleState->txnFilespacePath[0])
+                        pmModuleState->isUsingDefaultFilespaceForTxnFiles = 0;
+
+                fclose(fp);
+
+		ereport(LOG, (errmsg("transaction files filespace configuraton: Filespace OID %d filespace locations - local:%s peer:%s",
+        				pmModuleState->txnFilespaceOID, pmModuleState->txnFilespacePath, 
+					pmModuleState->peerTxnFilespacePath ? pmModuleState->peerTxnFilespacePath : "Mirror filespace not configured")));
+	}
+	else
+		ereport(LOG, (errmsg("transaction files using default pg_system filespace")));
+
+			
+}
+
+/* 
+ * Return true if the directory is one of those that can be configured on
+ * a different filespace 
+ */
+bool 
+isTxnDir(char *path)
+{
+	/* Return true only if the directory is relative to default directory */
+	if (isAbsolutePath(path))
+		return false;
+ 
+	if (strstr(path, XLOGDIR))
+		return true;
+
+	if (strstr(path, SUBTRANS_DIR))
+		return true;
+
+	if (strstr(path, CLOG_DIR))
+		return true;
+
+	if (strstr(path, DISTRIBUTEDLOG_DIR))
+		return true;
+
+	if (strstr(path, DISTRIBUTEDXIDMAP_DIR))
+		return true;
+
+	if (strstr(path, MULTIXACT_MEMBERS_DIR))
+		return true;
+
+	if (strstr(path, MULTIXACT_OFFSETS_DIR))
+		return true;
+
+	return false;
+}
+
+int 
+isAbsolutePath(const char *path)
+{
+        if (path[0] == '/')
+                return 1;
+        return 0;
 }
 

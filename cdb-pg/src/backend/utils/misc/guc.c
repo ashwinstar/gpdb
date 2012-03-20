@@ -319,6 +319,7 @@ bool		Debug_datumstream_block_read_check_integrity = false;
 bool		Debug_datumstream_block_write_check_integrity = false;
 bool		Debug_datumstream_read_print_varlena_info = false;
 bool		Debug_datumstream_write_use_small_initial_buffers = false;
+bool		gp_temporary_files_filespace_repair = false;
 
 #define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
 int         verify_checkpoint_interval =
@@ -3161,6 +3162,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_encoding_check_locale_compatibility,
 		true, NULL, NULL
+	},
+
+	{
+		{"gp_temporary_files_filespace_repair", PGC_SUSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Change the filespace inconsistency to a warning"),
+                        NULL,
+                        GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &gp_temporary_files_filespace_repair,
+                false, NULL, NULL
 	},
 
 	/* for pljava */
