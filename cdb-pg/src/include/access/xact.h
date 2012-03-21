@@ -235,6 +235,7 @@ extern void RecordDistributedForgetCommitted(struct TMGXACT_LOG *gxact_log);
 extern bool RecordCrashTransactionAbortRecord(
 	TransactionId				xid,
 	PersistentEndXactRecObjects *persistentAbortObjects);
+extern void EarlyVacuumRecordTransactionCommit(void);
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 

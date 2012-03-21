@@ -221,7 +221,7 @@ static void move_plain_tuple(Relation rel,
 				 ExecContext ec);
 static void update_hint_bits(Relation rel, VacPageList fraged_pages,
 				 int num_fraged_pages, BlockNumber last_move_dest_block,
-				 int num_moved);
+				 int num_moved, TransactionId currentXid);
 static void vacuum_heap(VRelStats *vacrelstats, Relation onerel,
 			VacPageList vacpagelist);
 static void vacuum_page(Relation onerel, Buffer buffer, VacPage vacpage);
@@ -1974,6 +1974,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 				vacuumed_pages;
 	int			keep_tuples = 0;
 	PGRUsage	ru0;
+	TransactionId	saveCurrentXid;
 
 	pg_rusage_init(&ru0);
 
@@ -2681,6 +2682,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		ReleaseBuffer(dst_buffer);
 	}
 
+	saveCurrentXid = GetCurrentTransactionId();
 	if (num_moved > 0)
 	{
 		/*
@@ -2691,8 +2693,21 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		 * lot of extra code to close and re-open the relation, indexes, etc.
 		 * For now, a quick hack: record status of current transaction as
 		 * committed, and continue.
+		 *
+		 * Writing 2 commit XLOG records breaks our new crash recovery which wants
+		 * to determine if a transaction has aborted.  So, for Greenplum we are replacing
+		 * the call to RecordTransactionCommit with a special call that writes a
+		 * commit record but puts the xact.c statemachine in a state that will not
+		 * release the resources yet and will not write another XLOG record...
 		 */
-		RecordTransactionCommit();
+		if (gp_suppress_distributed_tx_vacuum)
+		{
+			EarlyVacuumRecordTransactionCommit();
+		}
+		else
+		{
+			RecordTransactionCommit();
+		}
 	}
 
 	/*
@@ -2738,7 +2753,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 	 * future transactions examining these tuples.
 	 */
 	update_hint_bits(onerel, fraged_pages, num_fraged_pages,
-					 last_move_dest_block, num_moved);
+					 last_move_dest_block, num_moved, saveCurrentXid);
 
 	/*
 	 * It'd be cleaner to make this report at the bottom of this routine, but
@@ -3201,11 +3216,10 @@ move_plain_tuple(Relation rel,
  */
 static void
 update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
-				 BlockNumber last_move_dest_block, int num_moved)
+				 BlockNumber last_move_dest_block, int num_moved, TransactionId currentXid)
 {
 	MIRROREDLOCK_BUFMGR_DECLARE;
 
-	TransactionId myXID = GetCurrentTransactionId();
 	int			checked_moved = 0;
 	int			i;
 	VacPage    *curpage;
@@ -3252,7 +3266,7 @@ update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
 			 */
 			if (!(htup->t_infomask & HEAP_MOVED))
 				elog(ERROR, "HEAP_MOVED_OFF/HEAP_MOVED_IN was expected");
-			if (HeapTupleHeaderGetXvac(htup) != myXID)
+			if (HeapTupleHeaderGetXvac(htup) != currentXid)
 				elog(ERROR, "invalid XVAC in tuple header");
 
 			if (htup->t_infomask & HEAP_MOVED_IN)
