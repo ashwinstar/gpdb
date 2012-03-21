@@ -67,21 +67,18 @@ establish a connection to a gpfdist process. Default is 5 seconds.Valid values a
 
 -m <maxlen>
 
-Sets the maximum allowed data row length in bytes. Default is 32768.Should be used when user data includes very wide rows, 
-i.e when "line too long" error message is receieved. Should 
-not be used otherwiseas it increases resource allocation. 
-Valid range is 32K to 1MB.
+Sets the maximum allowed data row length in bytes. Default is 32768.
+Should be used when user data includes very wide rows, i.e when "line 
+too long" error message is receieved. Should not be used otherwiseas it increases resource allocation. Valid range is 32K to 1MB.
 
 
 -S (use O_SYNC)
 
-Opens the file for synchronous I/O with the O_SYNC flag. Any writes to the resulting file descriptor block gpfdist until 
-the data is physically written to the underlying hardware.
+Opens the file for synchronous I/O with the O_SYNC flag. Any writes to the resulting file descriptor block gpfdist until the data is physically written to the underlying hardware.
 
 --ssl certificate_path
 
-Adds SSL encryption to data transfered with gpfdist. After executing gpfdist with the -ssl <certificate_path> option, 
-the only way to load data from this file server is with the gpfdists protocol. The location specified in certificate_path must contain the following files:
+Adds SSL encryption to data transfered with gpfdist. After executing gpfdist with the -ssl <certificate_path> option, the only way to load data from this file server is with the gpfdists protocol. The location specified in certificate_path must contain the following files:
 
 - The server certificate file, server.crt
 - The server private key file, server.key
