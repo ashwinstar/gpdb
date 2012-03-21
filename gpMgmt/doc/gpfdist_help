@@ -19,30 +19,19 @@ DESCRIPTION
 
 gpfdist is a utility that serves external table files to all 
 Greenplum Database segments in parallel. The benefit of using 
-gpfdist over other file protocols is that you are guaranteed maximum 
-parallelism while reading from external tables, thereby offering the 
-best performance as well as easier administration of external tables.
+gpfdist over other file protocols is that you are guaranteed maximum parallelism while reading from external tables, 
+thereby offering the best performance as well as easier administration of external tables.
 
-If files are compressed using gzip (have a .gz file extension), gpfdist 
-will uncompress the files automatically provided that gunzip is in 
-your path.
+If files are compressed using gzip (have a .gz file extension), gpfdist will uncompress the files automatically provided that gunzip is in your path.
 
-In order for gpfdist to be used to serve external table files, the 
-external table definition (as defined by CREATE EXTERNAL TABLE) must 
-specify the directory name that contains the external table data 
-using the gpfdist:// protocol. 
+In order for gpfdist to be used to serve external table files, the external table definition (as defined by CREATE EXTERNAL TABLE) must specify the directory name that contains the external table data using the gpfdist:// protocol. 
 
 Note: If the --ssl option is specified to enable SSL security, 
 create the external table with the gpfdists:// protocol.
 
-When Greenplum Database users select from an external table, gpfdist 
-parses and serves the data files evenly to all the segment instances in 
-the Greenplum Database system.
+When Greenplum Database users select from an external table, gpfdist parses and serves the data files evenly to all the segment instances in the Greenplum Database system.
 
-Most likely, you will want to run gpfdist on your ETL machines rather 
-than the hosts where Greenplum Database is installed. To install gpfidist 
-on another host, simply copy the utility over to that host and add gpfdist 
-to your $PATH.
+Most likely, you will want to run gpfdist on your ETL machines rather than the hosts where Greenplum Database is installed. To install gpfidist on another host, simply copy the utility over to that host and add gpfdist to your $PATH.
 
 Note: When using IPv6, always enclose the numeric IP address in brackets.
 
@@ -57,8 +46,7 @@ OPTIONS
 
 -d <directory>
 
-The directory from which gpfdist will serve files. If not specified, 
-defaults to the current directory.
+The directory from which gpfdist will serve files. If not specified, defaults to the current directory.
 
 
 -l <log_file>
@@ -75,31 +63,25 @@ The HTTP port on which gpfdist will serve files. Defaults to 8080.
 -t <timeout>
 
 Sets the time (in seconds) allowed for Greenplum Database to 
-establish a connection to a gpfdist process. Default is 5 seconds.
-Valid values are 2 to 30 seconds.  May need to be increased on 
-systems with a lot of network traffic.
+establish a connection to a gpfdist process. Default is 5 seconds.Valid values are 2 to 30 seconds.  May need to be increased on systems with a lot of network traffic.
 
 -m <maxlen>
 
-Sets the maximum allowed data row length in bytes. Default is 32768.
-Should be used when user data includes very wide rows, i.e when
-"line too long" error message is receieved. Should not be used otherwise
-as it increases resource allocation. Valid range is 32K to 1MB.
+Sets the maximum allowed data row length in bytes. Default is 32768.Should be used when user data includes very wide rows, 
+i.e when "line too long" error message is receieved. Should 
+not be used otherwiseas it increases resource allocation. 
+Valid range is 32K to 1MB.
 
 
 -S (use O_SYNC)
 
-Opens the file for synchronous I/O with the O_SYNC flag. Any writes to 
-the resulting file descriptor block gpfdist until the data is 
-physically written to the underlying hardware.
+Opens the file for synchronous I/O with the O_SYNC flag. Any writes to the resulting file descriptor block gpfdist until 
+the data is physically written to the underlying hardware.
 
 --ssl certificate_path
 
-Adds SSL encryption to data transfered with gpfdist. In After executing 
-gpfdist with the -ssl <certificate_path> option, the only way 
-to load data from this file server is with the gpfdists protocol. 
-The location specified in certificate_path must 
-contain the following files:
+Adds SSL encryption to data transfered with gpfdist. After executing gpfdist with the -ssl <certificate_path> option, 
+the only way to load data from this file server is with the gpfdists protocol. The location specified in certificate_path must contain the following files:
 
 - The server certificate file, server.crt
 - The server private key file, server.key
