@@ -11629,6 +11629,8 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
  * - has no window clauses
  * - has no sort clauses
  * - has no grouping, having, distinct clauses, or simple aggregates
+ * - has no subqueries
+ * - has no LIMIT/OFFSET
  * - references only one range table (i.e. no joins, self-joins)
  *   - this range table must itself be updatable
  *	
@@ -11641,9 +11643,11 @@ isSimplyUpdatableQuery(Query *query)
 		query->sortClause == NIL &&
 		query->groupClause == NIL &&
 		query->havingQual == NULL &&
+		query->distinctClause == NIL &&
 		!query->hasAggs &&
 		!query->hasSubLinks &&
-		query->distinctClause == NIL &&
+		query->limitCount == NULL &&
+		query->limitOffset == NULL &&
 		list_length(query->rtable) == 1)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *)linitial(query->rtable);

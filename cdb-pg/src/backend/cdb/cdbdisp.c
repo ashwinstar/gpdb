@@ -3319,6 +3319,7 @@ bindCurrentOfParams(char *cursor_name, Oid target_relid, ItemPointer ctid, int *
 	 * the raw tuple yielded by the highest most node in the plan.
 	 */
 	TupleTableSlot *slot = queryDesc->planstate->ps_ResultTupleSlot;
+	Insist(!TupIsNull(slot));
 	Assert(queryDesc->estate->es_junkFilter);
 
 	/* extract gp_segment_id metadata */

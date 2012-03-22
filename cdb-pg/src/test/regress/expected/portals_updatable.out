@@ -400,7 +400,7 @@ FETCH 1 FROM c;
 (1 row)
 
 UPDATE rank SET rank = rank + 1 WHERE CURRENT OF c;
-ERROR:  moving tuple from partition "rank_1_prt_3" to partition "rank_1_prt_4" not supported  (seg0 localhost:40000 pid=38939)
+ERROR:  moving tuple from partition "rank_1_prt_3" to partition "rank_1_prt_4" not supported  (seg0 localhost:40000 pid=83345)
 ROLLBACK;
 -- Partitioning: AO part
 CREATE TABLE aopart (LIKE rank) WITH (appendonly=true);
@@ -706,6 +706,17 @@ ROLLBACK;
 -- Negative: cursor with distinct clause
 BEGIN;
 DECLARE c CURSOR FOR SELECT DISTINCT f1, f2 FROM uctest;
+DELETE FROM uctest WHERE CURRENT OF c;
+ERROR:  cursor "c" is not a simply updatable scan of table "uctest"
+ROLLBACK;
+-- Negative: cursor with limit/offset
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest LIMIT 1;
+DELETE FROM uctest WHERE CURRENT OF c;
+ERROR:  cursor "c" is not a simply updatable scan of table "uctest"
+ROLLBACK;
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest OFFSET 1;
 DELETE FROM uctest WHERE CURRENT OF c;
 ERROR:  cursor "c" is not a simply updatable scan of table "uctest"
 ROLLBACK;
