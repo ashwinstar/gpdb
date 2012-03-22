@@ -15,6 +15,7 @@
 
 #include "postgres.h"
 
+#include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "mb/pg_wchar.h"
@@ -37,11 +38,6 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-
-#define PercentileFuncName(p) (p->perckind == PERC_MEDIAN ? \
-		"median" : p->perckind == PERC_CONT ? \
-		"percentile_cont" : p->perckind == PERC_DISC ? \
-		"percentile_disc" : "unknown")
 
 bool		Transform_null_equals = false;
 
@@ -81,6 +77,8 @@ static Node *make_row_distinct_op(ParseState *pstate, List *opname,
 static Expr *make_distinct_op(ParseState *pstate, List *opname,
 				 Node *ltree, Node *rtree, int location);
 static bool isWhenIsNotDistinctFromExpr(Node *warg);
+static char *percentileFuncString(PercentileExpr *p, Oid *argtypes, int arglen,
+					 Oid *sorttypes, int sortlen);
 
 /*
  * transformExpr -
@@ -1988,6 +1986,53 @@ transformGroupingFunc(ParseState *pstate, GroupingFunc *gf)
 }
 
 /*
+ * Returns string which represents percentile signature.
+ * sorttypes and sortlen can be omitted if they are unknown.
+ */
+static char *
+percentileFuncString(PercentileExpr *p, Oid *argtypes, int arglen,
+					 Oid *sorttypes, int sortlen)
+{
+	StringInfoData	buf;
+	char		   *funcname = NULL;
+	int				i;
+
+	if (p->perckind == PERC_MEDIAN)
+		funcname = "median";
+	else if (p->perckind == PERC_CONT)
+		funcname = "percentile_cont";
+	else if (p->perckind == PERC_DISC)
+		funcname = "percentile_disc";
+	else
+		elog(ERROR, "unexpected perckind: %d", (int) p->perckind);
+
+	initStringInfo(&buf);
+	if (p->perckind == PERC_MEDIAN)
+		appendStringInfo(&buf, "%s",
+				func_signature_string(list_make1(makeString(funcname)),
+				sortlen, sorttypes));
+	else
+	{
+		appendStringInfo(&buf, "%s",
+				func_signature_string(list_make1(makeString(funcname)),
+				arglen, argtypes));
+		if (sortlen > 0)
+		{
+			appendStringInfo(&buf, " ORDER BY (");
+			for (i = 0 ; i < sortlen; i++)
+			{
+				appendStringInfo(&buf, "%s", format_type_be(sorttypes[i]));
+				if (i != sortlen - 1)
+					appendStringInfo(&buf, ", ");
+			}
+			appendStringInfo(&buf, ")");
+		}
+	}
+
+	return pstrdup(buf.data);
+}
+
+/*
  * transformPercentileExpr
  *
  * Its argument expression and ORDER BY clause are transformed.
@@ -2018,15 +2063,11 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_FUNCTION),
 					 errmsg("function \"%s\" does not exist",
-							func_signature_string(list_make1(makeString(PercentileFuncName(p))),
-												  1, &argtype)),
-					 errhint("No function matches the given name and argument types."
+						 percentileFuncString(p, &argtype, 1, NULL, 0)),
+					 errhint("No function matches the given name and argument types. "
 							 "You may need to add explicit type casts.")));
 	}
 	argtype = FLOAT8OID;
-
-	/* For now, percentile result type is only float8 */
-	p->perctype = FLOAT8OID;
 
 	/*
 	 * The argument check is almost same as LIMIT clause.
@@ -2070,8 +2111,7 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("function \"%s\" cannot accept more than one expression in ORDER BY",
-					 func_signature_string(
-						 list_make1(makeString(PercentileFuncName(p))), 1, &argtype))));
+					 percentileFuncString(p, &argtype, 1, NULL, 0))));
 
 
 	p->args = list_make1(arg);
@@ -2082,24 +2122,36 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 	 */
 	if (!p->sortTargets)
 	{
-		List		   *tlist = NIL, *sortlist = NIL;
+		List		   *tlist = NIL, *sortlist = NIL, *pre_tlist = NIL;
 		ListCell	   *l;
+		int				i;
 		int				min_varlevel;
+		int				sortlen;
+		Oid			   *sorttypes;
+		struct _FuncCandidateList	float8_sig,
+									timestamp_sig,
+									timestamptz_sig,
+									interval_sig,
+									*candidates;
+		int		ncandidates;
 
 		/*
 		 * This part is similar to transformSortClause(), but there is a reason
 		 * we are not able to use it;  each expression should be coerced to
 		 * the type this function desires, as the argument expressions are treated.
-		 * It may be possible to change transformSortClause to cast each
-		 * transformed expression to a desired type, but error handling would be
-		 * very complicated.  Just duplicate some code from there for now.
+		 * Also, another task is function resolution by input types.
+		 * As we consider ORDER BY clause as arguments, the resolution process
+		 * is different from normal func_get_detail().  Though, some parts
+		 * can be shared without reinventing.
 		 *
 		 * Save resno and start from 1 for only this part of transformation.
 		 */
 		save_next_resno = pstate->p_next_resno;
 		pstate->p_next_resno = 1;
 
-		foreach (l, p->sortClause)
+		sortlen = list_length(p->sortClause);
+		sorttypes = (Oid *) palloc0(sizeof(Oid) * sortlen);
+		foreach_with_count (l, p->sortClause, i)
 		{
 			SortBy		   *sortby = lfirst(l);
 			Node		   *expr;
@@ -2110,40 +2162,97 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 			tle = transformTargetEntry(pstate, sortby->node, expr, NULL, true);
 
 			sorttype = exprType((Node *) tle->expr);
+			sorttypes[i] = sorttype;
+			pre_tlist = lappend(pre_tlist, tle);
+		}
 
-			if (!IsBinaryCoercible(sorttype, FLOAT8OID))
+		/*
+		 * The logic for function resolution is same as the normal case except
+		 * that we look for candidates by ORDER BY clause.  Because PercentileExpr
+		 * supports limited number of data types, we write possible types here manually.
+		 * The code should look similar to func_get_detail().
+		 */
+		float8_sig.nargs = 1;
+		float8_sig.args[0] = FLOAT8OID;
+		timestamp_sig.nargs = 1;
+		timestamp_sig.args[0] = TIMESTAMPOID;
+		timestamptz_sig.nargs = 1;
+		timestamptz_sig.args[0] = TIMESTAMPTZOID;
+		interval_sig.nargs = 1;
+		interval_sig.args[0] = INTERVALOID;
+		float8_sig.next = &timestamp_sig;
+		timestamp_sig.next = &timestamptz_sig;
+		timestamptz_sig.next = &interval_sig;
+		interval_sig.next = NULL;
+
+		ncandidates = func_match_argtypes(sortlen, sorttypes, &float8_sig, &candidates);
+
+		/*
+		 * Multiple candidates? then better decide or throw an error...
+		 */
+		if (ncandidates > 1)
+		{
+			candidates = func_select_candidate(sortlen, sorttypes, candidates);
+			if (!candidates)
+				ereport(ERROR,
+						(errcode(ERRCODE_AMBIGUOUS_FUNCTION),
+						 errmsg("function \"%s\" is not unique",
+							percentileFuncString(p, &argtype, 1, sorttypes, sortlen)),
+						 errhint("Could not choose a best candidate function. "
+								 "You may need to add explicit type casts.")));
+		}
+		else if (ncandidates == 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("function \"%s\" does not exist",
+						percentileFuncString(p, &argtype, 1, sorttypes, sortlen)),
+					 errhint("No function matches the given name and argument types. "
+							 "You may need to add explicit type casts.")));
+		}
+
+		p->perctype = candidates->args[0];
+
+		/*
+		 * Coerce each of ORDER BY clause to the types which this function desires.
+		 */
+		foreach_with_count (l, pre_tlist, i)
+		{
+			TargetEntry	   *tle = lfirst(l);
+			Oid				sorttype = sorttypes[i];
+			Oid				candtype = candidates->args[i];
+			SortBy		   *sortby = list_nth(p->sortClause, i);
+
+			if (!IsBinaryCoercible(sorttype, candtype))
 			{
 				tle->expr = (Expr *) coerce_to_target_type(pstate,
 														   (Node *) tle->expr,
 														   sorttype,
-														   FLOAT8OID,
+														   candtype,
 														   -1,
 														   COERCION_EXPLICIT,
 														   COERCE_EXPLICIT_CALL,
 														   p->location);
 				/*
-				 * The ordering clause cannot be cast to the desired type.
+				 * Cast should succeed as we checked above.
 				 */
-				if (!tle->expr)
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_FUNCTION),
-							 errmsg("function \"%s\" WITHIN GROUP (ORDER BY %s) does not exist",
-									func_signature_string(list_make1(makeString(PercentileFuncName(p))),
-														  1, &argtype),
-									format_type_be(sorttype)),
-							 errhint("No function matches the given name and argument types."
-									 "You may need to add explicit type casts.")));
+				Assert(tle->expr);
 			}
 
 			tlist = lappend(tlist, tle);
+			/*
+			 * Now we can add this target entry to the list.
+			 */
 			sortlist = addTargetToSortList(pstate, tle,
 										   sortlist, tlist,
 										   sortby->sortby_kind,
 										   sortby->useOp,
 										   true);
+
 		}
 		p->sortClause = sortlist;
 		p->sortTargets = tlist;
+		pfree(sorttypes);
 		/*
 		 * Restore back the saved resno.
 		 */

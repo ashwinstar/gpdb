@@ -23,9 +23,9 @@ OBJS = acl.o array_userfuncs.o arrayfuncs.o arrayutils.o ascii.o \
 	geo_ops.o geo_selfuncs.o inet_net_ntop.o inet_net_pton.o int.o \
 	int8.o like.o lockfuncs.o mac.o matrix.o misc.o nabstime.o name.o \
 	network.o not_in.o numeric.o numutils.o oid.o oracle_compat.o \
-	pg_locale.o pg_lzcompress.o pgstatfuncs.o pivot.o pseudotypes.o \
-	quote.o regexp.o regproc.o ri_triggers.o rowtypes.o ruleutils.o \
-	selfuncs.o tid.o timestamp.o varbit.o varchar.o varlena.o \
+	percentile.o pg_locale.o pg_lzcompress.o pgstatfuncs.o pivot.o \
+	pseudotypes.o quote.o regexp.o regproc.o ri_triggers.o rowtypes.o \
+	ruleutils.o selfuncs.o tid.o timestamp.o varbit.o varchar.o varlena.o \
 	version.o xid.o xml.o
 
 like.o: like.c like_match.c
