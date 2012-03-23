@@ -120,20 +120,18 @@ OPTIONS
  Data Domain Boost, set up the Data Domain Boost credential, 
  as described in the next option below. 
 
- The following options are recommended if --ddboost is specified.
+ The following option is recommended if --ddboost is specified.
 
     * -z option (uncompressed)
-      Optimal performance of subsequent backups if change rate 
-      is low.
-
-    * --rsyncable option
-      Optimal performance for initial backup and subsequent 
-      backups if change rate is high.
-
-    * When running a mixed backup that backs up to both
-      a local disk and to Data Domain, use the -u option
-      to specify that the backup to the local disk does not
-      use the default directory. 
+      Backup compression (turned on by default) should be turned off
+      with the -z option. Data Domain Boost will deduplicate and 
+      compress the backup data before sending it to the Data
+      Domain System.            
+      
+  When running a mixed backup that backs up to both
+  a local disk and to Data Domain, use the -u option
+  to specify that the backup to the local disk does not
+  use the default directory. 
   
   The -f, -G, -g, -R, and -u options change if 
   --ddboost is specified. See the options for details.
