@@ -261,7 +261,7 @@ class GPCatalog():
         except Exception, e:
             # older versions of product will not have tidycat defs --
             # need to handle this case
-            logger.warn("GPCatalogTable: "+ str(e))
+            raise GPCatalogException(str(e))
 
     def _setForeignKeys(self):
         """
