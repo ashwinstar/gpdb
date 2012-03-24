@@ -54,6 +54,20 @@ WHERE p1.prolang = 0 OR p1.prorettype = 0 OR
        array_upper(p1.proargtypes, 1) != p1.pronargs-1 OR
        0::oid = ANY (p1.proargtypes);
 
+-- prosrc should never be null or empty
+SELECT p1.oid, p1.proname
+FROM pg_proc as p1
+WHERE prosrc IS NULL OR prosrc = '' OR prosrc = '-';
+
+-- probin should be non-empty for C functions, null everywhere else
+SELECT p1.oid, p1.proname
+FROM pg_proc as p1
+WHERE prolang = 13 AND (probin IS NULL OR probin = '' OR probin = '-');
+
+SELECT p1.oid, p1.proname
+FROM pg_proc as p1
+WHERE prolang != 13 AND probin IS NOT NULL;
+
 -- Look for conflicting proc definitions (same names and input datatypes).
 -- (This test should be dead code now that we have the unique index
 -- pg_proc_proname_args_nsp_index, but I'll leave it in anyway.)

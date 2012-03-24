@@ -322,7 +322,7 @@ AggregateCreateWithOid(const char		*aggName,
 							  InvalidOid,		/* no validator */
 							  InvalidOid,		/* no describe function */
 							  "aggregate_dummy",		/* placeholder proc */
-							  "-",		/* probin */
+							  NULL,		/* probin */
 							  true,		/* isAgg */
 							  false,	/* isWin */
 							  false,	/* security invoker (currently not
@@ -446,6 +446,7 @@ lookup_agg_function(List *fnName,
 	bool		retset;
 	bool        retstrict;
 	bool        retordered;
+	int 		nvargs;
 	Oid		   *true_oid_array;
 	FuncDetailCode fdresult;
 	AclResult	aclresult;
@@ -459,9 +460,9 @@ lookup_agg_function(List *fnName,
 	 * function's return value.  it also returns the true argument types to
 	 * the function.
 	 */
-	fdresult = func_get_detail(fnName, NIL, nargs, input_types,
+	fdresult = func_get_detail(fnName, NIL, nargs, input_types, false,
 							   &fnOid, rettype, &retset, &retstrict,
-							   &retordered, &true_oid_array);
+							   &retordered, &nvargs, &true_oid_array);
 
 	/* only valid case is a normal function not returning a set */
 	if (fdresult != FUNCDETAIL_NORMAL || !OidIsValid(fnOid))

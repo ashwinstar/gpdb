@@ -204,7 +204,8 @@ static Node *processIndirection(Node *node, deparse_context *context,
 				   bool printit);
 static void printSubscripts(ArrayRef *aref, deparse_context *context);
 static char *generate_relation_name(Oid relid, List *namespaces);
-static char *generate_function_name(Oid funcid, int nargs, Oid *argtypes);
+static char *generate_function_name(Oid funcid, int nargs, Oid *argtypes,
+									bool *is_variadic);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
@@ -539,7 +540,7 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 		appendStringInfo(&buf, "FOR EACH STATEMENT ");
 
 	appendStringInfo(&buf, "EXECUTE PROCEDURE %s(",
-					 generate_function_name(trigrec->tgfoid, 0, NULL));
+					 generate_function_name(trigrec->tgfoid, 0, NULL, NULL));
 
 	if (trigrec->tgnargs > 0)
 	{
@@ -4479,6 +4480,7 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	Oid			funcoid = expr->funcid;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
+	bool		is_variadic;
 	ListCell   *l;
 
 	/*
@@ -4533,8 +4535,18 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	}
 
 	appendStringInfo(buf, "%s(",
-					 generate_function_name(funcoid, nargs, argtypes));
-	get_rule_expr((Node *) expr->args, context, true);
+					 generate_function_name(funcoid, nargs, argtypes,
+							 	 	 	 	&is_variadic));
+	nargs = 0;
+	foreach(l, expr->args)
+	{
+		if (nargs++ > 0)
+			appendStringInfoString(buf, ", ");
+		if (is_variadic && lnext(l) == NULL)
+			appendStringInfoString(buf, "VARIADIC ");
+		get_rule_expr((Node *) lfirst(l), context, true);
+
+	}
 	appendStringInfoChar(buf, ')');
 }
 
@@ -4623,7 +4635,7 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 	}
 
 	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(fnoid, nargs, argtypes),
+					 generate_function_name(fnoid, nargs, argtypes, NULL),
 					 aggref->aggdistinct ? "DISTINCT " : "");
 	/* aggstar can be set only in zero-argument aggregates */
 	if (aggref->aggstar)
@@ -4857,7 +4869,8 @@ get_windowref_expr(WindowRef *wref, deparse_context *context)
 	}
 
 	appendStringInfo(buf, "%s(",
-					 generate_function_name(wref->winfnoid, nargs, argtypes));
+					 generate_function_name(wref->winfnoid, nargs, argtypes,
+							 	 	 	 	NULL));
 
 	get_rule_expr((Node *) wref->args, context, true);
 	appendStringInfoChar(buf, ')');
@@ -5894,10 +5907,12 @@ generate_relation_name(Oid relid, List *namespaces)
  *		given that it is being called with the specified actual arg types.
  *		(Arg types matter because of ambiguous-function resolution rules.)
  *
- * The result includes all necessary quoting and schema-prefixing.
+ * The result includes all necessary quoting and schema-prefixing. We can
+ * also pass back an indication of whether the function is variadic.
  */
 static char *
-generate_function_name(Oid funcid, int nargs, Oid *argtypes)
+generate_function_name(Oid funcid, int nargs, Oid *argtypes,
+					   bool *is_variadic)
 {
 	HeapTuple	proctup;
 	Form_pg_proc procform;
@@ -5910,6 +5925,7 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes)
 	bool		p_retset;
 	bool        p_retstrict;
 	bool        p_retordered;
+	int			p_nvargs;
 	Oid		   *p_true_typeids;
 
 	proctup = SearchSysCache(PROCOID,
@@ -5919,7 +5935,7 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes)
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 	proname = NameStr(procform->proname);
-	Assert(nargs == procform->pronargs);
+	Assert(nargs >= procform->pronargs);
 
 	/*
 	 * The idea here is to schema-qualify only if the parser would fail to
@@ -5927,10 +5943,10 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes)
 	 * specified argtypes.
 	 */
 	p_result = func_get_detail(list_make1(makeString(proname)),
-							   NIL, nargs, argtypes,
+							   NIL, nargs, argtypes, false,
 							   &p_funcid, &p_rettype,
 							   &p_retset, &p_retstrict, &p_retordered,
-							   &p_true_typeids);
+							   &p_nvargs, &p_true_typeids);
 	if ((p_result == FUNCDETAIL_NORMAL || p_result == FUNCDETAIL_AGGREGATE) &&
 		p_funcid == funcid)
 		nspname = NULL;
@@ -5938,6 +5954,24 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes)
 		nspname = get_namespace_name(procform->pronamespace);
 
 	result = quote_qualified_identifier(nspname, proname);
+
+	/* Check variadic-ness if caller cares */
+	if (is_variadic)
+	{
+		bool 	isnull;
+		Datum	varDatum;
+		Oid		varOid;
+
+		varDatum = SysCacheGetAttr (PROCOID, proctup,
+									Anum_pg_proc_provariadic, &isnull);
+		varOid = DatumGetObjectId(varDatum);
+
+		/* "any" variadics are not treated as variadics for listing */
+		if (OidIsValid(varOid) && varOid != ANYOID)
+			*is_variadic = true;
+		else
+			*is_variadic = false;
+	}
 
 	ReleaseSysCache(proctup);
 
