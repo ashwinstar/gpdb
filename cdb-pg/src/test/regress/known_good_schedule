@@ -147,7 +147,7 @@ test: eagerfree
 test: toast
 test: mapred
 test: gpparams
-test: catversion
+ignore: catversion
 test: tidycat
 test: tidycat2
 test: upgrade
