@@ -170,3 +170,4 @@ ignore: tpch500GB_orca
 test: portals_updatable
 test: plpgsql_cache
 test: percentile
+test: gp_cancel_query

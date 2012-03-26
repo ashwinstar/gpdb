@@ -1007,7 +1007,7 @@ aloop:
 						      NID_commonName, peer_cn, len+1);
 
 			peer_cn[len] = '\0';
-			if (r != len);
+			if (r != len)
 			{
 				/* shouldn't happen */
 				pfree(peer_cn);

@@ -1,0 +1,2 @@
+CREATE FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075, DESCRIPTION="Cancels a specific query");
+COMMENT ON FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) IS 'Cancels a specific query';

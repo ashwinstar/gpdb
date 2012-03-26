@@ -5528,3 +5528,5 @@
  CREATE FUNCTION gp_dummy_compression_decompress(internal, int4, internal, int4, internal, internal) RETURNS internal LANGUAGE internal VOLATILE AS 'dummy_compression_decompress' WITH (OID=3067, DESCRIPTION="Dummy compression decompressor");
 
  CREATE FUNCTION gp_dummy_compression_validator(internal) RETURNS internal LANGUAGE internal VOLATILE AS 'dummy_compression_validator' WITH (OID=3068, DESCRIPTION="Dummy compression validator");
+ 
+ CREATE FUNCTION gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075, DESCRIPTION="Cancels a specific query");
