@@ -712,8 +712,22 @@ LockTagIsTemp(const LOCKTAG *tag)
 			/* field1 is dboid, field2 is reloid for all of these */
 			if ((Oid) tag->locktag_field1 == InvalidOid)
 				return false;	/* shared, so not temp */
-			if (isTempNamespace(get_rel_namespace((Oid) tag->locktag_field2)))
-				return true;
+
+			if (gp_new_reindex_database)
+			{
+				/*
+				 * If the relation is a system catalog table, skip the namespace
+				 * check so REINDEX TABLE/DATABASE and PREPARE will not interact.
+				 */
+				if ((Oid) tag->locktag_field2 > (Oid) FirstNormalObjectId &&
+					isTempNamespace(get_rel_namespace((Oid) tag->locktag_field2)))
+					return true;
+			}
+			else
+			{
+				if (isTempNamespace(get_rel_namespace((Oid) tag->locktag_field2)))
+					return true;
+			}
 			break;
 		case LOCKTAG_TRANSACTION:
 			/* there are no temp transactions */
