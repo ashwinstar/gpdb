@@ -429,6 +429,7 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 	int			orig_size = size;
 
 	Assert(thiz->mode == BFZ_MODE_SCAN);
+	Assert(size >= 0);
 
 	while (size)
 	{
@@ -442,13 +443,23 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 		fs->buffer_pointer += sizeForRead;
 		buffer += sizeForRead;
 		size -= sizeForRead;
-		if (fs->buffer_pointer == fs->buffer_end)
+		Assert(size >= 0);
+		Assert(fs->buffer_end >= fs->buffer_pointer);
+		if (size > 0 && fs->buffer_pointer == fs->buffer_end)
 		{
-			while (size >= sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum))
+			/*
+			 * If the requested size is greater than a block size
+			 * of data (excluding the checksum), read and copy the
+			 * data directly to the given buffer. We can't do that
+			 * when the requested size is equal to a block size, since
+			 * the given buffer does not have space for the checksum.
+			 */
+			while (size > sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum))
 			{
 				sizeForRead = read_bfz_buffer(thiz, buffer);
 				buffer += sizeForRead;
 				size -= sizeForRead;
+				Assert(size >= 0);
 				if (sizeForRead == 0)
 					break;
 			}
