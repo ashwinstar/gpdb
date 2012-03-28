@@ -106,7 +106,12 @@ OPTIONS
 
 -check-only
 
- Runs a pre-migrate check to verify that your database is healthy.
+ Runs pre-migrate checks to verify that your database is healthy.
+ Checks include: 
+  * Check catalog health
+  * Check that the Greenplum Database binaries on each segment match 
+    those on the master
+  * Check for a minium amount of free disk space
 
 
 --help | -h
