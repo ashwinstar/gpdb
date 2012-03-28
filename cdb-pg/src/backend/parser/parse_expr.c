@@ -2265,6 +2265,19 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("percentile functions cannot reference columns from outer query")));
+
+		if (checkExprHasAggs((Node *) p->sortTargets))
+			ereport(ERROR,
+					(errcode(ERRCODE_GROUPING_ERROR),
+					 errmsg("argument of percentile function must not contain aggregate")));
+		if (checkExprHasWindFuncs((Node *) p->sortTargets))
+			ereport(ERROR,
+					(errcode(ERRCODE_GROUPING_ERROR),
+					 errmsg("argument of percentile function must not contain window function")));
+		if (checkExprHasGroupExtFuncs((Node *) p->sortTargets))
+			ereport(ERROR,
+					(errcode(ERRCODE_GROUPING_ERROR),
+					 errmsg("argument of percentile function must not contain grouping(), or group_id()")));
 	}
 
 	/* Percentiles are actually aggregates. */
