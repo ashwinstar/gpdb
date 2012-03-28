@@ -20,7 +20,7 @@
 
 
 CREATE EXTERNAL WEB TABLE get_pgvsn (x text)
-execute E'(postgres --catalog-version | sed \'s/Catalog version number://g \' | sed -e \'s/ //g\' )' 
+execute E'(postgres --catalog-version | sed \'s/Catalog version number://g\' | sed -e \'s/ //g\' )' 
 ON MASTER
 FORMAT 'text' (delimiter '|');
 

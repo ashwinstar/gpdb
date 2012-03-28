@@ -40,6 +40,15 @@ followed if adding a new type.
    cdb-pg/src/include/catalog/catversion.h should be bumped up. This is to 
    indicate an initdb is required so the version number in the backend matches
    the version number on disk.
+ 
+   Since catversion is bumped up, we have to regenerate the catalog json file,
+   gpMgmt/bin/gppylib/data/X.X.json. Otherwise, catversion test would fail.
+
+   $ perl tidycat.pl -dd foo.json -df json *.h
+
+   After tidycat.pl generates foo.json, rename it with the major release version 
+   and move it to gpMgmt/bin/gppylib/data/
+
 
 6. Adding a new function to the catalog has an impact on upgrade. Add a new 
    entry to the appropriate upgrade script. For instance if the new function 

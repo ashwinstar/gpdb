@@ -147,7 +147,7 @@ test: eagerfree
 test: toast
 test: mapred
 test: gpparams
-ignore: catversion
+test: catversion
 test: tidycat
 test: tidycat2
 test: upgrade
@@ -159,7 +159,6 @@ test: foreign_data
 test: gp_toolkit
 test: filespace
 test: orafunk
-test: gpcheckmirrorseg
 test: trig
 test: xml
 test: auth_constraint
@@ -171,3 +170,5 @@ test: portals_updatable
 test: plpgsql_cache
 test: percentile
 test: gp_cancel_query
+# gpcheckmirrorseg should be last to check mirror integrity
+test: gpcheckmirrorseg
