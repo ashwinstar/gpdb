@@ -64,6 +64,7 @@ select percentile_cont(0.1) within group (order by a),
 select percentile_cont(0.1) within group (order by a),
 	percentile_cont(0.2) within group (order by a) from perctsz;
 select median(a - (select min(a) from percts)) from percts;
+select median(a), b from perct group by b order by b desc;
 -- view
 select * from percv;
 
@@ -118,6 +119,7 @@ select percentile_cont(0.1) within group (order by a),
 select percentile_cont(0.1) within group (order by a),
 	percentile_cont(0.2) within group (order by a) from perctsz;
 select median(a - (select min(a) from percts)) from percts;
+select median(a), b from perct group by b order by b desc;
 -- view
 select * from percv;
 
@@ -158,7 +160,7 @@ select percentile_cont(1.00000001) within group (order by a) from perct;
 -- CSQ is not supported currently.  Shame.
 select sum((select median(a) from perct where b = t.b)) from perct t;
 -- used in LIMIT
-select * from perct limit medain(a);
+select * from perct limit median(a);
 -- multiple sort key
 select percentile_cont(0.8) within group (order by a, a + 1, a + 2) from perct;
 -- set-returning

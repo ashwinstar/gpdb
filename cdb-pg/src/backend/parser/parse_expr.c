@@ -2073,11 +2073,11 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 	if (checkExprHasAggs(arg))
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("argument of percentile function must not contain aggregate")));
+				 errmsg("argument of percentile function must not contain aggregates")));
 	if (checkExprHasWindFuncs(arg))
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("argument of percentile function must not contain window function")));
+				 errmsg("argument of percentile function must not contain window functions")));
 	if (checkExprHasGroupExtFuncs(arg))
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
@@ -2097,7 +2097,7 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 	if (checkExprHasSubLink(arg))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("argument of percentile function must not congtain subqueries")));
+				 errmsg("argument of percentile function must not contain subqueries")));
 	/*
 	 * Percentile functions support only one sort key.
 	 */
@@ -2264,16 +2264,16 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 		if (min_varlevel > 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("percentile functions cannot reference columns from outer query")));
+					 errmsg("percentile functions cannot reference columns from outer queries")));
 
 		if (checkExprHasAggs((Node *) p->sortTargets))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("argument of percentile function must not contain aggregate")));
+					 errmsg("argument of percentile function must not contain aggregates")));
 		if (checkExprHasWindFuncs((Node *) p->sortTargets))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("argument of percentile function must not contain window function")));
+					 errmsg("argument of percentile function must not contain window functions")));
 		if (checkExprHasGroupExtFuncs((Node *) p->sortTargets))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),

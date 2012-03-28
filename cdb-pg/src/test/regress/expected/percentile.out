@@ -397,6 +397,22 @@ select median(a - (select min(a) from percts)) from percts;
  @ 49 days 12 hours
 (1 row)
 
+select median(a), b from perct group by b order by b desc;
+ median | b  
+--------+----
+    100 | 10
+   94.5 |  9
+   84.5 |  8
+   74.5 |  7
+   64.5 |  6
+   54.5 |  5
+   44.5 |  4
+   34.5 |  3
+   24.5 |  2
+   14.5 |  1
+      5 |  0
+(11 rows)
+
 -- view
 select * from percv;
  percentile_cont | median | percentile_disc 
@@ -789,6 +805,22 @@ select median(a - (select min(a) from percts)) from percts;
  @ 49 days 12 hours
 (1 row)
 
+select median(a), b from perct group by b order by b desc;
+ median | b  
+--------+----
+    100 | 10
+   94.5 |  9
+   84.5 |  8
+   74.5 |  7
+   64.5 |  6
+   54.5 |  5
+   44.5 |  4
+   34.5 |  3
+   24.5 |  2
+   14.5 |  1
+      5 |  0
+(11 rows)
+
 -- view
 select * from percv;
  percentile_cont | median | percentile_disc 
@@ -863,11 +895,11 @@ ERROR:  aggregate function calls may not be nested
 LINE 1: select count(median(a)) from perct;
                ^
 select median(count(*)) from perct;
-ERROR:  argument of percentile function must not contain aggregate
+ERROR:  argument of percentile function must not contain aggregates
 LINE 1: select median(count(*)) from perct;
                       ^
 select percentile_cont(0.2) within group (order by count(*) over()) from perct;
-ERROR:  argument of percentile function must not contain window function
+ERROR:  argument of percentile function must not contain window functions
 LINE 1: ...elect percentile_cont(0.2) within group (order by count(*) o...
                                                              ^
 select percentile_disc(0.1) within group (order by group_id()) from perct;
@@ -876,7 +908,7 @@ LINE 1: select percentile_disc(0.1) within group (order by group_id(...
                ^
 -- subquery is not allowed to the argument
 select percentile_cont((select 0.1 from gp_id)) within group (order by a) from perct;
-ERROR:  argument of percentile function must not congtain subqueries
+ERROR:  argument of percentile function must not contain subqueries
 LINE 1: select percentile_cont((select 0.1 from gp_id)) within group...
                                ^
 -- the argument must not be volatile expression
@@ -895,11 +927,10 @@ HINT:  argument to percentile function must be between 0.0 and 1.0.
 select sum((select median(a) from perct where b = t.b)) from perct t;
 ERROR:  correlated subquery cannot contain percentile functions
 -- used in LIMIT
-select * from perct limit medain(a);
-ERROR:  function medain(integer) does not exist
-LINE 1: select * from perct limit medain(a);
+select * from perct limit median(a);
+ERROR:  argument of LIMIT must not contain variables
+LINE 1: select * from perct limit median(a);
                                   ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 -- multiple sort key
 select percentile_cont(0.8) within group (order by a, a + 1, a + 2) from perct;
 ERROR:  function "percentile_cont(double precision)" cannot accept more than one expression in ORDER BY
@@ -929,7 +960,7 @@ LINE 1: ...elect percentile_cont(0.5) within group (order by point(0,0)...
 HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 -- outer reference is not allowed for now
 select (select a from perct where median(t.a) = 5) from perct t;
-ERROR:  percentile functions cannot reference columns from outer query
+ERROR:  percentile functions cannot reference columns from outer queries
 LINE 1: select (select a from perct where median(t.a) = 5) from perc...
                                                  ^
 drop view percv2;

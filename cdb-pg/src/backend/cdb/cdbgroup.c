@@ -6016,14 +6016,25 @@ within_agg_join_plans(PlannerInfo *root,
 
 	/*
 	 * All set.  Join two plans.
+	 * We choose cartesian product if there is no join clauses, meaning
+	 * no grouping happens.
 	 */
-	result_plan = (Plan *) make_mergejoin(join_tlist,
-										  NIL,
-										  NIL,
-										  join_clause,
-										  outer_plan,
-										  inner_plan,
-										  JOIN_INNER);
+	if (list_length(join_clause) > 0)
+		result_plan = (Plan *) make_mergejoin(join_tlist,
+											  NIL,
+											  NIL,
+											  join_clause,
+											  outer_plan,
+											  inner_plan,
+											  JOIN_INNER);
+	else
+		result_plan = (Plan *) make_nestloop(join_tlist,
+											 NIL,
+											 NIL,
+											 outer_plan,
+											 inner_plan,
+											 JOIN_INNER);
+
 	result_plan->startup_cost = outer_plan->startup_cost + inner_plan->startup_cost;
 	result_plan->plan_rows = outer_plan->plan_rows;
 	result_plan->total_cost = outer_plan->total_cost + inner_plan->total_cost;
@@ -6177,9 +6188,27 @@ plan_within_agg_persort(PlannerInfo *root,
 	WithinAggContext	wag_context;
 	Plan			   *outer_plan, *inner_plan;
 	List			   *partners;
+	ListCell		   *l;
 
 	memset(&wag_context, 0, sizeof(WithinAggContext));
 	wag_context.current_pathkeys = current_pathkeys;
+
+	/*
+	 * Group clause expressions should be in ascending order,
+	 * because our MergeJoin is not able to handle descending-ordered
+	 * child plans.  It is desirable to improve MergeJoin, but it requires
+	 * amount of work.
+	 */
+	foreach (l, root->parse->groupClause)
+	{
+		GroupClause	   *gc = lfirst(l);
+		Node		   *gcexpr;
+		Oid				gctype;
+
+		gcexpr = get_sortgroupclause_expr(gc, group_context->sub_tlist);
+		gctype = exprType(gcexpr);
+		gc->sortop = ordering_oper_opid(gctype);
+	}
 
 	/*
 	 * Make a common plan shared by outer and inner plan.  It may become
