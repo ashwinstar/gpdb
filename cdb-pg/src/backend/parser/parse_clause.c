@@ -1960,6 +1960,20 @@ transformLimitClause(ParseState *pstate, Node *clause,
 				 errmsg("argument of %s must not contain aggregates",
 						constructName)));
 	}
+	if (checkExprHasGroupExtFuncs(qual))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("argument of %s must not contain grouping() or group_id()",
+					 	constructName)));
+	}
+	if (checkExprHasWindFuncs(qual))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("argument of %s must not contain window functions",
+					 	constructName)));
+	}
 	if (contain_subplans(qual))
 	{
 		ereport(ERROR,
