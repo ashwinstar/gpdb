@@ -124,7 +124,7 @@ BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REM
 # the BASE directory structure for you from the //tools depot in Perforce
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE
-	DDBoostSDK/2.4.0.2-268577
+	DDBoostSDK/2.4.1.0-289644
 	apr/1.2.12
 	apr-util/1.2.12
 	bzip2/1.0.6
