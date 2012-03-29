@@ -539,12 +539,12 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	 * Copy all active subtransctions to shared snapshot.
 	 *
 	 */
-    GetSubtransactionsForSharedSnapshot((uint32 *)&SharedLocalSnapshotSlot->subcnt,
-										(TransactionId *)SharedLocalSnapshotSlot->subxids);
+	UpdateSubtransactionsInSharedSnapshot(dtxContextInfo->distributedXid);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "updateSharedLocalSnapshot count of subtransaction ids %u",
-		 SharedLocalSnapshotSlot->subcnt);
+		 "updateSharedLocalSnapshot subxid cnt: total %u, in memory %u",
+		 SharedLocalSnapshotSlot->total_subcnt,
+		 SharedLocalSnapshotSlot->inmemory_subcnt);
 
 	if (snapshot->xcnt > 0)
 	{
@@ -979,8 +979,10 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				
 				if (Debug_print_full_dtm)
 				{
-					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt, (const TransactionId *)SharedLocalSnapshotSlot->subxids);
+					ShowSubtransactionsForSharedSnapshot();
 				}
+
+				GetSubXidsInXidBuffer();
 
 				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
 					 "GetSnapshotData(): READER currentcommandid %d curcid %d segmatesync %d",

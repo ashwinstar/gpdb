@@ -395,8 +395,15 @@ extern bool gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource s
  *
  */
 extern int	gp_connections_per_thread; /* GUC var - server operating mode.  */
+
 extern bool assign_gp_connections_per_thread(int newval, bool doit, GucSource source);
 extern const char *show_gp_connections_per_thread(void);
+
+/*
+ * If number of subtransactions within a transaction exceed this limit,
+ * then a warning is given to the user.
+ */
+extern int32 gp_subtrans_warn_limit;
 
 extern bool assign_gp_write_shared_snapshot(bool newval, bool doit, GucSource source);
 
