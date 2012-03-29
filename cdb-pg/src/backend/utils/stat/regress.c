@@ -9,33 +9,10 @@
 
 #include "pinv.h"
 #include "student.h"
+
+#include <dlfcn.h>
 #include <math.h>
 #include <string.h>
-
-/* We are using BLAS for vector/matrix multiplication. */
-#include <f2c.h>
-
-/* See notes below */
-/* #include <clapack.h> */
-
-/* Our libblas in //cdb2/main/ext/ uses the prefix 'f2c_' for BLAS symbols  */
-#define ddot_ f2c_ddot
-#define dgemv_ f2c_dgemv
-
-/*
- * BLAS declarations copied from http://www.netlib.org/clapack/clapack.h
- * FIXME: The proper way would be to update the CLAPACK we use, including
- * //cdb2/main/ext/.../include/clapack.h
- */
-
-/* Subroutine */ int dgemv_(char *trans, integer *m, integer *n, doublereal *
-	alpha, doublereal *a, integer *lda, doublereal *x, integer *incx, 
-	doublereal *beta, doublereal *y, integer *incy);
-
-doublereal ddot_(integer *n, doublereal *dx, integer *incx, doublereal *dy, 
-	integer *incy);
-
-/* End BLAS declarations */
 
 /*
  * The size of the transition state array (in number of elements, not in
@@ -46,15 +23,15 @@ doublereal ddot_(integer *n, doublereal *dx, integer *incx, doublereal *dy,
  *     STATE_LEN(len) <= 4 + (2^32 - 1) + (2^32 - 1)^2
  *                     = 2^64 - 2^33 + 2^32 + 4 < 2^64,
  *
- * i.e., we do not have to worry about integer overflows.
+ * i.e., we do not have to worry about long int overflows.
  * HOWEVER: Caution is required as the size in bytes could still cause an
- * integer overflow!
+ * long int overflow!
  */
 #define STATE_LEN(len) (4ULL + len + ((uint64) len) * len)
 
 /*
- * The following condition will not cause an integer overflow and is equivalent
- * (note: despite the integer division!) to:
+ * The following condition will not cause an long int overflow and is equivalent
+ * (note: despite the long int division!) to:
  *
  *     state_len * sizeof(float8) + ARR_OVERHEAD_NONULLS(1) <= MaxAllocSize
  *
@@ -104,9 +81,49 @@ static void float8_mregr_compute(MRegrState	*inState,
 
 static inline void symmetricMatrixTimesVector(uint32 inSize, float8 *inMatrix,
 	float8 *inVector, float8 *outResult);
-static inline doublereal dotProduct(uint32 inSize, float8 *inVec1,
+static inline double dotProduct(uint32 inSize, float8 *inVec1,
 	float8 *inVec2);
 
+static long int (*gp_dgemv)(char *trans, long int *m,
+					   long int *n, double *alpha,
+					   double *a, long int *lda,
+					   double *x, long int *incx,
+					   double *beta, double *y,
+					   long int *incy) = NULL;
+
+static double (*gp_ddot)(long int *n, double *dx, long int *incx,
+						double *dy, long int *incy) = NULL;
+
+/*
+ * Link in gp_dgemv and gp_ddot.
+ */
+static void
+link_la_function(void)
+{
+	void *hdl = NULL;
+
+	if (gp_dgemv && gp_ddot)
+		return;
+
+	hdl = load_gpla();
+
+	if (!gp_dgemv)
+	{
+		gp_dgemv = dlsym(hdl, "gp_dgemv");
+		if (!gp_dgemv)
+			elog(ERROR, "cannot load function: %s", dlerror());
+	}
+
+	if (!gp_ddot)
+	{
+		gp_ddot = dlsym(hdl, "gp_ddot");
+		if (!gp_ddot)
+			elog(ERROR, "cannot load function: %s", dlerror());
+	}
+}
+
+	
+	
 static bool
 float8_mregr_accum_get_args(FunctionCallInfo fcinfo,
 							MRegrAccumArgs *outArgs)
@@ -170,12 +187,12 @@ float8_mregr_accum_get_args(FunctionCallInfo fcinfo,
 				 errmsg("dependent variables are not finite")));
 	
 	/*
-	 * See MPP-14102. We want to avoid (a) integer overflows and (b) making
+	 * See MPP-14102. We want to avoid (a) long int overflows and (b) making
 	 * oversized allocation requests.
 	 * We could compute the maximum number of variables so that the transition-
 	 * state length still fits into MaxAllocSize, but (assuming MaxAllocSize may
 	 * change in the future) this calculation requires taking the root out of a
-	 * 64-bit integer. Since there is no standard library function for that, and
+	 * 64-bit long int. Since there is no standard library function for that, and
 	 * displaying this number of merely of theoretical interest (the actual
 	 * limit is a lot lower), we simply report that the number of independent
 	 * variables is too large.
@@ -646,8 +663,8 @@ float8_mregr_compute(MRegrState	*inState,
 		for (i = 0; i < inState->len; i++)
 			if (inState->count <= inState->len) {
 				/*
-				 * This test is purely for detecting integer overflows because
-				 * studentT_cdf expects an unsigned integer as first argument.
+				 * This test is purely for detecting long int overflows because
+				 * studentT_cdf expects an unsigned long int as first argument.
 				 */
 				pValues[i] = NAN;
 			} else {
@@ -758,13 +775,13 @@ symmetricMatrixTimesVector(uint32 inSize, float8 *inMatrix,
 {
 	/*
 	 * We use types defined in f2c.h for values that we pass to LAPACK.
-	 * Precondition: sizeof(integer) >= sizeof(inSize)
-	 *          and: types float8 and doublereal must be identical
+	 * Precondition: sizeof(long int) >= sizeof(inSize)
+	 *          and: types float8 and double must be identical
 	 */
 	char       N_char = 'N';
-	integer    size = inSize;
-	doublereal one_float = 1.0, zero_float = 0.0;
-	integer    one_int = 1;
+	long int    size = inSize;
+	double one_float = 1.0, zero_float = 0.0;
+	long int    one_int = 1;
 	
 	/*
 	 * Using dgemv, we compute
@@ -774,7 +791,8 @@ symmetricMatrixTimesVector(uint32 inSize, float8 *inMatrix,
 	 * dgemv assumes matrices are stored in colum-major order. Since inMatrix
 	 * is symmetric, we don't have to worry about it though.
 	 */
-	dgemv_(
+	link_la_function();
+	gp_dgemv(
 		&N_char /* no transpose of matrix */,
 		&size /* number of rows */,
 		&size /* number of columns */,
@@ -790,17 +808,17 @@ symmetricMatrixTimesVector(uint32 inSize, float8 *inMatrix,
 }
 
 /* Dot product */
-static inline doublereal
+static inline double
 dotProduct(uint32 inSize, float8 *inVec1, float8 *inVec2)
 {
 	/*
-	 * Precondition: sizeof(integer) >= sizeof(inSize)
-	 *          and: types float8 and doublereal must be identical
+	 * Precondition: sizeof(long int) >= sizeof(inSize)
+	 *          and: types float8 and double must be identical
 	 */
-	integer size = inSize;
-	integer one_int = 1;
-
-	return ddot_(
+	long int size = inSize;
+	long int one_int = 1;
+	link_la_function();
+	return gp_ddot(
 		&size,
 		inVec1,
 		&one_int /* delta between elements in vector inVec1 */,
