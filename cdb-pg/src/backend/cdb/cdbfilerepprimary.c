@@ -173,16 +173,7 @@ FileRepPrimary_IsMirroringRequired(
 	
 	while (1) 
 	{
-		/*
-		 * If postmaster dies unexpectedly,
-		 * the transaction should exit rather than leaving
-		 * the stale backend processes.
-		 */
-		if (! PostmasterIsAlive(true /*amDirectChild*/) || ! ParentProcIsAlive())
-		{
-			proc_exit(1);
-		}
-
+		
 		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
 		
 		switch (fileRepRole) {
