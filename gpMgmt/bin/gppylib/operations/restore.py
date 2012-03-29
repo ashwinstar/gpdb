@@ -545,7 +545,7 @@ class BuildDDBoostMasterTableDump(Operation):
             # 18 COMMENT ON SCHEMA public IS 'Standard public schema';
             # 19 
             # 20 
-            for line in line_list:
+            for lineno, line in enumerate(line_list):
                 if line.startswith("SET"):
                     fake_file.write(line)
                 if lineno > 20:
