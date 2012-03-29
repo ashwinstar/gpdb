@@ -125,18 +125,6 @@ typedef int Py_ssize_t;
 #define pyelog(...)
 #endif
 
-/* 
- * MPP-13093 / MPP-15110
- *
- * The correct thing to do is to wrap SPI calls into subtransactions so that we
- * can correctly catch and handle errors from those calls.  However limitations
- * in the maximum number of subtransactions cause us to run into our artificial
- * limit way too quickly which leads to worse behavior than we get by doing the
- * wrong thing here in PL/Python.  To handle this we have temporarily disabled
- * wrapping SPI calls into subtransactions until MPP-13093 has been resolved.
- */
-#define PLPY_SUBTRANSATIONS false
-
 PG_MODULE_MAGIC;
 
 /* convert Postgresql Datum or tuple into a PyObject.
@@ -3449,9 +3437,8 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 	char	   *query;
 	void	   *tmpplan;
 	volatile MemoryContext oldcontext;
-#if PLPY_SUBTRANSACTIONS
 	volatile ResourceOwner oldowner;
-#endif
+
 	volatile int nargs;
 
 	if (!PyArg_ParseTuple(args, "s|O", &query, &list))
@@ -3475,12 +3462,10 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 	plan->args = nargs ? PLy_malloc(sizeof(PLyTypeInfo) * nargs) : NULL;
 
 	oldcontext = CurrentMemoryContext;
-#if PLPY_SUBTRANSACTIONS
 	oldowner = CurrentResourceOwner;
 
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldcontext);
-#endif
 
 	PG_TRY();
 	{
@@ -3562,7 +3547,6 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 			elog(ERROR, "SPI_saveplan failed: %s",
 				 SPI_result_code_string(SPI_result));
 
-#if PLPY_SUBTRANSACTIONS
 		/* Commit the inner transaction, return to outer xact context */
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
@@ -3573,7 +3557,6 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 		 * in case it did, make sure we remain connected.
 		 */
 		SPI_restore_connection();
-#endif
 	}
 	PG_CATCH();
 	{
@@ -3588,7 +3571,6 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 		Py_DECREF(plan);
 		Py_XDECREF(optr);
 
-#if PLPY_SUBTRANSACTIONS
 		/* Abort the inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
@@ -3600,12 +3582,6 @@ PLy_spi_prepare(PyObject *self __attribute__((unused)), PyObject *args)
 		 * to connected state.
 		 */
 		SPI_restore_connection();
-#else
-       if (!PyErr_Occurred())
-           PLy_exception_set(PLy_exc_spi_error,
-							 "unrecognized error in PLy_spi_prepare");
-       PLy_elog(WARNING, NULL);
-#endif
 
 		/* Look up the correct exception */
 		entry = hash_search(PLy_spi_exceptions, &(edata->sqlerrcode),
@@ -3655,9 +3631,7 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 				rv;
 	PLyPlanObject *plan;
 	volatile MemoryContext oldcontext;
-#if PLPY_SUBTRANSACTIONS
 	volatile ResourceOwner oldowner;
-#endif
 	PyObject   *ret;
 
 	if (list != NULL)
@@ -3693,13 +3667,11 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 	}
 
 	oldcontext = CurrentMemoryContext;
-#if PLPY_SUBTRANSACTIONS
 	oldowner = CurrentResourceOwner;
 
 	BeginInternalSubTransaction(NULL);
 	/* Want to run inside function's memory context */
 	MemoryContextSwitchTo(oldcontext);
-#endif
 
 	PG_TRY();
 	{
@@ -3754,7 +3726,6 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 		if (nargs > 0)
 			pfree(nulls);
 
-#if PLPY_SUBTRANSACTIONS
 		/* Commit the inner transaction, return to outer xact context */
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
@@ -3765,7 +3736,6 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 		 * in case it did, make sure we remain connected.
 		 */
 		SPI_restore_connection();
-#endif
 	}
 	PG_CATCH();
 	{
@@ -3792,7 +3762,6 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 			}
 		}
 
-#if PLPY_SUBTRANSACTIONS
 		/* Abort the inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
@@ -3804,12 +3773,6 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 		 * to connected state.
 		 */
 		SPI_restore_connection();
-#else
-		if (!PyErr_Occurred())
-			PLy_exception_set(PLy_exc_spi_error,
-							  "unrecognized error in PLy_spi_execute_plan");
-		PLy_elog(WARNING, NULL);
-#endif
 
 		/* Look up the correct exception */
 		entry = hash_search(PLy_spi_exceptions, &(edata->sqlerrcode),
@@ -3833,7 +3796,6 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 		}
 	}
 
-#if PLPY_SUBTRANSACTIONS
 	if (rv < 0)
 	{
 		PLy_exception_set(PLy_exc_spi_error,
@@ -3841,7 +3803,6 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 						  SPI_result_code_string(rv));
 		return NULL;
 	}
-#endif
 
 	return ret;
 }
@@ -3851,19 +3812,15 @@ PLy_spi_execute_query(char *query, long limit)
 {
 	int			rv;
 	volatile MemoryContext oldcontext;
-#if PLPY_SUBTRANSACTIONS
 	volatile ResourceOwner oldowner;
-#endif
 	PyObject   *ret;
 
 	oldcontext = CurrentMemoryContext;
-#if PLPY_SUBTRANSACTIONS
 	oldowner = CurrentResourceOwner;
 
 	BeginInternalSubTransaction(NULL);
 	/* Want to run inside function's memory context */
 	MemoryContextSwitchTo(oldcontext);
-#endif
 
 	PG_TRY();
 	{
@@ -3872,7 +3829,6 @@ PLy_spi_execute_query(char *query, long limit)
 
 		ret = PLy_spi_execute_fetch_result(SPI_tuptable, SPI_processed, rv);
 
-#if PLPY_SUBTRANSACTIONS
 		/* Commit the inner transaction, return to outer xact context */
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
@@ -3883,7 +3839,6 @@ PLy_spi_execute_query(char *query, long limit)
 		 * in case it did, make sure we remain connected.
 		 */
 		SPI_restore_connection();
-#endif
 	}
 	PG_CATCH();
 	{
@@ -3896,7 +3851,6 @@ PLy_spi_execute_query(char *query, long limit)
 		edata = CopyErrorData();
 		FlushErrorState();
 
-#if PLPY_SUBTRANSACTIONS
 		/* Abort the inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldcontext);
@@ -3908,12 +3862,10 @@ PLy_spi_execute_query(char *query, long limit)
 		 * to connected state.
 		 */
 		SPI_restore_connection();
-#else
 		if (!PyErr_Occurred())
 			PLy_exception_set(PLy_exc_spi_error,
 							  "unrecognized error in PLy_spi_execute_query");
 		PLy_elog(WARNING, NULL);
-#endif
 
 		/* Look up the correct exception */
 		entry = hash_search(PLy_spi_exceptions, &edata->sqlerrcode,
