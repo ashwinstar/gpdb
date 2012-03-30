@@ -3862,10 +3862,6 @@ PLy_spi_execute_query(char *query, long limit)
 		 * to connected state.
 		 */
 		SPI_restore_connection();
-		if (!PyErr_Occurred())
-			PLy_exception_set(PLy_exc_spi_error,
-							  "unrecognized error in PLy_spi_execute_query");
-		PLy_elog(WARNING, NULL);
 
 		/* Look up the correct exception */
 		entry = hash_search(PLy_spi_exceptions, &edata->sqlerrcode,
