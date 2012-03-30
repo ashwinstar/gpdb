@@ -852,6 +852,10 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationOpen:
 			case FileRepOperationCreateAndOpen:
 				found = FALSE;
+
+				/* MPP-16542 : mask off O_DIRECT for filerep mirror shmem alignment issue */
+				if (fileRepMessageHeader->fileRepOperationDescription.open.fileFlags & O_DIRECT)
+					fileRepMessageHeader->fileRepOperationDescription.open.fileFlags &= ~O_DIRECT;
 				
 				entry = FileRepMirror_LookupFileName(fileName);
 				
