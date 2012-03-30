@@ -1295,7 +1295,7 @@ inline static int DatumStreamBlockRead_Get(DatumStreamBlockRead *dsr, Datum *dat
 		{
 			if ( dsr->typeInfo.datumlen == 4)
 			{
-				*datum = (uint32)dsr->delta_datum_p;
+				*datum = *(uint32*)&dsr->delta_datum_p;
 			}
 			else if (dsr->typeInfo.datumlen == 8) 
 			{
@@ -1534,12 +1534,12 @@ DatumStreamBlockRead_AdvanceDenseDelta(DatumStreamBlockRead *dsr)
 		if ( sign )
 		{
 			// Add delta
-			*(uint32*)(&dsr->delta_datum_p) += delta;
+			*(uint32*)&dsr->delta_datum_p += delta;
 		}
 		else
 		{
 			// Substract delta
-			*(uint32*)(&dsr->delta_datum_p) -= delta;
+			*(uint32*)&dsr->delta_datum_p -= delta;
 		}
 	}
 	else if (dsr->typeInfo.datumlen == 8)

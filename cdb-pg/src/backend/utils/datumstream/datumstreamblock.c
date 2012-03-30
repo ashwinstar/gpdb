@@ -2803,10 +2803,10 @@ static inline void DatumStreamBlockWrite_DeltaMaintain(
 	if (Debug_appendonly_print_insert_tuple)
 	{
 		ereport(LOG,
-				(errmsg("Datum stream insert Delta Maintain = " INT64_FORMAT, d),
-				 errOmitLocation(true),
-				 errdetail_datumstreamblockwrite(dsw),
-				 errcontext_datumstreamblockwrite(dsw)));		
+			(errmsg("Datum stream insert Delta Maintain = " INT64_FORMAT, d),
+			errOmitLocation(true),
+			errdetail_datumstreamblockwrite(dsw),
+			errcontext_datumstreamblockwrite(dsw)));               
 	}
 
 	/*
@@ -2999,16 +2999,16 @@ static Delta_Compression_status DatumStreamBlockWrite_PerformDeltaCompression(
 	switch(dsw->typeInfo->datumlen)
 	{
 		case 4:
-			if ( DatumGetUInt32(dsw->compare_item) <= DatumGetUInt32(d) )
+			if ( *(uint32 *) (&dsw->compare_item) <= DatumGetUInt32(d) )
 			{
 				// Positive delta
-				delta = DatumGetUInt32(d) - DatumGetUInt32(dsw->compare_item);
+				delta = DatumGetUInt32(d) - *(uint32 *) (&dsw->compare_item);
 				positive_delta = true;
 			}
 			else
 			{
 				// Negative Delta
-				delta = DatumGetUInt32(dsw->compare_item) - DatumGetUInt32(d);
+				delta = *(uint32 *) (&dsw->compare_item) - DatumGetUInt32(d);
 				positive_delta = false;
 			}
 			break;
