@@ -99,6 +99,62 @@ extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 #define PATH_TO_APPLIANCE_VERSION_FILE "/etc/gpdb-appliance-version"
 #define PATH_TO_APPLAINCE_DEVICES_FILE "/opt/dca/etc/healthmond/devices.cnf"
 
+#define MIN_MESSAGES_PER_INTERVAL (1)
+#define MAX_MESSAGES_PER_INTERVAL (50)
+#define MINIMUM_MESSAGE_INTERVAL  (1) // in minutes
+#define MAXIMUM_MESSAGE_INTERVAL  (10080) //one week
+
+/*
+* The below is a simple divide macro that does division rounding up if you get .5 or greater or down if you get below .5 without
+* doing any floating point math.  It can be used instead of the round math.h functions to avoid floating point math and crazy casting.
+* This is an example of how it works: 9/5 = 1.8 so you want the answer to be 2
+* the macro does the following: It first does the basic division which always rounds down: (9/5) = 1.  Then based on the remainder it
+* figures out whether or not to add 1.  Mod is used to calculate the remainder (9 mod 5) = 4.  Then it needs to calculate whether
+* 4/5 is greater or equal to .5 : it does this by calculating whether or not the remainder is greater than or equal to half the value of
+* 5.  This is done by dividing  5/2 and rounding appropriately (this is done by adding the remainder (5 mod 2) which is either 1 or 0). 5/2
+* rounded is 3 which is less than the remainder 4, so it rounds up and adds 1 getting 2 as the answer.
+* example 2, for 9/7 = 1.29 so you want the answer to be 1
+* step 1: (((9)/(7)) + ((((9)%(7))>=((((7)/2))+((7)%2)))?1:0))
+* step 2: 1 + ((2>=(3+1))?1:0))  step 3: 1 + ((2>=(4)?1:0))   step 4: 1 + 0  step 5: 1
+*
+* NOTE: THIS IS WELL TESTED; DO NOT CHANGE!!!
+*/
+#define ROUND_DIVIDE(numerator, denominator) (((numerator)/(denominator)) + ((((numerator)%(denominator))>=((((denominator)/2))+((denominator)%2)))?1:0))
+
+
+
+
+/* gpmmon options */
+typedef struct mmon_options_t
+{
+	int argc;
+	const char* const *argv;
+	const char* pname;
+	char* gpdb_port;
+	char* conf_file;
+	char* log_dir;
+	char* smon_log_dir;
+	char* smdw_aliases;
+	apr_uint64_t max_log_size;
+	int max_fd; /* this is the max fd value we ever seen */
+	int v;
+	int q;
+	int m;
+	int d;
+	int qamode;
+	int emcconnect; 		// config entry in gpperfmon.conf
+	int harvest_interval;
+	int snmp_interval;
+	apr_uint64_t tail_buffer_max;
+	int console;
+	int health_harvest_interval;
+	int warning_disk_space_percentage;
+	int error_disk_space_percentage;
+	time_t disk_space_interval; //interval in seconds
+	unsigned int max_disk_space_messages_per_interval;
+	int iterator_aggregate;
+} mmon_options_t;
+
 typedef struct addressinfo_holder_t addressinfo_holder_t;
 struct addressinfo_holder_t                                                                        
 {

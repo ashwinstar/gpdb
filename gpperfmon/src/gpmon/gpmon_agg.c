@@ -4,6 +4,7 @@
 #include "apr_general.h"
 #include "apr_hash.h"
 #include "apr_time.h"
+#include "apr_queue.h"
 #include "gpmon/gpmon.h"
 #include "gpmon_agg.h"
 #include <stdio.h>
@@ -13,8 +14,23 @@
 #include <math.h>
 #include <sys/stat.h>
 
+typedef enum disk_space_message_t
+{
+	DISK_SPACE_NO_MESSAGE_SENT = 0,
+	DISK_SPACE_WARNING_SENT ,
+	DISK_SPACE_ERROR_SENT
+} disk_space_message_t;
 
+typedef struct mmon_fsinfo_t
+{
+	gpmon_fsinfokey_t key;
 
+	apr_int64_t				bytes_used;
+	apr_int64_t				bytes_available;
+	apr_int64_t				bytes_total;
+	disk_space_message_t	sent_error_flag;
+	time_t					last_update_timestamp;
+} mmon_fsinfo_t; //the fsinfo structure used in mmon
 
 typedef struct mmon_qexec_t
 {
@@ -48,11 +64,12 @@ struct agg_t
 {
 	apr_int64_t generation;
 	apr_pool_t* pool;
+	apr_pool_t* parent_pool;
 	apr_hash_t* qtab;		/* key = gpmon_qlog_key_t, value = qdnode ptr. */
 	apr_hash_t* htab;		/* key = hostname, value = gpmon_metrics_t ptr */
 	apr_hash_t* stab;		/* key = databaseid, value = gpmon_seginfo_t ptr */
 	apr_hash_t* ftab;		/* key = gpmmon_filerep_key_t, value = gpmon_filrep_holder_t ptr */
-	apr_hash_t* dtab;		/* key = gpmon_fsinfokey_t, value = gpmon_fsinfo_t ptr */
+	apr_hash_t* fsinfotab;	/* This is the persistent fsinfo hash table: key = gpmon_fsinfokey_t, value = mmon_fsinfo_t ptr */
 };
 
 typedef struct dbmetrics_t {
@@ -63,23 +80,119 @@ typedef struct dbmetrics_t {
 
 extern int min_query_time;
 extern int min_detailed_query_time;
+extern mmon_options_t opt;
+extern apr_queue_t* message_queue;
 
 extern void incremement_tail_bytes(apr_uint64_t bytes);
 
-static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met) 
-{
-	gpmon_fsinfo_t* rec;
 
-	rec = apr_hash_get(agg->dtab, &met->key, sizeof(met->key));
-	if (rec) {
-		*rec = *met;
+/**
+ * Disk space check helper function
+ * Note- trys to push a message on a queue so that the message thread can send the message
+ */
+static apr_status_t  check_disk_space(mmon_fsinfo_t* rec)
+{
+	static time_t interval_start_time = 0;
+	static unsigned int number_messages_sent_this_interval = 0;
+	time_t now = 0;
+	int used_disk_space_percent =  ROUND_DIVIDE((rec->bytes_used *100),rec->bytes_total);
+
+	now = time(NULL);
+	// reset the interval if needed
+	if ((now - interval_start_time) >= opt.disk_space_interval){
+		interval_start_time = now;
+		number_messages_sent_this_interval = 0;
 	}
-	else {
-		rec = apr_palloc(agg->pool, sizeof(*rec));
+
+	// Check the disk space if we haven't already sent an error
+	if (rec->sent_error_flag != DISK_SPACE_ERROR_SENT) {
+		disk_space_message_t send_flag = DISK_SPACE_NO_MESSAGE_SENT;
+		char* message = 0;
+
+		// check for errors and then warnings
+		if ((opt.error_disk_space_percentage != 0) && (used_disk_space_percent >= opt.error_disk_space_percentage)) {
+			//Send an error if the error_disk_space_percentage threshold is set and the used_disk_space_percent is greater or equal to it
+			send_flag = DISK_SPACE_ERROR_SENT;
+			message = "ERROR";
+		} else if ((rec->sent_error_flag != DISK_SPACE_WARNING_SENT) && (opt.warning_disk_space_percentage != 0 ) &&
+					(used_disk_space_percent >= opt.warning_disk_space_percentage)) {
+			//Send warning if the warning_disk_space_percentage threshold is set and the used_disk_space_percent is greater or equal to it
+			//and if a warning has not already been sent
+			send_flag = DISK_SPACE_WARNING_SENT;
+			message = "WARNING";
+		} else if ((rec->sent_error_flag == DISK_SPACE_WARNING_SENT) && (used_disk_space_percent < opt.warning_disk_space_percentage)) {
+			//if a warning as been sent and the used disk has fallen below the below the warning threshold reset the send flag
+			rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
+		}
+
+		// Send a warning or error if needed by putting the message in a queue
+		if (send_flag != DISK_SPACE_NO_MESSAGE_SENT){
+			//only sent the message if
+			if (number_messages_sent_this_interval < opt.max_disk_space_messages_per_interval) {
+				char *query;
+				apr_status_t status;
+				unsigned int query_size_max = NAMEDATALEN + GPMON_FSINFO_MAX_PATH + 200;
+
+				query = malloc(query_size_max);
+				if (!query) {
+					TR0(("check_disk_space ERROR: malloc(%d) returned NULL, out of memory\n", query_size_max));
+					return APR_ENOMEM;
+				}
+				snprintf(query, query_size_max, "select gp_elog('%s: percent used disk space for %s %s is %d%%', True)",
+						message, rec->key.hostname, rec->key.fsname, used_disk_space_percent);
+
+				status = apr_queue_trypush(message_queue, (void *) query);
+				if (status == APR_EINTR) { //blocking interrupted try one more time
+					status = apr_queue_trypush(message_queue, (void *) query);
+				}
+				if (status != APR_SUCCESS) {
+					TR0(("check_disk_space ERROR: apr_queue_trypush returned %d; cannot send %s\n", status, query));
+					free(query);
+				} else {
+					number_messages_sent_this_interval++;
+				}
+
+			} else {
+				TR1(("check_disk_space: message max reached: Not sending message for %s %s. used_disk_space_percent = %d%%\n", rec->key.hostname, rec->key.fsname, used_disk_space_percent));
+			}
+
+			rec->sent_error_flag = send_flag;
+		}
+
+	} else if ( ( opt.warning_disk_space_percentage != 0 ) && ( used_disk_space_percent < opt.warning_disk_space_percentage )) {
+		//if there is a warning percent to check and the used disk has fallen below the below the warning threshold reset the send flag
+		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
+	} else if ( ( opt.warning_disk_space_percentage == 0 ) && ( used_disk_space_percent < opt.error_disk_space_percentage )) {
+		//if there is no warning percent to check and the used disk has fallen below the below the error threshold reset the send flag
+		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
+	}
+	return 0;
+}
+
+static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met)
+{
+	mmon_fsinfo_t* rec;
+
+	rec = apr_hash_get(agg->fsinfotab, &met->key, sizeof(met->key));
+	if (!rec) {
+		// Use the parent pool because we need the fsinfo to be persistent and never be freed
+		rec = apr_palloc(agg->parent_pool, sizeof(*rec));
 		if (!rec)
-		    return APR_ENOMEM;
-		*rec = *met;
-		apr_hash_set(agg->dtab, &met->key, sizeof(met->key), rec);
+			return APR_ENOMEM;
+		rec->key = met->key;
+		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
+		apr_hash_set(agg->fsinfotab, &met->key, sizeof(met->key), rec);
+	}
+	rec->bytes_available = met->bytes_available;
+	rec->bytes_total = met->bytes_total;
+	rec->bytes_used = met->bytes_used;
+	rec->last_update_timestamp = time(NULL); //set the updated timestamp for the packet
+
+	// if both the option percentages are set to 0 than the disk space check is disabled
+	// Also if max_disk_space_messages_per_interval is 0 the disk space check is disabled
+	if (((opt.warning_disk_space_percentage) || (opt.error_disk_space_percentage)) &&
+			(opt.max_disk_space_messages_per_interval != 0)) {
+		check_disk_space(rec);
 	}
 	return 0;
 }
@@ -281,8 +394,7 @@ static apr_status_t agg_put_qexec(agg_t* agg, const qexec_packet_t* qexec_packet
 }
 
 
-apr_status_t agg_create(agg_t** retagg, apr_int64_t generation,
-		apr_pool_t* parent_pool)
+apr_status_t agg_create(agg_t** retagg, apr_int64_t generation, apr_pool_t* parent_pool, apr_hash_t* fsinfotab)
 {
 	int e;
 	apr_pool_t* pool;
@@ -299,6 +411,9 @@ apr_status_t agg_create(agg_t** retagg, apr_int64_t generation,
 
 	agg->generation = generation;
 	agg->pool = pool;
+	agg->parent_pool = parent_pool;
+	agg->fsinfotab = fsinfotab; // This hash table for the fsinfo is persistent and will use the parent pool
+
 	agg->qtab = apr_hash_make(pool);
 	if (!agg->qtab) {
 		apr_pool_destroy(pool);
@@ -323,24 +438,18 @@ apr_status_t agg_create(agg_t** retagg, apr_int64_t generation,
 		return APR_ENOMEM;
 	}
 
-	agg->dtab = apr_hash_make(pool);
-	if (!agg->dtab) {
-		apr_pool_destroy(pool);
-		return APR_ENOMEM;
-	}
-
 	*retagg = agg;
 	return 0;
 }
 
 
-apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
+apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr_hash_t* fsinfotab)
 {
 	int e, cnt;
 	agg_t* newagg;
 	apr_hash_index_t *hi, *hj;
 
-	if (0 != (e = agg_create(&newagg, oldagg->generation + 1, parent_pool))) {
+	if (0 != (e = agg_create(&newagg, oldagg->generation + 1, parent_pool, fsinfotab))) {
 		return e;
 	}
 
@@ -919,6 +1028,7 @@ static apr_uint32_t write_fsinfo(agg_t* agg, const char* nowstr)
 	const int line_size = 512;
 	char line[line_size];
 	apr_uint32_t bytes_written = 0;
+	static time_t last_time_fsinfo_written = 0;
 
 	if (!fp || !fp2) 
 	{
@@ -927,14 +1037,20 @@ static apr_uint32_t write_fsinfo(agg_t* agg, const char* nowstr)
 		return 0;
 	}
 	
-	for (hi = apr_hash_first(0, agg->dtab); hi; hi = apr_hash_next(hi)) 
+	for (hi = apr_hash_first(0, agg->fsinfotab); hi; hi = apr_hash_next(hi))
 	{
-		gpmon_fsinfo_t* fsp;
+		mmon_fsinfo_t* fsp;
 		void* valptr = 0;
 		int bytes_this_line;
 		
 		apr_hash_this(hi, 0, 0, (void**) &valptr);
-		fsp = (gpmon_fsinfo_t*) valptr;
+		fsp = (mmon_fsinfo_t*) valptr;
+
+		// We only want to write the fsinfo for packets that have been updated since the last time we wrote
+		// the fsinfo, so skip the fsinfo if its timestamp is less than the last time written timestamp
+		if (fsp->last_update_timestamp < last_time_fsinfo_written) {
+			continue;
+		}
 
 		snprintf(line, line_size, "%s|%s|%s|%" FMT64 "|%" FMT64 "|%" FMT64,
 				nowstr,
@@ -959,6 +1075,9 @@ static apr_uint32_t write_fsinfo(agg_t* agg, const char* nowstr)
 
 	fclose(fp);
 	fclose(fp2);
+
+	last_time_fsinfo_written = time(NULL); //set the static time written variable
+
 	return bytes_written;	
 }
 

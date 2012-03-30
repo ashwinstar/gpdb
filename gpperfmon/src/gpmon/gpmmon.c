@@ -15,6 +15,7 @@
 #include "apr_hash.h"
 #include "apr_lib.h"
 #include "apr_strings.h"
+#include "apr_queue.h"
 #include "apr_pools.h"
 #include "apr_tables.h"
 #include "apr_thread_proc.h"
@@ -34,34 +35,7 @@
 
 #define SET_MAXFD(fd)  if (fd < opt.max_fd) ; else opt.max_fd = fd
 
-/* gpmmon options */
-struct
-{
-	int argc;
-	const char* const *argv;
-	const char* pname;
-	char* gpdb_port;
-	char* conf_file;
-	char* log_dir;
-	char* smon_log_dir;
-	char* smdw_aliases;
-	apr_uint64_t max_log_size;
-	int max_fd; /* this is the max fd value we ever seen */
-	int v;
-	int q;
-	int m;
-	int d;
-	int qamode;
-	int emcconnect; 		// config entry in gpperfmon.conf
-	int harvest_interval;
-	int snmp_interval;
-	apr_uint64_t tail_buffer_max;
-	int console;
-	int health_harvest_interval;
-	int warning_disk_space_percentage;
-	int error_disk_space_percentage;
-	int iterator_aggregate;
-} opt = { 0 };
+mmon_options_t opt = { 0 };
 
 /* gpmmon host */
 static struct
@@ -83,6 +57,7 @@ static struct
 	char* standby_master_hostname;
 	apr_thread_mutex_t *agg_mutex; /* lock when accessing the agg data */
 	agg_t* agg;
+	apr_hash_t* fsinfotab; /* This is the persistent fsinfo hash table: key = gpmon_fsinfokey_t, value = mmon_fsinfo_t ptr */
 
 	apr_thread_mutex_t *tailfile_mutex; /* lock when accessing the physical tail files */
 
@@ -112,6 +87,8 @@ static apr_thread_t* conm_th = NULL;
 static apr_thread_t* event_th = NULL;
 static apr_thread_t* harvest_th = NULL;
 static apr_thread_t* snmp_th = NULL;
+static apr_thread_t* message_th = NULL;
+apr_queue_t* message_queue = NULL;
 
 /* signal masks */
 sigset_t unblocksig;
@@ -119,6 +96,8 @@ sigset_t blocksig;
 
 /* Temporary global memory to store the qexec line upon a receive until it is copied into a mmon_qexec_t struct; only use in main receive thread*/
 char	qexec_mmon_temp_line[QEXEC_MAX_ROW_BUF_SIZE];
+
+extern int gpdb_exec_search_for_at_least_one_row(const char* QUERY, PGconn* persistant_conn);
 
 
 /* Function defs */
@@ -189,6 +168,8 @@ static void cleanup()
 		apr_thread_join(&tstatus, harvest_th);
 	if (snmp_th)
 		apr_thread_join(&tstatus, snmp_th);
+	if (message_th)
+		apr_thread_join(&tstatus, message_th);
 
 	for (i = 0; i < ax.hosttabsz; i++)
 	{
@@ -661,8 +642,13 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(snmp_module_params.externaltable_dir, PATH_MAX, "%s/gpperfmon/data", ax.master_data_directory);
 	snmp_module_params.health_harvest_interval = opt.health_harvest_interval;
 	snmp_module_params.warning_disk_space_percentage = opt.warning_disk_space_percentage;
+	if (snmp_module_params.warning_disk_space_percentage == 0) {
+		snmp_module_params.warning_disk_space_percentage = 90;
+	}
 	snmp_module_params.error_disk_space_percentage = opt.error_disk_space_percentage;
-
+	if (snmp_module_params.error_disk_space_percentage == 0) {
+		snmp_module_params.error_disk_space_percentage = 95;
+	}
 	if (arg_ && *((int*)arg_) == 1) {
 		snmp_module_params.healthmon_running_separately = 1;
 		TR0(("healthmond will do healthmonitoring, not doing snmp....\n"));
@@ -841,7 +827,38 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 
 	return APR_SUCCESS;
 }
+/* Separate thread for message sending */
+static void* message_main(apr_thread_t* thread_, void* arg_)
+{
+	apr_queue_t *queue = arg_;
+	void *query = NULL;
+	char *query_str = NULL;
+	apr_status_t status;
 
+	TR2(("In message_main: error_disk_space_percentage = %d, warning_disk_space_percentage = %d, disk_space_interval = %d, max_disk_space_messages_per_interval = %d\n",
+			opt.error_disk_space_percentage, opt.warning_disk_space_percentage, opt.disk_space_interval, opt.max_disk_space_messages_per_interval));
+	while (1) {
+		query = NULL;
+		status = apr_queue_pop(queue, &query);
+		if (status == APR_EINTR) { //the blocking operation was interrupted (try again)
+			continue;
+		} else if (status != APR_SUCCESS) {
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			gpmon_fatalx(FLINE, status, "message_main ERROR: apr_queue_pop failed: returned %d", status);
+			return (void*)1;
+		} else if (NULL == query) {
+			TR0(("message_main ERROR: apr_queue_pop returned NULL\n"));
+		} else { // send the message
+			query_str = query; // have to do this because we still build on SUN!!!
+			if (!gpdb_exec_search_for_at_least_one_row((const char *)query_str, NULL)) {
+				TR0(("message_main ERROR: query %s failed. Cannot send message\n", query_str));
+			}
+			free(query);
+		}
+
+	}
+	return APR_SUCCESS;
+}
 int is_gpdb_appliance()
 {
 	FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
@@ -968,8 +985,15 @@ static void gpmmon_main(void)
 	/* get hostlist */
 	gethostlist();
 
+	/* create the persistent fsinfo hash table */
+	ax.fsinfotab = apr_hash_make(ax.pool);
+	if (!ax.fsinfotab) {
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "apr_hash_make for fsinfo hash table failed");
+	}
+
 	/* create the agg */
-	if (0 != (e = agg_create(&ax.agg, 1, ax.pool)))
+	if (0 != (e = agg_create(&ax.agg, 1, ax.pool, ax.fsinfotab)))
 	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "agg_create failed");
@@ -991,6 +1015,20 @@ static void gpmmon_main(void)
 
 	/* spawn harvest thread */
 	if (0 != (e = apr_thread_create(&harvest_th, ta, harvest_main, 0, ax.pool)))
+	{
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
+	}
+
+	/* Create message queue */
+	if (0 != (e = apr_queue_create(&message_queue, MAX_MESSAGES_PER_INTERVAL, ax.pool)))
+	{
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "apr_queue_create failed");
+	}
+
+	/* spawn disk space message thread */
+	if (0 != (e = apr_thread_create(&message_th, ta, message_main, message_queue, ax.pool)))
 	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
@@ -1072,7 +1110,7 @@ static void gpmmon_main(void)
 			apr_thread_mutex_unlock(ax.tailfile_mutex);
 
 			/* make a new one, copy only recently updated entries */
-			if (0 != (e = agg_dup(&newagg, ax.agg, ax.pool)))
+			if (0 != (e = agg_dup(&newagg, ax.agg, ax.pool, ax.fsinfotab)))
 			{
 				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, e, "agg_dup failed");
@@ -1128,6 +1166,8 @@ static int read_conf_file(char *conffile)
 	opt.max_log_size = 0;
 	opt.log_dir = strdup(DEFAULT_GPMMON_LOGDIR);
 	opt.emcconnect = 1; // assume enabled unless disabled explicitly
+	opt.max_disk_space_messages_per_interval = MAX_MESSAGES_PER_INTERVAL;
+	opt.disk_space_interval = (60*MINIMUM_MESSAGE_INTERVAL);
 
 	if (!fp)
 	{
@@ -1247,6 +1287,12 @@ static int read_conf_file(char *conffile)
 			else if (apr_strnatcasecmp(pName, "error_disk_space_percentage") == 0) {
 				opt.error_disk_space_percentage = atoi(pVal);
 			}
+			else if (apr_strnatcasecmp(pName, "disk_space_interval") == 0) {
+				opt.disk_space_interval = (time_t) (atoi(pVal)*60); //interval in seconds but set in minutes, so multiply
+			}
+			else if (apr_strnatcasecmp(pName, "max_disk_space_messages_per_interval") == 0) {
+				opt.max_disk_space_messages_per_interval = atoi(pVal);
+			}
 			else if (apr_strnatcasecmp(pName, "iterator_aggregate") == 0) {
 				opt.iterator_aggregate = atoi(pVal);
 			}
@@ -1309,18 +1355,41 @@ static int read_conf_file(char *conffile)
 		opt.snmp_interval = 10;
 	}
 
-	if (opt.warning_disk_space_percentage <= 0 || opt.warning_disk_space_percentage >= 100)
+	if (opt.warning_disk_space_percentage < 0 || opt.warning_disk_space_percentage >= 100)
 	{
-		fprintf(stderr, "Performance Monitor - warning_disk_space_percentage must be between 0 and 100.  Using 90.\n");
-		opt.warning_disk_space_percentage = 90;
+		fprintf(stderr, "Performance Monitor - warning_disk_space_percentage must be between 1 and 100.  Disabling.\n");
+		opt.warning_disk_space_percentage = 0;
 	}
 
 
-	if (opt.error_disk_space_percentage <= 0 || opt.error_disk_space_percentage >= 100)
+	if (opt.error_disk_space_percentage < 0 || opt.error_disk_space_percentage >= 100)
 	{
-		fprintf(stderr, "Performance Monitor - error_disk_space_percentage must be between 0 and 100.  Using 95.\n");
-		opt.error_disk_space_percentage = 95;
+		fprintf(stderr, "Performance Monitor - error_disk_space_percentage must be between 1 and 100.  Disabling.\n");
+		opt.error_disk_space_percentage = 0;
 	}
+
+	if (opt.error_disk_space_percentage < opt.warning_disk_space_percentage) {
+		fprintf(stderr, "Performance Monitor - error_disk_space_percentage less than warning_disk_space_percentage, so setting to warning_disk_space_percentage.\n");
+		opt.error_disk_space_percentage = opt.warning_disk_space_percentage;
+	}
+
+	if (opt.max_disk_space_messages_per_interval > MAX_MESSAGES_PER_INTERVAL) {
+		fprintf(stderr, "Performance Monitor - max_disk_space_messages_per_interval must be not be greater than %d.  Setting to %d.\n",MAX_MESSAGES_PER_INTERVAL, MAX_MESSAGES_PER_INTERVAL );
+		opt.max_disk_space_messages_per_interval = MAX_MESSAGES_PER_INTERVAL;
+	} else if (opt.max_disk_space_messages_per_interval < MIN_MESSAGES_PER_INTERVAL) {
+		fprintf(stderr, "Performance Monitor - max_disk_space_messages_per_interval must be not be less than %d.  Setting to %d.\n",MIN_MESSAGES_PER_INTERVAL, MIN_MESSAGES_PER_INTERVAL );
+		opt.max_disk_space_messages_per_interval = MIN_MESSAGES_PER_INTERVAL;
+	}
+
+	if (opt.disk_space_interval < (60 *MINIMUM_MESSAGE_INTERVAL) ) {
+		fprintf(stderr, "Performance Monitor - disk_space_interval must be not be less than %d minute.  Setting to %d minute.\n",MINIMUM_MESSAGE_INTERVAL, MINIMUM_MESSAGE_INTERVAL );
+		opt.disk_space_interval = (60 *MINIMUM_MESSAGE_INTERVAL);
+	} else if (opt.disk_space_interval > (60 *MAXIMUM_MESSAGE_INTERVAL) ) {
+		fprintf(stderr, "Performance Monitor - disk_space_interval must be not be greater than than %d minutes.  Setting to %d minutes.\n",MAXIMUM_MESSAGE_INTERVAL, MAXIMUM_MESSAGE_INTERVAL );
+		opt.disk_space_interval = (60 *MAXIMUM_MESSAGE_INTERVAL);
+	}
+
+
 
 	if (opt.tail_buffer_max == 0)
 	{
@@ -1535,12 +1604,12 @@ int main(int argc, const char* const argv[])
 		strncpy(work_dir, GPMON_DIR, MAXPATHLEN);
 		work_dir[MAXPATHLEN] = 0;
 
-        if (gpmon_recursive_mkdir(work_dir))
-        {
-            fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
-            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-            gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
-        }
+		if (gpmon_recursive_mkdir(work_dir))
+		{
+			fprintf(stderr, "\ncannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+		}
 	}
 
 	gpmmon_main();
@@ -1565,8 +1634,8 @@ void populate_smdw_aliases(host_t* host)
 	{
 		if (!host->addressinfo_tail)
 		{
-            		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-            		gpmon_fatalx(FLINE, 0, "smdw addressname structure is inconsistent");
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			gpmon_fatalx(FLINE, 0, "smdw addressname structure is inconsistent");
 		}
 
 		// permenant memory for address list -- stored for duration
