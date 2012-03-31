@@ -62,6 +62,9 @@
 #include "cdb/cdbrelsize.h"
 #include "cdb/cdboidsync.h"
 
+#include "executor/spi.h"
+
+
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
 static void ComputeIndexAttrs(IndexInfo *indexInfo, Oid *classOidP,
@@ -1544,6 +1547,10 @@ ReindexTable(ReindexStmt *stmt)
 	Oid			heapOid;
 	HeapTuple	tuple;
 
+	Assert(stmt != NULL);
+	Assert(stmt->relation != NULL);
+	Assert(stmt->relation->relname != NULL);
+
 	heapOid = RangeVarGetRelid(stmt->relation, false);
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(heapOid),
@@ -1580,6 +1587,97 @@ ReindexTable(ReindexStmt *stmt)
 				(errmsg("table \"%s\" has no indexes",
 						stmt->relation->relname)));
 	}
+}
+
+/*
+ * generate_relation_name - copied from dblink.c
+ *		Compute the name to display for a relation specified by OID
+ *
+ * The result includes all necessary quoting and schema-prefixing.
+ */
+static char *
+generate_relation_name(Oid relid)
+{
+	HeapTuple	tp;
+	Form_pg_class reltup;
+	char	   *nspname;
+	char	   *result;
+
+	tp = SearchSysCache(RELOID,
+						ObjectIdGetDatum(relid),
+						0, 0, 0);
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for relation %u", relid);
+
+	reltup = (Form_pg_class) GETSTRUCT(tp);
+
+	/* Qualify the name if not visible in search path */
+	if (RelationIsVisible(relid))
+		nspname = NULL;
+	else
+		nspname = get_namespace_name(reltup->relnamespace);
+
+	result = quote_qualified_identifier(nspname, NameStr(reltup->relname));
+
+	ReleaseSysCache(tp);
+
+	return result;
+}
+
+void static
+ExecuteSpiReindexTable(Oid relid)
+{
+	char	   *relname;
+	StringInfoData sqlstmt;
+	int			ret;
+	bool		connected = false;
+
+	initStringInfo(&sqlstmt);
+
+	/*
+	 * Get relation name including any needed schema prefix and quoting.
+	 */
+	relname = generate_relation_name(relid);
+
+	/*
+	 * Connect to SPI manager
+	 */
+	PG_TRY();
+	{
+
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Unable to reindex table."),
+							errdetail("SPI_connect failed for REINDEX TABLE")));
+		}
+		connected = true;
+
+		/*
+		 * Build sql statement to reindex the table.
+		 */
+		appendStringInfo(&sqlstmt, "REINDEX TABLE %s", relname);
+
+		/*
+		 * Execute the command.
+		 */
+		ret = SPI_execute(sqlstmt.data, false, 0);
+
+		SPI_finish();
+	}
+
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+		{
+			SPI_finish();
+		}
+    	PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	pfree(sqlstmt.data);
 }
 
 /*
@@ -1701,40 +1799,14 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 	foreach(l, relids)
 	{
 		Oid			relid = lfirst_oid(l);
-		bool		reindexed;
-		ReindexStmt *reindexTableStmt;
 
 		setupRegularDtxContext();
 		StartTransactionCommand();
 		/* functions in indexes may want a snapshot set */
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
-		reindexTableStmt = makeNode(ReindexStmt);
-		reindexTableStmt->kind = OBJECT_TABLE;
-		reindexTableStmt->relation = makeNode(RangeVar);
-		reindexTableStmt->relation->schemaname = get_namespace_name(get_rel_namespace(relid));
-		reindexTableStmt->relation->relname = get_rel_name(relid);
-		reindexTableStmt->name = NULL;
-		reindexTableStmt->do_system = false;
-		reindexTableStmt->do_user = false;
-		reindexTableStmt->new_ind_oids = NIL;
+		ExecuteSpiReindexTable(relid);
 
-		reindexed = reindex_relation_ignore_nonexist(
-								relid, true, true, true, &reindexTableStmt->new_ind_oids,
-							 	(Gp_role == GP_ROLE_DISPATCH));
-
-		/*
-		 * This dispatch will create a distributed transaction for the REINDEX TABLE
-		 */
-		if (Gp_role == GP_ROLE_DISPATCH)
-		{
-			CdbDispatchUtilityStatement((Node *) reindexTableStmt, "ProcessUtility");
-		}
-
-		if (reindexed)
-			ereport(NOTICE,
-					(errmsg("table \"%s\" was reindexed",
-							get_rel_name(relid))));
 		CommitTransactionCommand();
 	}
 	setupRegularDtxContext();
