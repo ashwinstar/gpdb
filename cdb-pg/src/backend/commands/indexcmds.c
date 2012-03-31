@@ -1625,19 +1625,13 @@ generate_relation_name(Oid relid)
 }
 
 void static
-ExecuteSpiReindexTable(Oid relid)
+ExecuteSpiReindexTable(char *displayRelName)
 {
-	char	   *relname;
 	StringInfoData sqlstmt;
 	int			ret;
 	bool		connected = false;
 
 	initStringInfo(&sqlstmt);
-
-	/*
-	 * Get relation name including any needed schema prefix and quoting.
-	 */
-	relname = generate_relation_name(relid);
 
 	/*
 	 * Connect to SPI manager
@@ -1656,7 +1650,7 @@ ExecuteSpiReindexTable(Oid relid)
 		/*
 		 * Build sql statement to reindex the table.
 		 */
-		appendStringInfo(&sqlstmt, "REINDEX TABLE %s", relname);
+		appendStringInfo(&sqlstmt, "REINDEX TABLE %s", displayRelName);
 
 		/*
 		 * Execute the command.
@@ -1695,11 +1689,12 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 	HeapTuple	tuple;
 	MemoryContext private_context;
 	MemoryContext old;
-	List	   *relids = NIL;
+	List	   *displayRelNames = NIL;
 	ListCell   *l;
 	bool do_system = stmt->do_system;
 	bool do_user = stmt->do_user;
 	const char *databaseName = stmt->name;
+	char *displayRelName;
 
 	AssertArg(databaseName);
 
@@ -1740,7 +1735,8 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 	if (do_system)
 	{
 		old = MemoryContextSwitchTo(private_context);
-		relids = lappend_oid(relids, RelationRelationId);
+		displayRelName = generate_relation_name(RelationRelationId);
+		displayRelNames = lappend(displayRelNames, displayRelName);
 		MemoryContextSwitchTo(old);
 	}
 
@@ -1785,7 +1781,8 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 			continue;			/* got it already */
 
 		old = MemoryContextSwitchTo(private_context);
-		relids = lappend_oid(relids, HeapTupleGetOid(tuple));
+		displayRelName = generate_relation_name(HeapTupleGetOid(tuple));
+		displayRelNames = lappend(displayRelNames, displayRelName);
 		MemoryContextSwitchTo(old);
 	}
 	heap_endscan(scan);
@@ -1796,16 +1793,16 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 	 * chosen in the master are used for the new index objects on each segment.
 	 */
 	CommitTransactionCommand();
-	foreach(l, relids)
+	foreach(l, displayRelNames)
 	{
-		Oid			relid = lfirst_oid(l);
+		displayRelName = lfirst(l);
 
 		setupRegularDtxContext();
 		StartTransactionCommand();
 		/* functions in indexes may want a snapshot set */
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
-		ExecuteSpiReindexTable(relid);
+		ExecuteSpiReindexTable(displayRelName);
 
 		CommitTransactionCommand();
 	}
