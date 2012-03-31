@@ -36,6 +36,9 @@ try:
     from gppylib.operations.utils import ParallelOperation
     from gppylib.parseutils import line_reader, parse_gpexpand_segment_line, \
         canonicalize_address
+    from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE,\
+         GP_TEMPORARY_FILES_FILESPACE, GetCurrentFilespaceEntries, GetFilespaceEntries, GetFilespaceEntriesDict,\
+         RollBackFilespaceChanges, GetMoveOperationList, FileType, UpdateFlatFiles
 
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -765,7 +768,19 @@ class SegmentTemplate:
         self.pool.join()
         self.pool.check_results()
                 
- 
+
+    def _get_transaction_filespace_dir(self, transaction_flat_file): 
+        filespace_dir = None
+
+        with open(transaction_flat_file) as file:
+            for line in file:
+                fs_info = line.split()
+                if len(fs_info) != 2:
+                    continue
+                filespace_dir = fs_info[1]
+
+        return filespace_dir
+    
     def _fixup_template(self):
         """Copies postgresql.conf and pg_hba.conf files from a valid segment on the system.
         Then modifies the template copy of pg_hba.conf"""
@@ -785,6 +800,27 @@ class SegmentTemplate:
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
         cpCmd.run(validateAfter=True)
 
+        #Copy the transaction directories into template
+        pg_system_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(self.gparray, 
+                                                                                  PG_SYSTEM_FILESPACE).run()).run()
+        transaction_flat_file = os.path.join(pg_system_filespace_entries[1][2], GP_TRANSACTION_FILES_FILESPACE)
+        filespace_dir = None
+        if os.path.exists(transaction_flat_file):
+            filespace_dir = self._get_transaction_filespace_dir(transaction_flat_file) 
+            logger.debug('Filespace location = %s' % filespace_dir)
+
+            if filespace_dir:
+                transaction_files_dir = ['pg_xlog', 'pg_multixact', 'pg_subtrans', 'pg_clog',
+                                         'pg_distributedlog', 'pg_distributedxidmap']
+                for directory in transaction_files_dir:
+                    dst_dir = os.path.join(self.tempDir, directory)
+                    src_dir = os.path.join(filespace_dir, directory)
+
+                    mkCmd = MakeDirectory('gpexpand creating transaction directories in template', dst_dir)
+                    mkCmd.run(validateAfter=True)
+                    cpCmd = LocalDirCopy('gpexpand copying dir %s' % src_dir, src_dir, dst_dir)
+                    cpCmd.run(validateAfter=True)
+    
         # Don't need log files and gpperfmon files in template.
         rmCmd = RemoveFiles('gpexpand remove gppermfon data from template',
                             self.tempDir + '/gpperfmon/data')
@@ -802,6 +838,14 @@ class SegmentTemplate:
         rmCmd.run(validateAfter=True)
         rmCmd = RemoveFiles('gpexpand remove gpexpand files from template',
                             self.tempDir + '/gpexpand.*')
+        rmCmd.run(validateAfter=True)
+
+        #We dont need the flat files 
+        rmCmd = RemoveFiles('gpexpand remove transaction flat file from template',
+                            self.tempDir + '/' + GP_TRANSACTION_FILES_FILESPACE)
+        rmCmd.run(validateAfter=True)
+        rmCmd = RemoveFiles('gpexpand remove temporary flat file from template',
+                            self.tempDir + '/' + GP_TEMPORARY_FILES_FILESPACE)
         rmCmd.run(validateAfter=True)
 
         self.logger.info('Adding new segments into template pg_hba.conf')
@@ -2293,6 +2337,92 @@ UPDATE gp_distribution_policy
             logger.exception('Syncing of Greenplum Database extensions has failed.')
             logger.warning('Please run gppkg --clean after successful expansion.')
 
+    def move_filespaces(self):
+        """
+            Move filespaces for temporary and transaction files.
+        """
+        
+        operations = []
+        segments = self.gparray.getExpansionSegDbList()
+
+        cur_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(self.gparray,
+                                                                            PG_SYSTEM_FILESPACE
+                                                                           ).run()).run()
+        pg_system_filespace_entries = cur_filespace_entries
+        cur_filespace_name = self.gparray.getFileSpaceName(int(cur_filespace_entries[1][0]))
+        segments = self.gparray.getExpansionSegDbList()
+
+        logger.info('Checking if Transaction filespace was moved')
+        if os.path.exists(os.path.join(cur_filespace_entries[1][2], GP_TRANSACTION_FILES_FILESPACE)): 
+            logger.info('Transaction filespace was moved')
+            new_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(self.gparray,
+                                                                                       FileType.TRANSACTION_FILES 
+                                                                                      ).run()).run()
+            new_filespace_name = self.gparray.getFileSpaceName(int(new_filespace_entries[1][0]))
+            operations_list = GetMoveOperationList(segments,
+                                                   FileType.TRANSACTION_FILES,
+                                                   new_filespace_name,
+                                                   new_filespace_entries,
+                                                   cur_filespace_entries,
+                                                   pg_system_filespace_entries
+                                                  ).run()
+
+            logger.info('Moving Transaction filespace on expansion segments')
+            ParallelOperation(operations_list).run()
+
+            logger.debug('Checking results of transaction files move')
+            for operation in operations_list:
+                try:
+                    operation.get_ret()
+                except Exception, e:
+                    logger.info('Transaction filespace move failed on expansion segment')
+                    RollBackFilespaceChanges(segments,
+                                             FileType.TRANSACTION_FILES,
+                                             cur_filespace_name,
+                                             cur_filespace_entries,
+                                             new_filespace_entries, 
+                                             pg_system_filespace_entries,
+                                             rollback=True
+                                            ).run()
+                    raise
+            
+        logger.info('Checking if Temporary filespace was moved')
+        if os.path.exists(os.path.join(cur_filespace_entries[1][2], GP_TRANSACTION_FILES_FILESPACE)): 
+            logger.info('Temporary filespace was moved')
+            new_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(self.gparray,
+                                                                                       FileType.TEMPORARY_FILES 
+                                                                                      ).run()).run()
+            new_filespace_name = self.gparray.getFileSpaceName(int(new_filespace_entries[1][0]))
+            operations_list = GetMoveOperationList(segments,
+                                                   FileType.TEMPORARY_FILES,
+                                                   new_filespace_name,
+                                                   new_filespace_entries,
+                                                   cur_filespace_entries,
+                                                   pg_system_filespace_entries
+                                                  ).run()
+
+            logger.info('Moving Temporary filespace on expansion segments')
+            ParallelOperation(operations_list).run()
+
+            logger.debug('Checking results of temporary files move')
+            for operation in operations_list:
+                try:
+                    operation.get_ret()
+                except Exception, e:
+                    logger.info('Temporary filespace move failed on expansion segment')
+                    RollBackFilespaceChanges(segments,
+                                             FileType.TEMPORARY_FILES,
+                                             cur_filespace_name,
+                                             cur_filespace_entries,
+                                             new_filespace_entries, 
+                                             pg_system_filespace_entries
+                                            ).run()
+                    raise
+
+        
+        #Update flat files on mirrors
+        UpdateFlatFiles(self.gparray, primaries=False, expansion=True).run()
+
 #-----------------------------------------------
 class ExpandTable():
 
@@ -2921,6 +3051,7 @@ try:
         gp_expand.add_segments()
         gp_expand.update_original_segments()
         gp_expand.update_catalog()
+        gp_expand.move_filespaces()
         gp_expand.configure_new_segment_filespaces()
         gp_expand.cleanup_new_segments()
         gp_expand.setup_schema()
