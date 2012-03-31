@@ -2224,7 +2224,7 @@ FormatControl()
 		char           *dbState;
 
 		/* Compute a local copy of the CRC to verify the one on disk */
-		crcLocal = crc32cSlicingBy8(crc32cInit(), buffer, offsetof(ControlFileData, crc));
+		crcLocal = crc32c(crc32cInit(), buffer, offsetof(ControlFileData, crc));
 		crc32cFinish(crcLocal);
 		/* Also compute a local copy of the CRC using old algorithm to verify the one on disk */
 		INIT_CRC32(crcLocal_old);

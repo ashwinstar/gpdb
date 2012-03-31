@@ -420,7 +420,7 @@ ReadControlFile(void)
 	  ((ControlFileData *) buffer)->pg_control_version == PG_CONTROL_VERSION)
 	{
 		/* Check the CRC. */
-		crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
+		crc = crc32c(crc32cInit(), buffer, offsetof(ControlFileData, crc));
 		crc32cFinish(crc);
 
 		if (EQ_CRC32(crc, ((ControlFileData *) buffer)->crc))
@@ -650,7 +650,7 @@ RewriteControlFile(void)
 	ControlFile.minRecoveryPoint.xrecoff = 0;
 
 	/* Contents are protected with a CRC */
-	ControlFile.crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
+	ControlFile.crc = crc32c(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
 	crc32cFinish(ControlFile.crc);
 	/*
 	INIT_CRC32(ControlFile.crc);
@@ -815,8 +815,8 @@ WriteEmptyXLOG(void)
 	memcpy(XLogRecGetData(record), &ControlFile.checkPointCopy,
 		   sizeof(CheckPoint));
 
-	crc = crc32cSlicingBy8(crc32cInit(), &ControlFile.checkPointCopy, sizeof(CheckPoint));
-	crc = crc32cSlicingBy8(crc, (char *) record + sizeof(pg_crc32), SizeOfXLogRecord - sizeof(pg_crc32));
+	crc = crc32c(crc32cInit(), &ControlFile.checkPointCopy, sizeof(CheckPoint));
+	crc = crc32c(crc, (char *) record + sizeof(pg_crc32), SizeOfXLogRecord - sizeof(pg_crc32));
 	crc32cFinish(crc);
 	/*
 	INIT_CRC32(crc);
