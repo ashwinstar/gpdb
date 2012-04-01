@@ -14,6 +14,8 @@
 #include <time.h>
 #include <ctype.h>
 #include <assert.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "pqexpbuffer.h"
 #include "cdb_dump_util.h"
 
@@ -844,9 +846,16 @@ parseDbidSet(int *dbidset, char *dump_set)
 }
 
 #ifdef USE_DDBOOST
+struct ddboost_logs
+{
+    
+    ddp_severity_t logLevel ;
+    unsigned int logsSize ;
+}ddboost_logs_info;
 
 int parseDDBoostCredential(char *hostname, char *user, char *password, const char *progName)
 {
+    
 	char filepath[PATH_MAX];
     memset(filepath, 0, PATH_MAX);
     sprintf(filepath, "%s/%s", getenv("HOME"), DDBOOST_CONFIG_FILE);
@@ -897,18 +906,99 @@ int parseDDBoostCredential(char *hostname, char *user, char *password, const cha
     }   
     strncpy(password, line, strlen(line) - 1);
 
-	return 0;
-} 
 
+    if (!fgets(line, PATH_MAX, fp))
+    {
+        mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log param (level = INFO,size = 50MB) \n");
+        ddboost_logs_info.logLevel = 5;//INFO
+        ddboost_logs_info.logsSize = 50*1024*1024;
+        return 0;
+    }
+    if (!strncmp("INFO",line,4))
+        ddboost_logs_info.logLevel = 5;
+    else if (!strncmp("WARN",line,4))
+        ddboost_logs_info.logLevel = 4;
+    else if (!strncmp("DEBUG",line,5))
+        ddboost_logs_info.logLevel = 3;
+    else if (!strncmp("ERROR",line,5))
+        ddboost_logs_info.logLevel = 2;
+    else if (!strncmp("NONE",line,4))
+        ddboost_logs_info.logLevel = 1;
+    else
+    {
+        mpp_err_msg("ERROR", progName, "bad value for log level : %s , expect INFO,WARN,DEBUG,ERROR,NONE \n",line);
+        return -1;
+    }   
+    mpp_err_msg("INFO", progName, "DD log level = %u \n",ddboost_logs_info.logLevel);
+    
+
+    if (!fgets(line, PATH_MAX, fp))
+    {
+        mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log size = 50(MB) \n");
+        return 0;
+    }
+    int size = atoi(line);
+    if (size < 1 || size > 1000)
+    {
+        mpp_err_msg("ERROR", progName, "bad alue for log size(MB) : %s , expect 1 <= # < 1000 \n",line);
+        return -1;
+    }   
+    ddboost_logs_info.logsSize = size * 1024 * 1024;
+    mpp_err_msg("INFO", progName, "DD log size = %u(bytes) \n",ddboost_logs_info.logsSize);
+    return 0;
+} 
+/* if the file too long this will rotate the files_name to file_name_0 - .._10 . the last file is deleted*/
+void rotate_dd_logs(const char *file_name, unsigned int num_of_files, unsigned int log_size)
+{
+    struct stat st;
+    
+    if (stat(file_name,&st) == 0)
+        {
+            unsigned int size = (unsigned int)st.st_size;
+            if (size > log_size)
+                {
+                    
+                    char tmp_name[80];
+                    char next_tmp_name[80];
+                    sprintf(tmp_name,"%s_%u",file_name,num_of_files);
+                    int r = remove(tmp_name);
+                    if (r != 0)
+                        mpp_err_msg("INFO","rotate_dd_logs","didn't delete of %s , %s\n" ,tmp_name, strerror( errno ));
+
+                    for (unsigned int i = num_of_files - 1; i > 0; i--){                        
+                        snprintf(next_tmp_name, 80, "%s_%u",file_name,i + 1);
+                        snprintf(tmp_name,80 ,"%s_%u", file_name,i);
+                      
+                        if (rename(tmp_name, next_tmp_name) != 0)
+                            mpp_err_msg("INFO","rotate_dd_logs","didn't rename of %s to %s : %s\n" ,tmp_name,next_tmp_name,strerror( errno ));
+                    }
+                    snprintf(next_tmp_name, 80, "%s_%u",file_name,1);
+                    if ((r = rename(file_name, next_tmp_name)) != 0)
+                        mpp_err_msg("INFO","rotate_dd_logs","didn't rename first log %s to %s : %s" ,tmp_name,next_tmp_name,strerror( errno ));
+                   
+                }
+        }
+    else
+        mpp_err_msg("INFO","rotate_dd_logs","failed to find size");
+}
 /* Initialize the file for logging DDboost related information */
 void 
 _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
 {
+
+    if (severity >  ddboost_logs_info.logLevel)//filtering of the logs
+        return;
+
     FILE* log_file = NULL;
     time_t ltime;
     struct tm *Tm;
+    char file_name[] = "libDDBoost.log";
+    
+    rotate_dd_logs(file_name, DDBOOST_LOG_NUM_OF_FILES, ddboost_logs_info.logsSize / DDBOOST_LOG_NUM_OF_FILES);
 
-    log_file = fopen("libDDBoost_test.log", "a");
+    log_file = fopen(file_name, "a");
+
+       
     if (log_file) {
         ltime = time(NULL);
         Tm = localtime(&ltime);
