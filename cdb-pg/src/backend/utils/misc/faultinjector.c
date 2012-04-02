@@ -870,10 +870,10 @@ FaultInjector_NewHashEntry(
 		case TwoPhaseTransactionCommitPrepared:
 		case TwoPhaseTransactionAbortPrepared:
 		
-		case SubtransactionFlushToFile:
-		case SubtransactionReadFromFile:
-		case SubtransactionRelease:
-		case SubtransactionRollback:
+//		case SubtransactionFlushToFile:
+//		case SubtransactionReadFromFile:
+//		case SubtransactionRelease:
+//		case SubtransactionRollback:
 		/* Ashwin */
 		case FileRepChangeTrackingCompacting:
 			
