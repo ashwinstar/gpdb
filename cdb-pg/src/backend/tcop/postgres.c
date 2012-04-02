@@ -207,6 +207,9 @@ extern void CheckForResetSession(void);
 
 extern bool ResourceScheduler;
 
+extern List *sstat_list;
+List *sstat_list;
+
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
  * ----------------------------------------------------------------
@@ -1308,6 +1311,10 @@ exec_mpp_query(const char *query_string,
 				 Debug_dtm_action, commandTag);
 		}
 		
+		/*
+		 * Gather the statement stats for this QE (segdb/slice) and forward them
+		 * back to the QD
+		 */
 		if (save_log_statement_stats)
 			SendUsageToQD();
 
@@ -1348,8 +1355,15 @@ exec_mpp_query(const char *query_string,
 			break;
 	}
 	
+	/*
+	 * Since we are executing a dispatch plan, we don't want to record the statement stats now, even if
+	 * we are running on the master.
+	 * We forwarded them to the QD up above, and it will record the stats.
+	 *
 	if (save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
+	 *
+	 */
 	
 
 	if (gp_enable_resqueue_priority)
@@ -1423,6 +1437,9 @@ exec_mpp_dtx_protocol_command(
 		elog(ERROR,"Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
 	}
+
+	if (Gp_role == GP_ROLE_EXECUTE && log_statement_stats)
+		SendUsageToQD();
 
 	EndCommand(commandTag, dest);
 }
@@ -1759,6 +1776,13 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		}
 		
 		/*
+		 * Gather the statement stats for this QE (segdb) and forward them
+		 * back to the QD
+		 */
+		if (Gp_role == GP_ROLE_EXECUTE && save_log_statement_stats)
+			SendUsageToQD();
+
+		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
 		 * one EndCommand report for each raw parsetree, thus one for each SQL
 		 * command the client sent, regardless of rewriting. (But a command
@@ -1803,7 +1827,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		}
 	}
 
-	if (save_log_statement_stats)
+	if (Gp_role != GP_ROLE_EXECUTE && save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
 
 	debug_query_string = NULL;
@@ -2660,6 +2684,9 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 			 */
 			CommandCounterIncrement();
 		}
+
+		if (Gp_role == GP_ROLE_EXECUTE && save_log_statement_stats)
+			SendUsageToQD();
 
 		/* Send appropriate CommandComplete to client */
 		EndCommand(completionTag, dest);
@@ -4733,8 +4760,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 					localSlice = pq_getmsgint(&input_message, 4);
 					
 					rootIdx = pq_getmsgint(&input_message, 4);
+					(void) rootIdx;  /* Never used */
 					
 					primary_gang_id = pq_getmsgint(&input_message, 4);
+					(void) primary_gang_id;  /* Never used */
 					
 					statementStart = pq_getmsgint64(&input_message);
 					/*
@@ -4767,6 +4796,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 					/* get the transaction options */
 					unusedFlags = pq_getmsgint(&input_message, 4);
+					(void) unusedFlags;
 					
 					seqServerHostlen = pq_getmsgint(&input_message, 4);
 					seqServerPort = pq_getmsgint(&input_message, 4);
@@ -4892,6 +4922,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					gxid = (DistributedTransactionId) pq_getmsgint(&input_message, 4);
 					
 					primary_gang_id = pq_getmsgint(&input_message, 4);
+					(void) primary_gang_id;  /* Never used */
 					
 					serializedSnapshotlen = pq_getmsgint(&input_message, 4);
 
@@ -5228,6 +5259,11 @@ ResetUsage(void)
 	gettimeofday(&Save_t, NULL);
 	ResetBufferUsage();
 	/* ResetTupleCount(); */
+	if (sstat_list != NIL)
+	{
+		list_free(sstat_list);
+		sstat_list = NIL;
+	}
 }
 
 #ifdef  pg_on_solaris
@@ -5244,7 +5280,9 @@ ShowUsage(const char *title)
 				sys;
 	struct timeval elapse_t;
 	struct rusage r;
-	char	   *bufusage;
+
+	if (Gp_role == GP_ROLE_EXECUTE)
+		elog(NOTICE,"ShowUsage called from QE");
 
 	getrusage(RUSAGE_SELF, &r);
 	gettimeofday(&elapse_t, NULL);
@@ -5266,6 +5304,8 @@ ShowUsage(const char *title)
 		r.ru_stime.tv_usec += 1000000;
 	}
 	
+#if 0
+	/* It doesn't make sense to report this for the master only */
 #ifdef  pg_on_solaris
 #if defined(_LP64) || _FILE_OFFSET_BITS != 64
 	{
@@ -5298,16 +5338,12 @@ ShowUsage(const char *title)
 
 #endif 
 #endif 
+#endif
 
-	/*
-	 * the only stats we don't show here are for memory usage -- i can't
-	 * figure out how to interpret the relevant fields in the rusage struct,
-	 * and they change names across o/s platforms, anyway. if you can figure
-	 * out what the entries mean, you can somehow extract resident set size,
-	 * shared text size, and unshared data and stack sizes.
-	 */
+
 	initStringInfo(&str);
 
+#if 0
 	appendStringInfo(&str, "! system usage stats:\n");
 	appendStringInfo(&str,
 				"!\t%ld.%06ld elapsed %ld.%06ld user %ld.%06ld system sec\n",
@@ -5354,9 +5390,147 @@ ShowUsage(const char *title)
 					 r.ru_nvcsw, r.ru_nivcsw);
 #endif   /* HAVE_GETRUSAGE */
 
-	bufusage = ShowBufferUsage();
-	appendStringInfo(&str, "! buffer usage stats:\n%s", bufusage);
-	pfree(bufusage);
+	/*
+	 * Not sure how to roll up the buffer usage stats, or if anyone wants them
+	 *
+	 *
+	 *
+	 * bufusage = ShowBufferUsage();
+	 * appendStringInfo(&str, "! buffer usage stats:\n%s", bufusage);
+	 * pfree(bufusage);*/
+#endif
+
+
+
+	CdbQEStatementStats *sstats;
+	ListCell *le;
+
+	appendStringInfo(&str, "\tTotal elapsed time %ld.%03ld \n",
+			(long) (elapse_t.tv_sec - Save_t.tv_sec),
+			(long) (elapse_t.tv_usec - Save_t.tv_usec + 500) / 1000);
+
+	/*
+	 * These elog(DEBUG1) statements write the detailed CPU and IO for each segDB and Slice within segDB.
+	 * And before that, the master QD process.
+	 */
+	elog(DEBUG1,
+			"Master           CPU  User %ld.%03ld   System %ld.%03ld  Total %ld.%03ld  PhysIO  blocks Read %ld  blocks written %ld",
+			(long) (r.ru_utime.tv_sec - Save_r.ru_utime.tv_sec),
+			(long) (r.ru_utime.tv_usec - Save_r.ru_utime.tv_usec + 500) / 1000,
+			(long) (r.ru_stime.tv_sec - Save_r.ru_stime.tv_sec),
+			(long) (r.ru_stime.tv_usec - Save_r.ru_stime.tv_usec + 500) / 1000,
+			(long) (r.ru_utime.tv_sec - Save_r.ru_utime.tv_sec)
+					+ (r.ru_stime.tv_sec - Save_r.ru_stime.tv_sec),
+			(long) (r.ru_utime.tv_usec - Save_r.ru_utime.tv_usec + 500) / 1000
+					+ (r.ru_stime.tv_usec - Save_r.ru_stime.tv_usec + 500)
+							/ 1000, (long) r.ru_inblock - Save_r.ru_inblock,
+			(long) r.ru_oublock - Save_r.ru_oublock);
+
+	/*
+	 * Start with the QD's CPU time
+	 */
+
+	long total_qd_time_msec = (r.ru_utime.tv_sec - Save_r.ru_utime.tv_sec)
+			* 1000 + (r.ru_stime.tv_sec - Save_r.ru_stime.tv_sec) * 1000;
+	total_qd_time_msec += (r.ru_utime.tv_usec - Save_r.ru_utime.tv_usec + 500)
+			/ 1000
+			+ (r.ru_stime.tv_usec - Save_r.ru_stime.tv_usec + 500) / 1000;
+
+	long total_time_msec = 0;
+	long average_time_msec = 0; /* Average by segDB */
+	long total_blocks_in = 0;
+	long total_blocks_out = 0;
+
+	foreach(le,sstat_list)
+	{
+		sstats = lfirst(le);
+		elog(DEBUG1,
+				"Segdb %d Slice %d  CPU  User %ld.%03ld   System %ld.%03ld  Total %ld.%03ld  PhysIO  blocks Read %ld  blocks written %ld",
+				sstats->segindex, sstats->sliceIndex, sstats->utime_msec / 1000,
+				sstats->utime_msec % 1000, sstats->stime_msec / 1000,
+				sstats->stime_msec % 1000,
+				(sstats->utime_msec + sstats->stime_msec) / 1000,
+				(sstats->utime_msec + sstats->stime_msec) % 1000,
+				sstats->blocksread, sstats->blockswritten);
+
+	}
+	int minsegdb = 1000000;
+	int maxsegdb = -1;
+	foreach(le,sstat_list)
+	{
+		sstats = lfirst(le);
+		if (sstats->segindex == -1)
+			continue;	/* account for masterDB slices separate */
+		if (sstats->segindex < minsegdb)
+			minsegdb = sstats->segindex;
+		if (sstats->segindex > maxsegdb)
+			maxsegdb = sstats->segindex;
+
+	}
+	if (minsegdb <= maxsegdb) /* Otherwise there are no segDBs involved in the query */
+	{
+		Assert(minsegdb >= -1);
+		long * cpu_per_segdb = palloc0((maxsegdb+1) * sizeof(long));
+		long * blocks_in_per_segdb = palloc0((maxsegdb+1) * sizeof(long));
+		long * blocks_out_per_segdb = palloc0((maxsegdb+1) * sizeof(long));
+		/* Roll up the per-slice info into per-segdb */foreach(le,sstat_list)
+		{
+			sstats = lfirst(le);
+			if (sstats->segindex >= 0)
+			{
+				Assert(sstats->segindex>=minsegdb && sstats->segindex<=maxsegdb);
+				cpu_per_segdb[sstats->segindex] += sstats->utime_msec
+						+ sstats->stime_msec;
+				blocks_in_per_segdb[sstats->segindex] += sstats->blocksread;
+				blocks_out_per_segdb[sstats->segindex] += sstats->blockswritten;
+			}
+			else
+			{
+				/* Sometimes a slice runs on the masterDB */
+				total_qd_time_msec += sstats->utime_msec
+						+ sstats->stime_msec;
+				total_blocks_in += sstats->blocksread;
+				total_blocks_out += sstats->blocksread;
+			}
+		}
+
+
+		/* Add up all the segDBs */
+		for (int i = minsegdb; i <= maxsegdb; i++)
+		{
+			total_time_msec += cpu_per_segdb[i];
+			total_blocks_in += blocks_in_per_segdb[i];
+			total_blocks_out += blocks_out_per_segdb[i];
+		}
+		/* Compute the average per segDB.  Perhaps we should also display max per segdb? */
+		average_time_msec = total_time_msec / (maxsegdb - minsegdb + 1);
+
+		pfree(cpu_per_segdb);
+		pfree(blocks_in_per_segdb);
+		pfree(blocks_out_per_segdb);
+	}
+	if (sstat_list != NIL)
+	{
+		list_free(sstat_list);
+		sstat_list = NIL;
+	}
+
+	/* Add the master QD stats to the segment stats to get the overall total */
+	total_time_msec += total_qd_time_msec;
+	total_blocks_in += r.ru_inblock - Save_r.ru_inblock;
+	total_blocks_out += r.ru_oublock - Save_r.ru_oublock;
+
+	/*
+	 * Do we also want the max/min CPU per segDB?   CPU per slice?
+	 * IO average per segdb?
+	 */
+	appendStringInfo(&str,
+			"\tCPU   Total %ld.%03ld    CPU Avg per segDB %ld.%03ld\n\tPhysIO  blocks Read %ld  blocks written %ld ",
+			total_time_msec / 1000, total_time_msec % 1000,
+			average_time_msec / 1000, average_time_msec % 1000,
+			total_blocks_in,
+			total_blocks_out
+			);
 
 	/* remove trailing newline */
 	if (str.data[str.len - 1] == '\n')
@@ -5364,10 +5538,16 @@ ShowUsage(const char *title)
 
 	ereport(LOG,
 			(errmsg_internal("%s", title),
-			 errdetail("%s", str.data),
-			 errOmitLocation(true)));
+					errdetail("%s", str.data),
+					errOmitLocation(true)));
+
+	/*ereport(NOTICE,
+				(errmsg_internal("%s", title),
+				 errdetail("%s", str.data),
+				 errOmitLocation(true)));*/
 
 	pfree(str.data);
+
 }
 
 extern void SendUsageToQD(void)
@@ -5398,14 +5578,15 @@ extern void SendUsageToQD(void)
 		r.ru_stime.tv_usec += 1000000;
 	}
 
-	sstats->utime_sec = r.ru_utime.tv_sec - Save_r.ru_utime.tv_sec;
 	/*
 	 * Round to milliseconds.  Linux doesn't have any better resolution than this with getrusage,
 	 * and even if it did, it's not clear it would be useful.
+	 * Since we are only keeping msec, combine the seconds and microseconds into one field
 	 */
-	sstats->utime_msec = (r.ru_utime.tv_usec - Save_r.ru_utime.tv_usec + 500)/ 1000;
-	sstats->stime_sec = r.ru_stime.tv_sec - Save_r.ru_stime.tv_sec;
-	sstats->stime_msec = (r.ru_stime.tv_usec - Save_r.ru_stime.tv_usec + 500)/ 1000;
+	sstats->utime_msec = (r.ru_utime.tv_sec - Save_r.ru_utime.tv_sec)* 1000;
+	sstats->utime_msec += (r.ru_utime.tv_usec - Save_r.ru_utime.tv_usec + 500)/ 1000;
+	sstats->stime_msec = (r.ru_stime.tv_sec - Save_r.ru_stime.tv_sec)* 1000;
+	sstats->stime_msec += (r.ru_stime.tv_usec - Save_r.ru_stime.tv_usec + 500)/ 1000;
 
 	/* Filesystem physical I/Os */
 	sstats->blocksread = r.ru_inblock - Save_r.ru_inblock;

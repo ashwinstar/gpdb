@@ -787,14 +787,14 @@ cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
     return sum;
 }                               /* cdbdisp_sumCmdTuples */
 
+extern List *sstat_list;
+
 void cdbdisp_getStatementStats(CdbDispatchResults *results)
 {
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchResult *resultEnd = cdbdisp_resultEnd(results, -1);
 	PGresult *pgresult;
 	CdbQEStatementStats *sstats;
-
-	sstats = makeNode(CdbQEStatementStats);
 
 	for (dispatchResult = cdbdisp_resultBegin(results, -1);
 			dispatchResult < resultEnd; ++dispatchResult)
@@ -803,6 +803,7 @@ void cdbdisp_getStatementStats(CdbDispatchResults *results)
 		if (pgresult)
 		{
 			pgCdbStatCell * statcell;
+			MemoryContext oldcontext;
 
 			/* Find our statistics in list of response messages.  If none, skip. */
 			for (statcell = pgresult->cdbstats; statcell;
@@ -814,20 +815,20 @@ void cdbdisp_getStatementStats(CdbDispatchResults *results)
 			if (!statcell)
 				continue;
 
+			/*
+			 * Our current context will disappear before we report the stats, so
+			 * we need to put the stats in a better memory context.  TopMemoryContext
+			 * works, but is overkill.  Maybe QueryMemoryContext?
+			 */
+			oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+			sstats = makeNode(CdbQEStatementStats);
+
 			memcpy(sstats, statcell->data, sizeof(CdbQEStatementStats));
 
-			elog(NOTICE,
-					"Segdb %d Slice %d  CPU  User %ld.%03ld   System %ld.%03ld  Total %ld.%03ld  PhysIO  blocks Read %ld  blocks written %ld",
-					sstats->segindex,
-					sstats->sliceIndex,
-					sstats->utime_sec,
-					sstats->utime_msec,
-					sstats->stime_sec,
-					sstats->stime_msec,
-					sstats->utime_sec + sstats->stime_sec + ((sstats->utime_msec + sstats->stime_msec) / 1000),
-					(sstats->utime_msec + sstats->stime_msec) % 1000,
-					sstats->blocksread,
-					sstats->blockswritten);
+			sstat_list = lappend(sstat_list, sstats);
+
+			MemoryContextSwitchTo(oldcontext);
 
 		}
 	}
