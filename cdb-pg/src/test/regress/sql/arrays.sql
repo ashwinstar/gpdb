@@ -328,3 +328,26 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{}','{{pink,white,blue,red,grey,orange}}','{2.1,1.87,1.4,2.2}');
 SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
+
+--
+-- Test for generate_subscripts
+--
+select * from generate_subscripts(array[[55,33,88],[43,32,54]],2);
+select * from generate_subscripts(array[[55,33,88],[43,32,54]],5);
+
+create or replace function unnest1(anyarray) 
+returns setof anyelement as $$
+select $1[s] from generate_subscripts($1,1) g(s);
+$$ language sql immutable;
+
+create or replace function unnest2(anyarray) 
+returns setof anyelement as $$
+select $1[s1][s2] from generate_subscripts($1,1) g1(s1),
+                   generate_subscripts($1,2) g2(s2);
+$$ language sql immutable;
+
+select * from unnest1(array[11,22,33]);
+select * from unnest2(array[[11,22,33],[44,55,66]]);
+
+drop function unnest1(anyarray);
+drop function unnest2(anyarray);

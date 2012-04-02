@@ -908,6 +908,10 @@
 
  CREATE FUNCTION array_smaller(anyarray, anyarray) RETURNS anyarray LANGUAGE internal IMMUTABLE STRICT AS 'array_smaller' WITH (OID=516, DESCRIPTION="smaller of two");
 
+ CREATE FUNCTION generate_subscripts(anyarray, int4, bool) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT AS 'generate_subscripts' WITH (OID=823, DESCRIPTION ="array subscripts generator");
+  
+ CREATE FUNCTION generate_subscripts(anyarray, int4) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT AS 'generate_subscripts_nodir' WITH (OID=824, DESCRIPTION ="array subscripts generator");
+ 
 -- MPP -- array_add -- special for prospective customer 
  CREATE FUNCTION array_add(_int4, _int4) RETURNS _int4 LANGUAGE internal IMMUTABLE STRICT AS 'array_int4_add' WITH (OID=6012, DESCRIPTION="itemwise add two integer arrays");
 

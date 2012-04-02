@@ -1,2 +1,11 @@
 CREATE FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075, DESCRIPTION="Cancels a specific query");
 COMMENT ON FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) IS 'Cancels a specific query';
+
+CREATE FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4, bool) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT 
+	AS 'generate_subscripts' WITH (OID=823, DESCRIPTION="array subscripts generator");
+COMMENT ON FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4, bool) IS 'array subscripts generator';
+
+CREATE FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT 
+    AS 'generate_subscripts_nodir' WITH (OID=824, DESCRIPTION="array subscripts generator");
+COMMENT ON FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4) IS 'array subscripts generator';
+ 
