@@ -2439,6 +2439,14 @@ AppendToSubxidFile(TransactionId *subxids, uint32 subcnt)
 	{
 		elog(ERROR, "Error in saving subtransaction ids");
 	}
+
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+			SubtransactionFlushToFile,
+			DDLNotSpecified,
+			"",  // databaseName
+			""); // tableName
+#endif
 }
 
 static void
@@ -2659,6 +2667,14 @@ GetSubXidsInXidBuffer(void)
 				     "Error in Opening Subtransaction file.");
 			}
 		}
+
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+			SubtransactionReadFromFile,
+			DDLNotSpecified,
+			"",  // databaseName
+			""); // tableName
+#endif
 
 		offset = FileSeek(subxip_file, 0, SEEK_SET);
 		size = (SharedLocalSnapshotSlot->total_subcnt -
@@ -6119,6 +6135,14 @@ CommitSubTransaction(void)
 		elog(WARNING, "CommitSubTransaction while in %s state",
 			 TransStateAsString(s->state));
 
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+			SubtransactionRelease,
+			DDLNotSpecified,
+			"",  // databaseName
+			""); // tableName
+#endif
+
 	/* Pre-commit processing goes here -- nothing to do at the moment */
 
 	s->state = TRANS_COMMIT;
@@ -6239,6 +6263,14 @@ AbortSubTransaction(void)
 	if (s->state != TRANS_INPROGRESS)
 		elog(WARNING, "AbortSubTransaction while in %s state",
 			 TransStateAsString(s->state));
+
+#ifdef FAULT_INJECTOR
+		FaultInjector_InjectFaultIfSet(
+			SubtransactionRollback,
+			DDLNotSpecified,
+			"",  // databaseName
+			""); // tableName
+#endif
 
 	s->state = TRANS_ABORT;
 
