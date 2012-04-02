@@ -38,6 +38,7 @@
 #include "postmaster/backoff.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/memquota.h"
+#include "executor/spi.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
@@ -804,12 +805,34 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 						&& ResourceScheduler
 						&& !superuser() )
 				{
-					PortalSetStatus(portal, PORTAL_QUEUE);
-					
-					if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-						queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
-					
-					portal->releaseResLock = ResLockPortal(portal, queryDesc);
+					/* 
+					 * MPP-16369 - If we are in SPI context, only acquire 
+					 * resource queue lock if the outer portal hasn't 
+					 * acquired it already. This code is analogous
+					 * to the code in _SPI_pquery. For cases where there is a 
+					 * cursor inside PL/pgSQL, we don't go via _SPI_pquery,
+					 * but execute PortalStart directly. Hence the following
+					 * check is needed to prevent self-deadlocks as described 
+					 * in MPP-16369. 
+					 * If not in SPI context, acquire resource queue lock with
+					 * no additional checks.
+					 */ 
+					if (SPI_context() && 
+						saveActivePortal && 
+						saveActivePortal->releaseResLock)
+					{
+						PortalSetStatus(portal, PORTAL_QUEUE);
+						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
+					}
+					else
+					{
+						PortalSetStatus(portal, PORTAL_QUEUE);
+						
+						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
+						portal->releaseResLock = ResLockPortal(portal, queryDesc);
+					}
 				}
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);
