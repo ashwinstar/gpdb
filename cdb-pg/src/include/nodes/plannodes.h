@@ -362,6 +362,17 @@ typedef struct Append
 	bool 		hasXslice;
 } Append;
 
+/*
+ * Sequence node
+ *   Execute a list of subplans in the order of left-to-right, and return
+ * the results of the last subplan.
+ */
+typedef struct Sequence
+{
+	Plan plan;
+	List *subplans;
+} Sequence;
+
 /* ----------------
  *	 BitmapAnd node -
  *		Generate the intersection of the results of sub-plans.
@@ -406,6 +417,12 @@ typedef struct Scan
  * ----------------
  */
 typedef Scan SeqScan;
+
+/*
+ * TableScan
+ *   Scan node that captures different table types.
+ */
+typedef Scan TableScan;
 
 /* ----------------
  *		index scan node
@@ -497,6 +514,24 @@ typedef struct BitmapAppendOnlyScan
 	List	   *bitmapqualorig; /* index quals, in standard expr form */
 	bool       isAORow; /* If this is for AO Row tables */
 } BitmapAppendOnlyScan;
+
+/*
+ * DynamicTableScan
+ *   Scan a list of tables that will be determined at run time.
+ */
+typedef struct DynamicTableScan
+{
+	Scan scan;
+
+	/*
+	 * The index to an internal array structure, in which each element
+	 * maintains unique identifiers to the tables that are involved in
+	 * a dynamic table scan.
+	 *
+	 * This internal array structure is maintained in EState.
+	 */
+	int partIndex;
+} DynamicTableScan;
 
 /* ----------------
  *		tid scan node

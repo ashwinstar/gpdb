@@ -555,6 +555,9 @@ static char *gp_test_deadlock_hazard_report_level_str;
 bool gp_cancel_query_print_log;
 int gp_cancel_query_delay_time;
 
+/* partitioning GUC */
+bool gp_partitioning_dynamic_selection_log;
+
 /* Upgrade & maintenance GUCs */
 bool gp_upgrade_mode;
 bool gp_maintenance_mode;
@@ -3265,6 +3268,16 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_perfmon_print_packet_info,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_partitioning_dynamic_selection_log", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Print out debugging info for GPDB dynamic partition selection"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_partitioning_dynamic_selection_log,
 		false, NULL, NULL
 	},
 
