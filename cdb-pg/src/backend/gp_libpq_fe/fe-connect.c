@@ -154,7 +154,11 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	{"dbname", "PGDATABASE", NULL, NULL,
 	"Database-Name", "", 20},
 
-	{"host", "PGHOST", NULL, NULL,
+	/* 
+	 * For GPDB internal usage, don't honour PGHOST, as this will always lead to
+	 * unexpected behaviour.
+	 */
+	{"host", NULL, NULL, NULL,
 	"Database-Host", "", 40},
 
 	{"hostaddr", "PGHOSTADDR", NULL, NULL,
