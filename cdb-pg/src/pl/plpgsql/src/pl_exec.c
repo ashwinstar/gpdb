@@ -1349,8 +1349,8 @@ exec_stmt_getdiag(PLpgSQL_execstate *estate, PLpgSQL_stmt_getdiag *stmt)
 			case PLPGSQL_GETDIAG_ROW_COUNT:
 
 				exec_assign_value(estate, var,
-								  UInt32GetDatum(estate->eval_processed),
-								  INT4OID, &isnull);
+								  UInt64GetDatum(estate->eval_processed),
+								  INT8OID, &isnull);
 				break;
 
 			case PLPGSQL_GETDIAG_RESULT_OID:
@@ -2542,7 +2542,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	}
 
 	/* All variants should save result info for GET DIAGNOSTICS */
-	estate->eval_processed = SPI_processed;
+	estate->eval_processed = SPI_processed64;
 	estate->eval_lastoid = SPI_lastoid;
 
 	/* Process INTO if present */
