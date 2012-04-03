@@ -297,9 +297,7 @@ gpcrondump option.
  utility cannot differentiate between a compressed file created
  with this option, and one created without it.  
 
- Recommendation: Specify this option when using --ddboost.
-
-
+ 
 -s <schema_name>
 
  Dump only the named schema in the named database.
@@ -375,6 +373,9 @@ gpcrondump option.
 
  Do not use compression. Default is to compress the dump files 
  using gzip.
+
+ We recommend using this option for NFS and Data Dommain 
+ Boost backups.
 
 
 -? (help)
