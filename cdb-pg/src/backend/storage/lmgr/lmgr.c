@@ -742,3 +742,34 @@ LockTagIsTemp(const LOCKTAG *tag)
 	}
 	return false;				/* default case */
 }
+
+/*
+ *		LockDatabaseMaintenance
+ *
+ * Lock a database for maintenance.
+ */
+void
+LockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_DATABASE_MAINTENANCE(tag, dbid);
+
+	LockAcquire(&tag, lockmode, false, false);
+}
+
+/*
+ *		UnlockDatabaseMaintenance
+ *
+ * Unlock for maintenance, given database id.
+ */
+void
+UnlockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_DATABASE_MAINTENANCE(tag, dbid);
+
+	LockRelease(&tag, lockmode, false);
+}
+

@@ -2473,7 +2473,8 @@ static const char *const LockTagTypeNames[] = {
 	"object",
 	"resource queue",
 	"userlock",
-	"advisory"
+	"advisory",
+	"database maintenance"
 };
 
 int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
@@ -2591,6 +2592,9 @@ int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
 			case LOCKTAG_RESOURCE_QUEUE:
 				lf->lf_database = (proc->databaseId);
 				lf->lf_objid = (lock->tag.locktag_field1);
+				break;
+			case LOCKTAG_DATABASE_MAINTENANCE:
+				lf->lf_database = (lock->tag.locktag_field1);
 				break;
 			case LOCKTAG_OBJECT:
 			case LOCKTAG_USERLOCK:

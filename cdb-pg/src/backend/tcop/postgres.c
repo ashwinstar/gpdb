@@ -1604,6 +1604,22 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 			elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s",
 				 Debug_dtm_action, commandTag);
 		}
+		
+		if (gp_new_reindex_database)
+		{
+			if (IsA(parsetree, ReindexStmt))
+			{
+				LockDatabaseMaintenance(MyDatabaseId, AccessExclusiveLock);
+			}
+			else
+			{
+				/*
+				 * Make sure regular SQL and other DDL is not run concurrently with
+				 * Database Maintenance (e.g. REINDEX).
+				 */
+				LockDatabaseMaintenance(MyDatabaseId, AccessShareLock);
+			}
+		}
 
 		/*
 		 * If are connected in utility mode, disallow PREPARE TRANSACTION statements.
