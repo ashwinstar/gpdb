@@ -199,6 +199,16 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                               subpath->pathkeys,
                                               subplan);
 
+	/**
+	 * If plan has a flow node, ensure all entries of hashExpr
+	 * are in the targetlist.
+	 */
+	if (subplan->flow
+			&& subplan->flow->hashExpr)
+	{
+		subplan->targetlist = add_to_flat_tlist(subplan->targetlist, subplan->flow->hashExpr, true /* resjunk */);
+	}
+
     return motion;
 }                               /* cdbpathtoplan_create_motion_plan */
 
