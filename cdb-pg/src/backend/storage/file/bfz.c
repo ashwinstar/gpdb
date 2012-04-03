@@ -448,13 +448,13 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 		if (size > 0 && fs->buffer_pointer == fs->buffer_end)
 		{
 			/*
-			 * If the requested size is greater than a block size
-			 * of data (excluding the checksum), read and copy the
+			 * If the requested size is greater than or equal to a block size
+			 * of data (including the checksum), read and copy the
 			 * data directly to the given buffer. We can't do that
-			 * when the requested size is equal to a block size, since
+			 * when the requested size is smaller than a block size, since
 			 * the given buffer does not have space for the checksum.
 			 */
-			while (size > sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum))
+			while (size >= sizeof(fs->buffer))
 			{
 				sizeForRead = read_bfz_buffer(thiz, buffer);
 				buffer += sizeForRead;
