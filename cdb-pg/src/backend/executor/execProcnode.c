@@ -84,15 +84,14 @@
 #include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
-#include "executor/nodeSequence.h"
 #include "executor/nodeBitmapAnd.h"
 #include "executor/nodeBitmapHeapscan.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeBitmapAppendOnlyscan.h"
 #include "executor/nodeExternalscan.h"
-#include "executor/nodeTableScan.h"
-#include "executor/nodeDynamicTableScan.h"
+#include "executor/nodeAppendOnlyscan.h"
+#include "executor/nodeAOCSScan.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
@@ -104,6 +103,7 @@
 #include "executor/nodeNestloop.h"
 #include "executor/nodeRepeat.h"
 #include "executor/nodeResult.h"
+#include "executor/nodeSeqscan.h"
 #include "executor/nodeSetOp.h"
 #include "executor/nodeShareInputScan.h"
 #include "executor/nodeSort.h"
@@ -227,11 +227,6 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 												  estate, eflags);
 			break;
 
-		case T_Sequence:
-			result = (PlanState *) ExecInitSequence((Sequence *) node,
-													estate, eflags);
-			break;
-
 		case T_BitmapAnd:
 			result = (PlanState *) ExecInitBitmapAnd((BitmapAnd *) node,
 													 estate, eflags);
@@ -246,17 +241,19 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			 * scan nodes
 			 */
 		case T_SeqScan:
-		case T_AppendOnlyScan:
-		case T_AOCSScan:
-		case T_TableScan:
-			result = (PlanState *) ExecInitTableScan((TableScan *) node,
-													 estate, eflags);
+			result = (PlanState *) ExecInitSeqScan((SeqScan *) node,
+												   estate, eflags);
 			break;
 
-		case T_DynamicTableScan:
-			result = (PlanState *) ExecInitDynamicTableScan((DynamicTableScan *) node,
-													 estate, eflags);
+		case T_AppendOnlyScan:
+			result = (PlanState *) ExecInitAppendOnlyScan((AppendOnlyScan *) node,
+														  estate, eflags);
 			break;
+                case T_AOCSScan:
+			result = (PlanState *) ExecInitAOCSScan((AOCSScan *) node,
+														  estate, eflags);
+			break;
+
 
 		case T_ExternalScan:
 			result = (PlanState *) ExecInitExternalScan((ExternalScan *) node,
@@ -476,14 +473,6 @@ ExecSliceDependencyNode(PlanState *node)
 		for(; i<app->as_nplans; ++i)
 			ExecSliceDependencyNode(app->appendplans[i]);
 	}
-	else if(nodeTag(node) == T_SequenceState)
-	{
-		int i=0;
-		SequenceState *ss = (SequenceState *) node;
-
-		for(; i<ss->numSubplans; ++i)
-			ExecSliceDependencyNode(ss->subplans[i]);
-	}
 
 	ExecSliceDependencyNode(outerPlanState(node));
 	ExecSliceDependencyNode(innerPlanState(node));
@@ -504,14 +493,11 @@ ExecProcNode(PlanState *node)
 	static void *ExecJmpTbl[] = {
 		&&Exec_Jmp_Result,
 		&&Exec_Jmp_Append,
-		&&Exec_Jmp_Sequence,
 		&&Exec_Jmp_BitmapAnd,
 		&&Exec_Jmp_BitmapOr,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_DynamicTableScan,
+		&&Exec_Jmp_SeqScan,
+		&&Exec_Jmp_AppendOnlyScan,
+		&&Exec_Jmp_AOCSScan,
 		&&Exec_Jmp_ExternalScan,
 		&&Exec_Jmp_IndexScan,
 		&&Exec_Jmp_BitmapIndexScan,
@@ -570,21 +556,21 @@ Exec_Jmp_Append:
 	result = ExecAppend((AppendState *) node);
 	goto Exec_Jmp_Done;
 
-Exec_Jmp_Sequence:
-	result = ExecSequence((SequenceState *) node);
-	goto Exec_Jmp_Done;
-
 	/* These two does not yield tuple */
 Exec_Jmp_BitmapAnd:
 Exec_Jmp_BitmapOr:
 	goto Exec_Jmp_Done;
 
-Exec_Jmp_TableScan:
-	result = ExecTableScan((TableScanState *)node);
+Exec_Jmp_SeqScan:
+	result = ExecSeqScan((SeqScanState *) node);
 	goto Exec_Jmp_Done;
 
-Exec_Jmp_DynamicTableScan:
-	result = ExecDynamicTableScan((DynamicTableScanState *) node);
+Exec_Jmp_AppendOnlyScan:
+	result = ExecAppendOnlyScan((AppendOnlyScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_AOCSScan:
+	result = ExecAOCSScan((AOCSScanState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_ExternalScan:
@@ -723,9 +709,7 @@ Exec_Jmp_Done:
 			 * scan nodes
 			 */
 		case T_SeqScanState:
-		case T_AppendOnlyScanState:
-		case T_AOCSScanState:
-			insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
+			result = ExecSeqScan((SeqScanState *) node);
 			break;
 
 		case T_IndexScanState:
@@ -946,9 +930,6 @@ ExecCountSlotsNode(Plan *node)
 		case T_Append:
 			return ExecCountSlotsAppend((Append *) node);
 
-		case T_Sequence:
-			return ExecCountSlotsSequence((Sequence *) node);
-
 		case T_BitmapAnd:
 			return ExecCountSlotsBitmapAnd((BitmapAnd *) node);
 
@@ -959,13 +940,13 @@ ExecCountSlotsNode(Plan *node)
 			 * scan nodes
 			 */
 		case T_SeqScan:
-		case T_AppendOnlyScan:
-		case T_AOCSScan:
-		case T_TableScan:
-			return ExecCountSlotsTableScan((TableScan *) node);
+			return ExecCountSlotsSeqScan((SeqScan *) node);
 
-		case T_DynamicTableScan:
-			return ExecCountSlotsDynamicTableScan((DynamicTableScan *) node);
+		case T_AppendOnlyScan:
+			return ExecCountSlotsAppendOnlyScan((AppendOnlyScan *) node);
+
+		case T_AOCSScan:
+			return ExecCountSlotsAOCSScan((AOCSScan *) node);
 
 		case T_ExternalScan:
 			return ExecCountSlotsExternalScan((ExternalScan *) node);
@@ -1190,10 +1171,6 @@ ExecEndNode(PlanState *node)
 			ExecEndAppend((AppendState *) node);
 			break;
 
-		case T_SequenceState:
-			ExecEndSequence((SequenceState *) node);
-			break;
-
 		case T_BitmapAndState:
 			ExecEndBitmapAnd((BitmapAndState *) node);
 			break;
@@ -1206,17 +1183,7 @@ ExecEndNode(PlanState *node)
 			 * scan nodes
 			 */
 		case T_SeqScanState:
-		case T_AppendOnlyScanState:
-		case T_AOCSScanState:
-			insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
-			break;
-			
-		case T_TableScanState:
-			ExecEndTableScan((TableScanState *) node);
-			break;
-			
-		case T_DynamicTableScanState:
-			ExecEndDynamicTableScan((DynamicTableScanState *) node);
+			ExecEndSeqScan((SeqScanState *) node);
 			break;
 
 		case T_IndexScanState:
@@ -1225,6 +1192,14 @@ ExecEndNode(PlanState *node)
 
 		case T_ExternalScanState:
 			ExecEndExternalScan((ExternalScanState *) node);
+			break;
+
+		case T_AppendOnlyScanState:
+			ExecEndAppendOnlyScan((AppendOnlyScanState *) node);
+			break;
+
+		case T_AOCSScanState:
+			ExecEndAOCSScan((AOCSScanState *) node);
 			break;
 
 		case T_BitmapIndexScanState:
@@ -1376,23 +1351,11 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			nameTag = "Append";
 			break;
 
-		case T_SequenceState:
-			nameTag = "Sequence";
-			break;
-
 			/*
 			 * scan nodes
 			 */
 		case T_SeqScanState:
 			nameTag = "SeqScan";
-			break;
-
-		case T_TableScanState:
-			nameTag = "TableScan";
-			break;
-
-		case T_DynamicTableScanState:
-			nameTag = "DynamicTableScan";
 			break;
 
 		case T_IndexScanState:
@@ -1694,16 +1657,6 @@ planstate_walk_kids(PlanState      *planstate,
             Assert(!planstate->lefttree && !planstate->righttree);
 			break;
 		}
-
-        case T_SequenceState:
-		{
-			SequenceState *ss = (SequenceState *)planstate;
-
-            v = planstate_walk_array(ss->subplans, ss->numSubplans, walker, context, flags);
-            Assert(!planstate->lefttree && !planstate->righttree);
-			break;
-		}
-  
         case T_BitmapAndState:
         {
             BitmapAndState *bas = (BitmapAndState *)planstate;

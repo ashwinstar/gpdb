@@ -961,16 +961,6 @@ ExecutorEnd(QueryDesc *queryDesc)
 		}
 	}
 
-	if (gp_partitioning_dynamic_selection_log &&
-		estate->dynamicTableScanInfo != NULL &&
-		estate->dynamicTableScanInfo->numScans > 0)
-	{
-		for (int scanNo = 0; scanNo < estate->dynamicTableScanInfo->numScans; scanNo++)
-		{
-			dumpDynamicTableScanPidIndex(scanNo);
-		}
-	}
-	
 	/*
 	 * Switch into per-query memory context to run ExecEndPlan
 	 */

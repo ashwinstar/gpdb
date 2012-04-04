@@ -860,14 +860,7 @@ plan_tree_walker(Node *node,
 				return true;
 			break;
 
-		case T_Sequence:
-			if (walk_plan_node_fields((Plan *) node, walker, context))
-				return true;
-			if (walker((Node *) ((Sequence *) node)->subplans, context))
-				return true;
-			break;
-
-		case T_BitmapAnd:
+        case T_BitmapAnd:
             if (walk_plan_node_fields((Plan *) node, walker, context))
                 return true;
             if (walker((Node *) ((BitmapAnd *) node)->bitmapplans, context))
@@ -888,8 +881,6 @@ plan_tree_walker(Node *node,
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
-		case T_TableScan:
-		case T_DynamicTableScan:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
 		case T_FunctionScan:

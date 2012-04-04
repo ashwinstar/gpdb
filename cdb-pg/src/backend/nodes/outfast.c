@@ -399,14 +399,6 @@ _outAppend(StringInfo str, Append *node)
 }
 
 static void
-_outSequence(StringInfo str, Sequence *node)
-{
-	WRITE_NODE_TYPE("SEQUENCE");
-	_outPlanInfo(str, (Plan *)node);
-	WRITE_NODE_FIELD(subplans);
-}
-
-static void
 _outBitmapAnd(StringInfo str, BitmapAnd *node)
 {
 	WRITE_NODE_TYPE("BITMAPAND");
@@ -458,20 +450,6 @@ _outAOCSScan(StringInfo str, AOCSScan *node)
 	_outScanInfo(str, (Scan *) node);
 }
 
-static void
-_outTableScan(StringInfo str, TableScan *node)
-{
-	WRITE_NODE_TYPE("TABLESCAN");
-	_outScanInfo(str, (Scan *)node);
-}
-
-static void
-_outDynamicTableScan(StringInfo str, DynamicTableScan *node)
-{
-	WRITE_NODE_TYPE("DYNAMICTABLESCAN");
-	_outScanInfo(str, (Scan *)node);
-	WRITE_INT_FIELD(partIndex);
-}
 
 static void
 _outExternalScan(StringInfo str, ExternalScan *node)
@@ -3496,9 +3474,6 @@ _outNode(StringInfo str, void *obj)
 			case T_Append:
 				_outAppend(str, obj);
 				break;
-			case T_Sequence:
-				_outSequence(str, obj);
-				break;
 			case T_BitmapAnd:
 				_outBitmapAnd(str, obj);
 				break;
@@ -3516,12 +3491,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_AOCSScan:
 				_outAOCSScan(str, obj);
-				break;
-			case T_TableScan:
-				_outTableScan(str, obj);
-				break;
-			case T_DynamicTableScan:
-				_outDynamicTableScan(str, obj);
 				break;
 			case T_ExternalScan:
 				_outExternalScan(str, obj);

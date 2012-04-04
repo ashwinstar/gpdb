@@ -2738,15 +2738,6 @@ _readAppend(const char ** str)
 	READ_DONE();
 }
 
-static Sequence *
-_readSequence(const char **str)
-{
-	READ_LOCALS(Sequence);
-	readPlanInfo(str, (Plan *)local_node);
-	READ_NODE_FIELD(subplans);
-	READ_DONE();
-}
-
 /*
  * _readBitmapAnd, _readBitmapOr
  */
@@ -2827,22 +2818,6 @@ _readAOCSScan(const char ** str)
 	READ_DONE();
 }
 
-static TableScan *
-_readTableScan(const char **str)
-{
-	READ_LOCALS(TableScan);
-	readScanInfo(str, (Scan *)local_node);
-	READ_DONE();
-}
-
-static DynamicTableScan *
-_readDynamicTableScan(const char **str)
-{
-	READ_LOCALS(DynamicTableScan);
-	readScanInfo(str, (Scan *)local_node);
-	READ_INT_FIELD(partIndex);
-	READ_DONE();
-}
 
 /*
  * _readExternalScan
@@ -3746,9 +3721,6 @@ readNodeBinary(const char ** str)
 			case T_Append:
 				return_value = _readAppend(str);
 				break;
-			case T_Sequence:
-				return_value = _readSequence(str);
-				break;
 			case T_BitmapAnd:
 				return_value = _readBitmapAnd(str);
 				break;
@@ -3766,12 +3738,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_AOCSScan:
 				return_value = _readAOCSScan(str);
-				break;
-			case T_TableScan:
-				return_value = _readTableScan(str);
-				break;
-			case T_DynamicTableScan:
-				return_value = _readDynamicTableScan(str);
 				break;
 			case T_ExternalScan:
 				return_value = _readExternalScan(str);
