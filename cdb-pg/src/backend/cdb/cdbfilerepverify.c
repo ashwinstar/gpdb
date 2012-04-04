@@ -270,6 +270,9 @@ int FileRepPrimary_PeriodicTasks(FileRepVerifyRequest_s *request);
 
 bool FileRepPrimary_ContinueVerificationRequest(FileRepVerifyRequest_s *request);
 
+bool
+isRelBufKindOkForHeapException(PersistentFileSysRelBufpoolKind kind);
+
 /*
  *  High level request execution functions on primary, primary drives or
  *  controls the request options
@@ -3820,7 +3823,38 @@ FileRepPrimary_VerifySystemFilespace(
 
 }
 
+bool
+isRelBufKindOkForHeapException(PersistentFileSysRelBufpoolKind kind)
+{
+	switch (kind) {
 
+		case PersistentFileSysRelBufpoolKind_Heap:
+		case PersistentFileSysRelBufpoolKind_AppendOnlySeginfo:
+		case PersistentFileSysRelBufpoolKind_AppendOnlyBlockDirectory:
+		case PersistentFileSysRelBufpoolKind_BitMap:
+		case PersistentFileSysRelBufpoolKind_Sequence:
+        case PersistentFileSysRelBufpoolKind_Toast:
+		case PersistentFileSysRelBufpoolKind_UncatalogedHeap:
+			return TRUE;
+	
+		case PersistentFileSysRelBufpoolKind_None:
+		case PersistentFileSysRelBufpoolKind_Btree:
+		case PersistentFileSysRelBufpoolKind_UnknownRelStorage:
+		case PersistentFileSysRelBufpoolKind_UnknownIndex:
+	    case PersistentFileSysRelBufpoolKind_UnknownRelKind:
+			return FALSE;
+		
+		default:
+ 
+			Assert (0);
+			break;
+
+	}
+
+	Assert(0);
+	return FALSE;
+
+}
 int
 FileRepPrimary_VerifyAllRelFileNodes(
 	FileRepVerifyRequest_s * request, bool resume, bool justCount)
@@ -4031,8 +4065,7 @@ FileRepPrimary_VerifyAllRelFileNodes(
 
 			if ((relStorageMgr ==
 				 PersistentFileSysRelStorageMgr_BufferPool) &&
-				(relBufpoolKind ==
-				 PersistentFileSysRelBufpoolKind_Heap))
+				isRelBufKindOkForHeapException(relBufpoolKind))
 			{
 				/* HEAP PAGE */
 				relfilenodeTable[numThisSend].exception =
@@ -7396,17 +7429,11 @@ FileRepVerify_ProcessHeapPage(
 	*madeChange = false;
 	for (whichItem = 1; whichItem < (maxOffset + 1); whichItem++)
 	{
-		unsigned int	itemSize = 0;
-		unsigned int	itemOffset = 0;
-		unsigned int	itemFlags = 0;
 		ItemId			itemId;
 		HeapTupleHeader htup;
 
 		itemId = PageGetItemId(page, whichItem);
-		itemFlags = (unsigned int) ItemIdGetFlags(itemId);
-		itemSize = (unsigned int) ItemIdGetLength(itemId);
-		itemOffset = (unsigned int) ItemIdGetOffset(itemId);
-
+		
 		if (ItemIdIsUsed(itemId))
 		{
 			htup = (HeapTupleHeader)(PageGetItem((Page)page, itemId));
