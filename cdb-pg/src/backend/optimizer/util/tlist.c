@@ -16,9 +16,10 @@
 #include "postgres.h"
 
 #include "nodes/makefuncs.h"
+#include "optimizer/clauses.h"
+#include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
-#include "optimizer/clauses.h"
 #include "parser/parse_expr.h"
 #include "utils/lsyscache.h"
 
@@ -277,37 +278,33 @@ get_sortgrouplist_exprs(List *sortClauses, List *targetList)
 }
 
 /*
- * get_sortgrouplist_colidx
- *		Given a list of SortClauses (or GroupClauses), build an array
- *		of the referenced targetlist resno.  If ops is not NULL,
- *		it is filled by the sortop Oid.  Results are allocated by palloc.
+ * get_grouplist_colidx
+ *		Given a list of GroupClauses, build an array of the referenced
+ *		targetlist resno.  If numCols is not NULL, it is filled by the
+ *		length of returned array.  Results are allocated by palloc.
  */
 AttrNumber *
-get_sortgrouplist_colidx(List *sortClauses, List *targetList, Oid **ops)
+get_grouplist_colidx(List *groupClauses, List *targetList, int *numCols)
 {
 	AttrNumber	   *result;
+	List		   *tles;
 	ListCell	   *l;
 	int				i, len;
 
-	len = list_length(sortClauses);
-	if (len == 0)
-	{
-		if (ops)
-			*ops = NULL;
-		return NULL;
-	}
-	result = (AttrNumber *) palloc(sizeof(AttrNumber) * len);
-	if (ops)
-		*ops = (Oid *) palloc(sizeof(Oid) * len);
-	foreach_with_count (l, sortClauses, i)
-	{
-		SortClause	   *sortcl = lfirst(l);
-		TargetEntry	   *tle;
+	len = num_distcols_in_grouplist(groupClauses);
+	if (numCols)
+		*numCols = len;
 
-		tle = get_sortgroupclause_tle(sortcl, targetList);
+	if (len == 0)
+		return NULL;
+
+	result = (AttrNumber *) palloc(sizeof(AttrNumber) * len);
+	tles = get_sortgroupclauses_tles(groupClauses, targetList);
+	foreach_with_count (l, tles, i)
+	{
+		TargetEntry	   *tle = lfirst(l);
+
 		result[i] = tle->resno;
-		if (ops)
-			(*ops)[i] = sortcl->sortop;
 	}
 
 	return result;

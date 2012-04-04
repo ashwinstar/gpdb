@@ -65,6 +65,8 @@ select percentile_cont(0.1) within group (order by a),
 	percentile_cont(0.2) within group (order by a) from perctsz;
 select median(a - (select min(a) from percts)) from percts;
 select median(a), b from perct group by b order by b desc;
+select count(*) from(select median(a) from perct group by ())s;
+select median(a) from perct group by grouping sets((b)) order by b;
 -- view
 select * from percv;
 
@@ -120,6 +122,8 @@ select percentile_cont(0.1) within group (order by a),
 	percentile_cont(0.2) within group (order by a) from perctsz;
 select median(a - (select min(a) from percts)) from percts;
 select median(a), b from perct group by b order by b desc;
+select count(*) from(select median(a) from perct group by ())s;
+select median(a) from perct group by grouping sets((b)) order by b;
 -- view
 select * from percv;
 

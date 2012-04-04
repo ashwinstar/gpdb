@@ -413,6 +413,28 @@ select median(a), b from perct group by b order by b desc;
       5 |  0
 (11 rows)
 
+select count(*) from(select median(a) from perct group by ())s;
+ count 
+-------
+     1
+(1 row)
+
+select median(a) from perct group by grouping sets((b)) order by b;
+ median 
+--------
+      5
+   14.5
+   24.5
+   34.5
+   44.5
+   54.5
+   64.5
+   74.5
+   84.5
+   94.5
+    100
+(11 rows)
+
 -- view
 select * from percv;
  percentile_cont | median | percentile_disc 
@@ -819,6 +841,28 @@ select median(a), b from perct group by b order by b desc;
    24.5 |  2
    14.5 |  1
       5 |  0
+(11 rows)
+
+select count(*) from(select median(a) from perct group by ())s;
+ count 
+-------
+     1
+(1 row)
+
+select median(a) from perct group by grouping sets((b)) order by b;
+ median 
+--------
+      5
+   14.5
+   24.5
+   34.5
+   44.5
+   54.5
+   64.5
+   74.5
+   84.5
+   94.5
+    100
 (11 rows)
 
 -- view
