@@ -3190,6 +3190,22 @@ StartTransaction(void)
  	     LocalDistribXact_DisplayString(&MyProc->localDistribXactRef));
 }
 
+/*
+ * Clears the current transaction from PGPROC.
+ *
+ * Must be called while holding the ProcArrayLock.
+ */
+void
+ClearTransactionFromPgProc_UnderLock(void)
+{
+	MyProc->xid = InvalidTransactionId;
+	MyProc->xmin = InvalidTransactionId;
+	MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
+	
+	/* Clear the subtransaction-XID cache too while holding the lock */
+	MyProc->subxids.nxids = 0;
+	MyProc->subxids.overflowed = false;
+}
 
 /*
  *	CommitTransaction
@@ -3209,7 +3225,8 @@ CommitTransaction(void)
 
 	TransactionId localXid = InvalidTransactionId;
 	LocalDistribXactRef localDistribXactRef;
-	bool needDistribCommitted = false;
+	bool needStateChangeFromDistributed = false;
+	bool needNotifyCommittedDtxTransaction = false;
 	bool willHaveObjectsFromSmgr;
 
 	LocalDistribXactRef_Init(&localDistribXactRef);
@@ -3389,7 +3406,7 @@ CommitTransaction(void)
 						MyProc->xid,
 						&MyProc->localDistribXactRef,
 						LOCALDISTRIBXACT_STATE_COMMITDELIVERY);
-					needDistribCommitted = true;
+					needStateChangeFromDistributed = true;
 					break;
 				
 				case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
@@ -3427,18 +3444,41 @@ CommitTransaction(void)
 				&MyProc->localDistribXactRef);
 		}
 
-		MyProc->xid = InvalidTransactionId;
-		MyProc->xmin = InvalidTransactionId;
-		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
-
-		/* Clear the subtransaction-XID cache too while holding the lock */
-		MyProc->subxids.nxids = 0;
-		MyProc->subxids.overflowed = false;
+		
+		if (!notifyCommittedDtxTransactionIsNeeded())
+		{
+			ClearTransactionFromPgProc_UnderLock();
+		}
+		else
+		{
+			needNotifyCommittedDtxTransaction = true;
+		}
 
 		LWLockRelease(ProcArrayLock);
 	}
 
 	PG_TRACE1(transaction__commit, s->transactionId);
+
+	if (needNotifyCommittedDtxTransaction)
+	{
+		/*
+		 * Do 2nd phase of commit to all QE. NOTE: we can't process
+		 * signals (which may attempt to abort our now partially-completed
+		 * transaction) until we've notified the QEs.
+		 *
+		 * Very important that PGPROC still thinks the transaction is still in progress so
+		 * SnapshotNow reader don't jump to the conclusion this distributed transaction is
+		 * finished.  So, notifyCommittedDtxTransaction will take responsbility to clear
+		 * PGPROC under the ProcArrayLock after the broadcast.  MPP-16087.
+		 *
+		 * And, that we have not master released locks, yet, too.
+		 *
+		 * Note:  do this BEFORE clearing the resource owner, as the dispatch
+		 * routines might want to use them.  Plus, we want AtCommit_Memory to 
+		 * happen after using the dispatcher.
+		 */
+		notifyCommittedDtxTransaction();
+	}
 
 	/*
 	 * This is all post-commit cleanup.  Note that if an error is raised here,
@@ -3459,17 +3499,6 @@ CommitTransaction(void)
 	CallXactCallbacks(XACT_EVENT_COMMIT);
 	CallXactCallbacksOnce(XACT_EVENT_COMMIT);
 	
-	/*
-	 * Do 2nd phase of commit to all QE. NOTE: we can't process
-	 * signals (which may attempt to abort our now partially-completed
-	 * transaction) until we've notified the QEs.
-	 * 
-	 * Note:  do this BEFORE clearing the resource owner, as the dispatch
-	 * routines might want to use them.  Plus, we want AtCommit_Memory to 
-	 * happen after using the dispatcher.
-	 */
-	notifyCommittedDtxTransaction();
-
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
 						 true, true);
@@ -3549,7 +3578,7 @@ CommitTransaction(void)
 	{
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
-		if (needDistribCommitted)
+		if (needStateChangeFromDistributed)
 			LocalDistribXact_ChangeStateUnderLock(
 				localXid,
 				&localDistribXactRef,

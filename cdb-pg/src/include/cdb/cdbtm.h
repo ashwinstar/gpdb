@@ -299,6 +299,7 @@ extern bool createDtxSnapshot(DistributedSnapshotWithLocalMapping *distribSnapsh
 extern void	prepareDtxTransaction(void);
 extern bool isPreparedDtxTransaction(void);
 extern void getDtxLogInfo(TMGXACT_LOG *gxact_log);
+extern bool notifyCommittedDtxTransactionIsNeeded(void);
 extern void notifyCommittedDtxTransaction(void);
 extern void	rollbackDtxTransaction(void);
 

@@ -272,4 +272,6 @@ void ShowSubtransactionsForSharedSnapshot(void);
 void GetSubXidsInXidBuffer(void);
 void UpdateSubtransactionsInSharedSnapshot(DistributedTransactionId);
 
+extern void ClearTransactionFromPgProc_UnderLock(void);
+
 #endif   /* XACT_H */
