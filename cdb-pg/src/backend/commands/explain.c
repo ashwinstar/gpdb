@@ -847,6 +847,9 @@ explain_outNode(StringInfo str,
 		case T_Append:
 			pname = "Append";
 			break;
+		case T_Sequence:
+			pname = "Sequence";
+			break;
 		case T_BitmapAnd:
 			pname = "BitmapAnd";
 			break;
@@ -945,6 +948,12 @@ explain_outNode(StringInfo str,
 			break;
 		case T_AOCSScan:
 			pname = "Append-only Columnar Scan";
+			break;
+		case T_TableScan:
+			pname = "Table Scan";
+			break;
+		case T_DynamicTableScan:
+			pname = "Dynamic Table Scan";
 			break;
 		case T_ExternalScan:
 			pname = "External Scan";
@@ -1103,6 +1112,8 @@ explain_outNode(StringInfo str,
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
+		case T_TableScan:
+		case T_DynamicTableScan:
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
 		case T_TidScan:
@@ -1123,6 +1134,13 @@ explain_outNode(StringInfo str,
 				if (strcmp(rte->eref->aliasname, relname) != 0)
 					appendStringInfo(str, " %s",
 									 quote_identifier(rte->eref->aliasname));
+
+				/* Print partIndex for DynamicTableScan */
+				if (IsA(plan, DynamicTableScan))
+				{
+					appendStringInfo(str, " (partIndex: %d)",
+									 ((DynamicTableScan *)plan)->partIndex);
+				}
 			}
 			break;
 		case T_BitmapIndexScan:
@@ -1290,6 +1308,8 @@ explain_outNode(StringInfo str,
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
+		case T_TableScan:
+		case T_DynamicTableScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
 			show_scan_qual(plan->qual,
@@ -1620,7 +1640,10 @@ explain_outNode(StringInfo str,
 			Plan	   *subnode = (Plan *) lfirst(lst);
 
 			for (i = 0; i < indent; i++)
+			{
 				appendStringInfo(str, "  ");
+			}
+
 			appendStringInfo(str, "  ->  ");
 
 			/*
@@ -1631,6 +1654,31 @@ explain_outNode(StringInfo str,
 			 */
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
+							outer_plan,
+							indent + 3, es);
+			j++;
+		}
+	}
+
+	if (IsA(plan, Sequence))
+	{
+		Sequence *sequence = (Sequence *) plan;
+		SequenceState *sequenceState = (SequenceState *) planstate;
+		ListCell *lc;
+		int j = 0;
+		foreach(lc, sequence->subplans)
+		{
+			Plan *subnode = (Plan *) lfirst(lc);
+
+			for (i = 0; i < indent; i++)
+			{
+				appendStringInfo(str, "  ");
+			}
+			
+			appendStringInfo(str, "  ->  ");
+
+			explain_outNode(str, subnode,
+							sequenceState->subplans[j],
 							outer_plan,
 							indent + 3, es);
 			j++;
@@ -1751,8 +1799,8 @@ static void show_plan_tlist(Plan *plan, StringInfo str, int indent,
 	/* No work if empty tlist (this occurs eg in bitmap indexscans) */
 	if (plan->targetlist == NIL)
 		return;
-	/* The tlist of an Append isn't real helpful, so suppress it */
-	if (IsA(plan, Append))
+	/* Suppress printing the targetlist of Append and Sequence. */
+	if (IsA(plan, Append) || IsA(plan, Sequence))
 		return;
 
 	/* TODO: Likewise for RecursiveUnion */

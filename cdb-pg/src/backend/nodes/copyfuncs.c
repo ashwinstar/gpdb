@@ -129,7 +129,7 @@ CopyPlanFields(const Plan *from, Plan *newnode)
  * _copyPlannedStmt 
  */
 static PlannedStmt *
-_copyPlannedStmt(const const PlannedStmt *from)
+_copyPlannedStmt(const PlannedStmt *from)
 {
 	PlannedStmt   *newnode = makeNode(PlannedStmt);
 
@@ -257,6 +257,16 @@ _copyAppend(const Append *from)
 	return newnode;
 }
 
+static Sequence *
+_copySequence(const Sequence *from)
+{
+	Sequence *newnode = makeNode(Sequence);
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+	COPY_NODE_FIELD(subplans);
+
+	return newnode;
+}
+
 /*
  * _copyBitmapAnd
  */
@@ -377,6 +387,26 @@ _copyAOCSScan(const AOCSScan *from)
 
 	return newnode;
 }
+
+static TableScan *
+_copyTableScan(const TableScan *from)
+{
+	TableScan *newnode = makeNode(TableScan);
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	return newnode;
+}
+
+static DynamicTableScan *
+_copyDynamicTableScan(const DynamicTableScan *from)
+{
+	DynamicTableScan *newnode = makeNode(DynamicTableScan);
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+	COPY_SCALAR_FIELD(partIndex);
+
+	return newnode;
+}
+
 /*
  * _copyExternalScan
  */
@@ -4020,6 +4050,9 @@ copyObject(const void *from)
 		case T_Append:
 			retval = _copyAppend(from);
 			break;
+		case T_Sequence:
+			retval = _copySequence(from);
+			break;
 		case T_BitmapAnd:
 			retval = _copyBitmapAnd(from);
 			break;
@@ -4037,7 +4070,13 @@ copyObject(const void *from)
 			break;
 		case T_AOCSScan:
 			retval = _copyAOCSScan(from);
-                        break;
+			break;
+		case T_TableScan:
+			retval = _copyTableScan(from);
+			break;
+		case T_DynamicTableScan:
+			retval = _copyDynamicTableScan(from);
+			break;
 		case T_ExternalScan:
 			retval = _copyExternalScan(from);
 			break;
