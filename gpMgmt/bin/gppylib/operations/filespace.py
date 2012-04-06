@@ -35,7 +35,7 @@ class InvalidFilespaceError(Exception):
 class MoveFilespaceError(Exception):
     def __init__(self, msg):
         Exception.__init__(self, msg)
- 
+
 class CheckFilespaceIsSame(Operation):
     """
         Checks that the given filespace is different
@@ -355,16 +355,22 @@ class MoveTransFilespaceLocally(Operation):
 
     def get_md5(self, directory):
         m = hashlib.md5()
-
+        
+        files_to_hash = []
         for root, dirs, filenames in os.walk(directory):
             for filename in filenames:
                 file = os.path.join(root, filename)
-                with open(file, 'rb') as f:
-                    while True:
-                        data = f.read(128)
-                        if not data:
-                            break
-                        m.update(data)
+                files_to_hash.append(file)
+
+        files_to_hash.sort()
+
+        for file in files_to_hash:
+            with open(file, 'rb') as f:
+                while True:
+                    data = f.read(128)
+                    if not data:
+                        break
+                    m.update(data)
         return m.hexdigest() 
 
     def md5_check(self):
@@ -809,8 +815,8 @@ class MoveFilespace(Operation):
         for operation in operations:
             try:
                 operation.get_ret()
-            except Exception, (errno, errmsg):
-                logger.error('Failed to move files on remote host. %s.', errmsg)
+            except Exception, e:
+                logger.error('Failed to move files on remote host. %s.', e)
                 try:
                     RollBackFilespaceChanges(segments, self.file_type, cur_filespace_name, cur_filespace_entries, new_filespace_entries, pg_system_filespace_entries).run()
                 except Exception, e:
