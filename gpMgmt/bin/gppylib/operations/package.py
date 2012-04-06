@@ -906,7 +906,7 @@ class UninstallPackage(Operation):
                      standby_host = self.standby_host,
                      segment_host_list = self.segment_host_list).run()
 
-        logger.info('%s succesfully uninstalled.' % self.gppkg.pkg)
+        logger.info('%s successfully uninstalled.' % self.gppkg.pkg)
 
 
 
