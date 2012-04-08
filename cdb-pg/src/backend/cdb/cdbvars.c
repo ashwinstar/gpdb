@@ -72,6 +72,10 @@ bool		Debug_print_dispatch_plan;	/* Shall we log the plan we'll dispatch? */
 
 bool		Debug_print_plannedstmt;	/* Shall we log the final planned statement? */
 
+bool            gp_backup_directIO = false;     /* disable\enable direct I/O dump */
+
+int             gp_backup_directIO_read_chunk_mb = 20; /* size of readChunk buffer for directIO dump */
+
 bool		gp_external_enable_exec = true; /* allow ext tables with EXECUTE */
 
 bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist/gpfdists for non-su */
