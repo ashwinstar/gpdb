@@ -483,6 +483,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 					pszStatusFileName, pszThrottleCmd);
 		}
+	}
 #else
 	/* if user selected a compression program */
         if (pszCompressionProgram[0] != '\0')
