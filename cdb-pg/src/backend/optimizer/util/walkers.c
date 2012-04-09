@@ -1238,8 +1238,25 @@ extract_nodes_walker(Node *node, extract_context *context)
 	}
 	if (nodeTag(node) == T_SubPlan)
 	{
-		/* Do not descend into subplans */
-		return false;
+		SubPlan	   *subplan = (SubPlan *) node;
+
+		/*
+		 * SubPlan has both of expressions and subquery.
+		 * In case the caller wants non-subquery version,
+		 * still we need to walk through its expressions.
+		 */
+		if (!context->descendIntoSubqueries)
+		{
+			if (extract_nodes_walker((Node *) subplan->testexpr,
+									 context))
+				return true;
+			if (expression_tree_walker((Node *) subplan->args,
+									   extract_nodes_walker, context))
+				return true;
+
+			/* Do not descend into subplans */
+			return false;
+		}
 	}
 	if (nodeTag(node) == T_SubqueryScan
 		&& !context->descendIntoSubqueries)
