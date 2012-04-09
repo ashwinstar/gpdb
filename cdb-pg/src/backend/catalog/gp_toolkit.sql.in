@@ -1786,7 +1786,7 @@ AS
 	SELECT 
 		q.oid as queueid, 
 		q.rsqname as rsqname,
-		t1.value::int as rsqcountlimit, 
+		t1.value::real as rsqcountlimit, 
 		t2.value::int as rsqcountvalue, 
 		t3.value::real as rsqcostlimit, 
 		t4.value::real as rsqcostvalue, 
