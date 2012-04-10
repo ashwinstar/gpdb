@@ -182,6 +182,10 @@ typedef struct gpmon_qexeckey_t {
     apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int16_t ccnt;	/* command count */
+    apr_int16_t segid;	/* segment id */
+    apr_int32_t pid; 	/* process id */
+    apr_int16_t nid;	/* plan node id */
+    apr_int16_t zero;		/* unused */
     gpmon_qexec_hash_key_t hash_key;
 }gpmon_qexeckey_t;
 
@@ -401,7 +405,7 @@ typedef enum PerfmonNodeType
     PMNT_BitmapAppendOnlyScan,
     PMNT_BitmapHeapScan,
     PMNT_BitmapIndexScan,
-    PMNT_DynamicTableScan,
+	PMNT_DynamicTableScan,
     PMNT_ExternalScan,
     PMNT_FunctionScan,
     PMNT_Group,
@@ -443,7 +447,7 @@ typedef enum PerfmonNodeType
     PMNT_Result,
     PMNT_Repeat,
     PMNT_SeqScan,
-    PMNT_Sequence,
+	PMNT_Sequence,
     PMNT_SetOp,
     PMNT_SetOpIntersect,
     PMNT_SetOpIntersectAll,
@@ -452,13 +456,13 @@ typedef enum PerfmonNodeType
     PMNT_SharedScan,
     PMNT_Sort,
     PMNT_SubqueryScan,
-    PMNT_TableFunctionScan,
-    PMNT_TableScan,
+	PMNT_TableFunctionScan,
+	PMNT_TableScan,
     PMNT_TidScan,
     PMNT_Unique,
     PMNT_ValuesScan,
     PMNT_Window,
-    PMNT_MAXIMUM_ENUM
+	PMNT_MAXIMUM_ENUM
 
 } PerfmonNodeType;
 
