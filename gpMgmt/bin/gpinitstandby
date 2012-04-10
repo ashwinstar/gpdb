@@ -90,7 +90,7 @@ def parseargs():
     """parses and validates command line args."""
     
     parser = OptParser(option_class=OptChecker,
-                       version='%prog version main build dev')
+                       version='%prog version $Revision$')
 
     parser.setHelp([])
     parser.remove_option('-h')
