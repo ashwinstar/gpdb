@@ -914,15 +914,6 @@ static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr)
 		apr_hash_this(hi, 0, 0, (void**) &valptr);
 		sp = (gpmon_filrep_holder_t*) valptr;
 
-		if (sp->elapsedTime_secs_primary <= 0)
-		{
-			/* this prevents NaN when dividing by elapsedTime_secs_primary - 
-			   elapsedTime_secs_primary should always be >0 when it comes from the 
-			   the backed, but we are writing more often than it is sent from the
-			   backend 
-			*/
-			continue;
-		}
 		snprintf(line, line_size, "%s|%u|%u|%s|%d|%s|%d|" // through mirror_port
 					  "%d|%d|%d|%d|%.2f|" // primary write syscall
 					  "%d|%d|%.2f|" // primary fsync syscall
@@ -943,32 +934,32 @@ static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr)
 			sp->primary.write_syscall_size_max,
 			sp->primary.write_syscall_time_avg,
 			sp->primary.write_syscall_time_max,
-			sp->primary.write_syscall_count / sp->elapsedTime_secs_primary,
+			((sp->elapsedTime_secs_primary >0)?(sp->primary.write_syscall_count / sp->elapsedTime_secs_primary):0),
 			sp->primary.fsync_syscall_time_avg,
 			sp->primary.fsync_syscall_time_max,
-			sp->primary.fsync_syscall_count  / sp->elapsedTime_secs_primary,
+			((sp->elapsedTime_secs_primary >0)?(sp->primary.fsync_syscall_count  / sp->elapsedTime_secs_primary):0),
 			sp->primary.write_shmem_size_avg,
 			sp->primary.write_shmem_size_max,
 			sp->primary.write_shmem_time_avg,
 			sp->primary.write_shmem_time_max,
-			sp->primary.write_shmem_count / sp->elapsedTime_secs_primary,
+			((sp->elapsedTime_secs_primary >0)?(sp->primary.write_shmem_count / sp->elapsedTime_secs_primary):0),
 			sp->primary.fsync_shmem_time_avg,
 			sp->primary.fsync_shmem_time_max,
-			sp->primary.fsync_shmem_count / sp->elapsedTime_secs_primary,
+			((sp->elapsedTime_secs_primary >0)?(sp->primary.fsync_shmem_count / sp->elapsedTime_secs_primary):0),
 			sp->primary.roundtrip_fsync_msg_time_avg,
 			sp->primary.roundtrip_fsync_msg_time_max,
-			sp->primary.roundtrip_fsync_msg_count / sp->elapsedTime_secs_primary,
+			((sp->elapsedTime_secs_primary >0)?(sp->primary.roundtrip_fsync_msg_count / sp->elapsedTime_secs_primary):0),
 			sp->primary.roundtrip_test_msg_time_avg, 
 			sp->primary.roundtrip_test_msg_time_max,
-			sp->primary.roundtrip_test_msg_count / sp->elapsedTime_secs_primary,
+			((sp->elapsedTime_secs_primary >0)?(sp->primary.roundtrip_test_msg_count / sp->elapsedTime_secs_primary):0),
 			sp->mirror.write_syscall_size_avg,
 			sp->mirror.write_syscall_size_max,
 			sp->mirror.write_syscall_time_avg,
 			sp->mirror.write_syscall_time_max, 
-			sp->mirror.write_syscall_count / sp->elapsedTime_secs_mirror, 
+			((sp->elapsedTime_secs_mirror >0)?(sp->mirror.write_syscall_count / sp->elapsedTime_secs_mirror):0), 
 			sp->mirror.fsync_syscall_time_avg, 
 			sp->mirror.fsync_syscall_time_max,
-			sp->mirror.fsync_syscall_count / sp->elapsedTime_secs_mirror);
+			((sp->elapsedTime_secs_mirror >0)?(sp->mirror.fsync_syscall_count / sp->elapsedTime_secs_mirror):0));
 
 		bytes_this_record = strlen(line) + 1;
 		if (bytes_this_record == line_size)
