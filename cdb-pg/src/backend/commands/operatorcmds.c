@@ -116,6 +116,13 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					errmsg("setof type not allowed for operator argument")));
 		}
+		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "OID") == 0)
+		{
+			/* Catalog obj's OID must be less than FirstBootstrapObjectId */
+			int64 oid = defGetInt64(defel);
+			Insist(oid < FirstBootstrapObjectId);
+			newOid = oid;
+		}
 		else if (pg_strcasecmp(defel->defname, "procedure") == 0)
 			functionName = defGetQualifiedName(defel);
 		else if (pg_strcasecmp(defel->defname, "commutator") == 0)
