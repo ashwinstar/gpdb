@@ -2952,6 +2952,76 @@ SELECT * FROM ud_project( TABLE( SELECT * FROM history ) );
 (18 rows)
 
 -- ========================
+-- Passing input without modification
+-- ========================
+CREATE FUNCTION noop_project(anytable) RETURNS setof RECORD
+  AS '@abs_builddir@/regress@DLSUFFIX@'
+  LANGUAGE C;
+SELECT * FROM noop_project( TABLE( SELECT * FROM history ) ) AS s (id integer, time timestamp);
+ id |           time           
+----+--------------------------
+  1 | Mon Aug 22 10:15:04 2011
+  1 | Mon Aug 22 10:16:10 2011
+  1 | Sun Aug 21 10:15:02 2011
+  1 | Sun Aug 21 10:15:30 2011
+  2 | Sun Aug 21 10:15:02 2011
+  2 | Sun Aug 21 10:16:02 2011
+  2 | Sun Aug 21 22:15:02 2011
+  2 | Sun Aug 21 22:16:02 2011
+  3 | Fri Aug 19 19:05:13 2011
+  3 | Fri Aug 19 19:06:50 2011
+  3 | Fri Aug 19 19:07:35 2011
+  3 | Fri Aug 19 19:08:18 2011
+  3 | Fri Aug 19 19:09:07 2011
+  3 | Sat Aug 20 10:07:10 2011
+  3 | Sat Aug 20 10:07:35 2011
+  3 | Sat Aug 20 10:11:29 2011
+  3 | Sat Aug 20 10:17:10 2011
+  3 | Sat Aug 20 10:17:42 2011
+(18 rows)
+
+-- SCATTER BY vs MEDIAN
+SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY median(id) ) ) AS s (med float);
+ med 
+-----
+   3
+(1 row)
+
+SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY count(*) ) ) AS s (med float);
+ med 
+-----
+   3
+(1 row)
+
+SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY median(id) ) ) AS s (cnt bigint);
+ cnt 
+-----
+  18
+(1 row)
+
+SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history GROUP BY time SCATTER BY median(id) ) ) AS s (cnt bigint);
+ cnt 
+-----
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   1
+   2
+(17 rows)
+
+-- ========================
 -- More negative test cases
 -- ========================
 -- explicit return type not suitable for dynamic type resolution

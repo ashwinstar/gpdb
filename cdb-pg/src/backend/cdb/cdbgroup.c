@@ -5275,6 +5275,8 @@ fetch_percentiles(Query *parse, List *sortClause)
 
 	nodes = list_concat(extract_nodes(NULL, (Node *) parse->targetList, T_PercentileExpr),
 						extract_nodes(NULL, (Node *) parse->havingQual, T_PercentileExpr));
+	nodes = list_concat(nodes,
+						extract_nodes(NULL, (Node *) parse->scatterClause, T_PercentileExpr));
 	result = NIL;
 	foreach (l, nodes)
 	{
@@ -5425,6 +5427,7 @@ make_deduplicate_plan(PlannerInfo *root,
 	root->parse->groupClause = groupClause;
 	root->parse->targetList = tlist;
 	root->parse->havingQual = NULL;
+	root->parse->scatterClause = NIL;
 	root->group_pathkeys = make_pathkeys_for_groupclause(groupClause, tlist);
 
 	/*
@@ -5458,6 +5461,8 @@ make_deduplicate_plan(PlannerInfo *root,
 		cdbpullup_expr((Expr *) root->parse->targetList, tlist, NIL, Outer);
 	root->parse->havingQual = (Node *)
 		cdbpullup_expr((Expr *) root->parse->havingQual, tlist, NIL, Outer);
+	root->parse->scatterClause = (List *)
+		cdbpullup_expr((Expr *) root->parse->scatterClause, tlist, NIL, Outer);
 	root->parse->rtable = parse->rtable;
 
 	return result_plan;
@@ -5547,6 +5552,8 @@ within_agg_make_baseplan(PlannerInfo *root,
 			cdbpullup_expr((Expr *) root->parse->targetList, sub_tlist, NIL, 1);
 		root->parse->havingQual = (Node *)
 			cdbpullup_expr((Expr *) root->parse->havingQual, sub_tlist, NIL, 1);
+		root->parse->scatterClause = (List *)
+			cdbpullup_expr((Expr *) root->parse->scatterClause, sub_tlist, NIL, 1);
 		root->parse->rtable = subquery->rtable;
 
 		/*
@@ -5626,7 +5633,7 @@ within_agg_add_outer_sort(PlannerInfo *root,
 		}
 		if (outer_plan->flow->flotype != FLOW_SINGLETON)
 		{
-			outer_plan = (Plan *) make_motion_gather_to_QD(outer_plan, true);
+			outer_plan = (Plan *) make_motion_gather_to_QE(outer_plan, true);
 			outer_plan->total_cost +=
 				incremental_motion_cost(outer_plan->plan_rows,
 							outer_plan->plan_rows * root->config->cdbpath_segments);
@@ -5699,6 +5706,8 @@ within_agg_add_outer_sort(PlannerInfo *root,
 		cdbpullup_expr((Expr *) root->parse->targetList, outer_plan->targetlist, NIL, 1);
 	root->parse->havingQual = (Node *)
 		cdbpullup_expr((Expr *) root->parse->havingQual, outer_plan->targetlist, NIL, 1);
+	root->parse->scatterClause = (List *)
+		cdbpullup_expr((Expr *) root->parse->scatterClause, outer_plan->targetlist, NIL, 1);
 	/*
 	 * Wrap plan by subquery as the outer of upcoming join.
 	 */
@@ -5834,6 +5843,7 @@ within_agg_construct_inner(PlannerInfo *root,
 	root->parse = parse = copyObject(root->parse);
 	root->parse->targetList = tlist;
 	root->parse->havingQual = NULL;
+	root->parse->scatterClause = NULL;
 	root->group_pathkeys =
 		make_pathkeys_for_sortclauses(parse->groupClause, tlist);
 
@@ -6328,9 +6338,13 @@ within_agg_planner(PlannerInfo *root,
 	aggnodes = extract_nodes(NULL, (Node *) root->parse->targetList, T_Aggref);
 	aggnodes = list_concat(aggnodes,
 						   extract_nodes(NULL, (Node *) root->parse->havingQual, T_Aggref));
+	aggnodes = list_concat(aggnodes,
+						   extract_nodes(NULL, (Node *) root->parse->scatterClause, T_Aggref));
 	percnodes = extract_nodes(NULL, (Node *) root->parse->targetList, T_PercentileExpr);
 	percnodes = list_concat(percnodes,
 							extract_nodes(NULL, (Node *) root->parse->havingQual, T_PercentileExpr));
+	percnodes = list_concat(percnodes,
+							extract_nodes(NULL, (Node *) root->parse->scatterClause, T_PercentileExpr));
 	/* Allocate maximum number of list */
 	numsortlist = list_length(percnodes) + 1;
 	/* initialize each element with NIL */
@@ -6600,10 +6614,11 @@ within_agg_planner(PlannerInfo *root,
 			coquery = copyObject(root->parse);
 			coquery->targetList = seq_tlist_concat(copyObject(mgctx.grps_tlist), mgctx.dref_tlists[i]);
 			/*
-			 * Clear havingQual, since the filter will happen only the top of joins,
-			 * and never in individual aggregate.
+			 * Clear havingQual and scatterClause, since they will be handled only
+			 * the top of joins, and never in individual aggregate.
 			 */
 			coquery->havingQual = NULL;
+			coquery->scatterClause = NIL;
 			root_copy.parse = coquery;
 
 			if (sortlist[i])
@@ -6667,6 +6682,7 @@ within_agg_planner(PlannerInfo *root,
 		result_plan->targetlist = (List *) finalize_split_expr((Node *) mgctx.fin_tlist, &mgctx);
 		result_plan->qual = (List *) finalize_split_expr((Node *) mgctx.fin_hqual, &mgctx);
 
+		UpdateScatterClause(root->parse, result_plan->targetlist);
 		/*
 		 * Reconstruct the flow since the targetlist for the result_plan may have
 		 * changed.
