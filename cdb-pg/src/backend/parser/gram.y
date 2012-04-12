@@ -12538,6 +12538,7 @@ unreserved_keyword:
 			| LOCAL
 			| LOCATION
 			| LOCK_P
+			| LOG_P
 			| LOGIN_P
 			| MAPPING
 			| MASTER
@@ -13070,7 +13071,6 @@ func_name_keyword:
 			| JOIN
 			| LEFT
 			| LIKE
-			| LOG_P
 			| NATURAL
 			| NOTNULL
 			| OUTER_P

@@ -197,11 +197,12 @@ end loop;
 
 --
 -- Functions SQL
+-- CR-4492: we double quote log because it is downgraded to an unreserved keyword in 5.0
 --
 for stmtrow in
 SELECT 
     'CREATE FUNCTION upg_catalog.'
-    || case when proname in ('convert') 
+    || case when proname in ('convert', 'log') 
             then '"' || proname || '"' 
             else quote_ident(proname) end
     || '(' 
@@ -259,11 +260,12 @@ end loop;
 
 --
 -- Functions
+-- CR-4492: we double quote log because it is downgraded to an unreserved keyword in 5.0
 --
 for stmtrow in
 SELECT 
     'CREATE FUNCTION upg_catalog.'
-    || case when proname in ('convert') then '"' || proname || '"' else quote_ident(proname) end
+    || case when proname in ('convert', 'log') then '"' || proname || '"' else quote_ident(proname) end
     || '('
     || coalesce(
         array_to_string( 
