@@ -182,10 +182,6 @@ typedef struct gpmon_qexeckey_t {
     apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int16_t ccnt;	/* command count */
-    apr_int16_t segid;	/* segment id */
-    apr_int32_t pid; 	/* process id */
-    apr_int16_t nid;	/* plan node id */
-    apr_int16_t zero;		/* unused */
     gpmon_qexec_hash_key_t hash_key;
 }gpmon_qexeckey_t;
 
