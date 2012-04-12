@@ -307,6 +307,7 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 	HeapScanDesc	aoscan;
 	FileSegInfo		**allseginfo;
 	int				seginfo_no;
+	int				seginfo_slot_no = AO_FILESEGINFO_ARRAY_SIZE;
 	Datum			segno,
 					eof,
 					eof_uncompressed,
@@ -316,39 +317,27 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
 
-	*totalsegs = 0;
-
-	/*
-	 * Get number of segment files for this relation
+	/* MPP-16407:
+	 * Initialize the segment file information array, we first allocate 8 slot for the array,
+	 * then array will be dynamically expanded later if necessary.
 	 */
-	aoscan = heap_beginscan(pg_aoseg_rel, appendOnlyMetaDataSnapshot, 0, NULL);
-
-	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
-	{
-		(*totalsegs)++;
-	}
-
-	heap_endscan(aoscan);
-
-	if (*totalsegs == 0)
-	{
-		return NULL;
-	}
-
-	/*
-	 * Initialize the segment file information array according to the seg count
-	 */
-	allseginfo = (FileSegInfo **) palloc0(sizeof(FileSegInfo*) * (*totalsegs));
+	allseginfo = (FileSegInfo **) palloc0(sizeof(FileSegInfo*) * seginfo_slot_no);
 	seginfo_no = 0;
 
 	/*
 	 * Now get the actual segfile information
-	 * (TODO: should combine both scans to 1. since they are very short it's ok for now).
 	 */
 	aoscan = heap_beginscan(pg_aoseg_rel, appendOnlyMetaDataSnapshot, 0, NULL);
 
 	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
 	{
+		/* dynamically expand space for FileSegInfo* array */
+		if (seginfo_no >= seginfo_slot_no)
+		{
+			seginfo_slot_no *= 2;
+			allseginfo = (FileSegInfo **) repalloc(allseginfo, sizeof(FileSegInfo*) * seginfo_slot_no);
+		}
+
 		FileSegInfo *oneseginfo;
 		
 		allseginfo[seginfo_no] = (FileSegInfo *)palloc0(sizeof(FileSegInfo));
@@ -392,6 +381,14 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 	}
 
 	heap_endscan(aoscan);
+
+	*totalsegs = seginfo_no;
+
+	if (*totalsegs == 0)
+	{
+		pfree(allseginfo);
+		return NULL;
+	}
 
 	/*
 	 * Sort allseginfo by the order of segment file number.
