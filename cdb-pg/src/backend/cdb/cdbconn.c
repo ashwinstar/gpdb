@@ -240,6 +240,9 @@ cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
     segdbDesc->whoami = NULL;
     segdbDesc->myAgent = NULL;
 
+    /* errorless cancellation flag */
+    segdbDesc->errorlessCancel = false;
+
     /* Connection error info */
     segdbDesc->errcode = 0;
     initPQExpBuffer(&segdbDesc->error_message);

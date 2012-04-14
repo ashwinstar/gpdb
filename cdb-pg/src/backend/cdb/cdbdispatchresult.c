@@ -135,7 +135,7 @@ cdbdisp_makeResult(struct CdbDispatchResults           *meleeResults,
     /* Insert the slice index in error messages related to this QE. */
     if (segdbDesc)
         cdbconn_setSliceIndex(segdbDesc, sliceIndex);
-
+    dispatchResult->errorlessCancel = false;
     return dispatchResult;
 }                               /* cdbdisp_initResult */
 
@@ -529,9 +529,10 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
              dispatchResult->segdbDesc->error_message.data);
 	}
 
-    /* Should have either an error code or an ok result. */
+    /* Should have either an error code or an ok result or an errorless cancel state */
     if (!dispatchResult->errcode &&
-        dispatchResult->okindex < 0)
+        dispatchResult->okindex < 0 &&
+        !dispatchResult->errorlessCancel)
     {
         elog(elevel_error, "DispatchResult: No ending status from %s",
              dispatchResult->segdbDesc ? dispatchResult->segdbDesc->whoami

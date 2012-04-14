@@ -597,6 +597,7 @@ void BackoffBackendTick()
 			|| ProcDiePending		/* Proc is dying */
 			|| QueryCancelPending	/* Statement cancellation */
 			|| QueryCancelCleanup	/* Statement cancellation */
+			|| QueryCancelErrorless	/* Statement cancellation */
 			|| InterruptHoldoffCount != 0 /* We're holding off on handling interrupts */
 			|| CritSectionCount != 0	/* In critical section */
 	)

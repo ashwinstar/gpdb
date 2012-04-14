@@ -2477,7 +2477,7 @@ PQfreeCancel(PGcancel *cancel)
  */
 static int
 internal_cancel(SockAddr *raddr, int be_pid, int be_key,
-				char *errbuf, int errbufsize)
+				char *errbuf, int errbufsize, bool errorlessCancel)
 {
 	int			save_errno = SOCK_ERRNO;
 	int			tmpsock = -1;
@@ -2516,7 +2516,14 @@ retry3:
 	/* Create and send the cancel request packet. */
 
 	crp.packetlen = htonl((uint32) sizeof(crp));
-	crp.cp.cancelRequestCode = (MsgType) htonl(CANCEL_REQUEST_CODE);
+	if (errorlessCancel)
+	{
+		crp.cp.cancelRequestCode = (MsgType) htonl(CANCEL_NOERR_CODE);
+	}
+	else
+	{
+		crp.cp.cancelRequestCode = (MsgType) htonl(CANCEL_REQUEST_CODE);
+	}
 	crp.cp.backendPID = htonl(be_pid);
 	crp.cp.cancelAuthCode = htonl(be_key);
 
@@ -2589,7 +2596,20 @@ PQcancel(PGcancel *cancel, char *errbuf, int errbufsize)
 	}
 
 	return internal_cancel(&cancel->raddr, cancel->be_pid, cancel->be_key,
-						   errbuf, errbufsize);
+						   errbuf, errbufsize, false);
+}
+
+int
+PQcancelErrorless(PGcancel *cancel, char *errbuf, int errbufsize)
+{
+	if (!cancel)
+	{
+		strlcpy(errbuf, "PQcancel() -- no cancel object supplied", errbufsize);
+		return FALSE;
+	}
+
+	return internal_cancel(&cancel->raddr, cancel->be_pid, cancel->be_key,
+						   errbuf, errbufsize, true);
 }
 
 /*
@@ -2624,7 +2644,7 @@ PQrequestCancel(PGconn *conn)
 	}
 
 	r = internal_cancel(&conn->raddr, conn->be_pid, conn->be_key,
-						conn->errorMessage.data, conn->errorMessage.maxlen);
+						conn->errorMessage.data, conn->errorMessage.maxlen, false);
 
 	if (!r)
 		conn->errorMessage.len = strlen(conn->errorMessage.data);

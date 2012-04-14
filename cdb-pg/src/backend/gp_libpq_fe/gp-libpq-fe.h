@@ -290,6 +290,9 @@ extern void PQfreeCancel(PGcancel *cancel);
 /* issue a cancel request */
 extern int	PQcancel(PGcancel *cancel, char *errbuf, int errbufsize);
 
+/* issue an errorless cancel request */
+extern int	PQcancelErrorless(PGcancel *cancel, char *errbuf, int errbufsize);
+
 /* backwards compatible version of PQcancel; not thread-safe */
 extern int	PQrequestCancel(PGconn *conn);
 

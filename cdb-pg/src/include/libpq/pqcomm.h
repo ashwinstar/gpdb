@@ -172,6 +172,7 @@ typedef uint32 AuthRequest;
  * we're ever likely to use.  This random choice should do.
  */
 #define CANCEL_REQUEST_CODE PG_PROTOCOL(1234,5678)
+#define CANCEL_NOERR_CODE	PG_PROTOCOL(1234,1234)
 
 typedef struct CancelRequestPacket
 {

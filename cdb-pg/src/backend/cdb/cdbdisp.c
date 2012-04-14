@@ -151,6 +151,10 @@ bindCurrentOfParams(char *cursor_name,
 					int *gp_segment_id, 
 					Oid *tableoid);
 
+static void
+cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag, bool errorlessCancel);
+
+
 #define BEGIN_STR "BEGIN "
 #define PREPARE_STR "PREPARE "
 #define COMMIT_STR "COMMIT "
@@ -1946,6 +1950,15 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 	CdbDispatchResult			*dispatchResult;
 	int							i, db_count = pParms->db_count;
 	int							timeoutCounter = 0;
+	double						fracpart = 0;
+	double						intpart = 0;
+
+	fracpart = modf(gp_thread_dispatch_wait, &intpart);
+
+	if (DEBUG4 >= log_min_messages)
+	{
+		write_log("select timeout %ds %dus",(int)intpart,(int)(fracpart*1000000));
+	}
 
 	/*
 	 * OK, we are finished submitting the command to the segdbs.
@@ -2009,9 +2022,13 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 		 * Wait for results from QEs.
 		 */
 
-		/* Timeout should be reinitialized before each select(). */
-		tv.tv_sec = 2;
-		tv.tv_usec = 0;
+		/*
+		 * Timeout should be reinitialized before each select().
+		 * (controlled by GUCs - default is half a second)
+		 */
+
+		tv.tv_sec = (int)intpart;
+		tv.tv_usec = (int)(fracpart * 1000000);
 
 		/* Block here until input is available. */
 		n = select(max_sock + 1, (fd_set *)&pParms->mask, NULL, NULL, &tv);
@@ -2545,9 +2562,10 @@ handleSelectError(DispatchCommandParms *pParms,
 }	/* handleSelectError */
 
 static void
-cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
+cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag, bool errorlessCancel)
 {
 	char errbuf[256];
+	int cancelRes = 0;
 	PGcancel * cn = PQgetCancel(segdbDesc->conn);
 
 	/* PQcancel uses some strcpy/strcat functions; let's
@@ -2555,7 +2573,9 @@ cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
 	MemSet(errbuf, 0, sizeof(errbuf));
 
 	if (Debug_cancel_print || DEBUG4 >= log_min_messages)
-		write_log("Calling PQcancel for %s", segdbDesc->whoami);
+		write_log("cdbdisp_issueCancel: Calling %s PQcancel for %s", errorlessCancel ? "errorless" : "",segdbDesc->whoami);
+
+	segdbDesc->errorlessCancel = errorlessCancel;
 
 	/*
 	 * Block here until segment postmaster replies that it has
@@ -2565,12 +2585,13 @@ cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
 	 */
 	if (requestFlag != NULL)
 		*requestFlag = true;
-				
-	if (PQcancel(cn, errbuf, 256) == 0)
-	{	
-		if (Debug_cancel_print || LOG >= log_min_messages)
-			write_log("Unable to cancel: %s", errbuf);
-	}
+
+	cancelRes = errorlessCancel ? PQcancelErrorless(cn, errbuf, 256) :
+					PQcancel(cn, errbuf, 256);
+
+	if (!cancelRes && (Debug_cancel_print || LOG >= log_min_messages))
+		write_log("Unable to cancel: %s", errbuf);
+
 	PQfreeCancel(cn);
 }
 
@@ -2623,7 +2644,8 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				segdbDesc->conn &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel);
+				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel, pParms->errorlessCancel);
+				dispatchResult->errorlessCancel = pParms->errorlessCancel;
 			}
 		}
 	}
@@ -2667,7 +2689,8 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				segdbDesc->conn &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel);
+				/* do not use errorless cancel in this case */
+				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel, false);
 			}
 
 			/* Skip the entry db. */
@@ -2867,17 +2890,26 @@ processResults(CdbDispatchResult *dispatchResult)
 	return false;				/* we must keep on monitoring this socket */
 
 connection_error:
-	msg = PQerrorMessage(segdbDesc->conn);
 
-	if (msg)
-		write_log("Dispatcher encountered connection error on %s: %s", segdbDesc->whoami, msg);
+	/*
+	 * When we get a connection error in errorlessCancel state, we can assume that
+	 * the connection was lost because the QE exited, so we ignore the error.
+	 */
+	if(!dispatchResult->errorlessCancel)
+	{
+		msg = PQerrorMessage(segdbDesc->conn);
 
-	/* Save error info for later. */
-	cdbdisp_appendMessage(dispatchResult, LOG,
-						  ERRCODE_GP_INTERCONNECTION_ERROR,
-						  "Error on receive from %s: %s",
-						  segdbDesc->whoami,
-						  msg ? msg : "unknown error");
+			if (msg)
+				write_log("Dispatcher encountered connection error on %s: %s", segdbDesc->whoami, msg);
+
+			/* Save error info for later. */
+			cdbdisp_appendMessage(dispatchResult, LOG,
+								  ERRCODE_GP_INTERCONNECTION_ERROR,
+								  "Error on receive from %s: %s",
+								  segdbDesc->whoami,
+								  msg ? msg : "unknown error");
+
+	}
 
 	/* Can't recover, so drop the connection. */
 	PQfinish(segdbDesc->conn);

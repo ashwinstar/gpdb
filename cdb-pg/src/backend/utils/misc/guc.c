@@ -561,6 +561,9 @@ int gp_cancel_query_delay_time;
 /* partitioning GUC */
 bool gp_partitioning_dynamic_selection_log;
 
+/* dispatch thread select() timeout GUC */
+double gp_thread_dispatch_wait;
+
 /* Upgrade & maintenance GUCs */
 bool gp_upgrade_mode;
 bool gp_maintenance_mode;
@@ -5439,6 +5442,15 @@ static struct config_real ConfigureNamesReal[] =
 		100.0, 0.001, 100.0, NULL, NULL
 	},
 
+	{
+		{"gp_thread_dispatch_wait", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("select timeout for thread disptach wait"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_thread_dispatch_wait,
+		0.5, 0.001, 1000.0, NULL, NULL
+	},
 
 /* End-of-list marker */
 	{

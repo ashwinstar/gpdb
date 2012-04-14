@@ -2022,7 +2022,8 @@ cleanupGang(Gang *gp)
 			 * something happened to this gang, disconnect instead of
 			 * sending it back onto our lists!
 			 */
-			elog(LOG, "lost connection with segworker group member");
+			if (!segdbDesc->errorlessCancel || gp_log_gang >= GPVARS_VERBOSITY_DEBUG) /* do not emit the errormessage in this case */
+				elog(LOG, "lost connection with segworker group member");
 			disconnectAndDestroyGang(gp);
 			return false;
 		}

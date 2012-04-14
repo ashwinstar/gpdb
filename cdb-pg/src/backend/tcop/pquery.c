@@ -125,6 +125,8 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 		gpmon_qlog_packet_init(qd->gpmon_pkt);
 	}
 
+	qd->errorlessCancel = false;
+
 	return qd;
 }
 
@@ -220,7 +222,7 @@ ProcessQuery(Portal portal,
 	 * Create the QueryDesc object
 	 */
 	Assert(portal);
-	
+
 	if (portal->sourceTag == T_SelectStmt && gp_select_invisible)
 		queryDesc = CreateQueryDesc(stmt, portal->sourceText,
 									SnapshotAny, InvalidSnapshot,
@@ -761,6 +763,9 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 											params,
 											false);
 				
+				/* explicitly indicate that we want to stop lagging QEs in this case */
+				queryDesc->errorlessCancel = true;
+
 				if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 				{			
 					Assert(portal->sourceText);
@@ -1122,7 +1127,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 
 			case PORTAL_ONE_RETURNING:
 			case PORTAL_UTIL_SELECT:
-			    /*
+				/*
 			     * If we have not yet run the command, do so, storing its
 			     * results in the portal's tuplestore.
 			     */

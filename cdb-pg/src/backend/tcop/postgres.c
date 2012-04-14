@@ -1279,7 +1279,7 @@ exec_mpp_query(const char *query_string,
 		 * Switch back to transaction context for execution.
 		 */
 		MemoryContextSwitchTo(oldcontext);
-		
+
 		/*
 		 * Run the portal to completion, and then drop it (and the receiver).
 		 */
@@ -3307,7 +3307,10 @@ StatementCancelHandler(SIGNAL_ARGS)
 	if (!proc_exit_inprogress)
 	{
 		InterruptPending = true;
-		QueryCancelPending = true;
+		if(postgres_signal_arg == SIGWINCH)
+			QueryCancelErrorless = true;
+		else
+			QueryCancelPending = true;
 		QueryCancelCleanup = true;
 
 		/*
@@ -3549,26 +3552,39 @@ ProcessInterrupts(void)
 			 errSendAlert(false)));
 	}
 
-	if (QueryCancelPending)
+	if (QueryCancelPending || QueryCancelErrorless)
 	{
-		elog(LOG,"Process interrupt for 'query cancel pending'.");
-		
 		QueryCancelPending = false;
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
-        if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
+
+		if ((Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
+				&& QueryCancelErrorless)
+		{
+			fflush(stdout);
+			fflush(stderr);
+			proc_exit(0);
+
+		}
+		else if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
+		{
 		    ereport(ERROR,
 			    	(errcode(ERRCODE_GP_OPERATION_CANCELED),
 				     errmsg("canceling MPP operation")));
+		}
         else if (cancel_from_timeout)
+        {
 			ereport(ERROR,
 					(errcode(ERRCODE_QUERY_CANCELED),
 					 errmsg("canceling statement due to statement timeout")));
+        }
 		else
+		{
 			ereport(ERROR,
 					(errcode(ERRCODE_QUERY_CANCELED),
 					 errmsg("canceling statement due to user request")));
+		}
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
 
@@ -4208,6 +4224,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 */
 	pqsignal(SIGHUP, SigHupHandler);	/* set flag to read config file */
 	pqsignal(SIGINT, StatementCancelHandler);	/* cancel current query */
+	pqsignal(SIGWINCH, StatementCancelHandler); /* errorless cancel of current query */
 	pqsignal(SIGTERM, die);		/* cancel current query and exit */
 	pqsignal(SIGQUIT, quickdie);	/* hard crash time */
 	pqsignal(SIGALRM, handle_sig_alarm);		/* timeout conditions */

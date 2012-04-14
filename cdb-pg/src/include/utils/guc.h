@@ -250,6 +250,7 @@ extern bool gp_perfmon_print_packet_info;
 extern bool gp_temporary_files_filespace_repair;
 
 extern bool gp_partitioning_dynamic_selection_log;
+extern double gp_thread_dispatch_wait;
 
 /* Debug DTM Action */
 typedef enum

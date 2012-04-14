@@ -1621,6 +1621,7 @@ static void InitSliceReq(SliceReq * req);
 static void AccumSliceReq(SliceReq * inv, SliceReq * req);
 static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
+static void SetErrorlessCancel(EState *estate);
 
 
 /* Function AssignGangs runs on the QD and finishes construction of the
@@ -1977,6 +1978,32 @@ getGpExecIdentity(QueryDesc *queryDesc,
 }
 
 /*
+ * a helper to set the errorless cancel on the QEs pParms
+ */
+void
+SetErrorlessCancel(EState *estate)
+{
+	int i = 0;
+	CdbDispatcherState	   *dispState = NULL;
+	DispatchCommandParms   *pParms = NULL;
+
+	Assert(estate);
+
+	dispState = estate->dispatcherState;
+	if (dispState &&
+		dispState->dispatchThreads &&
+		dispState->dispatchThreads->threadCount > 0)
+	{
+		for (i = 0; i < dispState->dispatchThreads->threadCount; i++)
+		{
+				pParms = &dispState->dispatchThreads->dispatchCommandParmsAr[i];
+				pParms->errorlessCancel = true;
+		}
+
+	}
+}
+
+/*
  * End the gp-specific part of the executor.
  *
  * In here we collect the dispatch results if there are any, tear
@@ -2009,6 +2036,14 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		if (!estate->es_got_eos)
 		{
 			ExecSquelchNode(queryDesc->planstate);
+		}
+
+		/*
+		 * If this is errorlessCancel we need to set it on the QEs pParms
+		 */
+		if (queryDesc->errorlessCancel)
+		{
+			SetErrorlessCancel(estate);
 		}
 
 		/*

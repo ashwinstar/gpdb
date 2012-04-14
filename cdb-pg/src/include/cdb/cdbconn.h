@@ -60,6 +60,8 @@ typedef struct SegmentDatabaseDescriptor
     char                   *whoami;         /* QE identifier for msgs */
     struct SegmentDatabaseDescriptor * myAgent;
 
+    bool					errorlessCancel; /* was this QE errorless cancelled? */
+
 } SegmentDatabaseDescriptor;
 
 

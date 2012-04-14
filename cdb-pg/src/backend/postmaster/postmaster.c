@@ -569,7 +569,7 @@ static bool ServiceStartable(PMSubProc *subProc);
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
-static void processCancelRequest(Port *port, void *pkt);
+static void processCancelRequest(Port *port, void *pkt, ProtocolVersion proto);
 static void processPrimaryMirrorTransitionRequest(Port *port, void *pkt);
 static void processPrimaryMirrorTransitionQuery(Port *port, void *pkt);
 static int	initMasks(fd_set *rmask);
@@ -2568,10 +2568,9 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	 * request code.
 	 */
 	port->proto = proto = ntohl(*((ProtocolVersion *) buf));
-
-	if (proto == CANCEL_REQUEST_CODE)
+	if (proto == CANCEL_REQUEST_CODE || proto == CANCEL_NOERR_CODE)
 	{
-		processCancelRequest(port, buf);
+		processCancelRequest(port, buf, proto);
 		return 127;				/* XXX */
 	}
 	else if (proto == PRIMARY_MIRROR_TRANSITION_REQUEST_CODE)
@@ -3834,7 +3833,7 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
  * Nothing is sent back to the client.
  */
 static void
-processCancelRequest(Port *port, void *pkt)
+processCancelRequest(Port *port, void *pkt, ProtocolVersion proto)
 {
 	CancelRequestPacket *canc = (CancelRequestPacket *) pkt;
 	int			backendPID;
@@ -3870,9 +3869,10 @@ processCancelRequest(Port *port, void *pkt)
 			{
 				/* Found a match; signal that backend to cancel current op */
 				ereport(DEBUG2,
-						(errmsg_internal("processing cancel request: sending SIGINT to process %d",
-										 backendPID)));
-				signal_child(bp->pid, SIGINT);
+						(errmsg_internal("processing cancel request: sending %s to process %d",
+								proto == CANCEL_REQUEST_CODE ? "SIGINT" : "SIGWINCH",
+										backendPID)));
+				signal_child(bp->pid, proto == CANCEL_REQUEST_CODE ? SIGINT : SIGWINCH);
 			}
 			else
 				/* Right PID, wrong key: no way, Jose */
@@ -6266,6 +6266,7 @@ signal_child(pid_t pid, int signal)
 		case SIGTERM:
 		case SIGQUIT:
 		case SIGSTOP:
+		case SIGWINCH:
 			if (kill(-pid, signal) < 0)
 				elog(DEBUG3, "kill(%ld,%d) failed: %m", (long) (-pid), signal);
 			break;
