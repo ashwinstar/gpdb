@@ -7,6 +7,7 @@
  *
  *-------------------------------------------------------------------------
  */
+#include <stdio.h>
 #include <string.h>
 #include "gppc.h"
 
@@ -305,8 +306,45 @@ GppcDatum numericfunc1(GPPC_FUNCTION_ARGS)
 	str = GppcNumericGetCString(numeric);
 	if (strlen(str) > 0 && ('0' <= str[0] && str[0] <= '8'))
 		str[0]++;
-	
+
 	GPPC_RETURN_NUMERIC(GppcCStringGetNumeric(str));
+}
+
+GPPC_FUNCTION_INFO(numericfunc2);
+GppcDatum numericfunc2(GPPC_FUNCTION_ARGS);
+
+GppcDatum numericfunc2(GPPC_FUNCTION_ARGS)
+{
+	GppcNumeric		numeric = GPPC_GETARG_NUMERIC(0);
+
+	GPPC_RETURN_FLOAT8(GppcNumericGetFloat8(numeric));
+}
+
+GPPC_FUNCTION_INFO(numericfunc3);
+GppcDatum numericfunc3(GPPC_FUNCTION_ARGS);
+
+GppcDatum numericfunc3(GPPC_FUNCTION_ARGS)
+{
+	GppcFloat8		flt = GPPC_GETARG_FLOAT8(0);
+
+	GPPC_RETURN_NUMERIC(GppcFloat8GetNumeric(flt));
+}
+
+GPPC_FUNCTION_INFO(numericdef1);
+GppcDatum numericdef1(GPPC_FUNCTION_ARGS);
+
+GppcDatum numericdef1(GPPC_FUNCTION_ARGS)
+{
+	GppcInt4		typmod = GPPC_GETARG_INT4(0);
+	int16_t			precision, scale;
+	char			buf[255];
+
+	if (GppcGetNumericDef(typmod, &precision, &scale))
+		snprintf(buf, 255, "NUMERIC(%d, %d)", precision, scale);
+	else
+		snprintf(buf, 255, "NUMERIC()");
+
+	GPPC_RETURN_TEXT(GppcCStringGetText(buf));
 }
 
 GPPC_FUNCTION_INFO(datefunc1);

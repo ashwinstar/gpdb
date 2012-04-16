@@ -1158,6 +1158,32 @@ char *GppcNumericGetCString(GppcNumeric n);
 GppcNumeric GppcCStringGetNumeric(const char *s);
 
 /**
+ * \brief Given 32 bit integer, interprets it into 16 bit integer precision and
+ * scale.
+ * \param typmod the type modifier of the numeric column.
+ * \param precision the pointer to the 16 bit integer to set the precision value.
+ * \param scale the pointer to the 16 bit integer to set the scale value.
+ *
+ * The precision is the total count of significant digits in the whole
+ * number, and the scale is the count of decimal digits in the fraction part.
+ * Returns true if the type modifier contains the precision and scale values,
+ * and false if the type modifier doesn't.
+ */
+bool GppcGetNumericDef(int32_t typmod, int16_t *precision, int16_t *scale);
+
+/**
+ * \brief Returns a ::GppcFloat8 value down-cast from a ::GppcNumeric.
+ * \param n a ::GppcNumeric value to down-cast to a ::GppcFloat8 value.
+ */
+GppcFloat8 GppcNumericGetFloat8(GppcNumeric n);
+
+/**
+ * \brief Returns a ::GppcNumeric value cast from a ::GppcFloat8.
+ * \param f a ::GppcFloat8 value to cast to a ::GppcNumeric value.
+ */
+GppcNumeric GppcFloat8GetNumeric(GppcFloat8 f);
+
+/**
  * @}
  */
 
