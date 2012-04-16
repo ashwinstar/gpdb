@@ -6519,9 +6519,17 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * specified. This is because this scenario makes a schema change that
 	 * memtuples can't deal with yet. If a default value is specified than it
 	 * it ok because the whole table will get re-written in phase 3. Let's
-	 * catch this now before doing any real work.
-	 */
-	if ((RelationIsAoRows(rel) || RelationIsAoCols(rel)) && !colDef->raw_default)
+	 * catch this now before doing any real work. 
+	 *
+	 * coldDef->raw_default is null in 2 cases - when there is no DEFAULT 
+	 * specified and when DEFAULT NULL is specified. We only want to block
+	 * the case when there is no DEFAULT specified. Hence we also check
+	 * colDef->default_is_null as it records the fact that DEFAULT NULL was 
+	 * specified. 
+ 	*/
+	 
+	if ((RelationIsAoRows(rel) || RelationIsAoCols(rel)) && 
+		(!colDef->default_is_null && !colDef->raw_default))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
@@ -6724,7 +6732,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		Oid			basetype = getBaseType(typeOid);
 
 		defval = (Expr *) makeNullConst(basetype, -1);
-		defval = (Expr *) coerce_to_target_type(NULL,
+		defval = (Expr *) coerce_to_target_type(NULL, 
 												(Node *) defval,
 												basetype,
 												typeOid,
@@ -6734,6 +6742,20 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 												-1);
 		if (defval == NULL)		/* should not happen */
 			elog(ERROR, "failed to coerce base type to domain");
+	}
+
+	/*
+	 * MPP-14367 - Handling of default NULL for AO tables. Currently
+	 * memtuples cannot deal with the scenario where the number of 
+  	 * attributes in the tuple data don't match the attnum. We will generate 
+	 * an explicit NULL default value and force a rewrite of the table below. 
+	 * Note: This is inefficient and there is already another JIRA MPP-5419 open 
+	 * to track adding columns without default values to AO tables efficiently. 
+	 * When that JIRA is fixed, the following piece of code may be removed 
+	 */
+	if (!defval && (RelationIsAoRows(rel) && colDef->default_is_null))
+	{
+		defval = (Expr *) makeNullConst(typeOid, -1);
 	}
 
 	if (defval)

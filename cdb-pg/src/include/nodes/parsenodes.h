@@ -464,6 +464,7 @@ typedef struct ColumnDef
 	AttrNumber	attnum;			/* attribute number */
 	Oid			default_oid;	/* attrdef oid */
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
+	bool	   default_is_null;	/* DEFAULT NULL case */
 	char	   *cooked_default; /* nodeToString representation */
 	List	   *constraints;	/* other constraints on column */
 	List	   *encoding;		/* ENCODING clause */
