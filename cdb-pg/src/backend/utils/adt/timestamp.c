@@ -73,13 +73,13 @@ static TimestampTz timestamp2timestamptz(Timestamp timestamp);
 static ArrayType *interval_amalg_demalg(ArrayType  *aTransArray,
 										ArrayType  *bTransArray,
 										bool is_amalg);
-static int interval_cmp_internal(const Interval *interval1, const Interval *interval2);
+static inline int interval_cmp_internal(const Interval *interval1, const Interval *interval2);
 static bool interval_div_internal(Interval *interval1, Interval *interval2, 
 								  float8 *quo, Interval *rem);
-static Timestamp timestamp_offset_internal(Timestamp timestamp, Interval *span);
-static Timestamp timestamp_offset_multiple(Timestamp base, Interval *step, int64 count);
-static TimestampTz timestamptz_offset_internal(TimestampTz timestamp, Interval *span);
-static TimestampTz timestamptz_offset_multiple(TimestampTz base, Interval *step, int64 count);
+static inline Timestamp timestamp_offset_internal(Timestamp timestamp, Interval *span);
+static inline Timestamp timestamp_offset_multiple(Timestamp base, Interval *step, int64 count);
+static inline TimestampTz timestamptz_offset_internal(TimestampTz timestamp, Interval *span);
+static inline TimestampTz timestamptz_offset_multiple(TimestampTz base, Interval *step, int64 count);
 
 /* Handy for comparisons. */
 static const Interval	IntervalZero = {0, 0, 0};
