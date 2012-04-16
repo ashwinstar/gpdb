@@ -164,6 +164,7 @@ cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag, boo
 #define MPPEXEC_CAP_STR "MPPEXEC "
 #define MPPEXEC_STR "mppexec "
 
+#define ERRBUF_SZ 256
 
 /*
  * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
@@ -2564,7 +2565,7 @@ handleSelectError(DispatchCommandParms *pParms,
 static void
 cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag, bool errorlessCancel)
 {
-	char errbuf[256];
+	char errbuf[ERRBUF_SZ];
 	int cancelRes = 0;
 	PGcancel * cn = PQgetCancel(segdbDesc->conn);
 
@@ -2586,8 +2587,8 @@ cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag, boo
 	if (requestFlag != NULL)
 		*requestFlag = true;
 
-	cancelRes = errorlessCancel ? PQcancelErrorless(cn, errbuf, 256) :
-					PQcancel(cn, errbuf, 256);
+	cancelRes = errorlessCancel ? PQcancelErrorless(cn, errbuf, ERRBUF_SZ) :
+					PQcancel(cn, errbuf, ERRBUF_SZ);
 
 	if (!cancelRes && (Debug_cancel_print || LOG >= log_min_messages))
 		write_log("Unable to cancel: %s", errbuf);
