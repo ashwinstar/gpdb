@@ -208,6 +208,8 @@ extern Datum timestamp_recv(PG_FUNCTION_ARGS);
 extern Datum timestamp_send(PG_FUNCTION_ARGS);
 extern Datum timestamptypmodin(PG_FUNCTION_ARGS);
 extern Datum timestamptypmodout(PG_FUNCTION_ARGS);
+extern Datum timestamp_interval_bound(PG_FUNCTION_ARGS);	/*GPDB*/
+extern Datum timestamptz_interval_bound(PG_FUNCTION_ARGS);	/*GPDB*/
 extern Datum timestamp_scale(PG_FUNCTION_ARGS);
 extern Datum timestamp_eq(PG_FUNCTION_ARGS);
 extern Datum timestamp_ne(PG_FUNCTION_ARGS);
@@ -285,6 +287,8 @@ extern Datum interval_mi(PG_FUNCTION_ARGS);
 extern Datum interval_mul(PG_FUNCTION_ARGS);
 extern Datum mul_d_interval(PG_FUNCTION_ARGS);
 extern Datum interval_div(PG_FUNCTION_ARGS);
+extern Datum interval_interval_div(PG_FUNCTION_ARGS);  /*GPDB*/
+extern Datum interval_interval_mod(PG_FUNCTION_ARGS);		/*GPDB*/
 extern Datum interval_accum(PG_FUNCTION_ARGS);
 extern Datum interval_decum(PG_FUNCTION_ARGS);
 extern Datum interval_avg(PG_FUNCTION_ARGS);

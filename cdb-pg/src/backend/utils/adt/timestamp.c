@@ -73,6 +73,17 @@ static TimestampTz timestamp2timestamptz(Timestamp timestamp);
 static ArrayType *interval_amalg_demalg(ArrayType  *aTransArray,
 										ArrayType  *bTransArray,
 										bool is_amalg);
+static int interval_cmp_internal(const Interval *interval1, const Interval *interval2);
+static bool interval_div_internal(Interval *interval1, Interval *interval2, 
+								  float8 *quo, Interval *rem);
+static Timestamp timestamp_offset_internal(Timestamp timestamp, Interval *span);
+static Timestamp timestamp_offset_multiple(Timestamp base, Interval *step, int64 count);
+static TimestampTz timestamptz_offset_internal(TimestampTz timestamp, Interval *span);
+static TimestampTz timestamptz_offset_multiple(TimestampTz base, Interval *step, int64 count);
+
+/* Handy for comparisons. */
+static const Interval	IntervalZero = {0, 0, 0};
+
 
 
 /* common code for timestamptypmodin and timestamptztypmodin */
@@ -312,6 +323,232 @@ timestamptypmodout(PG_FUNCTION_ARGS)
 
 	PG_RETURN_CSTRING(anytimestamp_typmodout(false, typmod));
 }
+
+/* timestamp_interval_bound()
+ * 
+ * Implements 
+ *		interval_bound(timestamp, interval, int, timestamp) 
+ *		returns timestamp
+ */
+
+Datum
+timestamp_interval_bound(PG_FUNCTION_ARGS)
+{
+	Timestamp	val = PG_GETARG_TIMESTAMP(0);
+	Interval   *width = PG_GETARG_INTERVAL_P(1);
+	int			nargs = PG_NARGS();
+	Timestamp	reg = 0;
+	int32		shift = 0;
+	int64		index = 0;
+	float8		quo = 0.0;
+	Interval	span;
+	Timestamp	low;
+	Timestamp	high;
+	int			safety = 64;
+	
+	/* NULL, if either of the first two arguments is NULL. */
+	if ( PG_ARGISNULL(0) || PG_ARGISNULL(1) )
+		PG_RETURN_NULL();
+	
+	/* Insist on positive, interval width. */
+	if ( interval_cmp_internal(width, &IntervalZero) <= 0 )
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_INTERVAL_WIDTH),
+				 errmsg("width of time interval not positive"),
+				 errOmitLocation(true)));
+	
+	/* For remaining arguments, missing or NULL specifies default */	
+	if ( nargs > 2  && ! PG_ARGISNULL(2) )
+		shift = PG_GETARG_INT32(2);
+	
+	if ( nargs > 3 && ! PG_ARGISNULL(3))
+		reg = PG_GETARG_TIMESTAMP(3);
+	else 
+		reg = SetEpochTimestamp();
+	
+	/* Just return non-finite timestamp. */
+	if (TIMESTAMP_NOT_FINITE(val))
+		PG_RETURN_TIMESTAMP(val);
+	
+	if ( TIMESTAMP_NOT_FINITE(reg) )
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("bound for registration is not finite"),
+				 errOmitLocation(true)));
+	
+	/* -- Done argument checking -- */
+	
+	/* Estimate initial displacement of val from reg in widths. */
+	span.time = val - reg;
+	span.month = 0;
+	span.day = 0;
+	
+	if ( !interval_div_internal(&span, width, &quo, NULL) )
+		elog(ERROR, "invalid call to interval_div_internal");
+	
+	index = (int64)quo;
+	
+	/* Search for a satisfactory bound. */
+	for (safety = 64; ; safety--)
+	{
+		if ( safety <= 0 )
+			elog(ERROR, "interval_bound failed to converge");
+
+		low = timestamp_offset_multiple(reg, width, index);
+		high = timestamp_offset_multiple(low, width, 1);
+		
+		Assert( high > low );
+		
+		if ( val >= high )
+		{
+			span.time = val - high;
+			span.month = 0;
+			span.day = 0;
+			
+			if ( !interval_div_internal(&span, width, &quo, NULL) )
+				elog(ERROR, "invalid call to interval_div_internal");
+			
+			if ( (int64)quo > 0 )
+				index += (int64)quo;
+			else
+				index++;  /* progress */
+		}
+		else if ( val < low )
+		{
+			span.time = low - val;
+			span.month = 0;
+			span.day = 0;
+			
+			if ( !interval_div_internal(&span, width, &quo, NULL) )
+				elog(ERROR, "invalid call to interval_div_internal");
+			
+			if ( (int64)quo > 0 )
+				index -= (int64)quo;
+			else
+				index--;  /* progress */
+		}
+		else 
+			break;
+	}
+	
+	/* If necessary, shift the interval. */
+	if ( shift )
+		low = timestamp_offset_multiple(reg, width, index + shift);
+	
+	PG_RETURN_TIMESTAMP(low);
+}
+
+/* timestamptz_interval_bound()
+ * 
+ * Implements interval_bound(timestamptz, interval, int, timestamptz) returns timestamptz
+ */
+Datum
+timestamptz_interval_bound(PG_FUNCTION_ARGS)
+{
+	TimestampTz	val = PG_GETARG_TIMESTAMPTZ(0);
+	Interval   *width = PG_GETARG_INTERVAL_P(1);
+	int			nargs = PG_NARGS();
+	TimestampTz	reg = 0;
+	int32		shift = 0;
+	int64		index = 0;
+	float8		quo = 0.0;
+	Interval	span;
+	TimestampTz	low;
+	TimestampTz	high;
+	int			safety = 64;
+	
+	/* NULL, if either of the first two arguments is NULL. */
+	if ( PG_ARGISNULL(0) || PG_ARGISNULL(1) )
+		PG_RETURN_NULL();
+	
+	/* Insist on positive, interval width. */
+	if ( interval_cmp_internal(width, &IntervalZero) <= 0 )
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_INTERVAL_WIDTH),
+				 errmsg("width of time interval not positive"),
+				 errOmitLocation(true)));
+	
+	/* For remaining arguments, missing or NULL specifies default */	
+	if ( nargs > 2  && ! PG_ARGISNULL(2) )
+		shift = PG_GETARG_INT32(2);
+	
+	if ( nargs > 3 && ! PG_ARGISNULL(3))
+		reg = PG_GETARG_TIMESTAMPTZ(3);
+	else 
+		reg = SetEpochTimestamp();
+	
+	/* Just return non-finite timestamp. */
+	if (TIMESTAMP_NOT_FINITE(val))
+		PG_RETURN_TIMESTAMP(val);
+	
+	if ( TIMESTAMP_NOT_FINITE(reg) )
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("bound for registration is not finite"),
+				 errOmitLocation(true)));
+	
+	/* -- Done argument checking -- */
+	
+	/* Estimate initial displacement of val from reg in widths. */
+	span.time = val - reg;
+	span.month = 0;
+	span.day = 0;
+	
+	if ( !interval_div_internal(&span, width, &quo, NULL) )
+		elog(ERROR, "invalid call to interval_div_internal");
+	
+	index = (int64)quo;
+	
+	/* Search for a satisfactory bound. */
+	for (safety = 64; ; safety--)
+	{
+		if ( safety <= 0 )
+			elog(ERROR, "interval_bound failed to converge");
+		
+		low = timestamptz_offset_multiple(reg, width, index);
+		high = timestamptz_offset_multiple(low, width, 1);
+		
+		Assert( high > low );
+		
+		if ( val >= high )
+		{
+			span.time = val - high;
+			span.month = 0;
+			span.day = 0;
+			
+			if ( !interval_div_internal(&span, width, &quo, NULL) )
+				elog(ERROR, "invalid call to interval_div_internal");
+			
+			if ( (int64)quo > 0 )
+				index += (int64)quo;
+			else
+				index++;  /* progress */
+		}
+		else if ( val < low )
+		{
+			span.time = low - val;
+			span.month = 0;
+			span.day = 0;
+			
+			if ( !interval_div_internal(&span, width, &quo, NULL) )
+				elog(ERROR, "invalid call to interval_div_internal");
+			
+			if ( (int64)quo > 0 )
+				index -= (int64)quo;
+			else
+				index--;  /* progress */
+		}
+		else 
+			break;
+	}
+	
+	/* If necessary, shift the interval. */
+	if ( shift )
+		low = timestamptz_offset_multiple(reg, width, index + shift);
+	
+	PG_RETURN_TIMESTAMP(low);
+}
+
 
 
 /* timestamp_scale()
@@ -2064,13 +2301,254 @@ interval_cmp_value(const Interval *interval)
 }
 
 static int
-interval_cmp_internal(Interval *interval1, Interval *interval2)
+interval_cmp_internal(const Interval *interval1, const Interval *interval2)
 {
 	TimeOffset	span1 = interval_cmp_value(interval1);
 	TimeOffset	span2 = interval_cmp_value(interval2);
 
 	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
 }
+
+/*
+ * Divide one interval by another producing a float8 quotient and an Interval
+ * remainder to return via optional supplied pointers to allocated storage.
+ *
+ * The implementation ignores the semantics of days and months, since there's 
+ * no way to apply it without a reference date and time zone. The user may
+ * want to justify the results (or not).
+ * 
+ * The result indicates success or failure.  The caller should avoid calls that
+ * might fail, but he we take precautions anyway.
+ */
+static bool
+interval_div_internal(Interval *interval1, Interval *interval2, float8 *quo, Interval *rem)
+{
+	TimeOffset	span1 = interval_cmp_value(interval1);
+	TimeOffset	span2 = interval_cmp_value(interval2);
+	float8 q;
+	
+	if ( span2 == 0 )
+		return false;
+
+	q = ((float8)span1)/((float8)span2);
+	if ( quo )
+		*quo = q;
+	
+	if ( rem )
+	{
+		rem->time = span1 - (span1/span2)*span2;
+		rem->day = 0;
+		rem->month = 0;
+	}
+	
+	return true;	
+}
+
+/*
+ * Internal implementation to add a timestamp and an interval. 
+ *
+ * Note that interval has provisions for qualitative year/month and day
+ *	units, so try to do the right thing with them.
+ * To add a month, increment the month, and use the same day of month.
+ * Then, if the next month has fewer days, set the day of month
+ *	to the last day of month.
+ * To add a day, increment the mday, and use the same time of day.
+ * Lastly, add in the "quantitative time".
+ *
+ * NB This is nearly identical to to timestamptz_add_internal.
+ *    Chances are that any change made here should also be made there.
+ */
+static inline Timestamp
+timestamp_offset_internal(Timestamp timestamp, Interval *span)
+{
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		return timestamp;
+	
+	if (span->month != 0)
+	{
+		struct pg_tm tt,
+		*tm = &tt;
+		fsec_t		fsec = 0;
+		
+		if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+		
+		tm->tm_mon += span->month;
+		if (tm->tm_mon > MONTHS_PER_YEAR)
+		{
+			tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
+			tm->tm_mon = ((tm->tm_mon - 1) % MONTHS_PER_YEAR) + 1;
+		}
+		else if (tm->tm_mon < 1)
+		{
+			tm->tm_year += tm->tm_mon / MONTHS_PER_YEAR - 1;
+			tm->tm_mon = tm->tm_mon % MONTHS_PER_YEAR + MONTHS_PER_YEAR;
+		}
+		
+		/* adjust for end of month boundary problems... */
+		if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
+			tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
+		
+		if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+	}
+	
+	if (span->day != 0)
+	{
+		struct pg_tm tt,
+		*tm = &tt;
+		fsec_t		fsec = 0;
+		int			julian;
+		
+		if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+		
+		/* Add days by converting to and from julian */
+		julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+		j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
+		
+		if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+	}
+	
+	timestamp += span->time;
+	return timestamp;
+}
+
+/*
+ * Similar to adding an Interval to a Timestamp a specified number of times.  
+ */
+static inline Timestamp
+timestamp_offset_multiple(Timestamp base, Interval *step, int64 count)
+{
+	Interval span;
+	
+	span.time = step->time * count;
+	span.month = step->month * count;
+	span.day = step->day * count;
+	
+	return timestamp_offset_internal(base, &span);
+}
+
+/*
+ * Internal implementation to add a timestamp with time zone
+ * and an interval. 
+ *
+ * Note that interval has provisions for qualitative year/month
+ *	units, so try to do the right thing with them.
+ * To add a month, increment the month, and use the same day of month.
+ * Then, if the next month has fewer days, set the day of month
+ *	to the last day of month.
+ * Lastly, add in the "quantitative time".
+ *
+ * NB This is nearly identical to to timestamp_offset_internal.
+ *    Chances are that any change made here should also be made there.
+ */
+static inline TimestampTz
+timestamptz_offset_internal(TimestampTz timestamp, Interval *span)
+{
+	int			tz;
+	char	   *tzn;
+	
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		return timestamp;
+	
+	if (span->month != 0)
+	{
+		struct pg_tm tt,
+		*tm = &tt;
+		fsec_t		fsec = 0;
+		
+		if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+		
+		tm->tm_mon += span->month;
+		if (tm->tm_mon > MONTHS_PER_YEAR)
+		{
+			tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
+			tm->tm_mon = ((tm->tm_mon - 1) % MONTHS_PER_YEAR) + 1;
+		}
+		else if (tm->tm_mon < 1)
+		{
+			tm->tm_year += tm->tm_mon / MONTHS_PER_YEAR - 1;
+			tm->tm_mon = tm->tm_mon % MONTHS_PER_YEAR + MONTHS_PER_YEAR;
+		}
+		
+		/* adjust for end of month boundary problems... */
+		if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
+			tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
+		
+		tz = DetermineTimeZoneOffset(tm, session_timezone);
+		
+		if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+	}
+	
+	if (span->day != 0)
+	{
+		struct pg_tm tt,
+		*tm = &tt;
+		fsec_t		fsec = 0;
+		int			julian;
+		
+		if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+		
+		/* Add days by converting to and from julian */
+		julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+		j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
+		
+		tz = DetermineTimeZoneOffset(tm, session_timezone);
+		
+		if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range"),
+					 errOmitLocation(true)));
+	}
+	
+	timestamp += span->time;
+	return timestamp;
+}
+
+
+/*
+ * Similar to adding an Interval to a TimestampTz a specified number of times.  
+ */
+static inline TimestampTz
+timestamptz_offset_multiple(TimestampTz base, Interval *step, int64 count)
+{
+	Interval span;
+	
+	span.time = step->time * count;
+	span.month = step->month * count;
+	span.day = step->day * count;
+	
+	return timestamptz_offset_internal(base, &span);
+}
+
+
 
 Datum
 interval_eq(PG_FUNCTION_ARGS)
@@ -2523,15 +3001,8 @@ interval_justify_days(PG_FUNCTION_ARGS)
 	PG_RETURN_INTERVAL_P(result);
 }
 
-/* timestamp_pl_interval()
- * Add a interval to a timestamp data type.
- * Note that interval has provisions for qualitative year/month and day
- *	units, so try to do the right thing with them.
- * To add a month, increment the month, and use the same day of month.
- * Then, if the next month has fewer days, set the day of month
- *	to the last day of month.
- * To add a day, increment the mday, and use the same time of day.
- * Lastly, add in the "quantitative time".
+/* 
+ * timestamp_pl_interval()
  */
 Datum
 timestamp_pl_interval(PG_FUNCTION_ARGS)
@@ -2540,72 +3011,7 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 	Interval   *span = PG_GETARG_INTERVAL_P(1);
 	Timestamp	result;
 
-	if (TIMESTAMP_NOT_FINITE(timestamp))
-		result = timestamp;
-	else
-	{
-		if (span->month != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec = 0;
-
-			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-
-			tm->tm_mon += span->month;
-			if (tm->tm_mon > MONTHS_PER_YEAR)
-			{
-				tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
-				tm->tm_mon = ((tm->tm_mon - 1) % MONTHS_PER_YEAR) + 1;
-			}
-			else if (tm->tm_mon < 1)
-			{
-				tm->tm_year += tm->tm_mon / MONTHS_PER_YEAR - 1;
-				tm->tm_mon = tm->tm_mon % MONTHS_PER_YEAR + MONTHS_PER_YEAR;
-			}
-
-			/* adjust for end of month boundary problems... */
-			if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
-				tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
-
-			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-		}
-
-		if (span->day != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec = 0;
-			int			julian;
-
-			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-
-			/* Add days by converting to and from julian */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
-			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
-
-			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-		}
-
-		timestamp += span->time;
-		result = timestamp;
-	}
+	result = timestamp_offset_internal(timestamp, span);
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -2616,106 +3022,28 @@ timestamp_mi_interval(PG_FUNCTION_ARGS)
 	Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
 	Interval   *span = PG_GETARG_INTERVAL_P(1);
 	Interval	tspan;
+	Timestamp	result;
 
 	tspan.month = -span->month;
 	tspan.day = -span->day;
 	tspan.time = -span->time;
+	
+	result = timestamp_offset_internal(timestamp, &tspan);
 
-	return DirectFunctionCall2(timestamp_pl_interval,
-							   TimestampGetDatum(timestamp),
-							   PointerGetDatum(&tspan));
+	PG_RETURN_TIMESTAMP(result);
 }
 
 
-/* timestamptz_pl_interval()
- * Add a interval to a timestamp with time zone data type.
- * Note that interval has provisions for qualitative year/month
- *	units, so try to do the right thing with them.
- * To add a month, increment the month, and use the same day of month.
- * Then, if the next month has fewer days, set the day of month
- *	to the last day of month.
- * Lastly, add in the "quantitative time".
+/* 
+ * timestamptz_pl_interval()
  */
 Datum
 timestamptz_pl_interval(PG_FUNCTION_ARGS)
 {
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	Interval   *span = PG_GETARG_INTERVAL_P(1);
-	TimestampTz result;
-	int			tz;
-	char	   *tzn;
-
-	if (TIMESTAMP_NOT_FINITE(timestamp))
-		result = timestamp;
-	else
-	{
-		if (span->month != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec = 0;
-
-			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-
-			tm->tm_mon += span->month;
-			if (tm->tm_mon > MONTHS_PER_YEAR)
-			{
-				tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
-				tm->tm_mon = ((tm->tm_mon - 1) % MONTHS_PER_YEAR) + 1;
-			}
-			else if (tm->tm_mon < 1)
-			{
-				tm->tm_year += tm->tm_mon / MONTHS_PER_YEAR - 1;
-				tm->tm_mon = tm->tm_mon % MONTHS_PER_YEAR + MONTHS_PER_YEAR;
-			}
-
-			/* adjust for end of month boundary problems... */
-			if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
-				tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
-
-			tz = DetermineTimeZoneOffset(tm, session_timezone);
-
-			if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-		}
-
-		if (span->day != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec = 0;
-			int			julian;
-
-			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-
-			/* Add days by converting to and from julian */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
-			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
-
-			tz = DetermineTimeZoneOffset(tm, session_timezone);
-
-			if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range"),
-								 errOmitLocation(true)));
-		}
-
-		timestamp += span->time;
-		result = timestamp;
-	}
-
+	TimestampTz result = timestamptz_offset_internal(timestamp, span);
+	
 	PG_RETURN_TIMESTAMP(result);
 }
 
@@ -2725,14 +3053,14 @@ timestamptz_mi_interval(PG_FUNCTION_ARGS)
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	Interval   *span = PG_GETARG_INTERVAL_P(1);
 	Interval	tspan;
+	TimestampTz result;
 
 	tspan.month = -span->month;
 	tspan.day = -span->day;
 	tspan.time = -span->time;
-
-	return DirectFunctionCall2(timestamptz_pl_interval,
-							   TimestampGetDatum(timestamp),
-							   PointerGetDatum(&tspan));
+	
+	result = timestamptz_offset_internal(timestamp, &tspan);
+	PG_RETURN_TIMESTAMP(result);
 }
 
 
@@ -2932,6 +3260,52 @@ interval_div(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INTERVAL_P(result);
 }
+
+Datum
+interval_interval_div(PG_FUNCTION_ARGS)
+{
+	Interval   *dividend = PG_GETARG_INTERVAL_P(0);
+	Interval   *divisor = PG_GETARG_INTERVAL_P(1);
+	
+	
+	float8		result = 0.0;
+	
+	if ( interval_cmp_internal(divisor, &IntervalZero) == 0 )
+		ereport(ERROR,
+				(errcode(ERRCODE_DIVISION_BY_ZERO),
+				 errmsg("division by zero"),
+				 errOmitLocation(true)));
+	
+	if ( !interval_div_internal(dividend, divisor, &result, NULL) )
+		elog(ERROR, "invalid call to interval_div_internal");
+	
+	PG_RETURN_FLOAT8(result);
+}
+
+/* Function interval_interval_mod actually computes the remainder function,
+ * not the modulus function.  However it is named after the corresponding
+ * numeric variant -- numeric_mod.
+ */
+Datum
+interval_interval_mod(PG_FUNCTION_ARGS)
+{
+	Interval   *dividend = PG_GETARG_INTERVAL_P(0);
+	Interval   *divisor = PG_GETARG_INTERVAL_P(1);
+	
+	Interval	*result =  (Interval *) palloc0(sizeof(Interval));
+	
+	if ( interval_cmp_internal(divisor, &IntervalZero) == 0 )
+		ereport(ERROR,
+				(errcode(ERRCODE_DIVISION_BY_ZERO),
+				 errmsg("division by zero"),
+				 errOmitLocation(true)));
+	
+	if ( !interval_div_internal(dividend, divisor, NULL, result) )
+		elog(ERROR, "invalid call to interval_div_internal");
+	
+	PG_RETURN_INTERVAL_P(result);
+}
+
 
 /*
  * interval_accum and interval_avg implement the AVG(interval) aggregate.

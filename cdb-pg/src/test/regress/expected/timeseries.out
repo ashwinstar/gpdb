@@ -1,0 +1,317 @@
+-- Tests for Time Series features of 5.0+
+-- Some of these tests could live elsewhere, but it seems good to collect them.
+-- Interval-Interval division and remainder and associated overloads
+select 
+    interval_interval_div(interval '365 days', interval '1 month') as "12 1/6",
+    interval '365 days'/interval '1 month' as "12 1/6",
+    interval_interval_mod(interval '365 days', interval '1 month') as "5*24",
+    interval '365 days'%interval '1 month' as "5*24";
+      12 1/6      |      12 1/6      |    5*24     |    5*24     
+------------------+------------------+-------------+-------------
+ 12.1666666666667 | 12.1666666666667 | @ 120 hours | @ 120 hours
+(1 row)
+
+select 
+    interval_interval_div(interval '1 day', interval '8 hours') as "3",
+    interval '1 day'/interval '8 hours' as "3",
+    interval_interval_mod(interval '1 day', interval '8 hours') as "0",
+    interval '1 day'%interval '8 hours' as "0";
+ 3 | 3 |  0  |  0  
+---+---+-----+-----
+ 3 | 3 | @ 0 | @ 0
+(1 row)
+
+select 
+    interval_interval_div(interval '2 hours', interval '-100 minutes') as "-1 1/5",
+    interval '2 hours'/interval '-100 minutes' as "-1 1/5",
+    interval_interval_mod(interval '2 hours', interval '-100 minutes') as "20",
+    interval '2 hours'%interval '-100 minutes' as "20";
+ -1 1/5 | -1 1/5 |    20     |    20     
+--------+--------+-----------+-----------
+   -1.2 |   -1.2 | @ 20 mins | @ 20 mins
+(1 row)
+
+-- generate_series with timestamp
+select * 
+from generate_series(
+	timestamp '2011-01-01 12:00:00',
+	timestamp '2011-01-01 12:00:00',
+	interval '1 year');
+     generate_series      
+--------------------------
+ Sat Jan 01 12:00:00 2011
+(1 row)
+
+select * 
+from generate_series(
+	timestamp '2011-01-01 12:00:00',
+	timestamp '2012-01-01 12:00:00',
+	interval '1 month');
+     generate_series      
+--------------------------
+ Sat Jan 01 12:00:00 2011
+ Tue Feb 01 12:00:00 2011
+ Tue Mar 01 12:00:00 2011
+ Fri Apr 01 12:00:00 2011
+ Sun May 01 12:00:00 2011
+ Wed Jun 01 12:00:00 2011
+ Fri Jul 01 12:00:00 2011
+ Mon Aug 01 12:00:00 2011
+ Thu Sep 01 12:00:00 2011
+ Sat Oct 01 12:00:00 2011
+ Tue Nov 01 12:00:00 2011
+ Thu Dec 01 12:00:00 2011
+ Sun Jan 01 12:00:00 2012
+(13 rows)
+
+select * 
+from generate_series(
+	timestamp '2012-01-01 12:00:00',
+	timestamp '2013-01-01 12:00:00',
+	interval '1 month');
+     generate_series      
+--------------------------
+ Sun Jan 01 12:00:00 2012
+ Wed Feb 01 12:00:00 2012
+ Thu Mar 01 12:00:00 2012
+ Sun Apr 01 12:00:00 2012
+ Tue May 01 12:00:00 2012
+ Fri Jun 01 12:00:00 2012
+ Sun Jul 01 12:00:00 2012
+ Wed Aug 01 12:00:00 2012
+ Sat Sep 01 12:00:00 2012
+ Mon Oct 01 12:00:00 2012
+ Thu Nov 01 12:00:00 2012
+ Sat Dec 01 12:00:00 2012
+ Tue Jan 01 12:00:00 2013
+(13 rows)
+
+select * 
+from generate_series(
+	timestamp '2011-01-01 12:00:00',
+	timestamp '2011-01-31 12:00:00',
+	interval '2 weeks');
+     generate_series      
+--------------------------
+ Sat Jan 01 12:00:00 2011
+ Sat Jan 15 12:00:00 2011
+ Sat Jan 29 12:00:00 2011
+(3 rows)
+
+select * 
+from generate_series(
+	timestamp '2013-01-01 12:00:00',
+	timestamp '2011-01-01 12:00:00',
+	interval '-2 months');
+     generate_series      
+--------------------------
+ Tue Jan 01 12:00:00 2013
+ Thu Nov 01 12:00:00 2012
+ Sat Sep 01 12:00:00 2012
+ Sun Jul 01 12:00:00 2012
+ Tue May 01 12:00:00 2012
+ Thu Mar 01 12:00:00 2012
+ Sun Jan 01 12:00:00 2012
+ Tue Nov 01 12:00:00 2011
+ Thu Sep 01 12:00:00 2011
+ Fri Jul 01 12:00:00 2011
+ Sun May 01 12:00:00 2011
+ Tue Mar 01 12:00:00 2011
+ Sat Jan 01 12:00:00 2011
+(13 rows)
+
+-- generate_series with timestamptz
+select * 
+from generate_series(
+	timestamptz '2011-01-01 12:00:00 UTC',
+	timestamptz '2011-01-01 12:00:00 UTC',
+	interval '1 year');
+       generate_series        
+------------------------------
+ Sat Jan 01 04:00:00 2011 PST
+(1 row)
+
+select * 
+from generate_series(
+	timestamptz '2011-01-01 12:00:00 UTC',
+	timestamptz '2012-01-01 12:00:00 UTC',
+	interval '1 month');
+       generate_series        
+------------------------------
+ Sat Jan 01 04:00:00 2011 PST
+ Tue Feb 01 04:00:00 2011 PST
+ Tue Mar 01 04:00:00 2011 PST
+ Fri Apr 01 04:00:00 2011 PDT
+ Sun May 01 04:00:00 2011 PDT
+ Wed Jun 01 04:00:00 2011 PDT
+ Fri Jul 01 04:00:00 2011 PDT
+ Mon Aug 01 04:00:00 2011 PDT
+ Thu Sep 01 04:00:00 2011 PDT
+ Sat Oct 01 04:00:00 2011 PDT
+ Tue Nov 01 04:00:00 2011 PDT
+ Thu Dec 01 04:00:00 2011 PST
+ Sun Jan 01 04:00:00 2012 PST
+(13 rows)
+
+select * 
+from generate_series(
+	timestamptz '2012-01-01 12:00:00 UTC',
+	timestamptz '2013-01-01 12:00:00 UTC',
+	interval '1 month');
+       generate_series        
+------------------------------
+ Sun Jan 01 04:00:00 2012 PST
+ Wed Feb 01 04:00:00 2012 PST
+ Thu Mar 01 04:00:00 2012 PST
+ Sun Apr 01 04:00:00 2012 PDT
+ Tue May 01 04:00:00 2012 PDT
+ Fri Jun 01 04:00:00 2012 PDT
+ Sun Jul 01 04:00:00 2012 PDT
+ Wed Aug 01 04:00:00 2012 PDT
+ Sat Sep 01 04:00:00 2012 PDT
+ Mon Oct 01 04:00:00 2012 PDT
+ Thu Nov 01 04:00:00 2012 PDT
+ Sat Dec 01 04:00:00 2012 PST
+ Tue Jan 01 04:00:00 2013 PST
+(13 rows)
+
+select * 
+from generate_series(
+	timestamptz '2011-01-01 12:00:00 UTC',
+	timestamptz '2011-01-31 12:00:00 UTC',
+	interval '2 weeks');
+       generate_series        
+------------------------------
+ Sat Jan 01 04:00:00 2011 PST
+ Sat Jan 15 04:00:00 2011 PST
+ Sat Jan 29 04:00:00 2011 PST
+(3 rows)
+
+select * 
+from generate_series(
+	timestamptz '2013-01-01 12:00:00 UTC',
+	timestamptz '2011-01-01 12:00:00 UTC',
+	interval '-2 months');
+       generate_series        
+------------------------------
+ Tue Jan 01 04:00:00 2013 PST
+ Thu Nov 01 04:00:00 2012 PDT
+ Sat Sep 01 04:00:00 2012 PDT
+ Sun Jul 01 04:00:00 2012 PDT
+ Tue May 01 04:00:00 2012 PDT
+ Thu Mar 01 04:00:00 2012 PST
+ Sun Jan 01 04:00:00 2012 PST
+ Tue Nov 01 04:00:00 2011 PDT
+ Thu Sep 01 04:00:00 2011 PDT
+ Fri Jul 01 04:00:00 2011 PDT
+ Sun May 01 04:00:00 2011 PDT
+ Tue Mar 01 04:00:00 2011 PST
+ Sat Jan 01 04:00:00 2011 PST
+(13 rows)
+
+-- interval_bound with numeric
+select interval_bound(0, 0);
+ERROR:  width of numeric interval not positive
+select interval_bound(0, -1);
+ERROR:  width of numeric interval not positive
+select v, w, r, s,
+    interval_bound(v, w) as "normal", 
+    interval_bound(v, w, s) as "shifted s",
+    interval_bound(v, w, s, r) as "and registered to r"
+from ( values
+        (10, 1, 0.5, 4),
+        (10, 0.5, -100, null),
+        (0.5, 10, -1, -1),
+        (-100, 100, 10, 1),
+        (-101, 10, null, 10),
+        (5, 2, -100.5, 1)
+    ) r(v,w,r,s);
+  v   |  w  |   r    | s  | normal | shifted s | and registered to r 
+------+-----+--------+----+--------+-----------+---------------------
+   10 |   1 |    0.5 |  4 |     10 |        14 |                13.5
+   10 | 0.5 |   -100 |    |   10.0 |      10.0 |                10.0
+  0.5 |  10 |     -1 | -1 |      0 |       -10 |                 -11
+ -100 | 100 |     10 |  1 |   -100 |         0 |                 -90
+ -101 |  10 |        | 10 |   -110 |       -10 |                 -10
+    5 |   2 | -100.5 |  1 |      4 |         6 |                 5.5
+(6 rows)
+
+-- interval_bound with timestamp
+select interval_bound(timestamp 'now', interval '0 hours');
+ERROR:  width of time interval not positive
+select interval_bound(timestamp 'now', interval '1 day - 24 hours');
+ERROR:  width of time interval not positive
+select interval_bound(timestamp 'infinity', interval '1 month');
+ interval_bound 
+----------------
+ infinity
+(1 row)
+
+select interval_bound(timestamp '-infinity', interval '1 month');
+ interval_bound 
+----------------
+ -infinity
+(1 row)
+
+select interval_bound(timestamp 'now', interval '2 hours', null, timestamp 'infinity');
+ERROR:  bound for registration is not finite
+select v, w, r, s,
+    interval_bound(v, w) as "normal", 
+    interval_bound(v, w, s) as "shifted s",
+    interval_bound(v, w, s, r) as "and registered to r"
+from ( values
+        (timestamp '2012-01-12 10:00:10', interval '1 week', timestamp '2012-04-02 00:00:00', 4),
+        (timestamp '1929-10-29 22:33:44.55', interval '1 year', timestamp '1991-01-17 02:34:56.78', null),
+        (timestamp '1991-01-17 02:34:56.78', interval '1 year -1 month', timestamp '1776-07-04 12:34:56', -1),
+        (timestamp '2100-03-01 11:11:11.11', interval '100 days', timestamp '1929-10-29 22:33:44.55', 1),
+        (timestamp '1776-07-04 12:34:56', interval '1 month', timestamp '2012-04-01 00:00:00', 1)
+    ) r(v,w,r,s);
+              v              |     w      |              r              | s  |          normal          |        shifted s         |     and registered to r     
+-----------------------------+------------+-----------------------------+----+--------------------------+--------------------------+-----------------------------
+ Thu Jan 12 10:00:10 2012    | @ 7 days   | Mon Apr 02 00:00:00 2012    |  4 | Thu Jan 12 00:00:00 2012 | Thu Feb 09 00:00:00 2012 | Mon Feb 06 00:00:00 2012
+ Tue Oct 29 22:33:44.55 1929 | @ 1 year   | Thu Jan 17 02:34:56.78 1991 |    | Tue Jan 01 00:00:00 1929 | Tue Jan 01 00:00:00 1929 | Thu Jan 17 02:34:56.78 1929
+ Thu Jan 17 02:34:56.78 1991 | @ 11 mons  | Thu Jul 04 12:34:56 1776    | -1 | Thu Mar 01 00:00:00 1990 | Sat Apr 01 00:00:00 1989 | Sun Feb 04 12:34:56 1990
+ Mon Mar 01 11:11:11.11 2100 | @ 100 days | Tue Oct 29 22:33:44.55 1929 |  1 | Tue Jan 19 00:00:00 2100 | Thu Apr 29 00:00:00 2100 | Tue May 25 22:33:44.55 2100
+ Thu Jul 04 12:34:56 1776    | @ 1 mon    | Sun Apr 01 00:00:00 2012    |  1 | Mon Jul 01 00:00:00 1776 | Thu Aug 01 00:00:00 1776 | Thu Aug 01 00:00:00 1776
+(5 rows)
+
+-- interval_bound with timestamptz
+set TimeZone to 'US/Pacific';
+select interval_bound(timestamptz 'now', interval '0 hours');
+ERROR:  width of time interval not positive
+select interval_bound(timestamptz 'now', interval '1 day - 24 hours');
+ERROR:  width of time interval not positive
+select interval_bound(timestamptz 'infinity', interval '1 month');
+ interval_bound 
+----------------
+ infinity
+(1 row)
+
+select interval_bound(timestamptz '-infinity', interval '1 month');
+ interval_bound 
+----------------
+ -infinity
+(1 row)
+
+select interval_bound(timestamptz 'now', interval '2 hours', null, timestamptz 'infinity');
+ERROR:  bound for registration is not finite
+select v, w, r, s,
+    interval_bound(v, w) as "normal", 
+    interval_bound(v, w, s) as "shifted s",
+    interval_bound(v, w, s, r) as "and registered to r"
+from ( values
+        (timestamptz '2012-01-12 10:00:10', interval '1 week', timestamptz '2012-04-02 00:00:00 US/Eastern', 4),
+        (timestamptz '1929-10-29 22:33:44.55', interval '1 year', timestamptz '1991-01-17 02:34:56.78', null),
+        (timestamptz '1991-01-17 02:34:56.78', interval '1 year -1 month', timestamptz '1776-07-04 12:34:56 US/Eastern', -1),
+        (timestamptz '2100-03-01 11:11:11.11 UTC', interval '100 days', timestamptz '1929-10-29 22:33:44.55', 1),
+        (timestamptz '1776-07-04 12:34:56', interval '1 month', timestamptz '2012-04-01 00:00:00 UTC', 1)
+    ) r(v,w,r,s);
+                v                |     w      |                r                | s  |            normal            |          shifted s           |       and registered to r       
+---------------------------------+------------+---------------------------------+----+------------------------------+------------------------------+---------------------------------
+ Thu Jan 12 10:00:10 2012 PST    | @ 7 days   | Sun Apr 01 21:00:00 2012 PDT    |  4 | Wed Jan 11 16:00:00 2012 PST | Wed Feb 08 16:00:00 2012 PST | Sun Feb 05 21:00:00 2012 PST
+ Tue Oct 29 22:33:44.55 1929 PST | @ 1 year   | Thu Jan 17 02:34:56.78 1991 PST |    | Mon Dec 31 16:00:00 1928 PST | Mon Dec 31 16:00:00 1928 PST | Thu Jan 17 02:34:56.78 1929 PST
+ Thu Jan 17 02:34:56.78 1991 PST | @ 11 mons  | Thu Jul 04 09:38:00 1776 LMT    | -1 | Wed Feb 28 16:00:00 1990 PST | Fri Mar 31 16:00:00 1989 PST | Sun Feb 04 09:38:00 1990 PST
+ Mon Mar 01 03:11:11.11 2100 PST | @ 100 days | Tue Oct 29 22:33:44.55 1929 PST |  1 | Mon Jan 18 16:00:00 2100 PST | Wed Apr 28 16:00:00 2100 PDT | Tue May 25 22:33:44.55 2100 PDT
+ Thu Jul 04 12:34:56 1776 LMT    | @ 1 mon    | Sat Mar 31 17:00:00 2012 PDT    |  1 | Sun Jun 30 16:00:00 1776 LMT | Wed Jul 31 16:00:00 1776 LMT | Wed Jul 31 17:00:00 1776 LMT
+(5 rows)
+

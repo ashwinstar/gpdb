@@ -171,5 +171,6 @@ test: plpgsql_cache
 test: percentile
 test: gp_cancel_query
 test: basic_fuzzystrmatch
+test: timeseries
 # gpcheckmirrorseg should be last to check mirror integrity
 test: gpcheckmirrorseg

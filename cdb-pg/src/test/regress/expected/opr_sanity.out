@@ -117,6 +117,15 @@ WHERE p1.oid < p2.oid AND
 	  NOT IN (select winfunc from pg_window)));
  oid  |      proname      | oid  |       proname       
 ------+-------------------+------+---------------------
+ 2991 | interval_bound    | 2992 | interval_bound
+ 2992 | interval_bound    | 2993 | interval_bound
+ 2991 | interval_bound    | 2993 | interval_bound
+ 2994 | interval_bound    | 2995 | interval_bound
+ 2995 | interval_bound    | 2996 | interval_bound
+ 2994 | interval_bound    | 2996 | interval_bound
+ 2997 | interval_bound    | 2998 | interval_bound
+ 2998 | interval_bound    | 2999 | interval_bound
+ 2997 | interval_bound    | 2999 | interval_bound
  3211 | matrix_add        | 3212 | int2_matrix_accum
  3210 | matrix_add        | 3212 | int2_matrix_accum
  3209 | matrix_add        | 3212 | int2_matrix_accum
@@ -130,7 +139,7 @@ WHERE p1.oid < p2.oid AND
  3213 | int4_matrix_accum | 3215 | float8_matrix_accum
  3212 | int2_matrix_accum | 3215 | float8_matrix_accum
  5044 | gp_elog           | 5045 | gp_elog
-(13 rows)
+(22 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.
