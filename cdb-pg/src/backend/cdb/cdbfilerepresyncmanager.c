@@ -873,6 +873,20 @@ FileRepResyncManager_InResyncTransition(void)
 								   ""); // tableName
 #endif
 	
+	/*
+	 * It is important to keep order of dropping objects before creating objects since
+	 * it can happen that persistent table has two entries with the same object.
+	 * For example Append Only segment file was created and dropped since transaction
+	 * was aborted. Later the same Append Only segment file was created and
+	 *  transaction was committed.
+	 */
+
+	FileRep_InsertConfigLogEntry("run resync manager, mirror redrop");
+
+	PersistentFileSysObj_MirrorReDrop();
+
+	FileRep_InsertConfigLogEntry("run resync manager, mirror redrop completed");
+
 	FileRep_InsertConfigLogEntry("run resync transition, mirror recreate");	
 	
 	PersistentFileSysObj_MirrorReCreate();	
@@ -949,10 +963,6 @@ FileRepPrimary_RunResyncManager(void)
 	ResynchronizeScanToken		token;
 	
 	FileRep_InsertConfigLogEntry("run resync manager");
-
-	PersistentFileSysObj_MirrorReDrop();
-	
-	FileRep_InsertConfigLogEntry("run resync manager, redrop completed");
 
 	ResynchronizeScanToken_Init(&token);
 	
