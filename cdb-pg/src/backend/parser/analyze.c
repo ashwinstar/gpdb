@@ -1737,6 +1737,8 @@ TypeNameGetStorageDirective(TypeName *typname)
 
 /*
  * Make a default column storage directive from a WITH clause
+ * Ignore options in the WITH clause that don't appear in 
+ * storage_directives for column-level compression.
  */
 List *
 form_default_storage_directive(List *enc)
@@ -1754,6 +1756,10 @@ form_default_storage_directive(List *enc)
 		if (pg_strcasecmp("appendonly", el->defname) == 0)
 			continue;
 		if (pg_strcasecmp("orientation", el->defname) == 0)
+			continue;
+		if (pg_strcasecmp("oids", el->defname) == 0)
+			continue;
+		if (pg_strcasecmp("fillfactor", el->defname) == 0)
 			continue;
 		out = lappend(out, copyObject(el));
 	}
@@ -1834,7 +1840,7 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt, CreateStmtContext cxt)
 		deflt = makeNode(ColumnReferenceStorageDirective);
 		deflt->deflt = true;
 		deflt->encoding = transformStorageEncodingClause(tmpenc);
-	}
+	}	
 
 	/*
 	 * Loop over all columns. If a column has a column reference storage clause
