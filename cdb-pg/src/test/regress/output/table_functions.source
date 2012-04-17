@@ -2071,7 +2071,7 @@ HINT:  expected (integer, text)
 SELECT TABLE( SELECT * from example );
 ERROR:  invalid use of TABLE value expression
 SELECT ARRAY( TABLE( SELECT * from example) );
-ERROR:  syntax error at or near "TABLE"
+ERROR:  syntax error at or near "("
 LINE 1: SELECT ARRAY( TABLE( SELECT * from example) );
                       ^
 SELECT * FROM TABLE( SELECT * from example) );
