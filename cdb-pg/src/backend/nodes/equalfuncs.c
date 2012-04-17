@@ -2990,6 +2990,10 @@ equal(const void *a, const void *b)
 			/* GroupClause is equivalent to SortClause */
 			retval = _equalSortClause(a, b);
 			break;
+		case T_ScatterClause:
+			/* ScatterClause is equivalent to SortClause */
+			retval = _equalSortClause(a, b);
+			break;
 		case T_GroupingClause:
 			retval = _equalGroupingClause(a, b);
 			break;

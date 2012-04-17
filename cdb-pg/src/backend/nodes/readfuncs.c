@@ -520,6 +520,20 @@ _readGroupClause(void)
 	READ_DONE();
 }
 
+/*
+ * _readScatterClause
+ */
+static ScatterClause *
+_readScatterClause(void)
+{
+	READ_LOCALS(ScatterClause);
+
+	READ_UINT_FIELD(tleSortGroupRef);
+	READ_OID_FIELD(sortop);
+
+	READ_DONE();
+}
+
 static GroupingClause *
 _readGroupingClause(void)
 {
@@ -3110,6 +3124,7 @@ static ParseNodeInfo infoAr[] =
 	{"RTE", (ReadFn)_readRangeTblEntry},
 	{"RULESTMT", (ReadFn)_readRuleStmt},
 	{"SCALARARRAYOPEXPR", (ReadFn)_readScalarArrayOpExpr},
+	{"SCATTERCLAUSE", (ReadFn)_readScatterClause},
 	{"SEGFILEMAPNODE", (ReadFn)_readSegfileMapNode},
 	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},

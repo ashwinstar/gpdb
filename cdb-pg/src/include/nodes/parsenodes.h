@@ -761,6 +761,17 @@ typedef struct SortClause
 typedef SortClause GroupClause;
 
 /*
+ * ScatterClause -
+ *	   representation of SCATTER BY clauses
+ *
+ * ScatterClause only needs tleSortGroupRef field to reference into
+ * targetlist.  However, using the same structure with SortClause,
+ * we can use the same helper functions which reduces amount of
+ * additional work.
+ */
+typedef SortClause ScatterClause;
+
+/*
  * GroupingClause -
  *     representation of grouping extension clauses,
  *     such as ROLLUP, CUBE, and GROUPING SETS.
