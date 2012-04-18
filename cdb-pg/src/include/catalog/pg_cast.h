@@ -435,5 +435,10 @@ DATA(insert (   27   20 6021 e ));
 DATA(insert OID = 9901 (	27 3300    0 e ));
 DATA(insert OID = 9902 ( 3300	 27    0 e ));
 
+DATA(insert OID = 9918 (	16	 25 2971 i ));
+DATA(insert OID = 9919 (	25	 16 2970 e ));
+
+DATA(insert OID = 9920 (	16 1043 2971 a ));
+DATA(insert OID = 9921 ( 1043	 16 2970 e ));
 
 #endif   /* PG_CAST_H */

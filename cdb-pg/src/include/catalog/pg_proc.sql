@@ -3008,6 +3008,8 @@
 
  CREATE FUNCTION pg_file_length(text) RETURNS int8 LANGUAGE internal VOLATILE STRICT AS 'pg_file_length' WITH (OID=6051, DESCRIPTION="Get the length of a file (via stat)");
 
+ CREATE FUNCTION bool(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'textbool' WITH (OID=2970, DESCRIPTION="convert text to boolean");
+
  CREATE FUNCTION text(bool) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'booltext' WITH (OID=2971, DESCRIPTION="convert boolean to text");
 
 -- Aggregates (moved here from pg_aggregate for 7.3) 

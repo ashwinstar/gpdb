@@ -65,3 +65,36 @@ CREATE OPERATOR @gpupgradeschemaname@.% (PROCEDURE = interval_interval_mod, LEFT
 
 CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = interval_interval_div, LEFTARG = "interval", RIGHTARG = "interval", OID=2920);
 
+CREATE FUNCTION @gpupgradeschemaname@.bool(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT
+	AS 'textbool' WITH (OID=2970, DESCRIPTION="convert text to boolean");
+COMMENT ON FUNCTION @gpupgradeschemaname@.bool(text) IS 'convert text to boolean';
+
+--    pg_cast    --
+-- Create a special schema for use by the pg_compression_load external table.
+-- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external
+-- table executed on the master only.
+CREATE SCHEMA __@gpupgradeschemaname@_gpmigrator;
+
+\set pg_cast_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_cast.data'"`
+
+-- Add entries to the master.
+COPY @gpupgradeschemaname@.pg_cast FROM
+	:pg_cast_datafile WITH OIDS DELIMITER ',';
+
+CREATE EXTERNAL WEB TABLE
+	__@gpupgradeschemaname@_gpmigrator.pg_cast_load(database text,
+													port text,
+													status text)
+	EXECUTE E' PGOPTIONS=''-c gp_session_role=utility'' \\
+		psql -q --set ON_ERROR_STOP=ON -p $GP_SEG_PORT \\
+		--command "copy @gpupgradeschemaname@.pg_cast from \\
+		''$GPHOME/share/postgresql/upgrade/pg_cast.data'' with oids csv" \\
+		$GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
+	FORMAT 'csv';
+
+SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_cast_load;
+
+DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_cast_load;
+
+DROP SCHEMA __@gpupgradeschemaname@_gpmigrator;
+

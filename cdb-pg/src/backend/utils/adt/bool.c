@@ -144,6 +144,20 @@ boolsend(PG_FUNCTION_ARGS)
 }
 
 /*
+ *		textbool			- cast function for text => bool
+ */
+Datum
+textbool(PG_FUNCTION_ARGS)
+{
+	Datum		in_text = PG_GETARG_DATUM(0);
+	char	    *str;
+
+	str = DatumGetCString(DirectFunctionCall1(textout, in_text));
+
+	PG_RETURN_DATUM(DirectFunctionCall1(boolin, CStringGetDatum(str)));
+}
+
+/*
  *		booltext			- cast function for bool => text
  *
  * We need this because it's different from the behavior of boolout();
