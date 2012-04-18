@@ -70,7 +70,7 @@ CREATE FUNCTION @gpupgradeschemaname@.bool(text) RETURNS bool LANGUAGE internal 
 COMMENT ON FUNCTION @gpupgradeschemaname@.bool(text) IS 'convert text to boolean';
 
 --    pg_cast    --
--- Create a special schema for use by the pg_compression_load external table.
+-- Create a special schema for use by the pg_cast_load external table.
 -- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external
 -- table executed on the master only.
 CREATE SCHEMA __@gpupgradeschemaname@_gpmigrator;
