@@ -108,7 +108,7 @@ class CheckFilespace(Operation):
 
         return True
 
-class GetFilespaceOidLocally(Operation):
+class CheckFilespaceOidLocally(Operation):
     """
         Returns the oid present in the flat files
     """
@@ -124,65 +124,118 @@ class GetFilespaceOidLocally(Operation):
             oid = file.readline().strip() 
         return oid
 
+class CheckFilespaceEntriesLocally(Operation):
+    """
+        Check if filespace entries are valid
+    """
+    def __init__(self, dbid, filespace_location, file_type):
+        self.dbid = dbid
+        self.filespace_location = filespace_location
+        self.file_type = file_type
+
+    def execute(self):
+        if self.file_type == FileType.TRANSACTION_FILES:
+            flat_file = GP_TRANSACTION_FILES_FILESPACE
+        elif self.file_type == FileType.TEMPORARY_FILES:
+            flat_file = GP_TEMPORARY_FILES_FILESPACE
+        
+        is_consistent = True
+        flat_file_location = os.path.join(self.filespace_location, flat_file)
+
+        #Default filespace pg_system
+        if not os.path.exists(flat_file_location):
+            return is_consistent
+
+        #Read flat file entries and check if the directories exist
+        with open(flat_file_location) as file:
+            for line in file:
+                entries = line.split()
+                if len(entries) != 2:
+                    continue
+                else:
+                    logger.info('path = %s' % entries[1].strip())
+                    logger.info('dbid = %s' % entries[0].strip())
+                    if not os.path.exists(entries[1].strip()):
+                        is_consistent = False
+                    if int(entries[0].strip()) != self.dbid:
+                        is_consistent = False
+            
+        return is_consistent 
+
 class CheckFilespaceConsistency(Operation):
     """
         Checks that the filespaces for transaction and temporary
         files are consistent on all segments
     """
-    def __init__(self, gparray):
+    def __init__(self, gparray, file_type):
         self.gparray = gparray
+        self.file_type = file_type
 
     def execute(self):
         logger.info('Checking for filespace consistency')
-        operations = []
-        cur_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(self.gparray, 
-                                                                            PG_SYSTEM_FILESPACE).run()).run() 
+        if self.file_type == FileType.TRANSACTION_FILES:
+            flat_file = GP_TRANSACTION_FILES_FILESPACE
+        elif self.file_type == FileType.TEMPORARY_FILES:
+            flat_file = GP_TEMPORARY_FILES_FILESPACE
 
+        operations = []
+        pg_system_fs_entries = GetFilespaceEntriesDict(GetFilespaceEntries(self.gparray, 
+                                                                            PG_SYSTEM_FILESPACE).run()).run() 
         for seg in self.gparray.getDbList():
-            flat_file_location = os.path.join(cur_filespace_entries[seg.getSegmentDbId()][2], 
-                                              GP_TRANSACTION_FILES_FILESPACE)
+            flat_file_location = os.path.join(pg_system_fs_entries[seg.getSegmentDbId()][2], 
+                                              flat_file)
             logger.debug('flat file location = %s' % flat_file_location)
-            operations.append(RemoteOperation(GetFilespaceOidLocally(flat_file_location),
+            operations.append(RemoteOperation(CheckFilespaceOidLocally(flat_file_location),
                                               seg.getSegmentHostName()
                                              )
                              )
         ParallelOperation(operations).run() 
       
         try: 
-            oid_set = set([op.get_ret() for op in operations]) 
+            oid_set = set([int(op.get_ret()) for op in operations]) 
         except Exception, e:
-            logger.error(str(e))
+            logger.error('Invalid OID in flat file on host %s' % op.host)
             return False
 
-        logger.debug('transaction files oid set = %s' % oid_set) 
+        logger.debug('%s oid set = %s' % (FileType.lookup[self.file_type], oid_set)) 
 
         if len(oid_set) != 1:
             return False
-        logger.info('Transaction filespaces are consistent')
 
-        operations = []
+        #Verify that we have a valid oid and that
+        #the filespace exists in the catalog.
+        try:
+            oid = int(oid_set.pop())
+            if oid == -1:
+                fs_name = 'pg_system'
+            else:
+                fs_name = self.gparray.getFileSpaceName(oid)
+        except Exception, e:
+            logger.error('%s OIDs are inconsistent for %s filespace' % (FileType.lookup[self.file_type], fs_name))
+            return False
+        logger.info('%s OIDs are consistent for %s filespace' % (FileType.lookup[self.file_type], fs_name))
+
+        #Now check for the filespace entries 
+        operation_list = []
         for seg in self.gparray.getDbList():
-            flat_file_location = os.path.join(cur_filespace_entries[seg.getSegmentDbId()][2], 
-                                              GP_TEMPORARY_FILES_FILESPACE)
-            logger.debug('flat file location = %s' % flat_file_location)
-            operations.append(RemoteOperation(GetFilespaceOidLocally(flat_file_location),
-                                              seg.getSegmentHostName()
-                                             )
-                             )
-        ParallelOperation(operations).run()
-      
-        try:  
-            oid_set = set([op.get_ret() for op in operations])
-        except Exception, e:
-            logger.error(str(e))
-            return False
- 
-        logger.debug('temporary files oid set = %s' % oid_set) 
+            operation_list.append(RemoteOperation(CheckFilespaceEntriesLocally(seg.getSegmentDbId(), pg_system_fs_entries[seg.getSegmentDbId()][2], self.file_type),
+                                                  seg.getSegmentHostName()
+                                                 )
+                                 )
+
+        ParallelOperation(operation_list).run()
+
+        for operation in operation_list:
+            try:
+                if not operation.get_ret():
+                    logger.error('%s entries are inconsistent for %s filespace on host %s' % (FileType.lookup[self.file_type], fs_name, operation.host))
+                    return False
+            except Exception, e:
+                logger.error('%s entries are inconsistent for %s filespace on host %s' % (FileType.lookup[self.file_type], fs_name, operation.host))
+                return False
+
+        logger.info('%s entries are consistent for %s filespace' % (FileType.lookup[self.file_type], fs_name))
         
-        if len(oid_set) != 1:
-            return False
-        
-        logger.info('Temporary filespaces are consistent')
         return True
             
 class GetPeerFilespaceEntry(Operation):
