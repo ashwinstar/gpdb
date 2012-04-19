@@ -1412,10 +1412,10 @@ begin:;
 			skipIssue)
 		{
 			/* Code for investigating MPP-13909, will be removed as part of the fix */
-			elog(WARNING, 
+			elog(WARNING,
 				 "ChangeTracking_PrintRelationChangeInfo hang skipIssue %s",
 				 (skipIssue ? "true" : "false"));
-			
+
 			for (int i=0; i < 24 * 60; i++)
 			{
 				pg_usleep(60000000L); /* 60 sec */
@@ -2829,7 +2829,7 @@ XLogFileInit(
 	 * holding the lock throughout this lengthy process.
 	 */
 	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
-		
+
 	if (snprintf(tmpsimple, MAXPGPATH, "xlogtemp.%d", (int) getpid()) > MAXPGPATH)
 	{
 		ereport(ERROR, (errmsg("could not generate filename xlogtemp.%d", (int)getpid())));
@@ -2985,7 +2985,7 @@ XLogFileCopy(uint32 log, uint32 seg,
 	{
 		ereport(ERROR, (errmsg("could not generate filename %s/xlogtemp.%d", xlogDir, (int) getpid())));
         }
-	pfree(xlogDir);	
+	pfree(xlogDir);
 	unlink(tmppath);
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "Master Mirroring: copying xlog file '%s' to '%s'",
@@ -3723,7 +3723,7 @@ XLogRemoveStandbyLogs(uint32 log, uint32 seg, int *nsegsremoved)
 	struct dirent *xlde;
 	char		lastoff[MAXFNAMELEN];
 	char		path[MAXPGPATH];
-	char		*xlogDir = NULL;	
+	char		*xlogDir = NULL;
 
 	Assert(nsegsremoved != NULL);
 
@@ -4770,7 +4770,7 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 	int			fd;
 	int			nbytes;
 	char		*xlogDir = NULL;
-	
+
 	Assert(newTLI > parentTLI); /* else bad selection of newTLI */
 
 	/*
@@ -4780,7 +4780,7 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 	if (snprintf(tmppath, MAXPGPATH, "%s/xlogtemp.%d", xlogDir, (int) getpid()) > MAXPGPATH)
 	{
 		ereport(ERROR, (errmsg("cannot generate filename %s/xlogtemp.%d", xlogDir, (int) getpid())));
-	}	
+	}
 	pfree(xlogDir);
 	unlink(tmppath);
 
@@ -5959,7 +5959,7 @@ exitArchiveRecovery(TimeLineID endTLI, uint32 endLogId, uint32 endLogSeg)
 	xlogDir = makeRelativeToTxnFilespace(XLOGDIR);
 	if (snprintf(recoveryPath, MAXPGPATH, "%s/RECOVERYXLOG", xlogDir) > MAXPGPATH)
 	{
-		ereport(ERROR, (errmsg("cannot generate path %s/RECOVERYXLOG", xlogDir)));	
+		ereport(ERROR, (errmsg("cannot generate path %s/RECOVERYXLOG", xlogDir)));
 	}
 	XLogFilePath(xlogpath, ThisTimeLineID, endLogId, endLogSeg);
 
@@ -7909,7 +7909,6 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 	CurrentResourceOwner = NULL;
 
 	InRedo = false;
-	InRecovery = false;
 
 	/*
 	 * Allow resource managers to do any required cleanup.
@@ -7935,6 +7934,8 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 	 * Close down recovery environment
 	 */
 	XLogCloseRelationCache();
+
+	InRecovery = false;
 
 	XLogCloseReadRecord();
 
