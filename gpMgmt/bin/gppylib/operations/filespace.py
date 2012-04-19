@@ -827,17 +827,17 @@ class MoveFilespace(Operation):
         
     def execute(self):
 
-        #1 CheckFilespace - Check if new filespace exists
-        if not CheckFilespace(self.new_filespace_name).run():
-            raise InvalidFilespaceError('Filespace %s does not exist' % self.new_filespace_name) 
-
-        #2 CheckFilespaceIsSame - Check if filespace is different from the old one
-        if CheckFilespaceIsSame(self.new_filespace_name, self.file_type).run():
-            raise InvalidFilespaceError('Filespace %s is same as the current filespace' % self.new_filespace_name)
-
         try:
             #Disable Ctrl+C
             signal.signal(signal.SIGINT,signal.SIG_IGN)
+    
+            #1 CheckFilespace - Check if new filespace exists
+            if not CheckFilespace(self.new_filespace_name).run():
+                raise InvalidFilespaceError('Filespace %s does not exist' % self.new_filespace_name) 
+
+            #2 CheckFilespaceIsSame - Check if filespace is different from the old one
+            if CheckFilespaceIsSame(self.new_filespace_name, self.file_type).run():
+                raise InvalidFilespaceError('Filespace %s is same as the current filespace' % self.new_filespace_name)
 
             #3 StopGPDB - Check for GPDB connections first and fail if connections exist
             self.stop_database()
@@ -899,9 +899,10 @@ class MoveFilespace(Operation):
                         RollBackFilespaceChanges(segments, self.file_type, cur_filespace_name, cur_filespace_entries, new_filespace_entries, pg_system_filespace_entries).run()
                     except Exception, e:
                         raise MoveFilespaceError('Rollback Failed !')
+        
+            #9 Bring GPDB online in normal mode
+            self.start_database()
+
         finally:
             #Enable Ctrl+C
             signal.signal(signal.SIGINT,signal.default_int_handler)
-
-        #9 Bring GPDB online in normal mode
-        self.start_database()
