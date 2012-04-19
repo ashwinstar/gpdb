@@ -24,6 +24,7 @@
 #include "cdb/cdbmirroredflatfile.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbfilerepresyncmanager.h"
 #include "storage/fd.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_tablespace.h"
@@ -1307,7 +1308,15 @@ PgVersionRecoverMirror(void)
 											 &persistentSerialNum))
 	{
 		if (state != PersistentFileSysState_Created)
-			continue;
+		{
+			/*
+			 * PG_VERSION file has to be resynced for still in progress ‘CREATE DATABASE’ transactions
+			 * (‘gp_persistent_database_node’ will be in CreatePending state for Database Directory).
+			 * The reason is that Flat Files are not mirrored during resynchronization.
+			 */
+			if (! (FileRepResync_IsTransitionFromResyncToInSync() && state == PersistentFileSysState_CreatePending))
+				continue;
+		}
 		
 		PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 														   dbDirNode.tablespace,
