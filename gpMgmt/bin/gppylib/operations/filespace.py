@@ -20,6 +20,7 @@ logger = gplog.get_default_logger()
 GP_TRANSACTION_FILES_FILESPACE = 'gp_transaction_files_filespace'
 GP_TEMPORARY_FILES_FILESPACE = 'gp_temporary_files_filespace'
 PG_SYSTEM_FILESPACE = 'pg_system'
+NUM_WORKERS = 16  #Number of simultaneous parallel process that are started by ParallelOperation
 
 class FileType:
     """
@@ -192,7 +193,7 @@ class CheckFilespaceConsistency(Operation):
                                               seg.getSegmentHostName()
                                              )
                              )
-        ParallelOperation(operations).run() 
+        ParallelOperation(operations, NUM_WORKERS).run() 
       
         try: 
             oid_set = set([int(op.get_ret()) for op in operations]) 
@@ -226,7 +227,7 @@ class CheckFilespaceConsistency(Operation):
                                                  )
                                  )
 
-        ParallelOperation(operation_list).run()
+        ParallelOperation(operation_list, NUM_WORKERS).run()
 
         for operation in operation_list:
             try:
@@ -351,7 +352,7 @@ class UpdateFlatFiles(Operation):
                                                       seg.getSegmentHostName())
                                      ) 
 
-            ParallelOperation(operation_list).run()
+            ParallelOperation(operation_list, NUM_WORKERS).run()
 
             try:
                 for operation in operation_list:
@@ -380,7 +381,7 @@ class UpdateFlatFiles(Operation):
                                                       seg.getSegmentHostName())
                                      ) 
 
-            ParallelOperation(operation_list).run()
+            ParallelOperation(operation_list, NUM_WORKERS).run()
             
             try:
                 for operation in operation_list:
@@ -736,7 +737,7 @@ class RollBackFilespaceChanges(Operation):
                                 )
 
         logger.debug('Running remote operations in parallel')
-        ParallelOperation(operations).run()
+        ParallelOperation(operations, NUM_WORKERS).run()
        
         logger.debug('Checking results of parallel operations') 
         for operation in operations:
@@ -888,7 +889,7 @@ class MoveFilespace(Operation):
 
             logger.info('Moving %s filespace from %s to %s ...' % (FileType.lookup[self.file_type], cur_filespace_name, self.new_filespace_name))
 
-            ParallelOperation(operations).run()
+            ParallelOperation(operations, NUM_WORKERS).run()
 
             for operation in operations:
                 try:
