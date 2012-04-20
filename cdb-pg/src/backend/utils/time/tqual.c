@@ -1409,6 +1409,13 @@ HeapTupleSatisfiesNow_Internal(Relation relation, HeapTupleHeader tuple, Buffer 
 			if (TransactionIdDidAbort(HeapTupleHeaderGetXmax(tuple)))
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
+
+				/* If ComboCID format cid, roll it back to normal Cmin */
+				if (tuple->t_infomask & HEAP_COMBOCID)
+				{
+					HeapTupleHeaderSetCmin(tuple, HeapTupleHeaderGetCmin(tuple));
+				}
+
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 
 				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
@@ -1820,6 +1827,13 @@ HeapTupleSatisfiesUpdate_Internal(Relation relation, HeapTupleHeader tuple, Comm
 			if (TransactionIdDidAbort(HeapTupleHeaderGetXmax(tuple)))
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
+
+				/* If ComboCID format cid, roll it back to normal Cmin */
+				if (tuple->t_infomask & HEAP_COMBOCID)
+				{
+					HeapTupleHeaderSetCmin(tuple, HeapTupleHeaderGetCmin(tuple));
+				}
+
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 
 				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
@@ -2412,6 +2426,13 @@ HeapTupleSatisfiesSnapshot_Internal(Relation relation, HeapTupleHeader tuple, Sn
 			if (TransactionIdDidAbort(HeapTupleHeaderGetXmax(tuple)))
 			{
 				tuple->t_infomask |= HEAP_XMAX_INVALID;
+
+				/* If ComboCID format cid, roll it back to normal Cmin */
+				if (tuple->t_infomask & HEAP_COMBOCID)
+				{
+					HeapTupleHeaderSetCmin(tuple, HeapTupleHeaderGetCmin(tuple));
+				}
+
 				markDirty(buffer, disableTupleHints, relation, tuple, /* isXmin */ false);
 
 				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_SET_XMAX_ABORTED);
