@@ -283,20 +283,6 @@ _readGroupingClause(const char ** str)
 	READ_DONE();
 }
 
-/*
- * _readScatterClause
- */
-static ScatterClause *
-_readScatterClause(const char ** str)
-{
-	READ_LOCALS(ScatterClause);
-
-	READ_UINT_FIELD(tleSortGroupRef);
-	READ_OID_FIELD(sortop);
-
-	READ_DONE();
-}
-
 static GroupingFunc *
 _readGroupingFunc(const char ** str)
 {
@@ -4248,9 +4234,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_GroupClause:
 				return_value = _readGroupClause(str);
-				break;
-			case T_ScatterClause:
-				return_value = _readScatterClause(str);
 				break;
 			case T_GroupingClause:
 				return_value = _readGroupingClause(str);

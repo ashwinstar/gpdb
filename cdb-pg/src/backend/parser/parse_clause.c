@@ -2921,7 +2921,6 @@ transformScatterClause(ParseState *pstate,
 	{
 		Node			*node = lfirst(olitem);
 		TargetEntry		*tle;
-		ScatterClause   *clause;
 
 		tle = findTargetlistEntrySQL99(pstate, node, targetlist);
 
@@ -2935,9 +2934,7 @@ transformScatterClause(ParseState *pstate,
 											 -1);
 		}
 
-		clause = makeNode(ScatterClause);
-		clause->tleSortGroupRef = assignSortGroupRef(tle, *targetlist);
-		outlist = lappend(outlist, clause);
+		outlist = lappend(outlist, tle->expr);
 	}
 	return outlist;
 }

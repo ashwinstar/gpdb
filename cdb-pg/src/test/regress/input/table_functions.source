@@ -947,10 +947,6 @@ SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY med
 SELECT * FROM noop_project( TABLE( SELECT median(id) FROM history SCATTER BY count(*) ) ) AS s (med float);
 SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY median(id) ) ) AS s (cnt bigint);
 SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history GROUP BY time SCATTER BY median(id) ) ) AS s (cnt bigint);
--- SCATTER BY vs aggregate
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY sum(id) ) ) AS s(cnt bigint);
--- SCATTER BY vs window function
-SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY count(*) OVER () ) ) s (cnt bigint);
 
 -- ========================
 -- More negative test cases

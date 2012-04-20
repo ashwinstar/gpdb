@@ -56,7 +56,8 @@ extern Plan *add_second_stage_agg(PlannerInfo *root,
 								  const char *alias,
 								  List **p_current_pathkeys,
 								  Plan *result_plan,
-								  bool use_root);
+								  bool use_root,
+								  bool adjust_scatter);
 extern List *generate_subquery_tlist(Index varno, List *input_tlist,
 									 bool keep_resjunk, int **p_resno_map);
 extern List *reconstruct_pathkeys(PlannerInfo *root, List *pathkeys, int *resno_map,

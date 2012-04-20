@@ -2090,18 +2090,7 @@ get_select_query_def(Query *query, deparse_context *context,
 			appendStringInfo(buf, "BY ");
 			foreach(lc, query->scatterClause)
 			{
-				ScatterClause  *clause = (SortClause *) lfirst(lc);
-				Node		   *expr;
-
-				/*
-				 * At one time, scatterClause had expression nodes,
-				 * but now it uses ScatterClause.  Just in case a VIEW
-				 * has the old style, check if the new style or not.
-				 */
-				if (IsA(clause, ScatterClause))
-					expr = get_sortgroupclause_expr(clause, query->targetList);
-				else
-					expr = (Node *) clause;
+				Node *expr = (Node *) lfirst(lc);
 
 				get_rule_expr(expr, context, false);
 				if (lc->next)

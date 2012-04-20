@@ -1917,17 +1917,6 @@ _copyGroupClause(const GroupClause *from)
 	return newnode;
 }
 
-static ScatterClause *
-_copyScatterClause(const ScatterClause *from)
-{
-	ScatterClause *newnode = makeNode(ScatterClause);
-
-	COPY_SCALAR_FIELD(tleSortGroupRef);
-	COPY_SCALAR_FIELD(sortop);
-
-	return newnode;
-}
-
 static GroupingClause *
 _copyGroupingClause(const GroupingClause *from)
 {
@@ -4728,9 +4717,6 @@ copyObject(const void *from)
 			break;
 		case T_GroupClause:
 			retval = _copyGroupClause(from);
-			break;
-		case T_ScatterClause:
-			retval = _copyScatterClause(from);
 			break;
 		case T_GroupingClause:
 			retval = _copyGroupingClause(from);

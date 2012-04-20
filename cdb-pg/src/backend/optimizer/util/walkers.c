@@ -425,7 +425,6 @@ expression_tree_walker(Node *node,
 		case T_Grouping:
 		case T_GroupId:
 		case T_GroupClause:
-		case T_ScatterClause:
 		case T_SortClause: /* occurs in WindowSpec lists */
 			{
 				/* do nothing */
@@ -1517,15 +1516,6 @@ expression_tree_mutator(Node *node,
 				GroupClause *newnode;
 
 				FLATCOPY(newnode, groupcl, GroupClause);
-
-				return (Node *) newnode;
-			}
-		case T_ScatterClause:
-			{
-				ScatterClause *sortcl = (ScatterClause *) node;
-				ScatterClause *newnode;
-
-				FLATCOPY(newnode, sortcl, ScatterClause);
 
 				return (Node *) newnode;
 			}
