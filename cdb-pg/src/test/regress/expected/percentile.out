@@ -436,6 +436,12 @@ select median(a) from perct group by grouping sets((b)) order by b;
     100
 (11 rows)
 
+select distinct median(a), count(*) from perct;
+ median | count 
+--------+-------
+   50.5 |   100
+(1 row)
+
 -- view
 select * from percv;
  percentile_cont | median | percentile_disc 
@@ -866,6 +872,12 @@ select median(a) from perct group by grouping sets((b)) order by b;
    94.5
     100
 (11 rows)
+
+select distinct median(a), count(*) from perct;
+ median | count 
+--------+-------
+   50.5 |   100
+(1 row)
 
 -- view
 select * from percv;
