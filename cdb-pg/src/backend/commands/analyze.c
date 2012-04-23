@@ -26,6 +26,7 @@
 #include <math.h>
 
 #include "access/heapam.h"
+#include "access/catquery.h"
 #include "catalog/heap.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
@@ -662,21 +663,16 @@ static bool analyzePermitted(Oid relationOid)
 static List* analyzableRelations(void)
 {
 	List	   		*lRelOids = NIL;
-	Relation		pgclass = NULL;
-	HeapScanDesc 	scan = NULL;
+	cqContext		*pcqCtx;
 	HeapTuple		tuple = NULL;
-	ScanKeyData 	key;
 
-	ScanKeyInit(&key,
-			Anum_pg_class_relkind,
-			BTEqualStrategyNumber, F_CHAREQ,
-			CharGetDatum(RELKIND_RELATION));
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE relkind = :1 ",
+				CharGetDatum(RELKIND_RELATION)));
 
-	pgclass = heap_open(RelationRelationId, AccessShareLock);
-
-	scan = heap_beginscan(pgclass, SnapshotNow, 1 /* key length */, &key);
-
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Oid candidateOid = HeapTupleGetOid(tuple);
 		if (analyzePermitted(candidateOid)
@@ -686,8 +682,8 @@ static List* analyzableRelations(void)
 		}
 	}
 
-	heap_endscan(scan);
-	heap_close(pgclass, AccessShareLock);
+	caql_endscan(pcqCtx);
+
 	return lRelOids;
 }
 

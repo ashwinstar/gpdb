@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/sysattr.h"
 #include "catalog/dependency.h"
@@ -185,29 +186,16 @@ ConversionDrop(Oid conversionOid, DropBehavior behavior)
 void
 RemoveConversionById(Oid conversionOid)
 {
-	Relation	rel;
-	HeapTuple	tuple;
-	HeapScanDesc scan;
-	ScanKeyData scanKeyData;
 
-	ScanKeyInit(&scanKeyData,
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(conversionOid));
-
-	/* open pg_conversion */
-	rel = heap_open(ConversionRelationId, RowExclusiveLock);
-
-	scan = heap_beginscan(rel, SnapshotNow,
-						  1, &scanKeyData);
-
-	/* search for the target tuple */
-	if (HeapTupleIsValid(tuple = heap_getnext(scan, ForwardScanDirection)))
-		simple_heap_delete(rel, &tuple->t_self);
-	else
+	if (0 ==
+		caql_getcount(
+				NULL,
+				cql("DELETE FROM pg_conversion "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(conversionOid))))
+	{
 		elog(ERROR, "could not find tuple for conversion %u", conversionOid);
-	heap_endscan(scan);
-	heap_close(rel, RowExclusiveLock);
+	}
 }
 
 /*

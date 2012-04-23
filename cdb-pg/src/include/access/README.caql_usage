@@ -1,0 +1,235 @@
+CaQL Usage
+==========
+
+CaQL, the Catalog Query Language, is a simplified SQL language and C
+api for catalog operations.  This api unifies and supplants the
+existing heap, index, systable, and syscache api's.  In addition, this
+api can automatically use and enforce the correct locking and snapshot
+modes for the specified catalog operation.  The CaQL conversion
+project is the initial phase of the Unified Catalog Service, an
+initiative which attempts to address many deficiencies in catalog
+correctness, stability, extensibility, scalability, and performance.
+While the basic api is simple, it has sufficient extensions to support
+legacy requirements for unusual locking or index operations.  In this
+document, the camelcase "CaQL" refers to the SQL-like language, while
+the lowercase "caql" prefix describes functions in the catquery.c
+module.
+
+The C api supports a variety of methods that emulate the existing
+interfaces, plus additional functionality.  These functions take two
+common arguments: a cqContext and a cq_list.
+
+A cqContext encapsulates all the scan, locking, and snapshot state for
+a query.  If you supply a null cqContext, catquery will manufacture a
+default context with the appropriate locking and snapshot modes.  caql
+also has several functions to initialize the context to use special
+locking and snapshot modes to support legacy requirements.
+
+A cq_list is a CaQL statement plus a variable-length list of "Datum"
+arguments, bound in a cql() macro declaration.  The cq_list must have
+sufficient arguments to match the number of bind values (bindvals) in
+the WHERE clause.
+
+CaQL - the language
+===================
+
+CaQL is a small subset of SQL.  The following operations are supported:
+
+SELECT * FROM <tablename> [WHERE <colname> = <bindval> [ AND ...]] [FOR UPDATE]
+SELECT COUNT(*) ...
+SELECT <colname> ...
+
+DELETE FROM <tablename> [WHERE <colname> = <bindval> [ AND ...]] 
+
+For a SELECT statement, the "FOR UPDATE" clause changes the default
+locking from AccessShare to RowExclusive.  The SELECT list only
+supports "*", "COUNT(*)", or a single column name (where the column is
+of type Oid, Name, or Text).  The option WHERE clause supports an
+ANDed list of "<colname> = <bindval>" expressions.  In the current
+implementation, only five bind values (labeled ":1" to ":5") are
+supported.
+
+Extended Usage - sorting/ordering
+=================================
+
+Clients may use the optional "ORDER BY <colname> [, <colname...]"
+clause to specify an ordering when iterating over a set of tuples.  If
+no ordering is specified the tuple output order is random.  The ORDER
+BY clause immediately precedes the FOR UPDATE (or terminates the
+SELECT statement if FOR UPDATE is not specified).  CaQL also supports
+GreaterThan/LessThan comparison in the WHERE clause for this case, eg
+<,>,<=,>=.  In the current implementation, ordering requires the
+existence of a matching index.  Note that SQL-style
+ASCENDING/DESCENDING is not necessary: clients use caql_getnext() or
+caql_getprev() to ascend or descend as they fetch tuples.
+
+Sample Usage
+============
+
+    /* 
+     * Example 1: find the first tuple for resource type and 
+     * lock it for update 
+     */
+
+    HeapTuple   tuple;
+
+    tuple = caql_getfirst(
+            NULL,
+            cql("SELECT * FROM pg_resourcetype"
+                " WHERE resname = :1 FOR UPDATE",
+                CStringGetDatum(pNameIn)));
+
+
+    /* 
+     * Example 2: build a context using an existing open relation, and see
+     * if any queues match the supplied name 
+     */
+    pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
+    if (caql_getcount(
+            caql_addrel(cqclr(&cqc), pg_resqueue_rel),
+            cql("SELECT COUNT(*) FROM pg_resqueue WHERE rsqname = :1",
+                CStringGetDatum(stmt->queue))))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_DUPLICATE_OBJECT),
+                 errmsg("resource queue \"%s\" already exists",
+                        stmt->queue)));
+    }
+
+
+    /* Example 3: drop the extended attributes for this queue */
+    int numDel;
+    numDel =
+        caql_getcount(
+                NULL,
+                cql("DELETE FROM pg_resqueuecapability WHERE resqueueid = :1",
+                    ObjectIdGetDatum(queueid))
+                ); 
+
+
+    /* 
+     * Example 4: build a context using an existing open relation, 
+     * and iterate over all of the matching tuples 
+     */
+    gp_db_interface_rel = heap_open(GpDbInterfacesRelationId, AccessShareLock);
+
+    pcqCtx = caql_beginscan(
+            caql_addrel(cqclr(&cqc), gp_db_interface_rel),
+            cql("SELECT * FROM gp_db_interfaces "
+                " WHERE dbid = :1 ",
+                ObjectIdGetDatum(c->dbid)));
+
+    while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+    {
+     ...
+    }
+
+    /* Finish up scan and close appendonly catalog. */
+    caql_endscan(pcqCtx);
+    heap_close(gp_db_interface_rel, AccessShareLock);
+
+
+    /* 
+     * Example 5: select only the dbid column from first matching tuple 
+     * of this table, and set a count of how many tuples matched (0, 1, >1) 
+     */
+
+    Oid dbid;
+    int fetchCount;
+
+    dbid = caql_getoid_plus(
+            NULL,
+            &fetchCount,
+            NULL,
+            cql("SELECT dbid FROM gp_segment_configuration "
+						" WHERE content = :1 "
+						  " AND role = :2 ",
+                Int16GetDatum(contentid),
+						CharGetDatum('m')));
+
+
+    /* 
+     * Example 6: select only the constraint name from first matching tuple 
+     * of this table
+     */
+
+	char	   *cname;
+
+    cname = caql_getcstring(
+             NULL,
+          	   cql("SELECT conname FROM pg_constraint "
+				   " WHERE oid = :1 ",
+				  ObjectIdGetDatum(constraintId)));
+
+
+Constructing and Modifying the caql context
+===========================================
+
+Almost all of the caql functions take a cqContext (caql context)
+argument.  This context maintains information on table locking,
+visibility, and fetch iteration status.  If a null context argument is
+supplied, the caql function will internally generate a default
+context.  While functions like caql_getfirst() and caql_getoid() only
+have a context for the duration of their execution, The
+caql_beginscan() function returns an initialized context which is a
+required argument for subsequent caql_getnext() and caql_endscan()
+functions.  
+
+The most basic modification to the context is to add an existing,
+open, locked relation.  If this relation is not supplied, the caql
+function will open and lock the tables specified in the cql() query,
+and close them at the end of execution (or at caql_endscan() for an
+iterator).  If the relation is supplied using caql_addrel(), the caql
+function will select tuples from the supplied relation, and leave it
+open at the end of execution.  This pattern is common when multiple
+SELECTs and UPDATEs are performed against the same table in a single
+transaction.  The basic way to do this is:
+
+    cqContext   cqc; /* declare the context on the stack */
+
+    cqclr(&cqc); /* clear the context */
+
+	caql_addrel(&cqc, some_open_relation); /* add an open relation */
+
+However, since the context modification functions return a pointer to
+the modified cqContext, you can nest or "chain" them:
+
+    /* 
+     * clear the context, add open relation pg_resqueue_rel, and supply it
+     * to caql_getcount() 
+     */
+    numDel =
+        caql_getcount(
+            caql_addrel(cqclr(&cqc), pg_resqueue_rel),
+            cql("DELETE FROM pg_resqueue WHERE rsqname = :1",
+                CStringGetDatum(stmt->queue))))
+
+Additional context modification function are caql_indexOK(),
+caql_lockmode(), caql_snapshot(), and caql_syscache().  These
+functions mainly exist to support legacy code requirements for the
+initial CaQL conversion, enforcing particular patterns of index,
+heapscan or syscache usage.  As the Unified Catalog Service evolves to
+an external service, usage of these functions may be deprecated, as
+the underlying implementation will be very different.  Best practice
+is to avoid their usage if possible.
+
+
+Operational Details
+===================
+
+The calico.pl module extracts the CaQL statements from the cql()
+macros in the C source files and generates a file called catquery.c.
+This file contains a set of "basic" functions which perform the
+underlying primitive database operations for the associated CaQL
+statement.  calico.pl uses gperf, the gnu perfect hash utility, to
+construct a static dispatch table that maps the CaQL statements to the
+basic functions.  At runtime, the caql functions hash the cql()
+statements to find and execute the associated basic database
+functions.  All of the basic functions are pre-constructed during the
+initial build and compilation of the database engine -- using a novel
+CaQL statement at runtime results in an error.  The make system also
+constructs caql.md5, the md5 hashes for the c source files used to
+generate catquery.c.  The installcheck "caql" test compares the md5
+signatures for the current set of sources with the historic signatures
+for the catquery source files to ensure that the current postgres
+executable is up-to-date.

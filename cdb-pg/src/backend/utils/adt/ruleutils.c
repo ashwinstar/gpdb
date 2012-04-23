@@ -11,6 +11,7 @@
 #include <fcntl.h>
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/sysattr.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -456,8 +457,7 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 	Form_pg_trigger trigrec;
 	StringInfoData buf;
 	Relation	tgrel;
-	ScanKeyData skey[1];
-	SysScanDesc tgscan;
+	cqContext	cqc;
 	int			findx = 0;
 	char	   *tgname;
 
@@ -466,15 +466,11 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 	 */
 	tgrel = heap_open(TriggerRelationId, AccessShareLock);
 
-	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(trigid));
-
-	tgscan = systable_beginscan(tgrel, TriggerOidIndexId, true,
-								SnapshotNow, 1, skey);
-
-	ht_trig = systable_getnext(tgscan);
+	ht_trig = caql_getfirst(
+			caql_addrel(cqclr(&cqc), tgrel),
+			cql("SELECT * FROM pg_trigger "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(trigid)));
 
 	if (!HeapTupleIsValid(ht_trig))
 		elog(ERROR, "could not find tuple for trigger %u", trigid);
@@ -584,7 +580,6 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 	appendStringInfo(&buf, ")");
 
 	/* Clean up */
-	systable_endscan(tgscan);
 
 	heap_close(tgrel, AccessShareLock);
 
@@ -899,8 +894,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 {
 	StringInfoData buf;
 	Relation	conDesc;
-	SysScanDesc conscan;
-	ScanKeyData skey[1];
+	cqContext	cqc;
 	HeapTuple	tup;
 	Form_pg_constraint conForm;
 
@@ -910,15 +904,12 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 	 */
 	conDesc = heap_open(ConstraintRelationId, AccessShareLock);
 
-	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(constraintId));
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), conDesc),
+			cql("SELECT * FROM pg_constraint "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(constraintId)));
 
-	conscan = systable_beginscan(conDesc, ConstraintOidIndexId, true,
-								 SnapshotNow, 1, skey);
-
-	tup = systable_getnext(conscan);
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "could not find tuple for constraint %u", constraintId);
 	conForm = (Form_pg_constraint) GETSTRUCT(tup);
@@ -1147,7 +1138,6 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 	}
 
 	/* Cleanup */
-	systable_endscan(conscan);
 	heap_close(conDesc, AccessShareLock);
 
 	return buf.data;
@@ -1316,9 +1306,7 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 	char	   *column;
 	AttrNumber	attnum;
 	Oid			sequenceId = InvalidOid;
-	Relation	depRel;
-	ScanKeyData key[3];
-	SysScanDesc scan;
+	cqContext  *pcqCtx;
 	HeapTuple	tup;
 
 	/* Get the OID of the table */
@@ -1336,25 +1324,18 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 						column, tablerv->relname)));
 
 	/* Search the dependency table for the dependent sequence */
-	depRel = heap_open(DependRelationId, AccessShareLock);
 
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_refclassid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationRelationId));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_refobjid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(tableOid));
-	ScanKeyInit(&key[2],
-				Anum_pg_depend_refobjsubid,
-				BTEqualStrategyNumber, F_INT4EQ,
-				Int32GetDatum(attnum));
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_depend "
+				" WHERE refclassid = :1 "
+				" AND refobjid = :2 "
+				" AND refobjsubid = :3 ",
+				ObjectIdGetDatum(RelationRelationId),
+				ObjectIdGetDatum(tableOid),
+				Int32GetDatum(attnum)));
 
-	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
-							  SnapshotNow, 3, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_depend deprec = (Form_pg_depend) GETSTRUCT(tup);
 
@@ -1373,8 +1354,7 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 		}
 	}
 
-	systable_endscan(scan);
-	heap_close(depRel, AccessShareLock);
+	caql_endscan(pcqCtx);
 
 	if (OidIsValid(sequenceId))
 	{
@@ -7218,26 +7198,21 @@ static char *
 get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 {
 	Relation rel;
-	ScanKeyData key;
-	SysScanDesc scan;
+	cqContext	cqc;
 	HeapTuple tuple;
 	PartitionRule *rule;
 	Partition *part;
 
 	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
 
-	ScanKeyInit(&key,
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(partid));
+	tuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_partition_rule "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(partid)));
 
-	scan = systable_beginscan(rel, PartitionRuleOidIndexId,
-							  true, SnapshotNow, 1, &key);
-
-	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 	{
-		systable_endscan(scan);
 		heap_close(rel, AccessShareLock);
 		return NULL;
 	}
@@ -7245,24 +7220,18 @@ get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 
 	rule = ruleMakePartitionRule(tuple, RelationGetDescr(rel), 
 								 CurrentMemoryContext);
-	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
 	/* lookup pg_partition by oid */
 	rel = heap_open(PartitionRelationId, AccessShareLock);
 
-	ScanKeyInit(&key,
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(rule->paroid));
-
-	scan = systable_beginscan(rel, PartitionOidIndexId,
-							  true, SnapshotNow, 1, &key);
-
-	tuple = systable_getnext(scan);
+	tuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_partition "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(rule->paroid)));
 	if (!HeapTupleIsValid(tuple))
 	{
-		systable_endscan(scan);
 		heap_close(rel, AccessShareLock);
 
 		return NULL;
@@ -7271,7 +7240,6 @@ get_rule_def_common(Oid partid, int prettyFlags, int bLeafTablename)
 	part = partMakePartition(tuple, RelationGetDescr(rel),
 							 CurrentMemoryContext);
 
-	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
 	return partition_rule_def_worker(rule, rule->parrangestart, 

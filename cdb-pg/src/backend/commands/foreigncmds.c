@@ -38,6 +38,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "access/genam.h"
+#include "access/catquery.h"
 
 /*
  * Convert a DefElem list to the text array format that is used in
@@ -1303,39 +1304,25 @@ void
 RemoveForeignTableEntry(Oid relid)
 {
 	Relation	pg_foreigntable_rel;
-	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	foreignscan;
+	int			numDel;
+	cqContext	cqc;
 
 	/*
 	 * now remove the pg_foreign_table entry
 	 */
 	pg_foreigntable_rel = heap_open(ForeignTableRelationId, RowExclusiveLock);
 
-	ScanKeyInit(&key,
-				Anum_pg_foreign_table_reloid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relid));
+	numDel = caql_getcount(
+			caql_addrel(cqclr(&cqc), pg_foreigntable_rel),
+			cql("DELETE FROM pg_foreign_table "
+				" WHERE reloid = :1 ",
+				ObjectIdGetDatum(relid)));
 
-	foreignscan = systable_beginscan(pg_foreigntable_rel,
-									 ForeignTableRelOidIndexId, true,
-									 SnapshotNow, 1, &key);
-
-	tuple = systable_getnext(foreignscan);
-	if (!HeapTupleIsValid(tuple))
+	if (!numDel)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("foreign table object id \"%d\" does not exist",
 						relid)));
-
-	/*
-	 * Delete the external table entry from the catalog (pg_foreign_table).
-	 */
-	simple_heap_delete(pg_foreigntable_rel, &tuple->t_self);
-
-	/* Finish up scan and close pg_foreign_table catalog. */
-	systable_endscan(foreignscan);
 
 	heap_close(pg_foreigntable_rel, NoLock);
 }

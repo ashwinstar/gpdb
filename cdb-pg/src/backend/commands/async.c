@@ -86,6 +86,7 @@
 #include <unistd.h>
 #include <signal.h>
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
@@ -558,24 +559,19 @@ Exec_Unlisten(Relation lRel, const char *relname)
 static void
 Exec_UnlistenAll(Relation lRel)
 {
-	HeapScanDesc scan;
-	HeapTuple	lTuple;
-	ScanKeyData key[1];
+	cqContext	 cqc;
+	int			 numDel;
 
 	if (Trace_notify)
 		elog(DEBUG1, "Exec_UnlistenAll");
 
 	/* Find and delete all entries with my listenerPID */
-	ScanKeyInit(&key[0],
-				Anum_pg_listener_listenerpid,
-				BTEqualStrategyNumber, F_INT4EQ,
-				Int32GetDatum(MyProcPid));
-	scan = heap_beginscan(lRel, SnapshotNow, 1, key);
 
-	while ((lTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		simple_heap_delete(lRel, &lTuple->t_self);
-
-	heap_endscan(scan);
+	numDel = caql_getcount(
+			caql_addrel(cqclr(&cqc), lRel),
+			cql("DELETE FROM  pg_listener "
+				" WHERE listenerpid = :1 ",
+				Int32GetDatum(MyProcPid)));
 }
 
 /*
@@ -952,8 +948,8 @@ ProcessIncomingNotify(void)
 {
 	Relation	lRel;
 	TupleDesc	tdesc;
-	ScanKeyData key[1];
-	HeapScanDesc scan;
+	cqContext	*pcqCtx;
+	cqContext	 cqc;
 	HeapTuple	lTuple,
 				rTuple;
 	Datum		value[Natts_pg_listener];
@@ -977,11 +973,12 @@ ProcessIncomingNotify(void)
 	tdesc = RelationGetDescr(lRel);
 
 	/* Scan only entries with my listenerPID */
-	ScanKeyInit(&key[0],
-				Anum_pg_listener_listenerpid,
-				BTEqualStrategyNumber, F_INT4EQ,
-				Int32GetDatum(MyProcPid));
-	scan = heap_beginscan(lRel, SnapshotNow, 1, key);
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), lRel),
+			cql("SELECT * FROM pg_listener "
+				" WHERE listenerpid = :1 "
+				" FOR UPDATE ",
+				Int32GetDatum(MyProcPid)));
 
 	/* Prepare data for rewriting 0 into notification field */
 	memset(nulls, false, sizeof(nulls));
@@ -990,7 +987,7 @@ ProcessIncomingNotify(void)
 	memset(value, 0, sizeof(value));
 	value[Anum_pg_listener_notification - 1] = Int32GetDatum(0);
 
-	while ((lTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	while (HeapTupleIsValid(lTuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_listener listener = (Form_pg_listener) GETSTRUCT(lTuple);
 		char	   *relname = NameStr(listener->relname);
@@ -1010,14 +1007,10 @@ ProcessIncomingNotify(void)
 			 * Rewrite the tuple with 0 in notification column.
 			 */
 			rTuple = heap_modify_tuple(lTuple, tdesc, value, nulls, repl);
-			simple_heap_update(lRel, &lTuple->t_self, rTuple);
-
-#ifdef NOT_USED					/* currently there are no indexes */
-			CatalogUpdateIndexes(lRel, rTuple);
-#endif
+			caql_update_current(pcqCtx, rTuple);
 		}
 	}
-	heap_endscan(scan);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * We do NOT release the lock on pg_listener here; we need to hold it

@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -353,20 +354,17 @@ find_language_template(const char *languageName)
 {
 	PLTemplate *result;
 	Relation	rel;
-	SysScanDesc scan;
-	ScanKeyData key;
 	HeapTuple	tup;
+	cqContext	cqc;
 
 	rel = heap_open(PLTemplateRelationId, AccessShareLock);
 
-	ScanKeyInit(&key,
-				Anum_pg_pltemplate_tmplname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum((char *) languageName));
-	scan = systable_beginscan(rel, PLTemplateNameIndexId, true,
-							  SnapshotNow, 1, &key);
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_pltemplate "
+				" WHERE tmplname = :1 ",
+				CStringGetDatum((char *) languageName)));
 
-	tup = systable_getnext(scan);
 	if (HeapTupleIsValid(tup))
 	{
 		Form_pg_pltemplate tmpl = (Form_pg_pltemplate) GETSTRUCT(tup);
@@ -401,8 +399,6 @@ find_language_template(const char *languageName)
 	}
 	else
 		result = NULL;
-
-	systable_endscan(scan);
 
 	heap_close(rel, AccessShareLock);
 

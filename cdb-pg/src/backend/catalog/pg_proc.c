@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
@@ -395,26 +396,20 @@ ProcedureCreate(const char *procedureName,
 		 */
 		if (OidIsValid(describeFuncOid))
 		{
-			Relation	depRel;
-			ScanKeyData key[2];
-			SysScanDesc scan;
 			HeapTuple   depTup;
+			cqContext  *pcqCtx;			
 
 
-			depRel = heap_open(DependRelationId, AccessShareLock);
+			/* XXX XXX: SELECT COUNT(*) ... AND classid = :3, RewriteRelationId) */
+			pcqCtx = caql_beginscan(
+					NULL,
+					cql("SELECT * FROM pg_depend "
+						" WHERE refclassid = :1 "
+						" AND refobjid = :2 ",
+						ObjectIdGetDatum(ProcedureRelationId),
+						ObjectIdGetDatum(oldOid)));
 
-			ScanKeyInit(&key[0],
-						Anum_pg_depend_refclassid,
-						BTEqualStrategyNumber, F_OIDEQ,
-						ObjectIdGetDatum(ProcedureRelationId));
-			ScanKeyInit(&key[1],
-						Anum_pg_depend_refobjid,
-						BTEqualStrategyNumber, F_OIDEQ,
-						ObjectIdGetDatum(oldOid));
-
-			scan = systable_beginscan(depRel, DependReferenceIndexId, true,
-									  SnapshotNow, 2, key);
-			while (HeapTupleIsValid(depTup = systable_getnext(scan)))
+			while (HeapTupleIsValid(depTup = caql_getnext(pcqCtx)))
 			{
 				Form_pg_depend depData = (Form_pg_depend) GETSTRUCT(depTup);
 				if (depData->classid == RewriteRelationId)
@@ -425,8 +420,7 @@ ProcedureCreate(const char *procedureName,
 							 errOmitLocation(true)));
 				}
 			}
-			systable_endscan(scan);
-			heap_close(depRel, AccessShareLock);
+			caql_endscan(pcqCtx);
 		}
 
 		/* Can't change aggregate or window status, either */

@@ -19,6 +19,7 @@
 #include <math.h>
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/aocssegfiles.h"
 #include "catalog/gp_policy.h"
@@ -1107,11 +1108,9 @@ List *
 find_inheritance_children(Oid inhparent)
 {
 	List	   *list = NIL;
-	Relation	relation;
-	HeapScanDesc scan;
 	HeapTuple	inheritsTuple;
 	Oid			inhrelid;
-	ScanKeyData key[1];
+	cqContext  *pcqCtx;
 
 	/*
 	 * Can skip the scan if pg_class shows the relation has never had a
@@ -1120,19 +1119,19 @@ find_inheritance_children(Oid inhparent)
 	if (!has_subclass(inhparent))
 		return NIL;
 
-	ScanKeyInit(&key[0],
-				Anum_pg_inherits_inhparent,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(inhparent));
-	relation = heap_open(InheritsRelationId, AccessShareLock);
-	scan = heap_beginscan(relation, SnapshotNow, 1, key);
-	while ((inheritsTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_inherits "
+				" WHERE inhparent = :1 ",
+				ObjectIdGetDatum(inhparent)));
+
+	while (HeapTupleIsValid(inheritsTuple = caql_getnext(pcqCtx)))
 	{
 		inhrelid = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
 		list = lappend_oid(list, inhrelid);
 	}
-	heap_endscan(scan);
-	heap_close(relation, AccessShareLock);
+	caql_endscan(pcqCtx);
+
 	return list;
 }
 

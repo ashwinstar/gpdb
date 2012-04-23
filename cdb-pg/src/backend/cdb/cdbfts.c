@@ -11,6 +11,11 @@
 #include "postgres.h"
 #include <assert.h>
 
+#include "access/heapam.h"
+#include "catalog/heap.h"
+#include "access/sysattr.h"
+#include "access/xact.h"
+#include "access/catquery.h"
 #include "miscadmin.h"
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
@@ -319,40 +324,41 @@ getDBSuperuserName(CdbComponentDatabaseInfo *q, const char *errPrefix)
 	char *suser = NULL;
 	Relation auth_rel;
 	HeapTuple	auth_tup;
-	HeapScanDesc auth_scan;
-	ScanKeyData key[2];
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 	bool	isNull;
 
-	ScanKeyInit(&key[0],
-				Anum_pg_authid_rolsuper,
-				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
-
-	ScanKeyInit(&key[1],
-				Anum_pg_authid_rolcanlogin,
-				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
-
 	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
-	auth_scan = heap_beginscan(auth_rel, SnapshotNow, 2, key);
 
-	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
+	/* XXX XXX: SELECT rolname WHERE ... AND rolvaliduntil is null ? */
+	/* XXX XXX: are there multiple matches, but only return last one ? */
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), auth_rel),
+			cql("SELECT * FROM pg_authid "
+				" WHERE rolsuper = :1 "
+				" AND rolcanlogin = :2 ",
+				BoolGetDatum(true),
+				BoolGetDatum(true)));
+
+	while (HeapTupleIsValid(auth_tup = caql_getnext(pcqCtx)))
 	{
 		Datum	attrName;
 		Datum	validuntil;
 
-		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, auth_rel->rd_att, &isNull);
+		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, 
+								  RelationGetDescr(auth_rel), &isNull);
 		/* we actually want it to be NULL, that means always valid */
 		if (!isNull)
 			continue;
 
-		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
+		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, 
+								RelationGetDescr(auth_rel), &isNull);
 
 		Assert(!isNull);
 
 		suser = strdup(DatumGetCString(attrName));
 	}
-	heap_endscan(auth_scan);
+	caql_endscan(pcqCtx);
 	heap_close(auth_rel, AccessShareLock);
 
 	return suser;

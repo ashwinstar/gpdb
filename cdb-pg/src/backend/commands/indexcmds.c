@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "access/transam.h"
@@ -1122,9 +1123,7 @@ GetDefaultOpClass(Oid type_id, Oid am_id)
 	int			ncompatible = 0;
 	Oid			exactOid = InvalidOid;
 	Oid			compatibleOid = InvalidOid;
-	Relation	rel;
-	ScanKeyData skey[1];
-	SysScanDesc scan;
+	cqContext  *pcqCtx;
 	HeapTuple	tup;
 
 	/* If it's a domain, look at the base type instead */
@@ -1139,17 +1138,13 @@ GetDefaultOpClass(Oid type_id, Oid am_id)
 	 * require the user to specify which one he wants.	If we find more than
 	 * one exact match, then someone put bogus entries in pg_opclass.
 	 */
-	rel = heap_open(OperatorClassRelationId, AccessShareLock);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_opclass "
+				" WHERE opcamid = :1 ",
+				ObjectIdGetDatum(am_id)));
 
-	ScanKeyInit(&skey[0],
-				Anum_pg_opclass_opcamid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(am_id));
-
-	scan = systable_beginscan(rel, OpclassAmNameNspIndexId, true,
-							  SnapshotNow, 1, skey);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_opclass opclass = (Form_pg_opclass) GETSTRUCT(tup);
 
@@ -1168,9 +1163,7 @@ GetDefaultOpClass(Oid type_id, Oid am_id)
 		}
 	}
 
-	systable_endscan(scan);
-
-	heap_close(rel, AccessShareLock);
+	caql_endscan(pcqCtx);
 
 	if (nexact == 1)
 		return exactOid;
@@ -1821,8 +1814,7 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 void
 ReindexDatabase(ReindexStmt *stmt)
 {
-	Relation	relationRelation;
-	HeapScanDesc scan;
+	cqContext  *pcqCtx;
 	HeapTuple	tuple;
 	MemoryContext private_context;
 	MemoryContext old;
@@ -1881,9 +1873,11 @@ ReindexDatabase(ReindexStmt *stmt)
 	 * We only consider plain relations here (toast rels will be processed
 	 * indirectly by reindex_relation).
 	 */
-	relationRelation = heap_open(RelationRelationId, AccessShareLock);
-	scan = heap_beginscan(relationRelation, SnapshotNow, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class", NULL));
+
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_class classtuple = (Form_pg_class) GETSTRUCT(tuple);
 
@@ -1919,8 +1913,7 @@ ReindexDatabase(ReindexStmt *stmt)
 		relids = lappend_oid(relids, HeapTupleGetOid(tuple));
 		MemoryContextSwitchTo(old);
 	}
-	heap_endscan(scan);
-	heap_close(relationRelation, AccessShareLock);
+	caql_endscan(pcqCtx);
 
 	/* Now reindex each rel in a separate transaction */
 	CommitTransactionCommand();

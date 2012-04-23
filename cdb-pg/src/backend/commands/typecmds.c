@@ -32,6 +32,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "access/xact.h"
@@ -1563,9 +1564,7 @@ AlterDomainDropConstraint(List *names, const char *constrName,
 	Oid			domainoid;
 	HeapTuple	tup;
 	Relation	rel;
-	Relation	conrel;
-	SysScanDesc conscan;
-	ScanKeyData key[1];
+	cqContext  *pcqCtx;
 	HeapTuple	contup;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
@@ -1585,21 +1584,18 @@ AlterDomainDropConstraint(List *names, const char *constrName,
 	checkDomainOwner(tup, typname);
 
 	/* Grab an appropriate lock on the pg_constraint relation */
-	conrel = heap_open(ConstraintRelationId, RowExclusiveLock);
-
 	/* Use the index to scan only constraints of the target relation */
-	ScanKeyInit(&key[0],
-				Anum_pg_constraint_contypid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(HeapTupleGetOid(tup)));
 
-	conscan = systable_beginscan(conrel, ConstraintTypidIndexId, true,
-								 SnapshotNow, 1, key);
-
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_constraint "
+				" WHERE contypid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(HeapTupleGetOid(tup))));
 	/*
 	 * Scan over the result set, removing any matching entries.
 	 */
-	while ((contup = systable_getnext(conscan)) != NULL)
+	while (HeapTupleIsValid(contup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(contup);
 
@@ -1615,8 +1611,7 @@ AlterDomainDropConstraint(List *names, const char *constrName,
 		}
 	}
 	/* Clean up after the scan */
-	systable_endscan(conscan);
-	heap_close(conrel, RowExclusiveLock);
+	caql_endscan(pcqCtx);
 
 	heap_close(rel, NoLock);
 }
@@ -1828,9 +1823,7 @@ static List *
 get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 {
 	List	   *result = NIL;
-	Relation	depRel;
-	ScanKeyData key[2];
-	SysScanDesc depScan;
+	cqContext  *pcqCtx;
 	HeapTuple	depTup;
 
 	Assert(lockmode != NoLock);
@@ -1839,21 +1832,15 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 	 * We scan pg_depend to find those things that depend on the domain. (We
 	 * assume we can ignore refobjsubid for a domain.)
 	 */
-	depRel = heap_open(DependRelationId, AccessShareLock);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_depend "
+				" WHERE refclassid = :1 "
+				" AND refobjid = :2 ",
+				ObjectIdGetDatum(TypeRelationId),
+				ObjectIdGetDatum(domainOid)));
 
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_refclassid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(TypeRelationId));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_refobjid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(domainOid));
-
-	depScan = systable_beginscan(depRel, DependReferenceIndexId, true,
-								 SnapshotNow, 2, key);
-
-	while (HeapTupleIsValid(depTup = systable_getnext(depScan)))
+	while (HeapTupleIsValid(depTup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_depend pg_depend = (Form_pg_depend) GETSTRUCT(depTup);
 		RelToCheck *rtc = NULL;
@@ -1955,9 +1942,7 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 		rtc->atts[ptr] = pg_depend->objsubid;
 	}
 
-	systable_endscan(depScan);
-
-	relation_close(depRel, AccessShareLock);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2161,8 +2146,9 @@ GetDomainConstraints(Oid typeOid)
 		HeapTuple	tup;
 		HeapTuple	conTup;
 		Form_pg_type typTup;
-		ScanKeyData key[1];
-		SysScanDesc scan;
+		cqContext	*pcqCtx;
+		cqContext	 cqc;
+
 
 		tup = SearchSysCache(TYPEOID,
 							 ObjectIdGetDatum(typeOid),
@@ -2183,15 +2169,14 @@ GetDomainConstraints(Oid typeOid)
 			notNull = true;
 
 		/* Look for CHECK Constraints on this domain */
-		ScanKeyInit(&key[0],
-					Anum_pg_constraint_contypid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(typeOid));
 
-		scan = systable_beginscan(conRel, ConstraintTypidIndexId, true,
-								  SnapshotNow, 1, key);
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), conRel),
+				cql("SELECT * FROM pg_constraint "
+					" WHERE contypid = :1 ",
+					ObjectIdGetDatum(typeOid)));
 
-		while (HeapTupleIsValid(conTup = systable_getnext(scan)))
+		while (HeapTupleIsValid(conTup = caql_getnext(pcqCtx)))
 		{
 			Form_pg_constraint c = (Form_pg_constraint) GETSTRUCT(conTup);
 			Datum		val;
@@ -2231,7 +2216,7 @@ GetDomainConstraints(Oid typeOid)
 			result = lcons(r, result);
 		}
 
-		systable_endscan(scan);
+		caql_endscan(pcqCtx);
 
 		/* loop to next domain in stack */
 		typeOid = typTup->typbasetype;
@@ -2582,8 +2567,7 @@ AlterType(AlterTypeStmt *stmt)
 {
 	TypeName	   *typname = stmt->typname;
 	Oid				typid;
-	ScanKeyData		key[1];
-	SysScanDesc		scan;
+	cqContext		cqc;
 	HeapTuple		tup;
 	Datum			typoptions;
 	bool			typmod_set = false;
@@ -2654,15 +2638,12 @@ AlterType(AlterTypeStmt *stmt)
 									 false,
 									 false);
 
-
-	ScanKeyInit(&key[0],
-				Anum_pg_type_encoding_typid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(typid));
-
-	scan = systable_beginscan(pgtypeenc, TypeEncodingTypidIndexId, true,
-							  SnapshotNow, 1, key);
-	tup = systable_getnext(scan);
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), pgtypeenc),
+			cql("SELECT * FROM pg_type_encoding "
+				" WHERE typid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(typid)));
 
 	if (HeapTupleIsValid(tup))
 	{
@@ -2691,8 +2672,6 @@ AlterType(AlterTypeStmt *stmt)
 		add_type_encoding(typid, typoptions);
 	}	
 
-	systable_endscan(scan);
-
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *)stmt, NULL);
 
@@ -2705,28 +2684,16 @@ AlterType(AlterTypeStmt *stmt)
 static void
 remove_type_encoding(Oid typid)
 {
-	Relation 		pgtypeenc = heap_open(TypeEncodingRelationId, RowExclusiveLock);
-	ScanKeyData		key[1];
-	SysScanDesc		scan;
-	HeapTuple		tup;
+	int numDel;
 
 	/* check permissions on type */
 	if (!pg_type_ownercheck(typid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
 					   format_type_be(typid));
 
-	ScanKeyInit(&key[0],
-				Anum_pg_type_encoding_typid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(typid));
-
-	scan = systable_beginscan(pgtypeenc, TypeEncodingTypidIndexId, true,
-							  SnapshotNow, 1, key);
-	tup = systable_getnext(scan);
-
-	if (HeapTupleIsValid(tup))
-		simple_heap_delete(pgtypeenc, &tup->t_self);
-
-	systable_endscan(scan);
-	heap_close(pgtypeenc, RowExclusiveLock);
+	numDel = caql_getcount(
+			NULL,
+			cql("DELETE FROM pg_type_encoding "
+				" WHERE typid = :1 ",
+				ObjectIdGetDatum(typid)));
 }

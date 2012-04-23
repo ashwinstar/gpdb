@@ -26,6 +26,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/catquery.h"
 #include "access/reloptions.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
@@ -1699,23 +1700,18 @@ find_crsd(Value *column, List *stenc)
 List *
 TypeNameGetStorageDirective(TypeName *typname)
 {
-	SysScanDesc scan;
-	ScanKeyData key;
 	HeapTuple tuple;
+	cqContext	cqc;
 	Relation pgtypenc = heap_open(TypeEncodingRelationId, AccessShareLock);
 	Oid typid = typenameTypeId(NULL, typname);
 	List *out = NIL;
 
-	ScanKeyInit(&key,
-				Anum_pg_type_encoding_typid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(typid));
-
-	scan = systable_beginscan(pgtypenc,
-							  TypeEncodingTypidIndexId,
-							  true, SnapshotNow, 1, &key);
-
-	tuple = systable_getnext(scan);
+	/* XXX XXX: SELECT typoptions */
+	tuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), pgtypenc), 
+			cql("SELECT * FROM pg_type_encoding "
+				" WHERE typid = :1 ",
+				ObjectIdGetDatum(typid)));
 
 	if (HeapTupleIsValid(tuple))
 	{
@@ -1729,7 +1725,6 @@ TypeNameGetStorageDirective(TypeName *typname)
 
 		out = untransformRelOptions(options);
 	}
-	systable_endscan(scan);
 
 	heap_close(pgtypenc, AccessShareLock);
 	return out;
@@ -8766,9 +8761,8 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 															 is enough */
 				IndexStmt *chidx;
 				Relation partrel;
-				ScanKeyData key;
-				SysScanDesc scan;
 				HeapTuple tuple;
+				cqContext	cqc;
 				char *parname;
 				int2 position;
 				int4 depth;
@@ -8799,15 +8793,12 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				 * our depth.
 				 */
 				partrel = heap_open(PartitionRuleRelationId, AccessShareLock);
-				ScanKeyInit(&key,
-							Anum_pg_partition_rule_parchildrelid,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(relid));
-				scan = systable_beginscan(partrel,
-										  PartitionRuleParchildrelidIndexId,
-										  true, SnapshotNow, 1, &key);
 
-				tuple = systable_getnext(scan);
+				tuple = caql_getfirst(
+						caql_addrel(cqclr(&cqc), partrel), 
+						cql("SELECT * FROM pg_partition_rule "
+							" WHERE parchildrelid = :1 ",
+							ObjectIdGetDatum(relid)));
 
 				Assert(HeapTupleIsValid(tuple));
 
@@ -8816,26 +8807,21 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				position = ((Form_pg_partition_rule)GETSTRUCT(tuple))->parruleord;
 				paroid = ((Form_pg_partition_rule)GETSTRUCT(tuple))->paroid;
 
-				systable_endscan(scan);
+
 				heap_close(partrel, NoLock);
 
 				partrel = heap_open(PartitionRelationId, AccessShareLock);
 
-				ScanKeyInit(&key,
-							ObjectIdAttributeNumber,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(paroid));
-				scan = systable_beginscan(partrel,
-										  PartitionOidIndexId,
-										  true, SnapshotNow, 1, &key);
-
-				tuple = systable_getnext(scan);
+				tuple = caql_getfirst(
+						caql_addrel(cqclr(&cqc), partrel), 
+						cql("SELECT parlevel FROM pg_partition "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(paroid)));
 
 				Assert(HeapTupleIsValid(tuple));
 
 				depth = ((Form_pg_partition)GETSTRUCT(tuple))->parlevel + 1;
 
-				systable_endscan(scan);
 				heap_close(partrel, NoLock);
 
 				heap_close(crel, NoLock);

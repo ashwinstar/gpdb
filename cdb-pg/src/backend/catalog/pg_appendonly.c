@@ -17,6 +17,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/gp_fastsequence.h"
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -137,9 +138,9 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 						  Oid *blkdiridxid)
 {
 	Relation	pg_appendonly_rel;
+	TupleDesc	pg_appendonly_dsc;
 	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	aoscan;
+	cqContext	cqc;
 	Datum auxOid;
 	bool isNull;
 
@@ -148,21 +149,14 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	 * is there.
 	 */
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, AccessShareLock);
+	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
 
-	ScanKeyInit(&key,
-				Anum_pg_appendonly_relid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relid));
-
-    aoscan = systable_beginscan(pg_appendonly_rel,
-								AppendOnlyRelidIndexId,
-								true,
-								appendOnlyMetaDataSnapshot,
-								1,
-								&key);
-
-    tuple = systable_getnext(aoscan);
+	tuple = caql_getfirst(
+			caql_snapshot(caql_addrel(cqclr(&cqc), pg_appendonly_rel), 
+						  appendOnlyMetaDataSnapshot),				
+			cql("SELECT * FROM pg_appendonly "
+				" WHERE relid = :1 ",
+				ObjectIdGetDatum(relid)));
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -173,7 +167,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	{
 		auxOid = heap_getattr(tuple,
 							  Anum_pg_appendonly_segrelid,
-							  pg_appendonly_rel->rd_att,
+							  pg_appendonly_dsc,
 							  &isNull);
 		Assert(!isNull);
 		if(isNull)
@@ -188,7 +182,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	{
 		auxOid = heap_getattr(tuple,
 							  Anum_pg_appendonly_segidxid,
-							  pg_appendonly_rel->rd_att,
+							  pg_appendonly_dsc,
 							  &isNull);
 		Assert(!isNull);
 		if(isNull)
@@ -203,7 +197,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	{
 		auxOid = heap_getattr(tuple,
 							  Anum_pg_appendonly_blkdirrelid,
-							  pg_appendonly_rel->rd_att,
+							  pg_appendonly_dsc,
 							  &isNull);
 		Assert(!isNull);
 		if(isNull)
@@ -218,7 +212,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	{
 		auxOid = heap_getattr(tuple,
 							  Anum_pg_appendonly_blkdiridxid,
-							  pg_appendonly_rel->rd_att,
+							  pg_appendonly_dsc,
 							  &isNull);
 		Assert(!isNull);
 		if(isNull)
@@ -230,7 +224,6 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	}
 
 	/* Finish up scan and close pg_appendonly catalog. */
-	systable_endscan(aoscan);
 
 	heap_close(pg_appendonly_rel, AccessShareLock);
 }
@@ -245,8 +238,7 @@ GetAppendOnlyEntry(Oid relid, Snapshot appendOnlyMetaDataSnapshot)
 	Relation	pg_appendonly_rel;
 	TupleDesc	pg_appendonly_dsc;
 	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	aoscan;
+	cqContext	cqc;
 
 	AppendOnlyEntry *aoentry;
 
@@ -259,20 +251,14 @@ GetAppendOnlyEntry(Oid relid, Snapshot appendOnlyMetaDataSnapshot)
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
 	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
 
-	ScanKeyInit(&key,
-				Anum_pg_appendonly_relid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relid));
+	tuple = caql_getfirst(
+			caql_snapshot(caql_addrel(cqclr(&cqc), pg_appendonly_rel), 
+						  appendOnlyMetaDataSnapshot),				
+			cql("SELECT * FROM pg_appendonly "
+				" WHERE relid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relid)));
 
-    aoscan = systable_beginscan(pg_appendonly_rel,
-								AppendOnlyRelidIndexId,
-								true,
-								appendOnlyMetaDataSnapshot,
-								1,
-								&key);
-
-    tuple = systable_getnext(aoscan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -287,7 +273,6 @@ GetAppendOnlyEntry(Oid relid, Snapshot appendOnlyMetaDataSnapshot)
 	Assert(relid == relationId);
 
 	/* Finish up scan and close pg_appendonly catalog. */
-	systable_endscan(aoscan);
 
 	heap_close(pg_appendonly_rel, RowExclusiveLock);
 
@@ -326,9 +311,9 @@ GetAppendOnlyEntryFromTuple(
 	aoentry = (AppendOnlyEntry *) palloc(sizeof(AppendOnlyEntry));
 
 	/* get the relid */
-	relid = heap_getattr(tuple,
-							 Anum_pg_appendonly_relid,
-							 pg_appendonly_rel->rd_att,
+	relid = heap_getattr(tuple, 
+							 Anum_pg_appendonly_relid, 
+							 pg_appendonly_dsc, 
 							 &isNull);
 
 	if(isNull)
@@ -337,9 +322,9 @@ GetAppendOnlyEntryFromTuple(
 				 errmsg("got invalid relid value: NULL")));
 
 	/* get the blocksize */
-	blocksize = heap_getattr(tuple,
-							 Anum_pg_appendonly_blocksize,
-							 pg_appendonly_rel->rd_att,
+	blocksize = heap_getattr(tuple, 
+							 Anum_pg_appendonly_blocksize, 
+							 pg_appendonly_dsc, 
 							 &isNull);
 
 	if(isNull)
@@ -348,9 +333,9 @@ GetAppendOnlyEntryFromTuple(
 				 errmsg("got invalid blocksize value: NULL")));
 
 	/* get the safefswritesize */
-	safefswritesize = heap_getattr(tuple,
-								   Anum_pg_appendonly_safefswritesize,
-								   pg_appendonly_rel->rd_att,
+	safefswritesize = heap_getattr(tuple, 
+								   Anum_pg_appendonly_safefswritesize, 
+								   pg_appendonly_dsc, 
 								   &isNull);
 
 	if(isNull)
@@ -359,9 +344,9 @@ GetAppendOnlyEntryFromTuple(
 				 errmsg("got invalid safe fs write size value: NULL")));
 
 	/* get the compresslevel */
-	compresslevel = heap_getattr(tuple,
-								 Anum_pg_appendonly_compresslevel,
-								 pg_appendonly_rel->rd_att,
+	compresslevel = heap_getattr(tuple, 
+								 Anum_pg_appendonly_compresslevel, 
+								 pg_appendonly_dsc, 
 								 &isNull);
 
 	if(isNull)
@@ -370,9 +355,9 @@ GetAppendOnlyEntryFromTuple(
 				 errmsg("got invalid compresslevel value: NULL")));
 
 	/* get the majorversion */
-	majorversion = heap_getattr(tuple,
-								 Anum_pg_appendonly_majorversion,
-								 pg_appendonly_rel->rd_att,
+	majorversion = heap_getattr(tuple, 
+								 Anum_pg_appendonly_majorversion, 
+								 pg_appendonly_dsc, 
 								 &isNull);
 
 	if(isNull)
@@ -381,19 +366,19 @@ GetAppendOnlyEntryFromTuple(
 				 errmsg("got invalid major version value: NULL")));
 
 	/* get the minorversion */
-	minorversion = heap_getattr(tuple,
-								Anum_pg_appendonly_minorversion,
-								pg_appendonly_rel->rd_att,
+	minorversion = heap_getattr(tuple, 
+								Anum_pg_appendonly_minorversion, 
+								pg_appendonly_dsc, 
 								&isNull);
 
 	if(isNull)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("got invalid minor version value: NULL")));
-
-	checksum = heap_getattr(tuple,
-							Anum_pg_appendonly_checksum,
-							pg_appendonly_rel->rd_att,
+				 errmsg("got invalid minor version value: NULL")));	
+	
+	checksum = heap_getattr(tuple, 
+							Anum_pg_appendonly_checksum, 
+							pg_appendonly_dsc, 
 							&isNull);
 
 	if(isNull)
@@ -401,9 +386,9 @@ GetAppendOnlyEntryFromTuple(
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid checksum value: NULL")));
 
-	columnstore = heap_getattr(tuple,
-							Anum_pg_appendonly_columnstore,
-							pg_appendonly_rel->rd_att,
+	columnstore = heap_getattr(tuple, 
+							Anum_pg_appendonly_columnstore, 
+							pg_appendonly_dsc, 
 							&isNull);
     Assert(!isNull);
 	if(isNull)
@@ -412,9 +397,9 @@ GetAppendOnlyEntryFromTuple(
 				 errmsg("got invalid columnstore value: NULL")));
 
 	/* get the compressor type */
-	compresstype = heap_getattr(tuple,
-								Anum_pg_appendonly_compresstype,
-								pg_appendonly_rel->rd_att,
+	compresstype = heap_getattr(tuple, 
+								Anum_pg_appendonly_compresstype, 
+								pg_appendonly_dsc, 
 								&isNull);
 
 	if(isNull)
@@ -427,7 +412,7 @@ GetAppendOnlyEntryFromTuple(
 
     segrelid = heap_getattr(tuple,
 							Anum_pg_appendonly_segrelid,
-							pg_appendonly_rel->rd_att,
+							pg_appendonly_dsc, 
 							&isNull);
     Assert(!isNull);
 	if(isNull)
@@ -437,7 +422,7 @@ GetAppendOnlyEntryFromTuple(
 
     segidxid = heap_getattr(tuple,
 							Anum_pg_appendonly_segidxid,
-							pg_appendonly_rel->rd_att,
+							pg_appendonly_dsc, 
 							&isNull);
     Assert(!isNull);
 	if(isNull)
@@ -447,7 +432,7 @@ GetAppendOnlyEntryFromTuple(
 
     blkdirrelid = heap_getattr(tuple,
 							   Anum_pg_appendonly_blkdirrelid,
-							   pg_appendonly_rel->rd_att,
+							   pg_appendonly_dsc, 
 							   &isNull);
     Assert(!isNull);
 	if(isNull)
@@ -457,7 +442,7 @@ GetAppendOnlyEntryFromTuple(
 
     blkdiridxid = heap_getattr(tuple,
 							   Anum_pg_appendonly_blkdiridxid,
-							   pg_appendonly_rel->rd_att,
+							   pg_appendonly_dsc, 
 							   &isNull);
     Assert(!isNull);
 	if(isNull)
@@ -468,7 +453,7 @@ GetAppendOnlyEntryFromTuple(
 	/* get the version */
 	version = heap_getattr(tuple,
 						   Anum_pg_appendonly_version,
-						   pg_appendonly_rel->rd_att,
+						   pg_appendonly_dsc,
 						   &isNull);
 
 	if(isNull)
@@ -510,8 +495,7 @@ UpdateAppendOnlyEntryAuxOids(Oid relid,
 	Relation	pg_appendonly_rel;
 	TupleDesc	pg_appendonly_dsc;
 	HeapTuple	tuple, newTuple;
-	ScanKeyData	key;
-	SysScanDesc	aoscan;
+	cqContext	cqc;
 	Datum *newValues;
 	bool *newNulls;
 	bool *replace;
@@ -523,20 +507,13 @@ UpdateAppendOnlyEntryAuxOids(Oid relid,
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
 	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
 
-	ScanKeyInit(&key,
-				Anum_pg_appendonly_relid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relid));
+	tuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), pg_appendonly_rel),
+			cql("SELECT * FROM pg_appendonly "
+				" WHERE relid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relid)));
 
-    aoscan = systable_beginscan(pg_appendonly_rel,
-								AppendOnlyRelidIndexId,
-								true,
-								SnapshotNow,
-								1,
-								&key);
-
-    tuple = systable_getnext(aoscan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -578,7 +555,7 @@ UpdateAppendOnlyEntryAuxOids(Oid relid,
 
 	heap_freetuple(newTuple);
 
-	systable_endscan(aoscan);
+	/* Finish up scan and close appendonly catalog. */
 
 	heap_close(pg_appendonly_rel, RowExclusiveLock);
 
@@ -600,8 +577,7 @@ RemoveAppendonlyEntry(Oid relid)
 	Relation	pg_appendonly_rel;
 	TupleDesc	pg_appendonly_dsc;
 	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	aoscan;
+	cqContext	cqc;
 	Oid aosegrelid = InvalidOid;
 
 	/*
@@ -610,21 +586,13 @@ RemoveAppendonlyEntry(Oid relid)
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
 	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
 
-	ScanKeyInit(&key,
-				Anum_pg_appendonly_relid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relid));
+	tuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), pg_appendonly_rel),
+			cql("SELECT * FROM pg_appendonly "
+				" WHERE relid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relid)));
 
-
-	aoscan = systable_beginscan(pg_appendonly_rel,
-								AppendOnlyRelidIndexId,
-								true,
-								SnapshotNow,
-								1,
-								&key);
-
-	tuple = systable_getnext(aoscan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -650,7 +618,6 @@ RemoveAppendonlyEntry(Oid relid)
 
 
 	/* Finish up scan and close appendonly catalog. */
-	systable_endscan(aoscan);
 
 	heap_close(pg_appendonly_rel, NoLock);
 }
@@ -699,25 +666,15 @@ GetAppendEntryForMove(
 	Oid 		*aoblkdirrelid)
 {
 	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	aoscan;
-	HeapTuple	tupleCopy;
+	cqContext	cqc;
 	bool		isNull;
 
-	ScanKeyInit(&key,
-				Anum_pg_appendonly_relid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relId));
+	tuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), pg_appendonly_rel),
+			cql("SELECT * FROM pg_appendonly "
+				" WHERE relid = :1 ",
+				ObjectIdGetDatum(relId)));
 
-	aoscan = systable_beginscan(pg_appendonly_rel,
-								AppendOnlyRelidIndexId,
-								true,
-								SnapshotNow,
-								1,
-								&key);
-
-	tuple = systable_getnext(aoscan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -726,7 +683,7 @@ GetAppendEntryForMove(
 
     *aosegrelid = heap_getattr(tuple,
 							Anum_pg_appendonly_segrelid,
-							pg_appendonly_rel->rd_att,
+							pg_appendonly_dsc, 
 							&isNull);
     Assert(!isNull);
 	if(isNull)
@@ -736,7 +693,7 @@ GetAppendEntryForMove(
 
     *aoblkdirrelid = heap_getattr(tuple,
 							   Anum_pg_appendonly_blkdirrelid,
-							   pg_appendonly_rel->rd_att,
+							   pg_appendonly_dsc, 
 							   &isNull);
     Assert(!isNull);
 	if(isNull)
@@ -744,12 +701,11 @@ GetAppendEntryForMove(
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid blkdirrelid value: NULL")));
 
-	tupleCopy = heap_copytuple(tuple);
+	/* tupleCopy = heap_copytuple(tuple); XXX XXX already a copy */
 
 	/* Finish up scan and close appendonly catalog. */
-	systable_endscan(aoscan);
 
-	return tupleCopy;
+	return tuple;
 }
 
 /*

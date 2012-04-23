@@ -22,6 +22,7 @@
 #include <ctype.h>
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -85,29 +86,15 @@ regprocin(PG_FUNCTION_ARGS)
 	if (IsBootstrapProcessingMode())
 	{
 		int			matches = 0;
-		Relation	hdesc;
-		ScanKeyData skey[1];
-		SysScanDesc sysscan;
-		HeapTuple	tuple;
 
-		ScanKeyInit(&skey[0],
-					Anum_pg_proc_proname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(pro_name_or_oid));
-
-		hdesc = heap_open(ProcedureRelationId, AccessShareLock);
-		sysscan = systable_beginscan(hdesc, ProcedureNameArgsNspIndexId, true,
-									 SnapshotNow, 1, skey);
-
-		while (HeapTupleIsValid(tuple = systable_getnext(sysscan)))
-		{
-			result = (RegProcedure) HeapTupleGetOid(tuple);
-			if (++matches > 1)
-				break;
-		}
-
-		systable_endscan(sysscan);
-		heap_close(hdesc, AccessShareLock);
+		result = 
+				(RegProcedure) caql_getoid_plus(
+						NULL,
+						&matches,
+						NULL,
+						cql("SELECT oid FROM pg_proc "
+							" WHERE proname = :1 ",
+							CStringGetDatum(pro_name_or_oid)));
 
 		if (matches == 0)
 			ereport(ERROR,
@@ -165,6 +152,7 @@ regprocout(PG_FUNCTION_ARGS)
 							 ObjectIdGetDatum(proid),
 							 0, 0, 0);
 
+	/* XXX XXX select proname, pronamespace from pg_proc */
 	if (HeapTupleIsValid(proctup))
 	{
 		Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
@@ -309,6 +297,7 @@ format_procedure(Oid procedure_oid)
 							 ObjectIdGetDatum(procedure_oid),
 							 0, 0, 0);
 
+	/* XXX XXX select proname, pronamespace from pg_proc */
 	if (HeapTupleIsValid(proctup))
 	{
 		Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
@@ -436,29 +425,15 @@ regoperin(PG_FUNCTION_ARGS)
 	if (IsBootstrapProcessingMode())
 	{
 		int			matches = 0;
-		Relation	hdesc;
-		ScanKeyData skey[1];
-		SysScanDesc sysscan;
-		HeapTuple	tuple;
 
-		ScanKeyInit(&skey[0],
-					Anum_pg_operator_oprname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(opr_name_or_oid));
-
-		hdesc = heap_open(OperatorRelationId, AccessShareLock);
-		sysscan = systable_beginscan(hdesc, OperatorNameNspIndexId, true,
-									 SnapshotNow, 1, skey);
-
-		while (HeapTupleIsValid(tuple = systable_getnext(sysscan)))
-		{
-			result = HeapTupleGetOid(tuple);
-			if (++matches > 1)
-				break;
-		}
-
-		systable_endscan(sysscan);
-		heap_close(hdesc, AccessShareLock);
+		result = 
+				caql_getoid_plus(
+						NULL,
+						&matches,
+						NULL,
+						cql("SELECT oid FROM pg_operator "
+							" WHERE oprname = :1 ",
+							CStringGetDatum(opr_name_or_oid)));
 
 		if (matches == 0)
 			ereport(ERROR,
@@ -515,6 +490,7 @@ regoperout(PG_FUNCTION_ARGS)
 							 ObjectIdGetDatum(oprid),
 							 0, 0, 0);
 
+	/* XXX XXX select oprname, oprnamespace from pg_operator */
 	if (HeapTupleIsValid(opertup))
 	{
 		Form_pg_operator operform = (Form_pg_operator) GETSTRUCT(opertup);
@@ -666,6 +642,7 @@ format_operator(Oid operator_oid)
 							 ObjectIdGetDatum(operator_oid),
 							 0, 0, 0);
 
+	/* XXX XXX select oprname, oprnamespace from pg_operator */
 	if (HeapTupleIsValid(opertup))
 	{
 		Form_pg_operator operform = (Form_pg_operator) GETSTRUCT(opertup);
@@ -795,31 +772,24 @@ regclassin(PG_FUNCTION_ARGS)
 	 */
 	if (IsBootstrapProcessingMode())
 	{
-		Relation	hdesc;
-		ScanKeyData skey[1];
-		SysScanDesc sysscan;
-		HeapTuple	tuple;
+		int			matches = 0;
 
-		ScanKeyInit(&skey[0],
-					Anum_pg_class_relname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(class_name_or_oid));
-
-		hdesc = heap_open(RelationRelationId, AccessShareLock);
-		sysscan = systable_beginscan(hdesc, ClassNameNspIndexId, true,
-									 SnapshotNow, 1, skey);
-
-		if (HeapTupleIsValid(tuple = systable_getnext(sysscan)))
-			result = HeapTupleGetOid(tuple);
-		else
+		result = 
+				caql_getoid_plus(
+						NULL,
+						&matches,
+						NULL,
+						cql("SELECT oid FROM pg_class "
+							" WHERE relname = :1 ",
+							CStringGetDatum(class_name_or_oid)));
+		if (0 == matches)
+		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_TABLE),
 			   errmsg("relation \"%s\" does not exist", class_name_or_oid)));
+		}
 
 		/* We assume there can be only one match */
-
-		systable_endscan(sysscan);
-		heap_close(hdesc, AccessShareLock);
 
 		PG_RETURN_OID(result);
 	}
@@ -855,6 +825,7 @@ regclassout(PG_FUNCTION_ARGS)
 							  ObjectIdGetDatum(classid),
 							  0, 0, 0);
 
+	/* XXX XXX select relname, relnamespace from pg_class */
 	if (HeapTupleIsValid(classtup))
 	{
 		Form_pg_class classform = (Form_pg_class) GETSTRUCT(classtup);
@@ -960,31 +931,24 @@ regtypein(PG_FUNCTION_ARGS)
 	 */
 	if (IsBootstrapProcessingMode())
 	{
-		Relation	hdesc;
-		ScanKeyData skey[1];
-		SysScanDesc sysscan;
-		HeapTuple	tuple;
+		int			matches = 0;
 
-		ScanKeyInit(&skey[0],
-					Anum_pg_type_typname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(typ_name_or_oid));
-
-		hdesc = heap_open(TypeRelationId, AccessShareLock);
-		sysscan = systable_beginscan(hdesc, TypeNameNspIndexId, true,
-									 SnapshotNow, 1, skey);
-
-		if (HeapTupleIsValid(tuple = systable_getnext(sysscan)))
-			result = HeapTupleGetOid(tuple);
-		else
+		result = 
+				caql_getoid_plus(
+						NULL,
+						&matches,
+						NULL,
+						cql("SELECT oid FROM pg_type "
+							" WHERE typname = :1 ",
+							CStringGetDatum(typ_name_or_oid)));
+		if (0 == matches)
+		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" does not exist", typ_name_or_oid)));
+		}
 
 		/* We assume there can be only one match */
-
-		systable_endscan(sysscan);
-		heap_close(hdesc, AccessShareLock);
 
 		PG_RETURN_OID(result);
 	}
@@ -1018,6 +982,7 @@ regtypeout(PG_FUNCTION_ARGS)
 							 ObjectIdGetDatum(typid),
 							 0, 0, 0);
 
+	/* XXX XXX select typname from pg_type */
 	if (HeapTupleIsValid(typetup))
 	{
 		Form_pg_type typeform = (Form_pg_type) GETSTRUCT(typetup);

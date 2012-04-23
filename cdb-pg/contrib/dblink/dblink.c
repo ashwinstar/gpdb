@@ -1683,6 +1683,10 @@ get_pkey_attnames(Oid relid, int16 *numatts)
 
 	/* Prepare to scan pg_index for entries having indrelid = this rel. */
 	indexRelation = heap_open(IndexRelationId, AccessShareLock);
+	cql0("SELECT * FROM pg_index "
+		" WHERE indrelid = :1 ",
+		ObjectIdGetDatum(relid));
+
 	ScanKeyInit(&skey,
 				Anum_pg_index_indrelid,
 				BTEqualStrategyNumber, F_OIDEQ,

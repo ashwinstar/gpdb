@@ -35,6 +35,7 @@
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
+#include "access/catquery.h"
 #include "access/genam.h"
 #include "postmaster/primary_mirror_mode.h"
 
@@ -623,57 +624,28 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 void
 RemoveFileSpaceById(Oid fsoid)
 {
-	Relation	 rel;
-	HeapScanDesc scandesc;
-	HeapTuple	 tuple;
-	ScanKeyData  entry[1];
+	int numDel;
 
-	/* Lookup the tuple in pg_filespace */
-	rel = heap_open(FileSpaceRelationId, RowExclusiveLock);
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(fsoid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	numDel = caql_getcount(
+			NULL,
+			cql("DELETE FROM pg_filespace "
+				" where oid = :1 ",
+				ObjectIdGetDatum(fsoid)));
 
-	/* We assume that there can be at most one matching tuple */
-	if (!HeapTupleIsValid(tuple)) /* shouldn't happen */
+	if (numDel != 1) /* shouldn't happen */
 		elog(ERROR, "cache lookup failed for filespace %u", fsoid);
-
-	simple_heap_delete(rel, &tuple->t_self);
-
-	heap_endscan(scandesc);
-	heap_close(rel, RowExclusiveLock);
 }
 
 static void
 DeleteFilespaceEntryTuples(Oid fsoid)
 {
-	Relation	rel;
-	SysScanDesc scan;
-	HeapTuple	tuple;
-	ScanKeyData entry[1];
+	int numDel;
 
-	/* Grab an appropriate lock on the pg_filespace_entry relation */
-	rel = heap_open(FileSpaceEntryRelationId, RowExclusiveLock);
-
-	/* Use the index to scan only attributes of the target relation */
-	ScanKeyInit(&entry[0],
-				Anum_pg_filespace_entry_fsefsoid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(fsoid));
-
-	scan = systable_beginscan(rel, FileSpaceEntryFsefsoidIndexId, true,
-							  SnapshotNow, 1, entry);
-
-	/* Delete all the matching tuples */
-	while ((tuple = systable_getnext(scan)) != NULL)
-		simple_heap_delete(rel, &tuple->t_self);
-
-	/* Clean up after the scan */
-	systable_endscan(scan);
-	heap_close(rel, RowExclusiveLock);
+	numDel = caql_getcount(
+			NULL,
+			cql("DELETE FROM pg_filespace_entry "
+				" where fsefsoid = :1 ",
+				ObjectIdGetDatum(fsoid)));
 }
 
 
@@ -686,10 +658,9 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	char             *fsname;
 	Oid               fsoid;
 	Relation	      rel;
-	ScanKeyData       entry[1];
-	HeapScanDesc      scandesc;
 	Form_pg_filespace fsForm;
 	HeapTuple	      tup;
+	cqContext		  cqc;
 
 	/*
 	 * This was from a generic AltrStmt node which allows for fully qualified
@@ -705,11 +676,13 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	/* Search pg_filespace */
 	rel = heap_open(FileSpaceRelationId, RowExclusiveLock);
 
-	ScanKeyInit(&entry[0],
-				Anum_pg_filespace_fsname, BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(fsname));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tup = heap_getnext(scandesc, ForwardScanDirection);
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_filespace "
+				" where fsname = :1 "
+				" FOR UPDATE ",
+				CStringGetDatum(fsname)));
+
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -779,7 +752,6 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 		changeDependencyOnOwner(FileSpaceRelationId, fsoid, newOwnerId);
 	}
 
-	heap_endscan(scandesc);
 	heap_close(rel, RowExclusiveLock);
 }
 
@@ -792,27 +764,27 @@ RenameFileSpace(const char *oldname, const char *newname)
 {
 	Relation	 rel;
 	Oid          fsoid;
-	ScanKeyData  entry[1];
-	HeapScanDesc scan;
-	HeapTuple	 tup;
 	HeapTuple	 newtuple;
+	cqContext	 cqc;
+	int			 numFsname;
 	Form_pg_filespace newform;
 
 	/* Search pg_filespace */
 	rel = heap_open(FileSpaceRelationId, RowExclusiveLock);
-	ScanKeyInit(&entry[0],
-				Anum_pg_filespace_fsname, BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(oldname));
-	scan = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tup = heap_getnext(scan, ForwardScanDirection);
-	if (!HeapTupleIsValid(tup))
+
+	newtuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_filespace "
+				" where fsname = :1 "
+				" FOR UPDATE ",
+				CStringGetDatum(oldname)));
+	if (!HeapTupleIsValid(newtuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("filespace \"%s\" does not exist",
 						oldname)));
-	newtuple = heap_copytuple(tup);
+
 	newform = (Form_pg_filespace) GETSTRUCT(newtuple);
-	heap_endscan(scan);
 
 	/* Can't rename system filespaces */
 	if (!allowSystemTableModsDDL && IsReservedName(oldname))
@@ -836,17 +808,16 @@ RenameFileSpace(const char *oldname, const char *newname)
 						   GetReservedPrefix(newname))));
 	}
 
-	/* Make sure the new name doesn't exist */
-	ScanKeyInit(&entry[0],
-				Anum_pg_filespace_fsname, BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(newname));
-	scan = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tup = heap_getnext(scan, ForwardScanDirection);
-	if (HeapTupleIsValid(tup))
+	numFsname = caql_getcount(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT COUNT(*) FROM pg_filespace "
+				" where fsname = :1 ",
+				CStringGetDatum(newname)));
+
+	if (numFsname)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("filespace \"%s\" already exists", newname)));
-	heap_endscan(scan);
 
 	/* OK, update the entry */
 	namestrcpy(&(newform->fsname), newname);
@@ -876,39 +847,21 @@ RenameFileSpace(const char *oldname, const char *newname)
 char *
 get_filespace_name(Oid fsoid)
 {
-	char       *fsname;
-	char	   *result;
-	Relation	rel;
-	HeapScanDesc scandesc;
-	HeapTuple	tuple;
-	ScanKeyData entry[1];
+	char		*result;
 
 	/*
 	 * Search pg_filespace.  We use a heapscan here even though there is an
 	 * index on oid, on the theory that pg_filespace will usually have just a
 	 * few entries and so an indexed lookup is a waste of effort.
 	 */
-	rel = heap_open(FileSpaceRelationId, AccessShareLock);
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(fsoid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
+	result = caql_getcstring(
+			NULL,
+			cql("SELECT fsname FROM pg_filespace "
+				" where oid = :1 ",
+				ObjectIdGetDatum(fsoid)));
+			
 	/* We assume that there can be at most one matching tuple */
-	if (HeapTupleIsValid(tuple))
-	{
-		fsname = NameStr(((Form_pg_filespace) GETSTRUCT(tuple))->fsname);
-		result = pstrdup(fsname);
-	}
-	else
-	{
-		result = NULL;
-	}
-
-	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
 
 	return result;
 }
@@ -923,24 +876,16 @@ Oid
 get_filespace_oid(Relation rel, const char *filespacename)
 {
 	Oid			 result;
-	HeapScanDesc scandesc;
-	HeapTuple	 tuple;
-	ScanKeyData  entry[1];
-
-	ScanKeyInit(&entry[0],
-				Anum_pg_filespace_fsname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(filespacename));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	cqContext	 cqc;
 
 	/* We assume that there can be at most one matching tuple */
-	if (HeapTupleIsValid(tuple))
-		result = HeapTupleGetOid(tuple);
-	else
-		result = InvalidOid;
 
-	heap_endscan(scandesc);
+	result = caql_getoid(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT oid FROM pg_filespace "
+				" where fsname = :1 ",
+				CStringGetDatum(filespacename)));
+
 	return result;
 }
 
@@ -950,47 +895,29 @@ get_filespace_oid(Relation rel, const char *filespacename)
 char *
 get_filespace_path(Oid fseoid, int16 dbid)
 {
-	Relation rel = heap_open(FileSpaceEntryRelationId, AccessShareLock);
-	ScanKeyData key[2];
-	SysScanDesc scan;
-	HeapTuple tup;
-	char *path = NULL;
+	Relation	 rel	= heap_open(FileSpaceEntryRelationId, AccessShareLock);
+	cqContext	 cqc;
+	int			 fetchCount;
+	bool		 bIsNull;
+	char		*path	= NULL;
 
-	ScanKeyInit(&key[0],
-				Anum_pg_filespace_entry_fsefsoid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(fseoid));
+	path = caql_getcstring_plus(
+			caql_snapshot(caql_addrel(cqclr(&cqc), rel), 
+						  SnapshotSelf), /* XXX XXX: SnapshotSelf */
+			&fetchCount,
+			&bIsNull,
+			cql("SELECT fselocation FROM pg_filespace_entry "
+				" where fsefsoid = :1 "
+				" AND fsedbid = :2 ",
+				ObjectIdGetDatum(fseoid), 
+				Int16GetDatum(dbid)));
 
-	ScanKeyInit(&key[1],
-				Anum_pg_filespace_entry_fsedbid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				Int16GetDatum(dbid));
-
-	scan = systable_beginscan(rel, FileSpaceEntryFsefsoidFsedbidIndexId,
-							  true, /* index ok? */
-							  SnapshotSelf,
-							  2,
-							  key);
-
-	tup = systable_getnext(scan);
-
-	if (HeapTupleIsValid(tup))
+	if (fetchCount)
 	{
-		bool isnull;
+		Assert(!bIsNull);
 
-		Datum d = heap_getattr(tup, Anum_pg_filespace_entry_fselocation,
-							   RelationGetDescr(rel), &isnull);
-
-		Assert(!isnull);
-
-		path = DatumGetCString(DirectFunctionCall1(textout, d));
-
-		Assert(!HeapTupleIsValid(systable_getnext(scan)));
+		Assert(fetchCount == 1); /* should be only one */
 	}
-
-	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 	return path;
 }
@@ -1200,29 +1127,17 @@ dup_path_return:
 static void
 filespace_check_empty(Oid fsoid)
 {
-	HeapScanDesc scandesc;
-	Relation	 rel;
-	HeapTuple	 tuple;
-	ScanKeyData  entry[1];
-
-	rel = heap_open(TableSpaceRelationId, AccessShareLock);
-
-	/* Scan should be empty */
-	ScanKeyInit(&entry[0],
-				Anum_pg_tablespace_spcfsoid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(fsoid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
-	if (HeapTupleIsValid(tuple))
+	if (caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_tablespace "
+					" where spcfsoid = :1 ",
+					ObjectIdGetDatum(fsoid))))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("filespace \"%s\" is not empty",
 						get_filespace_name(fsoid))));
 	}
-	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
 }
 
 /* Add a pg_filespace_entry for a given filespace definition. */
@@ -1250,42 +1165,31 @@ add_catalog_filespace_entry(Relation rel, Oid fsoid, int16 dbid, char *location)
 void
 dbid_remove_filespace_entries(Relation rel, int16 dbid)
 {
-	HeapScanDesc scan;
-	HeapTuple	tuple;
-	ScanKeyData entry;
+	int			 numDel;
+	cqContext	 cqc;
 
 	/* Use the index to scan only attributes of the target relation */
-	ScanKeyInit(&entry,
-				Anum_pg_filespace_entry_fsedbid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int16GetDatum(dbid));
-
-	scan = heap_beginscan(rel, SnapshotNow, 1, &entry);
-
-	/* Delete all the matching tuples */
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		simple_heap_delete(rel, &tuple->t_self);
-
-	/* Clean up after the scan */
-	heap_endscan(scan);
+	numDel = caql_getcount(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("DELETE FROM pg_filespace_entry "
+				" where fsedbid = :1 ",
+				Int16GetDatum(dbid)));
 }
 
 int
 num_filespaces(void)
 {
 	Relation rel = heap_open(FileSpaceRelationId, AccessShareLock);
-	HeapScanDesc scan;
+	cqContext	 cqc;
 	int n = 0;
 
 	Insist(GpIdentity.dbid == MASTER_DBID);
 
 	/* XXX: should we do this via gp_persistent_filespace_node? */
-
-	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
-
-	while (heap_getnext(scan, ForwardScanDirection) != NULL) n++;
-
-	heap_endscan(scan);
+	n = caql_getcount(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT COUNT(*) FROM pg_filespace", NULL));
+	
 	heap_close(rel, NoLock);
 
 	return n;

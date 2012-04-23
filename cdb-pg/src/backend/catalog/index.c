@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
@@ -1266,18 +1267,18 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 		ReindexIsProcessingHeap(RelationRelationId))
 	{
 		/* don't assume syscache will work */
-		HeapScanDesc pg_class_scan;
-		ScanKeyData key[1];
+		cqContext	cqc;
 
-		ScanKeyInit(&key[0],
-					ObjectIdAttributeNumber,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(relid));
-
-		pg_class_scan = heap_beginscan(pg_class, SnapshotNow, 1, key);
-		tuple = heap_getnext(pg_class_scan, ForwardScanDirection);
-		tuple = heap_copytuple(tuple);
-		heap_endscan(pg_class_scan);
+		/* heapscan, noindex */
+		tuple = caql_getfirst(
+			caql_syscache(
+					caql_indexOK(caql_addrel(cqclr(&cqc), pg_class),
+								 false),
+					false),
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relid)));
 	}
 	else
 	{

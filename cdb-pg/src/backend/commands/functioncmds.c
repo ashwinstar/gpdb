@@ -33,6 +33,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -1718,27 +1719,16 @@ DropCast(DropCastStmt *stmt)
 void
 DropCastById(Oid castOid)
 {
-	Relation	relation;
-	ScanKeyData scankey;
-	SysScanDesc scan;
-	HeapTuple	tuple;
+	int			numDel;
 
-	relation = heap_open(CastRelationId, RowExclusiveLock);
+	numDel = caql_getcount(
+			NULL,
+			cql("DELETE FROM pg_cast "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(castOid)));
 
-	ScanKeyInit(&scankey,
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(castOid));
-	scan = systable_beginscan(relation, CastOidIndexId, true,
-							  SnapshotNow, 1, &scankey);
-
-	tuple = systable_getnext(scan);
-	if (!HeapTupleIsValid(tuple))
+	if (!numDel)
 		elog(ERROR, "could not find tuple for cast %u", castOid);
-	simple_heap_delete(relation, &tuple->t_self);
-
-	systable_endscan(scan);
-	heap_close(relation, RowExclusiveLock);
 }
 
 /*

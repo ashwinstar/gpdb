@@ -8,6 +8,7 @@
 #include "postgres.h"
 #include "miscadmin.h"
 
+#include "access/catquery.h"
 #include "catalog/gp_segment_config.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
@@ -660,25 +661,19 @@ add_segment_config_entry(int16 pridbid, seginfo *i, ArrayType *fsmap)
 static void
 remove_segment_config(int16 dbid)
 {
-	HeapTuple tuple;
-	HeapScanDesc scandesc;
-	ScanKeyData key;
+	cqContext	cqc;
+	int numDel = 0;
 	Relation rel = heap_open(GpSegmentConfigRelationId,
 							 RowExclusiveLock);
 
-	ScanKeyInit(&key,
-				Anum_gp_segment_configuration_dbid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int16GetDatum(dbid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	numDel = caql_getcount(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("DELETE FROM gp_segment_configuration "
+				" WHERE dbid = :1 ",
+				Int16GetDatum(dbid)));
 
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	Insist(numDel > 0);
 
-	Insist(HeapTupleIsValid(tuple));
-
-	simple_heap_delete(rel, &tuple->t_self);
-
-	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 }
 
@@ -1147,43 +1142,38 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 	/* we use AccessExclusiveLock to prevent races */
 	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 	HeapTuple tuple;
-	HeapScanDesc scandesc;
-	ScanKeyData key;
+	cqContext	cqc;
+	int numDel = 0;
 
 	/* first, delete the old master */
 	Insist(newdbid == MASTER_DBID);
-	ScanKeyInit(&key,
-				Anum_gp_segment_configuration_dbid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int16GetDatum(newdbid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
-	if (!HeapTupleIsValid(tuple))
+	numDel = caql_getcount(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("DELETE FROM gp_segment_configuration "
+				" WHERE dbid = :1 ",
+				Int16GetDatum(newdbid)));
+
+	if (0 == numDel)
 		elog(ERROR, "cannot find old master, dbid %i", newdbid);
 
-	simple_heap_delete(rel, &tuple->t_self);
-	heap_endscan(scandesc);
-
 	/* now, set out old dbid to the new dbid */
-	ScanKeyInit(&key,
-				Anum_gp_segment_configuration_dbid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int16GetDatum(standbydbid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	tuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM gp_segment_configuration "
+				" WHERE dbid = :1 "
+				" FOR UPDATE ",
+				Int16GetDatum(standbydbid)));
 
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cannot find standby, dbid %i", standbydbid);
 
-	tuple = heap_copytuple(tuple);
+	/* tuple = heap_copytuple(tuple); already a copy */
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid = newdbid;
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->role = SEGMENT_ROLE_PRIMARY;
 	((Form_gp_segment_configuration)GETSTRUCT(tuple))->preferred_role = SEGMENT_ROLE_PRIMARY;
 	simple_heap_update(rel, &tuple->t_self, tuple);
 	CatalogUpdateIndexes(rel, tuple);
-
-	heap_endscan(scandesc);
 
 	heap_close(rel, NoLock);
 }
@@ -1200,35 +1190,34 @@ filespace_entry_activate_standby(int standbydbid, int newdbid)
 	 */
 	Relation rel = heap_open(FileSpaceEntryRelationId, RowExclusiveLock);
 	HeapTuple tuple;
-	HeapScanDesc scandesc;
-	ScanKeyData key;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
+	int numDel = 0;
 
 	/* first, delete the old master */
 	Insist(newdbid == MASTER_DBID);
-	ScanKeyInit(&key,
-				Anum_pg_filespace_entry_fsedbid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int16GetDatum(newdbid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
-	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
-		simple_heap_delete(rel, &tuple->t_self);
 
-	heap_endscan(scandesc);
+	numDel = caql_getcount(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("DELETE FROM pg_filespace_entry "
+				" WHERE fsedbid = :1 ",
+				Int16GetDatum(newdbid)));
 
-	ScanKeyInit(&key,
-				Anum_pg_filespace_entry_fsedbid,
-				BTEqualStrategyNumber, F_INT2EQ,
-				Int16GetDatum(standbydbid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
-	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_filespace_entry "
+				" WHERE fsedbid = :1 "
+				" FOR UPDATE ",
+				Int16GetDatum(standbydbid)));
+
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		tuple = heap_copytuple(tuple);
 		((Form_pg_filespace_entry)GETSTRUCT(tuple))->fsedbid = newdbid;
-		simple_heap_update(rel, &tuple->t_self, tuple);
-		CatalogUpdateIndexes(rel, tuple);
+		caql_update_current(pcqCtx, tuple);
 	}
 
-	heap_endscan(scandesc);
+	caql_endscan(pcqCtx);
 	heap_close(rel, NoLock);
 }
 

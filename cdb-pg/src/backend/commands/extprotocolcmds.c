@@ -14,6 +14,7 @@
 
 #include "access/heapam.h"
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_extprotocol.h"
@@ -192,12 +193,10 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	AclResult	aclresult;
 	bool		isNull;
 	bool		isTrusted;
-	ScanKeyData	key;
-	SysScanDesc	scan;
 	Datum		ownerDatum;
 	Datum		trustedDatum;
-
-
+	cqContext	cqc;	
+	
 	/*
 	 * Check the pg_extprotocol relation to be certain the protocol
 	 * is there.
@@ -205,20 +204,13 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
 	dsc = RelationGetDescr(rel);
 
-	ScanKeyInit(&key,
-				Anum_pg_extprotocol_ptcname,
-				BTEqualStrategyNumber,
-				F_NAMEEQ,
-				CStringGetDatum(name));
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_extprotocol "
+				" WHERE ptcname = :1 "
+				" FOR UPDATE ",
+				CStringGetDatum(name)));
 
-	scan = systable_beginscan(rel,
-							  ExtprotocolPtcnameIndexId,
-							  true,
-							  SnapshotNow,
-							  1,
-							  &key);
-
-	tup = systable_getnext(scan);
 
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
@@ -323,7 +315,6 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		changeDependencyOnOwner(ExtprotocolRelationId, ptcId, newOwnerId);
 	}
 
-	systable_endscan(scan);
 	heap_close(rel, NoLock);
 }
 
@@ -338,10 +329,8 @@ RenameExtProtocol(const char *oldname, const char *newname)
 	TupleDesc	dsc;
 	Oid			ptcId;
 	bool		isNull;
-	ScanKeyData	key;
-	SysScanDesc	scan;
-
-
+	cqContext	cqc;		
+	
 	/*
 	 * Check the pg_extprotocol relation to be certain the protocol
 	 * is there.
@@ -349,20 +338,14 @@ RenameExtProtocol(const char *oldname, const char *newname)
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
 	dsc = RelationGetDescr(rel);
 
-	ScanKeyInit(&key,
-				Anum_pg_extprotocol_ptcname,
-				BTEqualStrategyNumber,
-				F_NAMEEQ,
-				CStringGetDatum(oldname));
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_extprotocol "
+				" WHERE ptcname = :1 "
+				" FOR UPDATE ",
+				CStringGetDatum(oldname)));
 
-	scan = systable_beginscan(rel,
-							  ExtprotocolPtcnameIndexId,
-							  true,
-							  SnapshotNow,
-							  1,
-							  &key);
-
-	tup = systable_getnext(scan);
+	
 
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
@@ -417,6 +400,5 @@ RenameExtProtocol(const char *oldname, const char *newname)
 		heap_freetuple(newtuple);
 	}
 
-	systable_endscan(scan);
 	heap_close(rel, NoLock);
 }

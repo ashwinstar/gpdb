@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
@@ -411,10 +412,9 @@ findAutoDeletableObjects(const ObjectAddress *object,
 						 ObjectAddresses *oktodelete,
 						 Relation depRel, bool addself)
 {
-	ScanKeyData key[3];
-	int			nkeys;
-	SysScanDesc scan;
 	HeapTuple	tup;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 	ObjectAddress otherObject;
 
 	/*
@@ -435,29 +435,30 @@ findAutoDeletableObjects(const ObjectAddress *object,
 	 * When dropping a whole object (subId = 0), find pg_depend records for
 	 * its sub-objects too.
 	 */
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_refclassid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(object->classId));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_refobjid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(object->objectId));
 	if (object->objectSubId != 0)
 	{
-		ScanKeyInit(&key[2],
-					Anum_pg_depend_refobjsubid,
-					BTEqualStrategyNumber, F_INT4EQ,
-					Int32GetDatum(object->objectSubId));
-		nkeys = 3;
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), depRel),
+				cql("SELECT * FROM pg_depend "
+					" WHERE refclassid = :1 "
+					" AND refobjid = :2 "
+					" AND refobjsubid = :3 ",
+					ObjectIdGetDatum(object->classId),
+					ObjectIdGetDatum(object->objectId),
+					Int32GetDatum(object->objectSubId)));
 	}
 	else
-		nkeys = 2;
+	{
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), depRel),
+				cql("SELECT * FROM pg_depend "
+					" WHERE refclassid = :1 "
+					" AND refobjid = :2 ",
+					ObjectIdGetDatum(object->classId),
+					ObjectIdGetDatum(object->objectId)));
+	}
 
-	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
-							  SnapshotNow, nkeys, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
 
@@ -493,7 +494,7 @@ findAutoDeletableObjects(const ObjectAddress *object,
 		}
 	}
 
-	systable_endscan(scan);
+	caql_endscan(pcqCtx);
 }
 
 
@@ -551,10 +552,9 @@ recursiveDeletion(const ObjectAddress *object,
 {
 	bool		ok = true;
 	char	   *objDescription;
-	ScanKeyData key[3];
-	int			nkeys;
-	SysScanDesc scan;
 	HeapTuple	tup;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 	ObjectAddress otherObject;
 	ObjectAddress owningObject;
 	bool		amOwned = false;
@@ -574,29 +574,32 @@ recursiveDeletion(const ObjectAddress *object,
 	 * When dropping a whole object (subId = 0), remove all pg_depend records
 	 * for its sub-objects too.
 	 */
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_classid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(object->classId));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_objid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(object->objectId));
 	if (object->objectSubId != 0)
 	{
-		ScanKeyInit(&key[2],
-					Anum_pg_depend_objsubid,
-					BTEqualStrategyNumber, F_INT4EQ,
-					Int32GetDatum(object->objectSubId));
-		nkeys = 3;
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), depRel),
+				cql("SELECT * FROM pg_depend "
+					" WHERE classid = :1 "
+					" AND objid = :2 "
+					" AND objsubid = :3 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(object->classId),
+					ObjectIdGetDatum(object->objectId),
+					Int32GetDatum(object->objectSubId)));
 	}
 	else
-		nkeys = 2;
+	{
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), depRel),
+				cql("SELECT * FROM pg_depend "
+					" WHERE classid = :1 "
+					" AND objid = :2 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(object->classId),
+					ObjectIdGetDatum(object->objectId)));
+	}
 
-	scan = systable_beginscan(depRel, DependDependerIndexId, true,
-							  SnapshotNow, nkeys, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
 
@@ -658,7 +661,7 @@ recursiveDeletion(const ObjectAddress *object,
 						 objDescription);
 				owningObject = otherObject;
 				amOwned = true;
-				/* "continue" bypasses the simple_heap_delete call below */
+				/* "continue" bypasses the caql_delete call below */
 				continue;
 			case DEPENDENCY_PIN:
 
@@ -676,10 +679,10 @@ recursiveDeletion(const ObjectAddress *object,
 		}
 
 		/* delete the pg_depend tuple */
-		simple_heap_delete(depRel, &tup->t_self);
+		caql_delete_current(pcqCtx);
 	}
 
-	systable_endscan(scan);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * CommandCounterIncrement here to ensure that preceding changes are all
@@ -831,35 +834,37 @@ deleteDependentObjects(const ObjectAddress *object,
 					   ObjectAddresses *alreadyDeleted)
 {
 	bool		ok = true;
-	ScanKeyData key[3];
-	int			nkeys;
-	SysScanDesc scan;
 	HeapTuple	tup;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 	ObjectAddress otherObject;
 
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_refclassid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(object->classId));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_refobjid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(object->objectId));
 	if (object->objectSubId != 0)
 	{
-		ScanKeyInit(&key[2],
-					Anum_pg_depend_refobjsubid,
-					BTEqualStrategyNumber, F_INT4EQ,
-					Int32GetDatum(object->objectSubId));
-		nkeys = 3;
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), depRel),
+				cql("SELECT * FROM pg_depend "
+					" WHERE refclassid = :1 "
+					" AND refobjid = :2 "
+					" AND refobjsubid = :3 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(object->classId),
+					ObjectIdGetDatum(object->objectId),
+					Int32GetDatum(object->objectSubId)));
 	}
 	else
-		nkeys = 2;
+	{
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), depRel),
+				cql("SELECT * FROM pg_depend "
+					" WHERE refclassid = :1 "
+					" AND refobjid = :2 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(object->classId),
+					ObjectIdGetDatum(object->objectId)));
+	}
 
-	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
-							  SnapshotNow, nkeys, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
 
@@ -947,7 +952,7 @@ deleteDependentObjects(const ObjectAddress *object,
 		}
 	}
 
-	systable_endscan(scan);
+	caql_endscan(pcqCtx);
 
 	return ok;
 }
@@ -1812,23 +1817,14 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_CAST:
 			{
-				Relation	castDesc;
-				ScanKeyData skey[1];
-				SysScanDesc rcscan;
 				HeapTuple	tup;
 				Form_pg_cast castForm;
 
-				castDesc = heap_open(CastRelationId, AccessShareLock);
-
-				ScanKeyInit(&skey[0],
-							ObjectIdAttributeNumber,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(object->objectId));
-
-				rcscan = systable_beginscan(castDesc, CastOidIndexId, true,
-											SnapshotNow, 1, skey);
-
-				tup = systable_getnext(rcscan);
+				tup = caql_getfirst(
+						NULL,
+						cql("SELECT * FROM pg_cast "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
 
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "could not find tuple for cast %u",
@@ -1840,30 +1836,22 @@ getObjectDescription(const ObjectAddress *object)
 								 format_type_be(castForm->castsource),
 								 format_type_be(castForm->casttarget));
 
-				systable_endscan(rcscan);
-				heap_close(castDesc, AccessShareLock);
+
 				break;
 			}
 
 		case OCLASS_CONSTRAINT:
 			{
-				Relation	conDesc;
-				ScanKeyData skey[1];
-				SysScanDesc rcscan;
 				HeapTuple	tup;
 				Form_pg_constraint con;
 
-				conDesc = heap_open(ConstraintRelationId, AccessShareLock);
-
-				ScanKeyInit(&skey[0],
-							ObjectIdAttributeNumber,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(object->objectId));
-
-				rcscan = systable_beginscan(conDesc, ConstraintOidIndexId, true,
-											SnapshotNow, 1, skey);
-
-				tup = systable_getnext(rcscan);
+				/* XXX XXX: SELECT conname, conrelid */
+					
+				tup = caql_getfirst(
+						NULL,
+						cql("SELECT * FROM pg_constraint "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
 
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "could not find tuple for constraint %u",
@@ -1883,8 +1871,6 @@ getObjectDescription(const ObjectAddress *object)
 									 NameStr(con->conname));
 				}
 
-				systable_endscan(rcscan);
-				heap_close(conDesc, AccessShareLock);
 				break;
 			}
 
@@ -1906,24 +1892,17 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_DEFAULT:
 			{
-				Relation	attrdefDesc;
-				ScanKeyData skey[1];
-				SysScanDesc adscan;
 				HeapTuple	tup;
 				Form_pg_attrdef attrdef;
 				ObjectAddress colobject;
 
-				attrdefDesc = heap_open(AttrDefaultRelationId, AccessShareLock);
+				/* XXX XXX: SELECT addrelid, addnum */
 
-				ScanKeyInit(&skey[0],
-							ObjectIdAttributeNumber,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(object->objectId));
-
-				adscan = systable_beginscan(attrdefDesc, AttrDefaultOidIndexId,
-											true, SnapshotNow, 1, skey);
-
-				tup = systable_getnext(adscan);
+				tup = caql_getfirst(
+						NULL,
+						cql("SELECT * FROM pg_attrdef "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
 
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "could not find tuple for attrdef %u",
@@ -1938,8 +1917,6 @@ getObjectDescription(const ObjectAddress *object)
 				appendStringInfo(&buffer, _("default for %s"),
 								 getObjectDescription(&colobject));
 
-				systable_endscan(adscan);
-				heap_close(attrdefDesc, AccessShareLock);
 				break;
 			}
 
@@ -2006,23 +1983,15 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_REWRITE:
 			{
-				Relation	ruleDesc;
-				ScanKeyData skey[1];
-				SysScanDesc rcscan;
 				HeapTuple	tup;
 				Form_pg_rewrite rule;
 
-				ruleDesc = heap_open(RewriteRelationId, AccessShareLock);
-
-				ScanKeyInit(&skey[0],
-							ObjectIdAttributeNumber,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(object->objectId));
-
-				rcscan = systable_beginscan(ruleDesc, RewriteOidIndexId, true,
-											SnapshotNow, 1, skey);
-
-				tup = systable_getnext(rcscan);
+				/* XXX XXX: SELECT rulename, ev_class */
+				tup = caql_getfirst(
+						NULL,
+						cql("SELECT * FROM pg_rewrite "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
 
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "could not find tuple for rule %u",
@@ -2034,30 +2003,21 @@ getObjectDescription(const ObjectAddress *object)
 								 NameStr(rule->rulename));
 				getRelationDescription(&buffer, rule->ev_class);
 
-				systable_endscan(rcscan);
-				heap_close(ruleDesc, AccessShareLock);
 				break;
 			}
 
 		case OCLASS_TRIGGER:
 			{
-				Relation	trigDesc;
-				ScanKeyData skey[1];
-				SysScanDesc tgscan;
 				HeapTuple	tup;
 				Form_pg_trigger trig;
 
-				trigDesc = heap_open(TriggerRelationId, AccessShareLock);
+				/* XXX XXX: SELECT tgname, tgrelid */
 
-				ScanKeyInit(&skey[0],
-							ObjectIdAttributeNumber,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(object->objectId));
-
-				tgscan = systable_beginscan(trigDesc, TriggerOidIndexId, true,
-											SnapshotNow, 1, skey);
-
-				tup = systable_getnext(tgscan);
+				tup = caql_getfirst(
+						NULL,
+						cql("SELECT * FROM pg_trigger "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
 
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "could not find tuple for trigger %u",
@@ -2069,8 +2029,6 @@ getObjectDescription(const ObjectAddress *object)
 								 NameStr(trig->tgname));
 				getRelationDescription(&buffer, trig->tgrelid);
 
-				systable_endscan(tgscan);
-				heap_close(trigDesc, AccessShareLock);
 				break;
 			}
 

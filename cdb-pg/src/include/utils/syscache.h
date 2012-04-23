@@ -82,6 +82,8 @@ extern HeapTuple SearchSysCache(int cacheId,
 extern void ReleaseSysCache(HeapTuple tuple);
 
 /* convenience routines */
+extern HeapTuple SearchSysCacheKeyArray(int cacheId, int numkeys,
+										Datum *keys);
 extern HeapTuple SearchSysCacheCopy(int cacheId,
 				   Datum key1, Datum key2, Datum key3, Datum key4);
 extern bool SearchSysCacheExists(int cacheId,

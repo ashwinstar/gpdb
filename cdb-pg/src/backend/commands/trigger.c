@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -75,8 +76,8 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	Relation	rel;
 	AclResult	aclresult;
 	Relation	tgrel;
-	SysScanDesc tgscan;
-	ScanKeyData key;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 	Relation	pgrel;
 	HeapTuple	tuple;
 	Oid			fargtypes[1];	/* dummy */
@@ -258,13 +259,13 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	 * NOTE that this is cool only because we have AccessExclusiveLock on the
 	 * relation, so the trigger set won't be changing underneath us.
 	 */
-	ScanKeyInit(&key,
-				Anum_pg_trigger_tgrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(rel)));
-	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
-								SnapshotNow, 1, &key);
-	while (HeapTupleIsValid(tuple = systable_getnext(tgscan)))
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), tgrel),
+			cql("SELECT * FROM pg_trigger "
+				" WHERE tgrelid = :1 ",
+				ObjectIdGetDatum(RelationGetRelid(rel))));
+	
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(tuple);
 
@@ -275,7 +276,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 						 trigname, stmt->relation->relname)));
 		found++;
 	}
-	systable_endscan(tgscan);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Find and validate the trigger function.
@@ -384,7 +385,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	tgattr = buildint2vector(NULL, 0);
 	values[Anum_pg_trigger_tgattr - 1] = PointerGetDatum(tgattr);
 
-	tuple = heap_form_tuple(tgrel->rd_att, values, nulls);
+	tuple = heap_form_tuple(RelationGetDescr(tgrel), values, nulls);
 
 	/* force tuple to have the desired OID */
 	HeapTupleSetOid(tuple, trigoid);
@@ -476,33 +477,26 @@ void
 DropTrigger(Oid relid, const char *trigname, DropBehavior behavior,
 			bool missing_ok)
 {
-	Relation	tgrel;
-	ScanKeyData skey[2];
-	SysScanDesc tgscan;
-	HeapTuple	tup;
+	int fetchCount;
 	ObjectAddress object;
 
 	/*
 	 * Find the trigger, verify permissions, set up object address
 	 */
-	tgrel = heap_open(TriggerRelationId, AccessShareLock);
+	object.classId = TriggerRelationId;
+	object.objectSubId = 0;
 
-	ScanKeyInit(&skey[0],
-				Anum_pg_trigger_tgrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relid));
+	object.objectId = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT oid FROM pg_trigger "
+				" WHERE tgrelid = :1 "
+				" AND tgname = :2 ",
+				ObjectIdGetDatum(relid),
+				CStringGetDatum((char *) trigname)));
 
-	ScanKeyInit(&skey[1],
-				Anum_pg_trigger_tgname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum((char *) trigname));
-
-	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
-								SnapshotNow, 2, skey);
-
-	tup = systable_getnext(tgscan);
-
-	if (!HeapTupleIsValid(tup))
+	if (0 == fetchCount)
 	{
 		if (!missing_ok)
 			ereport(ERROR,
@@ -514,8 +508,6 @@ DropTrigger(Oid relid, const char *trigname, DropBehavior behavior,
 					(errmsg("trigger \"%s\" for table \"%s\" does not exist, skipping",
 							trigname, get_rel_name(relid))));
 		/* cleanup */
-		systable_endscan(tgscan);
-		heap_close(tgrel, AccessShareLock);
 		return;
 	}
 
@@ -523,12 +515,6 @@ DropTrigger(Oid relid, const char *trigname, DropBehavior behavior,
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   get_rel_name(relid));
 
-	object.classId = TriggerRelationId;
-	object.objectId = HeapTupleGetOid(tup);
-	object.objectSubId = 0;
-
-	systable_endscan(tgscan);
-	heap_close(tgrel, AccessShareLock);
 
 	/*
 	 * Do the deletion
@@ -543,8 +529,7 @@ void
 RemoveTriggerById(Oid trigOid)
 {
 	Relation	tgrel;
-	SysScanDesc tgscan;
-	ScanKeyData skey[1];
+	cqContext	cqc;
 	HeapTuple	tup;
 	Oid			relid;
 	Relation	rel;
@@ -557,15 +542,13 @@ RemoveTriggerById(Oid trigOid)
 	/*
 	 * Find the trigger to delete.
 	 */
-	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(trigOid));
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), tgrel),
+			cql("SELECT * FROM pg_trigger "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(trigOid)));
 
-	tgscan = systable_beginscan(tgrel, TriggerOidIndexId, true,
-								SnapshotNow, 1, skey);
-
-	tup = systable_getnext(tgscan);
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "could not find tuple for trigger %u", trigOid);
 
@@ -593,7 +576,6 @@ RemoveTriggerById(Oid trigOid)
 	 */
 	simple_heap_delete(tgrel, &tup->t_self);
 
-	systable_endscan(tgscan);
 	heap_close(tgrel, RowExclusiveLock);
 
 	/*
@@ -650,8 +632,8 @@ renametrig(Oid relid,
 	Relation	targetrel;
 	Relation	tgrel;
 	HeapTuple	tuple;
-	SysScanDesc tgscan;
-	ScanKeyData key[2];
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	/*
 	 * Grab an exclusive lock on the target table, which we will NOT release
@@ -673,37 +655,36 @@ renametrig(Oid relid,
 	/*
 	 * First pass -- look for name conflict
 	 */
-	ScanKeyInit(&key[0],
-				Anum_pg_trigger_tgrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relid));
-	ScanKeyInit(&key[1],
-				Anum_pg_trigger_tgname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				PointerGetDatum((char *) newname));
-	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
-								SnapshotNow, 2, key);
-	if (HeapTupleIsValid(tuple = systable_getnext(tgscan)))
+
+	if (caql_getcount(
+				caql_addrel(cqclr(&cqc), tgrel),
+				cql("SELECT count(*) FROM pg_trigger "
+					" WHERE tgrelid = :1 "
+					" AND tgname = :2 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(relid),
+					PointerGetDatum((char *) newname))))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("trigger \"%s\" for relation \"%s\" already exists",
 						newname, RelationGetRelationName(targetrel))));
-	systable_endscan(tgscan);
+	}
+
 
 	/*
 	 * Second pass -- look for trigger existing with oldname and update
 	 */
-	ScanKeyInit(&key[0],
-				Anum_pg_trigger_tgrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relid));
-	ScanKeyInit(&key[1],
-				Anum_pg_trigger_tgname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				PointerGetDatum((char *) oldname));
-	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
-								SnapshotNow, 2, key);
-	if (HeapTupleIsValid(tuple = systable_getnext(tgscan)))
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), tgrel),
+			cql("SELECT * FROM pg_trigger "
+				" WHERE tgrelid = :1 "
+				" AND tgname = :2 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relid),
+				PointerGetDatum((char *) oldname)));
+
+	if (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		/*
 		 * Update pg_trigger tuple with new tgname.
@@ -712,10 +693,7 @@ renametrig(Oid relid,
 
 		namestrcpy(&((Form_pg_trigger) GETSTRUCT(tuple))->tgname, newname);
 
-		simple_heap_update(tgrel, &tuple->t_self, tuple);
-
-		/* keep system catalog indexes current */
-		CatalogUpdateIndexes(tgrel, tuple);
+		caql_update_current(pcqCtx, tuple);
 
 		/*
 		 * Invalidate relation's relcache entry so that other backends (and
@@ -732,7 +710,7 @@ renametrig(Oid relid,
 						oldname, RelationGetRelationName(targetrel))));
 	}
 
-	systable_endscan(tgscan);
+	caql_endscan(pcqCtx);
 
 	heap_close(tgrel, RowExclusiveLock);
 
@@ -763,9 +741,8 @@ EnableDisableTrigger(Relation rel, const char *tgname,
 					 bool enable, bool skip_system)
 {
 	Relation	tgrel;
-	int			nkeys;
-	ScanKeyData keys[2];
-	SysScanDesc tgscan;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 	HeapTuple	tuple;
 	bool		found;
 	bool		changed;
@@ -773,27 +750,30 @@ EnableDisableTrigger(Relation rel, const char *tgname,
 	/* Scan the relevant entries in pg_triggers */
 	tgrel = heap_open(TriggerRelationId, RowExclusiveLock);
 
-	ScanKeyInit(&keys[0],
-				Anum_pg_trigger_tgrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(rel)));
 	if (tgname)
 	{
-		ScanKeyInit(&keys[1],
-					Anum_pg_trigger_tgname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum((char *) tgname));
-		nkeys = 2;
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), tgrel),
+				cql("SELECT * FROM pg_trigger "
+					" WHERE tgrelid = :1 "
+					" AND tgname = :2 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(RelationGetRelid(rel)),
+					CStringGetDatum((char *) tgname)));
 	}
 	else
-		nkeys = 1;
-
-	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
-								SnapshotNow, nkeys, keys);
+	{
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), tgrel),
+				cql("SELECT * FROM pg_trigger "
+					" WHERE tgrelid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(RelationGetRelid(rel))));
+	}
 
 	found = changed = false;
 
-	while (HeapTupleIsValid(tuple = systable_getnext(tgscan)))
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_trigger oldtrig = (Form_pg_trigger) GETSTRUCT(tuple);
 
@@ -830,7 +810,7 @@ EnableDisableTrigger(Relation rel, const char *tgname,
 		}
 	}
 
-	systable_endscan(tgscan);
+	caql_endscan(pcqCtx);
 
 	heap_close(tgrel, RowExclusiveLock);
 
@@ -868,8 +848,8 @@ RelationBuildTriggers(Relation relation)
 	Trigger    *triggers;
 	int			found = 0;
 	Relation	tgrel;
-	ScanKeyData skey;
-	SysScanDesc tgscan;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 	HeapTuple	htup;
 	MemoryContext oldContext;
 
@@ -883,16 +863,18 @@ RelationBuildTriggers(Relation relation)
 	 * emergency-recovery operations (ie, IgnoreSystemIndexes). This in turn
 	 * ensures that triggers will be fired in name order.
 	 */
-	ScanKeyInit(&skey,
-				Anum_pg_trigger_tgrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(relation)));
 
+	/* XXX XXX: ORDER BY */
 	tgrel = heap_open(TriggerRelationId, AccessShareLock);
-	tgscan = systable_beginscan(tgrel, TriggerRelidNameIndexId, true,
-								SnapshotNow, 1, &skey);
 
-	while (HeapTupleIsValid(htup = systable_getnext(tgscan)))
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), tgrel),
+			cql("SELECT * FROM pg_trigger "
+				" WHERE tgrelid = :1 "
+				" ORDER BY tgrelid, tgname",
+				ObjectIdGetDatum(RelationGetRelid(relation))));
+
+	while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
 	{
 		Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(htup);
 		Trigger    *build;
@@ -931,8 +913,8 @@ RelationBuildTriggers(Relation relation)
 			int			i;
 
 			val = DatumGetByteaP(fastgetattr(htup,
-											Anum_pg_trigger_tgargs,
-											tgrel->rd_att, &isnull));
+										 Anum_pg_trigger_tgargs,
+										 RelationGetDescr(tgrel), &isnull));
 			if (isnull)
 				elog(ERROR, "tgargs is null in trigger for relation \"%s\"",
 					 RelationGetRelationName(relation));
@@ -950,7 +932,7 @@ RelationBuildTriggers(Relation relation)
 		found++;
 	}
 
-	systable_endscan(tgscan);
+	caql_endscan(pcqCtx);
 	heap_close(tgrel, AccessShareLock);
 
 	if (found != ntrigs)
@@ -3031,8 +3013,8 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 		foreach(l, stmt->constraints)
 		{
 			RangeVar   *constraint = lfirst(l);
-			ScanKeyData skey;
-			SysScanDesc tgscan;
+			cqContext	cqc;
+			cqContext  *pcqCtx;
 			HeapTuple	htup;
 			bool		found;
 			List	   *namespaceSearchList;
@@ -3072,18 +3054,16 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 				/*
 				 * Setup to scan pg_trigger by tgconstrname ...
 				 */
-				ScanKeyInit(&skey,
-							Anum_pg_trigger_tgconstrname,
-							BTEqualStrategyNumber, F_NAMEEQ,
-							PointerGetDatum(constraint->relname));
-
-				tgscan = systable_beginscan(tgrel, TriggerConstrNameIndexId, true,
-											SnapshotNow, 1, &skey);
+				pcqCtx = caql_beginscan(
+						caql_addrel(cqclr(&cqc), tgrel),
+						cql("SELECT * FROM pg_trigger "
+							" WHERE tgconstrname = :1 ",
+							PointerGetDatum(constraint->relname)));
 
 				/*
 				 * ... and search for the constraint trigger row
 				 */
-				while (HeapTupleIsValid(htup = systable_getnext(tgscan)))
+				while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
 				{
 					Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(htup);
 					Oid			constraintNamespaceId;
@@ -3144,7 +3124,7 @@ AfterTriggerSetState(ConstraintsSetStmt *stmt)
 					found = true;
 				}
 
-				systable_endscan(tgscan);
+				caql_endscan(pcqCtx);
 
 				/*
 				 * Once we've found a matching constraint we do not search

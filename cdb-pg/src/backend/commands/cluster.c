@@ -19,6 +19,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -1156,9 +1157,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 static List *
 get_tables_to_cluster(MemoryContext cluster_context)
 {
-	Relation	indRelation;
-	HeapScanDesc scan;
-	ScanKeyData entry;
+	cqContext	*pcqCtx;		
 	HeapTuple	indexTuple;
 	Form_pg_index index;
 	MemoryContext old_context;
@@ -1171,13 +1170,15 @@ get_tables_to_cluster(MemoryContext cluster_context)
 	 * have indisclustered set, because CLUSTER will refuse to set it when
 	 * called with one of them as argument.
 	 */
-	indRelation = heap_open(IndexRelationId, AccessShareLock);
-	ScanKeyInit(&entry,
-				Anum_pg_index_indisclustered,
-				BTEqualStrategyNumber, F_BOOLEQ,
-				BoolGetDatum(true));
-	scan = heap_beginscan(indRelation, SnapshotNow, 1, &entry);
-	while ((indexTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+
+	/* XXX XXX: could bind "AND indrelid = :2 ", GetUserId */
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_index "
+				" WHERE indisclustered = :1 ",
+				BoolGetDatum(true)));
+
+	while (HeapTupleIsValid(indexTuple = caql_getnext(pcqCtx)))
 	{
 		index = (Form_pg_index) GETSTRUCT(indexTuple);
 
@@ -1197,9 +1198,7 @@ get_tables_to_cluster(MemoryContext cluster_context)
 
 		MemoryContextSwitchTo(old_context);
 	}
-	heap_endscan(scan);
-
-	relation_close(indRelation, AccessShareLock);
+	caql_endscan(pcqCtx);
 
 	return rvs;
 }

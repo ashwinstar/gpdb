@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_proc_callback.h"
@@ -34,10 +35,7 @@
 void 
 deleteProcCallbacks(Oid profnoid)
 {
-	Relation    proc_callback_rel;
-	HeapTuple   tup;
-	ScanKeyData key[1];
-	SysScanDesc scan;
+	int numDel;
 
 	Insist(OidIsValid(profnoid));
 
@@ -45,25 +43,13 @@ deleteProcCallbacks(Oid profnoid)
 	 * Boiler template code to loop through the index and remove all matching
 	 * rows.
 	 */
-	proc_callback_rel = heap_open(ProcCallbackRelationId, RowExclusiveLock);
 
-	ScanKeyInit(&key[0],
-				Anum_pg_proc_callback_profnoid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(profnoid));
-
-	scan = systable_beginscan(proc_callback_rel, 
-							  ProcCallbackProfnoidPromethodIndexId,
-							  true, SnapshotNow, 1, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-	{
-		simple_heap_delete(proc_callback_rel, &tup->t_self);
-	}
-	
-	systable_endscan(scan);
-
-	heap_close(proc_callback_rel, RowExclusiveLock);
+	numDel = 
+			caql_getcount(
+					NULL,
+					cql("DELETE FROM pg_proc_callback "
+						" WHERE profnoid = :1 ",
+						ObjectIdGetDatum(profnoid)));
 }
 
 
@@ -125,40 +111,20 @@ Oid
 lookupProcCallback(Oid profnoid, char promethod)
 {
 	Oid         result = InvalidOid;
-	Relation    proc_callback_rel;
-	HeapTuple   tup;
-	ScanKeyData key[2];
-	SysScanDesc scan;
 
 	Insist(OidIsValid(profnoid));
 
 	/* Lookup (profnoid, promethod) from index */
-	proc_callback_rel = heap_open(ProcCallbackRelationId, AccessShareLock);
-
-	ScanKeyInit(&key[0],
-				Anum_pg_proc_callback_profnoid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(profnoid));
-	ScanKeyInit(&key[1],
-				Anum_pg_proc_callback_promethod,
-				BTEqualStrategyNumber, F_CHAREQ,
-				CharGetDatum(promethod));
-
-	scan = systable_beginscan(proc_callback_rel, 
-							  ProcCallbackProfnoidPromethodIndexId,
-							  true, SnapshotNow, 2, key);
 
 	/* (profnoid, promethod) is guaranteed unique by the index */
-	tup = systable_getnext(scan);
-	if (HeapTupleIsValid(tup))
-	{
-		Form_pg_proc_callback procForm = (Form_pg_proc_callback) GETSTRUCT(tup);
-		result = procForm->procallback;
-	}
-	
-	systable_endscan(scan);
 
-	heap_close(proc_callback_rel, AccessShareLock);	
+	result = caql_getoid(
+			NULL,
+			cql("SELECT procallback FROM pg_proc_callback "
+				" WHERE profnoid = :1 "
+				" AND promethod = :2 ",
+				ObjectIdGetDatum(profnoid),
+				CharGetDatum(promethod)));
 
 	return result;
 }

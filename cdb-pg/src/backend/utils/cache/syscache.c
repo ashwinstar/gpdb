@@ -682,6 +682,42 @@ ReleaseSysCache(HeapTuple tuple)
 }
 
 /*
+ * SearchSysCacheKeyArray
+ *
+ * A convenience routine that does invokes SearchSysCache using an
+ * array of keys
+ */
+HeapTuple
+SearchSysCacheKeyArray(int cacheId,
+					   int numkeys,
+					   Datum *keys)
+{
+	Datum	key1 = 0,  
+			key2 = 0,  
+			key3 = 0,  
+			key4 = 0;
+
+	Assert(numkeys < 5);
+
+	switch(numkeys)
+	{
+		case 4:
+			key4 = keys[3];
+		case 3:
+			key3 = keys[2];
+		case 2:
+			key2 = keys[1];
+		case 1:
+			key1 = keys[0];
+		default:				
+			break;
+	}
+
+	return SearchSysCache(cacheId, key1, key2, key3, key4);
+}
+
+
+/*
  * SearchSysCacheCopy
  *
  * A convenience routine that does SearchSysCache and (if successful)

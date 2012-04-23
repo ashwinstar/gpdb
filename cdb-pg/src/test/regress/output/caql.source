@@ -1,0 +1,389 @@
+-- --------------------------------------
+-- caql
+-- --------------------------------------
+-- *********************************************************************
+-- *********************************************************************
+-- This script will produce diffs if you add or change caql/cql
+-- definitions in src/. If you want to change the results, you must
+-- make the changes in regress/output/caql.source, not
+-- regress/expected, and use gpsourcify.pl to generate a ".source"
+-- file.
+--
+-- From the regress directory invoke the command:
+--
+--    gpsourcify.pl results/caql.out  > output/caql.source
+--
+-- *********************************************************************
+-- *********************************************************************
+-- *********************************************************************
+-- *********************************************************************
+-- caql testing
+--
+-- caql.md5 contains hash codes for compiled caql modules 
+-- (see src/backend/access/index/findcaql.sh)
+--
+CREATE EXTERNAL WEB TABLE compiled_caql_x (mod text, hsh text) 
+execute E'(cat @abs_srcdir@/../../backend/access/index/caql.md5 | perl -nle \'my @foo=split("/", $_); print $foo[-2]."/".$foo[-1]\' | sed "s/)=/|/" | sort ) ' on MASTER format 'text' (delimiter '|');
+--
+-- build hash codes for current set of caql modules
+--
+CREATE EXTERNAL WEB TABLE current_caql_x (mod text, hsh text)
+execute E'(find @abs_srcdir@/../.. -name \'*.c\' | xargs grep -l cql | grep -v catquery | xargs openssl dgst -md5 -hex | perl -nle \'my @foo =split("/", $_); print $foo[-2]."/".$foo[-1]\' | sed "s/)=/|/" | sort ) ' on MASTER format 'text' (delimiter '|');
+create table caql1 as select * from compiled_caql_x;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'mod' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+create table caql2 as select * from current_caql_x;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'mod' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+-- make sure non-zero rows
+select 'got some rows' from caql1 limit 1;
+   ?column?    
+---------------
+ got some rows
+(1 row)
+
+--
+-- make sure compiled code matches current -- no rows should be returned
+--
+select * from caql1 except select * from caql2;
+ mod | hsh 
+-----+-----
+(0 rows)
+
+select * from caql2 except select * from caql1;
+ mod | hsh 
+-----+-----
+(0 rows)
+
+-- dump the rows for debugging (but ignore)
+-- start_ignore
+select * from caql1;
+               mod               |                hsh                
+---------------------------------+-----------------------------------
+ adt/regproc.c                   |  218b7c6de871b91706f23ed313521078
+ cache/relcache.c                |  93dd297ad278e58b84a15359cc9b2ff6
+ catalog/aclchk.c                |  ff1af3ec94d4e4092f7483f4f5aae57e
+ catalog/heap.c                  |  d4a055867541d8472db2e1760fca5dbb
+ catalog/index.c                 |  f21677c7af2d44165bc6b4360224b9ea
+ catalog/pg_appendonly.c         |  86d796d54a277f76caa8d9044ea9aec4
+ catalog/pg_attribute_encoding.c |  6dc635de0865a217e773048c84dbe9dd
+ catalog/pg_compression.c        |  ff94f49700cd769b2d047e4051b8b7a9
+ catalog/pg_conversion.c         |  079b4ce79879654adb23a6a693026071
+ catalog/pg_depend.c             |  df2ccb2474bce5c598f7e7b097d4dbaa
+ catalog/pg_largeobject.c        |  98e5bbb0bc24bd19115a7b5984ab1791
+ catalog/pg_proc.c               |  45d8ff9ae13ea3d04a2b2d31fe3646a1
+ catalog/pg_proc_callback.c      |  97c78176885f2fea31efc7afa1d2e417
+ cdb/cdbfts.c                    |  5ca0bdbf42bd0adceca1f82123281e30
+ commands/comment.c              |  fc16f789464e5ad75825b84bf0b8e4ec
+ commands/foreigncmds.c          |  25ab929b877fc734d842b11a269e8ecc
+ commands/functioncmds.c         |  d173924dfdc1d704b6c5ea2f8601269a
+ commands/indexcmds.c            |  4b176327dec09cd8493b26a756a1a188
+ commands/queue.c                |  892202a501616310e509ddaeaaeb687f
+ commands/tablecmds.c            |  ccdc54caec651811c51484587f85d546
+ commands/typecmds.c             |  ff266877f08fb46228bd5f413c1191e4
+ commands/user.c                 |  dd8dc69ba43bfafcdb68d35b846d93ec
+ commands/vacuum.c               |  1a6107a4ff2955f9b217c7a9b814331b
+ gp/segadmin.c                   |  878c6c1c0468c04ef9eb925d120697b7
+ large_object/inv_api.c          |  33e1338710922cef0304f950b7970388
+ parser/analyze.c                |  c4bc1ae6ce3bc0d31c057bf81bd9f250
+ parser/parse_func.c             |  ad5d6d2de9c09f4c9f2a5e685fbb5412
+ util/plancat.c                  |  2588a9a57f3594005335eed442279045
+ adt/ruleutils.c                 |  b961cc936d78b0bf468cd2891fdf1364
+ catalog/dependency.c            |  e7c738011328dbae324c5c1c49f8b00d
+ catalog/gp_fastsequence.c       |  2c574d81d860568fbd8bedfb8565b3b0
+ catalog/pg_constraint.c         |  0490a4ffd4ee77be8a80d5b09ae8238b
+ catalog/pg_extprotocol.c        |  676d1e5e4593083c831a7f38d27f5b44
+ catalog/pg_exttable.c           |  0ad823f56ab9fe686155d1499ebc2e07
+ catalog/pg_shdepend.c           |  1655038e220dad23c8249a0812348e54
+ cdb/cdbcat.c                    |  85f7b0ab57fd5c261a83fb8ed60c0a20
+ cdb/cdbpartition.c              |  6b50c997c089f2a9686cfa64c1075518
+ cdb/cdbutil.c                   |  0b44e0cdcd113863b623217605a1c74e
+ commands/analyze.c              |  190d4611b2e43aaa3ac8ec8a18cb5a7c
+ commands/async.c                |  e52c0b97c5d93309f04996badc310a35
+ commands/cluster.c              |  28ad1bba1048ec167d36102becf09713
+ commands/dbcommands.c           |  c88cdb64f3156e08497211904d0a440e
+ commands/extprotocolcmds.c      |  a659d14e99d7515873032d1d984a0507
+ commands/filespace.c            |  ac299869c09e8d5e4b3166d06a002c40
+ commands/opclasscmds.c          |  0310a68d149ffe3be5788dbd65d2491e
+ commands/proclang.c             |  cdf946f9817495100bd0e1168494d498
+ commands/tablespace.c           |  5be4b67afabb2eadbf2a728265cfcca2
+ commands/trigger.c              |  f3a154e0b9c7517d3c6dd5d8e376e286
+ fts/fts.c                       |  286b15e471a4b6c68bfd6914b30e5594
+ fts/ftssan.c                    |  e36506ff03400bc46efbbc77ad5006ea
+ postmaster/autovacuum.c         |  89f5ba29c462e2dd3ac9395f89005139
+ resscheduler/resscheduler.c     |  d47caf2eb447ce88d297414eedac22cb
+ rewrite/rewriteRemove.c         |  c95c8732de66b9faccd206dffba0507b
+(53 rows)
+
+select * from caql2;
+               mod               |                hsh                
+---------------------------------+-----------------------------------
+ adt/ruleutils.c                 |  b961cc936d78b0bf468cd2891fdf1364
+ catalog/dependency.c            |  e7c738011328dbae324c5c1c49f8b00d
+ catalog/gp_fastsequence.c       |  2c574d81d860568fbd8bedfb8565b3b0
+ catalog/pg_constraint.c         |  0490a4ffd4ee77be8a80d5b09ae8238b
+ catalog/pg_extprotocol.c        |  676d1e5e4593083c831a7f38d27f5b44
+ catalog/pg_exttable.c           |  0ad823f56ab9fe686155d1499ebc2e07
+ catalog/pg_shdepend.c           |  1655038e220dad23c8249a0812348e54
+ cdb/cdbcat.c                    |  85f7b0ab57fd5c261a83fb8ed60c0a20
+ cdb/cdbpartition.c              |  6b50c997c089f2a9686cfa64c1075518
+ cdb/cdbutil.c                   |  0b44e0cdcd113863b623217605a1c74e
+ commands/analyze.c              |  190d4611b2e43aaa3ac8ec8a18cb5a7c
+ commands/async.c                |  e52c0b97c5d93309f04996badc310a35
+ commands/cluster.c              |  28ad1bba1048ec167d36102becf09713
+ commands/dbcommands.c           |  c88cdb64f3156e08497211904d0a440e
+ commands/extprotocolcmds.c      |  a659d14e99d7515873032d1d984a0507
+ commands/filespace.c            |  ac299869c09e8d5e4b3166d06a002c40
+ commands/opclasscmds.c          |  0310a68d149ffe3be5788dbd65d2491e
+ commands/proclang.c             |  cdf946f9817495100bd0e1168494d498
+ commands/tablespace.c           |  5be4b67afabb2eadbf2a728265cfcca2
+ commands/trigger.c              |  f3a154e0b9c7517d3c6dd5d8e376e286
+ fts/fts.c                       |  286b15e471a4b6c68bfd6914b30e5594
+ fts/ftssan.c                    |  e36506ff03400bc46efbbc77ad5006ea
+ postmaster/autovacuum.c         |  89f5ba29c462e2dd3ac9395f89005139
+ resscheduler/resscheduler.c     |  d47caf2eb447ce88d297414eedac22cb
+ rewrite/rewriteRemove.c         |  c95c8732de66b9faccd206dffba0507b
+ adt/regproc.c                   |  218b7c6de871b91706f23ed313521078
+ cache/relcache.c                |  93dd297ad278e58b84a15359cc9b2ff6
+ catalog/aclchk.c                |  ff1af3ec94d4e4092f7483f4f5aae57e
+ catalog/heap.c                  |  d4a055867541d8472db2e1760fca5dbb
+ catalog/index.c                 |  f21677c7af2d44165bc6b4360224b9ea
+ catalog/pg_appendonly.c         |  86d796d54a277f76caa8d9044ea9aec4
+ catalog/pg_attribute_encoding.c |  6dc635de0865a217e773048c84dbe9dd
+ catalog/pg_compression.c        |  ff94f49700cd769b2d047e4051b8b7a9
+ catalog/pg_conversion.c         |  079b4ce79879654adb23a6a693026071
+ catalog/pg_depend.c             |  df2ccb2474bce5c598f7e7b097d4dbaa
+ catalog/pg_largeobject.c        |  98e5bbb0bc24bd19115a7b5984ab1791
+ catalog/pg_proc.c               |  45d8ff9ae13ea3d04a2b2d31fe3646a1
+ catalog/pg_proc_callback.c      |  97c78176885f2fea31efc7afa1d2e417
+ cdb/cdbfts.c                    |  5ca0bdbf42bd0adceca1f82123281e30
+ commands/comment.c              |  fc16f789464e5ad75825b84bf0b8e4ec
+ commands/foreigncmds.c          |  25ab929b877fc734d842b11a269e8ecc
+ commands/functioncmds.c         |  d173924dfdc1d704b6c5ea2f8601269a
+ commands/indexcmds.c            |  4b176327dec09cd8493b26a756a1a188
+ commands/queue.c                |  892202a501616310e509ddaeaaeb687f
+ commands/tablecmds.c            |  ccdc54caec651811c51484587f85d546
+ commands/typecmds.c             |  ff266877f08fb46228bd5f413c1191e4
+ commands/user.c                 |  dd8dc69ba43bfafcdb68d35b846d93ec
+ commands/vacuum.c               |  1a6107a4ff2955f9b217c7a9b814331b
+ gp/segadmin.c                   |  878c6c1c0468c04ef9eb925d120697b7
+ large_object/inv_api.c          |  33e1338710922cef0304f950b7970388
+ parser/analyze.c                |  c4bc1ae6ce3bc0d31c057bf81bd9f250
+ parser/parse_func.c             |  ad5d6d2de9c09f4c9f2a5e685fbb5412
+ util/plancat.c                  |  2588a9a57f3594005335eed442279045
+(53 rows)
+
+-- end_ignore
+-- cleanup
+drop table caql1;
+drop table caql2;
+drop external web table compiled_caql_x;
+drop external web table current_caql_x;
+-- extra catalog coverage
+create user caql_luser;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+create user caql_super_luser SUPERUSER;
+set role caql_luser;
+-- create a role as an unpriv user (shouldn't work)
+create role caql_fff;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+ERROR:  permission denied to create role
+drop role if exists caql_fff ;
+ERROR:  permission denied to drop role
+-- create and comment on an operator and an operator class
+create operator #~#~# 
+(
+   rightarg = int8,              -- right unary 
+   procedure = numeric_fac 
+);
+comment on operator #~#~# (int8, NONE) is 'bad operator';
+ERROR:  operator does not exist: bigint #~#~#
+comment on operator #~#~# (NONE, int8) is 'bad operator';
+drop operator #~#~# (int8, NONE);
+ERROR:  operator does not exist: bigint #~#~#
+drop operator #~#~# (NONE, int8 );
+-- need privs to create op class and comment on language
+set role caql_super_luser;
+create operator class myi2ops 
+ for type int2 using btree as
+        OPERATOR        1       < ,
+        OPERATOR        2       <= ,
+        OPERATOR        3       = ,
+        OPERATOR        4       >= ,
+        OPERATOR        5       > ,
+        FUNCTION        1       btint2cmp(int2, int2);
+comment on operator class myi2ops using btree is 'wow';
+drop operator class myi2ops using btree;
+comment on language sql is 'wow';
+comment on language sql is null;
+-- no privs
+set role caql_luser;
+CREATE or replace FUNCTION caql_timestamp(float8) 
+RETURNS pg_catalog.timestamptz 
+LANGUAGE sql 
+IMMUTABLE STRICT AS $$select ('epoch'::timestamptz + $1 * '1 second'::interval)$$;
+CREATE or replace FUNCTION caql_timestamp(float8) 
+RETURNS pg_catalog.timestamptz 
+LANGUAGE sql 
+IMMUTABLE STRICT AS $$select ('epoch'::timestamptz + $1 * '1 second'::interval)$$;
+CREATE TABLE log_table (tstamp timestamp default timeofday()::timestamp);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tstamp' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE main_table (a int, b int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS '
+BEGIN
+        RAISE NOTICE ''trigger_func() called: action = %, when = %, level = %'', 
+		TG_OP, TG_WHEN, TG_LEVEL;
+        RETURN NULL;
+END;';
+CREATE TRIGGER before_ins_stmt_trig BEFORE INSERT ON main_table
+FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+comment on trigger before_ins_stmt_trig on main_table is 'wow';
+-- rename of columns recurses to triggers
+alter table main_table rename a to aaa;
+alter table main_table rename b to bbb;
+drop trigger before_ins_stmt_trig on main_table;
+create table rtest_t1 (a int4, b int4);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+create view rtest_v1 as select * from rtest_t1;
+create rule rtest_v1_ins as on insert to rtest_v1 do instead
+        insert into rtest_t1 values (new.a, new.b);
+comment on rule rtest_v1_ins is 'wow';
+comment on rule rtest_v1_ins on rtest_v1 is 'ok';
+set constraints all deferred;
+set constraints funky deferred;
+ERROR:  constraint "funky" does not exist
+-- start_ignore
+-- need to ignore warnings for objects caql_luser does not own...
+vacuum;
+WARNING:  skipping "sql_packages" --- only table or database owner can vacuum it
+WARNING:  skipping "sql_parts" --- only table or database owner can vacuum it
+WARNING:  skipping "sql_sizing" --- only table or database owner can vacuum it
+WARNING:  skipping "sql_sizing_profiles" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_window" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_exttable" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_appendonly" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_appendonly_alter_column" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_master_mirroring" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_fastsequence" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_extprotocol" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_partition" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_partition_rule" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_filespace" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_filespace_entry" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_global_sequence" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_persistent_relation_node" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_relation_node" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_persistent_database_node" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_persistent_tablespace_node" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_persistent_filespace_node" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_attribute_encoding" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_compression" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_foreign_data_wrapper" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_foreign_server" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_foreign_table" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_proc_callback" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_partition_encoding" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_type_encoding" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_database" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_auth_members" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_auth_time_constraint" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_authid" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_statistic" --- only table or database owner can vacuum it
+WARNING:  skipping "sql_features" --- only table or database owner can vacuum it
+WARNING:  skipping "sql_implementation_info" --- only table or database owner can vacuum it
+WARNING:  skipping "sql_languages" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_user_mapping" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_type" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_attribute" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_proc" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_class" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_autovacuum" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_attrdef" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_constraint" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_inherits" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_index" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_operator" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_opclass" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_am" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_amop" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_amproc" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_language" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_largeobject" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_aggregate" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_stat_last_operation" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_stat_last_shoperation" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_rewrite" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_trigger" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_listener" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_description" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_cast" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_namespace" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_conversion" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_depend" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_tablespace" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_pltemplate" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_shdepend" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_shdescription" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_resqueue" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_resourcetype" --- only table or database owner can vacuum it
+WARNING:  skipping "pg_resqueuecapability" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_configuration" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_configuration_history" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_db_interfaces" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_interfaces" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_id" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_distribution_policy" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_version_at_initdb" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_segment_configuration" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_fault_strategy" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_san_configuration" --- only table or database owner can vacuum it
+WARNING:  skipping "gp_verification_history" --- only table or database owner can vacuum it
+-- end_ignore
+vacuum main_table;
+vacuum full main_table;
+NOTICE:  'VACUUM FULL' is not safe for large tables and has been known to yield unpredictable runtimes.
+HINT:  Use 'VACUUM' instead.
+analyze main_table;
+CREATE TYPE funkytype AS (
+       i int
+);
+CREATE FUNCTION toint(funkytype) 
+  RETURNS integer 
+  STRICT IMMUTABLE LANGUAGE SQL AS 
+'SELECT 1;';
+CREATE CAST (funkytype AS integer) WITH FUNCTION toint(funkytype);
+comment on cast (funkytype AS integer) is 'wow';
+grant all on language sql to caql_luser;
+WARNING:  no privileges were granted for "sql"
+set role caql_super_luser;
+grant all on language sql to caql_luser;
+revoke usage on language sql from caql_luser;
+-- cleanup (as caql_super_luser)
+drop type funkytype;
+NOTICE:  cast from funkytype to integer depends on type funkytype
+NOTICE:  function toint(funkytype) depends on type funkytype
+ERROR:  cannot drop type funkytype because other objects depend on it
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+-- need the cascade to the cast
+drop type funkytype cascade;
+NOTICE:  drop cascades to cast from funkytype to integer
+NOTICE:  drop cascades to function toint(funkytype)
+-- should be superfluous after the cascade
+DROP CAST (funkytype AS integer) ;
+ERROR:  type "funkytype" does not exist
+drop table main_table cascade;
+drop table log_table cascade;
+drop table rtest_t1 cascade;
+NOTICE:  drop cascades to rule rtest_v1_ins on view rtest_v1
+NOTICE:  drop cascades to rule _RETURN on view rtest_v1
+NOTICE:  drop cascades to view rtest_v1
+drop function trigger_func();
+drop function caql_timestamp(float8);
+-- back to "normal" 
+reset role;
+drop role caql_luser;
+drop role caql_super_luser;

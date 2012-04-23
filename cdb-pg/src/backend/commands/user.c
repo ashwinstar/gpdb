@@ -15,6 +15,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/catquery.h"
 #include "catalog/heap.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
@@ -94,20 +95,26 @@ static bool
 have_createrole_privilege(void)
 {
 	bool		result = false;
+	cqContext  *pcqCtx, cqc;
 	HeapTuple	utup;
 
 	/* Superusers can always do everything */
 	if (superuser())
 		return true;
 
-	utup = SearchSysCache(AUTHOID,
-						  ObjectIdGetDatum(GetUserId()),
-						  0, 0, 0);
-	if (HeapTupleIsValid(utup))
+	pcqCtx = 
+			caql_beginscan(
+					cqclr(&cqc),
+					cql("SELECT * FROM pg_authid "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(GetUserId())));
+
+	if (HeapTupleIsValid(utup = caql_getnext(pcqCtx)))
 	{
 		result = ((Form_pg_authid) GETSTRUCT(utup))->rolcreaterole;
-		ReleaseSysCache(utup);
 	}
+	caql_endscan(pcqCtx);
+
 	return result;
 }
 
@@ -391,10 +398,11 @@ CreateRole(CreateRoleStmt *stmt)
 	pg_authid_rel = heap_open(AuthIdRelationId, RowExclusiveLock);
 	pg_authid_dsc = RelationGetDescr(pg_authid_rel);
 
-	tuple = SearchSysCache(AUTHNAME,
-						   PointerGetDatum(stmt->role),
-						   0, 0, 0);
-	if (HeapTupleIsValid(tuple))
+	if (caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_authid "
+					" WHERE rolname = :1 ",
+					PointerGetDatum(stmt->role))))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("role \"%s\" already exists",
@@ -1315,11 +1323,8 @@ DropRole(DropRoleStmt *stmt)
 	foreach(item, stmt->roles)
 	{
 		const char *role = strVal(lfirst(item));
-		HeapTuple	tuple,
-					tmp_tuple;
-		ScanKeyData scankey;
+		HeapTuple	tuple;
 		char	   *detail;
-		SysScanDesc sscan;
 		Oid			roleid;
 
 		tuple = SearchSysCache(AUTHNAME,
@@ -1402,35 +1407,24 @@ DropRole(DropRoleStmt *stmt)
 		 *
 		 * XXX what about grantor entries?	Maybe we should do one heap scan.
 		 */
-		ScanKeyInit(&scankey,
-					Anum_pg_auth_members_roleid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(roleid));
-
-		sscan = systable_beginscan(pg_auth_members_rel, AuthMemRoleMemIndexId,
-								   true, SnapshotNow, 1, &scankey);
-
-		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
 		{
-			simple_heap_delete(pg_auth_members_rel, &tmp_tuple->t_self);
+			int numDel;
+
+			numDel = 
+					caql_getcount(
+							NULL,
+							cql("DELETE FROM pg_auth_members "
+								" WHERE roleid = :1 ",
+								ObjectIdGetDatum(roleid)));
+
+			numDel = 
+					caql_getcount(
+							NULL,
+							cql("DELETE FROM pg_auth_members "
+								" WHERE member = :1 ",
+								ObjectIdGetDatum(roleid)));
+
 		}
-
-		systable_endscan(sscan);
-
-		ScanKeyInit(&scankey,
-					Anum_pg_auth_members_member,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(roleid));
-
-		sscan = systable_beginscan(pg_auth_members_rel, AuthMemMemRoleIndexId,
-								   true, SnapshotNow, 1, &scankey);
-
-		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
-		{
-			simple_heap_delete(pg_auth_members_rel, &tmp_tuple->t_self);
-		}
-
-		systable_endscan(sscan);
 
 		/*
 		 * Remove any time constraints on this role.
@@ -1527,9 +1521,11 @@ RenameRole(const char *oldname, const char *newname)
 				 errmsg("current user cannot be renamed")));
 
 	/* make sure the new name doesn't exist */
-	if (SearchSysCacheExists(AUTHNAME,
-							 CStringGetDatum((char *) newname),
-							 0, 0, 0))
+	if (caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_authid "
+					" WHERE rolname = :1 ",
+					CStringGetDatum((char *) newname))))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("role \"%s\" already exists", newname)));
@@ -2504,20 +2500,20 @@ DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals)
 	bool		dropped_matching_interval = false; 
 
 	HeapTuple 	tmp_tuple;
-	ScanKeyData scankey;
-	SysScanDesc sscan;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 
 	pg_auth_time_rel = heap_open(AuthTimeConstraintRelationId, RowExclusiveLock);
 
-	ScanKeyInit(&scankey,
-				Anum_pg_auth_time_constraint_authid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(roleid));
+	pcqCtx = 
+			caql_beginscan(
+					caql_addrel(cqclr(&cqc), pg_auth_time_rel),
+					cql("SELECT * FROM pg_auth_time_constraint "
+						" WHERE authid = :1 "
+						" FOR UPDATE ",
+						ObjectIdGetDatum(roleid)));
 
-	sscan = systable_beginscan(pg_auth_time_rel, InvalidOid, false, 
-								SnapshotNow, 1, &scankey);
-
-	while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
+	while (HeapTupleIsValid(tmp_tuple = caql_getnext(pcqCtx)))
 	{
 		if (dropintervals != NIL) 
 		{
@@ -2540,14 +2536,14 @@ DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals)
 										DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))),
 										daysofweek[existing->end.day],
 										DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time))))));
-					simple_heap_delete(pg_auth_time_rel, &tmp_tuple->t_self);
+					caql_delete_current(pcqCtx);
 					dropped_matching_interval = true;
 					break;
 				}
 			}
 		} 
 		else
-			simple_heap_delete(pg_auth_time_rel, &tmp_tuple->t_self);
+			caql_delete_current(pcqCtx);
 	}
 
 	/* if intervals were specified and none was found, raise error */
@@ -2555,7 +2551,7 @@ DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals)
 		ereport(ERROR, 
 				(errmsg("cannot find matching DENY rules for \"%s\"", rolename)));
 
-	systable_endscan(sscan);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Close pg_auth_time_constraint, but keep lock till commit (this is important to

@@ -12,6 +12,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -179,9 +180,7 @@ void
 ExtProtocolDeleteByOid(Oid	protOid)
 {
 	Relation	rel;
-	HeapScanDesc scandesc;
-	HeapTuple	tuple;
-	ScanKeyData entry[1];
+	cqContext	cqc;
 
 	/*
 	 * Search pg_extprotocol.  We use a heapscan here even though there is an
@@ -189,22 +188,15 @@ ExtProtocolDeleteByOid(Oid	protOid)
 	 * few entries and so an indexed lookup is a waste of effort.
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(protOid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
-	/* We assume that there can be at most one matching tuple */
-	if (!HeapTupleIsValid(tuple))
+	if (0 == caql_getcount(
+				caql_addrel(cqclr(&cqc), rel),
+				cql("DELETE FROM pg_extprotocol "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(protOid))))
 	{
 		elog(ERROR, "protocol %u could not be found", protOid);
 	}
-
-	simple_heap_delete(rel, &tuple->t_self);
-
-	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 }
 
@@ -303,8 +295,7 @@ LookupExtProtocolFunction(const char *prot_name,
 	TupleDesc	pg_extprotocol_dsc;
 	HeapTuple	tuple;
 	bool		isNull;
-	ScanKeyData	key;
-	SysScanDesc	scan;
+	cqContext	cqc;
 	Oid			funcOid = InvalidOid;
 	Datum		funcDatum;
 
@@ -315,20 +306,12 @@ LookupExtProtocolFunction(const char *prot_name,
 	pg_extprotocol_rel = heap_open(ExtprotocolRelationId, AccessShareLock);
 	pg_extprotocol_dsc = RelationGetDescr(pg_extprotocol_rel);
 
-	ScanKeyInit(&key,
-				Anum_pg_extprotocol_ptcname,
-				BTEqualStrategyNumber,
-				F_NAMEEQ,
-				CStringGetDatum(prot_name));
+	tuple = caql_getfirst(
+				caql_addrel(cqclr(&cqc), pg_extprotocol_rel),
+				cql("SELECT * FROM pg_extprotocol "
+					" WHERE ptcname = :1 ",
+					CStringGetDatum(prot_name)));
 
-	scan = systable_beginscan(pg_extprotocol_rel,
-							  ExtprotocolPtcnameIndexId,
-							  true,
-							  SnapshotNow,
-							  1,
-							  &key);
-
-	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -354,7 +337,6 @@ LookupExtProtocolFunction(const char *prot_name,
 	}
 
 	/* Finish up scan and close pg_extprotocol catalog. */
-	systable_endscan(scan);
 
 	heap_close(pg_extprotocol_rel, AccessShareLock);
 
@@ -369,34 +351,22 @@ LookupExtProtocolFunction(const char *prot_name,
 Oid
 LookupExtProtocolOid(const char *prot_name, bool missing_ok)
 {
-
-	Relation	pg_extprotocol_rel;
-	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	scan;
+	int			fetchCount;
 	Oid			protOid = InvalidOid;
 
 	/*
 	 * Check the pg_extprotocol relation to be certain the ao table
 	 * is there.
 	 */
-	pg_extprotocol_rel = heap_open(ExtprotocolRelationId, AccessShareLock);
+	protOid = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT oid FROM pg_extprotocol "
+				" WHERE ptcname = :1 ",
+				CStringGetDatum(prot_name)));
 
-	ScanKeyInit(&key,
-				Anum_pg_extprotocol_ptcname,
-				BTEqualStrategyNumber,
-				F_NAMEEQ,
-				CStringGetDatum(prot_name));
-
-	scan = systable_beginscan(pg_extprotocol_rel,
-							  ExtprotocolPtcnameIndexId,
-							  true,
-							  SnapshotNow,
-							  1,
-							  &key);
-
-	tuple = systable_getnext(scan);
-	if (!HeapTupleIsValid(tuple))
+	if (0 == fetchCount)
 	{
 		if(!missing_ok)
 			ereport(ERROR,
@@ -404,13 +374,6 @@ LookupExtProtocolOid(const char *prot_name, bool missing_ok)
 					 errmsg("protocol \"%s\" does not exist",
 							prot_name)));
 	}
-	else
-		protOid = HeapTupleGetOid(tuple);
-
-	/* Finish up scan and close pg_extprotocol catalog. */
-	systable_endscan(scan);
-
-	heap_close(pg_extprotocol_rel, AccessShareLock);
 
 	return protOid;
 
@@ -418,51 +381,36 @@ LookupExtProtocolOid(const char *prot_name, bool missing_ok)
 
 char *
 ExtProtocolGetNameByOid(Oid	protOid)
-{
-	Relation	rel;
-	HeapScanDesc scandesc;
-	HeapTuple	tuple;
-	ScanKeyData entry[1];
-	Datum		ptcnameDatum;
-	Name		ptcname;
+{		
 	char		*ptcnamestr;
 	bool		isNull;
-
+	int			fetchCount;
+	
 	/*
 	 * Search pg_extprotocol.  We use a heapscan here even though there is an
 	 * index on oid, on the theory that pg_extprotocol will usually have just a
 	 * few entries and so an indexed lookup is a waste of effort.
 	 */
-	rel = heap_open(ExtprotocolRelationId, AccessShareLock);
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(protOid));
-	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
-	tuple = heap_getnext(scandesc, ForwardScanDirection);
+
+	ptcnamestr = caql_getcstring_plus(
+			NULL,
+			&fetchCount,
+			&isNull,
+			cql("SELECT ptcname FROM pg_extprotocol "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(protOid)));
 
 	/* We assume that there can be at most one matching tuple */
-	if (!HeapTupleIsValid(tuple))
+	if (!fetchCount)
 	{
 		elog(ERROR, "protocol %u could not be found", protOid);
 	}
-
-	ptcnameDatum = heap_getattr(tuple,
-								Anum_pg_extprotocol_ptcname,
-								rel->rd_att,
-								&isNull);
-
-	ptcname = DatumGetName(ptcnameDatum);
-	ptcnamestr = strdup(NameStr(*ptcname));
 
 	if(isNull)
 		ereport(ERROR,
 			(errcode(ERRCODE_UNDEFINED_OBJECT),
 			 errmsg("internal error: protocol '%u' has no name defined",
 					 protOid)));
-
-	heap_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
 
 	return ptcnamestr;
 }

@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "access/transam.h"
@@ -605,10 +606,10 @@ autovac_get_database_list(void)
 static void
 do_autovacuum(PgStat_StatDBEntry *dbentry)
 {
-	Relation	classRel,
-				avRel;
+	Relation	avRel;
 	HeapTuple	tuple;
-	HeapScanDesc relScan;
+	cqContext	*pcqCtx;
+	cqContext	 cqc;
 	Form_pg_database dbForm;
 	List	   *vacuum_tables = NIL;
 	List	   *toast_table_ids = NIL;
@@ -657,7 +658,6 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	/* The database hash where pgstat keeps shared relations */
 	shared = pgstat_fetch_stat_dbentry(InvalidOid);
 
-	classRel = heap_open(RelationRelationId, AccessShareLock);
 	avRel = heap_open(AutovacuumRelationId, AccessShareLock);
 
 	/*
@@ -677,16 +677,18 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	 * vacuuming; we go back and re-mark them after finding all the vacuumable
 	 * toast tables.
 	 */
-	relScan = heap_beginscan(classRel, SnapshotNow, 0, NULL);
 
-	while ((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	pcqCtx = caql_beginscan(
+			caql_indexOK(cqclr(&cqc), false),
+			cql("SELECT * FROM pg_class ", NULL));
+
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(tuple);
 		Form_pg_autovacuum avForm = NULL;
 		PgStat_StatTabEntry *tabentry;
-		SysScanDesc avScan;
 		HeapTuple	avTup;
-		ScanKeyData entry[1];
+		cqContext	cqc2;
 		Oid			relid;
 
 		/* Consider only regular, toast and aosegment tables. */
@@ -706,15 +708,11 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 		relid = HeapTupleGetOid(tuple);
 
 		/* See if we have a pg_autovacuum entry for this relation. */
-		ScanKeyInit(&entry[0],
-					Anum_pg_autovacuum_vacrelid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(relid));
-
-		avScan = systable_beginscan(avRel, AutovacuumRelidIndexId, true,
-									SnapshotNow, 1, entry);
-
-		avTup = systable_getnext(avScan);
+		avTup = caql_getfirst(
+				caql_addrel(cqclr(&cqc2), avRel), 
+				cql("SELECT * FROM pg_autovacuum "
+					" WHERE vacrelid = :1 ",
+					ObjectIdGetDatum(relid)));
 
 		if (HeapTupleIsValid(avTup))
 			avForm = (Form_pg_autovacuum) GETSTRUCT(avTup);
@@ -731,12 +729,11 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 		test_rel_for_autovac(relid, tabentry, classForm, avForm,
 							 &vacuum_tables, &toast_table_ids);
 
-		systable_endscan(avScan);
+/*		systable_endscan(avScan); */
 	}
 
-	heap_endscan(relScan);
+	caql_endscan(pcqCtx);
 	heap_close(avRel, AccessShareLock);
-	heap_close(classRel, AccessShareLock);
 
 	/*
 	 * Perform operations on collected tables.

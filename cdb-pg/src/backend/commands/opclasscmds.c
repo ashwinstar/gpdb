@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -304,18 +305,16 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	 */
 	if (stmt->isDefault)
 	{
-		ScanKeyData skey[1];
-		SysScanDesc scan;
+		cqContext		*pcqCtx;
+		cqContext		 cqc;
 
-		ScanKeyInit(&skey[0],
-					Anum_pg_opclass_opcamid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(amoid));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), rel), 
+				cql("SELECT * FROM pg_opclass "
+					" WHERE opcamid = :1 ",
+					ObjectIdGetDatum(amoid)));
 
-		scan = systable_beginscan(rel, OpclassAmNameNspIndexId, true,
-								  SnapshotNow, 1, skey);
-
-		while (HeapTupleIsValid(tup = systable_getnext(scan)))
+		while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
 		{
 			Form_pg_opclass opclass = (Form_pg_opclass) GETSTRUCT(tup);
 
@@ -329,7 +328,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 							 NameStr(opclass->opcname))));
 		}
 
-		systable_endscan(scan);
+		caql_endscan(pcqCtx);
 	}
 
 	/*
@@ -776,65 +775,35 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 void
 RemoveOpClassById(Oid opclassOid)
 {
-	Relation	rel;
-	HeapTuple	tup;
-	ScanKeyData skey[1];
-	SysScanDesc scan;
+	int			numDel;
 
 	/*
 	 * First remove the pg_opclass entry itself.
 	 */
-	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
 
-	tup = SearchSysCache(CLAOID,
-						 ObjectIdGetDatum(opclassOid),
-						 0, 0, 0);
-	if (!HeapTupleIsValid(tup)) /* should not happen */
-		elog(ERROR, "cache lookup failed for opclass %u", opclassOid);
-
-	simple_heap_delete(rel, &tup->t_self);
-
-	ReleaseSysCache(tup);
-
-	heap_close(rel, RowExclusiveLock);
+	numDel = caql_getcount(
+			NULL,
+			cql("DELETE FROM pg_opclass "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(opclassOid)));
 
 	/*
 	 * Remove associated entries in pg_amop.
 	 */
-	ScanKeyInit(&skey[0],
-				Anum_pg_amop_amopclaid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(opclassOid));
-
-	rel = heap_open(AccessMethodOperatorRelationId, RowExclusiveLock);
-
-	scan = systable_beginscan(rel, AccessMethodStrategyIndexId, true,
-							  SnapshotNow, 1, skey);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-		simple_heap_delete(rel, &tup->t_self);
-
-	systable_endscan(scan);
-	heap_close(rel, RowExclusiveLock);
+	numDel = caql_getcount(
+			NULL,
+			cql("DELETE FROM pg_amop "
+				" WHERE amopclaid = :1 ",
+				ObjectIdGetDatum(opclassOid)));
 
 	/*
 	 * Remove associated entries in pg_amproc.
 	 */
-	ScanKeyInit(&skey[0],
-				Anum_pg_amproc_amopclaid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(opclassOid));
-
-	rel = heap_open(AccessMethodProcedureRelationId, RowExclusiveLock);
-
-	scan = systable_beginscan(rel, AccessMethodProcedureIndexId, true,
-							  SnapshotNow, 1, skey);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-		simple_heap_delete(rel, &tup->t_self);
-
-	systable_endscan(scan);
-	heap_close(rel, RowExclusiveLock);
+	numDel = caql_getcount(
+			NULL,
+			cql("DELETE FROM pg_amproc "
+				" WHERE amopclaid = :1 ",
+				ObjectIdGetDatum(opclassOid)));
 }
 
 

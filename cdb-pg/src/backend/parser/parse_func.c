@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/catquery.h"
 #include "access/transam.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_inherits.h"
@@ -1232,8 +1233,8 @@ typeInheritsFrom(Oid subclassTypeId, Oid superclassTypeId)
 	foreach(queue_item, queue)
 	{
 		Oid			this_relid = lfirst_oid(queue_item);
-		ScanKeyData skey;
-		HeapScanDesc inhscan;
+		cqContext  *pcqCtx;
+		cqContext	cqc;		
 		HeapTuple	inhtup;
 
 		/* If we've seen this relid already, skip it */
@@ -1249,14 +1250,13 @@ typeInheritsFrom(Oid subclassTypeId, Oid superclassTypeId)
 		if (queue_item != list_head(queue))
 			visited = lappend_oid(visited, this_relid);
 
-		ScanKeyInit(&skey,
-					Anum_pg_inherits_inhrelid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(this_relid));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), inhrel),
+				cql("SELECT * FROM pg_inherits "
+					" WHERE inhrelid = :1 ",
+					ObjectIdGetDatum(this_relid)));
 
-		inhscan = heap_beginscan(inhrel, SnapshotNow, 1, &skey);
-
-		while ((inhtup = heap_getnext(inhscan, ForwardScanDirection)) != NULL)
+		while (HeapTupleIsValid(inhtup = caql_getnext(pcqCtx)))
 		{
 			Form_pg_inherits inh = (Form_pg_inherits) GETSTRUCT(inhtup);
 			Oid			inhparent = inh->inhparent;
@@ -1272,7 +1272,7 @@ typeInheritsFrom(Oid subclassTypeId, Oid superclassTypeId)
 			queue = lappend_oid(queue, inhparent);
 		}
 
-		heap_endscan(inhscan);
+		caql_endscan(pcqCtx);
 
 		if (result)
 			break;
