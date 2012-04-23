@@ -2,6 +2,7 @@
 # Copyright (c) Greenplum Inc 2011. All Rights Reserved.
 
 import os
+import errno
 import shutil
 import hashlib
 import signal
@@ -165,6 +166,25 @@ class CheckFilespaceEntriesLocally(Operation):
             is_consistent = False
 
         return is_consistent 
+
+class CheckFilespacePermissions(Operation):
+    """
+        Checks if the filespace has the correct permissions
+    """
+    def __init__(self, location):
+        self.location = location
+
+    def execute(self):
+        try:
+            with open(self.location, 'w') as file:
+                pass
+            os.remove(self.location)
+        except IOError, e:
+            if e.errno == errno.EACCES:
+                return False 
+            else:
+                raise
+        return True
 
 class CheckFilespaceConsistency(Operation):
     """
@@ -431,18 +451,15 @@ class MoveTransFilespaceLocally(Operation):
                     m.update(data)
         return m.hexdigest() 
 
-    def md5_check(self):
-        for directory in self.TRANSACTION_FILES_DIRS:
-            src_directory = os.path.join(self.current_filespace_entry[2], directory)
-            dst_directory = os.path.join(self.new_filespace_entry[2], directory)
-            src_md5 = self.get_md5(src_directory)
-            dst_md5 = self.get_md5(dst_directory)
+    def md5_check(self, src_dir, dst_dir):
+            src_md5 = self.get_md5(src_dir)
+            dst_md5 = self.get_md5(dst_dir)
 
-            logger.info('md5 checksum for %s = %s' % (src_directory, src_md5))
-            logger.info('md5 checksum for %s = %s' % (dst_directory, dst_md5))
+            logger.info('md5 checksum for %s = %s' % (src_dir, src_md5))
+            logger.info('md5 checksum for %s = %s' % (dst_dir, dst_md5))
 
             if src_md5 != dst_md5:
-                raise MoveFilespaceError('MD5 Checksum failed for %s' % src_directory)
+                raise MoveFilespaceError('MD5 Checksum failed for %s' % src_dir)
 
     def execute(self):
 
@@ -450,6 +467,10 @@ class MoveTransFilespaceLocally(Operation):
         #We simply return.         
         if not CheckDir(self.current_filespace_entry[2]).run():
             return
+
+        tmp_file = os.path.join(self.new_filespace_entry[2], 'tmp_file')
+        if not CheckFilespacePermissions(tmp_file).run():
+            raise MoveFilespaceError('Invalid permissions for %s' % tmp_file)
 
         #1. Copy the contents of the filespace dirs from old filespace to new filespace
         for directory in self.TRANSACTION_FILES_DIRS:
@@ -465,6 +486,10 @@ class MoveTransFilespaceLocally(Operation):
                     if CheckDir(src_dir).run() and not CheckDir(dst_dir).run():
                         logger.info('copying %s' % src_dir)
                         shutil.copytree(src_dir, dst_dir) 
+                        try:
+                            self.md5_check(src_dir, dst_dir)
+                        except (IOError, OSError), e:
+                            raise MoveFilespaceError('Failed to calculate md5 checksums !')
                 else:
                 #We use the src segment as the source of truth and copy everything
                     if CheckDir(dst_dir).run():
@@ -472,16 +497,15 @@ class MoveTransFilespaceLocally(Operation):
 
                     logger.info('copying %s' % src_dir)
                     shutil.copytree(src_dir, dst_dir)
+
+                    try:
+                        self.md5_check(src_dir, dst_dir)
+                    except (IOError, OSError), e:
+                        raise MoveFilespaceError('Failed to calculate md5 checksums !')
                     
             except (IOError, OSError), e:
                 logger.error('Failed to copy transaction files to new Filespace location.') 
                 raise
-
-        try:
-            self.md5_check()
-        except (IOError, OSError), e:
-            raise MoveFilespaceError('Failed to calculate md5 checksums !')
-
 
         #2. Drop the directories in current filespace
         for directory in self.TRANSACTION_FILES_DIRS:
@@ -533,17 +557,23 @@ class MoveTempFilespaceLocally(Operation):
     """
     TEMPORARY_FILES_DIR = 'pgsql_tmp' 
 
-    def __init__(self, current_filespace_entry, new_filespace_name, new_filespace_entry, peer_filespace_entry, pg_system_filespace_entry):
+    def __init__(self, current_filespace_entry, new_filespace_name, new_filespace_entry, peer_filespace_entry, pg_system_filespace_entry, rollback=None):
         self.new_filespace_name = new_filespace_name
         self.new_filespace_entry = new_filespace_entry
         self.peer_filespace_entry = peer_filespace_entry
         self.current_filespace_entry = current_filespace_entry
         self.pg_system_filespace_entry = pg_system_filespace_entry
+        self.rollback = rollback
 
     def execute(self):
         
         if not CheckDir(self.current_filespace_entry[2]).run():
             return
+
+        tmp_file = os.path.join(self.new_filespace_entry[2], 'tmp_file')
+        if not CheckFilespacePermissions(tmp_file).run():
+            raise MoveFilespaceError('Invalid permissions for %s' % tmp_file)
+
         #1. Drop the directories from old filespace location
         #If the filespace is being moved from pg_system filespace 
         #for temp files will be slightly different as they will be stored under 
@@ -552,7 +582,16 @@ class MoveTempFilespaceLocally(Operation):
 
         if not CheckFile(gp_temporary_files_filespace_path).run():
             base_dir = os.path.join(self.current_filespace_entry[2], 'base')
-            directories = ListFiles(base_dir).run()
+
+            directories = []
+            try:
+                directories = ListFiles(base_dir).run()
+            except Exception, e:
+                if self.rollback:
+                    pass
+                else:
+                    raise
+
             for directory in directories:
                 try:
                     dst_dir = os.path.join(base_dir, directory, self.TEMPORARY_FILES_DIR)
@@ -730,7 +769,8 @@ class RollBackFilespaceChanges(Operation):
                                                                   self.cur_filespace_name, 
                                                                   self.cur_filespace_entries[seg.getSegmentDbId()], 
                                                                   peer_filespace_entry,
-                                                                  self.pg_system_filespace_entries[seg.getSegmentDbId()]
+                                                                  self.pg_system_filespace_entries[seg.getSegmentDbId()],
+                                                                  rollback=True
                                                                             ),
                                   seg.getSegmentHostName()
                                                 ),
@@ -891,15 +931,15 @@ class MoveFilespace(Operation):
 
             ParallelOperation(operations, NUM_WORKERS).run()
 
-            for operation in operations:
-                try:
+            try:
+                for operation in operations:
                     operation.get_ret()
+            except Exception, e:
+                logger.error('Failed to move files on remote host. %s' % str(e))
+                try:
+                    RollBackFilespaceChanges(segments, self.file_type, cur_filespace_name, cur_filespace_entries, new_filespace_entries, pg_system_filespace_entries).run()
                 except Exception, e:
-                    logger.error('Failed to move files on remote host. %s.', e)
-                    try:
-                        RollBackFilespaceChanges(segments, self.file_type, cur_filespace_name, cur_filespace_entries, new_filespace_entries, pg_system_filespace_entries).run()
-                    except Exception, e:
-                        raise MoveFilespaceError('Rollback Failed !')
+                    raise MoveFilespaceError('Rollback Failed !')
         
             #9 Bring GPDB online in normal mode
             self.start_database()
