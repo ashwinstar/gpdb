@@ -123,6 +123,25 @@ COMMIT;
 SELECT * FROM uctest ORDER BY 1, 2, 3;
 
 --
+-- UPDATE with FROM and subqueries
+--
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest WHERE f1 = 3;
+FETCH 1 FROM c;
+UPDATE uctest SET f2 = other.f2 + 10 FROM
+    (SELECT * FROM uctest WHERE f1 = 3) AS other
+    WHERE CURRENT OF c;
+COMMIT;
+SELECT * FROM uctest ORDER BY 1, 2, 3;
+
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM uctest WHERE f1 = 3;
+FETCH 1 FROM c;
+UPDATE uctest SET f2 = (SELECT f2 - 10 FROM uctest WHERE f1 = 3) WHERE CURRENT OF c;
+COMMIT;
+SELECT * FROM uctest ORDER BY 1, 2, 3;
+
+--
 -- Partitioning
 --
 
@@ -302,6 +321,9 @@ SELECT * FROM uctest ORDER BY 1, 2, 3;
 
 -- Negative: no such cursor
 DELETE FROM uctest WHERE CURRENT OF c1; 
+
+-- Negative: wrong UPDATE syntax
+UPDATE uctest SET f2 = 5 WHERE CURRENT OF c1 AND f3 = 10;
 
 -- Negative: can't use held cursor
 DECLARE cx CURSOR WITH HOLD FOR SELECT * FROM uctest;

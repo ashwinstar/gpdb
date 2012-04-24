@@ -1614,9 +1614,10 @@ _readCurrentOfExpr(const char ** str)
 
 	READ_STRING_FIELD(cursor_name);
 	READ_UINT_FIELD(cvarno);
+	READ_OID_FIELD(target_relid);
 	READ_INT_FIELD(gp_segment_id);
 	READ_BINARY_FIELD(ctid, sizeof(ItemPointerData));	
-	READ_UINT_FIELD(tableoid);
+	READ_OID_FIELD(tableoid);
 
 	READ_DONE();
 }

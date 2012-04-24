@@ -1064,6 +1064,9 @@ typedef struct CurrentOfExpr
 	char     		*cursor_name;  	/* name of referenced cursor */
 	/* for planning */
 	Index    		cvarno;      	/* RT index of target relation */
+	/* for validation */
+	Oid				target_relid;	/* OID of original target relation, 
+									 * before any inheritance expansion */
 	/* for constant folding */
 	int		 		gp_segment_id;
 	ItemPointerData	ctid;

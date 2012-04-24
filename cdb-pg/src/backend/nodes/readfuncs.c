@@ -469,6 +469,7 @@ _readCurrentOfExpr(void)
 
 	READ_STRING_FIELD(cursor_name);
 	READ_INT_FIELD(cvarno);
+	READ_OID_FIELD(target_relid);
 
 	/* some attributes omitted as they're bound only just before executor dispatch */
 

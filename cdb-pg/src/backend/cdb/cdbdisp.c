@@ -3238,13 +3238,8 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		CurrentOfExpr *expr = (CurrentOfExpr *) node,
 					  *newexpr = copyObject(expr);
 
-		/* we need our target relation oid for validation during bindCurrentOfParams */
-		PlannedStmt *stmt = (PlannedStmt *)context->base.node;
-		Index varno = extractSimplyUpdatableRTEIndex(stmt->rtable);
-		Oid target_relid = getrelid(varno, stmt->rtable);
-
 		bindCurrentOfParams(newexpr->cursor_name,
-							target_relid,
+							newexpr->target_relid,
 			   		   		&newexpr->ctid,
 					  	   	&newexpr->gp_segment_id,
 					  	   	&newexpr->tableoid);
