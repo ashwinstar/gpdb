@@ -35,6 +35,7 @@
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbpersistentrecovery.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
@@ -173,6 +174,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, PersistentTablespace_ShmemSize());
 		size = add_size(size, PersistentDatabase_ShmemSize());
 		size = add_size(size, PersistentRelation_ShmemSize());
+		size = add_size(size, Pass2Recovery_ShmemSize());
 		if (GPAreFileReplicationStructuresRequired()) {
 			size = add_size(size, FileRep_ShmemSize());
 			size = add_size(size, FileRepAck_ShmemSize());
@@ -303,6 +305,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	PersistentTablespace_ShmemInit();
 	PersistentDatabase_ShmemInit();
 	PersistentRelation_ShmemInit();
+	Pass2Recovery_ShmemInit();
 
 	/*
 	 * Set up resource schedular
