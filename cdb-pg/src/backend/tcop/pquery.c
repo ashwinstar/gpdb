@@ -763,8 +763,8 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 											params,
 											false);
 				
-				/* explicitly indicate that we want to stop lagging QEs in this case */
-				queryDesc->errorlessCancel = true;
+				/* turn errorlessCancel off for now */
+				queryDesc->errorlessCancel = false;
 
 				if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 				{			
