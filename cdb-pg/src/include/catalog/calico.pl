@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2011
+# copyright (c) 2011, 2012
 # Author: Jeffrey I Cohen
 #
 # SLZY_HDR_END
@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 20 of calico.pl, released
- Thu Apr  5 13:22:11 2012.
+ This document describes version 21 of calico.pl, released
+ Mon Apr 23 18:27:43 2012.
 
 =head1 SYNOPSIS
 
@@ -214,8 +214,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '20';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1333657331';
+	$glob_glob->{_sleazy_properties}->{version} = '21';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1335230863';
 	
 	    die ("missing required argument for 'metadata'")
 	    unless (defined($s_metadata));
@@ -334,10 +334,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1333657331
+      "slzy_date" : 1335230863
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "20"
+   "version" : "21"
 }
 
 EOF_bigstr
@@ -3379,21 +3379,48 @@ if (1)
 		do_gperf($caqlh, $glob_glob->{gperf}, $bigh);
 
 		# run gperf 
+
+		my $gperfstr = 
+			"gperf -S 1 --hash-fn-name=cq_hash --lookup-fn-name=cq_lookup" .
+			" --duplicates " .
+			# XXX XXX: add some more keys to fix dups
+			" --key=20,25,27,30,35,40,45 " . 
+#			   ' --key=* ' .
+#			   " -s 3 -o -f 200 " .
+			"  -t $glob_glob->{gperf} ";
+
+		# NOTE: this string is very large -- it's all of catquery.c
+		my $gperfout = `$gperfstr`;
+
+		# from perlfunc - get system status
+		if ($? != 0)
+		{
+			my $errstr;
+			if ($? == -1) {
+				$errstr = "failed to execute: $!\n";
+			}
+			elsif ($? & 127) {
+				$errstr = sprintf "child died with signal %d, %s coredump\n",
+				($? & 127),  ($? & 128) ? 'with' : 'without';
+			}
+			else {
+				$errstr = sprintf "child exited with value %d\n", $? >> 8;
+			}
+			die ("gperf call failed: $errstr");
+		}
+
 		# remove inline directives, and change declaration of
 		# cq_lookup to static
 
-		system("gperf -S 1 --hash-fn-name=cq_hash --lookup-fn-name=cq_lookup" .
-			   " --duplicates " .
-			   # XXX XXX: add some more keys to fix dups
-			   " --key=20,25,27,30,35,40,45 " . 
-#			   ' --key=* ' .
-#			   " -s 3 -o -f 200 " .
-			   "  -t $glob_glob->{gperf} | sed \'s/^\_\_inline//\' | " . 
-			   "sed \'s/^inline//\' | " . 
-			   # fix newer gperf
-			   "sed \'s/^\_\_attribute\_\_ \(\(\_\_gnu\_inline\_\_\)\)//\' | " . 
-			   "sed \'s/^struct caql_hash_cookie \\*/" .
-			   "static struct caql_hash_cookie */\' ");
+		$gperfout =~ s/^\_\_inline//gm;
+		$gperfout =~ s/^inline//gm;
+		# fix newer gperf
+		$gperfout =~ s/^\_\_attribute\_\_ \(\(\_\_gnu\_inline\_\_\)\)//gm;
+		$gperfout =~ 
+			s/^struct caql_hash_cookie \*/static struct caql_hash_cookie */gm;
+
+		# print generated file
+		print $gperfout;
 	}
 
 	# dump routine
