@@ -472,6 +472,12 @@ class MoveTransFilespaceLocally(Operation):
         if not CheckFilespacePermissions(tmp_file).run():
             raise MoveFilespaceError('Invalid permissions for %s' % tmp_file)
 
+        stats = os.statvfs(self.new_filespace_entry[2])
+        free_bytes = stats.f_bfree * stats.f_frsize 
+        logger.info('free_bytes for %s = %s' % (self.new_filespace_entry[2], free_bytes))
+        if not free_bytes:
+            raise MoveFilespaceError('Insufficient diskspace for %s' % self.new_filespace_entry[2])
+
         #1. Copy the contents of the filespace dirs from old filespace to new filespace
         for directory in self.TRANSACTION_FILES_DIRS:
             src_dir = os.path.join(self.current_filespace_entry[2], directory)
@@ -573,6 +579,12 @@ class MoveTempFilespaceLocally(Operation):
         tmp_file = os.path.join(self.new_filespace_entry[2], 'tmp_file')
         if not CheckFilespacePermissions(tmp_file).run():
             raise MoveFilespaceError('Invalid permissions for %s' % tmp_file)
+       
+        stats = os.statvfs(self.new_filespace_entry[2])
+        free_bytes = stats.f_bfree * stats.f_frsize 
+        logger.info('free_bytes for %s = %s' % (self.new_filespace_entry[2], free_bytes))
+        if not free_bytes:
+            raise MoveFilespaceError('Insufficient diskspace for %s' % self.new_filespace_entry[2])
 
         #1. Drop the directories from old filespace location
         #If the filespace is being moved from pg_system filespace 
