@@ -6016,18 +6016,18 @@ NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_10" for table "foo_p"
 insert into foo_p select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
 alter table foo_p split default partition start (10) end(20) 
 into (partition p10_20, partition def);
-NOTICE:  exchanged partition "def" of relation "foo_p" with relation "pg_temp_6217814"
+NOTICE:  exchanged partition "def" of relation "foo_p" with relation "pg_temp_85411"
 NOTICE:  dropped partition "def" for relation "foo_p"
 NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_p10_20" for table "foo_p"
 NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_def" for table "foo_p"
 select reloptions from pg_class where relname = 'foo_p_1_prt_p10_20';
- reloptions 
-------------
- 
+    reloptions     
+-------------------
+ {appendonly=true}
 (1 row)
 
 select reloptions from pg_class where relname = 'foo_p_1_prt_def';
-                    reloptions                     
+    reloptions     
 -------------------
  {appendonly=true}
 (1 row)
@@ -7040,7 +7040,7 @@ select pg_get_partition_def('mpp6589b'::regclass,true);
 ALTER TABLE mpp6589b 
 SPLIT PARTITION p20090312 AT( '20090310' ) 
 INTO( PARTITION p20090309, PARTITION p20090312_tmp);
-NOTICE:  exchanged partition "p20090312" of relation "mpp6589b" with relation "pg_temp_6225382"
+NOTICE:  exchanged partition "p20090312" of relation "mpp6589b" with relation "pg_temp_92981"
 NOTICE:  dropped partition "p20090312" for relation "mpp6589b"
 NOTICE:  CREATE TABLE will create partition "mpp6589b_1_prt_p20090309" for table "mpp6589b"
 NOTICE:  CREATE TABLE will create partition "mpp6589b_1_prt_p20090312_tmp" for table "mpp6589b"
@@ -7652,6 +7652,12 @@ select pg_get_partition_def('mpp5992'::regclass,true, true);
                            )                                                                                                                                                
                    ),                                                                                                                                                       
            PARTITION foo2 START ('01-01-2012'::date) END ('01-01-2013'::date) WITH (tablename='mpp5992_1_prt_foo2', orientation=column, appendonly=true )                   
+                     COLUMN a ENCODING (compresstype=none, blocksize=32768, compresslevel=0)                                                                                
+                     COLUMN b ENCODING (compresstype=none, blocksize=32768, compresslevel=0)                                                                                
+                     COLUMN c ENCODING (compresstype=none, blocksize=32768, compresslevel=0)                                                                                
+                     COLUMN d ENCODING (compresstype=none, blocksize=32768, compresslevel=0)                                                                                
+                     COLUMN e ENCODING (compresstype=none, blocksize=32768, compresslevel=0)                                                                                
+                     COLUMN f ENCODING (compresstype=none, blocksize=32768, compresslevel=0)                                                                                
                    (                                                                                                                                                        
                    SUBPARTITION l1 VALUES(1, 2, 3) WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1', orientation=column, appendonly=true )                                     
                              COLUMN a ENCODING (compresstype=none, blocksize=32768, compresslevel=0)                                                                        
