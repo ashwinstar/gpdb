@@ -600,22 +600,21 @@ FtsFindSuperuser(bool try_bootstrap)
 	while (HeapTupleIsValid(auth_tup = caql_getnext(pcqCtx)))
 	{
 		Datum	attrName;
-		Datum	attrNameOid;
 		Oid		userOid;
 		Datum	validuntil;
 
-		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, auth_rel->rd_att, &isNull);
+		validuntil = heap_getattr(auth_tup, Anum_pg_authid_rolvaliduntil, 
+								  RelationGetDescr(auth_rel), &isNull);
 		/* we actually want it to be NULL, that means always valid */
 		if (!isNull)
 			continue;
 
-		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
+		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, 
+								RelationGetDescr(auth_rel), &isNull);
 		Assert(!isNull);
 		suser = pstrdup(DatumGetCString(attrName));
 
-		attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber, auth_rel->rd_att, &isNull);
-		Assert(!isNull);
-		userOid = DatumGetObjectId(attrNameOid);
+		userOid = HeapTupleGetOid(auth_tup);
 
 		SetSessionUserId(userOid, true);
 
@@ -998,7 +997,7 @@ getFailoverStrategy(char *strategy)
 	{
 		Datum	strategy_datum;
 
-		strategy_datum = heap_getattr(strategy_tup, Anum_gp_fault_strategy_fault_strategy, strategy_rel->rd_att, &isNull);
+		strategy_datum = heap_getattr(strategy_tup, Anum_gp_fault_strategy_fault_strategy, RelationGetDescr(strategy_rel), &isNull);
 
 		if (isNull)
 			break;

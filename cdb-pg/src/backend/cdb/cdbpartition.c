@@ -376,7 +376,6 @@ record_constraints(Relation pgcon,
 				   PartExchangeRole xrole)
 {
 	HeapTuple	tuple;
-	bool isnull;
 	Oid conid;
 	char *condef;
 	ConstraintEntry *entry;
@@ -390,17 +389,14 @@ record_constraints(Relation pgcon,
 			cql("SELECT * FROM pg_constraint "
 				" WHERE conrelid = :1",
 				ObjectIdGetDatum(RelationGetRelid(rel))));
-
+	
 	/* For each constraint on rel: */
 	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		oldcontext = MemoryContextSwitchTo(context);
 		
-		conid = DatumGetObjectId(heap_getattr(tuple,
-											  ObjectIdAttributeNumber,
-											  RelationGetDescr(pgcon),
-											  &isnull));
-		Assert(!isnull);
+		conid = HeapTupleGetOid(tuple);
+
 		condef = pg_get_constraintexpr_string(conid);
 		entry = (ConstraintEntry*)hash_search(hash_tbl, 
 											  (void*) condef, 

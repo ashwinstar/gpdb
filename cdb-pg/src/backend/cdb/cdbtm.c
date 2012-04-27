@@ -15,6 +15,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 
+#include "access/catquery.h"
 #include "cdb/cdbtm.h"
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
@@ -1318,56 +1319,49 @@ initTM_recover_as_needed(void)
 static char *
 getSuperuser(Oid *userOid)
 {
-	char *suser = NULL;
-	Relation auth_rel;
-	HeapTuple       auth_tup;
-	HeapScanDesc auth_scan;
-	ScanKeyData key[2];
-	bool    isNull;
-
-	ScanKeyInit(&key[0],
-		Anum_pg_authid_rolsuper,
-		BTEqualStrategyNumber, F_BOOLEQ,
-		BoolGetDatum(true));
-
-	ScanKeyInit(&key[1],
-		Anum_pg_authid_rolcanlogin,
-		BTEqualStrategyNumber, F_BOOLEQ,
-		BoolGetDatum(true));
+	char		*suser = NULL;
+	Relation	 auth_rel;
+	HeapTuple    auth_tup;
+	cqContext	*pcqCtx;
+	cqContext	 cqc;
 
 	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
-	auth_scan = heap_beginscan(auth_rel, SnapshotNow, 2, key);
 
-	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan,
-		ForwardScanDirection)))
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), auth_rel),
+			cql("SELECT * FROM pg_authid "
+				" WHERE rolsuper = :1 "
+				" AND rolcanlogin = :2 ",
+				BoolGetDatum(true),
+				BoolGetDatum(true)));
+
+	while (HeapTupleIsValid(auth_tup = caql_getnext(pcqCtx)))
 	{
+		bool	isNull;
 		Datum   attrName;
-		Datum   attrNameOid;
 		Datum   validuntil;
 
 		validuntil = heap_getattr(auth_tup,
 			Anum_pg_authid_rolvaliduntil,
-			auth_rel->rd_att, &isNull);
+			RelationGetDescr(auth_rel), &isNull);
 		/* we actually want it to be NULL, that means always valid */
 		if (!isNull)
 			continue;
 
 		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname,
-					auth_rel->rd_att, &isNull);
+								RelationGetDescr(auth_rel), &isNull);
 
 		Assert(!isNull);
 
 		suser = pstrdup(DatumGetCString(attrName));
 
-		attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber,
-					   auth_rel->rd_att, &isNull);
-		Assert(!isNull);
-		*userOid = DatumGetObjectId(attrNameOid);
+		Assert(userOid);
+		*userOid = HeapTupleGetOid(auth_tup);
 
 		break;
 	}
 
-	heap_endscan(auth_scan);
+	caql_endscan(pcqCtx);
 	heap_close(auth_rel, AccessShareLock);
 
 	return suser;
