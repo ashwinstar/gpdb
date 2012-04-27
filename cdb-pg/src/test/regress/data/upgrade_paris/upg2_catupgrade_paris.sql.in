@@ -69,6 +69,63 @@ CREATE FUNCTION @gpupgradeschemaname@.bool(text) RETURNS bool LANGUAGE internal 
 	AS 'textbool' WITH (OID=2970, DESCRIPTION="convert text to boolean");
 COMMENT ON FUNCTION @gpupgradeschemaname@.bool(text) IS 'convert text to boolean';
 
+–
+-- MPP-16121 - basic arithmetic for int2, int8
+–
+CREATE FUNCTION @gpupgradeschemaname@.int82pl(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int82pl' WITH (OID=3241, DESCRIPTION="add");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int82pl(int8, int2) IS 'add';
+
+CREATE FUNCTION @gpupgradeschemaname@.int82mi(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int82mi' WITH (OID=3242, DESCRIPTION="subtract");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int82mi(int8, int2) IS 'subtract';
+
+CREATE FUNCTION @gpupgradeschemaname@.int82mul(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int82mul' WITH (OID=3243, DESCRIPTION="multiply");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int82mul(int8, int2) IS 'multiply';
+
+CREATE FUNCTION @gpupgradeschemaname@.int82div(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int82div' WITH (OID=3244, DESCRIPTION="divide");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int82div(int8, int2) IS 'divide';
+
+CREATE FUNCTION @gpupgradeschemaname@.int28pl(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int28pl' WITH (OID=3245, DESCRIPTION="add");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int28pl(int2, int8) IS 'add';
+
+CREATE FUNCTION @gpupgradeschemaname@.int28mi(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int28mi' WITH (OID=3246, DESCRIPTION="subtract");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int28mi(int2, int8) IS 'subtract';
+
+CREATE FUNCTION @gpupgradeschemaname@.int28mul(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int28mul' WITH (OID=3247, DESCRIPTION="multiply");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int28mul(int2, int8) IS 'multiply';
+
+CREATE FUNCTION @gpupgradeschemaname@.int28div(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'int28div' WITH (OID=3248, DESCRIPTION="divide");
+COMMENT ON FUNCTION @gpupgradeschemaname@.int28div(int2, int8) IS 'divide';
+
+CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = int28div, LEFTARG = "int2", RIGHTARG = "int8", OID=327);
+
+-- MPP-16121
+-- When commutator/negator is specified, we need to define ones with greater OID first,
+-- otherwise installcheck fails.  This is because the backend creates a shell operator
+-- first with a smaller OID but the catdump dumps the commutator option in only the
+-- operators with the smaller OIDs.  For the actual upgrade, this order doesn't matter
+-- because the OID is fixed by the OID option.
+CREATE OPERATOR @gpupgradeschemaname@.* (PROCEDURE = int28mul, LEFTARG = "int2", RIGHTARG = "int8", OID=326, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.*));
+
+CREATE OPERATOR @gpupgradeschemaname@.- (PROCEDURE = int28mi, LEFTARG = "int2", RIGHTARG = "int8", OID=325);
+
+CREATE OPERATOR @gpupgradeschemaname@.+ (PROCEDURE = int28pl, LEFTARG = "int2", RIGHTARG = "int8", OID=324, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.+));
+
+CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = int82div, LEFTARG = "int8", RIGHTARG = "int2", OID=323);
+
+CREATE OPERATOR @gpupgradeschemaname@.* (PROCEDURE = int82mul, LEFTARG = "int8", RIGHTARG = "int2", OID=322, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.*));
+
+CREATE OPERATOR @gpupgradeschemaname@.- (PROCEDURE = int82mi, LEFTARG = "int8", RIGHTARG = "int2", OID=321);
+
+CREATE OPERATOR @gpupgradeschemaname@.+ (PROCEDURE = int82pl, LEFTARG = "int8", RIGHTARG = "int2", OID=320, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.+));
+
 --    pg_cast    --
 -- Create a special schema for use by the pg_cast_load external table.
 -- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external

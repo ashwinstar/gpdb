@@ -405,6 +405,15 @@ DATA(insert OID = 693 (  "-"	   PGNSP PGUID b f	23	20	20	 0	 0	 0	 0	 0	 0 int48
 DATA(insert OID = 694 (  "*"	   PGNSP PGUID b f	23	20	20 690	 0	 0	 0	 0	 0 int48mul - - ));
 DATA(insert OID = 695 (  "/"	   PGNSP PGUID b f	23	20	20	 0	 0	 0	 0	 0	 0 int48div - - ));
 
+DATA(insert OID = 320 (  "+"	   PGNSP PGUID b f	20	21	20 324	 0	 0	 0	 0	 0 int82pl - - ));
+DATA(insert OID = 321 (  "-"	   PGNSP PGUID b f	20	21	20	 0	 0	 0	 0	 0	 0 int82mi - - ));
+DATA(insert OID = 322 (  "*"	   PGNSP PGUID b f	20	21	20 326	 0	 0	 0	 0	 0 int82mul - - ));
+DATA(insert OID = 323 (  "/"	   PGNSP PGUID b f	20	21	20	 0	 0	 0	 0	 0	 0 int82div - - ));
+DATA(insert OID = 324 (  "+"	   PGNSP PGUID b f	21	20	20 320	 0	 0	 0	 0	 0 int28pl - - ));
+DATA(insert OID = 325 (  "-"	   PGNSP PGUID b f	21	20	20	 0	 0	 0	 0	 0	 0 int28mi - - ));
+DATA(insert OID = 326 (  "*"	   PGNSP PGUID b f	21	20	20 322	 0	 0	 0	 0	 0 int28mul - - ));
+DATA(insert OID = 327 (  "/"	   PGNSP PGUID b f	21	20	20	 0	 0	 0	 0	 0	 0 int28div - - ));
+
 DATA(insert OID = 706 (  "<->"	   PGNSP PGUID b f 603 603 701 706	 0	0  0   0   0 box_distance - - ));
 DATA(insert OID = 707 (  "<->"	   PGNSP PGUID b f 602 602 701 707	 0	0  0   0   0 path_distance - - ));
 DATA(insert OID = 708 (  "<->"	   PGNSP PGUID b f 628 628 701 708	 0	0  0   0   0 line_distance - - ));
