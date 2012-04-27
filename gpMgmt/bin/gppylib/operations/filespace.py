@@ -11,6 +11,7 @@ from gppylib.db import dbconn
 from gppylib.db.dbconn import UnexpectedRowsError
 from gppylib import gplog
 from gppylib.commands.gp import GpStop, GpStart 
+from gppylib.commands.unix import Ping
 from gppylib.operations import Operation
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
 from gppylib.operations.unix import CheckFile, CheckDir, ListFiles
@@ -110,6 +111,27 @@ class CheckFilespace(Operation):
 
         return True
 
+class CheckConnectivity(Operation):
+    """
+        Check if all hosts are reachable 
+        in the cluster.
+    """
+    def __init__(self, gparray):
+        self.gparray = gparray
+
+    def execute(self):
+        logger.info('Checking for connectivity')
+
+        host_set = set([seg.getSegmentHostName() for seg in self.gparray.getSegDbList()])
+    
+        for host in host_set:
+            try:
+                Ping.local("pinging host %s" % host, host)
+            except Exception, e:
+                logger.error('Cannot connect to host %s: %s' % (host, e))
+                return False
+
+        return True
 class CheckFilespaceOidLocally(Operation):
     """
         Returns the oid present in the flat files
@@ -921,6 +943,11 @@ class MoveFilespace(Operation):
             if CheckFilespaceIsSame(self.new_filespace_name, self.file_type).run():
                 raise InvalidFilespaceError('Filespace %s is same as the current filespace' % self.new_filespace_name)
 
+            gparray = GpArray.initFromCatalog(dbconn.DbURL(), utility=True)
+            
+            if not CheckConnectivity(gparray).run():
+                raise MoveFilespaceError('Failed connectivity test.') 
+ 
             #3 StopGPDB - Check for GPDB connections first and fail if connections exist
             self.stop_database()
 
@@ -937,8 +964,6 @@ class MoveFilespace(Operation):
             # If gp_transaction/temporary flat files exist and is not empty, then we know 
             # the filespace being used. Otherwise, we assume that it is the pg_system 
             # filespace by default 
-
-            gparray = GpArray.initFromCatalog(dbconn.DbURL(), utility=True)
 
             cur_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(gparray,
                                                                                self.file_type).run()).run()
