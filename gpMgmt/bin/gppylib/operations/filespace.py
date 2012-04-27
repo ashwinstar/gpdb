@@ -130,8 +130,9 @@ class CheckFilespaceEntriesLocally(Operation):
     """
         Check if filespace entries are valid
     """
-    def __init__(self, dbid, filespace_location, file_type):
-        self.dbid = dbid
+    def __init__(self, cur_filespace_entry, peer_filespace_entry, filespace_location, file_type):
+        self.cur_filespace_entry = cur_filespace_entry
+        self.peer_filespace_entry = peer_filespace_entry
         self.filespace_location = filespace_location
         self.file_type = file_type
 
@@ -148,8 +149,12 @@ class CheckFilespaceEntriesLocally(Operation):
         if not os.path.exists(flat_file_location):
             return is_consistent
 
+        if not os.path.exists(self.cur_filespace_entry[2]):
+            logger.info('path %s does not exist' % self.cur_filespace_entry[2])
+            is_consistent = False
+
         #Read flat file entries and check if the directories exist
-        dbid_set = set()
+        entries_set = set()
         with open(flat_file_location) as file:
             for line in file:
                 entries = line.split()
@@ -158,11 +163,15 @@ class CheckFilespaceEntriesLocally(Operation):
                 else:
                     logger.info('path = %s' % entries[1].strip())
                     logger.info('dbid = %s' % entries[0].strip())
-                    if not os.path.exists(entries[1].strip()):
-                        is_consistent = False
-                    dbid_set.add(int(entries[0].strip())) 
-       
-        if self.dbid not in dbid_set:
+                    entries_set.add(entries[0].strip() + ' ' + entries[1].strip())
+      
+        required_set = set()
+        required_set.add(str(self.cur_filespace_entry[1]) + ' ' + self.cur_filespace_entry[2])
+        
+        if self.peer_filespace_entry is not None:
+            required_set.add(str(self.peer_filespace_entry[1]) + ' ' + self.peer_filespace_entry[2])
+  
+        if required_set != entries_set:
             is_consistent = False
 
         return is_consistent 
@@ -175,6 +184,16 @@ class CheckFilespacePermissions(Operation):
         self.location = location
 
     def execute(self):
+        
+        path = os.path.dirname(self.location) 
+
+        #In case of recoverseg, the segment directories will be 
+        #created by the backend code.
+        if not os.path.exists(path):
+            path = os.path.dirname(path)    
+
+        self.location = os.path.join(path, os.path.basename(self.location))
+
         try:
             with open(self.location, 'w') as file:
                 pass
@@ -205,6 +224,8 @@ class CheckFilespaceConsistency(Operation):
         operations = []
         pg_system_fs_entries = GetFilespaceEntriesDict(GetFilespaceEntries(self.gparray, 
                                                                             PG_SYSTEM_FILESPACE).run()).run() 
+        cur_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(self.gparray, 
+                                                                                   self.file_type).run()).run()
         for seg in self.gparray.getDbList():
             flat_file_location = os.path.join(pg_system_fs_entries[seg.getSegmentDbId()][2], 
                                               flat_file)
@@ -224,6 +245,7 @@ class CheckFilespaceConsistency(Operation):
         logger.debug('%s oid set = %s' % (FileType.lookup[self.file_type], oid_set)) 
 
         if len(oid_set) != 1:
+            logger.error('Multiple OIDs found in flat files')
             return False
 
         #Verify that we have a valid oid and that
@@ -242,7 +264,9 @@ class CheckFilespaceConsistency(Operation):
         #Now check for the filespace entries 
         operation_list = []
         for seg in self.gparray.getDbList():
-            operation_list.append(RemoteOperation(CheckFilespaceEntriesLocally(seg.getSegmentDbId(), pg_system_fs_entries[seg.getSegmentDbId()][2], self.file_type),
+            cur_filespace_entry = cur_filespace_entries[seg.getSegmentDbId()]
+            peer_filespace_entry = GetPeerFilespaceEntry(cur_filespace_entries, seg.getSegmentDbId()).run()
+            operation_list.append(RemoteOperation(CheckFilespaceEntriesLocally(cur_filespace_entry, peer_filespace_entry, pg_system_fs_entries[seg.getSegmentDbId()][2], self.file_type),
                                                   seg.getSegmentHostName()
                                                  )
                                  )
@@ -304,8 +328,10 @@ class UpdateFlatFilesLocally(Operation):
 
         temp_flat_file = self.flat_file + '.tmp'
         lines_to_write = str(self.filespace_oid) + '\n' +\
-                         str(self.cur_filespace_entry[1]) + ' ' + self.cur_filespace_entry[2] + '\n' +\
-                         str(self.peer_filespace_entry[1]) + ' ' + self.peer_filespace_entry[2] + '\n'
+                         str(self.cur_filespace_entry[1]) + ' ' + self.cur_filespace_entry[2] + '\n'
+        if self.peer_filespace_entry is not None:
+            lines_to_write += str(self.peer_filespace_entry[1]) + ' ' + self.peer_filespace_entry[2] + '\n'
+
         with open(temp_flat_file, 'w') as file:
             file.write(lines_to_write)
 
@@ -318,7 +344,10 @@ class UpdateFlatFilesLocally(Operation):
                 raise MoveFilespaceError('Failed to write contents to flat file %s' % lines_to_write)       
 
         shutil.move(temp_flat_file, self.flat_file)
-           
+      
+        if not os.path.exists(self.cur_filespace_entry[2]):
+            os.makedirs(self.cur_filespace_entry[2])     
+
         return self.flat_file + ' ' + contents 
  
 class UpdateFlatFiles(Operation):
@@ -472,7 +501,7 @@ class MoveTransFilespaceLocally(Operation):
         if not CheckFilespacePermissions(tmp_file).run():
             raise MoveFilespaceError('Invalid permissions for %s' % tmp_file)
 
-        stats = os.statvfs(self.new_filespace_entry[2])
+        stats = os.statvfs(os.path.dirname(self.new_filespace_entry[2]))
         free_bytes = stats.f_bfree * stats.f_frsize 
         logger.info('free_bytes for %s = %s' % (self.new_filespace_entry[2], free_bytes))
         if not free_bytes:
@@ -580,7 +609,7 @@ class MoveTempFilespaceLocally(Operation):
         if not CheckFilespacePermissions(tmp_file).run():
             raise MoveFilespaceError('Invalid permissions for %s' % tmp_file)
        
-        stats = os.statvfs(self.new_filespace_entry[2])
+        stats = os.statvfs(os.path.dirname(self.new_filespace_entry[2]))
         free_bytes = stats.f_bfree * stats.f_frsize 
         logger.info('free_bytes for %s = %s' % (self.new_filespace_entry[2], free_bytes))
         if not free_bytes:
