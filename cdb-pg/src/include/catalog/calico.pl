@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 21 of calico.pl, released
- Mon Apr 23 18:27:43 2012.
+ This document describes version 22 of calico.pl, released
+ Thu Apr 26 15:46:54 2012.
 
 =head1 SYNOPSIS
 
@@ -214,8 +214,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '21';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1335230863';
+	$glob_glob->{_sleazy_properties}->{version} = '22';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1335480414';
 	
 	    die ("missing required argument for 'metadata'")
 	    unless (defined($s_metadata));
@@ -334,10 +334,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1335230863
+      "slzy_date" : 1335480414
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "21"
+   "version" : "22"
 }
 
 EOF_bigstr
@@ -834,6 +834,14 @@ sub getfixedfields
 
 		my $lastfixed = 0;
 
+		# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
+		# MPP-17159: hack pg_extprotocol to deal with NULLs in fixed part
+		if ($tname eq "pg_extprotocol")
+		{
+			$lastfixed = 1;
+		}
+		# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
+
 		for my $coldef (@{$vv->{cols}})
 		{
 			unless ($lastfixed)
@@ -853,7 +861,7 @@ sub getfixedfields
 				attnum	=> $ii,
 				ctype	=> $coldef->{ctype},
 				sqltype => $coldef->{sqltype},
-				fixed	=> ($lastfixed > 0) ? 1 : 0
+				fixed	=> ($lastfixed && ($lastfixed < $ii)) ? 0 : 1
 			};
 		}
 
@@ -863,10 +871,12 @@ sub getfixedfields
 			maxfixedattnum => $lastfixed,
 			cols		   => $cols
 		};
+
+
 	} # end while kk,vv
 
 	return $ffh;
-}
+} # end getfixedfields
 
 
 sub anum_key
@@ -2385,6 +2395,8 @@ HeapTuple caql_getfirst_only(cqContext *pCtx0, bool *pbOnly, cq_list *pcql)
 		}
 		if (!pCtx->cq_externrel)
 			heap_close(pCtx->cq_heap_rel, pCtx->cq_lockmode);
+
+		pCtx->cq_lasttup = newTup; /* need this for update/delete */
 		return (newTup);
 	}
 
@@ -2403,6 +2415,7 @@ HeapTuple caql_getfirst_only(cqContext *pCtx0, bool *pbOnly, cq_list *pcql)
 	if (!pCtx->cq_externrel)
 		heap_close(pCtx->cq_heap_rel, pCtx->cq_lockmode);
 
+	pCtx->cq_lasttup = newTup; /* need this for update/delete */
 	return (newTup);
 }
 
@@ -2567,9 +2580,16 @@ EOF_bigstr
 	return $bigstr;
 } # end caql_fetch_funcs
 
+# Project NameData Column Case Statement
 sub projnamcolcase
 {
-    my $bigstr = <<'EOF_bigstr';
+	my $bFixed = shift;
+
+	my $bigstr;
+
+	if ($bFixed)
+	{
+	$bigstr = <<'EOF_bigstr';
 
 case {PROJCOLATTNUM}: /* {PROJCOLUMNNAME} */
 	result = pstrdup(
@@ -2578,12 +2598,41 @@ case {PROJCOLATTNUM}: /* {PROJCOLUMNNAME} */
 	if (pbIsNull) *pbIsNull = false;
 	break;
 EOF_bigstr
+	}
+	else
+	{
+	$bigstr = <<'EOF_bigstr2';
+
+case {PROJCOLATTNUM}: /* {PROJCOLUMNNAME} */
+{
+	bool isnull;
+
+	Datum d = heap_getattr(tuple, {PROJCOLATTNUM},
+						   pCtx->cq_tupdesc, &isnull);
+
+	if (!isnull)
+		result = pstrdup(
+			NameStr(*(DatumGetName(d))));
+
+	if (pbIsNull) *pbIsNull = isnull;
+}
+	break;
+EOF_bigstr2
+	}
+
 	return $bigstr;
 }
 
+# Project Oid Column Case Statement
 sub projoidcolcase
 {
-    my $bigstr = <<'EOF_bigstr';
+	my $bFixed = shift;
+
+    my $bigstr;
+
+	if ($bFixed)
+	{
+		$bigstr = <<'EOF_bigstr';
 
 case {PROJCOLATTNUM}: /* {PROJCOLUMNNAME} */
 	result = (Oid) 
@@ -2592,11 +2641,34 @@ case {PROJCOLATTNUM}: /* {PROJCOLUMNNAME} */
 	if (pbIsNull) *pbIsNull = false;
 	break;
 EOF_bigstr
+	}
+	else
+	{
+		$bigstr = <<'EOF_bigstr2';
+
+case {PROJCOLATTNUM}: /* {PROJCOLUMNNAME} */
+{
+	bool isnull;
+
+	Datum d = heap_getattr(tuple, {PROJCOLATTNUM},
+						   pCtx->cq_tupdesc, &isnull);
+
+	if (!isnull)
+		result = DatumGetObjectId(d);
+
+	if (pbIsNull) *pbIsNull = isnull;
+}
+	break;
+EOF_bigstr2
+	}
 	return $bigstr;
 }
 
+# Project Text Column Case Statement
 sub projtxtcolcase
 {
+	# NOTE: treat all text columns as variable (Nullable)
+
     my $bigstr = <<'EOF_bigstr';
 
 case {PROJCOLATTNUM}: /* {PROJCOLUMNNAME} */
@@ -3034,9 +3106,9 @@ sub do_gperf
 
 	my $proj_cstr_case = "";
 	my $proj_oid_case = "";
-	# fixed fields
 	if (1)
 	{
+		# fixed fields
 		my $ffh = getfixedfields($bigh);
 
 		my %alltabh;
@@ -3048,7 +3120,8 @@ sub do_gperf
 				$alltabh{$jj} = 1;
 			}
 		}
-		
+
+		# build column PROJECTION switch statements
 		for my $projtname (sort(keys(%{$bigh})))
 		{
 			next # ignore comments
@@ -3060,6 +3133,10 @@ sub do_gperf
 			my $proj_cstr_colcase = "";
 			my $proj_oid_colcase = "";
 
+			# for all tables, build switch statement to 
+			# extract (project) tuple columns. 
+			# "fixed" columns are not nullable.  
+
 			if (exists($ffh->{$projtname}))
 			{
 				for my $ffcdef (@{$ffh->{$projtname}->{cols}})
@@ -3069,11 +3146,10 @@ sub do_gperf
 						unless ($ffcdef->{ctype} =~ 
 								m/NameData|text|Oid|regproc/);
 
-					if (($ffcdef->{ctype} =~ m/NameData/) 
-						# && ($ffcdef->{fixed} == 1)
-						)
+					if ($ffcdef->{ctype} =~ m/NameData/) 
 					{
-						$proj_cstr_colcase .= doformat(projnamcolcase(),
+						$proj_cstr_colcase .= doformat(
+							projnamcolcase($ffcdef->{fixed}),
 								{
 									PROJCOLUMNNAME => $projcolname,
 									PROJTABLEFORM => 
@@ -3098,7 +3174,8 @@ sub do_gperf
 					# no array of Oid, regproc is equivalent to Oid
 					elsif ($ffcdef->{ctype} =~ m/regproc|Oid$/) 
 					{
-						$proj_oid_colcase .= doformat(projoidcolcase(),
+						$proj_oid_colcase .= doformat(
+							projoidcolcase($ffcdef->{fixed}),
 								{
 									PROJCOLUMNNAME => $projcolname,
 									PROJTABLEFORM => 
