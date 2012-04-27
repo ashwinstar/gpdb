@@ -648,6 +648,8 @@ bool		gp_opt_print_expression_properties;
 bool		gp_opt_print_group_properties;
 bool		gp_opt_print_optimization_context;
 bool		gp_opt_parallel;
+bool		gp_opt_local;
+int 		gp_opt_retries;
 
 char	   *gp_idf_deduplicate_str;
 
@@ -3509,6 +3511,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_opt_local", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Invoke optimizer inside QD process."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_local,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_reject_internal_tcp_connection", PGC_POSTMASTER,
 			DEVELOPER_OPTIONS,
 			gettext_noop("Permit internal TCP connections to the master."),
@@ -5232,6 +5244,16 @@ static struct config_int ConfigureNamesInt[] =
 		7200, 300, 86400, NULL, NULL
 	},
 #endif
+	{
+		{"gp_opt_retries", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the number of retries on QD to get execution plan from the OPT process"),
+			NULL,
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_retries,
+		3, 0, INT_MAX, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL

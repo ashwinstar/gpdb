@@ -307,6 +307,22 @@ extern int  WalSendClientTimeout;
 
 extern char  *data_directory;
 
+// ORCA-related gucs
+extern bool gp_opt_print_query;
+extern bool gp_opt_print_plan;
+extern bool gp_opt_print_xform;
+extern bool gp_opt_disable_xform_result_printing;
+extern bool	gp_opt_print_memo_after_exploration;
+extern bool	gp_opt_print_memo_after_implementation;
+extern bool	gp_opt_print_memo_after_optimization;
+extern bool	gp_opt_print_job_scheduler;
+extern bool	gp_opt_print_expression_properties;
+extern bool	gp_opt_print_group_properties;
+extern bool	gp_opt_print_optimization_context;
+extern bool	gp_opt_parallel;
+extern bool	gp_opt_local;
+extern int  gp_opt_retries;
+
 #if USE_EMAIL
 extern char  *gp_email_smtp_server;
 extern char  *gp_email_smtp_userid;

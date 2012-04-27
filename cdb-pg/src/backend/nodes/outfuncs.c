@@ -350,6 +350,8 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
+	WRITE_NODE_FIELD(queryPartOids);
+	WRITE_NODE_FIELD(queryPartsMetadata);
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(relationOids);
 	WRITE_NODE_FIELD(invalItems);

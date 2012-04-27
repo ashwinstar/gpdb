@@ -149,6 +149,8 @@ _copyPlannedStmt(const PlannedStmt *from)
 	
 	COPY_NODE_FIELD(result_partitions);
 	COPY_NODE_FIELD(result_aosegnos);
+	COPY_NODE_FIELD(queryPartOids);
+	COPY_NODE_FIELD(queryPartsMetadata);
 	COPY_NODE_FIELD(rowMarks);
 	COPY_NODE_FIELD(relationOids);
 	COPY_SCALAR_FIELD(invalItems);

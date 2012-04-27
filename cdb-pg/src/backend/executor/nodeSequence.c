@@ -55,6 +55,15 @@ ExecInitSequence(Sequence *node, EState *estate, int eflags)
 	/* Sequence does not need projection. */
 	sequenceState->ps.ps_ProjInfo = NULL;
 
+	/*
+	 * Sequence does not need a result tuple slot. However, we need to set it to the
+	 * last child's result tuple slot, since its parent node might rely on this to
+	 * be set.
+	 */
+	PlanState *lastChildPlan =
+		sequenceState->subplans[sequenceState->numSubplans - 1];
+	sequenceState->ps.ps_ResultTupleSlot = lastChildPlan->ps_ResultTupleSlot;
+
 	initGpmonPktForSequence((Plan *)node, &sequenceState->ps.gpmon_pkt, estate);
 
 	return sequenceState;

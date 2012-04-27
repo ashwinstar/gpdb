@@ -59,6 +59,8 @@
 #include "utils/debugbreak.h"
 #include "catalog/gp_policy.h"
 
+#include "postmaster/optserver.h"
+
 /* GUC parameter */
 double cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 
@@ -79,6 +81,19 @@ extern bool		gp_log_optimizer; /* Enable logging of the optimizer */
 #define EXPRKIND_ININFO			5
 #define EXPRKIND_APPINFO		6
 #define EXPRKIND_WINDOW_BOUND	7
+
+/*
+ * struct containing optimization request parameters;
+ * needs to be in sync with the argument expected by COptClient object;
+ */
+struct optimizer_params
+{
+	// path where socket is initialized
+	const char *socketPath;
+
+	// input query
+	Query *query;
+};
 
 
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
@@ -131,10 +146,10 @@ bool is_dummy_plan(Plan *plan);
 #endif
 
 /**
- * Use the optimizer. Explicitly load the shared library, call the optimize task,
- * retrieve the planned statement and close the shared library.
+ * Invoke the optimizer locally. Explicitly load the shared library, call the
+ * optimize task, retrieve the planned statement and close the shared library.
  */
-static PlannedStmt *optimizer(Query *parse)
+static PlannedStmt *optimize_local(Query *parse)
 {
 	Assert(parse);
 
@@ -171,6 +186,22 @@ static PlannedStmt *optimizer(Query *parse)
 }
 
 
+/**
+ * Use optimizer process (server) to generate the query plan;
+ * construc the planned statement from retrieved plan;
+ */
+static PlannedStmt *optimize_remote(Query *pquery)
+{
+	char *error_buffer = palloc(OPT_ERROR_BUFFER_SIZE);
+	struct optimizer_params params;
+	params.query = pquery;
+	params.socketPath = OPT_SOCKET_NAME;
+
+	return libopt_exec("optimize_query", &params, error_buffer, OPT_ERROR_BUFFER_SIZE,
+	                   &QueryCancelPending);
+}
+
+
 /*****************************************************************************
  *
  *	   Query optimizer entry point
@@ -200,7 +231,14 @@ planner(Query *parse, int cursorOptions,
 		/* fold all constant expressions */
 		parse = fold_constants(parse, boundParams);
 
-		result = optimizer(parse);
+		if (gp_opt_local)
+		{
+			result = optimize_local(parse);
+		}
+		else
+		{
+			result = optimize_remote(parse);
+		}
 
 		if (gp_log_optimizer)
 		{
@@ -401,6 +439,8 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->nMotionNodes = top_plan->nMotionNodes;
 	result->nInitPlans = top_plan->nInitPlans;
 	result->intoPolicy = GpPolicyCopy(CurrentMemoryContext, parse->intoPolicy);
+	result->queryPartOids = NIL;
+	result->queryPartsMetadata = NIL;
 	
 	Assert(result->utilityStmt == NULL || IsA(result->utilityStmt, DeclareCursorStmt));
 	

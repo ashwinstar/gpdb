@@ -6,6 +6,10 @@
  *    oids for a specified dynamic table scan. A dynamic table scan node
  *    will be executed only after this function is called.
  *
+ * gp_partition_selection: This function finds the child partition of
+ *    a given parent partition oid, which satisfies a given partition
+ *    key value.
+ *
  * Copyright(c) 2012 - present, EMC/Greenplum
  */
 
@@ -17,7 +21,10 @@
 #include "utils/memutils.h"
 #include "utils/palloc.h"
 #include "utils/elog.h"
+#include "utils/guc.h"
 #include "nodes/execnodes.h"
+#include "cdb/cdbpartition.h"
+#include "access/heapam.h"
 
 /*
  * increaseScanArraySize
@@ -83,16 +90,14 @@ PG_FUNCTION_INFO_V1(gp_partition_propagation);
 
 /*
  * gp_partition_propagation
- *    Insert an array of pids into its pid-index.
+ *    Insert a partition oid into its pid-index.
  */
 Datum
 gp_partition_propagation(PG_FUNCTION_ARGS)
 {
 	int32 index = PG_GETARG_INT32(0);
-	ArrayType *pids = PG_GETARG_ARRAYTYPE_P(1);
+	Oid partOid = PG_GETARG_OID(1);
 
-	Assert(ARR_NDIM(pids) == 1);
-	Assert(ARR_ELEMTYPE(pids) == OIDOID);
 	Assert(dynamicTableScanInfo != NULL &&
 		   dynamicTableScanInfo->memoryContext != NULL);
 
@@ -109,23 +114,140 @@ gp_partition_propagation(PG_FUNCTION_ARGS)
 
 	Assert(dynamicTableScanInfo->pidIndexes[index] != NULL);
 	
-	int numPids = ARR_DIMS(pids)[0];
-	Oid *partOids = (Oid *)ARR_LBOUND(pids);
-	
-	for (int pidNo = 1; pidNo <= numPids; pidNo++)
-	{
-		Oid pid = partOids[pidNo];
-
 #ifdef USE_ASSERT_CHECKING
-		Oid *pidInHash = 
+	Oid *pidInHash = 
 #endif
-			hash_search(dynamicTableScanInfo->pidIndexes[index],
-						&pid, HASH_ENTER, NULL /* foundPtr */);
-
-		Assert(*pidInHash == pid);
-	}
+		hash_search(dynamicTableScanInfo->pidIndexes[index],
+					&partOid, HASH_ENTER, NULL /* foundPtr */);
+	
+	Assert(*pidInHash == partOid);
 
 	PG_RETURN_VOID();
+}
+
+/*
+ * findPartitionMetadataEntry
+ *   Find PartitionMetadata object for a given partition oid from a list.
+ */
+static PartitionMetadata *
+findPartitionMetadataEntry(List *partsMetadata, Oid partOid)
+{
+	ListCell *lc = NULL;
+	PartitionMetadata *metadata = NULL;
+	
+	foreach (lc, partsMetadata)
+	{
+		metadata = (PartitionMetadata *)lfirst(lc);
+		if (metadata->partsAndRules->part->parrelid == partOid)
+		{
+			return metadata;
+		}
+	}
+
+	return NULL;
+}
+
+/*
+ * createValueArrays
+ *   Create an Datum/bool array that will be used to populate partition key value.
+ *
+ * The size of this array is based on the attribute number of the partition key.
+ */
+static void
+createValueArrays(int keyAttno, Datum **values, bool **isnull)
+{
+	*values = palloc0(keyAttno * sizeof(Datum));
+	*isnull = palloc(keyAttno * sizeof(bool));
+	
+	MemSet(*isnull, true, keyAttno * sizeof(bool));
+}
+
+/*
+ * freeValueArrays
+ *    Free Datum/bool array.
+ */
+static void
+freeValueArrays(Datum *values, bool *isnull)
+{
+	pfree(values);
+	pfree(isnull);
+}
+
+PG_FUNCTION_INFO_V1(gp_partition_selection);
+
+/*
+ * gp_partition_selection
+ *    Find the child partition oid for a given parent partition, which
+ * satisfies the given partition key value.
+ *
+ * This function assumes that there is only one partition key in this level.
+ * Currently, this function also assumes that the parent partition is the root
+ * partition.
+ *
+ * If no such a child partition is found, return NULL.
+ */
+Datum
+gp_partition_selection(PG_FUNCTION_ARGS)
+{
+	Oid parentOid = PG_GETARG_OID(0);
+
+	Assert(dynamicTableScanInfo != NULL);
+	Assert(dynamicTableScanInfo->memoryContext != NULL);
+
+	if (dynamicTableScanInfo->partsMetadata == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+	
+	PartitionMetadata *metadata =
+		findPartitionMetadataEntry(dynamicTableScanInfo->partsMetadata,
+								   parentOid);
+	if (metadata == NULL)
+	{
+		PG_RETURN_NULL();
+	}
+
+	Assert(metadata->partsAndRules != NULL &&
+		   metadata->accessMethods != NULL);
+	Partition *part = metadata->partsAndRules->part;
+
+	Assert(part->parnatts == 1);
+	AttrNumber partAttno = part->paratts[0];
+
+	Relation rel = relation_open(parentOid, NoLock);
+	TupleDesc tupDesc = RelationGetDescr(rel);
+	Assert(tupDesc->natts >= partAttno);
+
+	Datum *values = NULL;
+	bool *isnull = NULL;
+	createValueArrays(partAttno, &values, &isnull);
+
+	isnull[partAttno - 1] = PG_ARGISNULL(1);
+	if (!isnull[partAttno - 1])
+	{
+		values[partAttno - 1] = PG_GETARG_DATUM(1);
+	}
+
+	/* set the memory context for the access methods */
+	metadata->accessMethods->part_cxt = dynamicTableScanInfo->memoryContext;
+	
+	Oid childOid = selectPartition(metadata->partsAndRules,
+								   values,
+								   isnull,
+								   tupDesc,
+								   metadata->accessMethods);
+
+	freeValueArrays(values, isnull);
+	
+	relation_close(rel, NoLock);
+
+	if (gp_partitioning_dynamic_selection_log)
+	{
+		elog(LOG, "Partition Dynamic Selection: find child partition %d for parent partition %d",
+			 parentOid, childOid);
+	}
+	
+	PG_RETURN_OID(childOid);
 }
 
 /*

@@ -167,7 +167,7 @@ ChoosePartitionName(const char *tablename, int partDepth,
 
 extern Oid selectPartition(PartitionNode *partnode, Datum *values,
 						   bool *isnull, TupleDesc tupdesc,
-						   PartitionState *pstate);
+						   PartitionAccessMethods *accessMethods);
 
 extern Node *atpxPartAddList(Relation rel, 
 							 AlterPartitionCmd *pc,
@@ -223,7 +223,7 @@ checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxa
 
 extern List *
 selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
-				 TupleDesc tupdesc, PartitionState *pstate);
+				 TupleDesc tupdesc, PartitionAccessMethods *accessMethods);
 
 extern void AddPartitionEncoding(Oid relid, Oid paroid, AttrNumber attnum,
 								 bool deflt, List *encoding);

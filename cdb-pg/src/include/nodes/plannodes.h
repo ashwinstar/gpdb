@@ -101,8 +101,15 @@ typedef struct PlannedStmt
 		 * exact set of child tables at parse time. This field used to be in Query.
 		 */
 		struct PartitionNode *result_partitions;
-		
+
 		List	   *result_aosegnos; /* AO file 'seg' numbers for resultRels to use */
+		
+		/*
+		 * Relation oids and partitioning metadata for all partitions
+		 * that are involved in a query.
+		 */
+		List *queryPartOids;
+		List *queryPartsMetadata;
 		
 		List	   *rowMarks;		/* a list of RowMarkClause's */
 		

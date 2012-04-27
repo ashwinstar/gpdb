@@ -195,6 +195,7 @@ CreateExecutorState(void)
 	estate->dynamicTableScanInfo->numScans = 0;
 	estate->dynamicTableScanInfo->pidIndexes = NULL;
 	estate->dynamicTableScanInfo->memoryContext = qcontext;
+	estate->dynamicTableScanInfo->partsMetadata = NULL;
 
 	dynamicTableScanInfo = estate->dynamicTableScanInfo;
 

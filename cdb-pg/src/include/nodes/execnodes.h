@@ -294,6 +294,22 @@ typedef struct ShareNodeEntry
 	Node *shareState;
 } ShareNodeEntry;
 
+/*
+ * PartitionAccessMethods
+ *    Defines the lookup access methods for partitions, one for each level.
+ */
+typedef struct PartitionAccessMethods
+{
+	/* Number of partition levels */
+	int partLevels;
+	
+	/* Access methods, one for each level */
+	void **amstate;
+
+	/* Memory context for access methods */
+	MemoryContext part_cxt;
+} PartitionAccessMethods;
+
 typedef struct PartitionState
 {
 	NodeTag type;
@@ -301,9 +317,18 @@ typedef struct PartitionState
 	AttrNumber max_partition_attr;
 	int result_partition_array_size; /* max elements of result relation array */
 	HTAB *result_partition_hash;
-	MemoryContext part_cxt;
-	void **amstate; /* access method specific lookup, one for each level */
+	PartitionAccessMethods *accessMethods;
 } PartitionState;
+
+/*
+ * PartitionMetadata
+ *   Defines the metadata for partitions.
+ */
+typedef struct PartitionMetadata
+{
+	PartitionNode *partsAndRules;
+	PartitionAccessMethods *accessMethods;
+} PartitionMetadata;
 
 /*
  * DynamicTableScanInfo
@@ -323,6 +348,11 @@ typedef struct DynamicTableScanInfo
 	 * in the scan.
 	 */
 	HTAB **pidIndexes;
+
+	/*
+	 * Partitioning metadata for all relevant partition tables.
+	 */
+	List *partsMetadata;
 
 	/*
 	 * The memory context in which pidIndexes are allocated.

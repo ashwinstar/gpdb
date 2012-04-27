@@ -2659,6 +2659,8 @@ _readPlannedStmt(const char ** str)
 	READ_NODE_FIELD(returningLists);
 	READ_NODE_FIELD(result_partitions);
 	READ_NODE_FIELD(result_aosegnos);
+	READ_NODE_FIELD(queryPartOids);
+	READ_NODE_FIELD(queryPartsMetadata);
 	READ_NODE_FIELD(rowMarks);
 	READ_NODE_FIELD(relationOids);
 	READ_NODE_FIELD(invalItems);
