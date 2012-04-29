@@ -19,7 +19,7 @@ GPFDISTFILES=gpfdist.c
 GPFDISTFILES_EXTRA=fstream.c gfile.c transform.c glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
 GPFDISTOBJS_EXTRA=$(strip $(patsubst %.c,%.o,$(notdir $(GPFDISTFILES_EXTRA))))
 GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
-GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32 -lgdi32
+GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32 -lgdi32 -lz
 EXT_EXE=.exe
 else
 GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c

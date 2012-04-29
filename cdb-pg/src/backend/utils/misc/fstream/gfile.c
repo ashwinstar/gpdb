@@ -233,7 +233,7 @@ static int bz_file_open(gfile_t *fd)
 }
 #endif
 
-#ifndef WIN32
+
 /* GZ */
 struct zlib_stuff
 {
@@ -490,7 +490,7 @@ static int gz_file_open(gfile_t *fd)
 
 	return 0;
 }
-#endif
+
 
 #ifdef GPFXDIST
 /*
@@ -908,9 +908,6 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 #endif
 	if (s && strcasecmp(s,".gz")==0)
 	{
-#ifdef WIN32
-		gfile_printf_then_putc_newline(".gz not supported");
-#else
 		/*
 		 * flag used by function gfile close
 		 */
@@ -922,7 +919,6 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 		}
 
 		return gz_file_open(fd);
-#endif
 	}
 	else if (s && strcasecmp(s,".bz2")==0)
 	{

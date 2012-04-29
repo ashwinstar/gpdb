@@ -3,9 +3,9 @@
 
 /*#include "c.h"*/
 #include <sys/types.h>
+#include <zlib.h>
 #ifndef WIN32
 #include <bzlib.h>
-#include <zlib.h>
 #endif
 
 #ifdef WIN32
@@ -60,8 +60,8 @@ typedef struct gfile_t
 	union
 	{
 		int txt;
-#ifndef WIN32
 		struct zlib_stuff*z;
+#ifndef WIN32        
 		struct bzlib_stuff*bz;
 #endif
 	}u;

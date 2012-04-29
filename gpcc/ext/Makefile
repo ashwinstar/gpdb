@@ -31,17 +31,18 @@ endif
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8r
+ZLIB=zlib-1.2.3
 
 ifeq "$(BLD_ARCH)" "win32"
 MINGWRANLIB=/usr/local/mingw32/mingw32/bin/ranlib
-CONFFLAGS=--build=x86_64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib
+CONFFLAGS=--build=x86_64-unknown-linux-gnu --host=i686-pc-mingw32
 CC=/usr/local/mingw32/bin/mingw32-gcc
 LDFLAGS=-L/usr/local/mingw32/mingw32/lib
 CPPFLAGS=-I/usr/local/mingw32/mingw32/include
 endif
 
 ifeq "$(BLD_ARCH)" "win32"
-all: mkdir mklibssl mkdbgen mklibapr mklibapu mklibevent mklibjson
+all: mkdir mklibz mklibssl mkdbgen mklibapr mklibapu mklibevent mklibjson
 else
 all: mkdir mkdbgen
 endif
@@ -81,6 +82,31 @@ mklibevent: mkdir lib/libevent.a
 mklibssl: mkdir lib/libssl.a
 mklibapr: mkdir lib/libapr-1.a
 mklibapu: mkdir lib/libaprutil-1.a
+mklibz: mkdir lib/libz.a
+
+lib/libz.a:
+	@echo     -- libz
+	if [ ! -f $(ZLIB)/Makefile ]; then \
+		unzip -o -q $(ZLIB).zip;\
+		chmod +x $(ZLIB)/configure;\
+		(cd $(ZLIB) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" CPPFLAGS="$(CPPFLAGS)" \
+	          ./configure --prefix=$(GPCC)/ext ) >LOG.$(@F)-configure 2>&1 ;\
+	    retval=$$?; \
+	    if [ $${retval} != 0 ]; then \
+	        rm -f $(ZLIB)/Makefile; \
+	        cat LOG.$(@F)-configure; \
+	        exit $${retval}; \
+	    fi ; \
+	fi
+
+	cd $(ZLIB) && $(MAKE) clean install >LOG.$(@F)-make 2>&1 ; \
+	retval=$$?; \
+	if [ $${retval} != 0 ]; then \
+	    cat LOG.$(@F)-make; \
+	    exit $${retval}; \
+	fi;
+
+	$(MINGWRANLIB) $(GPCC)/ext/lib/libz.a;
 
 lib/libjson.a:
 	@echo     -- json
@@ -241,7 +267,7 @@ endif
 
 veryclean:
 	rm -rf lib bin include build1 share ssl build-1
-	rm -rf $(APR) $(APU) $(JSON) $(LIBEVENT) $(OPENSSL)
+	rm -rf $(APR) $(APU) $(JSON) $(LIBEVENT) $(OPENSSL) $(ZLIB)
 
 clean:
 	rm -rf lib bin include build1 share ssl build-1
@@ -250,4 +276,5 @@ clean:
 	(cd $(JSON) && $(MAKE) clean; rm -f make.out)
 	(cd $(LIBEVENT) && $(MAKE) clean; rm -f make.out)
 	(cd $(OPENSSL) && $(MAKE) clean; rm -f make.out)
+	(cd $(ZLIB) && $(MAKE) clean; rm -f make.out)
 
