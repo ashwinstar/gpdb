@@ -3021,6 +3021,20 @@ SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history GROUP BY time SC
    2
 (17 rows)
 
+-- SCATTER BY vs aggregate
+SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY sum(id) ) ) AS s(cnt bigint);
+ cnt 
+-----
+  18
+(1 row)
+
+-- SCATTER BY vs window function
+SELECT * FROM noop_project( TABLE( SELECT count(*) FROM history SCATTER BY count(*) OVER () ) ) s (cnt bigint);
+ cnt 
+-----
+  18
+(1 row)
+
 -- ========================
 -- More negative test cases
 -- ========================

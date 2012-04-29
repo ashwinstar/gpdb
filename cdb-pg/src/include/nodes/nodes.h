@@ -443,6 +443,7 @@ typedef enum NodeTag
 	T_WithClause,
 	T_CommonTableExpr,
 	T_ColumnReferenceStorageDirective,
+	T_ScatterClause,
 
 	/*
 	 * TAGS FOR RANDOM OTHER STUFF

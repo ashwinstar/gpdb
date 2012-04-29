@@ -41,6 +41,7 @@
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
+#include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "parser/parsetree.h"
@@ -138,6 +139,7 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
 
 static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *limitOffset, int64 offset_est);
 bool is_dummy_plan(Plan *plan);
+static void fix_old_scatterclause(Query *parse);
 
 #ifdef __darwin__
 #define OPT_LIB "libgpoptudf.dylib"
@@ -534,6 +536,9 @@ subquery_planner(PlannerGlobal *glob,
 	List	   *newHaving;
 	ListCell   *l;
 
+	/* Fix old version of scatterClause. See its comment. */
+	fix_old_scatterclause(parse);
+
 	/* Create a PlannerInfo data structure for this subquery */
 	root = makeNode(PlannerInfo);
 	root->parse = parse;
@@ -660,9 +665,6 @@ subquery_planner(PlannerGlobal *glob,
 	parse->havingQual = preprocess_expression(root, parse->havingQual,
 											  EXPRKIND_QUAL);
 
-	parse->scatterClause = (List *)
-		preprocess_expression(root, (Node *) parse->scatterClause,
-							  EXPRKIND_TARGET);
 	/* 
 	 * Do expression preprocessing on other expressions.
 	 */	 
@@ -815,7 +817,7 @@ subquery_planner(PlannerGlobal *glob,
 		if (list_length(parse->scatterClause) == 1 && linitial(parse->scatterClause) == NULL)
 			exprList = NIL;
 		else
-			exprList = parse->scatterClause;
+			exprList = get_sortgrouplist_exprs(parse->scatterClause, parse->targetList);
 
 		/* Repartition the subquery plan based on our distribution requirements */
 		r = repartitionPlan(plan, false, false, exprList);
@@ -3581,4 +3583,49 @@ pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *
 	}
 
 	return result_plan;
+}
+
+/*
+ * In GPDB 4.2, scatterClause had expression nodes instead of ScatterClause
+ * nodes, which was inconvenient in the planner work.  We changed the definition
+ * to ScatterClause afterwards, but some VIEW may have older version, so
+ * here we try convert them to the new representation.
+ */
+static void
+fix_old_scatterclause(Query *parse)
+{
+	List	   *outlist;
+	ListCell   *l;
+
+	/*
+	 * No SCATTER clause, or RANDOMLY doesn't care its representation.
+	 */
+	if (!parse->scatterClause ||
+		(list_length(parse->scatterClause) == 1 &&
+		 linitial(parse->scatterClause) == NULL))
+		return;
+
+	outlist = NIL;
+	foreach (l, parse->scatterClause)
+	{
+		Node		   *node = lfirst(l);
+		TargetEntry	   *tle;
+		ScatterClause  *clause;
+
+		/*
+		 * If we found the new style, return immediately.
+		 */
+		if (IsA(node, ScatterClause))
+			return;
+
+		/*
+		 * Otherwise, convert it using target list.
+		 */
+		tle = tlist_member(node, parse->targetList);
+		Assert(tle);
+		clause = makeNode(ScatterClause);
+		clause->tleSortGroupRef = assignSortGroupRef(tle, parse->targetList);
+		outlist = lappend(outlist, clause);
+	}
+	parse->scatterClause = outlist;
 }

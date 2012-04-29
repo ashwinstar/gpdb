@@ -56,7 +56,6 @@
 #include "cdb/cdbsetop.h"
 #include "cdb/cdbgroup.h"
 
-extern void UpdateScatterClause(Query *query, List *newtlist);
 
 /*
  * MppGroupPrep represents a strategy by which to precondition the
@@ -1454,8 +1453,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									   "partial_aggregation",
 									   &current_pathkeys,
 									   result_plan,
-									   !ctx->is_grpext,
-									   true);
+									   !ctx->is_grpext);
 	
 	if (ctx->is_grpext)
 	{
@@ -2094,7 +2092,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 										   "partial_aggregation",
 										   &current_pathkeys,
 										   result_plan, 
-										   true, false);
+										   true);
 	}
 	
 	/* Final Aggregation: Group by the grouping key, aggregate the now
@@ -2168,8 +2166,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 									   "partial_aggregation",
 									   &current_pathkeys,
 									   result_plan,
-									   true,
-									   false);
+									   true);
 	
 	/* Final sort */
 	switch (coplan_type)
@@ -3726,39 +3723,6 @@ void adapt_flow_to_targetlist(Plan *plan)
 	}
 }
 
-/**
- * Update the scatter clause before a query tree's targetlist is about to
- * be modified. The scatter clause of a query tree will correspond to
- * old targetlist entries. If the query tree is modified and the targetlist
- * is to be modified, we must call this method to ensure that the scatter clause
- * is kept in sync with the new targetlist.
- */
-void UpdateScatterClause(Query *query, List *newtlist)
-{
-	Assert(query);
-	Assert(query->targetList);
-	Assert(newtlist);
-
-	if (query->scatterClause
-			&& list_nth(query->scatterClause, 0) != NULL /* scattered randomly */
-			)
-	{
-		Assert(list_length(query->targetList) == list_length(newtlist));
-		List *scatterClause = NIL;
-		ListCell *lc = NULL;
-		foreach (lc, query->scatterClause)
-		{
-			Expr *o = (Expr *) lfirst(lc);
-			Assert(o);
-			TargetEntry *tle = tlist_member((Node *) o, query->targetList);
-			Assert(tle);
-			TargetEntry *ntle = list_nth(newtlist, tle->resno - 1);
-			scatterClause = lappend(scatterClause, copyObject(ntle->expr));
-		}
-		query->scatterClause = scatterClause;
-	}
-}
-
 /*
  * Function: add_second_stage_agg
  *
@@ -3790,8 +3754,7 @@ add_second_stage_agg(PlannerInfo *root,
 					 const char *alias,
 					 List **p_current_pathkeys,
 					 Plan *result_plan,
-					 bool use_root,
-					 bool adjust_scatter)
+					 bool use_root)
 {
 	Query	   *parse = root->parse;
 	Query	   *subquery;
@@ -3882,10 +3845,6 @@ add_second_stage_agg(PlannerInfo *root,
 	 */
 	if ( use_root )
 	{
-		if (adjust_scatter)
-		{
-			UpdateScatterClause(parse, upper_tlist);
-		}
 		parse->targetList = copyObject(upper_tlist); /* Match range. */
 	}
 
@@ -5307,8 +5266,6 @@ fetch_percentiles(Query *parse, List *sortClause)
 
 	nodes = list_concat(extract_nodes(NULL, (Node *) parse->targetList, T_PercentileExpr),
 						extract_nodes(NULL, (Node *) parse->havingQual, T_PercentileExpr));
-	nodes = list_concat(nodes,
-						extract_nodes(NULL, (Node *) parse->scatterClause, T_PercentileExpr));
 	result = NIL;
 	foreach (l, nodes)
 	{
@@ -5493,8 +5450,6 @@ make_deduplicate_plan(PlannerInfo *root,
 		cdbpullup_expr((Expr *) root->parse->targetList, tlist, NIL, Outer);
 	root->parse->havingQual = (Node *)
 		cdbpullup_expr((Expr *) root->parse->havingQual, tlist, NIL, Outer);
-	root->parse->scatterClause = (List *)
-		cdbpullup_expr((Expr *) root->parse->scatterClause, tlist, NIL, Outer);
 	root->parse->rtable = parse->rtable;
 
 	return result_plan;
@@ -5584,8 +5539,6 @@ within_agg_make_baseplan(PlannerInfo *root,
 			cdbpullup_expr((Expr *) root->parse->targetList, sub_tlist, NIL, 1);
 		root->parse->havingQual = (Node *)
 			cdbpullup_expr((Expr *) root->parse->havingQual, sub_tlist, NIL, 1);
-		root->parse->scatterClause = (List *)
-			cdbpullup_expr((Expr *) root->parse->scatterClause, sub_tlist, NIL, 1);
 		root->parse->rtable = subquery->rtable;
 
 		/*
@@ -5738,8 +5691,6 @@ within_agg_add_outer_sort(PlannerInfo *root,
 		cdbpullup_expr((Expr *) root->parse->targetList, outer_plan->targetlist, NIL, 1);
 	root->parse->havingQual = (Node *)
 		cdbpullup_expr((Expr *) root->parse->havingQual, outer_plan->targetlist, NIL, 1);
-	root->parse->scatterClause = (List *)
-		cdbpullup_expr((Expr *) root->parse->scatterClause, outer_plan->targetlist, NIL, 1);
 	/*
 	 * Wrap plan by subquery as the outer of upcoming join.
 	 */
@@ -6371,13 +6322,9 @@ within_agg_planner(PlannerInfo *root,
 	aggnodes = extract_nodes(NULL, (Node *) root->parse->targetList, T_Aggref);
 	aggnodes = list_concat(aggnodes,
 						   extract_nodes(NULL, (Node *) root->parse->havingQual, T_Aggref));
-	aggnodes = list_concat(aggnodes,
-						   extract_nodes(NULL, (Node *) root->parse->scatterClause, T_Aggref));
 	percnodes = extract_nodes(NULL, (Node *) root->parse->targetList, T_PercentileExpr);
 	percnodes = list_concat(percnodes,
 							extract_nodes(NULL, (Node *) root->parse->havingQual, T_PercentileExpr));
-	percnodes = list_concat(percnodes,
-							extract_nodes(NULL, (Node *) root->parse->scatterClause, T_PercentileExpr));
 	/* Allocate maximum number of list */
 	numsortlist = list_length(percnodes) + 1;
 	/* initialize each element with NIL */
@@ -6715,7 +6662,6 @@ within_agg_planner(PlannerInfo *root,
 		result_plan->targetlist = (List *) finalize_split_expr((Node *) mgctx.fin_tlist, &mgctx);
 		result_plan->qual = (List *) finalize_split_expr((Node *) mgctx.fin_hqual, &mgctx);
 
-		UpdateScatterClause(root->parse, result_plan->targetlist);
 		/*
 		 * Reconstruct the flow since the targetlist for the result_plan may have
 		 * changed.

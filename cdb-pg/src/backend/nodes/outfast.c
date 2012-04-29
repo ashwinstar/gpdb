@@ -2848,6 +2848,15 @@ _outGroupClause(StringInfo str, GroupClause *node)
 }
 
 static void
+_outScatterClause(StringInfo str, ScatterClause *node)
+{
+	WRITE_NODE_TYPE("SCATTERCLAUSE");
+
+	WRITE_UINT_FIELD(tleSortGroupRef);
+	WRITE_OID_FIELD(sortop);
+}
+
+static void
 _outGroupingClause(StringInfo str, GroupingClause *node)
 {
 	WRITE_NODE_TYPE("GROUPINGCLAUSE");
@@ -4078,6 +4087,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_GroupClause:
 				_outGroupClause(str, obj);
+				break;
+			case T_ScatterClause:
+				_outScatterClause(str, obj);
 				break;
 			case T_GroupingClause:
 				_outGroupingClause(str, obj);
