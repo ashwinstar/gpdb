@@ -69,9 +69,9 @@ CREATE FUNCTION @gpupgradeschemaname@.bool(text) RETURNS bool LANGUAGE internal 
 	AS 'textbool' WITH (OID=2970, DESCRIPTION="convert text to boolean");
 COMMENT ON FUNCTION @gpupgradeschemaname@.bool(text) IS 'convert text to boolean';
 
-–
+--
 -- MPP-16121 - basic arithmetic for int2, int8
-–
+--
 CREATE FUNCTION @gpupgradeschemaname@.int82pl(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
 	AS 'int82pl' WITH (OID=3241, DESCRIPTION="add");
 COMMENT ON FUNCTION @gpupgradeschemaname@.int82pl(int8, int2) IS 'add';
