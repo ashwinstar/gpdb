@@ -656,6 +656,10 @@ char	   *gp_idf_deduplicate_str;
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
 
+/* plpgsql plancache GUC */
+bool gp_plpgsql_clear_cache_always = false;
+
+
 /*
  * Displayable names for context types (enum GucContext)
  *
@@ -3529,6 +3533,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_reject_internal_tcp_conn,
 		true, NULL, NULL
+	},
+
+	{
+		{"gp_plpgsql_clear_cache_always", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Controls caching of plpgsql plans in session"), 
+		 NULL, 
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_plpgsql_clear_cache_always,
+		false, NULL, NULL
 	},
 
 	/* End-of-list marker */

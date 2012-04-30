@@ -251,6 +251,7 @@ extern bool gp_temporary_files_filespace_repair;
 
 extern bool gp_partitioning_dynamic_selection_log;
 extern double gp_thread_dispatch_wait;
+extern bool gp_plpgsql_clear_cache_always;
 
 /* Debug DTM Action */
 typedef enum

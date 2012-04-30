@@ -1822,9 +1822,6 @@ exec_stmt_fors(PLpgSQL_execstate *estate, PLpgSQL_stmt_fors *stmt)
 	 */
 	exec_set_found(estate, found);
 
-	/* Clear out the cached plan if needed */
-	exec_free_plan(stmt->query); 
-
 	return rc;
 }
 
@@ -2409,6 +2406,13 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	 * On the first call for this statement generate the plan, and detect
 	 * whether the statement is INSERT/UPDATE/DELETE
 	 */
+
+ 	/* if we find a cached plan, check if we want to use it */
+	if (expr->plan != NULL)
+	{
+		exec_free_plan(expr);
+	}
+	
 	if (expr->plan == NULL)
 	{
 		_SPI_plan  *spi_plan;
@@ -2603,9 +2607,6 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 					 errmsg("query has no destination for result data"),
 					 (rc == SPI_OK_SELECT) ? errhint("If you want to discard the results of a SELECT, use PERFORM instead.") : 0));
 	}
-
-	/* Clear out the cached plan if needed */
-	exec_free_plan(expr); 
 
 	pfree(values);
 	pfree(nulls);
@@ -3012,6 +3013,13 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 		 * ----------
 		 */
 		query = stmt->query;
+
+	 	/* if we find a cached plan, check if we want to use it */
+		if (query->plan != NULL)
+		{
+			exec_free_plan(query);
+		}
+	
 		if (query->plan == NULL)
 			exec_prepare_plan(estate, query);
 	}
@@ -3115,6 +3123,12 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 		}
 
 		query = curvar->cursor_explicit_expr;
+		/* if we find a cached plan, check if we want to use it */
+		if (query->plan != NULL)
+		{
+			exec_free_plan(query);
+		}
+
 		if (query->plan == NULL)
 			exec_prepare_plan(estate, query);
 	}
@@ -3165,9 +3179,6 @@ exec_stmt_open(PLpgSQL_execstate *estate, PLpgSQL_stmt_open *stmt)
 	curvar->value = DirectFunctionCall1(textin, CStringGetDatum((char *) portal->name));
 	curvar->isnull = false;
 	curvar->freeval = true;
-
-	/* Clear out the cached plan if needed */
-	exec_free_plan(query);
 
 	return PLPGSQL_RC_OK;
 }
@@ -3922,6 +3933,13 @@ exec_eval_expr(PLpgSQL_execstate *estate,
 {
 	int			rc;
 
+	
+	/* if we find a cached plan, check if we want to use it */
+	if (expr->plan != NULL)
+	{
+		exec_free_plan(expr);
+	}
+
 	/*
 	 * If not already done create a plan for this expression
 	 */
@@ -3986,8 +4004,14 @@ exec_run_select(PLpgSQL_execstate *estate,
 	char	   *nulls;
 	int			rc;
 
+	/* if we find a cached plan, check if we want to use it */
+	if (expr->plan != NULL)
+	{
+		exec_free_plan(expr);
+	}
+
 	/*
-	 * On the first call for this expression generate the plan
+	 * generate the plan if needed
 	 */
 	if (expr->plan == NULL)
 		exec_prepare_plan(estate, expr);
@@ -4042,9 +4066,6 @@ exec_run_select(PLpgSQL_execstate *estate,
 	estate->eval_tuptable = SPI_tuptable;
 	estate->eval_processed = SPI_processed;
 	estate->eval_lastoid = SPI_lastoid;
-
-	/* Clear out the cached plan if needed */
-	exec_free_plan(expr); 
 
 	pfree(values);
 	pfree(nulls);
@@ -4982,6 +5003,13 @@ exec_check_cache_plan(PLpgSQL_expr *expr)
 	ListCell	*plan_list_item = NULL;
 
 	/* 
+	 * store the current transaction id. we will only free the plan
+	 * if the next invocation of the plan is from a different	
+	 * transaction 
+	 */
+	expr->transaction_id = GetTopTransactionId();
+
+	/* 
 	 * we can have multiple PlannedStmt. Walk all of them
 	 */
 	foreach (plan_list_item, spi_plan->ptlist)
@@ -5022,13 +5050,18 @@ exec_check_cache_plan(PLpgSQL_expr *expr)
  *	- exec_check_cache_plan has indicated that it is not safe to cache the 
  * 	  plan and
  *	- we are not in EXECUTE mode
+ * 	- if the plan was compiled in a different transaction (this check is 
+ *	  made so we don't free the plans too aggresively.
 */
 static void
 exec_free_plan(PLpgSQL_expr *expr)
 {
+	TransactionId txid = GetTopTransactionId();
+
 	if (((_SPI_plan *)expr->plan)->use_count == 0 
 		&& !expr->cachable 
-		&& Gp_role != GP_ROLE_EXECUTE) 
+		&& Gp_role != GP_ROLE_EXECUTE 
+		&& (gp_plpgsql_clear_cache_always || expr->transaction_id != txid)) 
 	{
 		SPI_freeplan(expr->plan);
 		expr->plan = NULL;
