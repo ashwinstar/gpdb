@@ -779,8 +779,9 @@ class GPUpgradeBase(object):
             if db == 'template0':
                 continue
             
-            if db == 'gpperfmon':
-                self.Checkgpperfmon()
+# MPP-16822: disable perfmon upgrade, pending investigation of MPP-17195
+#            if db == 'gpperfmon':
+#                self.Checkgpperfmon()
                 
             cmd = exec_cmd + db
             logger.info('... Checking ' + db)
@@ -801,30 +802,31 @@ class GPUpgradeBase(object):
             
             
     #------------------------------------------------------------
-    def Checkgpperfmon(self):
-        '''
-        gpperfmon validation check
-        1. move outstanding flat file data to data.<time> dir
-        2. dry run the upgrade script and then rollback
-        '''
-        try:
-            logger.info("Checking gpperfmon")
-            perfdatadir  = os.path.join(self.masterdir, "gpperfmon", "data")
-            if (os.path.isdir(perfdatadir)):
-                perfdatabkup = os.path.join(self.masterdir, "gpperfmon", "data.%s" % time())
-                os.rename(perfdatadir, perfdatabkup)
-            
-            # test run gpperfmon upgrade script
-            rolname = self.Select("select rolname from pg_authid where oid=10")[0]
-            fname = os.path.join(self.newhome, "lib/gpperfmon/gpperfmon42.sql")
-            sql = open(fname, 'r').read()
-            sql = "BEGIN;\nSET SESSION AUTHORIZATION %s;\n%s\nROLLBACK;" % (rolname, sql)
-            self.Update(sql, db='gpperfmon')
-
-        except BaseException, e:
-            sys.stderr.write(traceback.format_exc())
-            sys.stderr.write(str(e))
-            raise e
+# MPP-16822: disable perfmon upgrade, pending investigation of MPP-17195
+#    def Checkgpperfmon(self):
+#        '''
+#        gpperfmon validation check
+#        1. move outstanding flat file data to data.<time> dir
+#        2. dry run the upgrade script and then rollback
+#        '''
+#        try:
+#            logger.info("Checking gpperfmon")
+#            perfdatadir  = os.path.join(self.masterdir, "gpperfmon", "data")
+#            if (os.path.isdir(perfdatadir)):
+#                perfdatabkup = os.path.join(self.masterdir, "gpperfmon", "data.%s" % time())
+#                os.rename(perfdatadir, perfdatabkup)
+#            
+#            # test run gpperfmon upgrade script
+#            rolname = self.Select("select rolname from pg_authid where oid=10")[0]
+#            fname = os.path.join(self.newhome, "lib/gpperfmon/gpperfmon42.sql")
+#            sql = open(fname, 'r').read()
+#            sql = "BEGIN;\nSET SESSION AUTHORIZATION %s;\n%s\nROLLBACK;" % (rolname, sql)
+#            self.Update(sql, db='gpperfmon')
+#
+#        except BaseException, e:
+#            sys.stderr.write(traceback.format_exc())
+#            sys.stderr.write(str(e))
+#            raise e
         
         
     #------------------------------------------------------------
@@ -855,15 +857,16 @@ class GPUpgradeBase(object):
                 self.Update(sql, db=db)
 
             # Handle perfmon upgrade
-            for dboid in oids:
-                db = self.dbs[dboid]
-                if db != 'gpperfmon':
-                    continue
-                logger.info("Updating gpperfmon")
-                fname = os.path.join(self.newhome, "lib/gpperfmon/gpperfmon42.sql")
-                sql = open(fname, 'r').read()
-                sql = "SET SESSION AUTHORIZATION %s;\n%s" % (rolname, sql)
-                self.Update(sql, db=db)
+# MPP-16822: disable perfmon upgrade, pending investigation of MPP-17195
+#            for dboid in oids:
+#                db = self.dbs[dboid]
+#                if db != 'gpperfmon':
+#                    continue
+#                logger.info("Updating gpperfmon")
+#                fname = os.path.join(self.newhome, "lib/gpperfmon/gpperfmon42.sql")
+#                sql = open(fname, 'r').read()
+#                sql = "SET SESSION AUTHORIZATION %s;\n%s" % (rolname, sql)
+#                self.Update(sql, db=db)
 
         except BaseException, e:
             sys.stderr.write(traceback.format_exc())
