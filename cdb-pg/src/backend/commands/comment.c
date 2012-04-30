@@ -1402,7 +1402,7 @@ CommentResourceQueue(List *qualname, char *comment)
 			NULL,
 			&fetchCount,
 			NULL,
-			cql("SELECT oid from pg_resqueue "
+			cql("SELECT oid FROM pg_resqueue "
 				" WHERE rsqname = :1 ",
 				CStringGetDatum(queueName)));
 

@@ -337,7 +337,7 @@ if (0)
       "slzy_date" : 1335480414
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "22"
+   "version" : "23"
 }
 
 EOF_bigstr
@@ -2574,6 +2574,31 @@ void caql_update_current(cqContext *pCtx, HeapTuple tup)
 			CatalogUpdateIndexes(rel, tup);
 	}
 
+}
+/* ----------------------------------------------------------------
+ * caql_modify_current()
+ * during beginscan/endscan iteration, modify current tuple,
+ * ----------------------------------------------------------------
+ */
+HeapTuple caql_modify_current(cqContext *pCtx, Datum *replValues,
+							  bool *replIsnull,
+							  bool *doReplace)
+{
+	Relation				 rel;
+	HeapTuple				 tuple = NULL;
+
+	rel  = pCtx->cq_heap_rel;
+
+	if (HeapTupleIsValid(pCtx->cq_lasttup))
+	{
+		tuple = heap_modify_tuple(pCtx->cq_lasttup,
+								  RelationGetDescr(rel), 
+								  replValues,
+								  replIsnull,
+								  doReplace);
+	}
+
+	return (tuple);
 }
 
 EOF_bigstr

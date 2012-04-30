@@ -89,7 +89,7 @@ caql.files: $(CAQL_CQL_SRCS)
 
 catquery.o: catquery.c
 
-catquery.c: caql.files
+catquery.c: caql.files $(top_srcdir)/src/include/catalog/calico.pl
 	perl $(top_srcdir)/src/include/catalog/calico.pl \
 		-meta $(top_srcdir)/../gpMgmt/bin/gppylib/data/$(jversion).json \
 		-syscache $(top_srcdir)/src/backend/utils/cache/syscache.c \

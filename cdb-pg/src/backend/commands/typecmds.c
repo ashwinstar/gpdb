@@ -546,8 +546,9 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 {
 	TypeName   *typname;
 	Oid			typeoid;
-	HeapTuple	tup;
+	Oid			typeNsp;
 	ObjectAddress object;
+	int			 fetchCount;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typname = makeTypeNameFromNameList(names);
@@ -577,20 +578,23 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 		return;
 	}
 
-	tup = SearchSysCache(TYPEOID,
-						 ObjectIdGetDatum(typeoid),
-						 0, 0, 0);
-	if (!HeapTupleIsValid(tup))
+	typeNsp = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT typnamespace FROM pg_type "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(typeoid)));
+
+	if (!fetchCount)
 		elog(ERROR, "cache lookup failed for type %u", typeoid);
 
 	/* Permission check: must own type or its namespace */
 	if (!pg_type_ownercheck(typeoid, GetUserId()) &&
-	  !pg_namespace_ownercheck(((Form_pg_type) GETSTRUCT(tup))->typnamespace,
-							   GetUserId()))
+		!pg_namespace_ownercheck(typeNsp, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
 					   TypeNameToString(typname));
 
-	ReleaseSysCache(tup);
 
 	/*
 	 * Remove any storage encoding
@@ -616,7 +620,7 @@ void
 RemoveTypeById(Oid typeOid)
 {
 	Relation	relation;
-	HeapTuple	tup;
+	cqContext	cqc;
 
 	/* 
 	 * It might look like the call in RemoveType() is enough for
@@ -627,15 +631,15 @@ RemoveTypeById(Oid typeOid)
 
 	relation = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCache(TYPEOID,
-						 ObjectIdGetDatum(typeOid),
-						 0, 0, 0);
-	if (!HeapTupleIsValid(tup))
+	if (0 ==
+		caql_getcount(
+			caql_addrel(cqclr(&cqc), relation),
+			cql("DELETE FROM pg_type "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(typeOid))))
+	{
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
-
-	simple_heap_delete(relation, &tup->t_self);
-
-	ReleaseSysCache(tup);
+	}
 
 	heap_close(relation,  Gp_role == GP_ROLE_DISPATCH ? NoLock : RowExclusiveLock);
 }
@@ -1353,6 +1357,8 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 	bool		new_record_repl[Natts_pg_type];
 	HeapTuple	newtuple;
 	Form_pg_type typTup;
+	cqContext	*pcqCtx;
+	cqContext	 cqc;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typname = makeTypeNameFromNameList(names);
@@ -1360,10 +1366,16 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 
 	/* Look up the domain in the type table */
 	rel = heap_open(TypeRelationId, RowExclusiveLock);
+	
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
 
-	tup = SearchSysCacheCopy(TYPEOID,
-							 ObjectIdGetDatum(domainoid),
-							 0, 0, 0);
+	tup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(domainoid)));
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", domainoid);
 	typTup = (Form_pg_type) GETSTRUCT(tup);
@@ -1428,9 +1440,7 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 								new_record, new_record_nulls,
 								new_record_repl);
 
-	simple_heap_update(rel, &tup->t_self, newtuple);
-
-	CatalogUpdateIndexes(rel, newtuple);
+	caql_update_current(pcqCtx, newtuple);
 
 	/* Rebuild dependencies */
 	GenerateTypeDependencies(typTup->typnamespace,
@@ -1466,6 +1476,8 @@ AlterDomainNotNull(List *names, bool notNull)
 	Relation	typrel;
 	HeapTuple	tup;
 	Form_pg_type typTup;
+	cqContext	*pcqCtx;
+	cqContext	 cqc;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typname = makeTypeNameFromNameList(names);
@@ -1474,9 +1486,15 @@ AlterDomainNotNull(List *names, bool notNull)
 	/* Look up the domain in the type table */
 	typrel = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCacheCopy(TYPEOID,
-							 ObjectIdGetDatum(domainoid),
-							 0, 0, 0);
+	pcqCtx = caql_addrel(cqclr(&cqc), typrel);
+
+	tup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(domainoid)));
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", domainoid);
 	typTup = (Form_pg_type) GETSTRUCT(tup);
@@ -1542,9 +1560,7 @@ AlterDomainNotNull(List *names, bool notNull)
 	 */
 	typTup->typnotnull = notNull;
 
-	simple_heap_update(typrel, &tup->t_self, tup);
-
-	CatalogUpdateIndexes(typrel, tup);
+	caql_update_current(pcqCtx, tup);
 
 	/* Clean up */
 	heap_freetuple(tup);
@@ -1565,6 +1581,7 @@ AlterDomainDropConstraint(List *names, const char *constrName,
 	HeapTuple	tup;
 	Relation	rel;
 	cqContext  *pcqCtx;
+	cqContext	cqc;
 	HeapTuple	contup;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
@@ -1574,9 +1591,16 @@ AlterDomainDropConstraint(List *names, const char *constrName,
 	/* Look up the domain in the type table */
 	rel = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCacheCopy(TYPEOID,
-							 ObjectIdGetDatum(domainoid),
-							 0, 0, 0);
+	/* NOTE: separate cqc and pcqCtx here -- 
+	 * cqc for pg_type, pcqCtx for pg_constraint 
+	 */
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(domainoid)));
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", domainoid);
 
@@ -1637,6 +1661,7 @@ AlterDomainAddConstraint(List *names, Node *newConstraint)
 	Expr	   *expr;
 	ExprState  *exprstate;
 	Constraint *constr;
+	cqContext	cqc;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typname = makeTypeNameFromNameList(names);
@@ -1645,9 +1670,13 @@ AlterDomainAddConstraint(List *names, Node *newConstraint)
 	/* Look up the domain in the type table */
 	typrel = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCacheCopy(TYPEOID,
-							 ObjectIdGetDatum(domainoid),
-							 0, 0, 0);
+	tup = caql_getfirst(
+			caql_addrel(cqclr(&cqc), typrel),
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(domainoid)));
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", domainoid);
 	typTup = (Form_pg_type) GETSTRUCT(tup);
@@ -2149,7 +2178,6 @@ GetDomainConstraints(Oid typeOid)
 		cqContext	*pcqCtx;
 		cqContext	 cqc;
 
-
 		tup = SearchSysCache(TYPEOID,
 							 ObjectIdGetDatum(typeOid),
 							 0, 0, 0);
@@ -2256,6 +2284,8 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 	HeapTuple	tup;
 	Form_pg_type typTup;
 	AclResult	aclresult;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typname = makeTypeNameFromNameList(names);
@@ -2272,9 +2302,15 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 	/* Look up the type in the type table */
 	rel = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCacheCopy(TYPEOID,
-							 ObjectIdGetDatum(typeOid),
-							 0, 0, 0);
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
+	tup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(typeOid)));
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
 	typTup = (Form_pg_type) GETSTRUCT(tup);
@@ -2334,9 +2370,7 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 			 */
 			typTup->typowner = newOwnerId;
 
-			simple_heap_update(rel, &tup->t_self, tup);
-
-			CatalogUpdateIndexes(rel, tup);
+			caql_update_current(pcqCtx, tup);
 
 			/* Update owner dependency reference */
 			changeDependencyOnOwner(TypeRelationId, typeOid, newOwnerId);
@@ -2365,12 +2399,20 @@ AlterTypeOwnerInternal(Oid typeOid, Oid newOwnerId,
 	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_type typTup;
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 
 	rel = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCacheCopy(TYPEOID,
-							 ObjectIdGetDatum(typeOid),
-							 0, 0, 0);
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
+	tup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(typeOid)));
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
 	typTup = (Form_pg_type) GETSTRUCT(tup);
@@ -2380,9 +2422,7 @@ AlterTypeOwnerInternal(Oid typeOid, Oid newOwnerId,
 	 */
 	typTup->typowner = newOwnerId;
 
-	simple_heap_update(rel, &tup->t_self, tup);
-
-	CatalogUpdateIndexes(rel, tup);
+	caql_update_current(pcqCtx, tup);
 
 	/* Update owner dependency reference, if it has one */
 	if (hasDependEntry)
@@ -2436,12 +2476,20 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 	Form_pg_type typform;
 	Oid			oldNspOid;
 	bool		isCompositeType;
+	cqContext  *pcqCtx;
+	cqContext	cqc, cqc2;
 
 	rel = heap_open(TypeRelationId, RowExclusiveLock);
 
-	tup = SearchSysCacheCopy(TYPEOID,
-							 ObjectIdGetDatum(typeOid),
-							 0, 0, 0);
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
+	tup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(typeOid)));
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
 	typform = (Form_pg_type) GETSTRUCT(tup);
@@ -2478,16 +2526,21 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 						   errOmitLocation(true)));
 
 	/* check for duplicate name (more friendly than unique-index failure) */
-	if (SearchSysCacheExists(TYPENAMENSP,
-							 CStringGetDatum(NameStr(typform->typname)),
-							 ObjectIdGetDatum(nspOid),
-							 0, 0))
+	if (caql_getcount(
+				caql_addrel(cqclr(&cqc2), rel),
+					cql("SELECT COUNT(*) FROM pg_type "
+						" WHERE typname = :1 "
+						" AND typnamespace = :2 ",
+						CStringGetDatum(NameStr(typform->typname)),
+						ObjectIdGetDatum(nspOid))))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("type \"%s\" already exists in schema \"%s\"",
 						NameStr(typform->typname),
 						get_namespace_name(nspOid)),
 								   errOmitLocation(true)));
+	}
 
 	/* Detect whether type is a composite type (but not a table rowtype) */
 	isCompositeType =
@@ -2507,8 +2560,7 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 	/* tup is a copy, so we can scribble directly on it */
 	typform->typnamespace = nspOid;
 
-	simple_heap_update(rel, &tup->t_self, tup);
-	CatalogUpdateIndexes(rel, tup);
+	caql_update_current(pcqCtx, tup);
 
 	/*
 	 * Composite types have pg_class entries.
@@ -2567,6 +2619,7 @@ AlterType(AlterTypeStmt *stmt)
 {
 	TypeName	   *typname = stmt->typname;
 	Oid				typid;
+	cqContext	   *pcqCtx;
 	cqContext		cqc;
 	HeapTuple		tup;
 	Datum			typoptions;
@@ -2638,8 +2691,10 @@ AlterType(AlterTypeStmt *stmt)
 									 false,
 									 false);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), pgtypeenc);
+
 	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), pgtypeenc),
+			pcqCtx,
 			cql("SELECT * FROM pg_type_encoding "
 				" WHERE typid = :1 "
 				" FOR UPDATE ",
@@ -2663,9 +2718,7 @@ AlterType(AlterTypeStmt *stmt)
 		newtuple = heap_modify_tuple(tup, RelationGetDescr(pgtypeenc),
 									 values, nulls, replaces);
 
-		simple_heap_update(pgtypeenc, &tup->t_self, newtuple);
-
-		CatalogUpdateIndexes(pgtypeenc, newtuple);
+		caql_update_current(pcqCtx, newtuple);
 	}
 	else
 	{
