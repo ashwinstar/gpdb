@@ -3824,6 +3824,7 @@ heap_inplace_frozen_delete_internal(Relation relation, HeapTuple tuple, Transact
 	htup->t_infomask &= 0;
 	htup->t_infomask |= HEAP_XMIN_INVALID;
 	HeapTupleHeaderSetXmin(htup, 0);
+	HeapTupleHeaderSetXmax(htup, FrozenTransactionId);
 
 	memcpy((char *) htup + htup->t_hoff,
 		   (char *) tuple->t_data + tuple->t_data->t_hoff,
@@ -4784,6 +4785,7 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 				htup->t_infomask &= 0;
 				htup->t_infomask |= HEAP_XMIN_INVALID;
 				HeapTupleHeaderSetXmin(htup, 0);
+				HeapTupleHeaderSetXmax(htup, FrozenTransactionId);
 				hash_seq_term(&iterateStatus); 
 				if (Debug_persistent_print)
 					elog(LOG, "frozen deleting gp_fastsequence entry"
