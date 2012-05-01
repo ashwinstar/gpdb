@@ -19,6 +19,7 @@ from gppylib.commands import base    # Greenplum layer for worker pools
 from gppylib.commands import unix    # Greenplum layer for unix interaction
 from gppylib.commands.gp import GpCreateDBIdFile
 from gppylib.db import dbconn
+from gppylib.gp_dbid import GpDbidFile
 from gppylib.gpversion import GpVersion
 from gppylib.gparray import GpArray, GpDB
 from gppylib.gphostcache import GpHostCache
@@ -683,6 +684,7 @@ class GPUpgradeBase(object):
         '''
         self.CheckBinaryVersion()
         self.CheckGUCs()
+        self.CheckDbid()
         self.CheckFreeSpace()
         self.CheckCatalog()
 
@@ -727,6 +729,25 @@ class GPUpgradeBase(object):
             logger.fatal("Please set gp_external_enable_exec to 'true'.")
             logger.fatal('***************************************')
             raise UpgradeError('Invalid GUC value')
+
+    #------------------------------------------------------------
+    def CheckDbid(self):
+        '''
+        MPP-16569: Ensure gp_dbid file deems itself to be master.
+
+        Without this check, attempts to add a standby will 
+        fail immediately after upgrade. More importantly, if we were to impose
+        this same check in gpstart (as we should) but fail to do so here,
+        then startups against the new binary would fail, causing a messy 
+        in-progress failure for upgrade.
+        '''
+        dbid = GpDbidFile(self.masterdir, do_read = True).dbid
+        if dbid != 1:
+            logger.fatal('***************************************')
+            logger.fatal('This host is not the master, as dictated by $MASTER_DATA_DIRECTORY/gp_dbid.')
+            logger.fatal('Please review and address this issue before attempting upgrade.')
+            logger.fatal('***************************************')
+            raise UpgradeError('Encountered gp_dbid discrepancies')
 
     #------------------------------------------------------------
     def CheckFreeSpace(self):
