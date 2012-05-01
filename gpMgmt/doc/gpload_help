@@ -324,6 +324,8 @@ COLUMNS - Optional. Specifies the schema of the source data file(s)
           based on a match of column names as defined in this section 
           and the column names in the target TABLE. This default 
           mapping can be overridden using the MAPPING section.
+	Note: MATCH_COLUMNS does not have to be a super set of the 
+	distribution key. The target table cannow be randomly distirbuted.
 
 FORMAT - Optional. Specifies the format of the source data file(s); 
          either plain text (TEXT) or comma separated values (CSV) format. 
