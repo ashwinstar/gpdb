@@ -172,11 +172,11 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_G
 #---------------------------------------------------------------------
 
 DEFPORT=5432
-rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp --enable-ddboost
+rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp
 rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost
-sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
+sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 sol_x86_64_CONFIGFLAGS=--enable-email
-suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
+suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 linux_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 osx104_x86_CONFIGFLAGS=--enable-email
 osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp	
