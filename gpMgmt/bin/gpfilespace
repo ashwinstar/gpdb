@@ -853,8 +853,7 @@ class GPFilespace:
         gparray = GpArray.initFromCatalog(dbconn.DbURL()) if self.array is None else self.array
 
         if not CheckFilespaceConsistency(gparray, file_type).run():
-            logger.error('Filespace is inconsistent')
-            return 
+            raise MoveFilespaceError('Filespace is inconsistent')
 
         filespace_entries = GetCurrentFilespaceEntries(gparray, file_type).run() 
         filespace_name = gparray.getFileSpaceName(int(filespace_entries[0][0]))
