@@ -15,9 +15,9 @@ gpfilespace [<connection_option> ...] [-l <logfile_directory>]
 gpfilespace [<connection_option> ...] [-l <logfile_directory>] 
             -c <fs_config_file>
 
-gpfilespace movetempfilespace {<filespace_name>|default}
+gpfilespace --movetempfilespace {<filespace_name>|default}
 
-gpfilespace movetransfilespace {<filespace_name>|default}
+gpfilespace --movetransfilespace {<filespace_name>|default}
 
 gpfilespace --showtempfilespace
 
