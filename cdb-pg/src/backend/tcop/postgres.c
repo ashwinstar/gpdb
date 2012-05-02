@@ -90,6 +90,8 @@
 #include "utils/resscheduler.h"
 #include "pgstat.h"
 #include "executor/nodeFunctionscan.h"
+#include "cdb/cdbfilerep.h"
+#include "postmaster/primary_mirror_mode.h"
 
 extern int	optind;
 extern char *optarg;
@@ -1354,7 +1356,7 @@ exec_mpp_query(const char *query_string,
 					 errOmitLocation(true)));
 			break;
 	}
-	
+
 	/*
 	 * Since we are executing a dispatch plan, we don't want to record the statement stats now, even if
 	 * we are running on the master.
@@ -1365,7 +1367,6 @@ exec_mpp_query(const char *query_string,
 	 *
 	 */
 	
-
 	if (gp_enable_resqueue_priority)
 	{
 		BackoffBackendEntryExit();
@@ -1604,7 +1605,7 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 			elog(ERROR,"Raise ERROR for debug_dtm_action = %d, commandTag = %s",
 				 Debug_dtm_action, commandTag);
 		}
-		
+
 		if (gp_new_reindex_database)
 		{
 			if (IsA(parsetree, ReindexStmt))
@@ -3231,6 +3232,14 @@ quickdie_impl()
 	 */
 	on_exit_reset();
 
+	/*
+	 * MPP-17167: We need to release any filrep or primary/mirror spin locks.
+	 * to allow the possibility that filerep itself has sent us a SIGQUIT
+	 * message as part of filerep transition.
+	 */
+	FileRep_resetSpinLocks();
+	primaryMirrorModeResetSpinLocks();
+
 	exit(2);
 }
 
@@ -4794,10 +4803,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					rootIdx = pq_getmsgint(&input_message, 4);
 					(void) rootIdx;  /* Never used */
-					
+
 					primary_gang_id = pq_getmsgint(&input_message, 4);
 					(void) primary_gang_id;  /* Never used */
-					
+
 					statementStart = pq_getmsgint64(&input_message);
 					/*
 					 * Should we set the CurrentStatementStartTimestamp to the 
@@ -4830,7 +4839,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					/* get the transaction options */
 					unusedFlags = pq_getmsgint(&input_message, 4);
 					(void) unusedFlags;
-					
+
 					seqServerHostlen = pq_getmsgint(&input_message, 4);
 					seqServerPort = pq_getmsgint(&input_message, 4);
 
@@ -4956,7 +4965,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					
 					primary_gang_id = pq_getmsgint(&input_message, 4);
 					(void) primary_gang_id;  /* Never used */
-					
+
 					serializedSnapshotlen = pq_getmsgint(&input_message, 4);
 
 					/* read in the snapshot info/ DtxContext */
@@ -5336,7 +5345,7 @@ ShowUsage(const char *title)
 		r.ru_stime.tv_sec--;
 		r.ru_stime.tv_usec += 1000000;
 	}
-	
+
 #if 0
 	/* It doesn't make sense to report this for the master only */
 #ifdef  pg_on_solaris

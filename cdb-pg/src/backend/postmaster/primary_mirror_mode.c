@@ -262,7 +262,7 @@ static int isAbsolutePath(const char *path);
  * Return the log level to be used for the PrimaryMirror log messages
  *
  * @param isLowPriority is this a low-priority message? If so, the log level will be higher.  This can be set to true,
- *               for example, for messages that are printed out during polling events when a state has NOT changed. 
+ *               for example, for messages that are printed out during polling events when a state has NOT changed.
  */
 static int
 getPrimaryMirrorModeDebugLogLevel(bool isLowPriority)
@@ -296,7 +296,7 @@ getMirrorModeLabel(PrimaryMirrorMode mode)
 		};
 
 	COMPILE_ASSERT(ARRAY_SIZE(labels) == PMMode__EnumerationCount);
-	
+
 	return labels[mode];
 }
 
@@ -352,14 +352,14 @@ getFaultTypeLabel(FaultType_e faultType)
 {
 	static const char *labels[] =
 	{
-		"NotInitialized", 
-		"FaultIO", 
-		"FaultDB", 
+		"NotInitialized",
+		"FaultIO",
+		"FaultDB",
 		"FaultMirror",
 		"FaultNet",
 	};
 	COMPILE_ASSERT(ARRAY_SIZE(labels) == FaultType__EnumerationCount);
-	
+
 	return labels[faultType];
 }
 
@@ -561,9 +561,9 @@ copyHostData(char **addressOut, int *portOut, char *address, int port)
 }
 
 void
-getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, 
-							SegmentState_e *s_state, 
-							DataState_e *d_state, 
+getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode,
+							SegmentState_e *s_state,
+							DataState_e *d_state,
 							FaultType_e *f_type)
 {
 	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
@@ -576,7 +576,7 @@ getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode,
 
         if (d_state)
             *d_state = pmModuleState->dataState;
-		
+
 		if (f_type)
 			*f_type = pmModuleState->faultType;
 	}
@@ -591,7 +591,7 @@ getPrimaryMirrorModeStatus(char *bufOut, int bufSize)
 	SegmentState_e s_state;
 	DataState_e d_state;
 	FaultType_e f_type;
-	
+
 	assertModuleInitialized();
 
 	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
@@ -605,12 +605,12 @@ getPrimaryMirrorModeStatus(char *bufOut, int bufSize)
  */
 void
 primaryMirrorGetFilerepArguments(
-	FileRepRole_e	*fileRepRoleOut, 
-	SegmentState_e	*segmentStateOut, 
+	FileRepRole_e	*fileRepRoleOut,
+	SegmentState_e	*segmentStateOut,
 	DataState_e		*dataStateOut,
 	char **primaryHostAddressOut,
 	int *primaryPortOut,
-	char **mirrorHostAddressOut, 
+	char **mirrorHostAddressOut,
 	int *mirrorPortOut,
 	bool *fullSyncOut)
 {
@@ -679,12 +679,12 @@ setFullResync(bool isFullResync)
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
-	
+
 bool
 isResyncRunning(void)
 {
 	assertModuleInitialized();
-	
+
 	return pmModuleState->isResyncRunning;
 }
 
@@ -702,15 +702,15 @@ bool
 isDatabaseRunning(void)
 {
 	bool isDatabaseRunning = FALSE;
-	
+
 	assertModuleInitialized();
-	
+
 	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
 	    isDatabaseRunning = pmModuleState->isDatabaseRunning;
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
-	
+
 	return(isDatabaseRunning);
 }
 
@@ -775,7 +775,7 @@ getFileRepRoleAndState(
 				fileRepRole = mode == PMModePrimarySegment ? FileRepPrimaryRole : FileRepMirrorRole;
 				dataState = pmModuleState->dataState;
 				segmentState = pmModuleState->segmentState;
-				    
+
 				if (isInFilerepTransition)
 				{
 					transitionTargetDataState = pmModuleState->requestedTransition.dataState;
@@ -784,7 +784,7 @@ getFileRepRoleAndState(
 				{
 					transitionTargetDataState = DataStateNotInitialized;
 				}
-				    
+
 				break;
 			default:
 				fileRepRole = FileRepNoRoleConfigured;
@@ -1122,7 +1122,7 @@ primaryMirrorHandlePostmasterReset(void)
 	{
 		transitionToFault = false;
 	}
-    
+
 	pmLocalState.doNextResetToFault = false;
 
 	elog(LOG,
@@ -1345,7 +1345,7 @@ updateDataStateUnderSpinLock(DataState_e dataState)
 		{
 			pmModuleState->isResyncRunning = true;
 		}
-		pmModuleState->dataState = dataState;		
+		pmModuleState->dataState = dataState;
 		return true;
 	}
 	return false;
@@ -1408,9 +1408,9 @@ updateSegmentState(SegmentState_e segmentState, FaultType_e faultType)
 		else if (curState != segmentState)
 		{
 			/* During change tracking failure is reported by signaling postmaster Reset (no Fault) */
-			if (! (segmentState == SegmentStateFault && 
+			if (! (segmentState == SegmentStateFault &&
 				   pmModuleState->dataState == DataStateInChangeTracking))
-			{					
+			{
 				isUpdated = TRUE;
 			}
 			else
@@ -1424,7 +1424,7 @@ updateSegmentState(SegmentState_e segmentState, FaultType_e faultType)
 		if (isUpdated)
 		{
 			pmModuleState->segmentState = segmentState;
-			
+
 			if (segmentState == SegmentStateFault)
 			{
 				if (pmModuleState->faultType == FaultTypeNotInitialized)
@@ -1435,7 +1435,7 @@ updateSegmentState(SegmentState_e segmentState, FaultType_e faultType)
 		}
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
-	
+
 	return isUpdated;
 }
 
@@ -1500,18 +1500,18 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 
 		updateDataStateUnderSpinLock(args->dataState);
 		pmModuleState->segmentState = segmentState;
-		
+
 		pmModuleState->isInFaultFromPostmasterReset = false;
 
 		pmModuleState->forceFullResync = args->forceFullResync;
-		
+
 		if (segmentState != SegmentStateFault)
 		{
 			pmModuleState->faultType = FaultTypeNotInitialized;
 		}
 
         /* we've reached the point of no-return, so update this */
-        pmModuleState->mode = args->mode;		
+        pmModuleState->mode = args->mode;
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
@@ -1587,14 +1587,14 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 		Assert(!IsFilerepProcessRunning());
 
 		copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
-		
+
 		/**
 		 * must be after copying the transition input parameters;
 		 * report to prober that we failed to reset peer;
 		 */
 		pmModuleState->isInFaultFromPostmasterReset = true;
 		updateSegmentState(SegmentStateFault, FaultTypeMirror);
-        
+
 		result = PMTransitionSuccess;
 	}
 	else
@@ -1709,7 +1709,7 @@ stepDoDatabaseStartup(TransitionState nextState, TransitionState *stateInOut)
 	if (IsDatabaseInRunMode())
 	{
 		pmModuleState->isDatabaseRunning = true;
-	}	
+	}
 	*stateInOut = TSDone;
 	return PMTransitionSuccess;
 }
@@ -1789,7 +1789,7 @@ stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut
 	SegmentState_e segmentState;
 
 	getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL, NULL);
-	
+
 	if (!IsFilerepProcessRunning() ||
 		segmentState == SegmentStateFault)
 	{
@@ -2062,7 +2062,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 				/* if filerep wants to be notified
 				 * when XLOG crash recovery has completed then do that
 				 */
-			
+
 				/*
 				 * update segment states
 				 */
@@ -2090,7 +2090,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 				/** tell filerep processes that they can begin resync now! */
 				NotifyProcessesOfFilerepStateChange();
 			}
-			
+
 			*stateInOut = TSDone;
 			return PMTransitionSuccess;
 
@@ -2319,9 +2319,9 @@ makeRelativeToPeerTxnFilespace(char *path)
         return fullPath;
 }
 
-/* 
+/*
  * Check if the filespace information is consistent between persistant node filespace info
- * and the values read from the flat files 
+ * and the values read from the flat files
  */
 bool
 isFilespaceInfoConsistent(void)
@@ -2493,8 +2493,8 @@ primaryMirrorPopulateFilespaceInfo(void)
 
                 fclose(fp);
 
-		ereport(LOG, (errmsg("temporary files filespace configuration: Filespace OID %d Filespace locations - local:%s peer:%s\n", 
-					pmModuleState->tempFilespaceOID, pmModuleState->tempFilespacePath, 
+		ereport(LOG, (errmsg("temporary files filespace configuration: Filespace OID %d Filespace locations - local:%s peer:%s\n",
+					pmModuleState->tempFilespaceOID, pmModuleState->tempFilespacePath,
 					pmModuleState->peerTempFilespacePath[0] ? pmModuleState->peerTempFilespacePath : "Mirror filespace not configured")));
         }
 	else
@@ -2554,26 +2554,26 @@ primaryMirrorPopulateFilespaceInfo(void)
                 fclose(fp);
 
 		ereport(LOG, (errmsg("transaction files filespace configuraton: Filespace OID %d filespace locations - local:%s peer:%s",
-        				pmModuleState->txnFilespaceOID, pmModuleState->txnFilespacePath, 
+        				pmModuleState->txnFilespaceOID, pmModuleState->txnFilespacePath,
 					pmModuleState->peerTxnFilespacePath[0] ? pmModuleState->peerTxnFilespacePath : "Mirror filespace not configured")));
 	}
 	else
 		ereport(LOG, (errmsg("transaction files using default pg_system filespace")));
 
-			
+
 }
 
-/* 
+/*
  * Return true if the directory is one of those that can be configured on
- * a different filespace 
+ * a different filespace
  */
-bool 
+bool
 isTxnDir(char *path)
 {
 	/* Return true only if the directory is relative to default directory */
 	if (isAbsolutePath(path))
 		return false;
- 
+
 	if (strstr(path, XLOGDIR))
 		return true;
 
@@ -2598,7 +2598,7 @@ isTxnDir(char *path)
 	return false;
 }
 
-int 
+int
 isAbsolutePath(const char *path)
 {
         if (path[0] == '/')
@@ -2606,7 +2606,7 @@ isAbsolutePath(const char *path)
         return 0;
 }
 
-bool 
+bool
 isFilespaceUsedForTempFiles(Oid fsoid)
 {
 	assertModuleInitialized();
@@ -2616,7 +2616,7 @@ isFilespaceUsedForTempFiles(Oid fsoid)
 	return false;
 }
 
-bool 
+bool
 isFilespaceUsedForTxnFiles(Oid fsoid)
 {
 	assertModuleInitialized();
@@ -2624,4 +2624,15 @@ isFilespaceUsedForTxnFiles(Oid fsoid)
 		return true;
 
 	return false;
+}
+
+/*
+ * Reset (unlock) all Primary Mirror state spin locks.
+ */
+void primaryMirrorModeResetSpinLocks(void)
+{
+	if (pmModuleState != NULL)
+	{
+		SpinLockInit(&pmModuleState->lock);
+	}
 }
