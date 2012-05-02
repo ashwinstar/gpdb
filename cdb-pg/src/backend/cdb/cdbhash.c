@@ -555,17 +555,41 @@ hashDatum(Datum datum, Oid type, datumHashFunction hashFn, void *clientData)
 			
 		/*
 		 * ANYARRAY is a pseudo-type. We use it to include
-		 * any of the array types (OIDs 1007-1033 in pg_type.h).
-		 * caller needs to be sure the type is ANYARRAYOID
-		 * before calling cdbhash on an array (INSERT and COPY do so).
+		 * any of the array types.  The caller needs to be sure
+		 * to set the type ANYARRAYOID before calling cdbhash on an array.
 		 */
-		case ANYARRAYOID:	
-					
+		case ANYARRAYOID:
+		{
+			Oid		elmtype;
+			int16	elmlen;
+			bool	elmbyval;
+			char	elmalign;
+			int			i, length;
+			Datum	   *values;
+			bool	   *nulls;
+
 			arrbuf = DatumGetArrayTypeP(datum);
-			len = VARSIZE(arrbuf) - VARHDRSZ;
-			buf = VARDATA(arrbuf);
-			break;
-			
+			elmtype = ARR_ELEMTYPE(arrbuf);
+			get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
+
+			/*
+			 * For array types, we calculate tha hash value element by element
+			 * so that extra padding bytes between elements (in by-ref case)
+			 * don't bother.  Also, we consider NULL elements.
+			 */
+			deconstruct_array(arrbuf, elmtype,
+							  elmlen, elmbyval, elmalign,
+							  &values, &nulls, &length);
+			for (i = 0; i < length; i++)
+			{
+				if (nulls[i])
+					cdbhashnull((CdbHash *) clientData);
+				else
+					cdbhash((CdbHash *) clientData, values[i], elmtype);
+			}
+			return;
+		}
+
 		case INT2VECTOROID:
 			i2vec_buf = (int2vector *) DatumGetPointer(datum);
 			len = i2vec_buf->dim1 * sizeof(int2);

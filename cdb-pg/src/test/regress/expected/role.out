@@ -11,62 +11,62 @@ NOTICE:  resource queue required -- using default resource queue "pg_default"
 CREATE SCHEMA common_schema;
 /* Alter Role Set statement_mem */
 ALTER ROLE role_112911 SET statement_mem TO '150MB';
-SELECT gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT gp_segment_id, rolname, rolconfig
   FROM pg_authid WHERE rolname = 'role_112911'
  UNION ALL
-SELECT DISTINCT 0 as gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolconfig
   FROM gp_dist_random('pg_authid') WHERE rolname = 'role_112911';
- gp_segment_id |   rolname   |      rolconfig      
----------------+-------------+---------------------
-            -1 | role_112911 | statement_mem=150MB
-             0 | role_112911 | statement_mem=150MB
+ gp_segment_id |   rolname   |       rolconfig       
+---------------+-------------+-----------------------
+            -1 | role_112911 | {statement_mem=150MB}
+             0 | role_112911 | {statement_mem=150MB}
 (2 rows)
 
 /* Alter Role Set search_path */
 ALTER ROLE role_112911 SET search_path = common_schema;
-SELECT gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT gp_segment_id, rolname, rolconfig
   FROM pg_authid WHERE rolname = 'role_112911'
  UNION ALL
-SELECT DISTINCT 0 as gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolconfig
   FROM gp_dist_random('pg_authid') WHERE rolname = 'role_112911';
- gp_segment_id |   rolname   |                   rolconfig                   
----------------+-------------+-----------------------------------------------
-            -1 | role_112911 | statement_mem=150MB,search_path=common_schema
-             0 | role_112911 | statement_mem=150MB,search_path=common_schema
+ gp_segment_id |   rolname   |                    rolconfig                    
+---------------+-------------+-------------------------------------------------
+            -1 | role_112911 | {statement_mem=150MB,search_path=common_schema}
+             0 | role_112911 | {statement_mem=150MB,search_path=common_schema}
 (2 rows)
 
 /* Alter Role Reset statement_mem */
 ALTER ROLE role_112911 RESET statement_mem;
-SELECT gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT gp_segment_id, rolname, rolconfig
   FROM pg_authid WHERE rolname = 'role_112911'
  UNION ALL
-SELECT DISTINCT 0 as gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolconfig
   FROM gp_dist_random('pg_authid') WHERE rolname = 'role_112911';
- gp_segment_id |   rolname   |         rolconfig         
----------------+-------------+---------------------------
-            -1 | role_112911 | search_path=common_schema
-             0 | role_112911 | search_path=common_schema
+ gp_segment_id |   rolname   |          rolconfig          
+---------------+-------------+-----------------------------
+            -1 | role_112911 | {search_path=common_schema}
+             0 | role_112911 | {search_path=common_schema}
 (2 rows)
 
 /* Alter Role Set statement_mem */
 ALTER ROLE role_112911 SET statement_mem = 100000;
-SELECT gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT gp_segment_id, rolname, rolconfig
   FROM pg_authid WHERE rolname = 'role_112911'
  UNION ALL
-SELECT DISTINCT 0 as gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolconfig
   FROM gp_dist_random('pg_authid') WHERE rolname = 'role_112911';
- gp_segment_id |   rolname   |                   rolconfig                    
----------------+-------------+------------------------------------------------
-            -1 | role_112911 | search_path=common_schema,statement_mem=100000
-             0 | role_112911 | search_path=common_schema,statement_mem=100000
+ gp_segment_id |   rolname   |                    rolconfig                     
+---------------+-------------+--------------------------------------------------
+            -1 | role_112911 | {search_path=common_schema,statement_mem=100000}
+             0 | role_112911 | {search_path=common_schema,statement_mem=100000}
 (2 rows)
 
 /* Alter Role Reset All */
 ALTER ROLE role_112911 RESET ALL;
-SELECT gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT gp_segment_id, rolname, rolconfig
   FROM pg_authid WHERE rolname = 'role_112911'
  UNION ALL
-SELECT DISTINCT 0 as gp_segment_id, rolname, array_to_string(rolconfig,',') as rolconfig
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolconfig
   FROM gp_dist_random('pg_authid') WHERE rolname = 'role_112911';
  gp_segment_id |   rolname   | rolconfig 
 ---------------+-------------+-----------
