@@ -163,16 +163,20 @@ class GpCronDump(Operation):
         f.close()
         os.chmod(filePathName, stat.S_IREAD | stat.S_IWRITE)
 
-    def scpToHosts(self, hostset, credentials):
-        filePathName = os.path.expanduser("~") + "/.ddconfig"
-        self.writeToFile(credentials, filePathName)
+    def sshToHosts(self, hostset, host, user, password):
+        ddcmd = 'source ' + os.environ['GPHOME'] + '/greenplum_path.sh; ' + os.environ['GPHOME'] + '/bin/gpddboost  --setCredential --hostname=' + host + ' --user=' + re.escape(user) + ' --password=' + re.escape(password)
+      
         for host in hostset:
-            cmdline = 'scp ' + filePathName + ' $USER@' + host + ':~'
-            if (os.system(cmdline) == 0):
-                logger.info(".ddconfig delivered successfully to %s " % host)
+            cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
+            logger.debug("running gpddboost on host %s: %s" % (host, ddcmd))
+            logger.debug("cmd: %s " % cmdline)
+
+            if not os.system(cmdline):
+                logger.info("config delivered successfully to %s " % host)
             else:
-                logger.warn("problem delivering the .ddconfig file to %s " % host)
-                logger.warn("cmd: %s " % cmdline)
+                logger.warn("problem delivering the config to %s " % host)
+
+        logger.debug("done with sshTOHosts. credentials were set on all servers")
 
     def execute(self):
         if bool(self.ddboost_host) or bool(self.ddboost_user):
@@ -186,8 +190,7 @@ class GpCronDump(Operation):
                 hostset = self.getHostSet(self.getGpArray())
                 p = getpass()
                 self.validatePassword(password = p)
-                credentials = self.ddboost_host + "\n"  + self.ddboost_user + "\n" + p + "\n"
-                self.scpToHosts(hostset, credentials)
+                self.sshToHosts(hostset, self.ddboost_host, self.ddboost_user, p)
                 return 0;
             else:
                 raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
@@ -195,7 +198,7 @@ class GpCronDump(Operation):
         if self.ddboost_config_remove:
             if self.ddboost_config_remove and self.only_ddboost_options():
                 hostset = self.getHostSet(self.getGpArray())
-                self.scpToHosts(hostset, '')
+                self.sshToHosts(hostset, '','','')
                 return 0;
             else:
                 raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
@@ -574,9 +577,6 @@ def create_parser():
     addTo.add_option('--exclude-table-file', dest='exclude_dump_tables_file', metavar="<filename>",
                      help="Exclude the tables named in this file from the dump. Option can be used only once.")
 
-    
-    
-    
     # TODO: Dead options. Remove eventually.
     addTo.add_option('-i', action='store_true', dest='bypass_cluster_check', default=False, help="No longer supported.")
     addTo.add_option('-p', action='store_true', dest='dump_primaries', default=True, help="No longer supported.")  

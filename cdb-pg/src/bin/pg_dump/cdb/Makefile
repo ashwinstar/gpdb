@@ -25,6 +25,7 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 ifeq ($(enable_ddboost), yes)
 DDBOOSTLIB += -lDDBoost
+override CFLAGS += -I$(top_builddir)/../ext/$(BLD_ARCH)/include/rsa_csp -I$(top_builddir)/../ext/$(BLD_ARCH)/include/rsa_csp/lb
 endif
 
 PGDUMP_SRCDIR= $(top_srcdir)/src/bin/pg_dump
