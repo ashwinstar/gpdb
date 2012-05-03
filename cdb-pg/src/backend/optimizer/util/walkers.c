@@ -1258,6 +1258,13 @@ extract_nodes_walker(Node *node, extract_context *context)
 			/* Do not descend into subplans */
 			return false;
 		}
+		/*
+		 * Although the flag indicates the caller wants to
+		 * descend into subqueries, SubPlan seems special;
+		 * Some partitioning code assumes this should return
+		 * immediately without descending.  See MPP-17168.
+		 */
+		return false;
 	}
 	if (nodeTag(node) == T_SubqueryScan
 		&& !context->descendIntoSubqueries)
