@@ -2372,13 +2372,10 @@ exec_prepare_plan(PLpgSQL_execstate *estate,
 
 	SPI_freeplan(plan);
 
-	if (Gp_role != GP_ROLE_EXECUTE && expr->expr_simple_expr == NULL)
+	if (Gp_role != GP_ROLE_EXECUTE)
 	{
 		/* 
 		 * if we are not in EXECUTE mode, check if plan should be cached. 
-		 * note, we don't check for simple expressions, as simple 
-		 * expressions are not evaluated via the SPI interface and we don't 
-		 * free the plans for them. 
 		 */
 		exec_check_cache_plan(expr);
 	}
@@ -3934,12 +3931,6 @@ exec_eval_expr(PLpgSQL_execstate *estate,
 	int			rc;
 
 	
-	/* if we find a cached plan, check if we want to use it */
-	if (expr->plan != NULL)
-	{
-		exec_free_plan(expr);
-	}
-
 	/*
 	 * If not already done create a plan for this expression
 	 */
