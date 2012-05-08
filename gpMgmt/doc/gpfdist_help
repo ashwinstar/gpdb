@@ -95,7 +95,7 @@ physically written to the underlying hardware.
 
 --ssl certificate_path
 
-Adds SSL encryption to data transfered with gpfdist. After executing 
+Adds SSL encryption to data transferred with gpfdist. After executing 
 gpfdist with the -ssl <certificate_path> option, the only way 
 to load data from this file server is with the gpfdists protocol. 
 The location specified in certificate_path must 
