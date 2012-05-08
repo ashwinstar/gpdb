@@ -694,13 +694,6 @@ class GPFilespace:
             self.db = None
 
     # --------------------------------------------------------------------
-    def validate_superuser(self):
-        try:
-            self.connect()
-        finally:
-            self.close_conn()
-
-    # --------------------------------------------------------------------
     def get_configuration(self):
         '''
         GPFilespace::get_configuration()
@@ -1161,10 +1154,6 @@ in a Greenplum system (primary segment, mirror segment and master instances).
 Once a filespace is created, it can be used by one or more tablespaces.
 
 """)
-
-        gpf = GPFilespace(opt)
-        gpf.validate_superuser() 
-
         if opt.movetransfilespace:
             if opt.movetransfilespace == 'default':
                 opt.movetransfilespace = PG_SYSTEM_FILESPACE
@@ -1173,19 +1162,21 @@ Once a filespace is created, it can be used by one or more tablespaces.
             if opt.movetempfilespace == 'default':
                 opt.movetempfilespace = PG_SYSTEM_FILESPACE
             MoveFilespace(opt.movetempfilespace, FileType.TEMPORARY_FILES).run()
-        elif opt.showtransfilespace:
-            gpf.do_showfilespace(FileType.TRANSACTION_FILES)
-        elif opt.showtempfilespace:
-            gpf.do_showfilespace(FileType.TEMPORARY_FILES)
         else:
-            try:
-                gpf.Setup()
-                if opt.config == None:
-                    gpf.generate_config()
-                else:
-                    gpf.execute_config()
-            finally:
-                gpf.cleanup()
+            gpf = GPFilespace(opt)
+            if opt.showtransfilespace:
+                gpf.do_showfilespace(FileType.TRANSACTION_FILES)
+            elif opt.showtempfilespace:
+                gpf.do_showfilespace(FileType.TEMPORARY_FILES)
+            else:
+                try:
+                    gpf.Setup()
+                    if opt.config == None:
+                        gpf.generate_config()
+                    else:
+                        gpf.execute_config()
+                finally:
+                    gpf.cleanup()
 
         logger.debug("Done")
         sys.exit(0)
