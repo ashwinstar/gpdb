@@ -247,7 +247,8 @@ PORT - Optional. Specifies Greenplum master port. If not specified,
        master port on the command line using the -p option.
 
 GPLOAD - Required. Begins the load specification section. A GPLOAD 
-         specification must have an INPUT and an OUTPUT section defined.
+         specification must have an INPUT and an OUTPUT section 
+         defined.
 
 INPUT - Required. Defines the location and the format of the input 
         data to be loaded. gpload will start one or more instances of 
@@ -261,50 +262,54 @@ SOURCE - Required. The SOURCE block of an INPUT specification defines
          the location of a source file. An INPUT section can have more 
          than one SOURCE block defined. Each SOURCE block defined 
          corresponds to one instance of the gpfdist file distribution 
-         program that will be started on the local machine. Each SOURCE 
-         block defined must have a FILE specification.
+         program that will be started on the local machine. Each 
+         SOURCE block defined must have a FILE specification.
 
-LOCAL_HOSTNAME - Optional. Specifies the host name or IP address of the 
-                 local machine on which gpload is running. If this machine 
-                 is configured with multiple network interface cards(s), 
-                 you can specify the host name or IP of each individual NIC 
-                 to allow network traffic to use all NICs simultaneously. 
-                 The default is to use the local machine's primary host 
-                 name or IP only. 
+LOCAL_HOSTNAME - Optional. Specifies the host name or IP address of 
+                 the local machine on which gpload is running. If this 
+                 machine is configured with multiple network interface 
+                 cards(s), you can specify the host name or IP of each 
+                 individual NIC to allow network traffic to use all 
+                 NICs simultaneously. The default is to use the local 
+                 machine's primary host name or IP only. 
 
 PORT - Optional. Specifies the specific port number that the gpfdist 
        file distribution program should use. You can also supply a 
        PORT_RANGE to select an available port from the specified range. 
-       If both PORT and PORT_RANGE are defined, then PORT takes precedence. 
-       If neither PORT or PORT_RANGE are defined, the default is to select 
-       an available port between 8000 and 9000. If multiple host names are 
-       declared in LOCAL_HOSTNAME, this port number is used for all hosts. 
-       This configuration is desired if you want to use all NICs to load 
-       the same file or set of files in a given directory location.
+       If both PORT and PORT_RANGE are defined, then PORT takes 
+       precedence. If neither PORT or PORT_RANGE are defined, the 
+       default is to select an available port between 8000 and 9000. 
+       If multiple host names are declared in LOCAL_HOSTNAME, this port 
+       number is used for all hosts. This configuration is desired if 
+       you want to use all NICs to load the same file or set of files 
+       in a given directory location.
 
-PORT_RANGE - Optional. Can be used instead of PORT to supply a range of 
-             port numbers from which gpload can choose an available port 
-             for this instance of the gpfdist file distribution program.
+PORT_RANGE - Optional. Can be used instead of PORT to supply a range 
+             of port numbers from which gpload can choose an available 
+             port for this instance of the gpfdist file distribution 
+             program.
 
 FILE - Required. Specifies the location of a file, named pipe, or 
        directory location on the local file system that contains data 
        to be loaded. You can declare more than one file so long as the 
        data is of the same format in all files specified. If the files 
        are compressed using gzip or bzip2 (have a .gz or .bz2 file 
-       extension), the files will be uncompressed automatically (provided 
-       that gunzip or bunzip2 is in your path). When specifying which source 
-       files to load, you can use the wildcard character (*) or other 
-       C-style pattern matching to denote multiple files. The files 
-       specified are assumed to be relative to the current directory 
-       from which gpload is executed (or you can declare an absolute path).
+       extension), the files will be uncompressed automatically 
+       (provided that gunzip or bunzip2 is in your path). When 
+       specifying which source files to load, you can use the wildcard 
+       character (*) or other C-style pattern matching to denote 
+       multiple files. The files specified are assumed to be relative 
+       to the current directory from which gpload is executed (or you 
+       can declare an absolute path).
 
-SSL - Optional. Specifies usage of SSL encryption. If SSL is set to true, 
-      gpload starts the gpfdist server with the --ssl option and uses the 
-      gpfdists protocol.
+SSL - Optional. Specifies usage of SSL encryption. If SSL is set to 
+      true, gpload starts the gpfdist server with the --ssl option and 
+      uses the gpfdists protocol.
 
 CERTIFICATES_PATH - Required when SSL is true; cannot be specified when 
                     SSL is false or unspecified. The location specified 
-                    in CERTIFICATES_PATH must contain the following files:
+                    in CERTIFICATES_PATH must contain the following 
+                    files:
 
                     - The server certificate file, server.crt
                     - The server private key file, server.key
@@ -314,18 +319,16 @@ CERTIFICATES_PATH - Required when SSL is true; cannot be specified when
                     as certificate_path.
 
 COLUMNS - Optional. Specifies the schema of the source data file(s) 
-          in the format of field_name: data_type. The DELIMITER character 
-          in the source file is what separates two data value fields 
-          (columns). A row is determined by a line feed character (0x0a).
-          If the input COLUMNS are not specified, then the schema of the 
-          output TABLE is implied, meaning that the source data must 
-          have the same column order, number of columns, and data format 
-          as the target table. The default source-to-target mapping is 
-          based on a match of column names as defined in this section 
-          and the column names in the target TABLE. This default 
+          in the format of field_name: data_type. The DELIMITER 
+          character in the source file is what separates two data value 
+          fields (columns). A row is determined by a line feed character 
+          (0x0a). If the input COLUMNS are not specified, then the 
+          schema of the output TABLE is implied, meaning that the source 
+          data must have the same column order, number of columns, and 
+          data format as the target table. The default source-to-target 
+          mapping is based on a match of column names as defined in this 
+          section and the column names in the target TABLE. This default 
           mapping can be overridden using the MAPPING section.
-	Note: MATCH_COLUMNS does not have to be a super set of the 
-	distribution key. The target table cannow be randomly distirbuted.
 
 FORMAT - Optional. Specifies the format of the source data file(s); 
          either plain text (TEXT) or comma separated values (CSV) format. 
@@ -336,29 +339,30 @@ DELIMITER - Optional. Specifies a single ASCII character that separates
             tab character in TEXT mode, a comma in CSV mode.
 
 ESCAPE - Optional. Specifies the single character that is used for C 
-         escape sequences (such as \n,\t,\100, and so on) and for escaping 
-         data characters that might otherwise be taken as row or column 
-         delimiters. Make sure to choose an escape character that is not 
-         used anywhere in your actual column data. The default escape 
-         character is a \ (backslash) for text-formatted files and a "
-         (double quote for csv-formatted files), however it is possible to
-         use another character to represent an escape. It is also possible 
-         to disable escaping by specifying the value 'OFF' as the escape 
-         value. This is very useful for data such as text-formatted web 
-         log data that has many embedded backslashes that are not intended 
-         to be escapes.
+         escape sequences (such as \n,\t,\100, and so on) and for 
+         escaping data characters that might otherwise be taken as row
+         or column delimiters. Make sure to choose an escape character 
+         that is not used anywhere in your actual column data. The 
+         default escape character is a \ (backslash) for text-formatted 
+         files are a "(double quote for csv-formatted files), however it 
+         is possible to use another character to represent an escape. It 
+         is also possible to disable escaping by specifying the value 
+         'OFF' as the escape value. This is very useful for data such as 
+         text-formatted web log data that has many embedded backslashes 
+         that are not intended to be escapes.
 
-NULL_AS - Optional. Specifies the string that represents a null value. The 
-          default is \N (backslash-N) in TEXT mode, and an empty value with 
-          no quotations in CSV mode. You might prefer an empty string even 
-          in TEXT mode for cases where you do not want to distinguish nulls 
-          from empty strings. Any source data item that matches this string 
-          will be considered a null value.
+NULL_AS - Optional. Specifies the string that represents a null value. 
+          The default is \N (backslash-N) in TEXT mode, and an empty value 
+          with no quotations in CSV mode. You might prefer an empty string 
+          even in TEXT mode for cases where you do not want to distinguish 
+          nulls from empty strings. Any source data item that matches this 
+          string will be considered a null value.
 
 FORCE_NOT_NULL - Optional. In CSV mode, processes each specified column as 
                  though it were quoted and hence not a NULL value. For the 
-                 default null string in CSV mode (nothing between two delimiters), 
-                 this causes missing values to be evaluated as zero-length strings.
+                 default null string in CSV mode (nothing between two 
+                 delimiters), this causes missing values to be evaluated 
+                 as zero-length strings.
 
 QUOTE - Required when FORMAT is CSV. Specifies the quotation character 
         for CSV mode. The default is double-quote (").
@@ -380,22 +384,22 @@ ERROR_LIMIT - Optional. Enables single row error isolation mode for
               format errors will be discarded provided that the error 
               limit count is not reached on any Greenplum segment instance 
               during input processing. If the error limit is not reached, 
-              all good rows will be loaded and any error rows will either be 
-              discarded or logged to the table specified in ERROR_TABLE. 
+              all good rows will be loaded and any error rows will either 
+              be discarded or logged to the table specified in ERROR_TABLE. 
               The default is to abort the load operation on the first error 
-              encountered. Note that single row error isolation only applies 
-              to data rows with format errors; for example, extra or missing 
-              attributes, attributes of a wrong data type, or invalid client 
-              encoding sequences. Constraint errors, such as primary key 
-              violations, will still cause the load operation to abort if 
-              encountered.
+              encountered. Note that single row error isolation only 
+              applies to data rows with format errors; for example, extra 
+              or missing attributes, attributes of a wrong data type, or 
+              invalid client encoding sequences. Constraint errors, such 
+              as primary key violations, will still cause the load 
+              operation to abort if encountered.
 
 ERROR_TABLE - Optional when ERROR_LIMIT is declared. Specifies an error 
               table where rows with formatting errors will be logged when 
               running in single row error isolation mode. You can then 
-              examine this error table to see error rows that were not loaded 
-              (if any). If the error_table specified already exists, it 
-              will be used. If it does not exist, it will be 
+              examine this error table to see error rows that were not 
+              loaded (if any). If the error_table specified already exists, 
+              it will be used. If it does not exist, it will be 
               automatically generated.
 
 OUTPUT - Required. Defines the target table and final data column values 
@@ -412,27 +416,25 @@ MODE - Optional. Defaults to INSERT if not specified. There are three
        * UPDATE - Updates the UPDATE_COLUMNS of the target table where 
            the rows have MATCH_COLUMNS attribute values equal to those 
            of the input data, and the optional UPDATE_CONDITION is true.
-           UPDATE is not supported on tables with a random distribution policy.
 
        * MERGE - Inserts new rows and updates the UPDATE_COLUMNS of 
            existing rows where MATCH_COLUMNS attribute values are equal 
-           to those of the input data, and the optional UPDATE_CONDITION is 
-           true. New rows are identified when the MATCH_COLUMNS value in 
-           the source data does not have a corresponding value in the existing 
-           data of the target table. In those cases, the entire row from the source 
-           file is inserted, not only the MATCH and UPDATE columns.If there are 
-           multiple new MATCH_COLUMNS values that are the same, only one new 
-           row for that value will be inserted (use UPDATE_CONDITION to filter 
-           out the rows you want to discard). MERGE is not supported on tables 
-           with a random distribution policy.
+           to those of the input data, and the optional UPDATE_CONDITION 
+           is true. New rows are identified when the MATCH_COLUMNS value 
+           in the source data does not have a corresponding value in the 
+           existing data of the target table. In those cases, the entire 
+           row from the source file is inserted, not only the MATCH and 
+           UPDATE columns. If there are multiple new MATCH_COLUMNS values 
+           that are the same, only one new row for that value will be 
+           inserted (use UPDATE_CONDITION to filter out the rows you want 
+           to discard). 
 
 MATCH_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the 
                 column(s) to use as the join condition for the update. 
-                The attribute value in the specified target column(s) must 
-                be equal to that of the corresponding source data column(s) 
-                in order for the row to be updated in the target table.
-                The MATCH_COLUMNS declared must be the same as the 
-                Greenplum distribution key columns for the table.
+                The attribute value in the specified target column(s) 
+                must be equal to that of the corresponding source data 
+                column(s) in order for the row to be updated in the target 
+                table.
 
 UPDATE_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the 
                  column(s) to update for the rows that meet the 
@@ -441,34 +443,35 @@ UPDATE_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the
                  Greenplum distribution key for the table.
 
 UPDATE_CONDITION - Optional. Specifies a Boolean condition (similar to 
-                   what you would declare in a WHERE clause) that must be 
-                   met in order for a row in the target table to be 
+                   what you would declare in a WHERE clause) that must 
+                   be met in order for a row in the target table to be 
                    updated (or inserted in the case of a MERGE).
 
 MAPPING - Optional. If a mapping is specified, it overrides the default 
           source-to-target column mapping. The default source-to-target 
           mapping is based on a match of column names as defined in the 
-          source COLUMNS section and the column names of the target TABLE. 
+          source COLUMNS section and the column names of the target 
+          TABLE. 
           A mapping is specified as either:
             target_column_name: source_column_name
            or
             target_column_name: 'expression'
-          Where expression is any expression that you would specify in the 
-          SELECT list of a query, such as a constant value, a column 
+          Where expression is any expression that you would specify in 
+          the SELECT list of a query, such as a constant value, a column 
           reference, an operator invocation, a function call, and so on.
 
-PRELOAD - Optional. Specifies operations to run prior to the load operation. 
-          Right now there are 2 preload operations: TRUNCATE and 
-          REUSE_TABLES.
+PRELOAD - Optional. Specifies operations to run prior to the load 
+          operation. Right now there are 2 preload operations: TRUNCATE 
+          and REUSE_TABLES.
 
 TRUNCATE - Optional. If set to true, gpload will remove all rows in the 
            target table prior to loading it.
 
 REUSE_TABLES - Optional. If set to true, gpload will not drop the external 
-               table objects and staging table objects it creates. These objects 
-               will be reused for future load operations that use the same load 
-               specifications. This improves performance of trickle loads 
-               (ongoing small loads to the same target table).
+               table objects and staging table objects it creates. These 
+               objects will be reused for future load operations that use 
+               the same load specifications. This improves performance of 
+               trickle loads (ongoing small loads to the same target table).
 
 SQL - Optional. Defines SQL commands to run before and/or after the load 
       operation. Commands that contain spaces or special characters must 
