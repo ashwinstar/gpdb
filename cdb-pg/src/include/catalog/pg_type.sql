@@ -696,6 +696,17 @@
 -- ARRAY TYPE regtype
 -- #define REGTYPEARRAYOID 2211
 
+ CREATE TYPE txid_snapshot(
+   INPUT = txid_snapshot_in,
+   OUTPUT = txid_snapshot_out,
+   RECEIVE = txid_snapshot_recv,
+   SEND = txid_snapshot_send,
+   INTERNALLENGTH = -1,
+   STORAGE = extended,
+   ALIGNMENT = double
+ ) WITH (OID=2922, ARRAYOID=2923, DESCRIPTION="txid snapshot");
+-- #define TXID_SNAPSHOTOID	2922
+
  CREATE TYPE nb_classification(
  ) WITH (OID=3251, RELID=3250);
 

@@ -5580,3 +5580,23 @@
  CREATE FUNCTION gp_dummy_compression_validator(internal) RETURNS internal LANGUAGE internal VOLATILE AS 'dummy_compression_validator' WITH (OID=3068, DESCRIPTION="Dummy compression validator");
  
  CREATE FUNCTION gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075, DESCRIPTION="Cancels a specific query");
+
+ CREATE FUNCTION txid_snapshot_in(cstring) RETURNS txid_snapshot LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_in' WITH (OID=2924, DESCRIPTION="I/O");
+
+ CREATE FUNCTION txid_snapshot_out(txid_snapshot) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_out' WITH (OID=2925, DESCRIPTION="I/O");
+
+ CREATE FUNCTION txid_snapshot_recv(internal) RETURNS txid_snapshot LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_recv' WITH (OID=2926, DESCRIPTION="I/O");
+
+ CREATE FUNCTION txid_snapshot_send(txid_snapshot) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_send' WITH (OID=2927, DESCRIPTION="I/O");
+ 
+ CREATE FUNCTION txid_current() RETURNS int8 LANGUAGE internal STABLE STRICT AS 'txid_current' WITH (OID=2928, DESCRIPTION="get current transaction ID");
+
+ CREATE FUNCTION txid_current_snapshot() RETURNS txid_snapshot LANGUAGE internal STABLE STRICT AS 'txid_current_snapshot' WITH (OID=2929, DESCRIPTION="get current snapshot");
+
+ CREATE FUNCTION txid_snapshot_xmin(txid_snapshot) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_xmin' WITH (OID=2930, DESCRIPTION="get xmin of snapshot");
+
+ CREATE FUNCTION txid_snapshot_xmax(txid_snapshot) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_xmax' WITH (OID=2931, DESCRIPTION="get xmax of snapshot");
+
+ CREATE FUNCTION txid_snapshot_xip(txid_snapshot) RETURNS SETOF int8 LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_xip' WITH (OID=2932, DESCRIPTION="get set of in-progress txids in snapshot");
+ 
+ CREATE FUNCTION txid_visible_in_snapshot(int8, txid_snapshot) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'txid_visible_in_snapshot' WITH (OID=2933, DESCRIPTION="is xid visible in snapshot?");

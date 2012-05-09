@@ -1048,6 +1048,18 @@ extern Datum pg_advisory_unlock_int4(PG_FUNCTION_ARGS);
 extern Datum pg_advisory_unlock_shared_int4(PG_FUNCTION_ARGS);
 extern Datum pg_advisory_unlock_all(PG_FUNCTION_ARGS);
 
+/* txid.c */
+extern Datum txid_snapshot_in(PG_FUNCTION_ARGS);
+extern Datum txid_snapshot_out(PG_FUNCTION_ARGS);
+extern Datum txid_snapshot_recv(PG_FUNCTION_ARGS);
+extern Datum txid_snapshot_send(PG_FUNCTION_ARGS);
+extern Datum txid_current(PG_FUNCTION_ARGS);
+extern Datum txid_current_snapshot(PG_FUNCTION_ARGS);
+extern Datum txid_snapshot_xmin(PG_FUNCTION_ARGS);
+extern Datum txid_snapshot_xmax(PG_FUNCTION_ARGS);
+extern Datum txid_snapshot_xip(PG_FUNCTION_ARGS);
+extern Datum txid_visible_in_snapshot(PG_FUNCTION_ARGS);
+
 /* access/transam/twophase.c */
 extern Datum pg_prepared_xact(PG_FUNCTION_ARGS);
 

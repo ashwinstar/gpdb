@@ -104,14 +104,14 @@ CREATE FUNCTION @gpupgradeschemaname@.int28div(int2, int8) RETURNS int8 LANGUAGE
 	AS 'int28div' WITH (OID=3248, DESCRIPTION="divide");
 COMMENT ON FUNCTION @gpupgradeschemaname@.int28div(int2, int8) IS 'divide';
 
-CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = int28div, LEFTARG = "int2", RIGHTARG = "int8", OID=327);
-
 -- MPP-16121
 -- When commutator/negator is specified, we need to define ones with greater OID first,
 -- otherwise installcheck fails.  This is because the backend creates a shell operator
 -- first with a smaller OID but the catdump dumps the commutator option in only the
 -- operators with the smaller OIDs.  For the actual upgrade, this order doesn't matter
 -- because the OID is fixed by the OID option.
+CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = int28div, LEFTARG = "int2", RIGHTARG = "int8", OID=327);
+
 CREATE OPERATOR @gpupgradeschemaname@.* (PROCEDURE = int28mul, LEFTARG = "int2", RIGHTARG = "int8", OID=326, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.*));
 
 CREATE OPERATOR @gpupgradeschemaname@.- (PROCEDURE = int28mi, LEFTARG = "int2", RIGHTARG = "int8", OID=325);
@@ -125,6 +125,61 @@ CREATE OPERATOR @gpupgradeschemaname@.* (PROCEDURE = int82mul, LEFTARG = "int8",
 CREATE OPERATOR @gpupgradeschemaname@.- (PROCEDURE = int82mi, LEFTARG = "int8", RIGHTARG = "int2", OID=321);
 
 CREATE OPERATOR @gpupgradeschemaname@.+ (PROCEDURE = int82pl, LEFTARG = "int8", RIGHTARG = "int2", OID=320, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.+));
+
+-- MPP-16125
+-- txid_snapshot
+CREATE TYPE @gpupgradeschemaname@.txid_snapshot(OID=2922);
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_in(cstring) RETURNS @gpupgradeschemaname@.txid_snapshot LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_snapshot_in' WITH (OID=2924);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_in(cstring) IS 'I/O';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_out(@gpupgradeschemaname@.txid_snapshot) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_snapshot_out' WITH (OID=2925);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_out(@gpupgradeschemaname@.txid_snapshot) IS 'I/O';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_recv(internal) RETURNS @gpupgradeschemaname@.txid_snapshot LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_snapshot_recv' WITH (OID=2926);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_recv(internal) IS 'I/O';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_send(@gpupgradeschemaname@.txid_snapshot) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_snapshot_send' WITH (OID=2927);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_send(internal) IS 'I/O';
+
+CREATE TYPE @gpupgradeschemaname@.txid_snapshot(
+	INPUT = @gpupgradeschemaname@.txid_snapshot_in,
+	OUTPUT = @gpupgradeschemaname@.txid_snapshot_out,
+	RECEIVE = @gpupgradeschemaname@.txid_snapshot_recv,
+	SEND = @gpupgradeschemaname@.txid_snapshot_send,
+	INTERNALLENGTH = -1,
+	STORAGE = extended,
+	ALIGNMENT = double
+);
+COMMENT ON TYPE @gpupgradeschemaname@.txid_snapshot IS 'xid snapshot';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_current() RETURNS int8 LANGUAGE internal STABLE STRICT
+	AS 'txid_current' WITH (OID=2928);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_current() IS 'get current transaction ID';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_current_snapshot() RETURNS @gpupgradeschemaname@.txid_snapshot LANGUAGE internal STABLE STRICT
+	AS 'txid_current_snapshot' WITH (OID=2929);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_current_snapshot() IS 'get current snapshot';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_xmin(@gpupgradeschemaname@.txid_snapshot) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_snapshot_xmin' WITH (OID=2930);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_xmin(@gpupgradeschemaname@.txid_snapshot) IS 'get min of snapshot';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_xmax(@gpupgradeschemaname@.txid_snapshot) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_snapshot_xmax' WITH (OID=2931);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_xmax(@gpupgradeschemaname@.txid_snapshot) IS 'get max of snapshot';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_xip(@gpupgradeschemaname@.txid_snapshot) RETURNS SETOF int8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_snapshot_xip' WITH (OID=2932);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_xip(@gpupgradeschemaname@.txid_snapshot) IS 'get set of in-progress txids in snapshot';
+
+CREATE FUNCTION @gpupgradeschemaname@.txid_visible_in_snapshot(int8, @gpupgradeschemaname@.txid_snapshot) RETURNS bool LANGUAGE internal IMMUTABLE STRICT
+	AS 'txid_visible_in_snapshot' WITH (OID=2933);
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_visible_in_snapshot(int8, @gpupgradeschemaname@.txid_snapshot) IS 'is xid visible in snapshot';
 
 --    pg_cast    --
 -- Create a special schema for use by the pg_cast_load external table.

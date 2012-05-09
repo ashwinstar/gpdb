@@ -25,7 +25,7 @@ OBJS = acl.o array_userfuncs.o arrayfuncs.o arrayutils.o ascii.o \
 	network.o not_in.o numeric.o numutils.o oid.o oracle_compat.o \
 	percentile.o pg_locale.o pg_lzcompress.o pgstatfuncs.o pivot.o \
 	pseudotypes.o quote.o regexp.o regproc.o ri_triggers.o rowtypes.o \
-	ruleutils.o selfuncs.o tid.o timestamp.o varbit.o varchar.o varlena.o \
+	ruleutils.o selfuncs.o tid.o timestamp.o txid.o varbit.o varchar.o varlena.o \
 	version.o xid.o xml.o gp_partition_functions.o
 
 like.o: like.c like_match.c
