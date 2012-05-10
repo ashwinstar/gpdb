@@ -24,6 +24,9 @@
  *   }
  * \endcode
  *
+ * GPPC 1.0 is compatible with Greenplum Database 4.2.0.0 and above.
+ * GPPC 1.1 is compatible with Greenplum Database 4.2.2.0 and above.
+ *
  * Copyright (c) 2012, Greenplum Inc.
  *
  *//* ----------------------------------------------------------------------- */
@@ -134,7 +137,7 @@ typedef GppcSPIResultData *GppcSPIResult;
 
 /**
  * \ingroup Reports
- * \brief Wraps error report information that can be access in a report
+ * \brief Wraps error report information that can be accessed in a report
  * callback function.
  */
 typedef struct GppcReportInfoData *GppcReportInfo;
@@ -433,7 +436,7 @@ extern const GppcOid GppcOidAnyTable;
 #define GPPC_GETARG_INT4(n)		(GppcDatumGetInt4(GppcGetArgDatum(fcinfo, n)))
 
 /**
- * \brief Retrieves an argument to an SQL invoked function as ::GppcInt4
+ * \brief Retrieves an argument to an SQL invoked function as ::GppcInt8
  * \param n the argument position starting from 0.
  */
 #define GPPC_GETARG_INT8(n)		(GppcDatumGetInt8(GppcGetArgDatum(fcinfo, n)))
@@ -740,121 +743,121 @@ GppcDatum GppcGetArgDatum(GppcFcinfo info, int n);
  ****************************************************************************/
 /**
  * \brief Converts ::GppcBool to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcBool
+ * \param x ::GppcBool to be converted to ::GppcDatum
  */
 GppcDatum		GppcBoolGetDatum(GppcBool x);
 
 /**
  * \brief Converts ::GppcChar to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcChar
+ * \param x ::GppcChar to be converted to ::GppcDatum
  */
 GppcDatum		GppcCharGetDatum(GppcChar x);
 
 /**
  * \brief Converts ::GppcInt2 to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcInt2
+ * \param x ::GppcInt2 to be converted to ::GppcDatum
  */
 GppcDatum		GppcInt2GetDatum(GppcInt2 x);
 
 /**
  * \brief Converts ::GppcInt4 to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcInt4
+ * \param x ::GppcInt4 to be converted to ::GppcDatum
  */
 GppcDatum		GppcInt4GetDatum(GppcInt4 x);
 
 /**
  * \brief Converts ::GppcInt8 to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcInt8
+ * \param x ::GppcInt8 to be converted to ::GppcDatum
  */
 GppcDatum		GppcInt8GetDatum(GppcInt8 x);
 
 /**
  * \brief Converts ::GppcFloat4 to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcFloat4
+ * \param x ::GppcFloat4 to be converted to ::GppcDatum
  */
 GppcDatum		GppcFloat4GetDatum(GppcFloat4 x);
 
 /**
  * \brief Converts ::GppcFloat8 to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcFloat8
+ * \param x ::GppcFloat8 to be converted to ::GppcDatum
  */
 GppcDatum		GppcFloat8GetDatum(GppcFloat8 x);
 
 /**
  * \brief Converts ::GppcText to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcText
+ * \param x ::GppcText to be converted to ::GppcDatum
  */
 GppcDatum		GppcTextGetDatum(GppcText x);
 
 /**
  * \brief Converts ::GppcVarChar to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcVarChar
+ * \param x ::GppcVarChar to be converted to ::GppcDatum
  */
 GppcDatum		GppcVarCharGetDatum(GppcVarChar x);
 
 /**
  * \brief Converts ::GppcBpChar to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcBpChar
+ * \param x ::GppcBpChar to be converted to ::GppcDatum
  */
 GppcDatum		GppcBpCharGetDatum(GppcBpChar x);
 
 /**
  * \brief Converts ::GppcBytea to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcBytea
+ * \param x ::GppcBytea to be converted to ::GppcDatum
  */
 GppcDatum		GppcByteaGetDatum(GppcBytea x);
 
 /**
  * \brief Converts ::GppcNumeric to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcNumeric
+ * \param x ::GppcNumeric to be converted to ::GppcDatum
  */
 GppcDatum		GppcNumericGetDatum(GppcNumeric x);
 
 /**
  * \brief Converts ::GppcDate to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcDate
+ * \param x ::GppcDate to be converted to ::GppcDatum
  */
 GppcDatum		GppcDateGetDatum(GppcDate x);
 
 /**
  * \brief Converts ::GppcTime to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcTime
+ * \param x ::GppcTime to be converted to ::GppcDatum
  */
 GppcDatum		GppcTimeGetDatum(GppcTime x);
 
 /**
  * \brief Converts ::GppcTimeTz to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcTimeTz
+ * \param x ::GppcTimeTz to be converted to ::GppcDatum
  */
 GppcDatum		GppcTimeTzGetDatum(GppcTimeTz x);
 
 /**
  * \brief Converts ::GppcTimestamp to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcTimestamp
+ * \param x ::GppcTimestamp to be converted to ::GppcDatum
  */
 GppcDatum		GppcTimestampGetDatum(GppcTimestamp x);
 
 /**
  * \brief Converts ::GppcTimestampTz to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcTimestampTz
+ * \param x ::GppcTimestampTz to be converted to ::GppcDatum
  */
 GppcDatum		GppcTimestampTzGetDatum(GppcTimestampTz x);
 
 /**
  * \brief Converts ::GppcAnyTable to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcAnyTable
+ * \param x ::GppcAnyTable to be converted to ::GppcDatum
  */
 GppcDatum		GppcAnyTableGetDatum(GppcAnyTable x);
 
 /**
  * \brief Converts ::GppcTupleDesc to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcTupleDesc
+ * \param x ::GppcTupleDesc to be converted to ::GppcDatum
  */
 GppcDatum		GppcTupleDescGetDatum(GppcTupleDesc x);
 
 /**
  * \brief Converts ::GppcHeapTuple to ::GppcDatum
- * \param x ::GppcDatum to be converted to ::GppcHeapTuple
+ * \param x ::GppcHeapTuple to be converted to ::GppcDatum
  */
 GppcDatum		GppcHeapTupleGetDatum(GppcHeapTuple x);
 
@@ -1194,7 +1197,7 @@ GppcNumeric GppcFloat8GetNumeric(GppcFloat8 f);
  ****************************************************************************
  */
 /**
- * \brief Extract information from ::GppcDate to ::GppcTm
+ * \brief Extracts information from ::GppcDate to ::GppcTm
  * \param x input ::GppcDate.
  * \param tm output ::GppcTm.
  *
@@ -1203,13 +1206,13 @@ GppcNumeric GppcFloat8GetNumeric(GppcFloat8 f);
 void GppcDateGetTm(GppcDate x, GppcTm *tm);
 
 /**
- * \brief Generate ::GppcDate from ::GppcTm.
+ * \brief Generates ::GppcDate from ::GppcTm.
  * \param tm source to generate ::GppcDate.
  */
 GppcDate GppcTmGetDate(GppcTm *tm);
 
 /**
- * \brief Extract information from ::GppcTime to ::GppcTm
+ * \brief Extracts information from ::GppcTime to ::GppcTm
  * \param x input ::GppcTime.
  * \param tm output ::GppcTm.
  *
@@ -1218,13 +1221,13 @@ GppcDate GppcTmGetDate(GppcTm *tm);
 void GppcTimeGetTm(GppcTime x, GppcTm *tm);
 
 /**
- * \brief Generate ::GppcTime from ::GppcTm.
+ * \brief Generates ::GppcTime from ::GppcTm.
  * \param tm source to generate ::GppcTime.
  */
 GppcTime GppcTmGetTime(GppcTm *tm);
 
 /**
- * \brief Extract information from ::GppcTimeTz to ::GppcTm
+ * \brief Extracts information from ::GppcTimeTz to ::GppcTm
  * \param x input ::GppcTimeTz.
  * \param tm output ::GppcTm.
  *
@@ -1233,33 +1236,33 @@ GppcTime GppcTmGetTime(GppcTm *tm);
 void GppcTimeTzGetTm(GppcTimeTz x, GppcTm *tm);
 
 /**
- * \brief Generate ::GppcTimeTz from ::GppcTm.
+ * \brief Generates ::GppcTimeTz from ::GppcTm.
  * \param tm source to generate ::GppcTimeTz.
  */
 GppcTimeTz GppcTmGetTimeTz(GppcTm *tm);
 
 /**
- * \brief Extract information from ::GppcTimestamp to ::GppcTm
+ * \brief Extracts information from ::GppcTimestamp to ::GppcTm
  * \param x input ::GppcTimestamp.
  * \param tm output ::GppcTm.
  */
 void GppcTimestampGetTm(GppcTimestamp x, GppcTm *tm);
 
 /**
- * \brief Generate ::GppcTimestamp from ::GppcTm.
+ * \brief Generates ::GppcTimestamp from ::GppcTm.
  * \param tm source to generate ::GppcTimestamp.
  */
 GppcTimestamp GppcTmGetTimestamp(GppcTm *tm);
 
 /**
- * \brief Extract information from ::GppcTimestampTz to ::GppcTm
+ * \brief Extracts information from ::GppcTimestampTz to ::GppcTm
  * \param x input ::GppcTimestampTz.
  * \param tm output ::GppcTm.
  */
 void GppcTimestampTzGetTm(GppcTimestampTz x, GppcTm *tm);
 
 /**
- * \brief Generate ::GppcTimestampTz from ::GppcTm.
+ * \brief Generates ::GppcTimestampTz from ::GppcTm.
  * \param tm source to generate ::GppcTimestampTz.
  */
 GppcTimestampTz GppcTmGetTimestampTz(GppcTm *tm);
@@ -1306,7 +1309,7 @@ void *GppcAlloc(size_t bytes);
 void *GppcAlloc0(size_t bytes);
 
 /**
- * \brief Resize the pre-allocated memory.
+ * \brief Resizes the pre-allocated memory.
  * \param ptr pointer to the pre-allocated memory.
  * \param bytes byte size to be allocated.
  *
@@ -1489,7 +1492,7 @@ void *GppcSRFRestore(GppcFuncCallContext fctx);
  ****************************************************************************
  */
 /**
- * \brief Connect to SPI.
+ * \brief Connects to SPI.
  *
  * If successful, this returns non-negative value.  Note that the database
  * memory context is changed by this call, and everything allocated after
@@ -1502,10 +1505,10 @@ void *GppcSRFRestore(GppcFuncCallContext fctx);
 int GppcSPIConnect(void);
 
 /**
- * \brief Disconnect from SPI.
+ * \brief Disconnects from SPI.
  *
  * If successful, this returns non-negative value.  Disconnection from SPI clears
- * all the memory allocated in between GppcSPIConnect() and GppcFinish().
+ * all the memory allocated in between GppcSPIConnect() and GppcSPIFinish().
  *
  * \sa GppcSPIConnect()
  */
@@ -1541,7 +1544,7 @@ GppcDatum GppcSPIGetDatum(GppcSPIResult result, int fnumber, bool *isnull, bool 
  * \param fname attribute name to extract.
  * \param makecopy true if the caller wants to keep the result out of SPI memory context.
  *
- * Note that GppcSPIGetValue() is fater than this function.
+ * Note that GppcSPIGetValue() is faster than this function.
  */
 char *GppcSPIGetValueByName(GppcSPIResult result, const char *fname, bool makecopy);
 
@@ -1552,7 +1555,7 @@ char *GppcSPIGetValueByName(GppcSPIResult result, const char *fname, bool makeco
  * \param isnull to be set true if the returned value is SQL NULL.
  * \param makecopy true if the caller wants to keep the result out of SPI memory context.
  *
- * Note that GppcSPIGetDatum() is fater than this function.
+ * Note that GppcSPIGetDatum() is faster than this function.
  */
 GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *isnull, bool makecopy);
 
@@ -1576,7 +1579,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 #define GPPC_TF_INPUT_DESC(n, iserror) GppcTFInputDesc(fcinfo, n, iserror);
 
 /**
- * \brief Returns argument as ::GppcBool in the describle function.
+ * \brief Returns argument as ::GppcBool in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1587,7 +1590,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetBool(GppcTFGetArgDatum(fcinfo, GppcOidBool, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcChar in the describle function.
+ * \brief Returns argument as ::GppcChar in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1598,7 +1601,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetChar(GppcTFGetArgDatum(fcinfo, GppcOidChar, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcInt2 in the describle function.
+ * \brief Returns argument as ::GppcInt2 in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1609,7 +1612,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetInt2(GppcTFGetArgDatum(fcinfo, GppcOidInt2, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcInt4 in the describle function.
+ * \brief Returns argument as ::GppcInt4 in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1620,7 +1623,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetInt4(GppcTFGetArgDatum(fcinfo, GppcOidInt4, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcInt8 in the describle function.
+ * \brief Returns argument as ::GppcInt8 in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1631,7 +1634,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetInt8(GppcTFGetArgDatum(fcinfo, GppcOidInt8, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcFloat4 in the describle function.
+ * \brief Returns argument as ::GppcFloat4 in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1642,7 +1645,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetFloat4(GppcTFGetArgDatum(fcinfo, GppcOidFloat4, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcFloat4 in the describle function.
+ * \brief Returns argument as ::GppcFloat4 in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1653,7 +1656,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetFloat8(GppcTFGetArgDatum(fcinfo, GppcOidFloat8, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcText in the describle function.
+ * \brief Returns argument as ::GppcText in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1664,7 +1667,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetText(GppcTFGetArgDatum(fcinfo, GppcOidText, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcVarChar in the describle function.
+ * \brief Returns argument as ::GppcVarChar in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1675,7 +1678,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetVarChar(GppcTFGetArgDatum(fcinfo, GppcOidVarChar, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcBpChar in the describle function.
+ * \brief Returns argument as ::GppcBpChar in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1686,7 +1689,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetBpChar(GppcTFGetArgDatum(fcinfo, GppcOidBpChar, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcBytea in the describle function.
+ * \brief Returns argument as ::GppcBytea in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1697,7 +1700,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetBytea(GppcTFGetArgDatum(fcinfo, GppcOidBytea, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcNumeric in the describle function.
+ * \brief Returns argument as ::GppcNumeric in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1708,7 +1711,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetNumeric(GppcTFGetArgDatum(fcinfo, GppcOidNumeric, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcDate in the describle function.
+ * \brief Returns argument as ::GppcDate in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1719,7 +1722,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetDate(GppcTFGetArgDatum(fcinfo, GppcOidDate, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcTime in the describle function.
+ * \brief Returns argument as ::GppcTime in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1730,7 +1733,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetTime(GppcTFGetArgDatum(fcinfo, GppcOidTime, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcTimeTz in the describle function.
+ * \brief Returns argument as ::GppcTimeTz in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1741,7 +1744,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetTimeTz(GppcTFGetArgDatum(fcinfo, GppcOidTimeTz, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcTimestamp in the describle function.
+ * \brief Returns argument as ::GppcTimestamp in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1752,7 +1755,7 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetTimestamp(GppcTFGetArgDatum(fcinfo, GppcOidTimestamp, n, isnull, iserror))
 
 /**
- * \brief Returns argument as ::GppcTimestampTz in the describle function.
+ * \brief Returns argument as ::GppcTimestampTz in the describe function.
  * \param n position of argument, starting from 0.
  * \param isnull bool pointer to be set true if the argument is null.
  * \param iserror bool pointer to be set true if called in wrong context.
@@ -1763,13 +1766,13 @@ GppcDatum GppcSPIGetDatumByName(GppcSPIResult result, const char *fname, bool *i
 	GppcDatumGetTimestampTz(GppcTFGetArgDatum(fcinfo, GppcOidTimestampTz, n, isnull, iserror))
 
 /**
- * \brief Pass arbitrary user data to be dispatched, in the describe function.
+ * \brief Passes arbitrary user data to be dispatched, in the describe function.
  * \param d arbitrary user data as ::GppcBytea
  */
 #define GPPC_TF_SET_USERDATA(d) (GppcTFSetUserData(fcinfo, d))
 
 /**
- * \brief Get the user data passed by the describe function.
+ * \brief Gets the user data passed by the describe function.
  */
 #define GPPC_TF_GET_USERDATA() (GppcTFGetUserData(fcinfo))
 
@@ -1868,7 +1871,7 @@ typedef enum GppcReportLevel
 void GppcReport(GppcReportLevel elevel, const char *fmt, ...);
 
 /**
- * \brief Install report callback function which is called on any report.
+ * \brief Installs report callback function which is called on any report.
  * \param func callback function
  * \param arg arbitrary data pointer which will be passed to the callback
  *
@@ -1889,7 +1892,7 @@ GppcReportCallbackState GppcInstallReportCallback(
 		void (*func)(GppcReportInfo, void *), void *arg);
 
 /**
- * \brief Uninstall report callback installed by GppcInstallReportCallback().
+ * \brief Uninstalls report callback installed by GppcInstallReportCallback().
  * \sa GppcInstallReportCallback()
  */
 void GppcUninstallReportCallback(GppcReportCallbackState cbstate);
@@ -1942,7 +1945,7 @@ void GppcTupleDescInitEntry(GppcTupleDesc desc, uint16_t attno,
  * \brief Forms a tuple with an array of datums.
  * \param tupdesc descriptor of tuple to be formed.
  * \param values an array of datums.
- * \param nulls an array of bool that indicate SQL NULLs.
+ * \param nulls an array of bool that indicates SQL NULLs.
  *
  * The number of elements should match the one in tupdesc.  Use
  * GppcBuildHeapTupleDatum() to make it ::GppcDatum, which is convenient
@@ -1951,10 +1954,10 @@ void GppcTupleDescInitEntry(GppcTupleDesc desc, uint16_t attno,
 GppcHeapTuple GppcHeapFormTuple(GppcTupleDesc tupdesc, GppcDatum *values, bool *nulls);
 
 /**
- * \brief Forms a tuple with an array of datums and make it ::GppcDatum
+ * \brief Forms a tuple with an array of datums and makes it ::GppcDatum
  * \param tupdesc descriptor of tuple to be formed.
  * \param values an array of datums.
- * \param nulls an array of bool that indicate SQL NULLs.
+ * \param nulls an array of bool that indicates SQL NULLs.
  *
  * \sa GppcHeapFormTuple()
  */
