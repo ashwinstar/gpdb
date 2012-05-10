@@ -154,15 +154,9 @@ typedef struct TransactionStateData
 	bool		prevXactReadOnly;		/* entry-time xact r/o state */
 	bool		executorSaysXactDoesWrites;	/* GP executor says xact does writes */
 	struct TransactionStateData *parent;		/* back link to parent */
-
-	struct TransactionStateData *fastLink;        /* back link to jump to parent for efficient search */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
-
-#define NUM_NODES_TO_SKIP_FOR_FAST_SEARCH 100 
-static int fastNodeCount;
-static TransactionState previousFastLink;
 
 /*
  * CurrentTransactionState always points to the current transaction state
@@ -186,8 +180,7 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* previous SecurityDefinerContext setting */
 	false,						/* entry-time xact r/o state */
 	false,						/* executorSaysXactDoesWrites */
-	NULL,						/* link to parent state block */
-	NULL
+	NULL						/* link to parent state block */
 };
 
 static TransactionState CurrentTransactionState = &TopTransactionStateData;
@@ -619,98 +612,12 @@ char* WatchCurrentTransactionString(void)
 }
 
 /*
- * We will return true for the Xid of the current subtransaction, any of
- * its subcommitted children, any of its parents, or any of their
- * previously subcommitted children.  However, a transaction being aborted
- * is no longer "current", even though it may still have an entry on the
- * state stack.
- *
- * The parent list and childXIDs list within it are in sorted decreasing order.
- * Taking advantage of this fact simple optimizations are added instead of linear traversal to fasten the search 
- *  1] Added fastLink/skipLink pointers to skip nodes in list and scan fast across, instead of visiting all nodes in list 
- *  2] Break-out as soon as XID to search is greater than the current node in (parent / child) list
-*/
-static bool
-TransactionIdIsCurrentTransactionIdInternal(TransactionId xid)
-{
-	TransactionState s = CurrentTransactionState;
-
-	while (s != NULL)
-	{
-		ListCell   *cell;
-
-		if (s->state == TRANS_ABORT)
-			goto Proceed;
-		if (!TransactionIdIsValid(s->transactionId))
-			goto Proceed;			/* it can't have any child XIDs either */
-		if (TransactionIdEquals(xid, s->transactionId))
-		{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			if (s == &TopTransactionStateData)
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
-			else
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," is subtransaction");
-#endif
-			return true;
-		}
-		foreach(cell, s->childXids)
-		{
-			if (TransactionIdEquals(xid, lfirst_xid(cell)))
-				return true;
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u did not match", lfirst_xid(cell));
-#endif
-			/* 
-			 * childXid list is maintained in decreasing order.
-			 * hence, can safely breakout if XID follows currentListNode XID.
-			 */
-			if (TransactionIdFollows(xid, lfirst_xid(cell)))
-			{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u reached not checking ahead(childlist)", lfirst_xid(cell));
-#endif
-				break;
-			}
-		}
-
-		/*
-		 * If not found in childXID list and greater than s->transactionId
-		 * it cannot be on stack below this node, as stack is in decreasing order of XIDs
-		 * So, can safely breakout.
-		 */
-		 if (TransactionIdFollows(xid, s->transactionId))
-		 {
-#ifdef WATCH_VISIBILITY_IN_ACTION
-			count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u reached not checking ahead(parent)", s->transactionId);
-#endif
-			break;
-		 }
-
-Proceed:
-		if (s->fastLink)
-		{
-			if (TransactionIdPrecedesOrEquals(xid, s->fastLink->transactionId))
-			{
-#ifdef WATCH_VISIBILITY_IN_ACTION
-				count += sprintf(&WatchCurrentTransactionBuffer[count]," fast tracking search to subxid %u parent", s->fastLink->transactionId);
-#endif
-				s = s->fastLink;
-				continue;
-			}
-		}
-
-		s = s->parent;
-	}
-
-	return false;
-}
-
-/*
  *	TransactionIdIsCurrentTransactionId
  */
 bool
 TransactionIdIsCurrentTransactionId(TransactionId xid)
 {
+	TransactionState s;
 	bool isCurrentTransactionId = false;
 	int32 index = 0;
 	uint32 cnt = 0;
@@ -801,9 +708,44 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	count += sprintf(&WatchCurrentTransactionBuffer[count]," normal check");
 #endif
 
-	bool flag = TransactionIdIsCurrentTransactionIdInternal(xid);
-	return flag;
+	/*
+	 * We will return true for the Xid of the current subtransaction, any of
+	 * its subcommitted children, any of its parents, or any of their
+	 * previously subcommitted children.  However, a transaction being aborted
+	 * is no longer "current", even though it may still have an entry on the
+	 * state stack.
+	 */
+	for (s = CurrentTransactionState; s != NULL; s = s->parent)
+	{
+		ListCell   *cell;
+
+		if (s->state == TRANS_ABORT)
+			continue;
+		if (!TransactionIdIsValid(s->transactionId))
+			continue;			/* it can't have any child XIDs either */
+		if (TransactionIdEquals(xid, s->transactionId))
+		{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+			if (s == &TopTransactionStateData)
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
+			else
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," is subtransaction");
+#endif
+			return true;
+		}
+		foreach(cell, s->childXids)
+		{
+			if (TransactionIdEquals(xid, lfirst_xid(cell)))
+				return true;
+#ifdef WATCH_VISIBILITY_IN_ACTION
+			count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u did not match", lfirst_xid(cell));
+#endif
+		}
+	}
+
+	return false;
 }
+
 
 /*
  *	CommandCounterIncrement
@@ -2891,9 +2833,6 @@ StartTransaction(void)
 	currentSubTransactionId = TopSubTransactionId;
 	currentCommandId = FirstCommandId;
 	currentSavepointTotal = 0;
-
-	fastNodeCount = 0;
-	previousFastLink = NULL;
 
 	/*
 	 * must initialize resource-management stuff first
@@ -6537,14 +6476,6 @@ PushTransaction(void)
 	s->prevXactReadOnly = XactReadOnly;
 	s->executorSaysXactDoesWrites = false;
 
-	fastNodeCount++;
-	if (fastNodeCount == NUM_NODES_TO_SKIP_FOR_FAST_SEARCH)
-	{
-		fastNodeCount = 0;
-		s->fastLink = previousFastLink;
-		previousFastLink = s;
-	}
-
 	CurrentTransactionState = s;
 
 	/*
@@ -6583,21 +6514,6 @@ PopTransaction(void)
 	/* Ditto for ResourceOwner links */
 	CurTransactionResourceOwner = s->parent->curTransactionOwner;
 	CurrentResourceOwner = s->parent->curTransactionOwner;
-
-	if (fastNodeCount)
-	{
-		fastNodeCount--;
-	}
-
-	/*
-	 * Deleting node where last fastLink is stored
-	 * hence retrive the fastLink to update in node to be added next
-	 */
-	if (previousFastLink == s)
-	{
-		fastNodeCount = NUM_NODES_TO_SKIP_FOR_FAST_SEARCH - 1;
-		previousFastLink = s->fastLink;
-	}
 
 	/* Free the old child structure */
 	if (s->name)
