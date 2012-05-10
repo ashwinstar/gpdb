@@ -5151,6 +5151,8 @@ static void PersistentFileSysObj_ScanStateAction(
 				// Don't hold lock during physical file-system operation.
 				WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
+				FileRepResync_SetReCreateRequest();
+
 				// UNDONE: Pass this in from the resync worker?
 				mirrorDataLossTrackingState =
 							FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
@@ -5163,6 +5165,8 @@ static void PersistentFileSysObj_ScanStateAction(
 										mirrorDataLossTrackingState,
 										mirrorDataLossTrackingSessionNum,
 										&mirrorDataLossOccurred);
+
+				FileRepResync_ResetReCreateRequest();
 
 				// UNDONE: Act on mirrorDataLossOccurred
 
