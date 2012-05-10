@@ -104,7 +104,7 @@ OPTIONS
  In the event of an error during upgrade, reverts all changes made by gpmigrator.
 
 
--check-only
+--check-only
 
  Runs pre-migrate checks to verify that your database is healthy.
  Checks include: 
