@@ -418,8 +418,8 @@ MODE - Optional. Defaults to INSERT if not specified. There are three
            of the input data, and the optional UPDATE_CONDITION is true.
 
        * MERGE - Inserts new rows and updates the UPDATE_COLUMNS of 
-           existing rows where MATCH_COLUMNS attribute values are equal 
-           to those of the input data, and the optional UPDATE_CONDITION 
+           existing rows where MATCH_COLUMNS attribute values are equal
+           to those of the input data, and the optional UPDATE_CONDITION
            is true. New rows are identified when the MATCH_COLUMNS value 
            in the source data does not have a corresponding value in the 
            existing data of the target table. In those cases, the entire 
@@ -430,8 +430,8 @@ MODE - Optional. Defaults to INSERT if not specified. There are three
            to discard). 
 
 MATCH_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the 
-                column(s) to use as the join condition for the update. 
-                The attribute value in the specified target column(s) 
+                column(s) to use as the join condition for the update.
+                The attribute value in the specified target column(s)
                 must be equal to that of the corresponding source data 
                 column(s) in order for the row to be updated in the target 
                 table.
