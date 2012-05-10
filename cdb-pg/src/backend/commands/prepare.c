@@ -160,7 +160,6 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 			 DestReceiver *dest, char *completionTag)
 {
 	PreparedStatement *entry;
-	char	   *query_string;
 	List	   *stmt_list;
 	MemoryContext qcontext;
 	ParamListInfo paramLI = NULL;
@@ -169,8 +168,6 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 
 	/* Look it up in the hash table */
 	entry = FetchPreparedStatement(stmt->name, true);
-
-	query_string = entry->query_string;
 
 	qcontext = entry->context;
 
@@ -225,8 +222,6 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 
 		oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
 
-		if (query_string)
-			query_string = pstrdup(query_string);
 		stmt_list = copyObject(stmt_list);
 		qcontext = PortalGetHeapMemory(portal);
 		pstmt = (PlannedStmt *) linitial(stmt_list);
@@ -250,6 +245,11 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 
 		MemoryContextSwitchTo(oldContext);
 	}
+
+	/* Copy the plan's saved query string into the portal's memory */
+	Assert(entry->query_string != NULL); 
+	char *query_string = MemoryContextStrdup(PortalGetHeapMemory(portal),
+					   entry->query_string);
 
 	PortalDefineQuery(portal,
 					  NULL,
