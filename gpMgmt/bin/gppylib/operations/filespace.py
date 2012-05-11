@@ -991,6 +991,9 @@ class MoveFilespace(Operation):
             finally:
                 #Bring GPDB Offline
                 self.stop_master_only()
+                
+                #Restart the database
+                self.start_database()
 
             if not CheckConnectivity(gparray).run():
                 raise MoveFilespaceError('Failed connectivity test') 
