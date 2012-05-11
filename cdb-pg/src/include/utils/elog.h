@@ -474,6 +474,8 @@ write_stderr(const char *fmt,...)
    the supplied arguments. */
 __attribute__((format(printf, 1, 2)));
 
+extern void write_stderr_retry(const char *buf, size_t len);
+
 #if defined(pg_on_solaris)
 extern size_t backtrace(void **buffer, int size);
 extern char **backtrace_symbols(void *const *buffer, int size);

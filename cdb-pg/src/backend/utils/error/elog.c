@@ -2874,7 +2874,7 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 				if (amsyslogger)
 					write_syslogger_file_binary(symbol, symbol_len);
 				else
-					write(fileno(stderr), symbol, symbol_len);
+					write_stderr_retry(symbol, symbol_len);
         	}
         }
     }
@@ -2897,9 +2897,9 @@ write_syslogger_file_string(const char *str, bool amsyslogger, bool append_comma
         }
         else
         {
-            write(fileno(stderr), "\"", 1);
+            write_stderr_retry("\"", 1);
             syslogger_write_str(str, strlen(str), false, true);
-            write(fileno(stderr), "\"", 1);
+            write_stderr_retry("\"", 1);
         }
     }
 
@@ -2908,7 +2908,7 @@ write_syslogger_file_string(const char *str, bool amsyslogger, bool append_comma
         if (amsyslogger)
             write_syslogger_file_binary(",", 1);
         else
-            write(fileno(stderr), ",", 1);
+            write_stderr_retry(",", 1);
     }
 }
 
@@ -3035,7 +3035,7 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     if (amsyslogger)
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
     else
-        write(fileno(stderr), LOG_EOL, strlen(LOG_EOL));
+        write_stderr_retry(LOG_EOL, strlen(LOG_EOL));
 }
 
 /*
@@ -3458,7 +3458,7 @@ send_message_to_server_log(ErrorData *edata)
             if (redirection_done && !am_syslogger)
                 write_pipe_chunks(buf.data, buf.len);
             else
-                write(fileno(stderr), buf.data, buf.len);
+                write_stderr_retry(buf.data, buf.len);
     }
 
     /* If in the syslogger process, try to write messages direct to file */
@@ -3476,8 +3476,6 @@ static void
 write_pipe_chunks(char *data, int len)
 {
     PipeProtoChunk p;
-
-    int			fd = fileno(stderr);
 
     Assert(len > 0);
 
@@ -3501,7 +3499,7 @@ write_pipe_chunks(char *data, int len)
                 Assert(p.hdr.pid != 0);
                 Assert(p.hdr.thid != 0);
 #endif
-        write(fd, &p, PIPE_CHUNK_SIZE);
+        write_stderr_retry((char *) &p, PIPE_CHUNK_SIZE);
         data += PIPE_MAX_PAYLOAD;
         len -= PIPE_MAX_PAYLOAD;
 
@@ -3519,7 +3517,7 @@ write_pipe_chunks(char *data, int len)
         Assert(PIPE_HEADER_SIZE + len <= PIPE_CHUNK_SIZE);
 #endif
     memcpy(p.data, data, len);
-    write(fd, &p, PIPE_HEADER_SIZE + len);
+    write_stderr_retry((char *)&p, PIPE_HEADER_SIZE + len);
 }
 
 
@@ -3869,6 +3867,20 @@ append_with_tabs(StringInfo buf, const char *str)
     }
 }
 
+/*
+ * Write a buffer to stderr, retrying only if write was interrupted.
+ * Ignores any other return conditions.
+ */
+void
+write_stderr_retry(const char *buf, size_t len)
+{
+	ssize_t bytes = 0;
+	do
+	{
+		bytes = write(fileno(stderr), buf, len);
+	}
+	while (bytes < 0 && errno == EINTR);
+}
 
 /*
  * Write errors to stderr (or by equal means when stderr is

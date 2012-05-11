@@ -828,17 +828,25 @@ syslogger_append_timestamp(pg_time_t stamp_time, bool amsyslogger, bool append_c
 #endif
                 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 		if (amsyslogger)
+		{
 			write_syslogger_file_binary(strbuf, strlen(strbuf));
+		}
 		else
-			write(fileno(stderr), strbuf, strlen(strbuf));
+		{
+			write_stderr_retry(strbuf, strlen(strbuf));
+		}
     }
 
     if (append_comma)
 	{
 		if (amsyslogger)
+		{
 			write_syslogger_file_binary(",", 1);
+		}
 		else
-			write(fileno(stderr), ",", 1);
+		{
+			write_stderr_retry(",", 1);
+		}
 	}
 }
 
@@ -884,8 +892,8 @@ syslogger_append_current_timestamp(bool amsyslogger)
 	}
 	else
 	{
-		write(fileno(stderr), strbuf, strlen(strbuf));
-		write(fileno(stderr), ",", 1);
+		write_stderr_retry(strbuf, strlen(strbuf));
+		write_stderr_retry(",", 1);
 	}
 }
 
@@ -907,15 +915,23 @@ int syslogger_write_str(const char *data, int len, bool amsyslogger, bool csv)
         if (csv && data[cnt] == '"')
 		{
 			if (amsyslogger)
+			{
 				write_syslogger_file_binary("\"", 1);
+			}
 			else
-				write(fileno(stderr), "\"", 1);
+			{
+				write_stderr_retry("\"", 1);
+			}
 		}
 		
 		if (amsyslogger)
+		{
 			write_syslogger_file_binary(data+cnt, 1);
+		}
 		else
-			write(fileno(stderr), data+cnt, 1);
+		{
+			write_stderr_retry(data+cnt, 1);
+		}
 
         cnt+=1;
     }
@@ -1014,16 +1030,24 @@ syslogger_write_int32(bool test0, const char *prefix, int32 i, bool amsyslogger,
     {
         len = sprintf(buf, "%s%d", prefix, i);
 		if (amsyslogger)
+		{
 			write_syslogger_file_binary(buf, len);
+		}
 		else
-			write(fileno(stderr), buf, len);
+		{
+			write_stderr_retry(buf, len);
+		}
     }
     if (append_comma)
 	{
 		if (amsyslogger)
+		{
 			write_syslogger_file_binary(",", 1);
+		}
 		else
-			write(fileno(stderr), ",", 1);
+		{
+			write_stderr_retry(",", 1);
+		}
 	}
 }
 
