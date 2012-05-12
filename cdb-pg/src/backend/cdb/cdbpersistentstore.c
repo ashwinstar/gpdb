@@ -498,9 +498,7 @@ static void PersistentStore_DoInitScan(
 
 		if (gp_persistent_repair_global_sequence)
 		{
-			GlobalSequence_Set(storeData->gpGlobalSequence, storeSharedData->maxInUseSerialNum);
-
-			elog(LOG, "Repaired global sequence number " INT64_FORMAT " so use scanned maximum value " INT64_FORMAT " ('%s')",
+			elog(LOG, "Need to Repair global sequence number " INT64_FORMAT " so use scanned maximum value " INT64_FORMAT " ('%s')",
 				 globalSequenceNum,
 				 storeSharedData->maxInUseSerialNum,
 				 storeData->tableName);

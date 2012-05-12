@@ -35,6 +35,7 @@
 #include "cdb/cdbpersistentrecovery.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbglobalsequence.h"
 
 #include "storage/itemptr.h"
 #include "access/genam.h"
@@ -7138,3 +7139,51 @@ void PersistentFileSysObj_ShmemInit(void)
 	}
 }
 
+/* 
+ * Check for inconsistencies in global sequence number and then update to the right value if necessary 
+ * WARNING : This is a special routine called during repair only under guc gp_persistent_repair_global_sequence
+ */
+void 
+PersistentFileSysObj_DoGlobalSequenceScan(void)
+{
+
+	PersistentFsObjType             fsObjType;
+	int64                   	globalSequenceNum;
+
+	PersistentFileSysObjData        *fileSysObjData;
+	PersistentFileSysObjSharedData  *fileSysObjSharedData;
+
+	Assert(!persistentFileSysObjPrivateSharedData->needInitScan);
+
+	if (gp_persistent_repair_global_sequence)
+	{
+	
+		for (fsObjType = PersistentFsObjType_First;
+			fsObjType <= PersistentFsObjType_Last;
+			fsObjType++)
+		{
+                 	PersistentFileSysObj_GetDataPtrs(
+                                                                         fsObjType,
+                                                                         &fileSysObjData,
+                                                                         &fileSysObjSharedData);
+
+			globalSequenceNum = GlobalSequence_Current(fileSysObjData->storeData.gpGlobalSequence);
+
+			if (globalSequenceNum < fileSysObjSharedData->storeSharedData.maxInUseSerialNum)
+			{
+				/*
+				 * We seem to have a corruption problem.
+				 *
+				 * Use the gp_persistent_repair_global_sequence GUC to get the system up.
+				 */
+				GlobalSequence_Set(fileSysObjData->storeData.gpGlobalSequence, fileSysObjSharedData->storeSharedData.maxInUseSerialNum);
+
+				elog(LOG, "Repaired global sequence number " INT64_FORMAT " so use scanned maximum value " INT64_FORMAT " ('%s')",
+                                 	globalSequenceNum,
+                                 	fileSysObjSharedData->storeSharedData.maxInUseSerialNum,
+                                 	fileSysObjData->storeData.tableName);
+			}
+
+		}
+	}
+}

@@ -588,4 +588,6 @@ extern void PersistentFileSysObj_ActivateStandby(
 								   int16 oldmaster,
 								   int16 newmaster,
 								   bool flushToXLog);
+
+extern void PersistentFileSysObj_DoGlobalSequenceScan(void);
 #endif   /* CDBPERSISTENTFILESYSOBJ_H */

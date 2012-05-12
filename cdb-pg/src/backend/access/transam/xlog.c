@@ -7426,6 +7426,14 @@ StartupXLOG_Pass4(void)
 
 	PersistentFileSysObj_StartupIntegrityCheck();
 
+	/* 
+	 * Do the check for inconsistencies in global sequence number after the catalog cache is set up 
+	 * MPP-17207. Inconsistent global sequence number can be fixed with setting the guc
+	 * gp_persistent_repair_global_sequence 
+	 */
+	
+	PersistentFileSysObj_DoGlobalSequenceScan();
+
 	Insist(isFilespaceInfoConsistent());
 
 	ereport(LOG,
