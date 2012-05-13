@@ -18,6 +18,8 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "parser/parsetree.h"               /* get_tle_by_resno */
 #include "parser/parse_coerce.h"
@@ -30,7 +32,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-#include "nodes/print.h"
+
 
 
 static Node *coerce_type_typmod(Node *node,
@@ -49,6 +51,47 @@ static Var *coerce_unknown_var(ParseState *pstate, Var *var,
 							   Oid targetTypeId, int32 targetTypeMod,
 							   CoercionContext ccontext, CoercionForm cformat,
 							   int levelsup);
+
+
+Node*
+coerce_to_specific_type	(ParseState    *pstate,
+						 Node 		   *node,
+						 Oid 			targetTypeId,
+						 const char    *constructName)
+{
+    Oid         inputTypeId = exprType(node);
+
+    if (inputTypeId != targetTypeId)
+    {
+        Node       *newnode;
+
+        newnode = coerce_to_target_type(pstate, node, inputTypeId,
+                                        targetTypeId, -1,
+                                        COERCION_ASSIGNMENT,
+                                        COERCE_IMPLICIT_CAST,
+                                        -1);
+        if (newnode == NULL)
+            ereport(ERROR,
+                    (errcode(ERRCODE_DATATYPE_MISMATCH),
+            /* translator: first %s is name of a SQL construct, eg LIMIT */
+                     errmsg("argument of %s must be type %s, not type %s",
+                            constructName,
+                            format_type_be(targetTypeId),
+                            format_type_be(inputTypeId)),
+                     parser_errposition(pstate, exprLocation(node))));
+        node = newnode;
+    }
+
+    if (expression_returns_set(node))
+        ereport(ERROR,
+                (errcode(ERRCODE_DATATYPE_MISMATCH),
+        /* translator: %s is name of a SQL construct, eg LIMIT */
+                 errmsg("argument of %s must not return a set",
+                        constructName),
+                 parser_errposition(pstate, exprLocation(node))));
+
+    return node;
+}
 
 /*
  * coerce_to_target_type()

@@ -1261,6 +1261,7 @@ _equalFunctionParameter(const FunctionParameter *a, const FunctionParameter *b)
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(argType);
 	COMPARE_SCALAR_FIELD(mode);
+	COMPARE_NODE_FIELD(defexpr);
 
 	return true;
 }

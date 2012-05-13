@@ -2427,6 +2427,7 @@ _readFunctionParameter(const char ** str)
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(argType);
 	READ_ENUM_FIELD(mode, FunctionParameterMode);
+	READ_NODE_FIELD(defexpr);
 
 	READ_DONE();
 }

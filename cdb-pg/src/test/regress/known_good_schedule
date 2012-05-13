@@ -171,6 +171,7 @@ test: portals_updatable
 test: plpgsql_cache
 test: percentile
 test: gp_cancel_query
+test: function_extensions
 test: basic_fuzzystrmatch
 test: timeseries
 test: caql

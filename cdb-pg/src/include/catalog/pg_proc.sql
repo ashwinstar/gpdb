@@ -2116,6 +2116,12 @@
 
  CREATE FUNCTION pg_get_serial_sequence(text, text) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_serial_sequence' WITH (OID=1665, DESCRIPTION="name of sequence for a serial column");
 
+ CREATE FUNCTION pg_get_function_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_function_arguments' WITH (OID=2934, DESCRIPTION="argument list of a function");
+
+ CREATE FUNCTION pg_get_function_result(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_function_result' WITH (OID=2935, DESCRIPTION="result type of a function");
+ 
+ CREATE FUNCTION pg_get_function_identity_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_function_identity_arguments' WITH (OID=2936, DESCRIPTION="identity argument list of a function");
+
  CREATE FUNCTION pg_get_partition_def(oid) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_partition_def' WITH (OID=5024);
 
  CREATE FUNCTION pg_get_partition_def(oid, bool) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_get_partition_def_ext' WITH (OID=5025, DESCRIPTION="partition configuration for a given relation");

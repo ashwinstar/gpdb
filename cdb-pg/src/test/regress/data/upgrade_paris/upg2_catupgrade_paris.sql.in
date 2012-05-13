@@ -8,6 +8,18 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4, bo
 CREATE FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT 
     AS 'generate_subscripts_nodir' WITH (OID=824, DESCRIPTION="array subscripts generator");
 COMMENT ON FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4) IS 'array subscripts generator';
+
+CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT
+	AS 'pg_get_function_arguments' WITH (OID=2934, DESCRIPTION="argument list of a function");
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_arguments(oid) IS 'argument list of a function';
+
+CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_result(oid) RETURNS text LANGUAGE internal STABLE STRICT
+	AS 'pg_get_function_result' WITH (OID=2935, DESCRIPTION="result type of a function");
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_result(oid) IS 'result type of a function');
+
+CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_identity_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT 
+	AS 'pg_get_function_identity_arguments' WITH (OID=2936, DESCRIPTION="identity argument list of a function");
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_identity_arguments(oid) IS 'identity argument list of a function');
  
 CREATE FUNCTION  @gpupgradeschemaname@.interval_interval_div("interval", "interval") RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
 	AS 'interval_interval_div' WITH (OID=2918, DESCRIPTION="divide");

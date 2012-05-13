@@ -282,6 +282,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 				OptTableElementList OptExtTableElementList TableElementList ExtTableElementList
 				OptInherit definition
 				OptWith opt_distinct opt_definition func_args func_args_list
+				func_args_with_defaults func_args_with_defaults_list
 				func_as createfunc_opt_list alterfunc_opt_list
 				aggr_args aggr_args_list old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
@@ -310,7 +311,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <into>	into_clause create_as_target
 
 %type <defelt>	createfunc_opt_item common_func_opt_item
-%type <fun_param> func_arg table_func_column
+%type <fun_param> func_arg func_arg_with_default table_func_column
 %type <fun_param_mode> arg_class
 %type <typnam>	func_return func_type
 
@@ -6749,7 +6750,7 @@ opt_class:	any_name								{ $$ = $1; }
  *****************************************************************************/
 
 CreateFunctionStmt:
-			CREATE opt_or_replace FUNCTION func_name func_args
+			CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			RETURNS func_return createfunc_opt_list opt_definition
 				{
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
@@ -6763,7 +6764,7 @@ CreateFunctionStmt:
 					n->shelltypeOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_or_replace FUNCTION func_name func_args
+			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			  RETURNS TABLE '(' table_func_column_list ')' 
               createfunc_opt_list opt_definition
 				{
@@ -6779,7 +6780,7 @@ CreateFunctionStmt:
 					n->shelltypeOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_or_replace FUNCTION func_name func_args
+			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			  createfunc_opt_list opt_definition
 				{
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
@@ -6810,6 +6811,22 @@ func_args_list:
 		;
 
 /*
+ * func_args_with_defaults is separate because we only want to accept
+ * defaults in CREATE FUNCTION, not in ALTER etc.
+ */
+func_args_with_defaults:
+		'(' func_args_with_defaults_list ')'	{ $$ = $2; }
+		| '(' ')'								{ $$ = NIL; }
+		;
+		
+func_args_with_defaults_list:
+		func_arg_with_default				{ $$ = list_make1( $1); }
+		| func_args_with_defaults_list ',' func_arg_with_default    
+											{ $$ = lappend($1, $3); }
+		;
+
+
+/*
  * The style with arg_class first is SQL99 standard, but Oracle puts
  * param_name first; accept both since it's likely people will try both
  * anyway.  Don't bother trying to save productions by letting arg_class
@@ -6826,6 +6843,7 @@ func_arg:
 					n->name = $2;
 					n->argType = $3;
 					n->mode = $1;
+					n->defexpr = NULL;
 					$$ = n;
 				}
 			| param_name arg_class func_type
@@ -6834,6 +6852,7 @@ func_arg:
 					n->name = $1;
 					n->argType = $3;
 					n->mode = $2;
+					n->defexpr = NULL;
 					$$ = n;
 				}
 			| param_name func_type
@@ -6842,6 +6861,7 @@ func_arg:
 					n->name = $1;
 					n->argType = $2;
 					n->mode = FUNC_PARAM_IN;
+					n->defexpr = NULL;
 					$$ = n;
 				}
 			| arg_class func_type
@@ -6850,6 +6870,7 @@ func_arg:
 					n->name = NULL;
 					n->argType = $2;
 					n->mode = $1;
+					n->defexpr = NULL;
 					$$ = n;
 				}
 			| func_type
@@ -6858,9 +6879,28 @@ func_arg:
 					n->name = NULL;
 					n->argType = $1;
 					n->mode = FUNC_PARAM_IN;
+					n->defexpr = NULL;
 					$$ = n;
 				}
 		;
+		
+func_arg_with_default:
+		func_arg					
+				{ 
+					$$ = $1;
+				}
+		| func_arg DEFAULT a_expr
+				{
+					$$ = $1;
+					$$->defexpr = $3;
+				}
+		| func_arg '=' a_expr
+				{
+					$$ = $1;	
+					$$->defexpr = $3;
+				}
+		;
+ 
 
 /* INOUT is SQL99 standard, IN OUT is for Oracle compatibility */
 arg_class:	IN_P									{ $$ = FUNC_PARAM_IN; }
@@ -6997,6 +7037,7 @@ table_func_column:	param_name func_type
 					n->name = $1;
 					n->argType = $2;
 					n->mode = FUNC_PARAM_TABLE;
+					n->defexpr = NULL;
 					$$ = n;
 				}
 		;

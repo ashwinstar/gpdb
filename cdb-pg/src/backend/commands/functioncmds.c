@@ -47,6 +47,9 @@
 #include "commands/defrem.h"
 #include "commands/proclang.h"
 #include "miscadmin.h"
+#include "optimizer/var.h"
+#include "parser/parse_coerce.h"
+#include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
 #include "utils/acl.h"
@@ -154,10 +157,12 @@ compute_return_type(TypeName *returnType, Oid languageOid,
  */
 static void
 examine_parameter_list(List *parameters, Oid languageOid,
+					   const char *queryString,
 					   oidvector **parameterTypes,
 					   ArrayType **allParameterTypes,
 					   ArrayType **parameterModes,
 					   ArrayType **parameterNames,
+					   List	**parameterDefaults,
 					   Oid *requiredResultType)
 {
 	int			parameterCount = list_length(parameters);
@@ -170,8 +175,11 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	int         varCount = 0;
 	int         multisetCount = 0;
 	bool		have_names = false;
+	bool        have_defaults = false;
 	ListCell   *x;
 	int			i;
+	ParseState *pstate;
+
 
 	/* default results */
 	*requiredResultType = InvalidOid;
@@ -184,6 +192,11 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	allTypes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramModes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramNames = (Datum *) palloc0(parameterCount * sizeof(Datum));
+	*parameterDefaults = NIL;
+
+	/* may need a pstate for parse analysis of default exprs */
+	pstate = make_parsestate(NULL);
+	pstate->p_sourcetext = queryString;
 
 	/* Scan the list and extract data into work arrays */
 	i = 0;
@@ -191,6 +204,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	{
 		FunctionParameter *fp = (FunctionParameter *) lfirst(x);
 		TypeName   *t = fp->argType;
+		bool        isinput = false;
 		Oid			toid;
 
 		toid = LookupTypeName(NULL, t);
@@ -233,6 +247,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 			case FUNC_PARAM_VARIADIC:
 			case FUNC_PARAM_IN:
 				inTypes[inCount++] = toid;
+				isinput = true;
 
 				/* Keep track of the number of anytable arguments */
 				if (toid == ANYTABLEOID)
@@ -282,6 +297,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 							 errmsg("functions cannot return \"anytable\" arguments")));
 
 				inTypes[inCount++] = toid;
+				isinput = true;
 
 				if (outCount == 0)	/* save first OUT param's type */
 					*requiredResultType = toid;
@@ -309,8 +325,64 @@ examine_parameter_list(List *parameters, Oid languageOid,
 			have_names = true;
 		}
 
+		if (fp->defexpr)
+		{
+			Node   *def;
+
+			if (!isinput)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("only input parameters can have default values")));
+
+			if (toid == ANYTABLEOID)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("anytable parameter cannot have default value")));
+
+			def = transformExpr(pstate, fp->defexpr);
+			def = coerce_to_specific_type(pstate, def, toid, "DEFAULT");
+
+			/*
+			 * Make sure no variables are referred to.
+			 */
+			if (list_length(pstate->p_rtable) != 0 ||
+				contain_var_clause(def))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+							 errmsg("cannot use table references in parameter default value")));
+			/*
+			 * No subplans or aggregates, either...
+			 */
+			if (pstate->p_hasSubLinks)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot use subquery in parameter default value")));
+
+			if (pstate->p_hasAggs)
+				ereport(ERROR,
+						(errcode(ERRCODE_GROUPING_ERROR),
+						 errmsg("cannot use aggregate function in parameter default value")));
+
+			if (pstate->p_hasWindFuncs)
+				ereport(ERROR,
+						(errcode(ERRCODE_WINDOWING_ERROR),
+						 errmsg("cannot use window function in parameter default value")));
+
+			*parameterDefaults = lappend(*parameterDefaults, def);
+			have_defaults = true;
+		}
+		else
+		{
+			if (isinput && have_defaults)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("input parameters after one with a default value must also have defaults")));
+		}
+
 		i++;
 	}
+
+	free_parsestate(&pstate);
 
 	/* Currently only support single multiset input parameters */
 	if (multisetCount > 1)
@@ -701,17 +773,19 @@ validate_describe_callback(List *describeQualName,
 	/* Lookup the function in the catalog */
 	int nvargs;
 	fdResult = func_get_detail(describeQualName,
-							   NIL,   /* argument expressions */
+							   NIL,   	/* argument expressions */
 							   nargs, 
 							   inputTypeOids,
-							   false,
+							   false,	/* expand_variadic */
+							   false,	/* expand_defaults */
 							   &describeFuncOid,
 							   &describeReturnTypeOid, 
 							   &describeReturnsSet,
 							   &describeIsStrict, 
 							   &describeIsOrdered,
 							   &nvargs,
-							   &actualInputTypeOids);
+							   &actualInputTypeOids,
+							   NULL);
 
 	if (fdResult != FUNCDETAIL_NORMAL || !OidIsValid(describeFuncOid))
 	{
@@ -754,7 +828,7 @@ validate_describe_callback(List *describeQualName,
  *	 Execute a CREATE FUNCTION utility statement.
  */
 void
-CreateFunction(CreateFunctionStmt *stmt)
+CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 {
 	char	   *probin_str;
 	char	   *prosrc_str;
@@ -771,6 +845,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 	ArrayType  *allParameterTypes;
 	ArrayType  *parameterModes;
 	ArrayType  *parameterNames;
+	List	   *parameterDefaults;
 	Oid			requiredResultType;
 	bool		isStrict,
 				security;
@@ -843,11 +918,12 @@ CreateFunction(CreateFunctionStmt *stmt)
 	 * Convert remaining parameters of CREATE to form wanted by
 	 * ProcedureCreate.
 	 */
-	examine_parameter_list(stmt->parameters, languageOid,
+	examine_parameter_list(stmt->parameters, languageOid, queryString,
 						   &parameterTypes,
 						   &allParameterTypes,
 						   &parameterModes,
 						   &parameterNames,
+						   &parameterDefaults,
 						   &requiredResultType);
 
 	if (stmt->returnType)
@@ -918,6 +994,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 					PointerGetDatum(allParameterTypes),
 					PointerGetDatum(parameterModes),
 					PointerGetDatum(parameterNames),
+					parameterDefaults,
 					stmt->funcOid);
 					
 	if (Gp_role == GP_ROLE_DISPATCH)

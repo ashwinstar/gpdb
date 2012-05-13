@@ -41,6 +41,7 @@ static bool describeOneTSConfig(const char *oid, const char *nspname,
 static void printACLColumn(PQExpBuffer buf, const char *colname);
 static bool isGPDB(void);
 static bool isGPDB4200OrLater(void);
+static bool isGPDB5000OrLater(void);
 
 /* GPDB 3.2 used PG version 8.2.10, and we've moved the minor number up since then for each release,  4.1 = 8.2.15 */
 /* Allow for a couple of future releases.  If the version isn't in this range, we are talking to PostgreSQL, not GPDB */
@@ -104,6 +105,25 @@ static bool isGPDB4200OrLater(void)
 	return retValue;
 }
 
+/*
+ * If GPDB version is 5.0, pg_proc has provariadic as column number 20.
+ * When we have version() returns GPDB version instead of "main build dev" or
+ * something similar, we'll fix this function.
+ */
+static bool isGPDB5000OrLater(void)
+{
+	bool	retValue = false;
+
+	if (isGPDB() == true)
+	{
+		PGresult   *res;
+
+		res = PSQLexec("select attnum from pg_catalog.pg_attribute where attrelid = 1255 and attname = 'provariadic'", false);
+		if (PQntuples(res) == 1)
+			retValue = true;
+	}
+	return retValue;
+}
 
 /*----------------
  * Handlers for various slash commands displaying some sort of list
@@ -319,6 +339,24 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 						  " CASE\n"
 						  "  WHEN p.proisagg THEN '%s'\n"
 						  "  WHEN p.proiswindow THEN '%s'\n"
+						  "  WHEN p.prorettype = 'pg_catalog.trigger'::pg_catalog.regtype THEN '%s'\n"
+						  "  ELSE '%s'\n"
+						  "END as \"%s\"",
+						  gettext_noop("Result data type"),
+						  gettext_noop("Argument data types"),
+		/* translator: "agg" is short for "aggregate" */
+						  gettext_noop("agg"),
+						  gettext_noop("window"),
+						  gettext_noop("trigger"),
+						  gettext_noop("normal"),
+						  gettext_noop("Type"));
+	else if (isGPDB5000OrLater())
+		appendPQExpBuffer(&buf,
+						  "  pg_catalog.pg_get_function_result(p.oid) as \"%s\",\n"
+						  "  pg_catalog.pg_get_function_arguments(p.oid) as \"%s\",\n"
+						  " CASE\n"
+						  "  WHEN p.proisagg THEN '%s'\n"
+						  "  WHEN p.proiswin THEN '%s'\n"
 						  "  WHEN p.prorettype = 'pg_catalog.trigger'::pg_catalog.regtype THEN '%s'\n"
 						  "  ELSE '%s'\n"
 						  "END as \"%s\"",
