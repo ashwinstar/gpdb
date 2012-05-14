@@ -1,6 +1,7 @@
 /* compress_threaded.c */
 #include "c.h"
 #include "storage/bfz.h"
+#include "utils/memutils.h"
 
 static void
 bfz_threaded_close_ex(bfz_t * thiz)
@@ -14,7 +15,7 @@ bfz_threaded_close_ex(bfz_t * thiz)
 
 	pthread_join(fs->thread, NULL);
 	pipe_close(&fs->pipe);
-	free(fs);
+	pfree(fs);
 	thiz->freeable_stuff = NULL;
 }
 
@@ -37,7 +38,8 @@ bfz_threaded_read_ex(bfz_t * thiz, char *buffer, int size)
 void
 bfz_threaded_init(bfz_t * thiz, void *(*compress) (void *), void *(*uncompress) (void *))
 {
-	struct bfz_threaded_freeable_stuff *fs = malloc(sizeof *fs);
+	/* Allocate this in TopMemoryContext since it needs to be alive during cleanup */
+	struct bfz_threaded_freeable_stuff *fs = MemoryContextAlloc(TopMemoryContext, sizeof *fs);
 
 	if (!fs)
 		ereport(ERROR,

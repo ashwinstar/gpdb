@@ -5,6 +5,7 @@
 #include "c.h"
 #include <unistd.h>
 #include <storage/bfz.h>
+#include <utils/memutils.h>
 
 /*
  * This file implements bfz compression algorithm "nothing".
@@ -14,7 +15,7 @@
 static void
 bfz_nothing_close_ex(bfz_t * thiz)
 {
-	free(thiz->freeable_stuff);
+	pfree(thiz->freeable_stuff);
 	thiz->freeable_stuff = NULL;
 }
 
@@ -58,7 +59,8 @@ bfz_nothing_write_ex(bfz_t * bfz, const char *buffer, int size)
 void
 bfz_nothing_init(bfz_t * thiz)
 {
-	struct bfz_freeable_stuff *fs = malloc(sizeof *fs);
+	/* Allocate this in TopMemoryContext since it needs to be alive during cleanup */
+	struct bfz_freeable_stuff *fs = MemoryContextAlloc(TopMemoryContext, sizeof *fs);
 
 	if (!fs)
 		ereport(ERROR,

@@ -1,6 +1,7 @@
 /* compress_zlib.c */
 #include "c.h"
 #include "storage/bfz.h"
+#include "utils/memutils.h"
 #include <zlib.h>
 
 struct bfz_zlib_freeable_stuff
@@ -24,7 +25,7 @@ bfz_zlib_close_ex(bfz_t * thiz)
 					errmsg("could not duplicate file descriptor: %m")));
 		gzclose(fs->f);
 	}
-	free(fs);
+	pfree(fs);
 	thiz->freeable_stuff = NULL;
 }
 
@@ -84,7 +85,8 @@ bfz_zlib_read_ex(bfz_t * thiz, char *buffer, int size)
 void
 bfz_zlib_init(bfz_t * thiz)
 {
-	struct bfz_zlib_freeable_stuff *fs = malloc(sizeof *fs);
+	/* Allocate this in TopMemoryContext since it needs to be alive during cleanup */
+	struct bfz_zlib_freeable_stuff *fs = MemoryContextAlloc(TopMemoryContext, sizeof *fs);
 
 	if (!fs)
 		ereport(ERROR,
