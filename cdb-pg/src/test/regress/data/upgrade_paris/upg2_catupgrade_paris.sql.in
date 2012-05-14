@@ -193,6 +193,19 @@ CREATE FUNCTION @gpupgradeschemaname@.txid_visible_in_snapshot(int8, @gpupgrades
 	AS 'txid_visible_in_snapshot' WITH (OID=2933);
 COMMENT ON FUNCTION @gpupgradeschemaname@.txid_visible_in_snapshot(int8, @gpupgradeschemaname@.txid_snapshot) IS 'is xid visible in snapshot';
 
+-- MPP-15707, MPP-17314 - properly expose convert_* functions
+CREATE FUNCTION @gpupgradeschemaname@.length(bytea, name) RETURNS int4 LANGUAGE internal STABLE STRICT 
+	AS 'length_in_encoding' WITH (OID=2966, DESCRIPTION="length of string in specified encoding");
+
+CREATE FUNCTION @gpupgradeschemaname@.convert_from(bytea, name) RETURNS text LANGUAGE internal STABLE STRICT 
+	AS 'pg_convert_from' WITH (OID=2967, DESCRIPTION="convert string with specified source encoding name");
+
+CREATE FUNCTION @gpupgradeschemaname@.convert_to(text, name) RETURNS bytea LANGUAGE internal STABLE STRICT 
+	AS 'pg_convert_to' WITH (OID=2968, DESCRIPTION="convert string with specified destination encoding name");
+
+CREATE FUNCTION @gpupgradeschemaname@."convert"(bytea, name, name) RETURNS bytea LANGUAGE internal STABLE STRICT 
+	AS 'pg_convert' WITH (OID=2969, DESCRIPTION="convert string with specified encoding names");
+
 --    pg_cast    --
 -- Create a special schema for use by the pg_cast_load external table.
 -- We cannot use gpupgradeschemaname (pg_catalog), as that will see the external

@@ -108,6 +108,10 @@ WHERE p1.oid != p2.oid AND
 --
 -- Note: ignoring gp_deprecated here since the function ignores its parameters
 -- always errors and never returns a value.
+--
+-- MPP-17314 / MPP-17340 - The presence of "convert" below is temporary. The
+-- function was incorrectly defined in an older release. It will be deleted
+-- from the catalog with MPP-17340.
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid < p2.oid AND
@@ -127,6 +131,7 @@ WHERE p1.oid < p2.oid AND
 	  NOT IN (select winfunc from pg_window)));
  oid  |      proname      | oid  |       proname       
 ------+-------------------+------+---------------------
+ 1717 | convert           | 2969 | convert
  2991 | interval_bound    | 2992 | interval_bound
  2992 | interval_bound    | 2993 | interval_bound
  2991 | interval_bound    | 2993 | interval_bound
@@ -149,7 +154,7 @@ WHERE p1.oid < p2.oid AND
  3213 | int4_matrix_accum | 3215 | float8_matrix_accum
  3212 | int2_matrix_accum | 3215 | float8_matrix_accum
  5044 | gp_elog           | 5045 | gp_elog
-(22 rows)
+(23 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.
@@ -176,6 +181,7 @@ WHERE p1.oid != p2.oid AND
     (p1.prorettype < p2.prorettype);
          prorettype          |        prorettype        
 -----------------------------+--------------------------
+ bytea                       | text
  text                        | character varying
  smallint[]                  | integer[]
  smallint[]                  | bigint[]
@@ -184,7 +190,7 @@ WHERE p1.oid != p2.oid AND
  integer[]                   | double precision[]
  bigint[]                    | double precision[]
  timestamp without time zone | timestamp with time zone
-(8 rows)
+(9 rows)
 
 SELECT DISTINCT p1.proargtypes[0]::regtype, p2.proargtypes[0]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
@@ -197,6 +203,7 @@ WHERE p1.oid != p2.oid AND
     (p1.proargtypes[0] < p2.proargtypes[0]);
          proargtypes         |       proargtypes        
 -----------------------------+--------------------------
+ bytea                       | text
  text                        | character
  text                        | character varying
  smallint[]                  | integer[]
@@ -208,7 +215,7 @@ WHERE p1.oid != p2.oid AND
  timestamp without time zone | timestamp with time zone
  bit                         | bit varying
  anyarray                    | anyelement
-(11 rows)
+(12 rows)
 
 SELECT DISTINCT p1.proargtypes[1]::regtype, p2.proargtypes[1]::regtype
 FROM pg_proc AS p1, pg_proc AS p2

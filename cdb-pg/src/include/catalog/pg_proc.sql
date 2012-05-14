@@ -2083,6 +2083,14 @@
 -- return client encoding name i.e. session encoding 
  CREATE FUNCTION pg_client_encoding() RETURNS name LANGUAGE internal STABLE STRICT AS 'pg_client_encoding' WITH (OID=810, DESCRIPTION="encoding name of current database");
 
+ CREATE FUNCTION length(bytea, name) RETURNS int4 LANGUAGE internal STABLE STRICT AS 'length_in_encoding' WITH (OID=2966, DESCRIPTION="length of string in specified encoding");
+
+ CREATE FUNCTION convert_from(bytea, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert_from' WITH (OID=2967, DESCRIPTION="convert string with specified source encoding name");
+
+ CREATE FUNCTION convert_to(text, name) RETURNS bytea LANGUAGE internal STABLE STRICT AS 'pg_convert_to' WITH (OID=2968, DESCRIPTION="convert string with specified destination encoding name");
+
+ CREATE FUNCTION "convert"(bytea, name, name) RETURNS bytea LANGUAGE internal STABLE STRICT AS 'pg_convert' WITH (OID=2969, DESCRIPTION="convert string with specified encoding names");
+
  CREATE FUNCTION "convert"(text, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert' WITH (OID=1717, DESCRIPTION="convert string with specified destination encoding name");
 
  CREATE FUNCTION "convert"(text, name, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert2' WITH (OID=1813, DESCRIPTION="convert string with specified encoding names");

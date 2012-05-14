@@ -98,6 +98,10 @@ WHERE p1.oid != p2.oid AND
 --
 -- Note: ignoring gp_deprecated here since the function ignores its parameters
 -- always errors and never returns a value.
+--
+-- MPP-17314 / MPP-17340 - The presence of "convert" below is temporary. The
+-- function was incorrectly defined in an older release. It will be deleted
+-- from the catalog with MPP-17340.
 
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
