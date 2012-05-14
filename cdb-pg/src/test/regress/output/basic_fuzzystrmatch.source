@@ -49,6 +49,7 @@ SELECT soundex('Anne'), soundex('Margaret'), difference('Anne', 'Margaret');
  A500    | M626    |          0
 (1 row)
 
+drop table if exists s;
 CREATE TABLE s (nm text);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'nm' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.

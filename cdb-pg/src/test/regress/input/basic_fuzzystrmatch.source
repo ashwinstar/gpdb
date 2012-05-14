@@ -10,6 +10,7 @@ SELECT soundex('Anne'), soundex('Ann'), difference('Anne', 'Ann');
 SELECT soundex('Anne'), soundex('Andrew'), difference('Anne', 'Andrew');
 SELECT soundex('Anne'), soundex('Margaret'), difference('Anne', 'Margaret');
 
+drop table if exists s;
 CREATE TABLE s (nm text);
 
 INSERT INTO s VALUES ('john');
