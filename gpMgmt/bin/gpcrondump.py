@@ -78,7 +78,7 @@ class GpCronDump(Operation):
         self.report_dir = options.report_dir
         self.encoding = options.encoding
         self.output_options = options.output_options
-        self.ddboost_host = options.ddboost_host
+        self.ddboost_hosts = options.ddboost_hosts
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
     
@@ -86,8 +86,9 @@ class GpCronDump(Operation):
         if self.include_dump_tables is None: self.include_dump_tables = []
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
         if self.output_options is None: self.output_options = []
+        if self.ddboost_hosts is None: self.ddboost_hosts = []
 
-        if not (self.clear_dumps_only or bool(self.ddboost_host) or bool(self.ddboost_user) or self.ddboost_config_remove):
+        if not (self.clear_dumps_only or bool(self.ddboost_hosts) or bool(self.ddboost_user) or self.ddboost_config_remove):
             if self.dump_databases is not None:
                 self.dump_databases = self.dump_databases.split(",")
             elif 'PGDATABASE' in os.environ:
@@ -134,7 +135,7 @@ class GpCronDump(Operation):
 			
 			The following characters are allowed:
                 1) Lowercase letters (a-z)
-				2) Uppercase letters (A-Z) 
+                2) Uppercase letters (A-Z) 
                 3) Numbers (0-9)
                 4) Special characters (- and _)
 				
@@ -163,10 +164,15 @@ class GpCronDump(Operation):
         f.close()
         os.chmod(filePathName, stat.S_IREAD | stat.S_IWRITE)
 
-    def sshToHosts(self, hostset, host, user, password):
-        ddcmd = 'source ' + os.environ['GPHOME'] + '/greenplum_path.sh; ' + os.environ['GPHOME'] + '/bin/gpddboost  --setCredential --hostname=' + host + ' --user=' + re.escape(user) + ' --password=' + re.escape(password)
-      
-        for host in hostset:
+    def sshToHosts(self, gpHostsSet, ddboostHostsSet, user, password):
+        logger.debug("DDboost host(s): %s" % ddboostHostsSet)
+        numberOfDdboostNics = len(ddboostHostsSet)
+
+		# This for loops over all the segment hosts and executes appropriate 'gpddboost --setCredential' command
+        for index, host in enumerate(gpHostsSet):                          
+            # If more then one NIC is specified, we configure the GP hosts with these ddboost NICs in a round robin manner
+            currentDdboostHost = ddboostHostsSet[index % numberOfDdboostNics]            
+            ddcmd = 'source ' + os.environ['GPHOME'] + '/greenplum_path.sh; ' + os.environ['GPHOME'] + '/bin/gpddboost  --setCredential --hostname=' + currentDdboostHost + ' --user=' + re.escape(user) + ' --password=' + re.escape(password)
             cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
             logger.debug("running gpddboost on host %s: %s" % (host, ddcmd))
             logger.debug("cmd: %s " % cmdline)
@@ -176,12 +182,12 @@ class GpCronDump(Operation):
             else:
                 logger.warn("problem delivering the config to %s " % host)
 
-        logger.debug("done with sshTOHosts. credentials were set on all servers")
+        logger.debug("done with sshToHosts. credentials were set on all servers")
 
     def execute(self):
-        if bool(self.ddboost_host) or bool(self.ddboost_user):
+        if bool(self.ddboost_hosts) or bool(self.ddboost_user):
             # check that both options are specified
-            if not (bool(self.ddboost_host) and bool(self.ddboost_user)):
+            if not (bool(self.ddboost_hosts) and bool(self.ddboost_user)):
                 raise ExceptionNoStackTraceNeeded('For DDBoost config, both options are required --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>.')
 
             # check that no other gpcrondump option was specified
@@ -190,15 +196,17 @@ class GpCronDump(Operation):
                 hostset = self.getHostSet(self.getGpArray())
                 p = getpass()
                 self.validatePassword(password = p)
-                self.sshToHosts(hostset, self.ddboost_host, self.ddboost_user, p)
+                self.sshToHosts(hostset, self.ddboost_hosts, self.ddboost_user, p)
                 return 0;
             else:
                 raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
-
+        
+        # The ddboost_config_remove actually configures the ddboost with dummy values
         if self.ddboost_config_remove:
             if self.ddboost_config_remove and self.only_ddboost_options():
                 hostset = self.getHostSet(self.getGpArray())
-                self.sshToHosts(hostset, '','','')
+                # The username and the password must be at least 2 characters long, so we just use 2 spaces for each
+                self.sshToHosts(hostset, [' '],'  ','  ')
                 return 0;
             else:
                 raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
@@ -589,9 +597,10 @@ def create_parser():
     ddOpt.add_option('--ddboost', dest='ddboost', help="Dump to DDBoost using ~/.ddconfig", action="store_true", default=False)
     parser.add_option_group(ddOpt)
    
-    #DDBoostConfig options
+    # DDBoostConfig options
     ddConfigOpt = OptionGroup(parser, "DDBoostConfig")
-    ddConfigOpt.add_option('--ddboost-host', dest='ddboost_host', action='store', default=None,
+    # ddboost-host may have more then one host
+    ddConfigOpt.add_option('--ddboost-host', dest='ddboost_hosts', action='append', default=None,
                            help="Configuration of ddboost hostname.")
     ddConfigOpt.add_option('--ddboost-user', dest='ddboost_user', action='store', default=None, 
                            help="Configuration of ddboost user.")
