@@ -441,4 +441,14 @@ DATA(insert OID = 9919 (	25	 16 2970 e ));
 DATA(insert OID = 9920 (	16 1043 2971 a ));
 DATA(insert OID = 9921 ( 1043	 16 2970 e ));
 
+/* complex category */
+DATA(insert OID=9069 (701  825 9064 i));
+DATA(insert OID=9070 (700  825 9065 i));
+DATA(insert OID=9088 (20   825 9066 i));
+DATA(insert OID=9089 (23   825 9067 i));
+DATA(insert OID=9090 (21   825 9068 i));
+DATA(insert OID=9091 (600  825 0 i));
+DATA(insert OID=9092 (825  600 0 i));
+DATA(insert OID=9093 (1700 825 9087 i));
+
 #endif   /* PG_CAST_H */

@@ -5614,3 +5614,96 @@
  CREATE FUNCTION txid_snapshot_xip(txid_snapshot) RETURNS SETOF int8 LANGUAGE internal IMMUTABLE STRICT AS 'txid_snapshot_xip' WITH (OID=2932, DESCRIPTION="get set of in-progress txids in snapshot");
  
  CREATE FUNCTION txid_visible_in_snapshot(int8, txid_snapshot) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'txid_visible_in_snapshot' WITH (OID=2933, DESCRIPTION="is xid visible in snapshot?");
+
+ -- functions for the complex data type
+ CREATE FUNCTION complex_in(cstring) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_in' WITH (OID=9026, DESCRIPTION="I/O");
+
+ CREATE FUNCTION complex_out(complex) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'complex_out' WITH (OID=9027, DESCRIPTION="I/O");
+
+ CREATE FUNCTION complex_recv(internal) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_recv' WITH (OID=9028, DESCRIPTION="I/O");
+
+ CREATE FUNCTION complex_send(complex) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'complex_send' WITH (OID=9029, DESCRIPTION="I/O");
+ 
+ CREATE FUNCTION complex(float8, float8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'construct_complex' WITH (OID=9030, DESCRIPTION="constructs a complex number with given real part and imaginary part");
+
+ CREATE FUNCTION complex_trig(float8, float8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'construct_complex_trig' WITH (OID=9031, DESCRIPTION="constructs a complex number with given magnitude and phase");
+
+ CREATE FUNCTION re(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_re' WITH (OID=9032, DESCRIPTION="returns the real part of the argument");
+
+ CREATE FUNCTION im(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_im' WITH (OID=9033, DESCRIPTION="returns the imaginary part of the argument");
+
+ CREATE FUNCTION radians(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_arg' WITH (OID=9035, DESCRIPTION="returns the phase of the argument");
+
+ CREATE FUNCTION complexabs(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_mag' WITH (OID=9036, DESCRIPTION="returns the magnitude of the argument");
+ 
+ CREATE FUNCTION abs(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_mag' WITH (OID=9037, DESCRIPTION="returns the magnitude of the argument");
+
+ CREATE FUNCTION conj(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_conj' WITH (OID=9038, DESCRIPTION="returns the conjunction of the argument");
+
+ CREATE FUNCTION hashcomplex(complex) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'complex_hash' WITH (OID=9039, DESCRIPTION="hash");
+
+ CREATE FUNCTION complex_eq(complex, complex) RETURNS bool  LANGUAGE internal IMMUTABLE STRICT AS 'complex_eq' WITH (OID=9040, DESCRIPTION="equal");
+
+ CREATE FUNCTION complex_ne(complex, complex) RETURNS bool  LANGUAGE internal IMMUTABLE STRICT AS 'complex_ne' WITH (OID=9041, DESCRIPTION="not equal");
+
+ CREATE FUNCTION complex_pl(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_pl' WITH (OID=9042, DESCRIPTION="plus");
+
+ CREATE FUNCTION complex_up(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_up' WITH (OID=9043, DESCRIPTION="unary plus");
+
+ CREATE FUNCTION complex_mi(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_mi' WITH (OID=9044, DESCRIPTION="minus");
+
+ CREATE FUNCTION complex_um(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_um' WITH (OID=9045, DESCRIPTION="unary minus");
+
+ CREATE FUNCTION complex_mul(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_mul' WITH (OID=9046, DESCRIPTION="multiply");
+
+ CREATE FUNCTION complex_div(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_div' WITH (OID=9047, DESCRIPTION="divide");
+
+ CREATE FUNCTION complex_power(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_pow' WITH (OID=9048, DESCRIPTION="exponentiation (x^y)");
+
+ CREATE FUNCTION complex_sqrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_sqrt' WITH (OID=9049, DESCRIPTION="squre root");
+
+ CREATE FUNCTION complex_cbrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cbrt' WITH (OID=9050, DESCRIPTION="cube root");
+
+ CREATE FUNCTION degrees(complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'complex_degrees' WITH (OID=9051, DESCRIPTION="phase to degrees");
+
+ CREATE FUNCTION exp(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_exp' WITH (OID=9052, DESCRIPTION="natural exponential (e^x)");
+
+ CREATE FUNCTION ln(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_ln' WITH (OID=9053, DESCRIPTION="natural logarithm");
+
+ CREATE FUNCTION log(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_log10' WITH (OID=9054, DESCRIPTION="base 10 logarithm");
+
+ CREATE FUNCTION log(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_log' WITH (OID=9055, DESCRIPTION="logarithm base arg1 of arg2");
+
+ CREATE FUNCTION acos(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_acos' WITH (OID=9056, DESCRIPTION="acos");
+
+ CREATE FUNCTION asin(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_asin' WITH (OID=9057, DESCRIPTION="asin");
+
+ CREATE FUNCTION atan(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_atan' WITH (OID=9058, DESCRIPTION="atan");
+
+ CREATE FUNCTION cos(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cos' WITH (OID=9059, DESCRIPTION="cos");
+
+ CREATE FUNCTION cot(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cot' WITH (OID=9060, DESCRIPTION="cot");
+
+ CREATE FUNCTION sin(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_sin' WITH (OID=9061, DESCRIPTION="sin");
+
+ CREATE FUNCTION tan(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_tan' WITH (OID=9062, DESCRIPTION="tan");
+
+ CREATE FUNCTION dotproduct(_complex, _complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_dot_product' WITH (OID=9063, DESCRIPTION="dot product");
+
+ CREATE FUNCTION float82complex(float8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'float82complex' WITH (OID=9064, DESCRIPTION="(internal) type cast from float8 to complex");
+
+ CREATE FUNCTION float42complex(float4) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'float42complex' WITH (OID=9065, DESCRIPTION="(internal) type cast from float4 to complex");
+
+ CREATE FUNCTION int82complex(int8) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'int82complex' WITH (OID=9066, DESCRIPTION="(internal) type cast from int8 to complex");
+
+ CREATE FUNCTION int42complex(int4) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'int42complex' WITH (OID=9067, DESCRIPTION="(internal) type cast from int4 to complex");
+
+ CREATE FUNCTION int22complex(int2) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'int22complex' WITH (OID=9068, DESCRIPTION="(internal) type cast from int2 to complex");
+
+ CREATE FUNCTION power(complex, complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_pow' WITH (OID=9084, DESCRIPTION="exponentiation (x^y)");
+
+ CREATE FUNCTION sqrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_sqrt' WITH (OID=9085, DESCRIPTION="squre root");
+
+ CREATE FUNCTION cbrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cbrt' WITH (OID=9086, DESCRIPTION="cube root"); 
+ 
+ CREATE FUNCTION numeric2point("numeric") RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'numeric2complex' WITH (OID=9087, DESCRIPTION="(internal) type cast from numeric to complex");

@@ -1002,6 +1002,21 @@ DATA(insert OID = 2875 (  "@"	   PGNSP PGUID b f 601 628 16	  0  0 0 0 0 0 on_sl
 DATA(insert OID = 2876 (  "@"	   PGNSP PGUID b f 601 603 16	  0  0 0 0 0 0 on_sb - - ));
 DATA(insert OID = 2877 (  "~"	   PGNSP PGUID b f 1034 1033	 16 0 0 0 0 0 0 aclcontains - - ));
 
+/* operators for complex data type */
+DATA(insert OID = 9071 (  "="	   PGNSP PGUID b f 825 825 16 9071 9072 0 0 0 0 complex_eq eqsel eqjoinsel)); 
+#define ComplexEqualOperator 9071
+DATA(insert OID = 9072 (  "<>"	   PGNSP PGUID b f 825 825 16  9072 9071 0 0 0 0 complex_ne  neqsel neqjoinsel)); 
+DATA(insert OID = 9073 (  "@"	   PGNSP PGUID l f 0   825 701 0	0	 0 0 0 0 complexabs  - -)); 
+DATA(insert OID = 9074 (  "+"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_pl  - -));
+DATA(insert OID = 9075 (  "+"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_up  - -));
+DATA(insert OID = 9076 (  "-"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_mi  - -));
+DATA(insert OID = 9077 (  "-"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_um  - -));
+DATA(insert OID = 9078 (  "*"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_mul - -));
+DATA(insert OID = 9079 (  "/"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_div - -)); 
+DATA(insert OID = 9080 (  "^"	   PGNSP PGUID b f 825 825 825 0	0	 0 0 0 0 complex_power 	- -));
+DATA(insert OID = 9081 (  "|/"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_sqrt 	- -));
+DATA(insert OID = 9082 (  "||/"	   PGNSP PGUID l f 0   825 825 0	0	 0 0 0 0 complex_cbrt	- -));
+
 
 /*
  * function prototypes

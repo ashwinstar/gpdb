@@ -396,6 +396,17 @@
 
 
 -- OIDS 800 - 899 
+ CREATE TYPE complex(
+   INPUT = complex_in,
+   OUTPUT = complex_out,
+   RECEIVE = complex_recv,
+   SEND = complex_send,
+   INTERNALLENGTH = 16,
+   STORAGE = plain,
+   ALIGNMENT = double
+ ) WITH (OID=825, ARRAYOID=2972, DESCRIPTION="double-precision floating point complex number, 16-byte storage");
+-- #define COMPLEXOID 825
+
  CREATE TYPE macaddr(
    INPUT = macaddr_in,
    OUTPUT = macaddr_out,
