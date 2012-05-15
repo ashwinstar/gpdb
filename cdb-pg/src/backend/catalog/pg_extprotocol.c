@@ -111,22 +111,9 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 	}
 	namestrcpy(&prtname, protocolName);
 	values[Anum_pg_extprotocol_ptcname - 1] = NameGetDatum(&prtname);
-
-	if (readfn)
-		values[Anum_pg_extprotocol_ptcreadfn - 1] = ObjectIdGetDatum(readfn);
-	else
-		nulls[Anum_pg_extprotocol_ptcreadfn - 1] = true;
-
-	if (writefn)
-		values[Anum_pg_extprotocol_ptcwritefn - 1] = ObjectIdGetDatum(writefn);
-	else
-		nulls[Anum_pg_extprotocol_ptcwritefn - 1] = true;
-
-	if (validatorfn)
-		values[Anum_pg_extprotocol_ptcvalidatorfn - 1] = ObjectIdGetDatum(validatorfn);
-	else
-		nulls[Anum_pg_extprotocol_ptcvalidatorfn - 1] = true;
-
+	values[Anum_pg_extprotocol_ptcreadfn - 1] = ObjectIdGetDatum(readfn);
+	values[Anum_pg_extprotocol_ptcwritefn - 1] = ObjectIdGetDatum(writefn);
+	values[Anum_pg_extprotocol_ptcvalidatorfn - 1] = ObjectIdGetDatum(validatorfn);
 	values[Anum_pg_extprotocol_ptcowner - 1] = ObjectIdGetDatum(ownerId);
 	values[Anum_pg_extprotocol_ptctrusted - 1] = BoolGetDatum(trusted);
 	nulls[Anum_pg_extprotocol_ptcacl - 1] = true;
@@ -323,18 +310,16 @@ LookupExtProtocolFunction(const char *prot_name,
 							 pg_extprotocol_dsc,
 							 &isNull);
 
-	if (isNull)
-	{
-		if (error)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("protocol '%s' has no %s function defined",
-							 prot_name, func_type_to_name(prot_type))));
-	}
-	else
-	{
-		funcOid = DatumGetObjectId(funcDatum);
-	}
+	/* cat attr is defined as NOT NULL */
+	Assert(!isNull);
+
+	funcOid = DatumGetObjectId(funcDatum);
+
+	if (!OidIsValid(funcOid) && error)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("protocol '%s' has no %s function defined",
+						 prot_name, func_type_to_name(prot_type))));
 
 	/* Finish up scan and close pg_extprotocol catalog. */
 

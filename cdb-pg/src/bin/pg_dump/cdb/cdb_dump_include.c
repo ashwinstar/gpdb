@@ -1420,7 +1420,12 @@ getExtProtocols(int *numExtProtocols)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of external protocol \"%s\" appears to be invalid\n",
 						ptcinfo[i].dobj.name);
 
-
+		/* NOTE, MPP-17173
+		 * read/write/validate can have a NULL value in early 4.2 versions. This
+		 * is a bug since they are defined as NOT NULL in the catalog. We leave
+		 * this harmless isnull check now, and it can be removed in the next
+		 * major version, which has the catalog fix in.
+		 */
 		if (PQgetisnull(res, i, i_ptcreadid))
 			ptcinfo[i].ptcreadid = InvalidOid;
 		else
