@@ -1348,25 +1348,22 @@ AtSubCommit_childXids(void)
 	 * for efficiency. See GetAddedSubtransactionsFromTree().
 	 * parent->childXids, if not NULL, has xids that precede s->childXids.
 	 */
-	if (s->childXids != NIL)
+	List *new_childXids = lappend_xid(s->childXids,
+                                s->transactionId);
+
+	if (s->parent->childXids != NIL)
 	{
-		List *new_childXids = list_concat(s->childXids,
-						  s->parent->childXids);
+		new_childXids = list_concat(new_childXids,
+				  s->parent->childXids);
 
 		/*
 		 * list_concat doesn't free the list header for the second list;
 		 *  do so here to avoid memory leakage (kluge)
 		 */
-		if (s->parent->childXids)
-		{
-			pfree(s->parent->childXids);
-		}
-		s->parent->childXids = new_childXids;
-		s->childXids = NIL;
+		pfree(s->parent->childXids);
 	}
-
-	s->parent->childXids = lappend_xid(s->parent->childXids,
-					   s->transactionId);
+	s->parent->childXids = new_childXids;
+	s->childXids = NIL;
 	MemoryContextSwitchTo(old_cxt);
 }
 
@@ -2420,7 +2417,7 @@ GetLastSubTransactionIdFromTree(TransactionState s)
 		 * subcommitted child XIDs
 		 */
 		if (s->childXids && list_length(s->childXids))
-			return llast_oid(s->childXids);
+			return linitial_oid(s->childXids);
 		else if (s->nestingLevel >= 2)
 			return s->transactionId;
 	}
