@@ -98,7 +98,7 @@ SubTransGetData(TransactionId xid, SubTransData* subData)
 	subData->topMostParent = ptr->topMostParent;
 	if ( subData->topMostParent == InvalidTransactionId )
 	{
-		// Here means parent is Main XID, hence set parent itself as topMostParent
+		/* Here means parent is Main XID, hence set parent itself as topMostParent */
 		subData->topMostParent = xid;
 	}
 
@@ -128,7 +128,7 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 	 */
 	if ( parent != InvalidTransactionId )
 	{
-		// Get the topMostParent for Parent
+		/* Get the topMostParent for Parent */
 		SubTransGetData(parent, &subData);
 	}
 	else
