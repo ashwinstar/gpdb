@@ -1018,7 +1018,7 @@ LINE 1: ...elect percentile_cont(0.5) within group (order by point(0,0)...
 HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 -- outer reference is not allowed for now
 select (select a from perct where median(t.a) = 5) from perct t;
-ERROR:  percentile functions cannot reference columns from outer queries
+ERROR:  percentile functions referencing an outer query block are not supported
 LINE 1: select (select a from perct where median(t.a) = 5) from perc...
                                                  ^
 drop view percv2;

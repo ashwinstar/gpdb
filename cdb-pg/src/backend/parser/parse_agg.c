@@ -63,7 +63,6 @@ static List* get_groupclause_exprs(Node *grpcl, List *targetList);
 static void
 check_call(ParseState *pstate, Node *call)
 {
-	int			min_varlevel = -1;
 	bool		is_agg = IsA(call, Aggref);
 
 	/*
@@ -71,10 +70,20 @@ check_call(ParseState *pstate, Node *call)
 	 * variable or aggregate in its arguments; or if it contains no variables
 	 * at all, we presume it to be local.
 	 */
+	int min_varlevel = -1;
+	int max_varlevel = -1;
 	if (is_agg)
-		min_varlevel = find_minimum_var_level((Node *) ((Aggref *)call)->args);
+	{
+		find_minimum_maximum_var_level((Node *) ((Aggref *)call)->args, &min_varlevel, &max_varlevel);
+		if (max_varlevel > 0)
+		{
+			ereport(ERROR,
+						(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+						errmsg("aggregate functions referencing an outer query block are not supported")));
+		}
+	}
 	else
-		min_varlevel = find_minimum_var_level((Node *)((WindowRef *)call)->args);
+		find_minimum_maximum_var_level((Node *)((WindowRef *)call)->args, &min_varlevel, &max_varlevel);
 
 	/*
 	 * An aggregate can't directly contain another aggregate call of the same

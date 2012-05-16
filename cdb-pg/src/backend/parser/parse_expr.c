@@ -2120,7 +2120,6 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 		List		   *tlist = NIL, *sortlist = NIL, *pre_tlist = NIL;
 		ListCell	   *l;
 		int				i;
-		int				min_varlevel;
 		int				sortlen;
 		Oid			   *sorttypes;
 		struct _FuncCandidateList	float8_sig,
@@ -2261,11 +2260,13 @@ transformPercentileExpr(ParseState *pstate, PercentileExpr *p)
 		 * for PercentileExpr, and as we plan to integrate it Aggref, we
 		 * just disallow such cases for now.  Revisit later.
 		 */
-		min_varlevel = find_minimum_var_level((Node *) p->sortTargets);
-		if (min_varlevel > 0)
+		int min_varlevel = -1;
+		int max_varlevel = -1;
+		find_minimum_maximum_var_level((Node *) p->sortTargets, &min_varlevel, &max_varlevel);
+		if (max_varlevel > 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("percentile functions cannot reference columns from outer queries")));
+					 errmsg("percentile functions referencing an outer query block are not supported")));
 
 		if (checkExprHasAggs((Node *) p->sortTargets))
 			ereport(ERROR,

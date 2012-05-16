@@ -36,7 +36,8 @@ typedef struct
 typedef struct
 {
 	int			min_varlevel;
-} find_minimum_var_level_context;
+	int			max_varlevel;
+} find_minimum_maximum_var_level_context;
 
 typedef struct
 {
@@ -334,24 +335,23 @@ contain_vars_of_level_or_above(Node *node, int levelsup)
 
 
 /*
- * find_minimum_var_level
- *	  Recursively scan a clause to find the lowest variable level it
- *	  contains --- for example, zero is returned if there are any local
- *	  variables, one if there are no local variables but there are
- *	  one-level-up outer references, etc.  Subqueries are scanned to see
- *	  if they possess relevant outer references.  (But any local variables
- *	  within subqueries are not relevant.)
+ * find_minimum_maximum_var_level_cbVar
+ *	  Recursively scan a clause to find the (minimum, maximum) variable level it
+ *	  contains --- for example, (0,0) if there are only local variables, (0,1)
+ *	  if there is a mix between local variables and one-level-up outer references, etc.
+ *	  Subqueries are scanned to see if they possess relevant outer references.
+ *	  (But any local variables within subqueries are not relevant.)
  *
  *	  -1 is returned if the clause has no variables at all.
  *
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
 static bool
-find_minimum_var_level_cbVar(Var   *var,
+find_minimum_maximum_var_level_cbVar(Var   *var,
 							 void  *context,
                              int    sublevelsup)
 {
-    find_minimum_var_level_context *ctx = (find_minimum_var_level_context *)context;
+    find_minimum_maximum_var_level_context *ctx = (find_minimum_maximum_var_level_context *)context;
     int			varlevelsup = var->varlevelsup;
 
 	/* convert levelsup to frame of reference of original query */
@@ -363,20 +363,19 @@ find_minimum_var_level_cbVar(Var   *var,
 			ctx->min_varlevel > varlevelsup)
 		{
 			ctx->min_varlevel = varlevelsup;
+		}
 
-			/*
-			 * As soon as we find a local variable, we can abort the tree
-			 * traversal, since min_varlevel is then certainly 0.
-			 */
-			if (varlevelsup == 0)
-				return true;
+		if (ctx->max_varlevel < 0 ||
+			ctx->max_varlevel < varlevelsup)
+		{
+			ctx->max_varlevel = varlevelsup;
 		}
 	}
     return false;
 }
 
 static bool
-find_minimum_var_level_cbAggref(Aggref *aggref,
+find_minimum_maximum_var_level_cbAggref(Aggref *aggref,
 						        void   *context,
                                 int     sublevelsup)
 {
@@ -385,7 +384,7 @@ find_minimum_var_level_cbAggref(Aggref *aggref,
 	 * the same result from looking at the Vars in the aggregate's argument,
 	 * but this fails in the case of a Var-less aggregate call (COUNT(*)).
 	 */
-    find_minimum_var_level_context *ctx = (find_minimum_var_level_context *)context;
+	find_minimum_maximum_var_level_context *ctx = (find_minimum_maximum_var_level_context *)context;
     int			agglevelsup = aggref->agglevelsup;
 
 	/* convert levelsup to frame of reference of original query */
@@ -397,40 +396,41 @@ find_minimum_var_level_cbAggref(Aggref *aggref,
 			ctx->min_varlevel > agglevelsup)
 		{
 			ctx->min_varlevel = agglevelsup;
+		}
 
-			/*
-			 * As soon as we find a local aggregate, we can abort the tree
-			 * traversal, since min_varlevel is then certainly 0.
-			 */
-			if (agglevelsup == 0)
-				return true;
+		if (ctx->max_varlevel < 0 ||
+			ctx->max_varlevel < agglevelsup)
+		{
+			ctx->max_varlevel = agglevelsup;
 		}
 	}
 
     /* visit aggregate's args */
 	return cdb_walk_vars((Node *)aggref->args,
-                         find_minimum_var_level_cbVar,
-                         find_minimum_var_level_cbAggref,
+                         find_minimum_maximum_var_level_cbVar,
+                         find_minimum_maximum_var_level_cbAggref,
                          NULL,
                          ctx,
                          sublevelsup);
 }
 
-int
-find_minimum_var_level(Node *node)
+void
+find_minimum_maximum_var_level(Node *node, int *min_level, int *max_level)
 {
-	find_minimum_var_level_context context;
+	find_minimum_maximum_var_level_context context;
 
 	context.min_varlevel = -1;	/* signifies nothing found yet */
+	context.max_varlevel = -1;	/* signifies nothing found yet */
 
 	cdb_walk_vars(node,
-                  find_minimum_var_level_cbVar,
-                  find_minimum_var_level_cbAggref,
+                  find_minimum_maximum_var_level_cbVar,
+                  find_minimum_maximum_var_level_cbAggref,
                   NULL,
                   &context,
                   0);
 
-	return context.min_varlevel;
+	*min_level = context.min_varlevel;
+	*max_level = context.max_varlevel;
 }
 
 

@@ -69,7 +69,7 @@ SELECT sum2(q1,q2) FROM int8_tbl;
 
 -- test for outer-level aggregates
 
--- this should work
+-- this should fail because the aggregate function accesses outer reference
 select ten, sum(distinct four) from onek a
 group by ten
 having exists (select 1 from onek b where sum(distinct a.four) = b.four);

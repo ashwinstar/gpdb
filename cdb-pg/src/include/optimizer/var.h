@@ -35,7 +35,7 @@ extern bool contain_var_reference(Node *node, int varno, int varattno,
 extern bool contain_var_clause(Node *node);
 extern bool contain_vars_of_level(Node *node, int levelsup);
 extern bool contain_vars_of_level_or_above(Node *node, int levelsup);
-extern int	find_minimum_var_level(Node *node);
+extern void	find_minimum_maximum_var_level(Node *node, int *min_level, int *max_level);
 extern List *pull_var_clause(Node *node, bool includeUpperVars);
 
 extern Node *flatten_join_alias_vars(PlannerInfo *root, Node *node);
