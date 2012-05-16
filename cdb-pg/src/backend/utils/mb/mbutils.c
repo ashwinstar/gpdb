@@ -320,7 +320,7 @@ pg_convert_to(PG_FUNCTION_ARGS)
 	 * text argument here, relying on the fact that they are both in fact
 	 * varlena types, and thus structurally identical.
 	 */
-	result = DirectFunctionCall3(pg_convert, string,
+	result = DirectFunctionCall3(pg_convert2, string,
 								 src_encoding_name, dest_encoding_name);
 
 	PG_RETURN_DATUM(result);
@@ -340,7 +340,7 @@ pg_convert_from(PG_FUNCTION_ARGS)
 									CStringGetDatum(DatabaseEncoding->name));
 	Datum		result;
 
-	result = DirectFunctionCall3(pg_convert, string,
+	result = DirectFunctionCall3(pg_convert2, string,
 								 src_encoding_name, dest_encoding_name);
 
 	/*
@@ -354,59 +354,27 @@ pg_convert_from(PG_FUNCTION_ARGS)
 }
 
 /*
- * Convert string using encoding_names.
+ * Convert string using encoding_nanme. We assume that string's
+ * encoding is same as DB encoding.
  *
- * BYTEA convert(BYTEA string, NAME src_encoding_name, NAME dest_encoding_name)
- */
+ * TEXT convert(TEXT string, NAME encoding_name) */
 Datum
 pg_convert(PG_FUNCTION_ARGS)
 {
-	bytea	   *string = PG_GETARG_BYTEA_P(0);
-	char	   *src_encoding_name = NameStr(*PG_GETARG_NAME(1));
-	int			src_encoding = pg_char_to_encoding(src_encoding_name);
-	char	   *dest_encoding_name = NameStr(*PG_GETARG_NAME(2));
-	int			dest_encoding = pg_char_to_encoding(dest_encoding_name);
-	unsigned char *result;
-	bytea	   *retval;
-	unsigned char *str;
-	int			len;
+	Assert(PG_NARGS() == 2);
+	Datum		string = PG_GETARG_DATUM(0);
+	Datum		dest_encoding_name = PG_GETARG_DATUM(1);
+	Datum		src_encoding_name = DirectFunctionCall1(namein,
+									CStringGetDatum(DatabaseEncoding->name));
+	Datum		result;
 
-	if (src_encoding < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid source encoding name \"%s\"",
-						src_encoding_name)));
-	if (dest_encoding < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid destination encoding name \"%s\"",
-						dest_encoding_name)));
+    result = DirectFunctionCall3(pg_convert2, string,
+    							 src_encoding_name, dest_encoding_name);
 
-	/* make sure that source string is valid and null terminated */
-	len = VARSIZE(string) - VARHDRSZ;
-	pg_verify_mbstr(src_encoding, VARDATA(string), len, false);
-	str = palloc(len + 1);
-	memcpy(str, VARDATA(string), len);
-	*(str + len) = '\0';
+        /* free memory allocated by namein */
+        pfree((void *) src_encoding_name);
 
-	result = pg_do_encoding_conversion(str, len, src_encoding, dest_encoding);
-
-	/*
-	 * build bytea data type structure.
-	 */
-	len = strlen((char *) result) + VARHDRSZ;
-	retval = palloc(len);
-	SET_VARSIZE(retval, len);
-	memcpy(VARDATA(retval), result, len - VARHDRSZ);
-
-	if (result != str)
-		pfree(result);
-	pfree(str);
-
-	/* free memory if allocated by the toaster */
-	PG_FREE_IF_COPY(string, 0);
-
-	PG_RETURN_BYTEA_P(retval);
+    PG_RETURN_DATUM(result);
 }
 
 /*
@@ -444,6 +412,7 @@ length_in_encoding(PG_FUNCTION_ARGS)
 Datum
 pg_convert2(PG_FUNCTION_ARGS)
 {
+	Assert(PG_NARGS() == 3);
 	text	   *string = PG_GETARG_TEXT_P(0);
 	char	   *src_encoding_name = NameStr(*PG_GETARG_NAME(1));
 	int			src_encoding = pg_char_to_encoding(src_encoding_name);
