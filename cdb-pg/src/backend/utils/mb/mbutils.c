@@ -372,7 +372,7 @@ pg_convert(PG_FUNCTION_ARGS)
     							 src_encoding_name, dest_encoding_name);
 
         /* free memory allocated by namein */
-        pfree((void *) src_encoding_name);
+        pfree(DatumGetPointer(src_encoding_name));
 
     PG_RETURN_DATUM(result);
 }
