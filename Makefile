@@ -1234,10 +1234,6 @@ copylibs : thirdparty-dist copy-rsa-libs
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
 	    echo "Copying python, $(BLD_PYTHON_FILESET), from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
 	    (cd $(BLD_PYTHON) && $(TAR) cf - $(BLD_PYTHON_FILESET)) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
-	    echo "Adjusting python..."; \
-	    mv $(INSTLOC)/ext/python/bin/python $(INSTLOC)/ext/python/bin/gp-python; \
-	    cp -p $(GPMGMT)/bin/lib/gpkill-python $(INSTLOC)/ext/python/bin/python; \
-	    echo "...DONE"; \
 	else \
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
 	fi

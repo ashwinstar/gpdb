@@ -10,7 +10,5 @@ else
         exit 2
 fi
 
-# MPP-15405
-export GPKILL=CONFIRM
 
 exec gpcrondump.py $*

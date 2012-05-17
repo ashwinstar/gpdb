@@ -107,19 +107,3 @@ EOF
 cat <<EOF
 export OPENSSL_CONF
 EOF
-
-if [ "${PLAT}" != "SunOS" ] ; then
-cat <<EOF
-# MPP-15405 - A new GPKILL utility
-HISTTIMEFORMAT='%F %T '
-export HISTTIMEFORMAT
-_kill ()
-{ 
-    \$GPHOME/bin/gpkill -q --check \$*
-    if [ \$? -eq 0 ]; then
-        \\kill \$*
-    fi
-}
-alias kill=_kill
-EOF
-fi
