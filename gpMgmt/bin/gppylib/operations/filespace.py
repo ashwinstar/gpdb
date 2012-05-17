@@ -915,7 +915,9 @@ class MoveFilespace(Operation):
         location for temporary/transaction files
     """  
 
-    def __init__(self, new_filespace_name, file_type):
+    def __init__(self, new_filespace_name, file_type, user, pswd):
+        self.user = user
+        self.pswd = pswd
         self.new_filespace_name = new_filespace_name
         self.file_type = file_type
 
@@ -976,8 +978,8 @@ class MoveFilespace(Operation):
 
             try:
                 
-                if not CheckSuperUser(dbconn.DbURL()).run():
-                    raise MoveFilespaceError('gpfilespace requires database super user privileges')  
+                if not CheckSuperUser(dbconn.DbURL(username=self.user, password=self.pswd)).run():
+                    raise MoveFilespaceError('gpfilespace requires database superuser privileges.')  
                 
                 gparray = GpArray.initFromCatalog(dbconn.DbURL(), utility=True)
 
@@ -988,12 +990,18 @@ class MoveFilespace(Operation):
                 #CheckFilespaceIsSame - Check if filespace is different from the old one
                 if CheckFilespaceIsSame(gparray, self.new_filespace_name, self.file_type).run():
                     raise MoveFilespaceError('Filespace %s is same as the current filespace' % self.new_filespace_name)
-            finally:
+            except Exception, e:
                 #Bring GPDB Offline
                 self.stop_master_only()
-                
                 #Restart the database
-                self.start_database()
+                self.start_database()                 
+                raise
+
+            #Bring GPDB Offline
+            if 'UTILITY' == get_local_db_mode(MASTER_DATA_DIR):
+                self.stop_master_only()
+            else:
+                raise MoveFilespaceError('Database state is invalid.')
 
             if not CheckConnectivity(gparray).run():
                 raise MoveFilespaceError('Failed connectivity test') 
