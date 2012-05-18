@@ -11,12 +11,13 @@ ARCH=$(shell uname -p)
 
 # NOTE: PERL_DIR is dfined in $(BLD_TOP)/releng/releng.mk
 
+PLPERL_GPPKG_VER=1.2
 PLPERL_VER=1.1
 PLPERL_REL=2
 PLPERL_DIR=`cd .. && pwd`
 PLPERL_RPM_FLAGS="--define 'plperl_dir $(PLPERL_DIR)' --define 'plperl_ver $(PLPERL_VER)' --define 'plperl_rel $(PLPERL_REL)' "
 PLPERL_RPM=plperl-$(PLPERL_VER)-$(PLPERL_REL).$(ARCH).rpm
-PLPERL_GPPKG=plperl-$(PLPERL_VER)-$(OS)-$(ARCH).gppkg
+PLPERL_GPPKG=plperl-$(PLPERL_GPPKG_VER)-$(OS)-$(ARCH).gppkg
 
 TARGET_GPPKG=$(PLPERL_GPPKG)
 EXTRA_CLEAN+=$(PLPERL_RPM) $(PLPERL_GPPKG)
