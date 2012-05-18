@@ -207,9 +207,6 @@ reset enable_seqscan;
 reset enable_bitmapscan;
 
 DROP VIEW tmp_view_new;
--- toast-like relation name
-alter table stud_emp rename to pg_toast_stud_emp;
-alter table pg_toast_stud_emp rename to stud_emp;
 
 -- FOREIGN KEY CONSTRAINT adding TEST
 
@@ -344,70 +341,6 @@ alter table atacc1 add check (test2>test);
 insert into atacc1 (test2, test) values (3, 4);
 drop table atacc1;
 
--- inheritance related tests
-create table atacc1 (test int);
-create table atacc2 (test2 int);
-create table atacc3 (test3 int) inherits (atacc1, atacc2);
-alter table atacc2 add constraint foo check (test2>0);
--- fail and then succeed on atacc2
-insert into atacc2 (test2) values (-3);
-insert into atacc2 (test2) values (3);
--- fail and then succeed on atacc3
-insert into atacc3 (test2) values (-3);
-insert into atacc3 (test2) values (3);
-drop table atacc3;
-drop table atacc2;
-drop table atacc1;
-
--- same things with one created with INHERIT
-create table atacc1 (test int);
-create table atacc2 (test2 int);
-create table atacc3 (test3 int) inherits (atacc1, atacc2);
-alter table atacc3 no inherit atacc2;
--- fail
-alter table atacc3 no inherit atacc2;
--- make sure it really isn't a child
-insert into atacc3 (test2) values (3);
-select test2 from atacc2;
--- fail due to missing constraint
-alter table atacc2 add constraint foo check (test2>0);
-alter table atacc3 inherit atacc2;
--- fail due to missing column
-alter table atacc3 rename test2 to testx;
-alter table atacc3 inherit atacc2;
--- fail due to mismatched data type
-alter table atacc3 add test2 bool;
-alter table atacc3 add inherit atacc2;
-alter table atacc3 drop test2;
--- succeed
-alter table atacc3 add test2 int;
-update atacc3 set test2 = 4 where test2 is null;
-alter table atacc3 add constraint foo check (test2>0);
-alter table atacc3 inherit atacc2;
--- fail due to duplicates and circular inheritance
-alter table atacc3 inherit atacc2;
-alter table atacc2 inherit atacc3;
-alter table atacc2 inherit atacc2;
--- test that we really are a child now (should see 4 not 3 and cascade should go through)
-select test2 from atacc2;
-drop table atacc2 cascade;
-drop table atacc1;
-
--- let's try only to add only to the parent
-
-create table atacc1 (test int);
-create table atacc2 (test2 int);
-create table atacc3 (test3 int) inherits (atacc1, atacc2);
-alter table only atacc2 add constraint foo check (test2>0);
--- fail and then succeed on atacc2
-insert into atacc2 (test2) values (-3);
-insert into atacc2 (test2) values (3);
--- both succeed on atacc3
-insert into atacc3 (test2) values (-3);
-insert into atacc3 (test2) values (3);
-drop table atacc3;
-drop table atacc2;
-drop table atacc1;
 
 -- test unique constraint adding
 
@@ -584,29 +517,6 @@ drop view myview;
 
 drop table atacc1;
 
--- test inheritance
-create table parent (a int);
-create table child (b varchar(255)) inherits (parent);
-
-alter table parent alter a set not null;
-insert into parent values (NULL);
-insert into child (a, b) values (NULL, 'foo');
-alter table parent alter a drop not null;
-insert into parent values (NULL);
-insert into child (a, b) values (NULL, 'foo');
-alter table only parent alter a set not null;
-alter table child alter a set not null;
-delete from parent;
-alter table only parent alter a set not null;
-insert into parent values (NULL);
-alter table child alter a set not null;
-insert into child (a, b) values (NULL, 'foo');
-delete from child;
-alter table child alter a set not null;
-insert into child (a, b) values (NULL, 'foo');
-drop table child;
-drop table parent;
-
 -- test setting and removing default values
 create table def_test (
 	c1	int4 default 5,
@@ -770,22 +680,6 @@ select * from atacc1;
 
 drop table atacc1;
 
--- test inheritance
-create table parent (a int, b int, c int);
-insert into parent values (1, 2, 3);
-alter table parent drop a;
-create table child (d varchar(255)) inherits (parent);
-insert into child values (12, 13, 'testing');
-
-select * from parent order by 1,2,3;
-select * from child;
-alter table parent drop c;
-select * from parent order by 1,2;
-select * from child;
-
-drop table child;
-drop table parent;
-
 -- test copy in/out
 create table test (a int4, b int4, c int4);
 insert into test values (1,2,3);
@@ -809,119 +703,6 @@ copy test(b,c) from stdin;
 select * from test order by 1;
 drop table test;
 
--- test inheritance
-
-create table dropColumn (a int, b int, e int);
-create table dropColumnChild (c int) inherits (dropColumn);
-create table dropColumnAnother (d int) inherits (dropColumnChild);
-
--- these two should fail
-alter table dropColumnchild drop column a;
-alter table only dropColumnChild drop column b;
-
--- these three should work
-alter table only dropColumn drop column e;
-alter table dropColumnChild drop column c;
-alter table dropColumn drop column a;
-
-create table renameColumn (a int);
-create table renameColumnChild (b int) inherits (renameColumn);
-create table renameColumnAnother (c int) inherits (renameColumnChild);
-
--- these three should fail
-alter table renameColumnChild rename column a to d;
-alter table only renameColumnChild rename column a to d;
-alter table only renameColumn rename column a to d;
-
--- these should work
-alter table renameColumn rename column a to d;
-alter table renameColumnChild rename column b to a;
-
--- this should work
-alter table renameColumn add column w int;
-
--- this should fail
-alter table only renameColumn add column x int;
-
-
--- Test corner cases in dropping of inherited columns
-
-create table p1 (f1 int, f2 int);
-create table c1 (f1 int not null) inherits(p1);
-
--- should be rejected since c1.f1 is inherited
-alter table c1 drop column f1;
--- should work
-alter table p1 drop column f1;
--- c1.f1 is still there, but no longer inherited
-select f1 from c1 order by 1;
-alter table c1 drop column f1;
-select f1 from c1;
-
-drop table p1 cascade;
-
-create table p1 (f1 int, f2 int);
-create table c1 () inherits(p1);
-
--- should be rejected since c1.f1 is inherited
-alter table c1 drop column f1;
-alter table p1 drop column f1;
--- c1.f1 is dropped now, since there is no local definition for it
-select f1 from c1;
-
-drop table p1 cascade;
-
-create table p1 (f1 int, f2 int);
-create table c1 () inherits(p1);
-
--- should be rejected since c1.f1 is inherited
-alter table c1 drop column f1;
-alter table only p1 drop column f1;
--- c1.f1 is NOT dropped, but must now be considered non-inherited
-alter table c1 drop column f1;
-
-drop table p1 cascade;
-
-create table p1 (f1 int, f2 int);
-create table c1 (f1 int not null) inherits(p1);
-
--- should be rejected since c1.f1 is inherited
-alter table c1 drop column f1;
-alter table only p1 drop column f1;
--- c1.f1 is still there, but no longer inherited
-alter table c1 drop column f1;
-
-drop table p1 cascade;
-
-create table p1(id int, name text);
-create table p2(id2 int, name text, height int);
-create table c1(age int) inherits(p1,p2);
-create table gc1() inherits (c1);
-
-select relname, attname, attinhcount, attislocal
-from pg_class join pg_attribute on (pg_class.oid = pg_attribute.attrelid)
-where relname in ('p1','p2','c1','gc1') and attnum > 0 and not attisdropped
-order by relname, attnum;
-
--- should work
-alter table only p1 drop column name;
--- should work. Now c1.name is local and inhcount is 0.
-alter table p2 drop column name;
--- should be rejected since its inherited
-alter table gc1 drop column name;
--- should work, and drop gc1.name along
-alter table c1 drop column name;
--- should fail: column does not exist
-alter table gc1 drop column name;
--- should work and drop the attribute in all tables
-alter table p2 drop column height;
-
-select relname, attname, attinhcount, attislocal
-from pg_class join pg_attribute on (pg_class.oid = pg_attribute.attrelid)
-where relname in ('p1','p2','c1','gc1') and attnum > 0 and not attisdropped
-order by relname, attnum;
-
-drop table p1, p2 cascade;
 
 --
 -- Test the ALTER TABLE WITHOUT OIDS command
@@ -936,43 +717,6 @@ alter table altstartwith set without oids;
 
 select oid > 0, * from altstartwith; -- fails
 select * from altstartwith;
-
--- Run inheritance tests
-create table altwithoid (col integer) with oids;
-
--- Inherits parents oid column
-create table altinhoid () inherits (altwithoid) without oids;
-
-insert into altinhoid values (1);
-
-select oid > 0, * from altwithoid order by col;
-select oid > 0, * from altinhoid order by col;
-
-alter table altwithoid set without oids;
-alter table altinhoid set without oids;
-
-select oid > 0, * from altwithoid; -- fails
-select oid > 0, * from altinhoid; -- fails
-select * from altwithoid;
-select * from altinhoid;
-
--- test renumbering of child-table columns in inherited operations
-
-create table p1 (f1 int);
-create table c1 (f2 text, f3 int) inherits (p1);
-
-alter table p1 add column a1 int check (a1 > 0);
-alter table p1 add column f2 text;
-
-insert into p1 values (1,2,'abc');
-insert into c1 values(11,'xyz',33,0); -- should fail
-insert into c1 values(11,'xyz',33,22);
-
-select * from p1 order by 1,2,3;
-update p1 set a1 = a1 + 1, f2 = upper(f2);
-select * from p1 order by 1,2,3;
-
-drop table p1 cascade;
 
 -- test that operations with a dropped column do not try to reference
 -- its datatype

@@ -80,22 +80,6 @@ CREATE TABLE person (
 );
 
 
-CREATE TABLE emp (
-	salary 		int4,
-	manager 	name
-) INHERITS (person) WITH OIDS;
-
-
-CREATE TABLE student (
-	gpa 		float8
-) INHERITS (person);
-
-
-CREATE TABLE stud_emp (
-	percent 	int4
-) INHERITS (emp, student);
-
-
 CREATE TABLE city (
 	name		name,
 	location 	box,
@@ -120,11 +104,6 @@ CREATE TABLE road (
 	thepath 	path
 );
 
-CREATE TABLE ihighway () INHERITS (road);
-
-CREATE TABLE shighway (
-	surface		text
-) INHERITS (road);
 
 CREATE TABLE real_city (
 	pop			int4,
@@ -132,40 +111,10 @@ CREATE TABLE real_city (
 	outline 	path
 );
 
---
--- test the "star" operators a bit more thoroughly -- this time,
--- throw in lots of NULL fields...
---
--- a is the type root
--- b and c inherit from a (one-level single inheritance)
--- d inherits from b and c (two-level multiple inheritance)
--- e inherits from c (two-level single inheritance)
--- f inherits from e (three-level single inheritance)
---
 CREATE TABLE a_star (
 	class		char, 
 	a 			int4
 );
-
-CREATE TABLE b_star (
-	b 			text
-) INHERITS (a_star);
-
-CREATE TABLE c_star (
-	c 			name
-) INHERITS (a_star);
-
-CREATE TABLE d_star (
-	d 			float8
-) INHERITS (b_star, c_star);
-
-CREATE TABLE e_star (
-	e 			int2
-) INHERITS (c_star);
-
-CREATE TABLE f_star (
-	f 			polygon
-) INHERITS (e_star);
 
 CREATE TABLE aggtest (
 	a 			int2,

@@ -82,13 +82,13 @@ alter table rename;
 alter table nonesuch rename to newnonesuch;
 
 -- no such relation 
-alter table nonesuch rename to stud_emp;
+alter table nonesuch rename to person;
 
 -- conflict 
-alter table stud_emp rename to aggtest;
+alter table person rename to aggtest;
 
 -- self-conflict 
-alter table stud_emp rename to stud_emp;
+alter table person rename to person;
 
 
 -- attribute renaming 
@@ -97,14 +97,10 @@ alter table stud_emp rename to stud_emp;
 alter table nonesuchrel rename column nonesuchatt to newnonesuchatt;
 
 -- no such attribute 
-alter table emp rename column nonesuchatt to newnonesuchatt;
+alter table person rename column nonesuchatt to newnonesuchatt;
 
 -- conflict 
-alter table emp rename column salary to manager;
-
--- conflict 
-alter table emp rename column salary to oid;
-
+alter table person rename column name to location;
 
 --
 -- TRANSACTION STUFF

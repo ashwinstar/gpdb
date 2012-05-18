@@ -1515,31 +1515,7 @@ alter table foo_p exchange partition for(rank(6)) with table bar_p;
 drop table foo_p;
 drop table bar_p;
 
--- non-partition table involved in inheritance
-create table foo_p (i int, j int) distributed by (i)
-partition by range(j)
-(start(1) end(10) every(1));
 
-create table barparent(i int, j int) distributed by (i);
-create table bar_p () inherits(barparent);
--- should fail
-alter table foo_p exchange partition for(rank(6)) with table bar_p;
-drop table foo_p;
-drop table bar_p;
-drop table barparent;
-
--- non-partition table involved in inheritance
-create table foo_p (i int, j int) distributed by (i)
-partition by range(j)
-(start(1) end(10) every(1));
-
-create table bar_p(i int, j int) distributed by (i);
-create table barchild () inherits(bar_p);
--- should fail
-alter table foo_p exchange partition for(rank(6)) with table bar_p;
-drop table foo_p;
-drop table barchild;
-drop table bar_p;
 -- rules on non-partition table
 create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
@@ -3114,9 +3090,7 @@ every(1));
 create table rank (i int, j int)  partition by range(j) (start(1) end(10)
 every(1));
 -- should all fail
-alter table rank_1_prt_1 no inherit rank;
 create table rank2(like rank);
-alter table rank_1_prt_1 inherit rank2;
 alter table rank_1_prt_1 alter column i type bigint;
 alter table rank_1_prt_1 set without oids;
 alter table rank_1_prt_1 drop constraint rank_1_prt_1_check;
@@ -4241,80 +4215,6 @@ drop table mpp6979part;
 drop table mpp6979dummy.mpp6979tab;
 
 drop schema mpp6979dummy;
-
--- MPP-7898:
-
-drop table if exists r cascade; --ignore
-drop table if exists s cascade; --ignore
-
-create table s 
-    (a int, b text) 
-    distributed by (a);
-    
-insert into s values 
-    (1, 'one');
-
--- Try to create a table that mixes inheritance and partitioning.
--- Correct behavior: ERROR
-
-create table r 
-    ( c int, d int) 
-    inherits (s)
-    partition by range(d) 
-    (
-        start (0) 
-        end (2) 
-        every (1)
-    );
-
- -- If (incorrectly) the previous statement works, the next one is 
- -- likely to fail with in unexpected internal error.  This is residual 
- -- issue MPP-7898.
-insert into r values 
-    (0, 'from r', 0, 0);
-    
-drop table if exists s cascade; --ignore
-drop table if exists r cascade; --ignore
-
-create table r 
-    ( a int, b text, c int, d int ) 
-    distributed by (a)
-    partition by range(d) 
-    (
-        start (0) 
-        end (2) 
-        every (1)
-    );
- 
-insert into r values 
-    (0, 'from r', 0, 0);
-
-create table s 
-    ( a int, b text, c int, d int ) 
-    distributed by (a);
-    
-insert into s values 
-    (1, 'from s', 555, 555);
-
-create table t
-    ( )
-    inherits (s)
-    distributed by (a);
-
-insert into t values
-    (0, 'from t', 666, 666);
-
--- Try to exchange in the child and parent.  
--- Correct behavior: ERROR in both cases.
-
-alter table r exchange partition for (1) with table t;
-alter table r exchange partition for (1) with table s;
-
-drop table t cascade; --ignore
-drop table s cascade; --ignore
-drop table r cascade; --ignore
-
--- MPP-7898 end.
 
 -- ( MPP-13750 
 

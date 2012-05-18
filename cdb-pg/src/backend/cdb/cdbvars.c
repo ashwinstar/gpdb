@@ -281,8 +281,8 @@ int 		gp_motion_slice_noop = 0;
 int 		gp_ltrace_flag = 0;
 #endif
 
-/* Internal Features */
-bool		gp_enable_alter_table_inherit_cols = false;
+/* For disabling INHERITANCE - MPP-16062 */
+bool		gp_enable_inheritance = true;
 
 /* Greenplum Database Experimental Feature GUCs */
 int         gp_distinct_grouping_sets_threshold = 32;

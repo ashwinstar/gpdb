@@ -288,7 +288,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 				oper_argtypes RuleActionList RuleActionMulti
 				cdb_string_list
 				opt_column_list columnList opt_name_list exttab_auth_list keyvalue_list
-				opt_inherited_column_list
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list
@@ -2225,21 +2224,47 @@ alter_table_cmd:
 					n->subtype = AT_DisableTrigUser;
 					$$ = (Node *)n;
 				}
-			/* ALTER TABLE <name> INHERIT <parent> [( column_list )] */
-			| INHERIT qualified_name opt_inherited_column_list
+			/* ALTER TABLE <name> INHERIT <parent> */
+			| INHERIT qualified_name 
 				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_AddInherit;
-					n->def = (Node *)list_make2($2, $3);
-					$$ = (Node *)n;
+					/* 
+				 	 * Deprecated feature: MPP-16062
+					 * Allowed only when gp_enable_inheritance is true 
+					 */
+					if (!gp_enable_inheritance)
+					{
+						ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("INHERITANCE support deprecated")));
+					}
+					else
+					{
+						AlterTableCmd *n = makeNode(AlterTableCmd);
+						n->subtype = AT_AddInherit;
+						n->def = (Node *)list_make1($2);
+						$$ = (Node *)n;
+					}
 				}
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_DropInherit;
-					n->def = (Node *) $3;
-					$$ = (Node *)n;
+					/* 
+				 	 * Deprecated feature: MPP-16062
+					 * Allowed only when gp_enable_inheritance is true 
+					 */
+					if (!gp_enable_inheritance)
+					{
+						ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("INHERITANCE support deprecated")));
+					}
+					else
+					{
+						AlterTableCmd *n = makeNode(AlterTableCmd);
+						n->subtype = AT_DropInherit;
+						n->def = (Node *) $3;
+						$$ = (Node *)n;
+					}
 				}
 			/* ALTER TABLE <name> SET [WITH] [DISTRIBUTED BY] */
 			/* distro only */
@@ -3677,21 +3702,6 @@ opt_column_list:
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 		
-opt_inherited_column_list:
-			'('
-				{
-					/* Allowed only when
-					 * gp_enable_alter_table_inherit_cols is true 
-					 */
-					if (!gp_enable_alter_table_inherit_cols)
-					{
-						yyerror("syntax error");
-					}
-				}
-				columnList ')'						{ $$ = $3; }
-			| /*EMPTY*/								{ $$ = NIL; }
-		;
-
 columnList:
 			columnElem								{ $$ = list_make1($1); }
 			| columnList ',' columnElem				{ $$ = lappend($1, $3); }
@@ -3758,7 +3768,23 @@ key_action:
 			| SET DEFAULT				{ $$ = FKCONSTR_ACTION_SETDEFAULT; }
 		;
 
-OptInherit: INHERITS '(' qualified_name_list ')'	{ $$ = $3; }
+OptInherit: INHERITS '(' qualified_name_list ')'	
+			{
+				/* 
+				 * Deprecated feature: MPP-16062
+				 * Allowed only when gp_enable_inheritance is true 
+				 */
+				if (!gp_enable_inheritance)
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("INHERITANCE support deprecated")));
+				}
+				else
+				{ 
+					$$ = $3; 
+				}
+			}
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 

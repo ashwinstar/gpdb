@@ -175,14 +175,6 @@ with (appendonly=true, orientation=column);
 create table t1 (i int encoding (compresstype=quicklz, ahhhh=boooooo))
 with (appendonly=true, orientation=column);
 
--- Inheritance: check that we don't support inheritance on tables using
--- column compression
-create table ccddlparent (i int encoding (compresstype=zlib))
-with (appendonly = true, orientation = column);
-create table ccddlchild (j int encoding (compresstype=zlib))
-inherits(ccddlparent) with (appendonly = true, orientation = column);
-drop table ccddlparent cascade;
-
 -- Conflict between default and with, in the LIKE case
 create table ccddl (i int);
 create table ccddl_co (like ccddl, 

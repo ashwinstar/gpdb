@@ -16,20 +16,8 @@ CREATE VIEW street AS
    FROM ONLY road r, real_city c
    WHERE c.outline ## r.thepath;
 
-CREATE VIEW iexit AS
-   SELECT ih.name, ih.thepath, 
-	interpt_pp(ih.thepath, r.thepath) AS exit
-   FROM ihighway ih, ramp r
-   WHERE ih.thepath ## r.thepath;
-
-CREATE VIEW toyemp AS
-   SELECT name, age, location, 12*salary AS annualsal
-   FROM emp;
-
 -- Test comments
 COMMENT ON VIEW noview IS 'no view';
-COMMENT ON VIEW toyemp IS 'is a view';
-COMMENT ON VIEW toyemp IS NULL;
 
 --
 -- CREATE OR REPLACE VIEW
