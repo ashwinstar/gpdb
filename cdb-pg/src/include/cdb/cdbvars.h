@@ -487,7 +487,19 @@ extern const char *gpvars_show_gp_interconnect_type(void);
  * This guc is specific to the UDP-interconnect.
  *
  */
+
 extern int	Gp_interconnect_queue_depth;
+
+/*
+ * Parameter Gp_interconnect_snd_queue_depth
+ *
+ * The run-time parameter Gp_interconnect_snd_queue_depth controls the
+ * average number of outstanding messages on the sender side
+ *
+ * This guc is specific to the UDP-interconnect.
+ *
+ */
+extern int	Gp_interconnect_snd_queue_depth;
 
 /* UDP recv buf size in KB.  For testing */
 extern int 	Gp_udp_bufsize_k;
@@ -567,6 +579,9 @@ extern int gp_udpic_dropseg; /* specifies which segments to apply the
 							  * them. */
 extern int gp_udpic_dropxmit_percent;
 extern int gp_udpic_dropacks_percent;
+extern int gp_udpic_fault_inject_percent;
+extern int gp_udpic_fault_inject_bitmap;
+extern int gp_udpic_network_disable_ipv6;
 #endif
 
 /*

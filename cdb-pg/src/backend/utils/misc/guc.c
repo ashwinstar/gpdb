@@ -2238,7 +2238,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_interconnect_elide_setup", PGC_USERSET, QUERY_TUNING_OTHER,
+		{"gp_interconnect_elide_setup", PGC_USERSET, DEPRECATED_OPTIONS,
 			gettext_noop("Avoid performing full startup handshake for every statement."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
@@ -4523,13 +4523,23 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_udp_bufsize_k", PGC_SUSET, GP_ARRAY_TUNING,
+		{"gp_interconnect_snd_queue_depth", PGC_USERSET, GP_ARRAY_TUNING,
+            gettext_noop("Sets the maximum size of the send queue for each connection in the UDP interconnect"),
+            NULL,
+			GUC_GPDB_ADDOPT
+        },
+        &Gp_interconnect_snd_queue_depth,
+        4, 1, 4096, NULL, NULL
+	},
+
+	{
+		{"gp_udp_bufsize_k", PGC_BACKEND, GP_ARRAY_TUNING,
             gettext_noop("Sets recv buf size of UDP interconnect, for testing."),
             NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+            GUC_GPDB_ADDOPT
         },
         &Gp_udp_bufsize_k,
-        0, 0, 256, NULL, NULL
+        0, 0, 32768, NULL, NULL
 	},
 
 #ifdef USE_ASSERT_CHECKING
@@ -4562,6 +4572,37 @@ static struct config_int ConfigureNamesInt[] =
         &gp_udpic_dropxmit_percent,
         0, 0, 100, NULL, NULL
 	},
+
+	{
+		{"gp_udpic_fault_inject_percent", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the percentage of fault injected into system calls, for testing. (affected by gp_udpic_dropseg)"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_udpic_fault_inject_percent,
+		0, 0, 100, NULL, NULL
+	},
+
+	{
+		{"gp_udpic_fault_inject_bitmap", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the bitmap for faults injection, for testing. (affected by gp_udpic_dropseg)"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_udpic_fault_inject_bitmap,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_udpic_network_disable_ipv6", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Sets the address info hint to disable the ipv6, for testing. (affected by gp_udpic_dropseg)"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_udpic_network_disable_ipv6,
+		0, 0, 1, NULL, NULL
+	},
+
 #endif
 	{
 		{"gp_interconnect_hash_multiplier", PGC_SUSET, GP_ARRAY_TUNING,

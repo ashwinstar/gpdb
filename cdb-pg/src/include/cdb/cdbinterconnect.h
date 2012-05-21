@@ -24,9 +24,9 @@ struct CdbProcess;                          /* #include "nodes/execnodes.h" */
 struct Slice;                               /* #include "nodes/execnodes.h" */
 struct SliceTable;                          /* #include "nodes/execnodes.h" */
 
-struct icpkthdr
+typedef struct icpkthdr
 {
-	int			motNodeId;
+	int32		motNodeId;
 
 	/*
 	 * three pairs which seem useful for identifying packets.
@@ -45,14 +45,6 @@ struct icpkthdr
     int32       sessionId;
     uint32      icId;
 
-	/*
-	 * are these really useful ? YES THEY ARE! they're guaranteed to
-	 * specify a connection.
-	 *
-	 * MPP-4194: the one piece that they don't specify is the
-	 * difference between outbound connections to primaries
-	 * vs. mirrors (see above).
-	 */
     int32       recvSliceIndex;
     int32       sendSliceIndex;
 	int32       srcContentId;
@@ -65,8 +57,36 @@ struct icpkthdr
 	int32		flags;
 	int32		len;
 
-	uint32		seq;
-};
+    /*
+     * The usage of seq and extraSeq field
+     * a) In a normal DATA packet
+     *    seq      -> the data packet sequence number
+     *    extraSeq -> not used
+     * b) In a normal ACK message (UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY)
+     *    seq      -> the largest seq of the continuously cached packets
+     *                sometimes, it is special, for exampke, conn req ack, mismatch ack.
+     *    extraSeq -> the largest seq of the consumed packets
+     * c) In a start race NAK message (UPDIC_FLAGS_NAK)
+     *    seq      -> the seq from the pkt
+     *    extraSeq -> the extraSeq from the pkt
+     * d) In a DISORDER message (UDPIC_FLAGS_DISORDER)
+     *    seq      -> packet sequence number that triggers the disorder message
+     *    extraSeq -> (not used when this ack is handled) the largest seq of the consumed packets
+     * e) In a DUPLICATE message (UDPIC_FLAGS_DUPLICATE)
+     *    seq      -> packet sequence number that triggers the duplicate message
+     *    extraSeq -> the largest seq of the continuously cached packets
+     * f) In a stop messege (UDPIC_FLAGS_STOP | UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY)
+     *    seq      -> the largest seq of the continuously cached packets
+     *    extraSeq -> the largest seq of the continuously cached packets
+     *
+     *
+     * NOTE that: EOS/STOP flags are often saved in conn_info structure of a connection.
+     *			  It is possible for them to be sent together with other flags.
+     *
+     */
+    uint32      seq;
+    uint32      extraSeq;
+} icpkthdr;
 
 typedef enum MotionConnState
 {
@@ -80,23 +100,123 @@ typedef enum MotionConnState
 	mcsEosSent
 } MotionConnState;
 
+typedef struct MotionConn MotionConn;
+typedef struct ICBuffer ICBuffer;
+typedef struct ICBufferLink ICBufferLink;
+
+typedef enum ICBufferListType
+{
+	ICBufferListType_Primary,
+	ICBufferListType_Secondary,
+	ICBufferListType_UNDEFINED
+}	ICBufferListType;
+
+struct ICBufferLink
+{
+	ICBufferLink *next;
+	ICBufferLink *prev;
+};
+
+/*
+ * ICBufferList
+ * 		ic buffer list data structure.
+ *
+ * There are two kinds of lists. The first kind of list uses the primary next/prev pointers.
+ * And the second kind uses the secondary next/prev pointers.
+ */
+typedef struct ICBufferList
+{
+	int		length;
+	ICBufferListType type; /* primary or secondary */
+
+	ICBufferLink head;
+}	ICBufferList;
+
+#define CONTAINER_OF(ptr, type, member) \
+	({ \
+		const typeof( ((type *)0)->member ) *__member_ptr = (ptr); \
+		(type *)( (char *)__member_ptr - offsetof(type,member) ); \
+	})
+
+#define GET_ICBUFFER_FROM_PRIMARY(ptr) CONTAINER_OF(ptr, ICBuffer, primary)
+#define GET_ICBUFFER_FROM_SECONDARY(ptr) CONTAINER_OF(ptr, ICBuffer, secondary)
+
+/*
+ * ICBuffer
+ * 		interconnect buffer data structure.
+ *
+ * In some cases, an ICBuffer may exists in two lists/queues,
+ * thus it has two sets of pointers. For example, an ICBuffer
+ * can exist in an unack queue and an expiration queue at the same time.
+ *
+ * It is important to get the ICBuffer address when we iterate a list of
+ * ICBuffers through primary/secondary links. The Macro GET_ICBUFFER_FROM_PRIMARY
+ * and GET_ICBUFFER_FROM_SECONDARY are for this purpose.
+ *
+ */
+struct ICBuffer
+{
+	/* primary next and prev pointers */
+	ICBufferLink primary;
+
+	/* secondary next and prev pointers */
+	ICBufferLink secondary;
+
+	/* connection that this buffer belongs to */
+	MotionConn *conn;
+
+	/*
+	 * Three fields for expiration processing
+	 *
+	 * sentTime - the time this buffer was sent
+	 * nRetry   - the number of send retries
+	 * unackQueueRingSlot - unack queue ring slot index
+	 */
+	uint64 sentTime;
+	uint32 nRetry;
+	int32 unackQueueRingSlot;
+
+	/* real data */
+	icpkthdr pkt[0];
+};
+
+
 /*
  * Structure used for keeping track of a pt-to-pt connection between two
  * Cdb Entities (either QE or QD).
  */
-typedef struct MotionConn
+struct MotionConn
 {
 	/* socket file descriptor. */
 	int			sockfd;
 
+	/* send side queue for packets to be sent */
+	ICBufferList sndQueue;
+	int capacity;
+
+	/* seq already sent */
+	uint32 sentSeq;
+
+	/* ack of this seq and packets with smaller seqs have been received */
+	uint32 receivedAckSeq;
+
+	/* packets with this seq or smaller seqs have been consumed */
+	uint32 consumedSeq;
+
+	uint64 rtt;
+	uint64 lastAckTime;
+
+
+	ICBuffer *curBuff;
+
+	/* send side unacked packet queue. Since it is often
+	 * accessed at the same time with unack queue ring,
+	 * it is protected with unqck queue ring lock.
+	 */
+	ICBufferList unackQueue;
+
 	/* pointer to the data buffer. */
 	uint8	   *pBuff;
-
-	/* transmit uses two data buffers, along with a timer */
-	uint8	   *ping;
-	uint8	   *pong;
-	uint8	   *activeXmit;
-	GpMonotonicTime activeXmitTime;
 
 	uint16		route;
 
@@ -114,6 +234,9 @@ typedef struct MotionConn
 
 	int			tupleCount;
 
+	/* indicate whether main thread is waiting EOS ack on this connection */
+	bool waitEOS;
+
 	bool		stillActive;
 	bool		stopRequested;
 
@@ -122,7 +245,6 @@ typedef struct MotionConn
     uint64      wakeup_ms;
 
 	struct icpkthdr		conn_info;
-	bool		isMirror;
 
     struct CdbProcess  *cdbProc;
     int			remoteContentId;
@@ -139,7 +261,6 @@ typedef struct MotionConn
 	uint8		**pkt_q;
 
 	/* Statistics info for this connection */
-	GpMonotonicTime ackWaitBeginTime;
 
 	uint64 stat_total_ack_time;
 	uint64 stat_count_acks;
@@ -149,10 +270,7 @@ typedef struct MotionConn
 	uint64 stat_max_resent;
 	uint64 stat_count_dropped;
 
-	/* Indicate whether an EOS is received and acked. */
-	bool eosAcked;
-
-}	MotionConn;
+};
 
 /*
  * Used to organize all of the information for a given motion node.

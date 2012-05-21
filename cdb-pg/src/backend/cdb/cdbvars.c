@@ -202,6 +202,7 @@ int			Gp_max_packet_size;	/* max Interconnect packet size */
 int			Gp_interconnect_queue_depth=4;	/* max number of messages
 											 * waiting in rx-queue
 											 * before we drop.*/
+int			Gp_interconnect_snd_queue_depth=4;
 
 int			Gp_interconnect_hash_multiplier=2;	/* sets the size of the hash table used by the UDP-IC */
 
@@ -228,6 +229,9 @@ int			Gp_udp_bufsize_k; /* UPD recv buf size, in KB */
 int gp_udpic_dropseg = UNDEF_SEGMENT;
 int gp_udpic_dropxmit_percent = 0;
 int gp_udpic_dropacks_percent = 0;
+int gp_udpic_fault_inject_percent = 0;
+int gp_udpic_fault_inject_bitmap = 0;
+int gp_udpic_network_disable_ipv6 = 0;
 #endif
 
 /*
