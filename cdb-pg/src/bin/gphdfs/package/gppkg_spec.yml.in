@@ -1,6 +1,6 @@
 Pkgname: gphdfs
 Architecture: #arch
-Version: 1.1
+Version: 1.2
 OS: #os
 GPDBVersion: 5.0
 Description:  gphdfs package provides gphdfs library for the Greenplum Database. 

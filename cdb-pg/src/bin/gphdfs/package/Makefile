@@ -8,14 +8,14 @@ include $(BLD_TOP)/Makefile.global
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
-JRE_VER=1.6.0_26
+JRE_VER=1.6.0_32
 JRE_REL=1
 JRE_DIR=$(RELENG_TOOLS)/jre-$(JRE_VER)
 JRE_RPM_FLAGS="--define 'jre_dir $(JRE_DIR)' --define 'jre_ver $(JRE_VER)' --define 'jre_rel $(JRE_REL)'" 
 JRE_RPM=jre-$(JRE_VER)-$(JRE_REL).$(ARCH).rpm
 
 GPHDFS_DIR=`cd .. && pwd`
-GPHDFS_VER=1.1
+GPHDFS_VER=1.2
 GPHDFS_REL=1
 GPHDFS_RPM_FLAGS="--define 'gphdfs_dir $(GPHDFS_DIR)' --define 'gphdfs_ver $(GPHDFS_VER)' --define 'gphdfs_rel $(GPHDFS_REL)' --define 'jre_ver $(JRE_VER)'"
 GPHDFS_RPM=gphdfs-$(GPHDFS_VER)-$(GPHDFS_REL).$(ARCH).rpm
