@@ -15,11 +15,11 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_arguments(oid) IS 'arg
 
 CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_result(oid) RETURNS text LANGUAGE internal STABLE STRICT
 	AS 'pg_get_function_result' WITH (OID=2935, DESCRIPTION="result type of a function");
-COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_result(oid) IS 'result type of a function');
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_result(oid) IS 'result type of a function';
 
 CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_identity_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT 
 	AS 'pg_get_function_identity_arguments' WITH (OID=2936, DESCRIPTION="identity argument list of a function");
-COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_identity_arguments(oid) IS 'identity argument list of a function');
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_identity_arguments(oid) IS 'identity argument list of a function';
  
 CREATE FUNCTION  @gpupgradeschemaname@.interval_interval_div("interval", "interval") RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
 	AS 'interval_interval_div' WITH (OID=2918, DESCRIPTION="divide");
@@ -156,7 +156,7 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_recv(internal) IS 'I/O';
 
 CREATE FUNCTION @gpupgradeschemaname@.txid_snapshot_send(@gpupgradeschemaname@.txid_snapshot) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT
 	AS 'txid_snapshot_send' WITH (OID=2927);
-COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_send(internal) IS 'I/O';
+COMMENT ON FUNCTION @gpupgradeschemaname@.txid_snapshot_send(@gpupgradeschemaname@.txid_snapshot) IS 'I/O';
 
 CREATE TYPE @gpupgradeschemaname@.txid_snapshot(
 	INPUT = @gpupgradeschemaname@.txid_snapshot_in,
