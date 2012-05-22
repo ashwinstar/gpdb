@@ -316,7 +316,7 @@ gpcrondump option.
 
 --exclude-table-file="<filename>"
 
-  Exclude all tabes listed in <filename> from the 
+  Exclude all tables listed in <filename> from the 
   database dump. The file <filename> contains any 
   number of tables, listed one per line.
 
