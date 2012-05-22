@@ -72,13 +72,6 @@ tables to their original distribution policy. If gpexpand completes
 the reorganization of all tables before the specified duration, 
 it displays a success message and ends. 
 
-Note: During the login process, you may see warning messages that 
-might interfere with the operation of management scripts. Greenplum 
-recommends that you place these messages in the /etc/motd so that 
-they are redirected to stdout. You must also encode these messages 
-in the UTF-8 format.
-
-
 ******************************************************
 OPTIONS
 ******************************************************
