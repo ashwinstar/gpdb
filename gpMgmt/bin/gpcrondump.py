@@ -370,7 +370,7 @@ class GpCronDump(Operation):
                     logger.info("Table name                               = %s" % table)
                 logger.info("---------------------------------------------------")
             if self.exclude_dump_tables_file is not None:
-                logger.info("Table file name         s" % self.exclude_dump_tables_file)
+                logger.info("Table file name                      = %s" % self.exclude_dump_tables_file)
                 logger.info("---------------------------------------------------")
         else:
             logger.info("Dump type                            = Single database")
