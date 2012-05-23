@@ -166,6 +166,29 @@ SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
 SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 
+-- test varchar2
+
+DROP TABLE IF EXISTS tab1;
+DROP TABLE IF EXISTS tab2;
+
+CREATE TABLE tab1 (a integer, b varchar2) DISTRIBUTED BY (a);
+CREATE TABLE tab2 (a integer, b varchar) DISTRIBUTED BY (a);
+
+INSERT INTO tab1 values (10, 'tab1-10');
+INSERT INTO tab1 values (15, 'tab1-15');
+INSERT INTO tab2 values (15, 'tab2-15');
+INSERT INTO tab2 values (20, 'tab2-20');
+
+SELECT * FROM tab1;
+SELECT * FROM tab2;
+
+UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
+
+SELECT * FROM tab1;
+SELECT * FROM tab2;
+
+DROP TABLE IF EXISTS tab1;
+DROP TABLE IF EXISTS tab2;
 
 RESET DATESTYLE;
 

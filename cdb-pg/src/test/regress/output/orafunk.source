@@ -937,6 +937,48 @@ SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
  t
 (1 row)
 
+-- test varchar2
+DROP TABLE IF EXISTS tab1;
+NOTICE:  table "tab1" does not exist, skipping
+DROP TABLE IF EXISTS tab2;
+NOTICE:  table "tab2" does not exist, skipping
+CREATE TABLE tab1 (a integer, b varchar2) DISTRIBUTED BY (a);
+CREATE TABLE tab2 (a integer, b varchar) DISTRIBUTED BY (a);
+INSERT INTO tab1 values (10, 'tab1-10');
+INSERT INTO tab1 values (15, 'tab1-15');
+INSERT INTO tab2 values (15, 'tab2-15');
+INSERT INTO tab2 values (20, 'tab2-20');
+SELECT * FROM tab1;
+ a  |    b
+----+---------
+ 10 | tab1-10
+ 15 | tab1-15
+(2 rows)
+
+SELECT * FROM tab2;
+ a  |    b
+----+---------
+ 20 | tab2-20
+ 15 | tab2-15
+(2 rows)
+
+UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
+SELECT * FROM tab1;
+ a  |    b
+----+---------
+ 10 | tab1-10
+ 15 | tab2-15
+(2 rows)
+
+SELECT * FROM tab2;
+ a  |    b
+----+---------
+ 15 | tab2-15
+ 20 | tab2-20
+(2 rows)
+
+DROP TABLE IF EXISTS tab1;
+DROP TABLE IF EXISTS tab2;
 RESET DATESTYLE;
 -- start_ignore
 \i @abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql

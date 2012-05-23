@@ -221,4 +221,40 @@ RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
 
+-- Oracle's VARCHAR2
+CREATE FUNCTION varchar2in(cstring) 
+RETURNS varchar2
+AS 'varcharin'
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE FUNCTION varchar2out(varchar2)
+RETURNS cstring
+AS 'varcharout'
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE FUNCTION varchar2recv(internal)
+RETURNS varchar2
+AS 'varcharrecv'
+LANGUAGE internal STABLE STRICT;
+
+CREATE FUNCTION varchar2send(varchar2)
+RETURNS bytea
+AS 'varcharsend'
+LANGUAGE internal STABLE STRICT;
+
+CREATE TYPE varchar2(
+	INPUT = varchar2in,
+	OUTPUT = varchar2out,
+	RECEIVE = varchar2recv,
+	SEND = varchar2send,
+	INTERNALLENGTH = variable,
+	ALIGNMENT = int4,
+	STORAGE = extended);
+
+-- create supporting casts
+CREATE CAST (varchar2 as varchar) WITHOUT FUNCTION AS IMPLICIT;
+CREATE CAST (varchar as varchar2) WITHOUT FUNCTION AS IMPLICIT;
+CREATE CAST (varchar2 as text) WITHOUT FUNCTION AS IMPLICIT;
+CREATE CAST (text as varchar2) WITHOUT FUNCTION AS IMPLICIT;
+
 COMMIT;

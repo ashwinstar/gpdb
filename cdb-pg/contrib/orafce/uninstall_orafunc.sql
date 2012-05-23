@@ -60,4 +60,6 @@ DROP FUNCTION IF EXISTS nlssort(text, text);
 DROP FUNCTION IF EXISTS substr(text, int, int);
 DROP FUNCTION IF EXISTS substr(text, int);
 
+DROP TYPE IF EXISTS varchar2 CASCADE;
+
 COMMIT;
