@@ -5301,7 +5301,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	int			actual_atts;	/* number of attrs in this CREATE statment */
 	char	   *reltypename;
 	char	   *storage;
-	int			j;
+	int			j,
+				k;
 
 	/* Make sure we are in proper schema */
 	selectSourceSchema(tbinfo->dobj.namespace->dobj.name);
@@ -5782,6 +5783,27 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 
 		appendPQExpBuffer(q, "\n)");
+		
+		/*
+		 * Emit the INHERITS clause if this table has parents.
+		 */
+		if (numParents > 0)
+		{
+			appendPQExpBuffer(q, "\nINHERITS (");
+			for (k = 0; k < numParents; k++)
+			{
+				TableInfo  *parentRel = parents[k];
+
+				if (k > 0)
+					appendPQExpBuffer(q, ", ");
+				if (parentRel->dobj.namespace != tbinfo->dobj.namespace)
+					appendPQExpBuffer(q, "%s.",
+								fmtId(parentRel->dobj.namespace->dobj.name));
+				appendPQExpBuffer(q, "%s",
+								  fmtId(parentRel->dobj.name));
+			}
+			appendPQExpBuffer(q, ")");
+		}	
 
 		if (tbinfo->reloptions && strlen(tbinfo->reloptions) > 0)
 			appendPQExpBuffer(q, "\nWITH (%s)", tbinfo->reloptions);

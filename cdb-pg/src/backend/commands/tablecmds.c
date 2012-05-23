@@ -11311,12 +11311,11 @@ ATExecAddInherit(Relation child_rel, Node *node)
 		Assert(IsA(node, List));
 		inhParms = (List *)node;
 
-		Insist(list_length(inhParms) == 2);
+		Insist(list_length(inhParms) == 1);
 		Assert(IsA(linitial(inhParms), RangeVar));
-		Assert(lsecond(inhParms) == NIL || IsA(lsecond(inhParms), List));
 
 		parent = (RangeVar *)linitial(inhParms);
-		inhAttrNameList = (List *)lsecond(inhParms);
+		inhAttrNameList = NIL;
 		is_partition = false;
 	}
 
