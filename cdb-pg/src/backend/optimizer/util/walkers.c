@@ -204,6 +204,8 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_NamedArgExpr:
+			return walker(((NamedArgExpr *) node)->arg, context);
 		case T_OpExpr:
 			{
 				OpExpr	   *expr = (OpExpr *) node;
@@ -1570,6 +1572,16 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, expr, FuncExpr);
 				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_NamedArgExpr:
+			{
+				NamedArgExpr *nexpr = (NamedArgExpr *) node;
+				NamedArgExpr *newnode;
+
+				FLATCOPY(newnode, nexpr, NamedArgExpr);
+				MUTATE(newnode->arg, nexpr->arg, Expr *);
 				return (Node *) newnode;
 			}
 			break;

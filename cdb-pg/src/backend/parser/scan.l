@@ -321,6 +321,7 @@ ident_cont		[A-Za-z\200-\377_0-9\$]
 identifier		{ident_start}{ident_cont}*
 
 typecast		"::"
+equal_arrow		"=>"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -738,6 +739,11 @@ other			.
 {typecast}		{
 					SET_YYLLOC();
 					return TYPECAST;
+				}
+				
+{equal_arrow}	{
+					SET_YYLLOC();
+					return EQUAL_ARROW;
 				}
 
 {self}			{

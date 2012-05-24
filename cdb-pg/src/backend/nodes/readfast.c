@@ -1224,6 +1224,22 @@ _readFuncExpr(const char ** str)
 }
 
 /*
+ * _readNamedArgExpr
+ */
+static NamedArgExpr *
+_readNamedArgExpr(const char ** str)
+{
+	READ_LOCALS(NamedArgExpr);
+
+	READ_NODE_FIELD(arg);
+	READ_STRING_FIELD(name);
+	READ_INT_FIELD(argnumber);
+	READ_INT_FIELD(location);
+
+	READ_DONE();
+}
+
+/*
  * _readOpExpr
  */
 static OpExpr *
@@ -3899,6 +3915,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_FuncExpr:
 				return_value = _readFuncExpr(str);
+				break;
+			case T_NamedArgExpr:
+				return_value = _readNamedArgExpr(str);
 				break;
 			case T_OpExpr:
 				return_value = _readOpExpr(str);

@@ -115,7 +115,7 @@ regprocin(PG_FUNCTION_ARGS)
 	 * pg_proc entries in the current search path.
 	 */
 	names = stringToQualifiedNameList(pro_name_or_oid, "regprocin");
-	clist = FuncnameGetCandidates(names, -1, false, false);
+	clist = FuncnameGetCandidates(names, -1, NIL, false, false);
 
 	if (clist == NULL)
 		ereport(ERROR,
@@ -175,7 +175,7 @@ regprocout(PG_FUNCTION_ARGS)
 			 * qualify it.
 			 */
 			clist = FuncnameGetCandidates(list_make1(makeString(proname)), -1,
-										  false, false);
+										  NIL, false, false);
 			if (clist != NULL && clist->next == NULL &&
 				clist->oid == proid)
 				nspname = NULL;
@@ -263,7 +263,7 @@ regprocedurein(PG_FUNCTION_ARGS)
 	parseNameAndArgTypes(pro_name_or_oid, "regprocedurein", false,
 						 &names, &nargs, argtypes);
 
-	clist = FuncnameGetCandidates(names, nargs, false, false);
+	clist = FuncnameGetCandidates(names, nargs, NIL, false, false);
 
 	for (; clist; clist = clist->next)
 	{

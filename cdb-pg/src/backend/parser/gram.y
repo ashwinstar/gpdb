@@ -357,6 +357,8 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr simple_func func_expr AexprConst indirection_el
 				columnref in_expr having_clause func_table array_expr
+%type <list>	func_arg_list
+%type <node>	func_arg_expr
 %type <list>	window_definition_list window_clause
 %type <boolean>	window_frame_units
 %type <ival>	window_frame_exclusion
@@ -576,6 +578,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 /* Special token types, not actually keywords - see the "lex" file */
 %token <str>	IDENT FCONST SCONST BCONST XCONST Op
 %token <ival>	ICONST PARAM
+%token			EQUAL_ARROW
 
 /* precedence: lowest to highest */
 %nonassoc	SET				/* see relation_expr_opt_alias */
@@ -11082,7 +11085,7 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' VARIADIC a_expr ')'
+			| func_name '(' VARIADIC func_arg_expr ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11093,7 +11096,7 @@ simple_func: 	func_name '(' ')'
 					n->location = @1;
 					$$ = (Node *)n;
 				}
-			| func_name '(' expr_list ',' VARIADIC a_expr ')'
+			| func_name '(' func_arg_list ',' VARIADIC func_arg_expr ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11104,7 +11107,7 @@ simple_func: 	func_name '(' ')'
 					n->location = @1;
 					$$ = (Node *)n;
 				}
-			| func_name '(' expr_list opt_sort_clause ')'
+			| func_name '(' func_arg_list opt_sort_clause ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11118,7 +11121,7 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' ALL expr_list opt_sort_clause')'
+			| func_name '(' ALL func_arg_list opt_sort_clause')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11136,7 +11139,7 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' DISTINCT expr_list opt_sort_clause')'
+			| func_name '(' DISTINCT func_arg_list opt_sort_clause')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -11822,6 +11825,33 @@ expr_list:	a_expr
 				{
 					$$ = lappend($1, $3);
 				}
+		;
+		
+/* function arguments can have names */
+func_arg_list:	
+			func_arg_expr
+				{
+					$$ = list_make1($1);
+				}
+			| func_arg_list ',' func_arg_expr
+				{
+					$$ = lappend($1, $3);
+				}		
+		;	
+		
+func_arg_expr:  a_expr
+				{
+					$$ = $1;
+				}
+			| param_name EQUAL_ARROW a_expr
+			    {
+			    	NamedArgExpr *na = makeNode(NamedArgExpr);
+			    	na->name = $1;
+			    	na->arg = (Expr *) $3;
+			    	na->argnumber = -1;     /* until determined */
+			    	na->location = @1;
+			    	$$ = (Node *) na;
+			    }
 		;
 
 extract_list:

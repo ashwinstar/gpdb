@@ -454,7 +454,13 @@ SELECT dup('xyz');	-- fails
 SELECT dup('xyz'::text);
 SELECT * FROM dup('xyz'::text);
 
--- equivalent specification
+-- fails, as we are attempting to rename first argument
+CREATE OR REPLACE FUNCTION dup (inout f2 anyelement, out f3 anyarray)
+ AS 'select $1, array[$1,$1]' LANGUAGE sql;
+
+DROP FUNCTION dup(anyelement);
+
+-- equivalent behavior, though different name exposed for input arg
 CREATE OR REPLACE FUNCTION dup (inout f2 anyelement, out f3 anyarray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
 SELECT dup(22);

@@ -1212,6 +1212,22 @@ _copyFuncExpr(const FuncExpr *from)
 }
 
 /*
+ * _copyNamedArgExpr
+ */
+static NamedArgExpr *
+_copyNamedArgExpr(const NamedArgExpr *from)
+{
+	NamedArgExpr *newnode = makeNode(NamedArgExpr);
+
+	COPY_NODE_FIELD(arg);
+	COPY_STRING_FIELD(name);
+	COPY_SCALAR_FIELD(argnumber);
+	COPY_SCALAR_FIELD(location);
+
+	return newnode;
+}
+
+/*
  * _copyOpExpr
  */
 static OpExpr *
@@ -4204,6 +4220,9 @@ copyObject(const void *from)
 			break;
 		case T_FuncExpr:
 			retval = _copyFuncExpr(from);
+			break;
+		case T_NamedArgExpr:
+			retval = _copyNamedArgExpr(from);
 			break;
 		case T_OpExpr:
 			retval = _copyOpExpr(from);

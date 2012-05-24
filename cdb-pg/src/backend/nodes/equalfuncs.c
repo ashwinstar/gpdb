@@ -278,6 +278,17 @@ _equalFuncExpr(const FuncExpr *a, const FuncExpr *b)
 }
 
 static bool
+_equalNamedArgExpr(const NamedArgExpr *a, const NamedArgExpr *b)
+{
+	COMPARE_NODE_FIELD(arg);
+	COMPARE_STRING_FIELD(name);
+	COMPARE_SCALAR_FIELD(argnumber);
+	COMPARE_SCALAR_FIELD(location);
+
+	return true;
+}
+
+static bool
 _equalOpExpr(const OpExpr *a, const OpExpr *b)
 {
 	COMPARE_SCALAR_FIELD(opno);
@@ -2505,6 +2516,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_FuncExpr:
 			retval = _equalFuncExpr(a, b);
+			break;
+		case T_NamedArgExpr:
+			retval = _equalNamedArgExpr(a, b);
 			break;
 		case T_OpExpr:
 			retval = _equalOpExpr(a, b);

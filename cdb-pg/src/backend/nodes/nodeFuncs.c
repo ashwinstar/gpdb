@@ -92,6 +92,15 @@ exprLocation(Node *expr)
 								  exprLocation((Node *) fexpr->args));
 			}
 			break;
+		case T_NamedArgExpr:
+			{
+				NamedArgExpr *na = (NamedArgExpr *) expr;
+
+				/* consider both argument name and value */
+				loc = leftmostLoc(na->location,
+								  exprLocation((Node *) na->arg));
+			}
+			break;
 		case T_OpExpr:
 		case T_DistinctExpr:	/* struct-equivalent to OpExpr */
 		case T_NullIfExpr:		/* struct-equivalent to OpExpr */

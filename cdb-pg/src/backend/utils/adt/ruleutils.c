@@ -207,7 +207,8 @@ static Node *processIndirection(Node *node, deparse_context *context,
 				   bool printit);
 static void printSubscripts(ArrayRef *aref, deparse_context *context);
 static char *generate_relation_name(Oid relid, List *namespaces);
-static char *generate_function_name(Oid funcid, int nargs, Oid *argtypes,
+static char *generate_function_name(Oid funcid, int nargs,
+									List *argnames, Oid *argtypes,
 									bool *is_variadic);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
 static text *string_to_text(char *str);
@@ -538,7 +539,7 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 		appendStringInfo(&buf, "FOR EACH STATEMENT ");
 
 	appendStringInfo(&buf, "EXECUTE PROCEDURE %s(",
-					 generate_function_name(trigrec->tgfoid, 0, NULL, NULL));
+					 generate_function_name(trigrec->tgfoid, 0, NIL, NULL, NULL));
 
 	if (trigrec->tgnargs > 0)
 	{
@@ -3987,6 +3988,14 @@ get_rule_expr(Node *node, deparse_context *context,
 			get_func_expr((FuncExpr *) node, context, showimplicit);
 			break;
 
+		case T_NamedArgExpr:
+			{
+				NamedArgExpr *na = (NamedArgExpr *) node;
+				appendStringInfo(buf, "%s => ", quote_identifier(na->name));
+				get_rule_expr((Node *)na->arg, context, showimplicit);
+			}
+			break;
+
 		case T_OpExpr:
 			get_oper_expr((OpExpr *) node, context);
 			break;
@@ -4693,6 +4702,7 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	Oid			funcoid = expr->funcid;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	int			nargs;
+	List	   *argnames;
 	bool		is_variadic;
 	ListCell   *l;
 
@@ -4737,18 +4747,24 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 	 * the argument datatypes.
 	 */
 	nargs = 0;
+	argnames = NIL;
 	foreach(l, expr->args)
 	{
 		if (nargs >= FUNC_MAX_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 					 errmsg("too many arguments")));
-		argtypes[nargs] = exprType((Node *) lfirst(l));
+
+		Node   *arg = (Node *) lfirst(l);
+		if (IsA(arg, NamedArgExpr))
+			argnames = lappend(argnames, ((NamedArgExpr *) arg)->name);
+		argtypes[nargs] = exprType(arg);
 		nargs++;
 	}
 
 	appendStringInfo(buf, "%s(",
-					 generate_function_name(funcoid, nargs, argtypes,
+					 generate_function_name(funcoid, nargs,
+							 	 	 	 	argnames, argtypes,
 							 	 	 	 	&is_variadic));
 	nargs = 0;
 	foreach(l, expr->args)
@@ -4817,7 +4833,10 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 					 errmsg("too many arguments")));
-		argtypes[nargs] = exprType((Node *) lfirst(l));
+
+		Node   *arg = (Node *) lfirst(l);
+		Assert(!IsA(arg, NamedArgExpr));
+		argtypes[nargs] = exprType(arg);
 		nargs++;
 	}
 
@@ -4848,7 +4867,7 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 	}
 
 	appendStringInfo(buf, "%s(%s",
-					 generate_function_name(fnoid, nargs, argtypes, NULL),
+					 generate_function_name(fnoid, nargs, NIL, argtypes, NULL),
 					 aggref->aggdistinct ? "DISTINCT " : "");
 	/* aggstar can be set only in zero-argument aggregates */
 	if (aggref->aggstar)
@@ -5077,13 +5096,16 @@ get_windowref_expr(WindowRef *wref, deparse_context *context)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
 					 errmsg("too many arguments")));
-		argtypes[nargs] = exprType((Node *) lfirst(l));
+
+		Node   *arg = (Node *) lfirst(l);
+		Assert(!IsA(arg, NamedArgExpr));
+		argtypes[nargs] = exprType(arg);
 		nargs++;
 	}
 
 	appendStringInfo(buf, "%s(",
-					 generate_function_name(wref->winfnoid, nargs, argtypes,
-							 	 	 	 	NULL));
+					 generate_function_name(wref->winfnoid, nargs, NIL,
+							 	 	 	 	argtypes, NULL));
 
 	get_rule_expr((Node *) wref->args, context, true);
 	appendStringInfoChar(buf, ')');
@@ -6117,14 +6139,14 @@ generate_relation_name(Oid relid, List *namespaces)
 /*
  * generate_function_name
  *		Compute the name to display for a function specified by OID,
- *		given that it is being called with the specified actual arg types.
- *		(Arg types matter because of ambiguous-function resolution rules.)
+ *		given that it is being called with the specified actual arg names and
+ *		types.  (Those matter because of ambiguous-function resolution rules.)
  *
  * The result includes all necessary quoting and schema-prefixing. We can
  * also pass back an indication of whether the function is variadic.
  */
 static char *
-generate_function_name(Oid funcid, int nargs, Oid *argtypes,
+generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 					   bool *is_variadic)
 {
 	HeapTuple	proctup;
@@ -6140,6 +6162,9 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes,
 	bool        p_retordered;
 	int			p_nvargs;
 	Oid		   *p_true_typeids;
+	Datum		varDatum;
+	int			varOid;
+	bool		isnull;
 
 	proctup = SearchSysCache(PROCOID,
 							 ObjectIdGetDatum(funcid),
@@ -6152,10 +6177,15 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes,
 	/*
 	 * The idea here is to schema-qualify only if the parser would fail to
 	 * resolve the correct function given the unqualified func name with the
-	 * specified argtypes.
+	 * specified argtypes. If the function is variadic, we should presume
+	 * that VARIADIC will be included in the call.
 	 */
+	varDatum = SysCacheGetAttr(PROCOID, proctup,
+							   Anum_pg_proc_provariadic, &isnull);
+	varOid   = DatumGetInt32(varDatum);
 	p_result = func_get_detail(list_make1(makeString(proname)),
-							   NIL, nargs, argtypes, false, false,
+							   NIL, argnames, nargs, argtypes,
+							   !OidIsValid(varOid), true,
 							   &p_funcid, &p_rettype,
 							   &p_retset, &p_retstrict, &p_retordered,
 							   &p_nvargs, &p_true_typeids, NULL);
@@ -6170,14 +6200,6 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes,
 	/* Check variadic-ness if caller cares */
 	if (is_variadic)
 	{
-		bool 	isnull;
-		Datum	varDatum;
-		Oid		varOid;
-
-		varDatum = SysCacheGetAttr (PROCOID, proctup,
-									Anum_pg_proc_provariadic, &isnull);
-		varOid = DatumGetObjectId(varDatum);
-
 		/* "any" variadics are not treated as variadics for listing */
 		if (OidIsValid(varOid) && varOid != ANYOID)
 			*is_variadic = true;

@@ -48,6 +48,7 @@ extern Node *ParseFuncOrColumn(ParseState *pstate,
 				  WindowSpec *over, int location, Node *agg_filter);
 
 extern FuncDetailCode func_get_detail(List *funcname, List *fargs,
+									  List *fargnames,
 									  int nargs, Oid *argtypes,
 									  bool expand_variadic,
 									  bool expand_defaults,
@@ -74,10 +75,12 @@ extern void make_fn_arguments(ParseState *pstate,
 				  Oid *actual_arg_types,
 				  Oid *declared_arg_types);
 
-extern const char *funcname_signature_string(const char *funcname,
-						  int nargs, const Oid *argtypes);
-extern const char *func_signature_string(List *funcname,
-					  int nargs, const Oid *argtypes);
+extern const char *funcname_signature_string(const char *funcname, int nargs,
+									List *argnames, const Oid *argtypes);
+extern const char *func_signature_string(List *funcname, int nargs,
+									const Oid *argtypes);
+extern const char *func_signature_named_string(List *funcname, int nargs,
+									List *argnames, const Oid *argtypes);
 
 extern Oid LookupFuncName(List *funcname, int nargs, const Oid *argtypes,
 			   bool noError);

@@ -881,7 +881,8 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	/*
 	 * Simplify constant expressions.
 	 *
-	 * Note: one essential effect here is to insert the current actual values
+	 * Note: an essential effect of this is to convert named-argument function
+	 * calls to positional notation and insert the current actual values
 	 * of any default arguments for functions.  To ensure that happens, we
 	 * *must* process all expressions here.  Previous PG versions sometimes
 	 * skipped const-simplification if it didn't seem worth the trouble, but

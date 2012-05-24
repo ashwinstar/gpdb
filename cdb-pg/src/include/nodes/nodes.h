@@ -157,6 +157,7 @@ typedef enum NodeTag
 	T_WindowRef,
 	T_ArrayRef,
 	T_FuncExpr,
+	T_NamedArgExpr,
 	T_OpExpr,
 	T_DistinctExpr,
 	T_ScalarArrayOpExpr,

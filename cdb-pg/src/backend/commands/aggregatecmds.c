@@ -346,7 +346,7 @@ RenameAggregate(List *name, List *args, const char *newname)
 				(errcode(ERRCODE_DUPLICATE_FUNCTION),
 				 errmsg("function %s already exists in schema \"%s\"",
 						funcname_signature_string(newname,
-												  procForm->pronargs,
+												  procForm->pronargs, NIL,
 											   procForm->proargtypes.values),
 						get_namespace_name(namespaceOid))));
 

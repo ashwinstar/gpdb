@@ -974,6 +974,17 @@ _outFuncExpr(StringInfo str, FuncExpr *node)
 }
 
 static void
+_outNamedArgExpr(StringInfo str, NamedArgExpr *node)
+{
+	WRITE_NODE_TYPE("NAMEDARGEXPR");
+
+	WRITE_NODE_FIELD(arg);
+	WRITE_STRING_FIELD(name);
+	WRITE_INT_FIELD(argnumber);
+	WRITE_INT_FIELD(location);
+}
+
+static void
 _outOpExpr(StringInfo str, OpExpr *node)
 {
 	WRITE_NODE_TYPE("OPEXPR");
@@ -3644,6 +3655,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_FuncExpr:
 				_outFuncExpr(str, obj);
+				break;
+			case T_NamedArgExpr:
+				_outNamedArgExpr(str, obj);
 				break;
 			case T_OpExpr:
 				_outOpExpr(str, obj);

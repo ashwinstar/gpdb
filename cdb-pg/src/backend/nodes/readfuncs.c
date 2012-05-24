@@ -1527,6 +1527,22 @@ _readFuncExpr(void)
 }
 
 /*
+ * _readNamedArgExpr
+ */
+static NamedArgExpr *
+_readNamedArgExpr(void)
+{
+	READ_LOCALS(NamedArgExpr);
+
+	READ_NODE_FIELD(arg);
+	READ_STRING_FIELD(name);
+	READ_INT_FIELD(argnumber);
+	READ_INT_FIELD(location);
+
+	READ_DONE();
+}
+
+/*
  * _readOpExpr
  */
 static OpExpr *
@@ -3101,6 +3117,7 @@ static ParseNodeInfo infoAr[] =
 	{"JOINEXPR", (ReadFn)_readJoinExpr},
 	{"LOCKSTMT", (ReadFn)_readLockStmt},
 	{"MINMAX", (ReadFn)_readMinMaxExpr},
+	{"NAMEDARGEXPR", (ReadFn)_readNamedArgExpr},
 	{"NOTIFY", (ReadFn)_readNotifyStmt},
 	{"NULLIFEXPR", (ReadFn)_readNullIfExpr},
 	{"NULLTEST", (ReadFn)_readNullTest},

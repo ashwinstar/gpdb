@@ -224,6 +224,7 @@ identifier		{ident_start}{ident_cont}*
 
 array			({ident_cont}|{whitespace}|[\[\]\+\-\*\%\/\(\)\>\.])*
 typecast		"::"
+equal_arrow		"=>"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -582,6 +583,7 @@ cppline			{space}*#(.*\\{space})*.*{newline}
 					}
 <xdc>{xdcinside}	{ addlit(yytext, yyleng); }
 <SQL>{typecast}		{ return TYPECAST; }
+<SQL>{equal_arrow}	{ return EQUAL_ARROW; }
 <SQL>{informix_special}	{
 			  /* are we simulating Informix? */
 				if (INFORMIX_MODE)

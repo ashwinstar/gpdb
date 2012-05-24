@@ -350,8 +350,9 @@ ProcedureCreate(const char *procedureName,
 	if (HeapTupleIsValid(oldtup))
 	{
 		/* There is one; okay to replace it? */
-		Form_pg_proc oldproc = (Form_pg_proc) GETSTRUCT(oldtup);
-		Oid oldOid = HeapTupleGetOid(oldtup);
+		Form_pg_proc 	oldproc = (Form_pg_proc) GETSTRUCT(oldtup);
+		Oid 			oldOid = HeapTupleGetOid(oldtup);
+		Datum       	proargnames;
 
 		if (!replace)
 			ereport(ERROR,
@@ -398,6 +399,49 @@ ProcedureCreate(const char *procedureName,
 				errdetail("Row type defined by OUT parameters is different."),
 						 errhint("Use DROP FUNCTION first."),
 								   errOmitLocation(true)));
+		}
+
+		/*
+		 * If there were any named input parameters, check to make sure the
+		 * names have not been changed, as this could break existing calls.
+		 * We allow adding names to formerly unnamed parameters, though.
+		 */
+		proargnames = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
+									  Anum_pg_proc_proargnames,
+									  &isnull);
+		if (!isnull)
+		{
+			Datum       proargmodes;
+			char      **old_arg_names;
+			char      **new_arg_names;
+			int         n_old_arg_names;
+			int         n_new_arg_names;
+			int         j;
+
+			proargmodes = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
+										  Anum_pg_proc_proargmodes,
+										  &isnull);
+			if (isnull)
+				proargmodes = PointerGetDatum(NULL);    /* just to be sure */
+
+			n_old_arg_names = get_func_input_arg_names(proargnames,
+													   proargmodes,
+													   &old_arg_names);
+			n_new_arg_names = get_func_input_arg_names(parameterNames,
+													   parameterModes,
+													   &new_arg_names);
+			for (j = 0; j < n_old_arg_names; j++)
+			{
+				if (old_arg_names[j] == NULL)
+					continue;
+				if (j >= n_new_arg_names || new_arg_names[j] == NULL ||
+					strcmp(old_arg_names[j], new_arg_names[j]) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("cannot change name of input parameter \"%s\"",
+									 old_arg_names[j]),
+							 errhint("Use DROP FUNCTION first.")));
+			}
 		}
 
 		/*

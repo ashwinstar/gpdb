@@ -321,6 +321,39 @@ examine_parameter_list(List *parameters, Oid languageOid,
 
 		if (fp->name && fp->name[0])
 		{
+			ListCell   *px;
+
+			/*
+			 * As of GPDB Paris we disallow using the same name for two
+			 * input or two output function parameters.  Depending on the
+			 * function's language, conflicting input and output names might
+			 * be bad too, but we leave it to the PL to complain if so.
+			 */
+			foreach(px, parameters)
+			{
+				FunctionParameter *prevfp = (FunctionParameter *) lfirst(px);
+
+				if (prevfp == fp)
+					break;
+				/* pure in doesn't conflict with pure out */
+				if ((fp->mode == FUNC_PARAM_IN ||
+					 fp->mode == FUNC_PARAM_VARIADIC) &&
+					(prevfp->mode == FUNC_PARAM_OUT ||
+					 prevfp->mode == FUNC_PARAM_TABLE))
+					continue;
+				if ((prevfp->mode == FUNC_PARAM_IN ||
+					 prevfp->mode == FUNC_PARAM_VARIADIC) &&
+					(fp->mode == FUNC_PARAM_OUT ||
+					 fp->mode == FUNC_PARAM_TABLE))
+					continue;
+				if (prevfp->name && prevfp->name[0] &&
+					strcmp(prevfp->name, fp->name) == 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+									errmsg("parameter name \"%s\" used more than once",
+											fp->name)));
+			}
+
 			paramNames[i] = CStringGetTextDatum(fp->name);
 			have_names = true;
 		}
@@ -774,6 +807,7 @@ validate_describe_callback(List *describeQualName,
 	int nvargs;
 	fdResult = func_get_detail(describeQualName,
 							   NIL,   	/* argument expressions */
+							   NIL,
 							   nargs, 
 							   inputTypeOids,
 							   false,	/* expand_variadic */
@@ -793,7 +827,8 @@ validate_describe_callback(List *describeQualName,
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("function %s does not exist",
-						func_signature_string(describeQualName, nargs, inputTypeOids)),
+						func_signature_string(describeQualName, nargs,
+											  inputTypeOids)),
 				 errOmitLocation(true)));
 	}
 	if (describeReturnTypeOid != INTERNALOID)
@@ -801,7 +836,8 @@ validate_describe_callback(List *describeQualName,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("return type of function %s is not \"internal\"",
-						func_signature_string(describeQualName, nargs, inputTypeOids)),
+						func_signature_string(describeQualName, nargs,
+											  inputTypeOids)),
 				 errOmitLocation(true)));
 	}
 	if (describeReturnsSet)
@@ -809,7 +845,8 @@ validate_describe_callback(List *describeQualName,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("function %s returns a set",
-						func_signature_string(describeQualName, nargs, inputTypeOids)),
+						func_signature_string(describeQualName, nargs,
+											  inputTypeOids)),
 				 errOmitLocation(true)));
 	}
 
@@ -1179,7 +1216,7 @@ RenameFunction(List *name, List *argtypes, const char *newname)
 				(errcode(ERRCODE_DUPLICATE_FUNCTION),
 				 errmsg("function %s already exists in schema \"%s\"",
 						funcname_signature_string(newname,
-												  procForm->pronargs,
+												  procForm->pronargs, NIL,
 											   procForm->proargtypes.values),
 						get_namespace_name(namespaceOid))));
 	}

@@ -246,3 +246,128 @@ select pg_get_viewdef('dview',true);
 -- need drop cascade
 drop function dfunc(int, double precision);
 drop function dfunc(int, double precision) cascade;
+
+
+-- -----------------------------------------------------------------
+--	3. NAMED arguments
+-- -----------------------------------------------------------------
+
+--
+-- Tests for named- and mixed-notation function calling
+--
+
+create function dfunc(a int, b int, c int = 0, d int = 0)
+  returns table (a int, b int, c int, d int) as $$
+  select $1, $2, $3, $4;
+$$ language sql;
+
+select (dfunc(10,20,30)).*;
+select (dfunc(a => 10, b => 20, c => 30)).*;
+select * from dfunc(a => 10, b => 20);
+select * from dfunc(b => 10, a => 20);
+select * from dfunc(0);  -- fail
+select * from dfunc(1,2);
+select * from dfunc(1,2, c => 3);
+select * from dfunc(1,2, d => 3);
+
+select * from dfunc(x => 10, b => 20, x => 30);  -- fail, duplicate name
+select * from dfunc(10, b => 20, 30);  -- fail, named args must be last
+select * from dfunc(x => 10, b => 20, c => 30);  -- fail, unknown param
+select * from dfunc(10, 10, a => 20);  -- fail, a overlaps positional parameter
+select * from dfunc(1, c => 2, d => 3); -- fail, no value for b
+
+drop function dfunc(int, int, int, int);
+
+-- test with different parameter types
+create function dfunc(a varchar, b numeric, c date = current_date)
+  returns table (a varchar, b numeric, c date) as $$
+  select $1, $2, $3;
+$$ language sql;
+
+select (dfunc('Hello World', 20, '2009-07-25'::date)).*;
+select * from dfunc('Hello World', 20, '2009-07-25'::date);
+select * from dfunc(c => '2009-07-25'::date, a => 'Hello World', b => 20);
+select * from dfunc('Hello World', b => 20, c => '2009-07-25'::date);
+select * from dfunc('Hello World', c => '2009-07-25'::date, b => 20);
+select * from dfunc('Hello World', c => 20, b => '2009-07-25'::date);  -- fail
+
+drop function dfunc(varchar, numeric, date);
+
+-- test out parameters with named params
+create function dfunc(a varchar = 'def a', out _a varchar, c numeric = NULL, out _c numeric)
+returns record as $$
+  select $1, $2;
+$$ language sql;
+
+select (dfunc()).*;
+select * from dfunc();
+select * from dfunc('Hello', 100);
+select * from dfunc(a => 'Hello', c => 100);
+select * from dfunc(c => 100, a => 'Hello');
+select * from dfunc('Hello');
+select * from dfunc('Hello', c => 100);
+select * from dfunc(c => 100);
+
+-- fail, can no longer change an input parameter's name
+create or replace function dfunc(a varchar = 'def a', out _a varchar, x numeric = NULL, out _c numeric)
+returns record as $$
+  select $1, $2;
+$$ language sql;
+
+create or replace function dfunc(a varchar = 'def a', out _a varchar, numeric = NULL, out _c numeric)
+returns record as $$
+  select $1, $2;
+$$ language sql;
+
+drop function dfunc(varchar, numeric);
+
+--fail, named parameters are not unique
+create function testfoo(a int, a int) returns int as $$ select 1;$$ language sql;
+create function testfoo(int, out a int, out a int) returns int as $$ select 1;$$ language sql;
+create function testfoo(out a int, inout a int) returns int as $$ select 1;$$ language sql;
+create function testfoo(a int, inout a int) returns int as $$ select 1;$$ language sql;
+
+-- valid
+create function testfoo(a int, out a int) returns int as $$ select $1;$$ language sql;
+select testfoo(37);
+drop function testfoo(int);
+create function testfoo(a int) returns table(a int) as $$ select $1;$$ language sql;
+select * from testfoo(37);
+drop function testfoo(int);
+
+-- test polymorphic params and defaults
+create function dfunc(a anyelement, b anyelement = null, flag bool = true)
+returns anyelement as $$
+  select case when $3 then $1 else $2 end;
+$$ language sql;
+
+select dfunc(1,2);
+select dfunc('a'::text, 'b'); -- positional notation with default
+
+select dfunc(a => 1, b => 2);
+select dfunc(a => 'a'::text, b => 'b');
+select dfunc(a => 'a'::text, b => 'b', flag => false); -- named notation
+
+select dfunc(b => 'b'::text, a => 'a'); -- named notation with default
+select dfunc(a => 'a'::text, flag => true); -- named notation with default
+select dfunc(a => 'a'::text, flag => false); -- named notation with default
+select dfunc(b => 'b'::text, a => 'a', flag => true); -- named notation
+
+select dfunc('a'::text, 'b', false); -- full positional notation
+select dfunc('a'::text, 'b', flag => false); -- mixed notation
+select dfunc('a'::text, 'b', true); -- full positional notation
+select dfunc('a'::text, 'b', flag => true); -- mixed notation
+
+-- check reverse-listing of named-arg calls
+CREATE VIEW dfview AS
+   SELECT q1, q2,
+     dfunc(q1,q2, flag => q1>q2) as c3,
+     dfunc(q1, flag => q1<q2, b => q2) as c4
+     FROM int8_tbl;
+
+select * from dfview;
+
+\d dfview
+
+drop view dfview;
+drop function dfunc(anyelement, anyelement, bool);

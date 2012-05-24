@@ -215,6 +215,15 @@ transformExpr(ParseState *pstate, Node *expr)
 			result = transformFuncCall(pstate, (FuncCall *) expr);
 			break;
 
+		case T_NamedArgExpr:
+		{
+			NamedArgExpr *na = (NamedArgExpr *) expr;
+
+			na->arg = (Expr *) transformExpr(pstate, (Node *) na->arg);
+			result = expr;
+			break;
+		}
+
 		case T_SubLink:
 			result = transformSubLink(pstate, (SubLink *) expr);
 			break;
@@ -2323,6 +2332,9 @@ exprType(Node *expr)
 		case T_FuncExpr:
 			type = ((FuncExpr *) expr)->funcresulttype;
 			break;
+		case T_NamedArgExpr:
+			type = exprType((Node *) ((NamedArgExpr *) expr)->arg);
+			break;
 		case T_OpExpr:
 			type = ((OpExpr *) expr)->opresulttype;
 			break;
@@ -2528,6 +2540,8 @@ exprTypmod(Node *expr)
 					return coercedTypmod;
 			}
 			break;
+		case T_NamedArgExpr:
+			return exprTypmod((Node *) ((NamedArgExpr *) expr)->arg);
 		case T_FieldSelect:
 			return ((FieldSelect *) expr)->resulttypmod;
 		case T_RelabelType:

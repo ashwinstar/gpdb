@@ -87,10 +87,18 @@ static List *simplify_and_arguments(List *args,
 					   bool *haveNull, bool *forceFalse);
 static Expr *simplify_boolean_equality(List *args);
 static Expr *simplify_function(Oid funcid, Oid result_type, List **args,
+				  bool has_named_args,
 				  bool allow_inline,
 				  eval_const_expressions_context *context);
+static List *reorder_function_arguments(List *args, Oid result_type,
+				  HeapTuple func_tuple,
+				  eval_const_expressions_context *context);
 static List *add_function_defaults(List *args, Oid result_type,
-								   HeapTuple func_tuple);
+								   HeapTuple func_tuple,
+								   eval_const_expressions_context *context);
+static List *fetch_function_defaults(HeapTuple func_tuple);
+static void recheck_cast_function_args(List *args, Oid result_type,
+									   HeapTuple func_tuple);
 static Expr *evaluate_function(Oid funcid, Oid result_type, List *args,
 				  HeapTuple func_tuple,
 				  eval_const_expressions_context *context);
@@ -1551,7 +1559,8 @@ Query *fold_constants(Query *q, ParamListInfo boundParams)
  * OR clauses into N-argument form.  See comments in prepqual.c.
  *
  * NOTE: another critical effect is that any function calls that require
- * default arguments will be expanded.
+ * default arguments will be expanded, and named-argument calls will be
+ * converted to positional notation.  The executor won't handle either.
  *--------------------
  */
 Node *
@@ -1662,31 +1671,41 @@ eval_const_expressions_mutator(Node *node,
 	{
 		FuncExpr   *expr = (FuncExpr *) node;
 		List	   *args;
+		bool        has_named_args;
 		Expr	   *simple;
 		FuncExpr   *newexpr;
+		ListCell   *lc;
 
 		/*
-		 * Reduce constants in the FuncExpr's arguments.  We know args is
-		 * either NIL or a List node, so we can call expression_tree_mutator
-		 * directly rather than recursing to self.
+		 * Reduce constants in the FuncExpr's arguments, and check to see
+		 * if there are any named args.
 		 */
-		args = (List *) expression_tree_mutator((Node *) expr->args,
-											  eval_const_expressions_mutator,
-												(void *) context);
+		args = NIL;
+		has_named_args = false;
+		foreach(lc, expr->args)
+		{
+			Node   *arg = (Node *) lfirst(lc);
+
+			arg = eval_const_expressions_mutator(arg, context);
+			if (IsA(arg, NamedArgExpr))
+				has_named_args = true;
+			args = lappend(args, arg);
+		}
 
 		/*
 		 * Code for op/func reduction is pretty bulky, so split it out as a
 		 * separate function.
 		 */
 		simple = simplify_function(expr->funcid, expr->funcresulttype, &args,
-								   true, context);
+								   has_named_args, true, context);
 		if (simple)				/* successfully simplified it */
 			return (Node *) simple;
 
 		/*
 		 * The expression cannot be simplified any further, so build and
 		 * return a replacement FuncExpr node using the possibly-simplified
-		 * arguments.
+		 * arguments. Note that we have also converted the argument list
+		 * to positional notation.
 		 */
 		newexpr = makeNode(FuncExpr);
 		newexpr->funcid = expr->funcid;
@@ -1734,7 +1753,7 @@ eval_const_expressions_mutator(Node *node,
 		 * separate function.
 		 */
 		simple = simplify_function(expr->opfuncid, expr->opresulttype, &args,
-								   true, context);
+								   false, true, context);
 		if (simple)				/* successfully simplified it */
 			return (Node *) simple;
 
@@ -1822,7 +1841,7 @@ eval_const_expressions_mutator(Node *node,
 			 * a separate function.
 			 */
 			simple = simplify_function(expr->opfuncid, expr->opresulttype,
-									   &args, false, context);
+									   &args, false, false, context);
 			if (simple)			/* successfully simplified it */
 			{
 				/*
@@ -2695,14 +2714,15 @@ simplify_boolean_equality(List *args)
  * Returns a simplified expression if successful, or NULL if cannot
  * simplify the function call.
  *
- * This function is also responsible for adding any default argument
- * expressions onto the function argument list; which is a bit grotty,
- * but it avoids an extra fetch of the function's pg_proc tuple.  For this
- * reason, the args list is pass-by-reference, and it may get modified
- * even if simplification fails.
+ * This function is also responsible for converting named-notation argument
+ * lists into positional notation and/or adding any needed default argument
+ * expressions; which is a bit grotty, but it avoids an extra fetch of the
+ * function's pg_proc tuple.  For this reason, the args list is
+ * pass-by-reference, and it may get modified even if simplification fails.
  */
 static Expr *
 simplify_function(Oid funcid, Oid result_type, List **args,
+				  bool has_named_args,
 				  bool allow_inline,
 				  eval_const_expressions_context *context)
 {
@@ -2723,9 +2743,15 @@ simplify_function(Oid funcid, Oid result_type, List **args,
 	if (!HeapTupleIsValid(func_tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
-	/* While we have the tuple, check if we need to add defaults */
-	if (((Form_pg_proc) GETSTRUCT(func_tuple))->pronargs > list_length(*args))
-		*args = add_function_defaults(*args, result_type, func_tuple);
+	/*
+	 * While we have the tuple, reorder named arguments and add default
+	 * arguments if needed.
+	 */
+	if (has_named_args)
+		*args = reorder_function_arguments(*args, result_type, func_tuple,
+										   context);
+	else if (((Form_pg_proc) GETSTRUCT(func_tuple))->pronargs > list_length(*args))
+		*args = add_function_defaults(*args, result_type, func_tuple, context);
 
 	newexpr = evaluate_function(funcid, result_type, *args,
 								func_tuple, context);
@@ -2741,27 +2767,179 @@ simplify_function(Oid funcid, Oid result_type, List **args,
 
 
 /*
- * add_function_defaults: add missing function arguments from its defaults
+ * reorder_function_arguments: convert named-notation args to positional args
  *
- * It is possible for some of the defaulted arguments to be polymorphic;
- * therefore we can't assume that the default expressions have the correct
- * data types already.  We have to re-resolve polymorphics and do coercion
- * just like the parser did.
+ * This function also inserts default argument values as needed, since it's
+ * impossible to form a truly valid positional call without that.
  */
 static List *
-add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple)
+reorder_function_arguments(List *args, Oid result_type, HeapTuple func_tuple,
+						   eval_const_expressions_context *context)
 {
 	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
+	int         pronargs = funcform->pronargs;
+	int         nargsprovided = list_length(args);
+	Node       *argarray[FUNC_MAX_ARGS];
+	Bitmapset  *defargnumbers;
+	ListCell   *lc;
+	int         i;
+	Datum		datum;
+	int			pronargdefaults;
+	bool		isnull;
+
+	Assert(nargsprovided <= pronargs);
+	if (pronargs > FUNC_MAX_ARGS)
+		elog(ERROR, "too many function arguments");
+	MemSet(argarray, 0, pronargs * sizeof(Node *));
+
+	/* Deconstruct the argument list into an array indexed by argnumber */
+	i = 0;
+	foreach(lc, args)
+	{
+		Node   *arg = (Node *) lfirst(lc);
+
+		if (!IsA(arg, NamedArgExpr))
+		{
+			/* positional argument, assumed to precede all named args */
+			Assert(argarray[i] == NULL);
+			argarray[i++] = arg;
+		}
+		else
+		{
+			NamedArgExpr *na = (NamedArgExpr *) arg;
+
+			Assert(argarray[na->argnumber] == NULL);
+			argarray[na->argnumber] = (Node *) na->arg;
+		}
+	}
+
+	/*
+	 * Fetch default expressions, if needed, and insert into array at
+	 * proper locations (they aren't necessarily consecutive or all used)
+	 */
+	defargnumbers = NULL;
+	datum = SysCacheGetAttr(PROCOID, func_tuple,
+							Anum_pg_proc_pronargdefaults, &isnull);
+	pronargdefaults = DatumGetObjectId(datum);
+
+	if (nargsprovided < pronargs)
+	{
+		List   *defaults = fetch_function_defaults(func_tuple);
+
+		i = pronargs - pronargdefaults;
+		foreach(lc, defaults)
+		{
+			if (argarray[i] == NULL)
+			{
+				argarray[i] = (Node *) lfirst(lc);
+				defargnumbers = bms_add_member(defargnumbers, i);
+			}
+			i++;
+		}
+	}
+
+	/* Now reconstruct the args list in proper order */
+	args = NIL;
+	for (i = 0; i < pronargs; i++)
+	{
+		Assert(argarray[i] != NULL);
+		args = lappend(args, argarray[i]);
+	}
+
+	/* Recheck argument types and add casts if needed */
+	recheck_cast_function_args(args, result_type, func_tuple);
+
+	/*
+	 * Lastly, we have to recursively simplify the defaults we just added
+	 * (but don't recurse on the args passed in, as we already did those).
+	 * This isn't merely an optimization, it's *necessary* since there could
+	 * be functions with named or defaulted arguments down in there.
+	 *
+	 * Note that we do this last in hopes of simplifying any typecasts that
+	 * were added by recheck_cast_function_args --- there shouldn't be any new
+	 * casts added to the explicit arguments, but casts on the defaults are
+	 * possible.
+	 */
+	if (defargnumbers != NULL)
+	{
+		i = 0;
+		foreach(lc, args)
+		{
+			if (bms_is_member(i, defargnumbers))
+				lfirst(lc) = eval_const_expressions_mutator((Node *) lfirst(lc),
+															context);
+			i++;
+		}
+	}
+
+	return args;
+}
+
+
+/*
+ * add_function_defaults: add missing function arguments from its defaults
+ *
+ * This is used only when the argument list was positional to begin with,
+ * and so we know we just need to add defaults at the end.
+ */
+static List *
+add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple,
+					  eval_const_expressions_context *context)
+{
+	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
+	int         nargsprovided = list_length(args);
+	List       *defaults;
+	int         ndelete;
+	ListCell   *lc;
+
+	/* Get all the default expressions from the pg_proc tuple */
+	defaults = fetch_function_defaults(func_tuple);
+
+	/* Delete any unused defaults from the list */
+	ndelete = nargsprovided + list_length(defaults) - funcform->pronargs;
+	if (ndelete < 0)
+		elog(ERROR, "not enough default arguments");
+	while (ndelete-- > 0)
+		defaults = list_delete_first(defaults);
+
+	/* And form the combined argument list */
+	args = list_concat(args, defaults);
+
+	/* Recheck argument types and add casts if needed */
+	recheck_cast_function_args(args, result_type, func_tuple);
+
+	/*
+	 * Lastly, we have to recursively simplify the defaults we just added
+	 * (but don't recurse on the args passed in, as we already did those).
+	 * This isn't merely an optimization, it's *necessary* since there could
+	 * be functions with named or defaulted arguments down in there.
+	 *
+	 * Note that we do this last in hopes of simplifying any typecasts that
+	 * were added by recheck_cast_function_args --- there shouldn't be any new
+	 * casts added to the explicit arguments, but casts on the defaults are
+	 * possible.
+	 */
+
+	foreach(lc, args)
+	{
+		if (nargsprovided-- > 0)
+			continue;           /* skip original arg positions */
+		lfirst(lc) = eval_const_expressions_mutator((Node *) lfirst(lc),
+													context);
+	}
+	return args;
+}
+
+/*
+ * fetch_function_defaults: get function's default arguments as expression list
+ */
+static List *
+fetch_function_defaults(HeapTuple func_tuple)
+{
+	List       *defaults;
 	Datum       proargdefaults;
 	bool        isnull;
 	char       *str;
-	List       *defaults;
-	int         ndelete;
-	int         nargs;
-	Oid         actual_arg_types[FUNC_MAX_ARGS];
-	Oid         declared_arg_types[FUNC_MAX_ARGS];
-	Oid         rettype;
-	ListCell   *lc;
 
 	/* The error cases here shouldn't happen, but check anyway */
 	proargdefaults = SysCacheGetAttr(PROCOID, func_tuple,
@@ -2773,21 +2951,33 @@ add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple)
 	defaults = (List *) stringToNode(str);
 	Assert(IsA(defaults, List));
 	pfree(str);
+	return defaults;
+}
 
-	/* Delete any unused defaults from the list */
-	ndelete = list_length(args) + list_length(defaults) - funcform->pronargs;
-	if (ndelete < 0)
-		elog(ERROR, "not enough default arguments");
-	while (ndelete-- > 0)
-		defaults = list_delete_first(defaults);
-	/* And form the combined argument list */
-	args = list_concat(args, defaults);
-	Assert(list_length(args) == funcform->pronargs);
+/*
+ * recheck_cast_function_args: recheck function args and typecast as needed
+ * after adding defaults.
+ *
+ * It is possible for some of the defaulted arguments to be polymorphic;
+ * therefore we can't assume that the default expressions have the correct
+ * data types already. We have to re-resolve polymorphics and do coercion
+ * just like the parser did.
+ *
+ * This should be a no-op if there are no polymorphic arguments,
+ * but we do it anyway to be sure.
+ *
+ * Note: if any casts are needed, the args list is modified in-place.
+ */
+static void
+recheck_cast_function_args(List *args, Oid result_type, HeapTuple func_tuple)
+{
+	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
+	int         nargs;
+	Oid         actual_arg_types[FUNC_MAX_ARGS];
+	Oid         declared_arg_types[FUNC_MAX_ARGS];
+	Oid         rettype;
+	ListCell   *lc;
 
-	/*
-	 * The rest of this should be a no-op if there are no polymorphic
-	 * arguments, but we do it anyway to be sure.
-	 */
 	if (list_length(args) > FUNC_MAX_ARGS)
 		elog(ERROR, "too many function arguments");
 	nargs = 0;
@@ -2795,6 +2985,7 @@ add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple)
 	{
 		actual_arg_types[nargs++] = exprType((Node *) lfirst(lc));
 	}
+	Assert(nargs == funcform->pronargs);
 	memcpy(declared_arg_types, funcform->proargtypes.values,
 		   funcform->pronargs * sizeof(Oid));
 	rettype = enforce_generic_type_consistency(actual_arg_types,
@@ -2808,8 +2999,6 @@ add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple)
 
 	/* perform any necessary typecasting of arguments */
 	make_fn_arguments(NULL, args, actual_arg_types, declared_arg_types);
-
-	return args;
 }
 
 /*
