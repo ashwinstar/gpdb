@@ -18,7 +18,6 @@
 #define COMPLEX_H
 #include "postgres.h"
 #include "fmgr.h"
-#include <complex.h>
 /*
  * GCC has problems with header files on e.g. Solaris.
  * That OS defines the imaginary type, but GCC does not.

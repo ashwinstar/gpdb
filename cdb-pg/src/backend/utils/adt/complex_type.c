@@ -114,11 +114,11 @@ complex_decode_double(char **num)
 	else
 	{
 		/*
-		 * Many versions of Solaris have a bug wherein strtod sets endptr to
+		 * Many versions of Solaris have a bug wherein strtod sets end_ptr to
 		 * point one byte beyond the end of the string when gvin "inf" or
 		 * "infinity".
 		 */
-		if (endptr != ptr_iter && '\0' == endptr[-1])
+		if (end_ptr != ptr_iter && '\0' == end_ptr[-1])
 		{
 			end_ptr--;
 		}
@@ -708,8 +708,8 @@ pg_cpow_n(Complex x, int k)
 		 * or k*a = 2*m*pi + pi, or k*a = 2*m*pi + pi/2, or k*a = 2*m*pi + 3*pi/2,
 		 * we will get a result with 0 real part or with 0 imaginary part.
 		 */
-		CHECKFLOATVAL(re(&z), isinf(re(&x)) || isinf(im(&x)) || isinf(k), true);
-		CHECKFLOATVAL(im(&z), isinf(re(&x)) || isinf(im(&x)) || isinf(k), true);
+		CHECKFLOATVAL(re(&z), isinf(re(&x)) || isinf(im(&x)), true);
+		CHECKFLOATVAL(im(&z), isinf(re(&x)) || isinf(im(&x)), true);
 		return z;
 	}
 }
