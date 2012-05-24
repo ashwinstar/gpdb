@@ -193,7 +193,7 @@
  *  FileRep_SetSegmentState(SegmentStateFault),
  *
  *  - Review logging and turn off verbose debugging output
- *  - Clean up (TODO, JNM, XXX, #if 0)
+ *  - Clean up (TODO, JNM, XXX)
  *  - Double check every malloc/alloc is freed, every open has a close, etc. -
  *  DONE
  *  - pfree after all FileRep_GetFileName  - DONE
@@ -1421,14 +1421,13 @@ void verifyLog(
 	{
 
 		/* for debugging can put all verifyLog messages into the log */
-#if 1
 		/* is LOG enough to guarantee that this log record will
 		 *  be generated? gpverify will rely on this
 		 */
 		elog(LOG, "verification token %s %s",
 			 logControl.logOptions.token,
 			 logMessage);
-#endif
+
 		if (logControl.filesAreOpen)
 		{
 			if ((int) FileWrite(logControl.logFile,
@@ -6065,12 +6064,13 @@ int FileRepMirror_CompareSummaryItem(
 /* this is a good test (GOOD_TEST)
  * fail all cheap compares to force more expensive compares
  * to be exercised - should never be left on for checkin
-*/
+
 #if 0
 	*mismatch = true;
 	return STATUS_OK;
 #endif
 
+*/
 	if (pItem->isFile)
 	{
 		char segmentFileName[MAXPGPATH+2];
@@ -6131,34 +6131,6 @@ int FileRepMirror_CompareSummaryItem(
 				return STATUS_OK;
 			}
 
-			/* TODO */
-#if 0
-			/* this check was moved into CompareEnhanced - it works there but would be better
-			 * to have mirror add this into the fix/diff record here and then return an indication
-			 * that there is no need to try the enhanced compare in that case
-			 */
-
-			if (pItem->summary.fileSummary.exception == FileRepVerifyCompareException_HeapRelation)
-			{
-				if (info.st_size > RELSEG_SIZE* BLCKSZ)
-				{
-
-					/* TODO  it would be good to write fix and diff table records here on the mirror
-					 * saying that the file is too long - the error on the primary is not that specific
-					 * we would need to send over primaryDirectoryName for enhanced block compares like
-					 * we do for directory contents
-					 */
-					verifyLog(logControl,
-							  LOG,
-							  "VERIFICATION_ERROR_REPORT MIRROR: Heap file %s is larger than RELSEG_SIZE %d - that should never be true",
-							  segmentFileName,
-							  RELSEG_SIZE*BLCKSZ);
-					*mismatch = true;
-					return STATUS_OK;
-				}
-
-			}
-#endif
 			if (includeFileSizeInfo && (seg == numSegments - 1))
 			{
 				if (info.st_size != pItem->summary.fileSummary.fileSize)
@@ -9311,31 +9283,6 @@ isExcludedDirectory(
 	else if (strcmp(directoryName, "pg_changetracking") == 0)
 	{
 		return 1;
-#if 0
-		/*	Things I exclude that Jeff doesn't
-		 * 	Jeff includes and I will too
-		 *	pg_tblspc
-		 *	pg_utilitymodedtmredo
-		 *	pg_distributedxidmap
-		*/
-
-		/* Jeff includes pg_tblspc */
-	}
-	else if (strcmp(directoryName, "pg_tblspc") == 0)
-	{
-		return 1;
-		/* Jeff includes pg_utilitymodedtmredo */
-	}
-	else if (strcmp(directoryName, "pg_utilitymodedtmredo") == 0)
-	{
-		return 1;
-		/* Jeff includes pg_distributedxidmap */
-	}
-	else if (strcmp(directoryName, "pg_distributedxidmap") == 0)
-	{
-		return 1;
-
-#endif
 	}
 	else if (strcmp(directoryName, "pg_verify") == 0)
 	{
