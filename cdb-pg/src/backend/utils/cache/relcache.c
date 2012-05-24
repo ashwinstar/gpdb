@@ -2929,8 +2929,14 @@ RelationCacheInitializePhase2(void)
 	 * Try to load the relcache cache file.  If unsuccessful, bootstrap the
 	 * cache with pre-made descriptors for the critical "nailed-in" system
 	 * catalogs.
+	 *
+	 * During upgrade, however, we want to build the relcache from scratch.
+	 * This is because the nailed relations given just below may have been
+	 * updated, and the relcache init file may be based on a stale
+	 * understanding of these nailed relations.
 	 */
 	if (IsBootstrapProcessingMode() ||
+		gp_upgrade_mode ||
 		!load_relcache_init_file())
 	{
 		needNewCacheFile = true;

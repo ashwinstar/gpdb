@@ -1,3 +1,33 @@
+-- MPP-16665 - make fundamental changes to pg_proc ...
+UPDATE pg_class SET relnatts = 22 WHERE relname = 'pg_proc'; 
+SELECT catDML(
+'UPDATE pg_class SET relnatts = 22 WHERE relname = ''pg_proc''') 
+FROM gp_dist_random('gp_id');
+INSERT INTO pg_attribute VALUES (1255, 'provariadic',     26, -1,  4, 20, 0, -1, -1,  true, 'p', 'i',  true, false, false, true, 0),
+                                (1255, 'pronargdefaults', 21, -1,  2, 21, 0, -1, -1,  true, 'p', 's',  true, false, false, true, 0),
+                                (1255, 'proargdefaults',  25, -1, -1, 22, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0);
+SELECT catDML(
+'INSERT INTO pg_attribute VALUES (1255, ''provariadic'',     26, -1,  4, 20, 0, -1, -1,  true, ''p'', ''i'',  true, false, false, true, 0),
+                                 (1255, ''pronargdefaults'', 21, -1,  2, 21, 0, -1, -1,  true, ''p'', ''s'',  true, false, false, true, 0),
+                                 (1255, ''proargdefaults'',  25, -1, -1, 22, 0, -1, -1, false, ''x'', ''i'', false, false, false, true, 0)')
+FROM gp_dist_random('gp_id');
+\c
+UPDATE pg_proc SET provariadic = 0,
+                   pronargdefaults = 0,
+                   proargdefaults = NULL;
+SELECT catDML(
+'UPDATE pg_proc SET provariadic = 0,
+                    pronargdefaults = 0,
+                    proargdefaults = NULL')
+FROM gp_dist_random('gp_id');
+UPDATE pg_proc SET probin = NULL WHERE probin = '-';
+SELECT catDML(
+'UPDATE pg_proc SET probin = NULL WHERE probin = ''-''')
+FROM gp_dist_random('gp_id');
+
+VACUUM FREEZE pg_proc;
+-- ... and the rest
+
 CREATE FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075, DESCRIPTION="Cancels a specific query");
 COMMENT ON FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) IS 'Cancels a specific query';
 
