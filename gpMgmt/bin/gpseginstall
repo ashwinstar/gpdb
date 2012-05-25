@@ -110,7 +110,7 @@ def parseargs():
     parser.add_option('-f', '--file', type='string')
     parser.add_option('-u', '--user', type='string', default='gpadmin')
     parser.add_option('-g', '--group', type='string')
-    parser.add_option('-p', '--password', type='string', default='changeme')
+    parser.add_option('-p', '--password', action='store_true')
     parser.add_option('-c', '--commands', type='string')
     parser.add_option('--verbose', action='store_true')
     (options, args) = parser.parse_args()
@@ -488,7 +488,8 @@ def chownMasterSoftware():
 # True is an error
 def changeUserPassword():
 
-    cmd = "%s/sbin/gpchangeuserpassword --user %s --password %s" % (gphome, options.user, options.password)
+    password = getpass.getpass('Please enter a password')
+    cmd = "%s/sbin/gpchangeuserpassword --user %s --password %s" % (gphome, options.user, password)
 
     if (simpleLocalCommand(cmd, False)):
         return True
