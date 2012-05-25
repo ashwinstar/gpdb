@@ -819,8 +819,9 @@ except
 select stmt from catdump.DDL where ver = '5.0'
 order by 1;
                                                                                                  stmt                                                                                                 
-------
-(0 rows)
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE FUNCTION pg_catalog."convert"(pg_catalog.text, pg_catalog.name) RETURNS pg_catalog.text LANGUAGE internal STABLE STRICT AS 'pg_convert';
+(1 row)
 
 select stmt from catdump.DDL where ver = '5.0'
 except

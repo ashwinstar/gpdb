@@ -2091,8 +2091,6 @@
 
  CREATE FUNCTION "convert"(bytea, name, name) RETURNS bytea LANGUAGE internal STABLE STRICT AS 'pg_convert' WITH (OID=2969, DESCRIPTION="convert string with specified encoding names");
 
- CREATE FUNCTION "convert"(text, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert' WITH (OID=1717, DESCRIPTION="convert string with specified destination encoding name");
-
  CREATE FUNCTION "convert"(text, name, name) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert2' WITH (OID=1813, DESCRIPTION="convert string with specified encoding names");
 
  CREATE FUNCTION convert_using(text, text) RETURNS text LANGUAGE internal STABLE STRICT AS 'pg_convert_using' WITH (OID=1619, DESCRIPTION="convert string with specified conversion name");

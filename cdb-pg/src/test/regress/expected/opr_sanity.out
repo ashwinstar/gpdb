@@ -67,7 +67,7 @@ WHERE (pronargdefaults <> 0) != (proargdefaults IS NOT NULL);
  oid | proname 
 -----+---------
 (0 rows)
- 
+
 -- probin should be non-empty for C functions, null everywhere else
 SELECT p1.oid, p1.proname
 FROM pg_proc as p1
@@ -131,7 +131,6 @@ WHERE p1.oid < p2.oid AND
 	  NOT IN (select winfunc from pg_window)));
  oid  |      proname      | oid  |       proname       
 ------+-------------------+------+---------------------
- 1717 | convert           | 2969 | convert
  2991 | interval_bound    | 2992 | interval_bound
  2992 | interval_bound    | 2993 | interval_bound
  2991 | interval_bound    | 2993 | interval_bound
@@ -154,7 +153,7 @@ WHERE p1.oid < p2.oid AND
  3213 | int4_matrix_accum | 3215 | float8_matrix_accum
  3212 | int2_matrix_accum | 3215 | float8_matrix_accum
  5044 | gp_elog           | 5045 | gp_elog
-(23 rows)
+(22 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.
@@ -181,7 +180,6 @@ WHERE p1.oid != p2.oid AND
     (p1.prorettype < p2.prorettype);
          prorettype          |        prorettype        
 -----------------------------+--------------------------
- bytea                       | text
  text                        | character varying
  smallint[]                  | integer[]
  smallint[]                  | bigint[]
@@ -190,7 +188,7 @@ WHERE p1.oid != p2.oid AND
  integer[]                   | double precision[]
  bigint[]                    | double precision[]
  timestamp without time zone | timestamp with time zone
-(9 rows)
+(8 rows)
 
 SELECT DISTINCT p1.proargtypes[0]::regtype, p2.proargtypes[0]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
@@ -203,7 +201,6 @@ WHERE p1.oid != p2.oid AND
     (p1.proargtypes[0] < p2.proargtypes[0]);
          proargtypes         |       proargtypes        
 -----------------------------+--------------------------
- bytea                       | text
  text                        | character
  text                        | character varying
  smallint[]                  | integer[]
@@ -215,7 +212,7 @@ WHERE p1.oid != p2.oid AND
  timestamp without time zone | timestamp with time zone
  bit                         | bit varying
  anyarray                    | anyelement
-(12 rows)
+(11 rows)
 
 SELECT DISTINCT p1.proargtypes[1]::regtype, p2.proargtypes[1]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
