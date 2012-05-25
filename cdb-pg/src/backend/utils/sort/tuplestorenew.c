@@ -628,9 +628,13 @@ ntuplestore_create(int maxBytes)
 
 	Assert(maxBytes >= 0);
 	store->page_max = maxBytes / BLCKSZ;
-	/* give me at least 16 pages */
-	if(store->page_max < 16)
-		store->page_max = 16;
+
+	if (store->page_max < 16)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));
+	}
 
 	store->first_page = (NTupleStorePage *) check_malloc(sizeof(NTupleStorePage));
 	init_page(store->first_page);
