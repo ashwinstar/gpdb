@@ -37,7 +37,7 @@ SELECT CONVERT('foo' USING ascii_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'SQL_ASCII', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'SQL_ASCII', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -50,7 +50,7 @@ SELECT CONVERT('foo' USING mic_to_ascii);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'SQL_ASCII');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'SQL_ASCII');
  convert 
 ---------
  foo
@@ -63,7 +63,7 @@ SELECT CONVERT('foo' USING koi8_r_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'KOI8R', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'KOI8R', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -76,7 +76,7 @@ SELECT CONVERT('foo' USING mic_to_koi8_r);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'KOI8R');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'KOI8R');
  convert 
 ---------
  foo
@@ -89,7 +89,7 @@ SELECT CONVERT('foo' USING iso_8859_5_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-5', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-5', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -102,7 +102,7 @@ SELECT CONVERT('foo' USING mic_to_iso_8859_5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'ISO-8859-5');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'ISO-8859-5');
  convert 
 ---------
  foo
@@ -115,7 +115,7 @@ SELECT CONVERT('foo' USING windows_1251_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1251', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'WIN1251', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -128,7 +128,7 @@ SELECT CONVERT('foo' USING mic_to_windows_1251);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'WIN1251');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'WIN1251');
  convert 
 ---------
  foo
@@ -141,7 +141,7 @@ SELECT CONVERT('foo' USING windows_866_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN866', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'WIN866', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -154,7 +154,7 @@ SELECT CONVERT('foo' USING mic_to_windows_866);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'WIN866');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'WIN866');
  convert 
 ---------
  foo
@@ -167,7 +167,7 @@ SELECT CONVERT('foo' USING koi8_r_to_windows_1251);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'KOI8R', 'WIN1251');
+SELECT CONVERT('foo'::bytea, 'KOI8R', 'WIN1251');
  convert 
 ---------
  foo
@@ -180,7 +180,7 @@ SELECT CONVERT('foo' USING windows_1251_to_koi8_r);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1251', 'KOI8R');
+SELECT CONVERT('foo'::bytea, 'WIN1251', 'KOI8R');
  convert 
 ---------
  foo
@@ -193,7 +193,7 @@ SELECT CONVERT('foo' USING koi8_r_to_windows_866);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'KOI8R', 'WIN866');
+SELECT CONVERT('foo'::bytea, 'KOI8R', 'WIN866');
  convert 
 ---------
  foo
@@ -206,7 +206,7 @@ SELECT CONVERT('foo' USING windows_866_to_koi8_r);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN866', 'KOI8R');
+SELECT CONVERT('foo'::bytea, 'WIN866', 'KOI8R');
  convert 
 ---------
  foo
@@ -219,7 +219,7 @@ SELECT CONVERT('foo' USING windows_866_to_windows_1251);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN866', 'WIN1251');
+SELECT CONVERT('foo'::bytea, 'WIN866', 'WIN1251');
  convert 
 ---------
  foo
@@ -232,7 +232,7 @@ SELECT CONVERT('foo' USING windows_1251_to_windows_866);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1251', 'WIN866');
+SELECT CONVERT('foo'::bytea, 'WIN1251', 'WIN866');
  convert 
 ---------
  foo
@@ -245,7 +245,7 @@ SELECT CONVERT('foo' USING iso_8859_5_to_koi8_r);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-5', 'KOI8R');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-5', 'KOI8R');
  convert 
 ---------
  foo
@@ -258,7 +258,7 @@ SELECT CONVERT('foo' USING koi8_r_to_iso_8859_5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'KOI8R', 'ISO-8859-5');
+SELECT CONVERT('foo'::bytea, 'KOI8R', 'ISO-8859-5');
  convert 
 ---------
  foo
@@ -271,7 +271,7 @@ SELECT CONVERT('foo' USING iso_8859_5_to_windows_1251);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-5', 'WIN1251');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-5', 'WIN1251');
  convert 
 ---------
  foo
@@ -284,7 +284,7 @@ SELECT CONVERT('foo' USING windows_1251_to_iso_8859_5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1251', 'ISO-8859-5');
+SELECT CONVERT('foo'::bytea, 'WIN1251', 'ISO-8859-5');
  convert 
 ---------
  foo
@@ -297,7 +297,7 @@ SELECT CONVERT('foo' USING iso_8859_5_to_windows_866);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-5', 'WIN866');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-5', 'WIN866');
  convert 
 ---------
  foo
@@ -310,7 +310,7 @@ SELECT CONVERT('foo' USING windows_866_to_iso_8859_5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN866', 'ISO-8859-5');
+SELECT CONVERT('foo'::bytea, 'WIN866', 'ISO-8859-5');
  convert 
 ---------
  foo
@@ -323,7 +323,7 @@ SELECT CONVERT('foo' USING euc_cn_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_CN', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'EUC_CN', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -336,7 +336,7 @@ SELECT CONVERT('foo' USING mic_to_euc_cn);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'EUC_CN');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'EUC_CN');
  convert 
 ---------
  foo
@@ -349,7 +349,7 @@ SELECT CONVERT('foo' USING euc_jp_to_sjis);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_JP', 'SJIS');
+SELECT CONVERT('foo'::bytea, 'EUC_JP', 'SJIS');
  convert 
 ---------
  foo
@@ -362,7 +362,7 @@ SELECT CONVERT('foo' USING sjis_to_euc_jp);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'SJIS', 'EUC_JP');
+SELECT CONVERT('foo'::bytea, 'SJIS', 'EUC_JP');
  convert 
 ---------
  foo
@@ -375,7 +375,7 @@ SELECT CONVERT('foo' USING euc_jp_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_JP', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'EUC_JP', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -388,7 +388,7 @@ SELECT CONVERT('foo' USING sjis_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'SJIS', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'SJIS', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -401,7 +401,7 @@ SELECT CONVERT('foo' USING mic_to_euc_jp);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'EUC_JP');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'EUC_JP');
  convert 
 ---------
  foo
@@ -414,7 +414,7 @@ SELECT CONVERT('foo' USING mic_to_sjis);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'SJIS');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'SJIS');
  convert 
 ---------
  foo
@@ -427,7 +427,7 @@ SELECT CONVERT('foo' USING euc_kr_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_KR', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'EUC_KR', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -440,7 +440,7 @@ SELECT CONVERT('foo' USING mic_to_euc_kr);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'EUC_KR');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'EUC_KR');
  convert 
 ---------
  foo
@@ -453,7 +453,7 @@ SELECT CONVERT('foo' USING euc_tw_to_big5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_TW', 'BIG5');
+SELECT CONVERT('foo'::bytea, 'EUC_TW', 'BIG5');
  convert 
 ---------
  foo
@@ -466,7 +466,7 @@ SELECT CONVERT('foo' USING big5_to_euc_tw);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'BIG5', 'EUC_TW');
+SELECT CONVERT('foo'::bytea, 'BIG5', 'EUC_TW');
  convert 
 ---------
  foo
@@ -479,7 +479,7 @@ SELECT CONVERT('foo' USING euc_tw_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_TW', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'EUC_TW', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -492,7 +492,7 @@ SELECT CONVERT('foo' USING big5_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'BIG5', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'BIG5', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -505,7 +505,7 @@ SELECT CONVERT('foo' USING mic_to_euc_tw);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'EUC_TW');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'EUC_TW');
  convert 
 ---------
  foo
@@ -518,7 +518,7 @@ SELECT CONVERT('foo' USING mic_to_big5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'BIG5');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'BIG5');
  convert 
 ---------
  foo
@@ -531,7 +531,7 @@ SELECT CONVERT('foo' USING iso_8859_2_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN2', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'LATIN2', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -544,7 +544,7 @@ SELECT CONVERT('foo' USING mic_to_iso_8859_2);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'LATIN2');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'LATIN2');
  convert 
 ---------
  foo
@@ -557,7 +557,7 @@ SELECT CONVERT('foo' USING windows_1250_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1250', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'WIN1250', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -570,7 +570,7 @@ SELECT CONVERT('foo' USING mic_to_windows_1250);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'WIN1250');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'WIN1250');
  convert 
 ---------
  foo
@@ -583,7 +583,7 @@ SELECT CONVERT('foo' USING iso_8859_2_to_windows_1250);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN2', 'WIN1250');
+SELECT CONVERT('foo'::bytea, 'LATIN2', 'WIN1250');
  convert 
 ---------
  foo
@@ -596,7 +596,7 @@ SELECT CONVERT('foo' USING windows_1250_to_iso_8859_2);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1250', 'LATIN2');
+SELECT CONVERT('foo'::bytea, 'WIN1250', 'LATIN2');
  convert 
 ---------
  foo
@@ -609,7 +609,7 @@ SELECT CONVERT('foo' USING iso_8859_1_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN1', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'LATIN1', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -622,7 +622,7 @@ SELECT CONVERT('foo' USING mic_to_iso_8859_1);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'LATIN1');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'LATIN1');
  convert 
 ---------
  foo
@@ -635,7 +635,7 @@ SELECT CONVERT('foo' USING iso_8859_3_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN3', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'LATIN3', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -648,7 +648,7 @@ SELECT CONVERT('foo' USING mic_to_iso_8859_3);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'LATIN3');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'LATIN3');
  convert 
 ---------
  foo
@@ -661,7 +661,7 @@ SELECT CONVERT('foo' USING iso_8859_4_to_mic);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN4', 'MULE_INTERNAL');
+SELECT CONVERT('foo'::bytea, 'LATIN4', 'MULE_INTERNAL');
  convert 
 ---------
  foo
@@ -674,7 +674,7 @@ SELECT CONVERT('foo' USING mic_to_iso_8859_4);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'MULE_INTERNAL', 'LATIN4');
+SELECT CONVERT('foo'::bytea, 'MULE_INTERNAL', 'LATIN4');
  convert 
 ---------
  foo
@@ -687,7 +687,7 @@ SELECT CONVERT('foo' USING ascii_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'SQL_ASCII', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'SQL_ASCII', 'UTF8');
  convert 
 ---------
  foo
@@ -700,7 +700,7 @@ SELECT CONVERT('foo' USING utf8_to_ascii);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'SQL_ASCII');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'SQL_ASCII');
  convert 
 ---------
  foo
@@ -713,7 +713,7 @@ SELECT CONVERT('foo' USING big5_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'BIG5', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'BIG5', 'UTF8');
  convert 
 ---------
  foo
@@ -726,7 +726,7 @@ SELECT CONVERT('foo' USING utf8_to_big5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'BIG5');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'BIG5');
  convert 
 ---------
  foo
@@ -739,7 +739,7 @@ SELECT CONVERT('foo' USING utf8_to_koi8_r);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'KOI8R');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'KOI8R');
  convert 
 ---------
  foo
@@ -752,7 +752,7 @@ SELECT CONVERT('foo' USING koi8_r_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'KOI8R', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'KOI8R', 'UTF8');
  convert 
 ---------
  foo
@@ -765,7 +765,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1251);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1251');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1251');
  convert 
 ---------
  foo
@@ -778,7 +778,7 @@ SELECT CONVERT('foo' USING windows_1251_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1251', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1251', 'UTF8');
  convert 
 ---------
  foo
@@ -791,7 +791,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1252);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1252');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1252');
  convert 
 ---------
  foo
@@ -804,7 +804,7 @@ SELECT CONVERT('foo' USING windows_1252_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1252', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1252', 'UTF8');
  convert 
 ---------
  foo
@@ -817,7 +817,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_866);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN866');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN866');
  convert 
 ---------
  foo
@@ -830,7 +830,7 @@ SELECT CONVERT('foo' USING windows_866_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN866', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN866', 'UTF8');
  convert 
 ---------
  foo
@@ -843,7 +843,7 @@ SELECT CONVERT('foo' USING euc_cn_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_CN', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'EUC_CN', 'UTF8');
  convert 
 ---------
  foo
@@ -856,7 +856,7 @@ SELECT CONVERT('foo' USING utf8_to_euc_cn);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'EUC_CN');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'EUC_CN');
  convert 
 ---------
  foo
@@ -869,7 +869,7 @@ SELECT CONVERT('foo' USING euc_jp_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_JP', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'EUC_JP', 'UTF8');
  convert 
 ---------
  foo
@@ -882,7 +882,7 @@ SELECT CONVERT('foo' USING utf8_to_euc_jp);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'EUC_JP');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'EUC_JP');
  convert 
 ---------
  foo
@@ -895,7 +895,7 @@ SELECT CONVERT('foo' USING euc_kr_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_KR', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'EUC_KR', 'UTF8');
  convert 
 ---------
  foo
@@ -908,7 +908,7 @@ SELECT CONVERT('foo' USING utf8_to_euc_kr);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'EUC_KR');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'EUC_KR');
  convert 
 ---------
  foo
@@ -921,7 +921,7 @@ SELECT CONVERT('foo' USING euc_tw_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'EUC_TW', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'EUC_TW', 'UTF8');
  convert 
 ---------
  foo
@@ -934,7 +934,7 @@ SELECT CONVERT('foo' USING utf8_to_euc_tw);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'EUC_TW');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'EUC_TW');
  convert 
 ---------
  foo
@@ -947,7 +947,7 @@ SELECT CONVERT('foo' USING gb18030_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'GB18030', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'GB18030', 'UTF8');
  convert 
 ---------
  foo
@@ -960,7 +960,7 @@ SELECT CONVERT('foo' USING utf8_to_gb18030);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'GB18030');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'GB18030');
  convert 
 ---------
  foo
@@ -973,7 +973,7 @@ SELECT CONVERT('foo' USING gbk_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'GBK', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'GBK', 'UTF8');
  convert 
 ---------
  foo
@@ -986,7 +986,7 @@ SELECT CONVERT('foo' USING utf8_to_gbk);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'GBK');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'GBK');
  convert 
 ---------
  foo
@@ -999,7 +999,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_2);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN2');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN2');
  convert 
 ---------
  foo
@@ -1012,7 +1012,7 @@ SELECT CONVERT('foo' USING iso_8859_2_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN2', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN2', 'UTF8');
  convert 
 ---------
  foo
@@ -1025,7 +1025,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_3);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN3');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN3');
  convert 
 ---------
  foo
@@ -1038,7 +1038,7 @@ SELECT CONVERT('foo' USING iso_8859_3_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN3', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN3', 'UTF8');
  convert 
 ---------
  foo
@@ -1051,7 +1051,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_4);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN4');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN4');
  convert 
 ---------
  foo
@@ -1064,7 +1064,7 @@ SELECT CONVERT('foo' USING iso_8859_4_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN4', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN4', 'UTF8');
  convert 
 ---------
  foo
@@ -1077,7 +1077,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_9);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN5');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN5');
  convert 
 ---------
  foo
@@ -1090,7 +1090,7 @@ SELECT CONVERT('foo' USING iso_8859_9_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN5', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN5', 'UTF8');
  convert 
 ---------
  foo
@@ -1103,7 +1103,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_10);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN6');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN6');
  convert 
 ---------
  foo
@@ -1116,7 +1116,7 @@ SELECT CONVERT('foo' USING iso_8859_10_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN6', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN6', 'UTF8');
  convert 
 ---------
  foo
@@ -1129,7 +1129,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_13);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN7');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN7');
  convert 
 ---------
  foo
@@ -1142,7 +1142,7 @@ SELECT CONVERT('foo' USING iso_8859_13_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN7', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN7', 'UTF8');
  convert 
 ---------
  foo
@@ -1155,7 +1155,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_14);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN8');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN8');
  convert 
 ---------
  foo
@@ -1168,7 +1168,7 @@ SELECT CONVERT('foo' USING iso_8859_14_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN8', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN8', 'UTF8');
  convert 
 ---------
  foo
@@ -1181,7 +1181,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_15);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN9');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN9');
  convert 
 ---------
  foo
@@ -1194,7 +1194,7 @@ SELECT CONVERT('foo' USING iso_8859_15_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN9', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN9', 'UTF8');
  convert 
 ---------
  foo
@@ -1207,7 +1207,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_16);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN10');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN10');
  convert 
 ---------
  foo
@@ -1220,7 +1220,7 @@ SELECT CONVERT('foo' USING iso_8859_16_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN10', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN10', 'UTF8');
  convert 
 ---------
  foo
@@ -1233,7 +1233,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_5);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'ISO-8859-5');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'ISO-8859-5');
  convert 
 ---------
  foo
@@ -1246,7 +1246,7 @@ SELECT CONVERT('foo' USING iso_8859_5_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-5', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-5', 'UTF8');
  convert 
 ---------
  foo
@@ -1259,7 +1259,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_6);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'ISO-8859-6');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'ISO-8859-6');
  convert 
 ---------
  foo
@@ -1272,7 +1272,7 @@ SELECT CONVERT('foo' USING iso_8859_6_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-6', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-6', 'UTF8');
  convert 
 ---------
  foo
@@ -1285,7 +1285,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_7);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'ISO-8859-7');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'ISO-8859-7');
  convert 
 ---------
  foo
@@ -1298,7 +1298,7 @@ SELECT CONVERT('foo' USING iso_8859_7_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-7', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-7', 'UTF8');
  convert 
 ---------
  foo
@@ -1311,7 +1311,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'ISO-8859-8');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'ISO-8859-8');
  convert 
 ---------
  foo
@@ -1324,7 +1324,7 @@ SELECT CONVERT('foo' USING iso_8859_8_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'ISO-8859-8', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'ISO-8859-8', 'UTF8');
  convert 
 ---------
  foo
@@ -1337,7 +1337,7 @@ SELECT CONVERT('foo' USING iso_8859_1_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'LATIN1', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'LATIN1', 'UTF8');
  convert 
 ---------
  foo
@@ -1350,7 +1350,7 @@ SELECT CONVERT('foo' USING utf8_to_iso_8859_1);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'LATIN1');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'LATIN1');
  convert 
 ---------
  foo
@@ -1363,7 +1363,7 @@ SELECT CONVERT('foo' USING johab_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'JOHAB', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'JOHAB', 'UTF8');
  convert 
 ---------
  foo
@@ -1376,7 +1376,7 @@ SELECT CONVERT('foo' USING utf8_to_johab);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'JOHAB');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'JOHAB');
  convert 
 ---------
  foo
@@ -1389,7 +1389,7 @@ SELECT CONVERT('foo' USING sjis_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'SJIS', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'SJIS', 'UTF8');
  convert 
 ---------
  foo
@@ -1402,7 +1402,7 @@ SELECT CONVERT('foo' USING utf8_to_sjis);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'SJIS');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'SJIS');
  convert 
 ---------
  foo
@@ -1415,7 +1415,7 @@ SELECT CONVERT('foo' USING windows_1258_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1258', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1258', 'UTF8');
  convert 
 ---------
  foo
@@ -1428,7 +1428,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1258);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1258');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1258');
  convert 
 ---------
  foo
@@ -1441,7 +1441,7 @@ SELECT CONVERT('foo' USING uhc_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UHC', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'UHC', 'UTF8');
  convert 
 ---------
  foo
@@ -1454,7 +1454,7 @@ SELECT CONVERT('foo' USING utf8_to_uhc);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'UHC');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'UHC');
  convert 
 ---------
  foo
@@ -1467,7 +1467,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1250);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1250');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1250');
  convert 
 ---------
  foo
@@ -1480,7 +1480,7 @@ SELECT CONVERT('foo' USING windows_1250_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1250', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1250', 'UTF8');
  convert 
 ---------
  foo
@@ -1493,7 +1493,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1256);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1256');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1256');
  convert 
 ---------
  foo
@@ -1506,7 +1506,7 @@ SELECT CONVERT('foo' USING windows_1256_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1256', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1256', 'UTF8');
  convert 
 ---------
  foo
@@ -1519,7 +1519,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_874);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN874');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN874');
  convert 
 ---------
  foo
@@ -1532,7 +1532,7 @@ SELECT CONVERT('foo' USING windows_874_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN874', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN874', 'UTF8');
  convert 
 ---------
  foo
@@ -1545,7 +1545,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1253);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1253');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1253');
  convert 
 ---------
  foo
@@ -1558,7 +1558,7 @@ SELECT CONVERT('foo' USING windows_1253_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1253', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1253', 'UTF8');
  convert 
 ---------
  foo
@@ -1571,7 +1571,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1254);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1254');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1254');
  convert 
 ---------
  foo
@@ -1584,7 +1584,7 @@ SELECT CONVERT('foo' USING windows_1254_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1254', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1254', 'UTF8');
  convert 
 ---------
  foo
@@ -1597,7 +1597,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1255);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1255');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1255');
  convert 
 ---------
  foo
@@ -1610,7 +1610,7 @@ SELECT CONVERT('foo' USING windows_1255_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1255', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1255', 'UTF8');
  convert 
 ---------
  foo
@@ -1623,7 +1623,7 @@ SELECT CONVERT('foo' USING utf8_to_windows_1257);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'UTF8', 'WIN1257');
+SELECT CONVERT('foo'::bytea, 'UTF8', 'WIN1257');
  convert 
 ---------
  foo
@@ -1636,7 +1636,7 @@ SELECT CONVERT('foo' USING windows_1257_to_utf8);
  foo
 (1 row)
 
-SELECT CONVERT('foo', 'WIN1257', 'UTF8');
+SELECT CONVERT('foo'::bytea, 'WIN1257', 'UTF8');
  convert 
 ---------
  foo
