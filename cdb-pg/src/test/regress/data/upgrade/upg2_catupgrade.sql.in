@@ -125,6 +125,15 @@ select @gpupgradeschemaname@.catDML(
           and oid < 10000')
 from gp_dist_random('gp_id');
 
+INSERT INTO @gpupgradeschemaname@.pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' FROM @gpupgradeschemaname@.pg_cast
+        where (tableoid,oid) not in (Select refclassid, refobjid from @gpupgradeschemaname@.pg_depend where deptype = 'p')
+          and oid < 10000;
+select @gpupgradeschemaname@.catDML(
+'INSERT INTO @gpupgradeschemaname@.pg_depend SELECT 0,0,0, tableoid,oid,0, ''p'' FROM @gpupgradeschemaname@.pg_cast
+        where (tableoid,oid) not in (Select refclassid, refobjid from @gpupgradeschemaname@.pg_depend where deptype = ''p'')
+          and oid < 10000')
+from gp_dist_random('gp_id');
+
 
 drop function @gpupgradeschemaname@.catDML(stmt text);
 drop function @gpupgradeschemaname@.addProcPIN(classoid oid, procid oid);
