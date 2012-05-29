@@ -202,6 +202,7 @@
 #define ERRCODE_NO_ACTIVE_SQL_TRANSACTION	MAKE_SQLSTATE('2','5', 'P','0','1')
 #define ERRCODE_IN_FAILED_SQL_TRANSACTION	MAKE_SQLSTATE('2','5', 'P','0','2')
 #define ERRCODE_GP_OPERATION_CANCELED      MAKE_SQLSTATE('2','5', 'M','0','1')
+#define ERRCODE_GP_OPERATION_CANCELED_ERRORLESS MAKE_SQLSTATE('2','5', 'M','0','2')
 
 /* Class 26 - Invalid SQL Statement Name */
 /* (we take this to mean prepared statements) */

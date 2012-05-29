@@ -132,6 +132,8 @@ struct PGPROC
 	char		combocid_map_name[MAXPGPATH]; /* name of the map */
 
 	int queryCommandId; /* command_id for the running query */
+
+	uint32 cancellingPid; /* pid for cancel sending process, 0 indicates errorless Cancel */
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -242,4 +244,5 @@ extern bool ProcCanSetMppSessionId(void);
 extern void ProcNewMppSessionId(int *newSessionId);
 extern bool freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray);
 extern bool freeProcEntryAndReturnReset(int pid);
+extern bool ResetCancellingPid(int pid);
 #endif   /* PROC_H */

@@ -3794,12 +3794,20 @@ processCancelRequest(Port *port, void *pkt, ProtocolVersion proto)
 		{
 			if (bp->cancel_key == cancelAuthCode)
 			{
+				/* if this is an errorless cancel request, update the cancellingBackend flag */
+				if (proto == CANCEL_NOERR_CODE && !ResetCancellingPid(bp->pid))
+				{
+					ereport(LOG,
+							(errmsg_internal("ResetCancellingPid on %d failed",
+									bp->pid)));
+
+				}
+
 				/* Found a match; signal that backend to cancel current op */
 				ereport(DEBUG2,
-						(errmsg_internal("processing cancel request: sending %s to process %d",
-								proto == CANCEL_REQUEST_CODE ? "SIGINT" : "SIGWINCH",
-										backendPID)));
-				signal_child(bp->pid, proto == CANCEL_REQUEST_CODE ? SIGINT : SIGWINCH);
+						(errmsg_internal("processing cancel request: sending SIGINT to process %d",
+								bp->pid)));
+				signal_child(bp->pid, SIGINT);
 			}
 			else
 				/* Right PID, wrong key: no way, Jose */
@@ -6193,7 +6201,6 @@ signal_child(pid_t pid, int signal)
 		case SIGTERM:
 		case SIGQUIT:
 		case SIGSTOP:
-		case SIGWINCH:
 			if (kill(-pid, signal) < 0)
 				elog(DEBUG3, "kill(%ld,%d) failed: %m", (long) (-pid), signal);
 			break;

@@ -68,8 +68,7 @@ typedef struct CdbDispatchResult
 	bool 						QEWriter_Dirty;
 
 	int					numrowsrejected; /* num rows rejected in SREH mode */
-	bool				errorlessCancel;
-	
+
 }   CdbDispatchResult;
 
 

@@ -141,7 +141,6 @@ typedef struct DispatchCommandParms
 	struct CdbDispatchResult **dispatchResultPtrArray;
 
 	volatile bool pleaseCancel;
-	volatile bool errorlessCancel;
 
 	/*
 	 * mpp_fd_set supports more file descriptors than an ordinary fd_set

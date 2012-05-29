@@ -135,7 +135,7 @@ cdbdisp_makeResult(struct CdbDispatchResults           *meleeResults,
     /* Insert the slice index in error messages related to this QE. */
     if (segdbDesc)
         cdbconn_setSliceIndex(segdbDesc, sliceIndex);
-    dispatchResult->errorlessCancel = false;
+
     return dispatchResult;
 }                               /* cdbdisp_initResult */
 
@@ -213,6 +213,7 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
 
     /* Was the command canceled? */
     if (errcode == ERRCODE_GP_OPERATION_CANCELED ||
+    	errcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS ||
         errcode == ERRCODE_QUERY_CANCELED)
         dispatchResult->wasCanceled = true;
 
@@ -237,7 +238,8 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
      * Interconnection errors are given lower precedence because often
      * they are secondary to an earlier and more interesting error.
      */
-    if (errcode == ERRCODE_GP_OPERATION_CANCELED &&
+    if ((errcode == ERRCODE_GP_OPERATION_CANCELED ||
+    	 errcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS) &&
         dispatchResult->requestedCancel)
     {}                          /* nop */
 
@@ -495,17 +497,19 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
                    pri[lenpri-1] > '\0')
                 lenpri--;
 
-            ereport(elevel_error, (
-                 errmsg("DispatchResult: (%s) %s %.*s (%s)",
-                        sqlstate,
-                        PQresStatus(PQresultStatus(pgresult)),
-                        lenpri,
-                        pri ? pri : "",
-                        whoami),
-                 errdetail("(%s:%s) %s",
-                           PQresultErrorField(pgresult, PG_DIAG_SOURCE_FILE),
-                           PQresultErrorField(pgresult, PG_DIAG_SOURCE_LINE),
-                           dtl ? dtl : "") ));
+			ereport(elevel_error, (
+				 errmsg("DispatchResult: (%s) %s %.*s (%s)",
+						sqlstate,
+						PQresStatus(PQresultStatus(pgresult)),
+						lenpri,
+						pri ? pri : "",
+						whoami),
+				 errdetail("(%s:%s) %s",
+						   PQresultErrorField(pgresult, PG_DIAG_SOURCE_FILE),
+						   PQresultErrorField(pgresult, PG_DIAG_SOURCE_LINE),
+						   dtl ? dtl : "") ));
+
+
         }
     }                           /* for each PGresult */
 
@@ -531,8 +535,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
 
     /* Should have either an error code or an ok result or an errorless cancel state */
     if (!dispatchResult->errcode &&
-        dispatchResult->okindex < 0 &&
-        !dispatchResult->errorlessCancel)
+        dispatchResult->okindex < 0)
     {
         elog(elevel_error, "DispatchResult: No ending status from %s",
              dispatchResult->segdbDesc ? dispatchResult->segdbDesc->whoami

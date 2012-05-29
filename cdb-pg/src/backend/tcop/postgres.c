@@ -3331,11 +3331,13 @@ StatementCancelHandler(SIGNAL_ARGS)
 	if (!proc_exit_inprogress)
 	{
 		InterruptPending = true;
-		if(postgres_signal_arg == SIGWINCH)
-			QueryCancelErrorless = true;
-		else
-			QueryCancelPending = true;
+		QueryCancelPending = true;
 		QueryCancelCleanup = true;
+
+		if (MyProc->cancellingPid == 0)
+		{
+			QueryCancelErrorless = true;
+		}
 
 		/*
 		 * If it's safe to interrupt, and we're waiting for a lock, service
@@ -3523,7 +3525,6 @@ SigHupHandler(SIGNAL_ARGS)
 	got_SIGHUP = true;
 }
 
-
 /*
  * ProcessInterrupts: out-of-line portion of CHECK_FOR_INTERRUPTS() macro
  *
@@ -3576,8 +3577,10 @@ ProcessInterrupts(void)
 			 errSendAlert(false)));
 	}
 
-	if (QueryCancelPending || QueryCancelErrorless)
+	if (QueryCancelPending)
 	{
+		elog(LOG,"Process interrupt for 'query cancel pending'.");
+
 		QueryCancelPending = false;
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();
@@ -3586,9 +3589,9 @@ ProcessInterrupts(void)
 		if ((Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
 				&& QueryCancelErrorless)
 		{
-			fflush(stdout);
-			fflush(stderr);
-			proc_exit(0);
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_OPERATION_CANCELED_ERRORLESS),
+					 errmsg("Errorless Cancel")));
 
 		}
 		else if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
@@ -4248,7 +4251,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 */
 	pqsignal(SIGHUP, SigHupHandler);	/* set flag to read config file */
 	pqsignal(SIGINT, StatementCancelHandler);	/* cancel current query */
-	pqsignal(SIGWINCH, StatementCancelHandler); /* errorless cancel of current query */
 	pqsignal(SIGTERM, die);		/* cancel current query and exit */
 	pqsignal(SIGQUIT, quickdie);	/* hard crash time */
 	pqsignal(SIGALRM, handle_sig_alarm);		/* timeout conditions */
@@ -4539,7 +4541,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 		topErrCode = elog_geterrcode();
 		if (Gp_role == GP_ROLE_EXECUTE &&
-			(topErrCode == ERRCODE_GP_OPERATION_CANCELED || topErrCode == ERRCODE_QUERY_CANCELED))
+			(topErrCode == ERRCODE_GP_OPERATION_CANCELED ||
+			 topErrCode == ERRCODE_QUERY_CANCELED ||
+			 topErrCode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS))
 		{
 			elog((Debug_print_full_dtm ? LOG : DEBUG5), "PostgresMain seeing cancel 0x%x",
 			     topErrCode);

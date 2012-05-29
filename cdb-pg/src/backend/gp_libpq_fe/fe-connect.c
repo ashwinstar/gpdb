@@ -2596,9 +2596,15 @@ PQcancel(PGcancel *cancel, char *errbuf, int errbufsize)
 	}
 
 	return internal_cancel(&cancel->raddr, cancel->be_pid, cancel->be_key,
-						   errbuf, errbufsize, false);
+						   errbuf, errbufsize, false /* normal cancel */);
 }
 
+/*
+ * PQcancelErrorless: request errorless query cancel
+ *
+ * This is pretty much the same as the above PQCancel()
+ * apart from the fact that it sends an errorless cancellation request.
+ */
 int
 PQcancelErrorless(PGcancel *cancel, char *errbuf, int errbufsize)
 {
@@ -2609,7 +2615,7 @@ PQcancelErrorless(PGcancel *cancel, char *errbuf, int errbufsize)
 	}
 
 	return internal_cancel(&cancel->raddr, cancel->be_pid, cancel->be_key,
-						   errbuf, errbufsize, true);
+						   errbuf, errbufsize, true /* errorless cancel*/);
 }
 
 /*
@@ -2644,7 +2650,7 @@ PQrequestCancel(PGconn *conn)
 	}
 
 	r = internal_cancel(&conn->raddr, conn->be_pid, conn->be_key,
-						conn->errorMessage.data, conn->errorMessage.maxlen, false);
+						conn->errorMessage.data, conn->errorMessage.maxlen, false /*normal cancel*/);
 
 	if (!r)
 		conn->errorMessage.len = strlen(conn->errorMessage.data);

@@ -1942,6 +1942,7 @@ bool
 cleanupGang(Gang *gp)
 {
 	int			i;
+	bool		was_canceled = false;
 
 	if (gp == NULL)
 		return true;
@@ -1979,7 +1980,9 @@ cleanupGang(Gang *gp)
 
 		if (segdbDesc == NULL)
 			return false;
-
+		if (segdbDesc->canceled)
+			was_canceled = true;
+		
 		/*
 		 * Note, we cancel all "still running" queries
 		 */
@@ -2022,7 +2025,7 @@ cleanupGang(Gang *gp)
 			 * something happened to this gang, disconnect instead of
 			 * sending it back onto our lists!
 			 */
-			if (!segdbDesc->errorlessCancel || gp_log_gang >= GPVARS_VERBOSITY_DEBUG) /* do not emit the errormessage in this case */
+			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 				elog(LOG, "lost connection with segworker group member");
 			disconnectAndDestroyGang(gp);
 			return false;
@@ -2037,7 +2040,15 @@ cleanupGang(Gang *gp)
 	}
 
 	gp->allocated = false;
-
+	if (was_canceled && gp->type != GANGTYPE_PRIMARY_WRITER)
+	{
+		/* destroy this canceled gang and do not return it to the list */
+		disconnectAndDestroyGang(gp);
+		gp = NULL;
+		if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+			elog(DEBUG5, "cleanupGang done - gang destroyed");
+		return false;
+	}
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG5, "cleanupGang done");
 	return true;

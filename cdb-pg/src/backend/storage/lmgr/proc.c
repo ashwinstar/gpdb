@@ -352,6 +352,7 @@ InitProcess(bool isQueryProc)
 	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->pid = MyProcPid;
+	MyProc->cancellingPid = MyProcPid;
 	/* databaseId and roleId will be filled in later */
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
@@ -1821,4 +1822,32 @@ freeProcEntryAndReturnReset(int pid)
 	}
 
 	return resetRequired;
+}
+/*
+ * ResetCancellingPid -- sets the value of cancellingPid to 0, which means
+ * that an errorless cancel is requested (see MPP-16671).
+ *
+ * Since, ideally, we don't want to hold a lock when updating this field,
+ * we are using cancellingPid which is better than a boolean value
+ * to indicate whether an errorless cancellation is requested
+ */
+bool
+ResetCancellingPid(int pid)
+{
+	Assert(ProcGlobal != NULL);
+	int32 swapped = 0;
+
+	PGPROC *procs = ProcGlobal->procs;
+	/* set cancellingPid to 0 on pid */
+	for (int i = 0; i < MaxBackends; i++)
+	{
+		PGPROC *myProc = &procs[i];
+
+		if (myProc->pid == pid)
+		{
+			swapped = compare_and_swap_32(&(myProc->cancellingPid), pid, 0);
+		}
+	}
+
+	return swapped;
 }

@@ -3077,6 +3077,9 @@ write_message_to_server_log(int elevel,
 
     Assert(!am_syslogger);
 
+    if (sqlerrcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS)
+    	return;
+
     buffer.hdr.zero = 0;
     buffer.hdr.len = 0;
     buffer.hdr.pid = MyProcPid;
@@ -3205,6 +3208,9 @@ send_message_to_server_log(ErrorData *edata)
     int             nc;
 
 	AssertImply(mainthread() != 0, mythread() == mainthread());
+
+	if (edata->sqlerrcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS)
+	    return;
 
     if (Log_destination & LOG_DESTINATION_STDERR)
     {
@@ -3548,6 +3554,9 @@ static void
 send_message_to_frontend(ErrorData *edata)
 {
     StringInfoData msgbuf;
+
+    if (edata->sqlerrcode == ERRCODE_GP_OPERATION_CANCELED_ERRORLESS)
+       	return;
 
     /* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
     pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');

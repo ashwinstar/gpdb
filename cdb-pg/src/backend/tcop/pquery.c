@@ -125,8 +125,6 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 		gpmon_qlog_packet_init(qd->gpmon_pkt);
 	}
 
-	qd->errorlessCancel = false;
-
 	return qd;
 }
 
@@ -762,9 +760,6 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 											None_Receiver,
 											params,
 											false);
-				
-				/* turn errorlessCancel off for now */
-				queryDesc->errorlessCancel = false;
 
 				if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 				{			
