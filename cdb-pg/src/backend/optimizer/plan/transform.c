@@ -15,7 +15,11 @@
 #include "optimizer/var.h"
 #include "utils/lsyscache.h"
 #include "catalog/pg_proc.h"
-
+#include "catalog/namespace.h"
+#include "parser/parse_oper.h"
+#include "parser/parse_coerce.h"
+#include "lib/stringinfo.h"
+#include "catalog/pg_operator.h"
 /**
  * Static declarations
  */
@@ -30,6 +34,33 @@ static Query *make_sirvf_subquery(FuncExpr *fe);
 static bool safe_to_replace_sirvf_tle(Query *query);
 static bool safe_to_replace_sirvf_rte(Query *query);
 static void wrap_vars_with_fieldselect(List *targetlist, int varno, Oid newvartype);
+
+static Node *replace_compatible_opexpr_mutator(Node *node, void *context);
+
+/**
+ * Preprocess query structure for consumption by the optimizer
+ */
+Query *preprocess_query_optimizer(Query *query, ParamListInfo boundParams)
+{
+#ifdef USE_ASSERT_CHECKING
+	Query *qcopy = (Query *) copyObject(query);
+#endif
+
+	/* fold all constant expressions */
+	Query *res = fold_constants(query, boundParams);
+
+	/**
+	 * Replace compatible equalities
+	 */
+	res = (Query *) replace_compatible_opexpr_mutator((Node *) res, NULL);
+
+#ifdef USE_ASSERT_CHECKING
+	Assert(equal(qcopy, query) && "Preprocessing should not modify original query object");
+#endif
+
+	return res;
+
+}
 
 /**
  * Normalize query before planning.
@@ -49,6 +80,11 @@ Query *normalize_query(Query *query)
 	 * MPP-12635 Replace all instances of single row returning volatile (sirv) functions
 	 */
 	res = (Query *) replace_sirv_functions_mutator((Node *) res, NULL);
+
+	/**
+	 * Replace compatible equalities
+	 */
+	res = (Query *) replace_compatible_opexpr_mutator((Node *) res, NULL);
 
 #ifdef USE_ASSERT_CHECKING
 	Assert(equal(qcopy, query) && "Normalization should not modify original query object");
@@ -547,3 +583,114 @@ static void wrap_vars_with_fieldselect(List *targetlist, int varno, Oid recordty
 		lfirst(lc) = (TargetEntry *) wrap_vars_with_fieldselect_mutator((Node *) tle, &ctx);
 	}
 }
+
+/**
+ * Equality mutation
+ *
+ * This mutator walks the query tree, finds equality operations between compatible types and changes it
+ * to be a natural equality on upcasted expressions. E.g. if a column x is smallint and y is int and an
+ * expression of the form x = y is present in a query, this will get transformed to x::int = y
+ *
+ */
+
+typedef struct eq_op_mapping
+{
+	Oid origOpOid;
+	Oid newOpOid;
+} eq_op_mapping;
+
+eq_op_mapping opmappings[] =
+	{
+	{Int48EqualOperator, Int8EqualOperator},
+	{Int84EqualOperator, Int8EqualOperator},
+	{Int28EqualOperator, Int8EqualOperator},
+	{Int82EqualOperator, Int8EqualOperator},
+	{Int24EqualOperator, Int4EqualOperator},
+	{Int42EqualOperator, Int4EqualOperator}
+	};
+
+
+/**
+ * Given a source opoid, return opmapping entry if it exists.
+ */
+static const eq_op_mapping *op_mapping(Oid origOpOid)
+{
+	int nEntries = sizeof(opmappings) / sizeof(eq_op_mapping);
+	for (int i=0; i<nEntries; i++)
+	{
+		const eq_op_mapping *opMapping = &opmappings[i];
+		if (opMapping->origOpOid == origOpOid)
+		{
+			return opMapping;
+		}
+	}
+	return NULL;
+}
+
+/**
+ * Given old expression, this function transforms it into a compatible form using
+ * the opmapping information above
+ */
+static OpExpr *opexpr_replace(OpExpr *origOpExpr)
+{
+	const eq_op_mapping *opMapping = op_mapping(origOpExpr->opno);
+
+	/**
+	 * If no such mapping, then return input
+	 */
+	if (NULL == opMapping)
+	{
+		return origOpExpr;
+	}
+
+	Oid origLeftOid = InvalidOid;
+	Oid origRightOid = InvalidOid;
+	op_input_types(opMapping->origOpOid, &origLeftOid, &origRightOid);
+
+	Node *origLeftArg = (Node *) list_nth(origOpExpr->args, 0);
+	Node *origRightArg = (Node *) list_nth(origOpExpr->args, 1);
+
+	Oid newLeftOid = InvalidOid;
+	Oid newRightOid = InvalidOid;
+	op_input_types(opMapping->newOpOid, &newLeftOid, &newRightOid);
+
+	Node *newLeftArg = coerce_type(NULL, origLeftArg, origLeftOid, newLeftOid, -1,
+			   COERCION_IMPLICIT, COERCE_IMPLICIT_CAST, -1);
+
+	Node *newRightArg = coerce_type(NULL, origRightArg, origRightOid, newRightOid, -1,
+			   COERCION_IMPLICIT, COERCE_IMPLICIT_CAST, -1);
+
+	OpExpr *newOpExpr = makeNode(OpExpr);
+	newOpExpr->opno = opMapping->newOpOid;
+	newOpExpr->opfuncid = get_opcode(newOpExpr->opno);
+	newOpExpr->opresulttype = get_func_rettype(newOpExpr->opfuncid);
+	newOpExpr->opretset = get_func_retset(newOpExpr->opfuncid);
+	newOpExpr->args = list_make2(newLeftArg, newRightArg);
+
+	return newOpExpr;
+}
+
+/**
+ * Replace compatible equality
+ */
+static Node *replace_compatible_opexpr_mutator(Node *node, void *context)
+{
+	Assert(context == NULL);
+
+	if (!node)
+		return NULL;
+
+	if (IsA(node, OpExpr))
+	{
+		node = (Node *) opexpr_replace((OpExpr *) node);
+	}
+
+	if (IsA(node, Query))
+	{
+		Query *query = (Query *) node;
+		return (Node *) query_tree_mutator(query, replace_compatible_opexpr_mutator, context, 0);
+	}
+
+	return expression_tree_mutator(node, replace_compatible_opexpr_mutator, context);
+}
+

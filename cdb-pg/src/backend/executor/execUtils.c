@@ -195,9 +195,7 @@ CreateExecutorState(void)
 	estate->dynamicTableScanInfo->numScans = 0;
 	estate->dynamicTableScanInfo->pidIndexes = NULL;
 	estate->dynamicTableScanInfo->memoryContext = qcontext;
-	estate->dynamicTableScanInfo->partsMetadata = NULL;
-
-	dynamicTableScanInfo = estate->dynamicTableScanInfo;
+	estate->dynamicTableScanInfo->partsMetadata = NIL;
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -321,6 +319,23 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	return estate;
 }
 
+/*
+ * freeDynamicTableScanInfo
+ *   Free the space for DynamicTableScanInfo.
+ */
+static void
+freeDynamicTableScanInfo(DynamicTableScanInfo *scanInfo)
+{
+	Assert(scanInfo != NULL);
+	
+	if (scanInfo->partsMetadata != NIL)
+	{
+		list_free_deep(scanInfo->partsMetadata);
+	}
+	
+	pfree(scanInfo);
+}
+
 /* ----------------
  *		FreeExecutorState
  *
@@ -359,6 +374,18 @@ FreeExecutorState(EState *estate)
 	{
 		pfree(estate->dispatcherState);
 		estate->dispatcherState = NULL;
+	}
+
+	/*
+	 * Free dynamicTableScanInfo. In a subquery, we don't do this, since
+	 * the subquery shares the value with its parent.
+	 */
+	if (!estate->es_is_subquery &&
+		estate->dynamicTableScanInfo != NULL)
+	{
+		Assert(dynamicTableScanInfo != estate->dynamicTableScanInfo);
+		freeDynamicTableScanInfo(estate->dynamicTableScanInfo);
+		estate->dynamicTableScanInfo = NULL;
 	}
 
 	/*

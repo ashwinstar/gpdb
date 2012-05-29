@@ -230,8 +230,8 @@ planner(Query *parse, int cursorOptions,
 	 */
 	if (gp_optimizer)
 	{
-		/* fold all constant expressions */
-		parse = fold_constants(parse, boundParams);
+		/* perform pre-processing of query tree before calling optimizer */
+		parse = preprocess_query_optimizer(parse, boundParams);
 
 		if (gp_opt_local)
 		{

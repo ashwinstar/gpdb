@@ -15,6 +15,7 @@ WANTED_DIRS = \
 		formatter_fixedwidth \
 		extprotocol \
 		gp_cancel_query \
+		gp_partition_functions \
 		gp_internal_tools
 
 ifeq ($(with_openssl),yes)

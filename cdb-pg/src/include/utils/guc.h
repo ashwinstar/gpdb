@@ -320,6 +320,7 @@ extern bool	gp_opt_print_job_scheduler;
 extern bool	gp_opt_print_expression_properties;
 extern bool	gp_opt_print_group_properties;
 extern bool	gp_opt_print_optimization_context;
+extern bool gp_opt_print_optimization_stats;
 extern bool	gp_opt_parallel;
 extern bool	gp_opt_local;
 extern int  gp_opt_retries;

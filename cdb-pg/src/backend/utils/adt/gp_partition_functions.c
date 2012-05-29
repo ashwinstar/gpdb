@@ -10,11 +10,18 @@
  *    a given parent partition oid, which satisfies a given partition
  *    key value.
  *
+ * gp_partition_expansion: This function finds all child partition oids
+ *    for the given parent oid.
+ *
  * Copyright(c) 2012 - present, EMC/Greenplum
  */
 
 #include "postgres.h"
 
+#include "access/heapam.h"
+#include "cdb/cdbpartition.h"
+#include "funcapi.h"
+#include "nodes/execnodes.h"
 #include "utils/array.h"
 #include "utils/hsearch.h"
 #include "utils/builtins.h"
@@ -22,9 +29,6 @@
 #include "utils/palloc.h"
 #include "utils/elog.h"
 #include "utils/guc.h"
-#include "nodes/execnodes.h"
-#include "cdb/cdbpartition.h"
-#include "access/heapam.h"
 
 /*
  * increaseScanArraySize
@@ -241,13 +245,100 @@ gp_partition_selection(PG_FUNCTION_ARGS)
 	
 	relation_close(rel, NoLock);
 
-	if (gp_partitioning_dynamic_selection_log)
+	/*
+	 * There might not be a child partition that satisfies the given
+	 * value. In that case, this function returns NULL.
+	 */
+	if (OidIsValid(childOid))
 	{
-		elog(LOG, "Partition Dynamic Selection: find child partition %d for parent partition %d",
-			 parentOid, childOid);
+		PG_RETURN_OID(childOid);
 	}
+
+	PG_RETURN_NULL();
+}
+
+/*
+ * ExpansionContext
+ *   Context data for gp_partition_expansion.
+ */
+typedef struct ExpansionContext
+{
+	PartitionMetadata *metadata;
+
+	/*
+	 * The cell to the next PartitionRule.
+	 */
+	ListCell *nextRuleCell;
+} ExpansionContext;
+
+PG_FUNCTION_INFO_V1(gp_partition_expansion);
+
+/*
+ * gp_partition_expansion
+ *   Find all child partition oids for the given parent oid.
+ *
+ * Currently, this function also assumes that the parent partition is the root
+ * partition.
+ *
+ * This function is a set-returning function, returning a set of
+ * child oids.
+ */
+Datum
+gp_partition_expansion(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcCallContext = NULL;
 	
-	PG_RETURN_OID(childOid);
+	/*
+	 * Setup the function call context for set-returning functions.
+	 * At the first time of calling this function, we find the partition
+	 * metadata for the given parent oid, and store that in an ExpansionContext
+	 * structure.
+	 */
+	if (SRF_IS_FIRSTCALL())
+	{
+		funcCallContext = SRF_FIRSTCALL_INIT();
+
+		Oid parentOid = PG_GETARG_OID(0);
+
+		MemoryContext oldContext = MemoryContextSwitchTo(funcCallContext->multi_call_memory_ctx);
+
+		ExpansionContext *expansionContext = palloc(sizeof(ExpansionContext));
+		PartitionMetadata *metadata =
+			findPartitionMetadataEntry(dynamicTableScanInfo->partsMetadata,
+									   parentOid);
+		expansionContext->metadata = metadata;
+		expansionContext->nextRuleCell = NULL;
+
+		Assert(metadata != NULL);
+		Assert(metadata->partsAndRules != NULL);
+		expansionContext->nextRuleCell = list_head(metadata->partsAndRules->rules);
+
+		funcCallContext->user_fctx = expansionContext;
+
+		MemoryContextSwitchTo(oldContext);
+	}
+	funcCallContext = SRF_PERCALL_SETUP();
+
+	ExpansionContext *expansionContext = (ExpansionContext *)funcCallContext->user_fctx;
+	ListCell *ruleCell = expansionContext->nextRuleCell;
+
+	if (expansionContext != NULL &&
+		ruleCell != NULL)
+	{
+		expansionContext->nextRuleCell = lnext(ruleCell);
+
+		PartitionRule *rule = (PartitionRule *)lfirst(ruleCell);
+		Oid childOid = rule->parchildrelid;
+		
+		SRF_RETURN_NEXT(funcCallContext, childOid);
+	}
+	else
+	{
+		Assert(expansionContext->nextRuleCell == NULL);
+		pfree(expansionContext);
+		
+		SRF_RETURN_DONE(funcCallContext);
+	}
 }
 
 /*

@@ -647,6 +647,7 @@ bool		gp_opt_print_job_scheduler;
 bool		gp_opt_print_expression_properties;
 bool		gp_opt_print_group_properties;
 bool		gp_opt_print_optimization_context;
+bool		gp_opt_print_optimization_stats;
 bool		gp_opt_parallel;
 bool		gp_opt_local;
 int 		gp_opt_retries;
@@ -3492,6 +3493,15 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	
+	{
+		{"gp_opt_print_optimization_stats", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimization stats."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_print_optimization_stats,
+		false, NULL, NULL
+	},
 	
 	{
 		{"gp_opt_parallel", PGC_USERSET, LOGGING_WHAT,

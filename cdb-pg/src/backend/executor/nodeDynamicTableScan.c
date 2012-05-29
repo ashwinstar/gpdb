@@ -80,11 +80,17 @@ setPidIndex(DynamicTableScanState *node)
 	ScanState *scanState = (ScanState *)node;
 	EState *estate = scanState->ps.state;
 	DynamicTableScan *plan = (DynamicTableScan *)scanState->ps.plan;
-	Assert(estate->dynamicTableScanInfo != NULL &&
-		   estate->dynamicTableScanInfo->pidIndexes != NULL &&
-		   estate->dynamicTableScanInfo->numScans > plan->partIndex);
+	Assert(estate->dynamicTableScanInfo != NULL);
 	
-	node->pidIndex = estate->dynamicTableScanInfo->pidIndexes[plan->partIndex];
+	/*
+	 * The pidIndexes might be NULL when no partitions are
+	 * involved in the query.
+	 */
+	if (estate->dynamicTableScanInfo->pidIndexes != NULL)
+	{
+		Assert(estate->dynamicTableScanInfo->numScans > plan->partIndex);
+		node->pidIndex = estate->dynamicTableScanInfo->pidIndexes[plan->partIndex];
+	}
 }
 
 TupleTableSlot *
@@ -100,7 +106,12 @@ ExecDynamicTableScan(DynamicTableScanState *node)
 	if (node->pidIndex == NULL)
 	{
 		setPidIndex(node);
-		Assert(node->pidIndex != NULL);
+
+		if (node->pidIndex == NULL)
+		{
+			return NULL;
+		}
+		
 		hash_seq_init(&node->pidStatus, node->pidIndex);
 	}
 

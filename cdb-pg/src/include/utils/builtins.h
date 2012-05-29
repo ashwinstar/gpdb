@@ -1212,5 +1212,6 @@ extern Datum percentile_disc_trans(PG_FUNCTION_ARGS);
 extern Datum gp_partition_propagation(PG_FUNCTION_ARGS);
 extern void dumpDynamicTableScanPidIndex(int index);
 extern Datum gp_partition_selection(PG_FUNCTION_ARGS);
+extern Datum gp_partition_expansion(PG_FUNCTION_ARGS);
 
 #endif   /* BUILTINS_H */
