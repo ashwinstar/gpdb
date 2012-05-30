@@ -656,6 +656,13 @@ ComputeAvgMemKBForMemIntenseOp(OperatorGroupNode *groupNode)
 	
 	const uint64 nonMemIntenseOpMemKB = (uint64)gp_resqueue_memory_policy_auto_fixed_mem;
 
+	if (groupNode->groupMemKB <= groupNode->numNonMemIntenseOps * nonMemIntenseOpMemKB)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));
+	}
+
 	return (((double)groupNode->groupMemKB -
 			 (double)groupNode->numNonMemIntenseOps * nonMemIntenseOpMemKB) /
 			groupNode->numMemIntenseOps);
@@ -701,11 +708,13 @@ ComputeMemLimitForChildGroups(OperatorGroupNode *parentGroupNode)
 		
 		Assert(childGroup->groupMemKB == 0);
 		
-		if (parentGroupNode->groupMemKB < totalNumNonMemIntenseOps * nonMemIntenseOpMemKB)
+		if (parentGroupNode->groupMemKB < totalNumNonMemIntenseOps * nonMemIntenseOpMemKB ||
+			(parentGroupNode->groupMemKB == totalNumNonMemIntenseOps * nonMemIntenseOpMemKB &&
+			 totalNumMemIntenseOps > 0))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-					 errmsg("insufficient memory reserved for statement")));
+					 errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));
 		}
 
 		double memIntenseOpMemKB = 0;
