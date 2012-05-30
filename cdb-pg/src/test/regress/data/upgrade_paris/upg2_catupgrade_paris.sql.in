@@ -103,10 +103,6 @@ CREATE FUNCTION  @gpupgradeschemaname@.generate_series("timestamptz", "timestamp
 	AS 'generate_series_timestamptz' WITH (OID=2917, DESCRIPTION="non-persistent series generator");
 COMMENT ON FUNCTION  @gpupgradeschemaname@.generate_series("timestamptz", "timestamptz", "interval") IS 'non-persistent series generator';
 
-CREATE OPERATOR @gpupgradeschemaname@.% (PROCEDURE = interval_interval_mod, LEFTARG = "interval", RIGHTARG = "interval", OID=2921);
-
-CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = interval_interval_div, LEFTARG = "interval", RIGHTARG = "interval", OID=2920);
-
 CREATE FUNCTION @gpupgradeschemaname@.bool(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT
 	AS 'textbool' WITH (OID=2970, DESCRIPTION="convert text to boolean");
 COMMENT ON FUNCTION @gpupgradeschemaname@.bool(text) IS 'convert text to boolean';
@@ -145,28 +141,6 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.int28mul(int2, int8) IS 'multiply';
 CREATE FUNCTION @gpupgradeschemaname@.int28div(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
 	AS 'int28div' WITH (OID=3248, DESCRIPTION="divide");
 COMMENT ON FUNCTION @gpupgradeschemaname@.int28div(int2, int8) IS 'divide';
-
--- MPP-16121
--- When commutator/negator is specified, we need to define ones with greater OID first,
--- otherwise installcheck fails.  This is because the backend creates a shell operator
--- first with a smaller OID but the catdump dumps the commutator option in only the
--- operators with the smaller OIDs.  For the actual upgrade, this order doesn't matter
--- because the OID is fixed by the OID option.
-CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = int28div, LEFTARG = "int2", RIGHTARG = "int8", OID=327);
-
-CREATE OPERATOR @gpupgradeschemaname@.* (PROCEDURE = int28mul, LEFTARG = "int2", RIGHTARG = "int8", OID=326, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.*));
-
-CREATE OPERATOR @gpupgradeschemaname@.- (PROCEDURE = int28mi, LEFTARG = "int2", RIGHTARG = "int8", OID=325);
-
-CREATE OPERATOR @gpupgradeschemaname@.+ (PROCEDURE = int28pl, LEFTARG = "int2", RIGHTARG = "int8", OID=324, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.+));
-
-CREATE OPERATOR @gpupgradeschemaname@./ (PROCEDURE = int82div, LEFTARG = "int8", RIGHTARG = "int2", OID=323);
-
-CREATE OPERATOR @gpupgradeschemaname@.* (PROCEDURE = int82mul, LEFTARG = "int8", RIGHTARG = "int2", OID=322, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.*));
-
-CREATE OPERATOR @gpupgradeschemaname@.- (PROCEDURE = int82mi, LEFTARG = "int8", RIGHTARG = "int2", OID=321);
-
-CREATE OPERATOR @gpupgradeschemaname@.+ (PROCEDURE = int82pl, LEFTARG = "int8", RIGHTARG = "int2", OID=320, COMMUTATOR=OPERATOR(@gpupgradeschemaname@.+));
 
 -- MPP-16125
 -- txid_snapshot
@@ -270,6 +244,27 @@ CREATE EXTERNAL WEB TABLE
 SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_cast_load;
 
 DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_cast_load;
+
+\set pg_operator_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_operator.data'"`
+
+-- Add entries to the master.
+COPY @gpupgradeschemaname@.pg_operator FROM
+    :pg_operator_datafile WITH OIDS DELIMITER ',';
+
+CREATE EXTERNAL WEB TABLE
+    __@gpupgradeschemaname@_gpmigrator.pg_operator_load(database text,
+                                                    port text,
+                                                    status text)
+    EXECUTE E' PGOPTIONS=''-c gp_session_role=utility'' \\
+        psql -q --set ON_ERROR_STOP=ON -p $GP_SEG_PORT \\
+        --command "copy @gpupgradeschemaname@.pg_operator from \\
+        ''$GPHOME/share/postgresql/upgrade/pg_operator.data'' with oids csv" \\
+        $GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
+    FORMAT 'csv';
+
+SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
+
+DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
 
 DROP SCHEMA __@gpupgradeschemaname@_gpmigrator;
 
@@ -471,27 +466,3 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.cbrt(@gpupgradeschemaname@.complex)  I
 CREATE FUNCTION @gpupgradeschemaname@.numeric2point("numeric") RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
 	AS 'numeric2complex' WITH (OID=9087, DESCRIPTION="(internal) type cast from numeric to complex");
 COMMENT ON FUNCTION @gpupgradeschemaname@.numeric2point("numeric")  IS '(internal) type cast from numeric to complex';
-
-CREATE OPERATOR @gpupgradeschemaname@.=	 (PROCEDURE = @gpupgradeschemaname@.complex_eq	,  LEFTARG=@gpupgradeschemaname@.complex , RIGHTARG = @gpupgradeschemaname@.complex, OID = 9071,  RESTRICT=eqsel, JOIN=eqjoinsel);
-
-CREATE OPERATOR @gpupgradeschemaname@.<> (PROCEDURE = @gpupgradeschemaname@.complex_ne	,  LEFTARG=@gpupgradeschemaname@.complex , RIGHTARG = @gpupgradeschemaname@.complex, OID = 9072, RESTRICT=neqsel, NEGATOR = =, JOIN=neqjoinsel); 
-
-CREATE OPERATOR @gpupgradeschemaname@.@	 (PROCEDURE = @gpupgradeschemaname@.complexabs	,  RIGHTARG = @gpupgradeschemaname@.complex, OID = 9073); 
-
-CREATE OPERATOR @gpupgradeschemaname@.+	 (PROCEDURE = @gpupgradeschemaname@.complex_pl	,  LEFTARG=@gpupgradeschemaname@.complex , RIGHTARG = @gpupgradeschemaname@.complex, OID = 9074); 
-
-CREATE OPERATOR @gpupgradeschemaname@.+	 (PROCEDURE = @gpupgradeschemaname@.complex_up	,  RIGHTARG = @gpupgradeschemaname@.complex, OID = 9075); 
-
-CREATE OPERATOR @gpupgradeschemaname@.-	 (PROCEDURE = @gpupgradeschemaname@.complex_mi	,  LEFTARG=@gpupgradeschemaname@.complex , RIGHTARG = @gpupgradeschemaname@.complex, OID = 9076); 
-
-CREATE OPERATOR @gpupgradeschemaname@.-	 (PROCEDURE = @gpupgradeschemaname@.complex_um	,  RIGHTARG = @gpupgradeschemaname@.complex, OID = 9077); 
-
-CREATE OPERATOR @gpupgradeschemaname@.*	 (PROCEDURE = @gpupgradeschemaname@.complex_mul   ,  LEFTARG=@gpupgradeschemaname@.complex , RIGHTARG = @gpupgradeschemaname@.complex, OID = 9078);
-
-CREATE OPERATOR @gpupgradeschemaname@./	 (PROCEDURE = @gpupgradeschemaname@.complex_div   ,  LEFTARG=@gpupgradeschemaname@.complex , RIGHTARG = @gpupgradeschemaname@.complex, OID = 9079);
-
-CREATE OPERATOR @gpupgradeschemaname@.^	 (PROCEDURE = @gpupgradeschemaname@.complex_power ,  LEFTARG=@gpupgradeschemaname@.complex , RIGHTARG = @gpupgradeschemaname@.complex, OID = 9080);
-
-CREATE OPERATOR @gpupgradeschemaname@.|/ (PROCEDURE = @gpupgradeschemaname@.complex_sqrt  ,  RIGHTARG = @gpupgradeschemaname@.complex, OID = 9081);
-
-CREATE OPERATOR @gpupgradeschemaname@.||/  (PROCEDURE = @gpupgradeschemaname@.complex_cbrt  ,  RIGHTARG = @gpupgradeschemaname@.complex, OID = 9082);	

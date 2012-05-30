@@ -814,20 +814,51 @@ select catdump.dump_to_table('4.2u', 'upg_catalog');
 --  Tidy up the dumped text
 --
 update catdump.DDL set stmt = regexp_replace(ltrim(rtrim(stmt)), 'upg_catalog', 'pg_catalog', 'ig');
-select stmt from catdump.DDL where ver = '4.2u'
-except
-select stmt from catdump.DDL where ver = '5.0'
-order by 1;
-                                                                                                 stmt                                                                                                 
+--
+-- Dump any missing or extraneous DDL snippets
+--
+-- Order by md5 because some of these snippets need to sort deterministically.
+-- This is especially the case for CREATE OPERATOR, whose stmts are prone to contain
+-- funky characters with unusual collation properties.
+--
+select stmt from (
+    select stmt from catdump.DDL where ver = '4.2u'
+    except
+    select stmt from catdump.DDL where ver = '5.0'
+) extra order by md5(stmt);
+                                                                      stmt
 -------------------------------------------------------------------------------------------------------------------------------------------------
  CREATE FUNCTION pg_catalog."convert"(pg_catalog.text, pg_catalog.name) RETURNS pg_catalog.text LANGUAGE internal STABLE STRICT AS 'pg_convert';
 (1 row)
 
-select stmt from catdump.DDL where ver = '5.0'
-except
-select stmt from catdump.DDL where ver = '4.2u'
-order by 1;
-                                                                                                                 stmt                                                                                                                 
-------
-(0 rows)
+select stmt from (
+    select stmt from catdump.DDL where ver = '5.0'
+    except
+    select stmt from catdump.DDL where ver = '4.2u'
+) missing order by md5(stmt);
+                                                                                                         stmt
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE OPERATOR pg_catalog.<>(   PROCEDURE = pg_catalog.complex_ne,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex,   NEGATOR = =,   RESTRICT = pg_catalog.neqsel,   JOIN = pg_catalog.neqjoinsel );
+ CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.complex_mi,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.*(   PROCEDURE = pg_catalog.int82mul,   LEFTARG = pg_catalog.int8,   RIGHTARG = pg_catalog.int2 );
+ CREATE OPERATOR pg_catalog.||/(   PROCEDURE = pg_catalog.complex_cbrt,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.complex_pl,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.^(   PROCEDURE = pg_catalog.complex_power,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.int28mi,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8 );
+ CREATE OPERATOR pg_catalog.=(   PROCEDURE = pg_catalog.complex_eq,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex,   RESTRICT = pg_catalog.eqsel,   JOIN = pg_catalog.eqjoinsel );
+ CREATE OPERATOR pg_catalog./(   PROCEDURE = pg_catalog.complex_div,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog./(   PROCEDURE = pg_catalog.interval_interval_div,   LEFTARG = pg_catalog."interval",   RIGHTARG = pg_catalog."interval" );
+ CREATE OPERATOR pg_catalog./(   PROCEDURE = pg_catalog.int82div,   LEFTARG = pg_catalog.int8,   RIGHTARG = pg_catalog.int2 );
+ CREATE OPERATOR pg_catalog.*(   PROCEDURE = pg_catalog.complex_mul,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.%(   PROCEDURE = pg_catalog.interval_interval_mod,   LEFTARG = pg_catalog."interval",   RIGHTARG = pg_catalog."interval" );
+ CREATE OPERATOR pg_catalog./(   PROCEDURE = pg_catalog.int28div,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8 );
+ CREATE OPERATOR pg_catalog.*(   PROCEDURE = pg_catalog.int28mul,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8,   COMMUTATOR = * );
+ CREATE OPERATOR pg_catalog.@(   PROCEDURE = pg_catalog.complexabs,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.|/(   PROCEDURE = pg_catalog.complex_sqrt,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.int82mi,   LEFTARG = pg_catalog.int8,   RIGHTARG = pg_catalog.int2 );
+ CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.complex_up,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.complex_um,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.int28pl,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8,   COMMUTATOR = + );
+ CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.int82pl,   LEFTARG = pg_catalog.int8,   RIGHTARG = pg_catalog.int2 );
+(22 rows)
 

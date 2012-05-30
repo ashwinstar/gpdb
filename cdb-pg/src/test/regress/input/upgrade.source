@@ -809,13 +809,23 @@ select catdump.dump_to_table('4.2u', 'upg_catalog');
 --
 update catdump.DDL set stmt = regexp_replace(ltrim(rtrim(stmt)), 'upg_catalog', 'pg_catalog', 'ig');
 
-select stmt from catdump.DDL where ver = '4.2u'
-except
-select stmt from catdump.DDL where ver = '5.0'
-order by 1;
+-- 
+-- Dump any missing or extraneous DDL snippets
+--
+-- Order by md5 because some of these snippets need to sort deterministically.
+-- This is especially the case for CREATE OPERATOR, whose stmts are prone to contain
+-- funky characters with unusual collation properties.
+--
 
-select stmt from catdump.DDL where ver = '5.0'
-except
-select stmt from catdump.DDL where ver = '4.2u'
-order by 1;
+select stmt from (
+	select stmt from catdump.DDL where ver = '4.2u'
+	except
+	select stmt from catdump.DDL where ver = '5.0'
+) extra order by md5(stmt);
+
+select stmt from (
+	select stmt from catdump.DDL where ver = '5.0'
+	except
+	select stmt from catdump.DDL where ver = '4.2u'
+) missing order by md5(stmt);
 
