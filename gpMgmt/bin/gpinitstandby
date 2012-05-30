@@ -337,6 +337,13 @@ def delete_standby(options):
         logger.error('Failed to remove standby master from catalog.')
         raise GpInitStandbyException(ex)
     
+    #repopulate flat file
+    pg_system_fs_entries = GetFilespaceEntriesDict(GetFilespaceEntries(array, PG_SYSTEM_FILESPACE).run()).run() 
+    flat_file_location = os.path.join(pg_system_fs_entries[1][2], GP_TRANSACTION_FILES_FILESPACE) 
+    remove_standby_from_flat_file(flat_file_location, GP_TRANSACTION_FILES_FILESPACE, array.standbyMaster)
+    flat_file_location = os.path.join(pg_system_fs_entries[1][2], GP_TEMPORARY_FILES_FILESPACE) 
+    remove_standby_from_flat_file(flat_file_location, GP_TEMPORARY_FILES_FILESPACE, array.standbyMaster)
+
     if not options.no_restart:
         start_database()
 	
@@ -357,13 +364,6 @@ def delete_standby(options):
  
     # delete directory
     remove_standby_filespace_dirs(array)
-
-    #repopulate flat file
-    pg_system_fs_entries = GetFilespaceEntriesDict(GetFilespaceEntries(array, PG_SYSTEM_FILESPACE).run()).run() 
-    flat_file_location = os.path.join(pg_system_fs_entries[1][2], GP_TRANSACTION_FILES_FILESPACE) 
-    remove_standby_from_flat_file(flat_file_location, GP_TRANSACTION_FILES_FILESPACE, array.standbyMaster)
-    flat_file_location = os.path.join(pg_system_fs_entries[1][2], GP_TEMPORARY_FILES_FILESPACE) 
-    remove_standby_from_flat_file(flat_file_location, GP_TEMPORARY_FILES_FILESPACE, array.standbyMaster)
 
     # Reenable Ctrl-C
     signal.signal(signal.SIGINT,signal.default_int_handler)
