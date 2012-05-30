@@ -172,11 +172,13 @@ class GpCronDump(Operation):
         for index, host in enumerate(gpHostsSet):                          
             # If more then one NIC is specified, we configure the GP hosts with these ddboost NICs in a round robin manner
             currentDdboostHost = ddboostHostsSet[index % numberOfDdboostNics]            
-            ddcmd = 'source ' + os.environ['GPHOME'] + '/greenplum_path.sh; ' + os.environ['GPHOME'] + '/bin/gpddboost  --setCredential --hostname=' + currentDdboostHost + ' --user=' + re.escape(user) + ' --password=' + re.escape(password)
-            cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
-            logger.debug("running gpddboost on host %s: %s" % (host, ddcmd))
-            logger.debug("cmd: %s " % cmdline)
+            ddcmd = 'source ' + os.environ['GPHOME'] + '/greenplum_path.sh; ' + os.environ['GPHOME'] + \
+					'/bin/gpddboost  --setCredential --hostname=' + currentDdboostHost + ' --user=' + re.escape(user)
+            logger.debug("running gpddboost on host %s: %s --password=*" % (host, ddcmd))
 
+            # Note: the password can't be printed to log/stdout and therefore was concatenated to ddcmd only after priniting it to log
+            ddcmd += " --password=" + re.escape(password)
+            cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
             if not os.system(cmdline):
                 logger.info("config delivered successfully to %s " % host)
             else:
