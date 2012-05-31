@@ -426,8 +426,8 @@ MODE - Optional. Defaults to INSERT if not specified. There are three
            row from the source file is inserted, not only the MATCH and 
            UPDATE columns. If there are multiple new MATCH_COLUMNS values 
            that are the same, only one new row for that value will be 
-           inserted (use UPDATE_CONDITION to filter out the rows you want 
-           to discard). 
+           inserted. Use UPDATE_CONDITION to filter out the rows you want 
+           to discard. 
 
 MATCH_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the 
                 column(s) to use as the join condition for the update.
