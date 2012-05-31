@@ -721,14 +721,6 @@ class GPUpgrade(GPUpgradeBase):
         self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
         self.Shutdown()
 
-        # Cleanup anything leftover from gpupgrademirror
-        # + Should occur when the database is STOPPED
-        # + This forces a full remirroring of the system again, we
-        #   should avoid this whenever possible.
-        logger.info('Performing Mirror rollback')
-        cmd = '%s/sbin/gpupgrademirror.py --rollback' % self.newhome
-        self.RunCmd(cmd, env=self.newenv)
-
         # done
         logger.info('Revert Successful')
         self.revert = False
