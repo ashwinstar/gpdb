@@ -466,3 +466,15 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.cbrt(@gpupgradeschemaname@.complex)  I
 CREATE FUNCTION @gpupgradeschemaname@.numeric2point("numeric") RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
 	AS 'numeric2complex' WITH (OID=9087, DESCRIPTION="(internal) type cast from numeric to complex");
 COMMENT ON FUNCTION @gpupgradeschemaname@.numeric2point("numeric")  IS '(internal) type cast from numeric to complex';
+
+-- MPP-17173/ MPP-17183 - eliminate NULLs in pg_extprotocol's OID columns
+UPDATE pg_extprotocol
+SET ptcreadfn = CASE WHEN ptcreadfn IS NULL THEN 0 ELSE ptcreadfn END,
+    ptcwritefn = CASE WHEN ptcwritefn IS NULL THEN 0 ELSE ptcwritefn END,
+    ptcvalidatorfn = CASE WHEN ptcvalidatorfn IS NULL THEN 0 ELSE ptcvalidatorfn END;
+SELECT catDML(
+'UPDATE pg_extprotocol
+ SET ptcreadfn = CASE WHEN ptcreadfn IS NULL THEN 0 ELSE ptcreadfn END,
+     ptcwritefn = CASE WHEN ptcwritefn IS NULL THEN 0 ELSE ptcwritefn END,
+     ptcvalidatorfn = CASE WHEN ptcvalidatorfn IS NULL THEN 0 ELSE ptcvalidatorfn END')
+FROM gp_dist_random('gp_id');
