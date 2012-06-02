@@ -176,8 +176,7 @@ test: function_extensions
 test: basic_fuzzystrmatch
 test: timeseries
 test: caql
-# gpcheckmirrorseg should be last to check mirror integrity
-test: gpcheckmirrorseg
 test: icudp_no_fault_injection
 ignore: icudp_full
-
+# gpcheckmirrorseg should be last to check mirror integrity
+test: gpcheckmirrorseg
