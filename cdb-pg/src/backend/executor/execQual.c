@@ -5399,6 +5399,9 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 static bool
 ExecIsExprUnsafeToConst_walker(Node *node, void *context)
 {
+	if (node == NULL)
+		return false;
+
 	switch(nodeTag(node))
 	{
 		/*
@@ -5420,7 +5423,9 @@ ExecIsExprUnsafeToConst_walker(Node *node, void *context)
 		case T_BooleanTest:
 		case T_List:
 		case T_TypeCast:
-			return false;
+		case T_ArrayExpr:
+			return expression_tree_walker(node,
+					ExecIsExprUnsafeToConst_walker, NULL);
 
 		default:
 			return true;
@@ -5436,7 +5441,8 @@ static bool
 ExecIsExprUnsafeToConst(Node *node)
 {
 	Assert(node != NULL);
-	return ExecIsExprUnsafeToConst_walker(node, NULL);
+	return ExecIsExprUnsafeToConst_walker(node, NULL) &&
+		!contain_volatile_functions(node);
 }
 
 /*

@@ -923,6 +923,8 @@ SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[2,3])[1]);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1, '')::example_r).a);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ),
+   CASE (SELECT count(*) FROM pg_class) WHEN 0 THEN 0 ELSE 1 END);
 
 -- ========================
 -- User data exmaple
