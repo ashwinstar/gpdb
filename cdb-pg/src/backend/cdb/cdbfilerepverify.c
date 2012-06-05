@@ -6087,6 +6087,18 @@ int FileRepMirror_CompareSummaryItem(
 			numSegments = 1;
 		}
 
+		if (pItem->summary.fileSummary.missingOnPrimary)
+		{
+			/* this file (or at least one of the segment files)
+			 * didn't turn out to be there by the time we 
+			 * went to fill the summary item - count that as an 
+			 * mismatch so we go on to compare under a lock
+			 */
+			*mismatch = true;
+			return STATUS_OK;
+			
+		}
+
 		for (seg = 0; seg < numSegments; seg++)
 		{
 			/* if this is a heap file with multiple segments must
@@ -8892,6 +8904,7 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 
 	for (row = 0; row < numRows; row++)
 	{
+		summaryItemArray[row].summary.fileSummary.missingOnPrimary = false;
 
 		/* are all things in the rel file nodes list files */
 		summaryItemArray[row].isFile = true;
@@ -8908,10 +8921,10 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 				MAXPGPATH+1);
 
 		summaryItemArray[row].summary.fileSummary.exception =
-		relfilenodeTable[row].exception;
+			relfilenodeTable[row].exception;
 		summaryItemArray[row].summary.fileSummary.AO_logicalEof =
-		relfilenodeTable[row].AO_logicalEof;
-
+			relfilenodeTable[row].AO_logicalEof;
+		
 		if ( summaryItemArray[row].summary.fileSummary.exception ==
 			FileRepVerifyCompareException_HeapRelation)
 		{
@@ -9005,6 +9018,11 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 			/* careful to compute real file name based on segmentFileNum */
 			if (stat(segmentFileName, &info) != 0)
 			{
+				/* the file is missing on the primary by the time we get around to looking at it - 
+				 * that can happen because we are not locking at this point
+				 * Can't return STATUS_ERROR here because this can happen
+				 */
+				summaryItemArray[row].summary.fileSummary.missingOnPrimary = true;
 				ereport(WARNING,
 						(errcode_for_file_access(),
 						errmsg("verification failure, "
@@ -9012,53 +9030,53 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 								"verification aborted",
 								relpath(relfilenodeTable[row].relFileNode)),
 						errhint("run gpverify")));
-
-				/* VERIFICATION_ERROR_INTERNAL */
-				return STATUS_ERROR;
-			}
-
-			if (includeFileSizeInfo && (seg == numSegments-1))
+				
+			} 
+			else 
 			{
-				/*
-				 * when we have multiple segments fileSize will be the
-				 * size of the last one
-				 *  it would be nice to just make fileSize the sum of
-				 *  all the sizes
-				 *  but that could overflow off_t
-				 */
-				summaryItemArray[row].summary.fileSummary.fileSize =
-				info.st_size;
 
-			}
-			verifyLog(logControl, DEBUG1, "File %s is size %d \n",
-					  segmentFileName,
-					  info.st_size);
-			FileRepVerify_AddToTotalBlocksVerified(info.st_size);
-
-			if (doHash)
-			{
-				pg_crc32 thisSegmentHashcode = 0;
-
-				FileRepVerify_ComputeFileHash(
-											  segmentFileName,
-											  &thisSegmentHashcode,
-											  summaryItemArray[row].summary.fileSummary.exception,
-											  summaryItemArray[row].summary.fileSummary.AO_logicalEof,
-											  seg,
-											  logControl);
-
-				if (seg ==0)
+				if (includeFileSizeInfo && (seg == numSegments-1))
 				{
-					summaryItemArray[row].summary.fileSummary.fileContentsHashcode
-					= thisSegmentHashcode;
+					/*
+					 * when we have multiple segments fileSize will be the
+					 * size of the last one
+					 *  it would be nice to just make fileSize the sum of
+					 *  all the sizes
+					 *  but that could overflow off_t
+					 */
+					summaryItemArray[row].summary.fileSummary.fileSize =
+						info.st_size;
+
 				}
-				else
+				verifyLog(logControl, DEBUG1, "File %s is size %d \n",
+						  segmentFileName,
+						  info.st_size);
+				FileRepVerify_AddToTotalBlocksVerified(info.st_size);
+
+				if (doHash)
 				{
-					summaryItemArray[row].summary.fileSummary.fileContentsHashcode
-					+= thisSegmentHashcode;
+					pg_crc32 thisSegmentHashcode = 0;
+
+					FileRepVerify_ComputeFileHash(
+						segmentFileName,
+						&thisSegmentHashcode,
+						summaryItemArray[row].summary.fileSummary.exception,
+						summaryItemArray[row].summary.fileSummary.AO_logicalEof,
+						seg,
+						logControl);
+
+					if (seg ==0)
+					{
+						summaryItemArray[row].summary.fileSummary.fileContentsHashcode
+							= thisSegmentHashcode;
+					}
+					else
+					{
+						summaryItemArray[row].summary.fileSummary.fileContentsHashcode
+							+= thisSegmentHashcode;
+					}
 				}
 			}
-
 		} /* segs */
 	} /* rows */
 
@@ -9738,7 +9756,12 @@ FillBufferWithDirectoryTreeListing(
 						  DEBUG1,
 						  "FillBufferWithDirectoryTreeListing: Unable to stat %s",
 						  child_path);
-				return STATUS_ERROR;
+				/*It is possible for the file to be there when
+				 * ReadDir was called but not when we call stat
+				 * so lets not return STATUS_ERROR, lets just continue
+				 */
+				//return STATUS_ERROR;
+				continue;
 			}
 			keepChild =
 				keepItem(child_path,
@@ -9888,7 +9911,6 @@ FillBufferWithDirectoryTreeListing(
 				 * is really finding everything it needs to!!!
 				 */
 				if (request->skipRelFiles &&
-/*				  looksLikeRelFileName(currentDirectoryName, de->d_name)) */
 					looksLikeRelFileName(currentFromBasePath, de->d_name))
 				{
 					verifyLog(
@@ -9948,6 +9970,7 @@ FillBufferWithDirectoryTreeListing(
 					memset(&summaryItem, 0,
 						   sizeof(FileRepVerifySummaryItem_s));
 					summaryItem.isFile = true;
+					summaryItem.summary.fileSummary.missingOnPrimary = false;
 					
 					/* WHEN WE PLACE ITEMS in the buffer -
 					 * we just leave off the baseDir portion
@@ -10239,7 +10262,7 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("verification failure, "
-						"could not stat file '%s' : %m "
+						"could not stat directory in  FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing '%s' : %m "
 						"verification aborted",
 						primaryBaseDir),
 				 errhint("run gpverify")));
@@ -10254,7 +10277,7 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("verification failure, "
-						"not a directory '%s' : %m "
+						"not a directory '%s' in  FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing : %m "
 						"verification aborted",
 						primaryBaseDir),
 				 errhint("run gpverify")));
@@ -10374,6 +10397,7 @@ FileRepVerify_ComputeFileHash(
 						logControl.logOptions.token),
 				 errhint("run gpverify")));
 
+		/* we catch this in caller and don't let it kill the verification process */
 		return STATUS_ERROR;
 	}
 
@@ -10396,6 +10420,7 @@ FileRepVerify_ComputeFileHash(
 						logControl.logOptions.token),
 				 errhint("run gpverify")));
 
+		/* we catch this in caller and don't let it kill the verification process */
 		return STATUS_ERROR;
 	}
 
@@ -10414,7 +10439,7 @@ FileRepVerify_ComputeFileHash(
 						fileName,
 						logControl.logOptions.token),
 				 errhint("run gpverify")));
-
+		/* we catch this in caller and don't let it kill the verification process */
 		return STATUS_ERROR;
 	}
 

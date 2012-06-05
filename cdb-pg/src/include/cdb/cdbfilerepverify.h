@@ -121,6 +121,8 @@ typedef struct FileRepVerifyFileSummaryInfo_s
 	FileRepVerify_CompareException_e exception;
 	int64  AO_logicalEof;
 	int	   numHeapSegments; 
+	bool missingOnPrimary;
+
 	
 } FileRepVerifyFileSummaryInfo_s;
 
@@ -142,7 +144,6 @@ typedef union FileRepVerifySummaryInfo_u
 typedef struct FileRepVerifySummaryItem_s 
 {
 	bool isFile;
-
 	/*	put all in one and just record number of chars in the path part */
 	char baseDir[MAXPGPATH+1];
 	char fromBasePath[MAXPGPATH+1];
