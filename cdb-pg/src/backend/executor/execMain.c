@@ -66,6 +66,7 @@
 #include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/gp_rand.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -154,6 +155,7 @@ static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
 static TupleTableSlot * CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
 static void ClearPartitionState(EState *estate);
+static void SetupRNG(QueryDesc *queryDesc);
 
 /*
  * For a partitioned insert target only:  
@@ -606,6 +608,13 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 
 		/*
+		 * Prepare random seed before dispatching.  QEs will receive the
+		 * random seed from QD via PlannedStmt.
+		 */
+		if (Gp_role != GP_ROLE_EXECUTE)
+			queryDesc->plannedstmt->query_random_seed = get_seed_per_query();
+
+		/*
 		 * if in dispatch mode, time to serialize plan and query
 		 * trees, and fire off cdb_exec command to each of the qexecs
 		 */
@@ -703,6 +712,12 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		if(estate->es_interconnect_is_setup)
 			Assert(estate->interconnect_context != NULL);
 
+		/*
+		 * We could set seed in GP_IGNORE, but random never gets called
+		 * so we skip it for cleanness.
+		 */
+		if (exec_identity != GP_IGNORE)
+			SetupRNG(queryDesc);
     }
 	PG_CATCH();
 	{
@@ -5350,3 +5365,56 @@ ClearPartitionState(EState *estate)
 	/* No need for hash_seq_term() since we iterated to end. */
 }
 
+/*
+ * Set up the random number generator (RNG) with the cluster information.
+ * This happens every time we start a query, because the set of processes
+ * involved in a query may change from one to another.
+ */
+static void
+SetupRNG(QueryDesc *queryDesc)
+{
+	if (queryDesc->plannedstmt != NULL)
+	{
+		EState		   *estate = queryDesc->estate;
+		SliceTable	   *sliceTable;
+		ListCell	   *l;
+		int				num_proc = 0;
+		int				start_pos = 0;
+
+		sliceTable = estate->es_sliceTable;
+
+		if (sliceTable)
+		{
+			/*
+			 * Both of QD and QE in dispatching query case.
+			 * Calculate my position and total number of process
+			 * to tell the number of leap.
+			 */
+			foreach (l, sliceTable->slices)
+			{
+				Slice	   *s = lfirst(l);
+				int			id_in_slice;
+
+				id_in_slice = (Gp_segment == -1 ? 0 : Gp_segment);
+				if (s->sliceIndex == sliceTable->localSlice)
+					start_pos = num_proc + id_in_slice;
+				/*
+				 * Slice::gangSize is bogus.
+				 * Look at actual process list.
+				 */
+				num_proc += list_length(s->primaryProcesses);
+			}
+		}
+		else
+		{
+			/*
+			 * Non-dispatch case.
+			 */
+			num_proc = 1;
+			start_pos = 0;
+		}
+
+		set_seed_per_query(queryDesc->plannedstmt->query_random_seed,
+						   start_pos, num_proc);
+	}
+}

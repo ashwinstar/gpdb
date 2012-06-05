@@ -2704,6 +2704,8 @@ _readPlannedStmt(const char ** str)
 	READ_INT_FIELD(backoff_weight);
 	READ_UINT64_FIELD(query_mem);
 
+	READ_UINT_FIELD(query_random_seed);
+
 	READ_DONE();
 }
 

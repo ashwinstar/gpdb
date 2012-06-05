@@ -42,3 +42,16 @@ SELECT random, count(random) FROM RANDOM_TBL
 SELECT AVG(random) FROM RANDOM_TBL
   HAVING AVG(random) NOT BETWEEN 80 AND 120;
 
+SET seed TO 0.1;
+SELECT random() INTO RANDOM_TBL_X FROM onek;
+SET seed TO 0.1;
+SELECT random() INTO RANDOM_TBL_Y FROM onek;
+
+-- our design ensures the same query pattern since setting new seed
+-- makes the identical result.
+SELECT * FROM RANDOM_TBL_X
+EXCEPT ALL
+SELECT * FROM RANDOM_TBL_Y;
+
+-- setseed() is now disallowd.
+SELECT setseed(0.1);

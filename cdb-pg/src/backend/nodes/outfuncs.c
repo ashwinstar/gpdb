@@ -365,6 +365,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_INT_FIELD(backoff_weight);
 	WRITE_UINT64_FIELD(query_mem);
 
+	WRITE_UINT_FIELD(query_random_seed);
 }
 
 static void

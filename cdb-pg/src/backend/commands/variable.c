@@ -635,26 +635,6 @@ show_XactIsoLevel(void)
 
 
 /*
- * Random number seed
- */
-
-bool
-assign_random_seed(double value, bool doit, GucSource source)
-{
-	/* Can't really roll back on error, so ignore non-interactive setting */
-	if (doit && source >= PGC_S_INTERACTIVE)
-		DirectFunctionCall1(setseed, Float8GetDatum(value));
-	return true;
-}
-
-const char *
-show_random_seed(void)
-{
-	return "unavailable";
-}
-
-
-/*
  * encoding handling functions
  */
 

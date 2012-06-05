@@ -70,6 +70,7 @@
 #include "storage/bfz.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/gp_rand.h"
 #include "utils/guc_tables.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"

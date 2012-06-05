@@ -169,6 +169,8 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_SCALAR_FIELD(backoff_weight);
 	COPY_SCALAR_FIELD(query_mem);
 
+	COPY_SCALAR_FIELD(query_random_seed);
+
 	return newnode;
 }
 

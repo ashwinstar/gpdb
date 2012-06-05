@@ -148,6 +148,8 @@ typedef struct PlannedStmt
 		/* What is the memory reserved for this query's execution? */
 		uint64		query_mem;
 
+		/* Parallel random seed and query id */
+		uint32		query_random_seed;
 } PlannedStmt;
 
 

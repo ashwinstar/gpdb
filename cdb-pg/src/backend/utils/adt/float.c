@@ -1803,42 +1803,6 @@ radians(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(result);
 }
 
-
-/*
- *		drandom		- returns a random number
- */
-Datum
-drandom(PG_FUNCTION_ARGS)
-{
-	float8		result;
-
-	/* result [0.0 - 1.0) */
-	result = (double) random() / ((double) MAX_RANDOM_VALUE + 1);
-
-	PG_RETURN_FLOAT8(result);
-}
-
-
-/*
- *		setseed		- set seed for the random number generator
- */
-Datum
-setseed(PG_FUNCTION_ARGS)
-{
-	float8		seed = PG_GETARG_FLOAT8(0);
-	int			iseed;
-
-	if (seed < -1 || seed > 1)
-		elog(ERROR, "setseed parameter %f out of range [-1,1]", seed);
-
-	iseed = (int) (seed * MAX_RANDOM_VALUE);
-	srandom((unsigned int) iseed);
-
-	PG_RETURN_VOID();
-}
-
-
-
 /*
  *		=========================
  *		FLOAT AGGREGATE OPERATORS

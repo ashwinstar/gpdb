@@ -358,8 +358,6 @@ extern Datum dtanh(PG_FUNCTION_ARGS);
 extern Datum degrees(PG_FUNCTION_ARGS);
 extern Datum dpi(PG_FUNCTION_ARGS);
 extern Datum radians(PG_FUNCTION_ARGS);
-extern Datum drandom(PG_FUNCTION_ARGS);
-extern Datum setseed(PG_FUNCTION_ARGS);
 extern Datum float8_accum(PG_FUNCTION_ARGS);
 extern Datum float4_accum(PG_FUNCTION_ARGS);
 extern Datum float8_decum(PG_FUNCTION_ARGS);
