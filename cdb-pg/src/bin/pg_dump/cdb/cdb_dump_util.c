@@ -1087,7 +1087,7 @@ setDDBoostCredential(char *hostname, char *user, char *password, char* log_level
 		return -1;
 
 	clbHandle LB;
-	if (createLB(&LB,"DDBOOST_CONFIG"))
+	if (createLB(&LB, "DDBOOST_CONFIG"))
 		return -1;
 	if (setItem(&LB , "hostname",hostname))
 		return -1;
@@ -1103,7 +1103,7 @@ setDDBoostCredential(char *hostname, char *user, char *password, char* log_level
 	}
 	else
 	{
-		if (setItem(&LB , "log_level","NONE"))
+		if (setItem(&LB , "log_level","DEBUG"))
 			return -1;
 	}
 
@@ -1260,21 +1260,21 @@ parseDDBoostCredential(char *hostname, char *user, char *password, const char *p
 
 	if (!fgets(line, PATH_MAX, fp))
 	{
-		mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log param (level = INFO,size = 50MB) \n");
-		ddboost_logs_info.logLevel = 5;//INFO
+		mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log param (level = DEBUG, size = 50MB) \n");
+		ddboost_logs_info.logLevel = DDP_SEV_DEBUG;
 		ddboost_logs_info.logsSize = 50*1024*1024;
 		return 0;
 	}
 	if (!strncmp("INFO",line,4))
-		ddboost_logs_info.logLevel = 5;
+		ddboost_logs_info.logLevel = DDP_SEV_INFO;
 	else if (!strncmp("WARN",line,4))
-		ddboost_logs_info.logLevel = 4;
+		ddboost_logs_info.logLevel = DDP_SEV_WARN;
 	else if (!strncmp("DEBUG",line,5))
-		ddboost_logs_info.logLevel = 3;
+		ddboost_logs_info.logLevel = DDP_SEV_DEBUG;
 	else if (!strncmp("ERROR",line,5))
-		ddboost_logs_info.logLevel = 2;
+		ddboost_logs_info.logLevel = DDP_SEV_ERROR;
 	else if (!strncmp("NONE",line,4))
-		ddboost_logs_info.logLevel = 1;
+		ddboost_logs_info.logLevel = DDP_SEV_NONE;
 	else
 	{
 		mpp_err_msg("ERROR", progName, "Illegal value for log level: %s, please use INFO, WARN, DEBUG, ERROR or NONE\n",line);
@@ -1425,17 +1425,17 @@ initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_in
 			return err;
 		}
 	}
-	
+
 	if (!strncmp("INFO",log_level,4))
-		ddboost_logs_info.logLevel = 5;
+		ddboost_logs_info.logLevel = DDP_SEV_INFO;
 	else if (!strncmp("WARN",log_level,4))
-		ddboost_logs_info.logLevel = 4;
+		ddboost_logs_info.logLevel = DDP_SEV_WARN;
 	else if (!strncmp("DEBUG",log_level,5))
-		ddboost_logs_info.logLevel = 3;
+		ddboost_logs_info.logLevel = DDP_SEV_DEBUG;
 	else if (!strncmp("ERROR",log_level,5))
-		ddboost_logs_info.logLevel = 2;
+		ddboost_logs_info.logLevel = DDP_SEV_ERROR;
 	else if (!strncmp("NONE",log_level,4))
-		ddboost_logs_info.logLevel = 1;
+		ddboost_logs_info.logLevel = DDP_SEV_NONE;
 	
 	ddboost_logs_info.logsSize = atoi(log_size)*1024*1024;	
 
