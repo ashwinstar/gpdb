@@ -175,6 +175,7 @@ test: gp_cancel_query
 test: function_extensions
 test: basic_fuzzystrmatch
 test: timeseries
+test: uuid
 test: caql
 test: icudp_no_fault_injection
 ignore: icudp_full

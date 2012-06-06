@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------
  *
  * cdbhash.c
- *	  Provides hashing routines to support consistant data distribution/location within Greenplum Database.
+ *	  Provides hashing routines to support consistent data distribution/location within Greenplum Database.
  *
  * Copyright (c) 2005-2008, Greenplum inc
  *
@@ -9,30 +9,32 @@
  */
 #include "postgres.h"
 
-#include <ctype.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <assert.h>
-#include "utils/builtins.h"
+#include <ctype.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include "catalog/pg_type.h"
-#include "parser/parse_type.h"
-#include "utils/numeric.h"
-#include "utils/inet.h"
-#include "utils/timestamp.h"
-#include "utils/array.h"
-#include "utils/date.h"
-#include "utils/cash.h"
-#include "utils/datetime.h"
-#include "utils/nabstime.h"
-#include "utils/varbit.h"
-#include "utils/acl.h"
-#include "fmgr.h"
-#include "utils/fmgroids.h"
-#include "utils/lsyscache.h"
-#include "utils/syscache.h"
-#include "utils/complex_type.h"
 #include "cdb/cdbhash.h"
 #include "cdb/cdbutil.h"
+#include "parser/parse_type.h"
+#include "fmgr.h"
+#include "utils/acl.h"
+#include "utils/array.h"
+#include "utils/builtins.h"
+#include "utils/cash.h"
+#include "utils/complex_type.h"
+#include "utils/date.h"
+#include "utils/datetime.h"
+#include "utils/fmgroids.h"
+#include "utils/inet.h"
+#include "utils/lsyscache.h"
+#include "utils/nabstime.h"
+#include "utils/numeric.h"
+#include "utils/syscache.h"
+#include "utils/timestamp.h"
+#include "utils/uuid.h"
+#include "utils/varbit.h"
+
 
 /*
  * 32 bit FNV-1 and FNV-1a non-zero initial basis
@@ -232,6 +234,7 @@ hashDatum(Datum datum, Oid type, datumHashFunction hashFn, void *clientData)
 	double		complex_imag;
 	AclItem	   *aclitem_ptr;
 	uint32		aclitem_buf;
+	pg_uuid_t  *uuid_buf;
 	
 	/*
 	 * special case buffers
@@ -635,6 +638,12 @@ hashDatum(Datum datum, Oid type, datumHashFunction hashFn, void *clientData)
 			buf = (unsigned char *) &complex_buf;
 			break;
 				
+		case UUIDOID:
+			uuid_buf = (pg_uuid_t *) DatumGetUUIDP(datum);
+			len = sizeof(pg_uuid_t);
+			buf = &(uuid_buf->data);
+			break;
+
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
@@ -799,6 +808,7 @@ bool isGreenplumDbHashable(Oid typid)
 		case OIDVECTOROID:	
 		case CASHOID: 
 		case COMPLEXOID:
+		case UUIDOID:
 			return true;
 		default:
 			return false;

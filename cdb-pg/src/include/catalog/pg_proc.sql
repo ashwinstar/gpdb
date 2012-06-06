@@ -5419,6 +5419,35 @@
 
  CREATE FUNCTION xml_is_well_formed_content(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed_content' WITH (OID=2990, DESCRIPTION="determine if a string is well formed XML content");
 
+-- function for UUID type 
+ CREATE FUNCTION uuid_in(cstring) RETURNS uuid LANGUAGE internal IMMUTABLE STRICT AS 'uuid_in' WITH (OID=2952, DESCRIPTION="I/O");
+ 
+ CREATE FUNCTION uuid_out(uuid) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'uuid_out' WITH (OID=2953, DESCRIPTION="I/O");
+ 
+ CREATE FUNCTION uuid_lt(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_lt' WITH (OID=2954, DESCRIPTION="less-than");
+ 
+ CREATE FUNCTION uuid_le(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_le' WITH (OID=2955, DESCRIPTION="less-than-or-equal");
+ 
+ CREATE FUNCTION uuid_eq(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_eq' WITH (OID=2956, DESCRIPTION="equal");
+ 
+ CREATE FUNCTION uuid_ge(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_ge' WITH (OID=2957, DESCRIPTION="greater-than-or-equal");
+ 
+ CREATE FUNCTION uuid_gt(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_gt' WITH (OID=2958, DESCRIPTION="greater-than");
+ 
+ CREATE FUNCTION uuid_ne(uuid, uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'uuid_ne' WITH (OID=2959, DESCRIPTION="not-equal");
+ 
+ CREATE FUNCTION uuid_cmp(uuid, uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'uuid_cmp' WITH (OID=2960, DESCRIPTION="btree less-equal-greater");
+ 
+ CREATE FUNCTION uuid_recv(internal) RETURNS uuid LANGUAGE internal IMMUTABLE STRICT AS 'uuid_recv' WITH (OID=2961, DESCRIPTION="I/O");
+ 
+ CREATE FUNCTION uuid_send(uuid) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'uuid_send' WITH (OID=2962, DESCRIPTION="I/O");
+ 
+ CREATE FUNCTION uuid_hash(uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'uuid_hash' WITH (OID=2963, DESCRIPTION="hash");
+ 
+ CREATE FUNCTION text_uuid(text) RETURNS uuid LANGUAGE internal IMMUTABLE STRICT AS 'text_uuid' WITH (OID=2964, DESCRIPTION="convert text to uuid");
+ 
+ CREATE FUNCTION uuid_text(uuid) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'uuid_text' WITH (OID=2965, DESCRIPTION="convert uuid to text");
+ 
 
 -- the bitmap index access method routines
  CREATE FUNCTION bmgettuple(internal, internal) RETURNS bool LANGUAGE internal VOLATILE STRICT AS 'bmgettuple' WITH (OID=3050, DESCRIPTION="bitmap(internal)");

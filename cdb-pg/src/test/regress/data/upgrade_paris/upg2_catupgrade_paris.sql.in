@@ -266,8 +266,8 @@ SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
 
 DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
 
-DROP SCHEMA __@gpupgradeschemaname@_gpmigrator;
 
+-- complex data type --
 CREATE TYPE @gpupgradeschemaname@.complex (oid=825);
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_in(cstring) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
@@ -457,7 +457,7 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.power(@gpupgradeschemaname@.complex, @
 
 CREATE FUNCTION @gpupgradeschemaname@.sqrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
 	AS 'complex_sqrt' WITH (OID=9085, DESCRIPTION="squre root");
-COMMENT ON FUNCTION @gpupgradeschemaname@.sqrt(@gpupgradeschemaname@.complex)  IS 'squre root';
+COMMENT ON FUNCTION @gpupgradeschemaname@.sqrt(@gpupgradeschemaname@.complex)  IS 'square root';
 
 CREATE FUNCTION @gpupgradeschemaname@.cbrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
 	AS 'complex_cbrt' WITH (OID=9086, DESCRIPTION="cube root");
@@ -466,6 +466,143 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.cbrt(@gpupgradeschemaname@.complex)  I
 CREATE FUNCTION @gpupgradeschemaname@.numeric2point("numeric") RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
 	AS 'numeric2complex' WITH (OID=9087, DESCRIPTION="(internal) type cast from numeric to complex");
 COMMENT ON FUNCTION @gpupgradeschemaname@.numeric2point("numeric")  IS '(internal) type cast from numeric to complex';
+
+-- uuid data type --
+CREATE TYPE @gpupgradeschemaname@.uuid(OID=2950);
+
+CREATE FUNCTION @gpupgradeschemaname@.uuid_in(cstring) RETURNS @gpupgradeschemaname@.uuid LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_in' WITH (OID=2952, DESCRIPTION="I/O");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_in(cstring) IS 'I/O';
+
+CREATE FUNCTION @gpupgradeschemaname@.uuid_out(@gpupgradeschemaname@.uuid) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_out' WITH (OID=2953, DESCRIPTION="I/O");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_out(@gpupgradeschemaname@.uuid) IS 'I/O';
+
+CREATE FUNCTION @gpupgradeschemaname@.uuid_recv(internal) RETURNS @gpupgradeschemaname@.uuid LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_recv' WITH (OID=2961, DESCRIPTION="I/O");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_recv(internal) IS 'I/O';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.uuid_send(@gpupgradeschemaname@.uuid) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_send' WITH (OID=2962, DESCRIPTION="I/O");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_send(@gpupgradeschemaname@.uuid) IS 'I/O';
+
+CREATE TYPE @gpupgradeschemaname@.uuid(
+   INPUT = @gpupgradeschemaname@.uuid_in,
+   OUTPUT = @gpupgradeschemaname@.uuid_out,
+   RECEIVE = @gpupgradeschemaname@.uuid_recv,
+   SEND = @gpupgradeschemaname@.uuid_send,
+   INTERNALLENGTH = 16,
+   STORAGE = plain,
+   ALIGNMENT = char
+ ); 
+COMMENT ON TYPE @gpupgradeschemaname@.uuid IS 'UUID data type';
+
+
+CREATE FUNCTION @gpupgradeschemaname@.uuid_lt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_lt' WITH (OID=2954, DESCRIPTION="less-than");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_lt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'less-than';
+
+CREATE FUNCTION @gpupgradeschemaname@.uuid_le(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_le' WITH (OID=2955, DESCRIPTION="less-than-or-equal");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_le(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'less-than-or-equal';
+
+CREATE FUNCTION @gpupgradeschemaname@.uuid_eq(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_eq' WITH (OID=2956, DESCRIPTION="equal");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_eq(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'equal';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.uuid_ge(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_ge' WITH (OID=2957, DESCRIPTION="greater-than-or-equal");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_ge(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'greater-than-or-equal';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.uuid_gt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_gt' WITH (OID=2958, DESCRIPTION="greater-than");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_gt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'greater-than';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.uuid_ne(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_ne' WITH (OID=2959, DESCRIPTION="not-equal");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_ne(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'not-equal';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.uuid_cmp(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_cmp' WITH (OID=2960, DESCRIPTION="btree less-equal-greater");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_cmp(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'btree less-equal-greater';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.uuid_hash(@gpupgradeschemaname@.uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_hash' WITH (OID=2963, DESCRIPTION="hash");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_hash(@gpupgradeschemaname@.uuid) IS 'hash';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.text_uuid(text) RETURNS @gpupgradeschemaname@.uuid LANGUAGE internal IMMUTABLE STRICT 
+	AS 'text_uuid' WITH (OID=2964, DESCRIPTION="convert text to uuid");
+COMMENT ON FUNCTION @gpupgradeschemaname@.text_uuid(text) IS 'convert text to uuid';
+ 
+CREATE FUNCTION @gpupgradeschemaname@.uuid_text(@gpupgradeschemaname@.uuid) RETURNS text LANGUAGE internal IMMUTABLE STRICT 
+	AS 'uuid_text' WITH (OID=2965, DESCRIPTION="convert uuid to text");
+COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_text(@gpupgradeschemaname@.uuid) IS 'convert uuid to text';
+
+-- Create Operator Class for UUID
+--		add entries to pg_opclass
+\set pg_opclass_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_opclass.data'"`
+
+COPY @gpupgradeschemaname@.pg_opclass FROM
+    :pg_opclass_datafile WITH OIDS DELIMITER ',';
+
+CREATE EXTERNAL WEB TABLE
+    __@gpupgradeschemaname@_gpmigrator.pg_opclass_load(database text,
+                                                       port text,
+                                                       status text)
+    EXECUTE E' PGOPTIONS=''-c gp_session_role=utility'' \\
+        psql -q --set ON_ERROR_STOP=ON -p $GP_SEG_PORT \\
+        --command "copy @gpupgradeschemaname@.pg_opclass from \\
+        ''$GPHOME/share/postgresql/upgrade/pg_opclass.data'' with oids csv" \\
+        $GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
+    FORMAT 'csv';
+
+SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_opclass_load;
+
+DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_opclass_load;
+
+--		add entries to pg_amop
+\set pg_amop_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_amop.data'"`
+
+COPY @gpupgradeschemaname@.pg_amop FROM
+    :pg_amop_datafile DELIMITER ',';
+
+CREATE EXTERNAL WEB TABLE
+    __@gpupgradeschemaname@_gpmigrator.pg_amop_load(database text,
+                                                    port text,
+                                                    status text)
+    EXECUTE E' PGOPTIONS=''-c gp_session_role=utility'' \\
+        psql -q --set ON_ERROR_STOP=ON -p $GP_SEG_PORT \\
+        --command "copy @gpupgradeschemaname@.pg_amop from \\
+        ''$GPHOME/share/postgresql/upgrade/pg_amop.data'' csv" \\
+        $GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
+    FORMAT 'csv';
+
+SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_amop_load;
+
+DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_amop_load;
+
+--		add entries to pg_amproc
+\set pg_amproc_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_amproc.data'"`
+
+COPY @gpupgradeschemaname@.pg_amproc FROM
+    :pg_amproc_datafile DELIMITER ',';
+
+CREATE EXTERNAL WEB TABLE
+    __@gpupgradeschemaname@_gpmigrator.pg_amproc_load(database text,
+                                                      port text,
+                                                      status text)
+    EXECUTE E' PGOPTIONS=''-c gp_session_role=utility'' \\
+        psql -q --set ON_ERROR_STOP=ON -p $GP_SEG_PORT \\
+        --command "copy @gpupgradeschemaname@.pg_amproc from \\
+        ''$GPHOME/share/postgresql/upgrade/pg_amproc.data'' csv" \\
+        $GP_DATABASE $GP_USER && echo "$GP_DATABASE, $GP_SEG_PORT, done";'
+    FORMAT 'csv';
+
+SELECT * FROM __@gpupgradeschemaname@_gpmigrator.pg_amproc_load;
+
+DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_amproc_load;
+
+DROP SCHEMA __@gpupgradeschemaname@_gpmigrator;
 
 -- MPP-17173/ MPP-17183 - eliminate NULLs in pg_extprotocol's OID columns
 UPDATE pg_extprotocol

@@ -837,13 +837,18 @@ select stmt from (
     select stmt from catdump.DDL where ver = '4.2u'
 ) missing order by md5(stmt);
                                                                                                          stmt
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  CREATE OPERATOR pg_catalog.<>(   PROCEDURE = pg_catalog.complex_ne,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex,   NEGATOR = =,   RESTRICT = pg_catalog.neqsel,   JOIN = pg_catalog.neqjoinsel );
  CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.complex_mi,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
  CREATE OPERATOR pg_catalog.*(   PROCEDURE = pg_catalog.int82mul,   LEFTARG = pg_catalog.int8,   RIGHTARG = pg_catalog.int2 );
  CREATE OPERATOR pg_catalog.||/(   PROCEDURE = pg_catalog.complex_cbrt,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.<>(   PROCEDURE = pg_catalog.uuid_ne,   LEFTARG = pg_catalog.uuid,   RIGHTARG = pg_catalog.uuid,   NEGATOR = =,   RESTRICT = pg_catalog.neqsel,   JOIN = pg_catalog.neqjoinsel );
+ CREATE OPERATOR pg_catalog.<(   PROCEDURE = pg_catalog.uuid_lt,   LEFTARG = pg_catalog.uuid,   RIGHTARG = pg_catalog.uuid,   RESTRICT = pg_catalog.scalarltsel,   JOIN = pg_catalog.scalarltjoinsel );
  CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.complex_pl,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
  CREATE OPERATOR pg_catalog.^(   PROCEDURE = pg_catalog.complex_power,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR CLASS uuid_ops DEFAULT FOR TYPE pg_catalog.uuid USING btree AS   OPERATOR 1 pg_catalog.<(pg_catalog.uuid, pg_catalog.uuid),   OPERATOR 2 pg_catalog.<=(pg_catalog.uuid, pg_catalog.uuid),   OPERATOR 3 pg_catalog.=(pg_catalog.uuid, pg_catalog.uuid),   OPERATOR 4 pg_catalog.>=(pg_catalog.uuid, pg_catalog.uuid),   OPERATOR 5 pg_catalog.>(pg_catalog.uuid, pg_catalog.uuid),   FUNCTION 1 pg_catalog.uuid_cmp(pg_catalog.uuid, pg_catalog.uuid);
+ CREATE OPERATOR pg_catalog.<=(   PROCEDURE = pg_catalog.uuid_le,   LEFTARG = pg_catalog.uuid,   RIGHTARG = pg_catalog.uuid,   RESTRICT = pg_catalog.scalarltsel,   JOIN = pg_catalog.scalarltjoinsel );
+ CREATE OPERATOR pg_catalog.=(   PROCEDURE = pg_catalog.uuid_eq,   LEFTARG = pg_catalog.uuid,   RIGHTARG = pg_catalog.uuid,   RESTRICT = pg_catalog.eqsel,   JOIN = pg_catalog.eqjoinsel,   HASHES );
  CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.int28mi,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8 );
  CREATE OPERATOR pg_catalog.=(   PROCEDURE = pg_catalog.complex_eq,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex,   RESTRICT = pg_catalog.eqsel,   JOIN = pg_catalog.eqjoinsel );
  CREATE OPERATOR pg_catalog./(   PROCEDURE = pg_catalog.complex_div,   LEFTARG = pg_catalog.complex,   RIGHTARG = pg_catalog.complex );
@@ -853,12 +858,15 @@ select stmt from (
  CREATE OPERATOR pg_catalog.%(   PROCEDURE = pg_catalog.interval_interval_mod,   LEFTARG = pg_catalog."interval",   RIGHTARG = pg_catalog."interval" );
  CREATE OPERATOR pg_catalog./(   PROCEDURE = pg_catalog.int28div,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8 );
  CREATE OPERATOR pg_catalog.*(   PROCEDURE = pg_catalog.int28mul,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8,   COMMUTATOR = * );
+ CREATE OPERATOR CLASS uuid_ops DEFAULT FOR TYPE pg_catalog.uuid USING hash AS   OPERATOR 1 pg_catalog.=(pg_catalog.uuid, pg_catalog.uuid),   FUNCTION 1 pg_catalog.uuid_hash(pg_catalog.uuid);
  CREATE OPERATOR pg_catalog.@(   PROCEDURE = pg_catalog.complexabs,   RIGHTARG = pg_catalog.complex );
+ CREATE OPERATOR pg_catalog.>(   PROCEDURE = pg_catalog.uuid_gt,   LEFTARG = pg_catalog.uuid,   RIGHTARG = pg_catalog.uuid,   COMMUTATOR = <,   NEGATOR = <=,   RESTRICT = pg_catalog.scalargtsel,   JOIN = pg_catalog.scalargtjoinsel );
  CREATE OPERATOR pg_catalog.|/(   PROCEDURE = pg_catalog.complex_sqrt,   RIGHTARG = pg_catalog.complex );
  CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.int82mi,   LEFTARG = pg_catalog.int8,   RIGHTARG = pg_catalog.int2 );
+ CREATE OPERATOR pg_catalog.>=(   PROCEDURE = pg_catalog.uuid_ge,   LEFTARG = pg_catalog.uuid,   RIGHTARG = pg_catalog.uuid,   COMMUTATOR = <=,   NEGATOR = <,   RESTRICT = pg_catalog.scalargtsel,   JOIN = pg_catalog.scalargtjoinsel );
  CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.complex_up,   RIGHTARG = pg_catalog.complex );
  CREATE OPERATOR pg_catalog.-(   PROCEDURE = pg_catalog.complex_um,   RIGHTARG = pg_catalog.complex );
  CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.int28pl,   LEFTARG = pg_catalog.int2,   RIGHTARG = pg_catalog.int8,   COMMUTATOR = + );
  CREATE OPERATOR pg_catalog.+(   PROCEDURE = pg_catalog.int82pl,   LEFTARG = pg_catalog.int8,   RIGHTARG = pg_catalog.int2 );
-(22 rows)
+(30 rows)
 

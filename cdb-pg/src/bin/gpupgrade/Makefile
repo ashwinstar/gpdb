@@ -25,7 +25,10 @@ UPGRADEFILES = $(DATADIR)/upgrade/upg2_catupgrade.sql \
 			   $(DATADIR)/upgrade_paris/upg2_catupgrade_paris.sql
 
 DATAFILES = $(DATADIR)/upgrade_paris/pg_cast.data \
-			$(DATADIR)/upgrade_paris/pg_operator.data
+			$(DATADIR)/upgrade_paris/pg_operator.data \
+			$(DATADIR)/upgrade_paris/pg_opclass.data \
+			$(DATADIR)/upgrade_paris/pg_amop.data \
+			$(DATADIR)/upgrade_paris/pg_amproc.data 
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade

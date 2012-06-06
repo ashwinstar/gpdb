@@ -543,6 +543,16 @@ DATA(insert (	 397	0 4 f 1075 ));
 DATA(insert (	 397	0 5 f 1073 ));
 
 /*
+ * btree uuid_ops
+ */
+
+DATA(insert (  3075  0 1 f 3069 ));
+DATA(insert (  3075  0 2 f 3070 ));
+DATA(insert (  3075  0 3 f 3071 ));
+DATA(insert (  3075  0 4 f 3072 ));
+DATA(insert (  3075  0 5 f 3073 ));
+
+/*
  *	hash index _ops
  */
 
@@ -614,6 +624,9 @@ DATA(insert (	2232	0 1 f 2334 ));
 DATA(insert (	2235	0 1 f  974 ));
 /* numeric_ops */
 DATA(insert (	7676    0 1 f 1752 ));
+/* uuid_ops */
+DATA(insert (	3076	0 1 f 3071 ));
+
 
 /*
  *	gist box_ops

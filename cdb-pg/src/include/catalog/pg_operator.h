@@ -1002,6 +1002,14 @@ DATA(insert OID = 2875 (  "@"	   PGNSP PGUID b f 601 628 16	  0  0 0 0 0 0 on_sl
 DATA(insert OID = 2876 (  "@"	   PGNSP PGUID b f 601 603 16	  0  0 0 0 0 0 on_sb - - ));
 DATA(insert OID = 2877 (  "~"	   PGNSP PGUID b f 1034 1033	 16 0 0 0 0 0 0 aclcontains - - ));
 
+/* uuid operators */
+DATA(insert OID = 3069 (  "<"	   PGNSP PGUID b f 2950 2950 16 3073 3072 0 0 0 0 uuid_lt scalarltsel scalarltjoinsel ));
+DATA(insert OID = 3070 (  "<="	   PGNSP PGUID b f 2950 2950 16 3072 3073 0 0 0 0 uuid_le scalarltsel scalarltjoinsel ));
+DATA(insert OID = 3071 (  "="      PGNSP PGUID b t 2950 2950 16 3071 3074 0 0 0 0 uuid_eq eqsel eqjoinsel ));
+DATA(insert OID = 3072 (  ">="	   PGNSP PGUID b f 2950 2950 16 3070 3069 0 0 0 0 uuid_ge scalargtsel scalargtjoinsel ));
+DATA(insert OID = 3073 (  ">"	   PGNSP PGUID b f 2950 2950 16 3069 3070 0 0 0 0 uuid_gt scalargtsel scalargtjoinsel ));
+DATA(insert OID = 3074 (  "<>"	   PGNSP PGUID b f 2950 2950 16 3074 3071 0 0 0 0 uuid_ne neqsel neqjoinsel ));
+
 /* operators for complex data type */
 DATA(insert OID = 9071 (  "="	   PGNSP PGUID b f 825 825 16 9071 9072 0 0 0 0 complex_eq eqsel eqjoinsel)); 
 #define ComplexEqualOperator 9071

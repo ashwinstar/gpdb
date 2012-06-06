@@ -707,6 +707,17 @@
 -- ARRAY TYPE regtype
 -- #define REGTYPEARRAYOID 2211
 
+ CREATE TYPE uuid(
+   INPUT = uuid_in,
+   OUTPUT = uuid_out,
+   RECEIVE = uuid_recv,
+   SEND = uuid_send,
+   INTERNALLENGTH = 16,
+   STORAGE = plain,
+   ALIGNMENT = char
+ ) WITH (OID=2950, ARRAYOID=2951, DESCRIPTION="UUID datatype");
+ -- #define UUIDOID 2950
+
  CREATE TYPE txid_snapshot(
    INPUT = txid_snapshot_in,
    OUTPUT = txid_snapshot_out,
