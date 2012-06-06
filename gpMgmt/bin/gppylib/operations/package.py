@@ -424,6 +424,21 @@ class ValidateInstallPackage(Operation):
     def __init__(self, gppkg, is_update = False):
         self.gppkg = gppkg
         self.is_update = is_update
+
+    def get_os(self):
+        dist, release, _ = platform.dist()
+        major_release = release.partition('.')[0]
+
+        os_string = ''
+        if dist.lower() == 'redhat':
+            os_string += 'rhel'
+        elif dist.lower() == 'suse':
+            os_string += 'suse'
+
+        os_string += major_release
+    
+        return os_string
+        
     def execute(self):
         #Check the GPDB requirements
         if not IsVersionCompatible(self.gppkg).run():
@@ -431,8 +446,8 @@ class ValidateInstallPackage(Operation):
 
         # TODO: AK: I've changed our use of the OS tag from 'Linux' to 'rhel5' or 'suse10'.
         # So, the two lines below will not work properly.
-        #if self.gppkg.os.lower() != platform.system().lower():
-        #    raise OSCompatibilityError(self.gppkg.os, platform.system().lower())
+        if self.gppkg.os.lower() != self.get_os():
+            raise OSCompatibilityError(self.gppkg.os, self.get_os())
 
         #architecture compatibility
         if self.gppkg.architecture.lower() !=  platform.machine().lower():
