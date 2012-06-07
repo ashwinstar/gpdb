@@ -68,7 +68,7 @@ def makeCommand(oldHome, newHome,
 def logGenericErrorMessage():
     logger.fatal('Upgrade Failed..!!!')
     logger.fatal('...Database might be in an unusable state')
-    logger.fatal('...Please check the logs, resolve the issue an re-run gpmigrator_mirror')
+    logger.fatal('...Please check the logs, resolve the issue, and re-run gpmigrator_mirror.')
 
 
 #============================================================
