@@ -558,14 +558,15 @@ processCopyEndResults(CdbCopy *c,
 				
 			if (PQresultStatus(res) == PGRES_COPY_IN)
 			{
-				elog(LOG,"Bug, still in copy in, retrying the putCopyEnd");
-				result = PQputCopyEnd(q->conn, NULL);
+				elog(DEBUG1,"Segment still in copy in, retrying the putCopyEnd");
+				PQputCopyEnd(q->conn, NULL);
 			}
 
 			if (PQresultStatus(res) == PGRES_COPY_OUT)
 			{
-				elog(LOG,"Segment still in copy out, cleaning retrying the putCopyEnd");
-				result = PQputCopyEnd(q->conn, NULL);
+				elog(DEBUG1,"Segment still in copy out, retrying the cdbCopyGetData");
+				uint64 rows_processed = 0;
+				cdbCopyGetData(c, true /* copy_cancel */, &rows_processed);
 			}
 
 			/* in SREH mode, check if this seg rejected (how many) rows */
