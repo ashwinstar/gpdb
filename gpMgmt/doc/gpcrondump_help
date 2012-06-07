@@ -9,7 +9,7 @@ SYNOPSIS
 
 gpcrondump -x <database_name> 
      [-s <schema> | -t <schema>.<table> | -T <schema>.<table>] 
-     [--table-file="<filename>" | --exclude-table-file="<filename>"] 
+     [--table-file=<filename> | --exclude-table-file=<filename>] 
      [-u <backup_directory>] [-R <post_dump_script>] 
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
@@ -78,7 +78,10 @@ OPTIONS
 
 -b (bypass disk space check)
 
- Bypass disk space check. The default is to check for available disk space.
+ Bypass disk space check. The default is to check for available disk space
+ unless -ddboost is specified. When using Data Domain Boost, this option is 
+ always enabled.
+
 
  Note: Bypassing the disk space check generates a warning message. 
  With a warning message, the return code for gpcrondump is 1 if the 
@@ -97,6 +100,9 @@ OPTIONS
  Clear out old dump files before doing the dump. The default is not to 
  clear out old dump files. This will remove all old dump directories in 
  the db_dumps directory, except for the dump directory of the current date.
+ 
+ If --ddboost is specified, only the old files on Data Domain Boost are 
+ deleted.
 
 
 -C (clean old catalog dumps)
@@ -128,12 +134,11 @@ OPTIONS
       compress the backup data before sending it to the Data
       Domain System.            
       
-  When running a mixed backup that backs up to both
-  a local disk and to Data Domain, use the -u option
-  to specify that the backup to the local disk does not
-  use the default directory. 
+  You can run a mixed backup that writes to both a local disk 
+  and Data Domain. If you want to use a backup directory on your 
+  local disk other than the default, use the –u option.
   
-  The -f, -G, -g, -R, and -u options change if 
+  The -b, -c, -f, -G, -g, -R, and -u options change if 
   --ddboost is specified. See the options for details.
 
   Important: Never use the Greenplum Database default backup 
@@ -314,15 +319,15 @@ gpcrondump option.
  A table name to exclude from the database dump. 
  The -T option can be specified multiple times.
 
---exclude-table-file="<filename>"
+--exclude-table-file=<filename>
 
-  Exclude all tables listed in <filename> from the 
+  Excludes all tables listed in <filename> from the 
   database dump. The file <filename> contains any 
   number of tables, listed one per line.
 
---table-file="<filename>"
+--table-file=<filename>
 
-  Dump only the tables listed in <filename>.
+  Dumps only the tables listed in <filename>.
   The file <filename> contains any 
   number of tables, listed one per line.
 

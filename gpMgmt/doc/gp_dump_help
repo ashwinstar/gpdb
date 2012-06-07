@@ -9,13 +9,12 @@ SYNOPSIS
 
 gp_dump [-a | -s] [-c] [-d] [-D] [-n <schema>] [-o] [-O] 
 [-t <table_name>] [-T table_name] 
-[--table-file="<filename>" | --exclude-table-file="<filename>"] 
 [-x] [-h <hostname>] 
 [-p <port>] [-U <username>] [-W] [-i] [-v] 
 [--gp-c] [--gp-d=<backup_directory>] 
-[--gp-r=<reportfile>] [--gp-s=a|p] <database_name> 
+[--gp-r=<reportfile>] [--gp-s=<dbid>] <database_name> 
 
-gp_dump -? | -h | --help
+gp_dump -? | --help
 
 gp_dump --version
 
@@ -46,12 +45,6 @@ following dump files by default:
 
 ON THE MASTER HOST
 
-* Dumps the Greenplum configuration system catalog tables into a SQL 
-  file in the master data directory. The default naming convention of 
-  this file is gp_catalog_1_<dbid>_<timestamp>. This file can be used 
-  by the gprebuildsystem script to recover a Greenplum Database system in 
-  various situations.
-
 * Dumps CREATE DATABASE SQL statements into a file in the master data 
   directory. The default naming convention of this file is 
   gp_cdatabase_1_<dbid>_<timestamp>. This can be run on 
@@ -61,6 +54,13 @@ ON THE MASTER HOST
   data directory. The default naming convention of this file is 
   gp_dump_1_<dbid>_<timestamp>. This file is used by gp_restore 
   to recreate the database schema(s).
+
+* Creates a dump file in the master data directory named 
+  gp_dump_1_<dbid>_<timestamp>_post_data that contains commands to 
+  rebuild objects associated with the tables.
+  When the database is restored with gp_restore, first the schema 
+  and data are restored, then the dump file is used to rebuilt 
+  the other objects associated with the tables.
 
 * Creates a log file in the master data directory named 
   gp_dump_status_1_<dbid>_<timestamp>.
@@ -192,17 +192,6 @@ that match at least one -t switch but no -T switches. If -T appears
 without -t, then tables matching -T are excluded from what is otherwise 
 a normal dump.
 
---exclude-table-file="<filename>"
-
-  Exclude all tabes listed in <filename> from the 
-  database dump. The file <filename> contains any 
-  number of tables, listed one per line.
-
---table-file="<filename>"
-
-  Dump only the tables listed in <filename>.
-  The file <filename> contains any 
-  number of tables, listed one per line.
 
 -x
 --no-privileges
@@ -276,12 +265,11 @@ placed on the master host. If not specified, defaults to the master
 data directory or the current directory if running remotely.
 
 
---gp-s={a|p}
+--gp-s=<dbid> (backup certain segments)
 
-Specifies the set of segment instances to back up - (a)ll or (p)rimaries 
-only. The default is to backup only the primary (or active) segment 
-instances and then use those copies to recreate the mirror segment 
-instances at restore time.
+Specifies the set of active segment instances to back up with a 
+comma-separated list of the segments dbid. The default is to 
+backup all active segment instances.
 
 
 <database_name>
@@ -291,7 +279,7 @@ the value of $PGDATABASE will be used. The database name must be
 stated last after all other options have been specified.
 
 
--? | -h | --help
+-? | --help
 
 Displays the online help.
 
