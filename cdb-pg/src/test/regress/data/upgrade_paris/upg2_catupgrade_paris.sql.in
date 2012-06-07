@@ -169,7 +169,8 @@ CREATE TYPE @gpupgradeschemaname@.txid_snapshot(
 	SEND = @gpupgradeschemaname@.txid_snapshot_send,
 	INTERNALLENGTH = -1,
 	STORAGE = extended,
-	ALIGNMENT = double
+	ALIGNMENT = double,
+	SHADOWOID = 2923
 );
 COMMENT ON TYPE @gpupgradeschemaname@.txid_snapshot IS 'xid snapshot';
 
@@ -295,7 +296,8 @@ CREATE TYPE @gpupgradeschemaname@.complex(
    STORAGE = plain,
    DELIMITER = ',',
    ALIGNMENT = double,
-   TYPTYPE = 'b'
+   TYPTYPE = 'b',
+   SHADOWOID = 2972
 );
 COMMENT ON TYPE @gpupgradeschemaname@.complex IS 'double-precision floating point complex number, 16-byte storage';
 
@@ -493,7 +495,8 @@ CREATE TYPE @gpupgradeschemaname@.uuid(
    SEND = @gpupgradeschemaname@.uuid_send,
    INTERNALLENGTH = 16,
    STORAGE = plain,
-   ALIGNMENT = char
+   ALIGNMENT = char,
+   SHADOWOID = 2951
  ); 
 COMMENT ON TYPE @gpupgradeschemaname@.uuid IS 'UUID data type';
 
