@@ -1855,49 +1855,53 @@ def checkPGClass():
 
 
 #############
-def checkPGNamespace():
+def checkRemoveLeakedTempSchema():
+    # MPP-16655: 
+    #     This test is to check for leaked temp table & schema
+    #     It will also automatically remove them if found
     logger.info('-----------------------------------')
     logger.info('Checking for leaked temporary schemas')
-    db = connect2(GV.cfg[1], utilityMode=False)
-    
-    # The simpler form of this query that pushed the union into the
-    # inner select does not run correctly on 3.2.x
-    qry = '''
-    SELECT distinct nspname as schema
-    FROM (
-      SELECT nspname, replace(nspname, 'pg_temp_','')::int as sess_id
-      FROM   gp_dist_random('pg_namespace')
-      WHERE  nspname ~ '^pg_temp_[0-9]+'
-    ) n LEFT OUTER JOIN pg_stat_activity x using (sess_id)
-    WHERE x.sess_id is null
-    UNION
-    SELECT nspname as schema
-    FROM (
-      SELECT nspname, replace(nspname, 'pg_temp_','')::int as sess_id
-      FROM   pg_namespace
-      WHERE  nspname ~ '^pg_temp_[0-9]+'
-    ) n LEFT OUTER JOIN pg_stat_activity x using (sess_id)
-    WHERE x.sess_id is null
-    '''
+
+    qry = """
+          SELECT n.nspname, n.sess_id
+            FROM 
+                (select nspname, replace(nspname,'pg_temp_','')::int as sess_id
+                   from pg_namespace
+                  where nspname ~ '^pg_temp_[0-9]+'
+                 union all
+                 select nspname, replace(nspname,'pg_temp_','')::int as sess_id
+                   from gp_dist_random('pg_namespace')
+                  where nspname ~ '^pg_temp_[0-9]+'
+                ) as n
+           LEFT OUTER JOIN pg_stat_activity as x
+             ON (n.sess_id = x.sess_id)
+          WHERE x.sess_id is null;
+          """
     try:
+        db = connect()
         curs = db.query(qry)
         if curs.ntuples() == 0:
             logger.info('[OK] temporary schemas')
-        else: 
-            GV.testStatus = False
-            setError(ERROR_REMOVE)
+        else:
             logger.info('[FAIL] temporary schemas')
             logger.error('found %d unbound temporary schemas' % curs.ntuples())
             for row in curs.getresult():
                 logger.error("  ... %s" % row[0])
-                GV.Schemas.append(row[0])
+            logger.info('Remove leaked temporary schemas')
+            for row in curs.dictresult():
+                qry = 'DROP SCHEMA IF EXISTS "%s" CASCADE;' % row['nspname']
+                db.query(qry)
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPGNamespace')
+        myprint('[ERROR] executing test: checkLeakedTempSchema')
         myprint('  Execution error: ' + str(e))
 
+
+#############
+def checkPGNamespace():
     # Check for objects in various catalogs that are in a schema that has
     # been dropped.
+    logger.info('-----------------------------------')
     logger.info('Checking missing schema definitions ...')
     qry = '''
     SELECT o.catalog, o.nsp
@@ -3551,6 +3555,14 @@ def duplicateEntryQuery(catname, pkey):
 ############################################################################
 
 name_test = {
+    "tempschema":
+    {
+         "description": "Check for leaked temp schemas and remove them if found",
+         "fn": lambda: checkRemoveLeakedTempSchema(),
+         "version": 'main',
+         "order": 0,
+         "online": True
+    },
     "duplicate":
     {
          "description": "Check for duplicate entries",
@@ -3609,7 +3621,7 @@ name_test = {
     },
     "namespace":
     {
-         "description": "Check for leaked temporary schema and missing schema definition",
+         "description": "Check for missing schema definition",
          "fn": lambda: checkPGNamespace(),
          "version": 'main',
          "order": 8,
