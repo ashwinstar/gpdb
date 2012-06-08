@@ -1309,7 +1309,7 @@ CleanupMotionUDP(void)
 	 * do not match when we reach here. The process will die in this case, the mismatch does
 	 * not introduce issues.
 	 */
-	if (icudp_malloc_times == 0)
+	if (icudp_malloc_times != 0)
 		elog(LOG, "WARNING: malloc times and free times do not match.");
 #endif
 }
