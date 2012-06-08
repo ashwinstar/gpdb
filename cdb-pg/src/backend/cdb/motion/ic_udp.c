@@ -726,7 +726,7 @@ static void handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt);
 static inline void prepareXmit(MotionConn *conn);
 static inline void addCRC(icpkthdr *pkt);
 static inline bool checkCRC(icpkthdr *pkt);
-static void sendBuffers(MotionConn *conn);
+static inline void sendBuffers(MotionConn *conn);
 static void sendOnce(ICBuffer *buf, MotionConn * conn);
 static inline uint64 computeExpirationPeriod(MotionConn *conn, uint32 retry);
 
