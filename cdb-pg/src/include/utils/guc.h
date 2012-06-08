@@ -400,6 +400,7 @@ extern void EmitWarningsOnPlaceholders(const char *className);
 extern const char *GetConfigOption(const char *name);
 extern const char *GetConfigOptionResetString(const char *name);
 extern bool IsSuperuserConfigOption(const char *name);
+extern bool IsSusetDependOption(const char *name);
 extern void ProcessConfigFile(GucContext context);
 extern void InitializeGUCOptions(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);

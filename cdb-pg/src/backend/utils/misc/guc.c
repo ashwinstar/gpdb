@@ -3878,7 +3878,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("This much memory may be used by each internal "
 						 "sort operation and hash table before switching to "
 						 "temporary disk files."),
-			GUC_UNIT_KB | GUC_GPDB_ADDOPT
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT | GUC_GPDB_DEPEND_SUSET
 		},
 		&work_mem,
 #ifdef USE_ASSERT_CHECKING      /* allow executor testing with low memory */
@@ -3912,7 +3912,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"statement_mem", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the memory to be reserved for a statement."),
 			NULL,
-			GUC_UNIT_KB | GUC_GPDB_ADDOPT
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT | GUC_GPDB_DEPEND_SUSET
 		},
 		&statement_mem,
 #ifdef USE_ASSERT_CHECKING
@@ -8980,6 +8980,23 @@ IsSuperuserConfigOption(const char *name)
 		return false;
 	return (record->context == PGC_SUSET);
 }
+
+/*
+ * Detect whether the given configuration option depends on a GUC
+ * settable by super-user.
+ */
+bool
+IsSusetDependOption(const char *name)
+{
+	struct config_generic *record;
+
+	record = find_option(name, ERROR);
+	/* On an unrecognized name, don't error, just return false. */
+	if (record == NULL)
+		return false;
+	return ((record->flags & GUC_GPDB_DEPEND_SUSET) != 0);
+}
+
 
 
 /*

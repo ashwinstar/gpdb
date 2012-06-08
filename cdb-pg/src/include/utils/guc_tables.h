@@ -184,6 +184,16 @@ struct config_generic
 
 #define GUC_DISALLOW_USER_SET  0x10000 /* Do not allow this GUC to be set by the user */
 
+/*
+ * This guc depends on another super-user settable guc, for example,
+ * statement_mem depends on max_statement_mem, that is, statement_mem
+ * can not be greater than max_statement_mem.
+ *
+ * During a backend starts up, we need to make sure that these GUCS
+ * are set after the super-user settable gucs. 
+ */
+#define GUC_GPDB_DEPEND_SUSET  0x20000
+
 /* bit values in status field */
 #define GUC_HAVE_TENTATIVE	0x0001		/* tentative value is defined */
 #define GUC_HAVE_LOCAL		0x0002		/* a SET LOCAL has been executed */

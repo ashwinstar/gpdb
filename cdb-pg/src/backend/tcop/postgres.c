@@ -3816,6 +3816,162 @@ get_stats_option_name(const char *arg)
 	return NULL;
 }
 
+/*
+ * AppendGucSetting
+ *   Append a given GUC name and value to the given lists.
+ *
+ * Note that name and value are copied.
+ */
+static void
+AppendGucSetting(List **gucNames,
+				 List **gucValues,
+				 const char *name,
+				 const char *value)
+{
+	Assert(gucNames != NULL && gucValues != NULL);
+	
+	*gucNames = lappend(*gucNames, pstrdup(name));
+	*gucValues = lappend(*gucValues, pstrdup(value));
+}
+
+/*
+ * SetStartupConfigOptions
+ *   Process GUC settings passed in through startup packets.
+ *
+ * GUC names and values are stored in the same list, with one GUC
+ * after the other and the name before the value.
+ *
+ * GUC settings are handled as follows:
+ * (1) For super-user settable GUCs, it is appended into susetGucNames/susetGucValues.
+ * (2) For GUCs that depend on super-user settable GUCs, it is appended into
+ *     dependGucNames/dependGucValues.
+ * (3) Otherwise, set the GUC to the given value.
+ */
+static void
+ProcessStartupConfigOptions(List *options,
+							List **susetGucNames,
+							List **susetGucValues,
+							List **dependGucNames,
+							List **dependGucValues)
+{
+	ListCell *gucOpts = list_head(options);
+	
+	while (gucOpts)
+	{
+		char *name = lfirst(gucOpts);
+		gucOpts = lnext(gucOpts);
+		
+		char *value = lfirst(gucOpts);
+		gucOpts = lnext(gucOpts);
+		
+		if (IsSuperuserConfigOption(name))
+		{
+			AppendGucSetting(susetGucNames, susetGucValues, name, value);
+		}
+		else if (IsSusetDependOption(name))
+		{
+			AppendGucSetting(dependGucNames, dependGucValues, name, value);
+		}
+		else
+		{
+			SetConfigOption(name, value, PGC_BACKEND, PGC_S_CLIENT);
+		}
+	}
+}
+
+/*
+ * SetConfigOptionList
+ *   Set GUC settings stored in the given lists.
+ */
+static void
+SetConfigOptionList(List *names,
+					List *values,
+					GucContext context,
+					GucSource source)
+{
+	ListCell *nameCell = NULL;
+	ListCell *valueCell = NULL;
+	
+	forboth(nameCell, names, valueCell, values)
+	{
+		char *name = (char *) lfirst(nameCell);
+		char *value = (char *) lfirst(valueCell);
+		
+		SetConfigOption(name, value, context, source);
+	}
+}
+
+/*
+ * ProcessCommandLineConfigOption
+ *   Process a GUC setting passed through command line arguments.
+ *
+ * The command line argument is passed by getopt() into 'optionArg', and
+ * the next option character 'nextOption'. 
+ *
+ * Guc settings are handled as follows:
+ * (1) For super-user settable GUCs, it is appended into susetGucNames/susetGucValues.
+ * (2) For GUCs that depend on super-user settable GUCs, it is appended into
+ *     dependGucNames/dependGucValues.
+ * (3) Otherwise, set the GUC to the given value.
+ */
+static void
+ProcessCommandLineConfigOption(const char *optionArg,
+							   int nextOption,
+							   List **susetGucNames,
+							   List **susetGucValues,
+							   List **dependGucNames,
+							   List **dependGucValues,
+							   GucContext ctx,
+							   GucSource gucsource)
+{
+	char *name = NULL;
+	char *value = NULL;
+
+	ParseLongOption(optionArg, &name, &value);
+	if (!value)
+	{
+		if (nextOption == '-')
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("--%s requires a value",
+							optionArg)));
+		}
+		
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("-c %s requires a value",
+							optionArg)));
+		}
+	}
+
+	/*
+	 * If a SUSET option, must postpone evaluation, unless we
+	 * are still reading secure switches.
+	 */
+	if (ctx == PGC_BACKEND && IsSuperuserConfigOption(name))
+	{
+		AppendGucSetting(susetGucNames, susetGucValues, name, value);
+	}
+					
+	else if (ctx == PGC_BACKEND && IsSusetDependOption(name))
+	{
+		AppendGucSetting(dependGucNames, dependGucValues, name, value);
+	}
+	else
+	{
+		SetConfigOption(name, value, ctx, gucsource);
+	}
+					
+	free(name);
+	if (value)
+	{
+		free(value);
+	}
+}
+
 /* ----------------------------------------------------------------
  * PostgresMain
  *	   postgres main loop -- all backends, interactive or otherwise start here
@@ -3835,8 +3991,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 	bool		secure;
 	int			errs = 0;
 	int			debug_flag = -1;	/* -1 means not given */
-	List	   *guc_names = NIL;	/* for SUSET options */
-	List	   *guc_values = NIL;
+	List	   *susetGucNames = NIL;	/* for SUSET options */
+	List	   *susetGucValues = NIL;
+	/* For GUCs that depend on super-user settable GUCs */
+	List       *dependGucNames = NIL;
+	List       *dependGucValues = NIL;
 	GucContext	ctx;
 	GucSource	gucsource;
 	bool		am_superuser;
@@ -3855,10 +4014,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * Save our main thread-id for comparison during signals.
 	 */
 	main_tid = pthread_self();
-
-#define PendingConfigOption(name,val) \
-	(guc_names = lappend(guc_names, pstrdup(name)), \
-	 guc_values = lappend(guc_values, pstrdup(val)))
 
 	/*
 	 * initialize globals (already done if under postmaster, but not if
@@ -4056,7 +4211,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				 * still in secure context
 				 */
 				if (ctx == PGC_BACKEND)
-					PendingConfigOption("log_statement_stats", "true");
+					AppendGucSetting(&susetGucNames, &susetGucValues, "log_statement_stats", "true");
 				else
 					SetConfigOption("log_statement_stats", "true",
 									ctx, gucsource);
@@ -4073,7 +4228,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					if (tmp)
 					{
 						if (ctx == PGC_BACKEND)
-							PendingConfigOption(tmp, "true");
+							AppendGucSetting(&susetGucNames, &susetGucValues, tmp, "true");
 						else
 							SetConfigOption(tmp, "true", ctx, gucsource);
 					}
@@ -4124,35 +4279,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 			case 'c':
 			case '-':
 				{
-					char	   *name,
-							   *value;
-
-					ParseLongOption(optarg, &name, &value);
-					if (!value)
-					{
-						if (flag == '-')
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("--%s requires a value",
-											optarg)));
-						else
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("-c %s requires a value",
-											optarg)));
-					}
-
-					/*
-					 * If a SUSET option, must postpone evaluation, unless we
-					 * are still reading secure switches.
-					 */
-					if (ctx == PGC_BACKEND && IsSuperuserConfigOption(name))
-						PendingConfigOption(name, value);
-					else
-						SetConfigOption(name, value, ctx, gucsource);
-					free(name);
-					if (value)
-						free(value);
+					ProcessCommandLineConfigOption(optarg, flag,
+												   &susetGucNames, &susetGucValues,
+												   &dependGucNames, &dependGucValues,
+												   ctx, gucsource);
 					break;
 				}
 
@@ -4190,24 +4320,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 */
 	if (MyProcPort != NULL)
 	{
-		ListCell   *gucopts = list_head(MyProcPort->guc_options);
-
-		while (gucopts)
-		{
-			char	   *name;
-			char	   *value;
-
-			name = lfirst(gucopts);
-			gucopts = lnext(gucopts);
-
-			value = lfirst(gucopts);
-			gucopts = lnext(gucopts);
-
-			if (IsSuperuserConfigOption(name))
-				PendingConfigOption(name, value);
-			else
-				SetConfigOption(name, value, PGC_BACKEND, PGC_S_CLIENT);
-		}
+		ProcessStartupConfigOptions(MyProcPort->guc_options,
+									&susetGucNames, &susetGucValues,
+									&dependGucNames, &dependGucValues);
+	
 	}
 
 	/* Acquire configuration parameters, unless inherited from postmaster */
@@ -4407,20 +4523,20 @@ PostgresMain(int argc, char *argv[], const char *username)
 	if (debug_flag >= 0)
 		set_debug_options(debug_flag, ctx, PGC_S_CLIENT);
 
-	if (guc_names != NIL)
+	if (susetGucNames != NIL)
 	{
-		ListCell   *namcell,
-				   *valcell;
+		SetConfigOptionList(susetGucNames, susetGucValues,
+							ctx, PGC_S_CLIENT);
+		list_free_deep(susetGucNames);
+		list_free_deep(susetGucValues);
+	}
 
-		forboth(namcell, guc_names, valcell, guc_values)
-		{
-			char	   *name = (char *) lfirst(namcell);
-			char	   *value = (char *) lfirst(valcell);
-
-			SetConfigOption(name, value, ctx, PGC_S_CLIENT);
-			pfree(name);
-			pfree(value);
-		}
+	if (dependGucNames != NIL)
+	{
+		SetConfigOptionList(dependGucNames, dependGucValues,
+							PGC_BACKEND, PGC_S_CLIENT);
+		list_free_deep(dependGucNames);
+		list_free_deep(dependGucValues);
 	}
 
 	/*
@@ -5702,8 +5818,11 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	bool		secure;
 	int			errs = 0;
 	int			debug_flag = -1;		/* -1 means not given */
-	List	   *guc_names = NIL;		/* for SUSET options */
-	List	   *guc_values = NIL;
+	List	   *susetGucNames = NIL;		/* for SUSET options */
+	List	   *susetGucValues = NIL;
+	/* For GUCs that depend on super-user settable GUCs */
+	List       *dependGucNames = NIL;
+	List       *dependGucValues = NIL;
 	GucContext	ctx;
 	GucSource	gucsource;
 	int			firstchar;
@@ -5712,10 +5831,6 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_rfq = true;
 	bool		shutdownTooFarBehind = false;
-
-#define PendingConfigOption(name,val) \
-	(guc_names = lappend(guc_names, pstrdup(name)), \
-	 guc_values = lappend(guc_values, pstrdup(val)))
 
 	/*
 	 * Catch standard options before doing much else.  This even works on
@@ -5904,7 +6019,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 				 * still in secure context
 				 */
 				if (ctx == PGC_BACKEND)
-					PendingConfigOption("log_statement_stats", "true");
+					AppendGucSetting(&susetGucNames, &susetGucValues, "log_statement_stats", "true");
 				else
 					SetConfigOption("log_statement_stats", "true",
 									ctx, gucsource);
@@ -5921,7 +6036,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 					if (tmp)
 					{
 						if (ctx == PGC_BACKEND)
-							PendingConfigOption(tmp, "true");
+							AppendGucSetting(&susetGucNames, &susetGucValues, tmp, "true");
 						else
 							SetConfigOption(tmp, "true", ctx, gucsource);
 					}
@@ -5959,35 +6074,10 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 			case 'c':
 			case '-':
 				{
-					char	   *name,
-							   *value;
-
-					ParseLongOption(optarg, &name, &value);
-					if (!value)
-					{
-						if (flag == '-')
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("--%s requires a value",
-											optarg)));
-						else
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("-c %s requires a value",
-											optarg)));
-					}
-
-					/*
-					 * If a SUSET option, must postpone evaluation, unless we
-					 * are still reading secure switches.
-					 */
-					if (ctx == PGC_BACKEND && IsSuperuserConfigOption(name))
-						PendingConfigOption(name, value);
-					else
-						SetConfigOption(name, value, ctx, gucsource);
-					free(name);
-					if (value)
-						free(value);
+					ProcessCommandLineConfigOption(optarg, flag,
+												   &susetGucNames, &susetGucValues,
+												   &dependGucNames, &dependGucValues,
+												   ctx, gucsource);
 					break;
 				}
 
@@ -6003,24 +6093,9 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	 */
 	if (MyProcPort != NULL)
 	{
-		ListCell   *gucopts = list_head(MyProcPort->guc_options);
-
-		while (gucopts)
-		{
-			char	   *name;
-			char	   *value;
-
-			name = lfirst(gucopts);
-			gucopts = lnext(gucopts);
-
-			value = lfirst(gucopts);
-			gucopts = lnext(gucopts);
-
-			if (IsSuperuserConfigOption(name))
-				PendingConfigOption(name, value);
-			else
-				SetConfigOption(name, value, PGC_BACKEND, PGC_S_CLIENT);
-		}
+		ProcessStartupConfigOptions(MyProcPort->guc_options,
+									&susetGucNames, &susetGucValues,
+									&dependGucNames, &dependGucValues);
 	}
 
 	/* Acquire configuration parameters, unless inherited from postmaster */
@@ -6165,20 +6240,20 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	if (debug_flag >= 0)
 		set_debug_options(debug_flag, ctx, PGC_S_CLIENT);
 
-	if (guc_names != NIL)
+	if (susetGucNames != NIL)
 	{
-		ListCell   *namcell,
-				   *valcell;
+		SetConfigOptionList(susetGucNames, susetGucValues,
+							ctx, PGC_S_CLIENT);
+		list_free_deep(susetGucNames);
+		list_free_deep(susetGucValues);
+	}
 
-		forboth(namcell, guc_names, valcell, guc_values)
-		{
-			char	   *name = (char *) lfirst(namcell);
-			char	   *value = (char *) lfirst(valcell);
-
-			SetConfigOption(name, value, ctx, PGC_S_CLIENT);
-			pfree(name);
-			pfree(value);
-		}
+	if (dependGucNames != NIL)
+	{
+		SetConfigOptionList(dependGucNames, dependGucValues,
+							PGC_BACKEND, PGC_S_CLIENT);
+		list_free_deep(dependGucNames);
+		list_free_deep(dependGucValues);
 	}
 
 	/*
