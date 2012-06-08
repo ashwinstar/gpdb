@@ -1534,8 +1534,6 @@ tmShmemInit(void)
 	if (!found)
 	{
 		time_t		t = time(NULL);
-		DistributedTransactionTimeStamp postmasterDtxStartTime;
-
 		if (t == (time_t) -1)
 		{
 			elog(PANIC, "cannot generate global transaction id");
@@ -1544,17 +1542,9 @@ tmShmemInit(void)
 		/*
 		 * If there has been a postmaster reset, keep the original time.
 		 */
-		postmasterDtxStartTime = PostmasterGetDtxStartTime();
-		if (postmasterDtxStartTime != 0)
-		{
-			*shmDistribTimeStamp = postmasterDtxStartTime;
-			elog(DEBUG1, "Preserving DTM start timestamp %u", *shmDistribTimeStamp);
-		}
-		else
-		{
-			*shmDistribTimeStamp = (DistributedTransactionTimeStamp)t;
-			elog(DEBUG1, "DTM start timestamp %u", *shmDistribTimeStamp);
-		}
+	        *shmDistribTimeStamp = (DistributedTransactionTimeStamp)t;
+  		elog(LOG, "DTM start timestamp %u", *shmDistribTimeStamp);
+
 		*shmGIDSeq = FirstDistributedTransactionId;
 	}
 	shmDtmStarted = &shared->DtmStarted;
