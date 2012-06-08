@@ -308,7 +308,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 alter table atacc1 add constraint atacc_test1 check (test>3);
 -- should fail
 insert into atacc1 (test) values (2);
-ERROR:  new row for relation "atacc1" violates check constraint "atacc_test1"  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  new row for relation "atacc1" violates check constraint "atacc_test1"  (seg1 siva-mac.local:40021 pid=4903)
 -- should succeed
 insert into atacc1 (test) values (4);
 drop table atacc1;
@@ -320,7 +320,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into atacc1 (test) values (2);
 -- add a check constraint (fails)
 alter table atacc1 add constraint atacc_test1 check (test>3);
-ERROR:  check constraint "atacc_test1" is violated by some row  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  check constraint "atacc_test1" is violated by some row  (seg1 siva-mac.local:40021 pid=4903)
 insert into atacc1 (test) values (4);
 drop table atacc1;
 -- let's do one where the check fails because the column doesn't exist
@@ -339,7 +339,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 alter table atacc1 add constraint atacc_test1 check (test+test2<test3*4);
 -- should fail
 insert into atacc1 (test,test2,test3) values (4,4,2);
-ERROR:  new row for relation "atacc1" violates check constraint "atacc_test1"  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  new row for relation "atacc1" violates check constraint "atacc_test1"  (seg1 siva-mac.local:40021 pid=4903)
 -- should succeed
 insert into atacc1 (test,test2,test3) values (4,4,5);
 drop table atacc1;
@@ -350,7 +350,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 alter table atacc1 add check (test2>test);
 -- should fail for $2
 insert into atacc1 (test2, test) values (3, 4);
-ERROR:  new row for relation "atacc1" violates check constraint "atacc1_check"  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  new row for relation "atacc1" violates check constraint "atacc1_check"  (seg1 siva-mac.local:40021 pid=4903)
 drop table atacc1;
 -- test unique constraint adding
 create table atacc1 ( test int ) with oids;
@@ -364,7 +364,7 @@ NOTICE:  ALTER TABLE / ADD UNIQUE will create implicit index "atacc1_test_key" f
 insert into atacc1 (test) values (2);
 -- should fail
 insert into atacc1 (test) values (2);
-ERROR:  duplicate key violates unique constraint "atacc1_test_key"  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  duplicate key violates unique constraint "atacc1_test_key"  (seg1 siva-mac.local:40021 pid=4903)
 -- should succeed
 insert into atacc1 (test) values (4);
 -- try adding a unique oid constraint
@@ -381,7 +381,7 @@ insert into atacc1 (test) values (2);
 -- add a unique constraint (fails)
 alter table atacc1 add constraint atacc_test1 unique (test);
 NOTICE:  ALTER TABLE / ADD UNIQUE will create implicit index "atacc1_test_key" for table "atacc1"
-ERROR:  could not create unique index  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  could not create unique index  (seg1 siva-mac.local:40021 pid=4903)
 DETAIL:  Table contains duplicate values.
 insert into atacc1 (test) values (3);
 drop table atacc1;
@@ -405,7 +405,7 @@ NOTICE:  ALTER TABLE / ADD UNIQUE will create implicit index "atacc1_test_key" f
 insert into atacc1 (test,test2) values (4,4);
 -- should fail
 insert into atacc1 (test,test2) values (4,4);
-ERROR:  duplicate key violates unique constraint "atacc1_test_key"  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  duplicate key violates unique constraint "atacc1_test_key"  (seg1 siva-mac.local:40021 pid=4903)
 -- should all succeed
 insert into atacc1 (test,test2) values (4,5);
 insert into atacc1 (test,test2) values (5,4);
@@ -419,7 +419,7 @@ ERROR:  UNIQUE index must contain all columns in the distribution key of relatio
 -- should fail for @@ second one @@
 insert into atacc1 (test2, test) values (3, 3);
 insert into atacc1 (test2, test) values (2, 3);
-ERROR:  duplicate key violates unique constraint "atacc1_test_key"  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  duplicate key violates unique constraint "atacc1_test_key"  (seg0 siva-mac.local:40020 pid=4902)
 drop table atacc1;
 -- test primary key constraint adding
 create table atacc1 ( test int ) with oids;
@@ -433,12 +433,12 @@ NOTICE:  ALTER TABLE / ADD PRIMARY KEY will create implicit index "atacc1_pkey" 
 insert into atacc1 (test) values (2);
 -- should fail
 insert into atacc1 (test) values (2);
-ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg1 siva-mac.local:40021 pid=4903)
 -- should succeed
 insert into atacc1 (test) values (4);
 -- inserting NULL should fail
 insert into atacc1 (test) values(NULL);
-ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=4902)
 -- try adding a second primary key (should fail)
 alter table atacc1 add constraint atacc_oid1 primary key(oid);
 ERROR:  multiple primary keys for table "atacc1" are not allowed
@@ -458,7 +458,7 @@ insert into atacc1 (test) values (2);
 -- add a primary key (fails)
 alter table atacc1 add constraint atacc_test1 primary key (test);
 NOTICE:  ALTER TABLE / ADD PRIMARY KEY will create implicit index "atacc1_pkey" for table "atacc1"
-ERROR:  could not create unique index  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  could not create unique index  (seg1 siva-mac.local:40021 pid=4903)
 DETAIL:  Table contains duplicate values.
 insert into atacc1 (test) values (3);
 drop table atacc1;
@@ -471,7 +471,7 @@ insert into atacc1 (test) values (NULL);
 -- add a primary key (fails)
 alter table atacc1 add constraint atacc_test1 primary key (test);
 NOTICE:  ALTER TABLE / ADD PRIMARY KEY will create implicit index "atacc1_pkey" for table "atacc1"
-ERROR:  column "test" contains null values  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  column "test" contains null values  (seg0 siva-mac.local:40020 pid=4902)
 insert into atacc1 (test) values (3);
 drop table atacc1;
 -- let's do one where the primary key constraint fails
@@ -510,13 +510,13 @@ ERROR:  multiple primary keys for table "atacc1" are not allowed
 insert into atacc1 (test,test2) values (4,4);
 -- should fail
 insert into atacc1 (test,test2) values (4,4);
-ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg1 siva-mac.local:40021 pid=4903)
 insert into atacc1 (test,test2) values (NULL,3);
-ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=4902)
 insert into atacc1 (test,test2) values (3, NULL);
-ERROR:  null value in column "test2" violates not-null constraint  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  null value in column "test2" violates not-null constraint  (seg0 siva-mac.local:40020 pid=4902)
 insert into atacc1 (test,test2) values (NULL,NULL);
-ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=4902)
 -- should all succeed
 insert into atacc1 (test,test2) values (4,5);
 insert into atacc1 (test,test2) values (5,4);
@@ -528,9 +528,9 @@ NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "atacc1_pkey" for
 -- only first should succeed
 insert into atacc1 (test2, test) values (3, 3);
 insert into atacc1 (test2, test) values (2, 3);
-ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  duplicate key violates unique constraint "atacc1_pkey"  (seg0 siva-mac.local:40020 pid=4902)
 insert into atacc1 (test2, test) values (1, NULL);
-ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  null value in column "test" violates not-null constraint  (seg0 siva-mac.local:40020 pid=4902)
 drop table atacc1;
 -- alter table / alter column [set/drop] not null tests
 -- try altering system catalogs, should fail
@@ -557,7 +557,7 @@ alter table atacc1 drop constraint "atacc1_pkey";
 alter table atacc1 alter column test drop not null;
 insert into atacc1 values (null);
 alter table atacc1 alter test set not null;
-ERROR:  column "test" contains null values  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  column "test" contains null values  (seg0 siva-mac.local:40020 pid=4902)
 delete from atacc1;
 alter table atacc1 alter test set not null;
 -- try altering a non-existent column, should fail
@@ -1044,7 +1044,7 @@ select * from anothertab order by 1,2;
 (2 rows)
 
 insert into anothertab (atcol1, atcol2) values (45, null); -- fails
-ERROR:  new row for relation "anothertab" violates check constraint "anothertab_chk"  (seg0 siva-mac.local:40020 pid=38571)
+ERROR:  new row for relation "anothertab" violates check constraint "anothertab_chk"  (seg0 siva-mac.local:40020 pid=4902)
 insert into anothertab (atcol1, atcol2) values (default, null);
 select * from anothertab order by 1,2;
  atcol1 | atcol2 
@@ -1232,9 +1232,9 @@ insert into ao1 values('cc', 3);
 select * from ao1;
  col1 | col2 | col3 | col4 
 ------+------+------+------
- cc   |    3 | 5    | 
  aa   |    1 | 5    | 
  bb   |    2 | 5    | 
+ cc   |    3 | 5    | 
 (3 rows)
 
 alter table ao1 alter column col4 drop default; 
@@ -1252,8 +1252,8 @@ select * from ao1;
 ------+------+------+------
  aa   |    1 | 5    | 
  bb   |    2 | 5    | 
- dd   |    4 | 5    | 
  cc   |    3 | 5    | 
+ dd   |    4 | 5    | 
 (4 rows)
 
 ---
@@ -1297,14 +1297,14 @@ create table ao1(col1 varchar(2), col2 int) WITH (APPENDONLY=TRUE) distributed r
 insert into ao1 values('a', 1); 
 -- should fail
 alter table ao1 add column col3 char(1) not null default NULL; 
-ERROR:  column "col3" contains null values  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  column "col3" contains null values  (seg0 siva-mac.local:40020 pid=4902)
 drop table if exists ao1;
 create table ao1(col1 varchar(2), col2 int) WITH (APPENDONLY=TRUE) distributed randomly;
 -- should pass
 alter table ao1 add column col3 char(1) not null default NULL; 
 -- this should fail (same behavior as heap tables)
 insert into ao1(col1, col2) values('a', 10);
-ERROR:  null value in column "col3" violates not-null constraint  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  null value in column "col3" violates not-null constraint  (seg1 siva-mac.local:40021 pid=4903)
 ---
 --- alter add with no default should continue to fail
 ---
@@ -1339,7 +1339,7 @@ constraint c1 not null;
 alter table ao1 add column col2 zipcode;
 ERROR:  ADD COLUMN with no default value in append-only tables is not yet supported.
 alter table ao1 add column col2 zipcode default NULL;
-ERROR:  domain zipcode does not allow null values  (seg1 siva-mac.local:40021 pid=38572)
+ERROR:  domain zipcode does not allow null values  (seg0 siva-mac.local:40020 pid=4902)
 select * from ao1;
  col1  
 -------
@@ -1349,7 +1349,7 @@ select * from ao1;
 -- cleanup
 drop table ao1;
 drop domain zipcode;
-drop schema if exists mpp17582;
+drop schema if exists mpp17582 cascade;
 NOTICE:  schema "mpp17582" does not exist, skipping
 create schema mpp17582;
 set search_path=mpp17582;
@@ -1538,3 +1538,19 @@ select * from testbug_char5;
 (15 rows)
 
 set search_path=public;
+drop schema if exists mpp17582 cascade;
+NOTICE:  drop cascades to table mpp17582.load
+NOTICE:  drop cascades to table mpp17582.dim
+NOTICE:  drop cascades to table mpp17582.testbug_char5_1_prt_part201208
+NOTICE:  drop cascades to constraint testbug_char5_1_prt_part201208_check on table mpp17582.testbug_char5_1_prt_part201208
+NOTICE:  drop cascades to append only table mpp17582.testbug_char5_1_prt_part201207
+NOTICE:  drop cascades to constraint testbug_char5_1_prt_part201207_check on append only table mpp17582.testbug_char5_1_prt_part201207
+NOTICE:  drop cascades to append only columnar table mpp17582.testbug_char5_1_prt_part201206
+NOTICE:  drop cascades to constraint testbug_char5_1_prt_part201206_check on append only columnar table mpp17582.testbug_char5_1_prt_part201206
+NOTICE:  drop cascades to table mpp17582.testbug_char5_1_prt_part201205
+NOTICE:  drop cascades to constraint testbug_char5_1_prt_part201205_check on table mpp17582.testbug_char5_1_prt_part201205
+NOTICE:  drop cascades to append only table mpp17582.testbug_char5_1_prt_part201204
+NOTICE:  drop cascades to constraint testbug_char5_1_prt_part201204_check on append only table mpp17582.testbug_char5_1_prt_part201204
+NOTICE:  drop cascades to append only columnar table mpp17582.testbug_char5_1_prt_part201203
+NOTICE:  drop cascades to constraint testbug_char5_1_prt_part201203_check on append only columnar table mpp17582.testbug_char5_1_prt_part201203
+NOTICE:  drop cascades to table mpp17582.testbug_char5

@@ -956,7 +956,7 @@ drop table ao1;
 drop domain zipcode;
 
 
-drop schema if exists mpp17582;
+drop schema if exists mpp17582 cascade;
 create schema mpp17582;
 set search_path=mpp17582;
 
@@ -1060,3 +1060,4 @@ update testbug_char5 set tag2='7' where tag2='1' and timest='201208';
 select * from testbug_char5;
 
 set search_path=public;
+drop schema if exists mpp17582 cascade;
