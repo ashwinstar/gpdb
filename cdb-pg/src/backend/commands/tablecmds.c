@@ -5420,17 +5420,8 @@ ATRewriteTables(List **wqueue,
 			 */
 			ATRewriteTable(tab, OIDNewHeap);
 
-			/* 
-			 * Swap the physical files of the old and new heaps. 
-			 *
-			 * MPP-17516 - The third argument to swap_relation_files is 
-			 * "swap_stats", and it dictates whether the relpages and 
-			 * reltuples of the fake relfile should be copied over to our 
-			 * original pg_class tuple. We do not want to do this in the case 
-			 * of ALTER TABLE rewrites as the temp relfile will not have correct 
-			 * stats.
-			 */
-			swap_relation_files(tab->relid, OIDNewHeap, false);
+			/* Swap the physical files of the old and new heaps. */
+			swap_relation_files(tab->relid, OIDNewHeap);
 
 			CommandCounterIncrement();
 
@@ -13079,7 +13070,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 */
 	heap_close(rel, NoLock);
    	tmprelid = RangeVarGetRelid(tmprv, false);
-	swap_relation_files(tarrelid, tmprelid, false);
+	swap_relation_files(tarrelid, tmprelid);
 
 	if (DatumGetPointer(newOptions))
 	{
@@ -14156,7 +14147,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 	Assert(OidIsValid(newrelid));
 
 #if IF_ONLY_IT_WAS_THAT_SIMPLE
-	swap_relation_files(oldrelid, newrelid, false);
+	swap_relation_files(oldrelid, newrelid);
 	CommandCounterIncrement();
 #else
 	/*

@@ -24,7 +24,7 @@ extern void check_index_is_clusterable(Relation OldHeap, Oid indexOid,
 extern void mark_index_clustered(Relation rel, Oid indexOid);
 extern Oid make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace, TableOidInfo * oidInfo,
                                 bool createAoBlockDirectory);
-extern void swap_relation_files(Oid r1, Oid r2, bool swap_stats);
+extern void swap_relation_files(Oid r1, Oid r2);
 
 extern void populate_oidInfo(TableOidInfo *oidInfo, Oid TableSpace, 
 							 bool relisshared, bool withTypes);

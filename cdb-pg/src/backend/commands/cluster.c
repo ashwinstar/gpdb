@@ -643,7 +643,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	CommandCounterIncrement();
 
 	/* Swap the physical files of the old and new heaps. */
-	swap_relation_files(tableOid, OIDNewHeap, true);
+	swap_relation_files(tableOid, OIDNewHeap);
 
 	CommandCounterIncrement();
 
@@ -965,7 +965,7 @@ changeDependencyLinks(Oid baseOid1, Oid baseOid2, Oid oid1, Oid oid2,
  * the main-table data. GPDB: also swap aoseg, aoblkdir links.
  */
 void
-swap_relation_files(Oid r1, Oid r2, bool swap_stats)
+swap_relation_files(Oid r1, Oid r2)
 {
 	Relation	relRelation;
 	HeapTuple	reltup1,
@@ -1052,22 +1052,6 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		TransferAppendonlyEntry(r2, r1);
 	}
 	
-
-	/* swap size statistics too, since new rel has freshly-updated stats */
-	if (swap_stats)
-	{
-		int4		swap_pages;
-		float4		swap_tuples;
-
-		swap_pages = relform1->relpages;
-		relform1->relpages = relform2->relpages;
-		relform2->relpages = swap_pages;
-
-		swap_tuples = relform1->reltuples;
-		relform1->reltuples = relform2->reltuples;
-		relform2->reltuples = swap_tuples;
-	}
-
 	/*
 	 * Swap relstorage so we will later know how to drop the temporary table with
 	 * the right Storage Manager (i.e. Buffer Pool or Append-Only).
