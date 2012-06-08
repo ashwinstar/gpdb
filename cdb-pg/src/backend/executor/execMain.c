@@ -153,7 +153,7 @@ static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinf
 static void intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
-static TupleTableSlot * CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
+static TupleTableSlot * reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
 static void ClearPartitionState(EState *estate);
 static void SetupRNG(QueryDesc *queryDesc);
 
@@ -2340,6 +2340,13 @@ ExecEndPlan(PlanState *planstate, EState *estate)
         if (resultRelInfo->ri_extInsertDesc)
         	external_insert_finish(resultRelInfo->ri_extInsertDesc);
 
+		if (resultRelInfo->ri_resultSlot)
+		{
+			Assert(resultRelInfo->ri_resultSlot->tts_tupleDescriptor);
+			ReleaseTupleDesc(resultRelInfo->ri_resultSlot->tts_tupleDescriptor);
+			ExecClearTuple(resultRelInfo->ri_resultSlot);
+		}
+
 		/* Close indices and then the relation itself */
 		ExecCloseIndices(resultRelInfo);
 		heap_close(resultRelInfo->ri_RelationDesc, NoLock);
@@ -2797,66 +2804,6 @@ reconstructTupleValues(AttrMap *map,
 	}
 }
 
-/*
- * createMatchingAOTuple
- *    Create a matching AO tuple for the input tuple stored in 'slot' based on
- * the result relation information.
- */
-static MemTuple
-createMatchingAOTuple(TupleTableSlot *slot, ResultRelInfo* resultRelInfo, bool *needFree)
-{
-	*needFree = false;
-	
-	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
-	MemTuple tuple = NULL;
-	TupleDesc inputTupDesc = slot->tts_tupleDescriptor;
-	TupleDesc resultTupDesc = resultRelationDesc->rd_att;
-
-	if (resultRelInfo->tupdesc_match == 0)
-	{
-		/* We do a deep compare of the attrs */
-		if (equalTupleDescs(inputTupDesc, resultTupDesc, false))
-		{
-			resultRelInfo->tupdesc_match = 1;
-		}
-		else
-		{
-			resultRelInfo->mt_bind = create_memtuple_binding(resultTupDesc);
-			resultRelInfo->tupdesc_match = -1;
-		}
-	}
-	
-	if (resultRelInfo->tupdesc_match == 1)
-	{
-		Assert(resultRelInfo->mt_bind == NULL);
-		tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
-	}
-	else
-	{
-		Assert(resultRelInfo->tupdesc_match == -1);
-		Assert(resultRelInfo->mt_bind);
-		slot_getallattrs(slot);
-		
-		Datum *datum = slot_get_values(slot);
-		bool *isnull = slot_get_isnull(slot);
-
-		Datum *newDatum = palloc0(resultTupDesc->natts * sizeof(Datum));
-		bool *newIsnull = palloc0(resultTupDesc->natts * sizeof(bool));
-
-		reconstructTupleValues(resultRelInfo->ri_partInsertMap,
-							   datum, isnull, inputTupDesc->natts,
-							   newDatum, newIsnull, resultTupDesc->natts);
-		tuple = memtuple_form_to(resultRelInfo->mt_bind, newDatum, newIsnull, NULL, NULL, false);
-		
-		pfree(newDatum);
-		pfree(newIsnull);
-		
-		*needFree = true;
-	}
-
-	return tuple;
-}
-
 /* ----------------------------------------------------------------
  *		ExecInsert
  *
@@ -2872,7 +2819,6 @@ ExecInsert(TupleTableSlot *slot,
 		   EState *estate)
 {
 	void		*tuple = NULL;
-    void		*tofree = NULL;
 	ResultRelInfo *resultRelInfo = NULL;
 	Relation	resultRelationDesc = NULL;
 	Relation	baseRelationDesc = NULL;
@@ -2914,36 +2860,24 @@ ExecInsert(TupleTableSlot *slot,
 	rel_is_aocols = RelationIsAoCols(resultRelationDesc);
 	rel_is_aorows = RelationIsAoRows(resultRelationDesc);
 	rel_is_external = RelationIsExternal(resultRelationDesc);
-		
-	/*
-	 * get the heap tuple out of the tuple table slot, making sure we have a
-	 * writable copy
-	 */
-	if (rel_is_aorows)
-    {
-		bool needFree = false;
-		tuple = createMatchingAOTuple(slot, resultRelInfo, &needFree);
-		if (needFree)
-		{
-			tofree = tuple;
-		}
-    }
-	else if(rel_is_aocols)
+
+	partslot = reconstructMatchingTupleSlot(slot, resultRelInfo);
+	if (rel_is_heap || rel_is_external)
 	{
-		/* We will not serialize slot for ao cs table */
-		tuple = NULL;
+		tuple = ExecFetchSlotHeapTuple(partslot);
+	}
+	else if (rel_is_aorows)
+	{
+		tuple = ExecFetchSlotMemTuple(partslot, false);
 	}
 	else
 	{
-		Assert(RelationIsHeap(resultRelationDesc) || 
-			   RelationIsExternal(resultRelationDesc));
-		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
-		partslot = CompressedHeapTupleSlot(slot, resultRelInfo);
+		Assert(rel_is_aocols);
+		tuple = ExecFetchSlotMemTuple(partslot, true);
 	}
 
-	AssertEquivalent(rel_is_aocols, (tuple == NULL));
-	AssertEquivalent(rel_is_heap || rel_is_external, (partslot != NULL));
-	
+	Assert(partslot != NULL && tuple != NULL);
+
 	/* BEFORE ROW INSERT Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
@@ -2958,8 +2892,6 @@ ExecInsert(TupleTableSlot *slot,
 
 		if (newtuple == NULL)	/* "do nothing" */
         {
-            if (tofree != NULL)
-                pfree(tofree);
 			return;
         }
 
@@ -2973,17 +2905,12 @@ ExecInsert(TupleTableSlot *slot,
 			 */
 			TupleTableSlot *newslot = estate->es_trig_tuple_slot;
 
-			if (newslot->tts_tupleDescriptor != slot->tts_tupleDescriptor)
-				ExecSetSlotDescriptor(newslot, slot->tts_tupleDescriptor);
+			if (newslot->tts_tupleDescriptor != partslot->tts_tupleDescriptor)
+				ExecSetSlotDescriptor(newslot, partslot->tts_tupleDescriptor);
 			ExecStoreGenericTuple(newtuple, newslot, false);
-			newslot->tts_tableOid = slot->tts_tableOid; /* for constraints */
-			slot = newslot;
+			newslot->tts_tableOid = partslot->tts_tableOid; /* for constraints */
 			tuple = newtuple;
-			if (partslot)
-			{
-				Assert(rel_is_heap || rel_is_external);
-				partslot = newslot;
-			}
+			partslot = newslot;
 		}
 	}
 
@@ -2991,7 +2918,7 @@ ExecInsert(TupleTableSlot *slot,
 	 * Check the constraints of the tuple
 	 */
 	if (resultRelationDesc->rd_att->constr)
-		ExecConstraints(resultRelInfo, partslot ? partslot : slot, estate);
+		ExecConstraints(resultRelInfo, partslot, estate);
 
 	/*
 	 * insert the tuple
@@ -3024,8 +2951,8 @@ ExecInsert(TupleTableSlot *slot,
 			resultRelInfo->ri_aocsInsertDesc = aocs_insert_init(resultRelationDesc, resultRelInfo->ri_aosegno);
 		}
 
-		newId = aocs_insert(resultRelInfo->ri_aocsInsertDesc, slot);
-		aoTupleId = *((AOTupleId*)slot_get_ctid(slot));
+		newId = aocs_insert(resultRelInfo->ri_aocsInsertDesc, partslot);
+		aoTupleId = *((AOTupleId*)slot_get_ctid(partslot));
 	}
 	else if (rel_is_external)
 	{
@@ -3040,7 +2967,7 @@ ExecInsert(TupleTableSlot *slot,
 		Insist(rel_is_heap);
 		
 		newId = heap_insert(resultRelationDesc,
-							ExecFetchSlotHeapTuple(partslot),
+							tuple,
 							estate->es_snapshot->curcid,
 							true, true, GetCurrentTransactionId());
 	}
@@ -3052,7 +2979,7 @@ ExecInsert(TupleTableSlot *slot,
 
 	/* CDB: Set 'tableOid' to target relid in case RETURNING needs it. */
 	sourceTableOid = slot->tts_tableOid;
-	slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
+	partslot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 
 	if (rel_is_aorows || rel_is_aocols)
 	{
@@ -3060,19 +2987,13 @@ ExecInsert(TupleTableSlot *slot,
 		 * insert index entries for AO Row-Store tuple
 		 */
 		if (resultRelInfo->ri_NumIndices > 0)
-			ExecInsertIndexTuples(slot, (ItemPointer)&aoTupleId, estate, false);
+			ExecInsertIndexTuples(partslot, (ItemPointer)&aoTupleId, estate, false);
 	}
 	else
 	{
 		/* Use parttuple for index update in case this is an indexed heap table. */
-		TupleTableSlot *xslot = slot;
+		TupleTableSlot *xslot = partslot;
 		void *xtuple = tuple;
-	
-		if ( partslot )
-		{
-			xslot = partslot;
-			xtuple = ExecFetchSlotHeapTuple(partslot);
-		}
 
 		setLastTid(&(((HeapTuple) xtuple)->t_self));
 
@@ -3080,24 +3001,20 @@ ExecInsert(TupleTableSlot *slot,
 		 * insert index entries for tuple
 		 */
 		if (resultRelInfo->ri_NumIndices > 0)
-			ExecInsertIndexTuples(partslot? partslot: slot, &(((HeapTuple) xtuple)->t_self), estate, false);
+			ExecInsertIndexTuples(xslot, &(((HeapTuple) xtuple)->t_self), estate, false);
 
 	}
 
 	/* AFTER ROW INSERT Triggers */
-        ExecARInsertTriggers(estate, resultRelInfo, tuple);
+	ExecARInsertTriggers(estate, resultRelInfo, tuple);
 
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
 		ExecProcessReturning(resultRelInfo->ri_projectReturning,
-							 slot, planSlot, dest);
+							 partslot, planSlot, dest);
 
 	/* CDB: Restore 'tableOid' sysattr in case slot belongs to our caller. */
 	slot->tts_tableOid = sourceTableOid;
-
-    /* clean up */
-    if (tofree != NULL)
-        pfree(tofree);
 }
 
 /* ----------------------------------------------------------------
@@ -5280,7 +5197,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
  * Use the supplied ResultRelInfo to create an appropriately restructured 
  * version of the tuple in the supplied slot, if necessary.
  *
- * slot -- slot containing the input (uncompressed) tuple
+ * slot -- slot containing the input tuple
  * resultRelInfo -- info pertaining to the target part of an insert 
  *
  * If no restructuring is required, the result is the argument slot, else
@@ -5288,7 +5205,7 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
  * restructured tuple.
  */
 static TupleTableSlot *
-CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
+reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 {
 	int natts;
 	Datum *values;
@@ -5298,12 +5215,27 @@ CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	Datum *partvalues;
 	bool *partisnull;
 	
-	Assert(TupHasHeapTuple(slot));
-	
 	map = resultRelInfo->ri_partInsertMap;
-	
-	/* No map means no restructuring needed. */
-	if ( map == NULL )
+
+	TupleDesc inputTupDesc = slot->tts_tupleDescriptor;
+	TupleDesc resultTupDesc = resultRelInfo->ri_RelationDesc->rd_att;
+	bool tupleDescMatch = (resultRelInfo->tupdesc_match == 1);
+	if (resultRelInfo->tupdesc_match == 0)
+	{
+		tupleDescMatch = equalTupleDescs(inputTupDesc, resultTupDesc, false);
+
+		if (tupleDescMatch)
+		{
+			resultRelInfo->tupdesc_match = 1;
+		}
+		else
+		{
+			resultRelInfo->tupdesc_match = -1;
+		}
+	}
+
+	/* No map and matching tuple descriptor means no restructuring needed. */
+	if (map == NULL && tupleDescMatch)
 		return slot;
 	
 	/* Put the given tuple into attribute arrays. */
@@ -5311,9 +5243,27 @@ CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	slot_getallattrs(slot);
 	values = slot_get_values(slot);
 	isnull = slot_get_isnull(slot);
+
+	/*
+	 * Get the target slot ready. If this is a child partition table,
+	 * set target slot to ri_partSlot. Otherwise, use ri_resultSlot.
+	 */
+	if (map != NULL)
+	{
+		Assert(resultRelInfo->ri_partSlot != NULL);
+		partslot = resultRelInfo->ri_partSlot;
+	}
+	else
+	{
+		if (resultRelInfo->ri_resultSlot == NULL)
+		{
+			resultRelInfo->ri_resultSlot = MakeSingleTupleTableSlot(resultTupDesc);
+		}
+		
+		partslot = resultRelInfo->ri_resultSlot;
+	}
 	
-	/* Get the target slot ready. */
-	partslot = ExecStoreAllNullTuple(resultRelInfo->ri_partSlot);
+	partslot = ExecStoreAllNullTuple(partslot);
 	partvalues = slot_get_values(partslot);
 	partisnull = slot_get_isnull(partslot);
 	
