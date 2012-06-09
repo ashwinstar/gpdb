@@ -234,7 +234,7 @@ class Gppkg:
         pkg['version'] = str(pkg['version'])
 
         #Convert the required version to a GpVersion
-        pkg['gpdbversion'] = GpVersion(str(pkg['gpdbversion']))
+        pkg['gpdbversion'] = str(pkg['gpdbversion'])
 
         #update the absolute path
         pkg['abspath'] = pkg_path
@@ -371,7 +371,7 @@ class IsVersionCompatible(Operation):
         gppkg = self.gppkg
 
         gpdb_version = self._get_gpdb_version()
-        required_gpdb_version = gppkg.gpdbversion
+        required_gpdb_version = GpVersion(gppkg.gpdbversion)
 
         logger.debug('Greenplum Database Version = %s' % gpdb_version)
         logger.debug('Required Greenplum Database version = %s' % required_gpdb_version)
@@ -444,8 +444,7 @@ class ValidateInstallPackage(Operation):
         if not IsVersionCompatible(self.gppkg).run():
             raise GpdbVersionError
 
-        # TODO: AK: I've changed our use of the OS tag from 'Linux' to 'rhel5' or 'suse10'.
-        # So, the two lines below will not work properly.
+        #Check that we are using the correct OS
         if self.gppkg.os.lower() != self.get_os():
             raise OSCompatibilityError(self.gppkg.os, self.get_os())
 
