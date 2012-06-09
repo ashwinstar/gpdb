@@ -650,7 +650,15 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 		if(RelFileNode_IsEmpty(xlogRelFileNode))
 			elog(ERROR, "Invalid RelFileNode (0,0,0)");
 		
-		if (GpPersistent_IsPersistentRelation(xlogRelFileNode->relNode))
+		if (GpPersistent_IsPersistentRelation(xlogRelFileNode->relNode) 
+			&& (xlogRelFileNode->relNode != GpGlobalSequenceRelationId))
+			/* MPP-17181: since the fix for MPP-17181 will always sync
+			 * newly allocated sequence numbers of gp_global_sequence
+			 * to disk before persistent table use them, replay of XLOG
+			 * records for gp_global_sequence will be skipped, otherwise
+			 * replay of stale xlog records might corrupt valid on-disk
+			 * gp_global_sequence relation file.
+			 */
 		{
 			if (Debug_persistent_recovery_print)
 				elog(PersistentRecovery_DebugPrintLevel(), 

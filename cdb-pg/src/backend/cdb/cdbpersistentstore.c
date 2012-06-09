@@ -515,7 +515,7 @@ static void PersistentStore_DoInitScan(
 	}
 	else
 	{
-		storeSharedData->maxInUseSerialNum = globalSequenceNum;
+		storeSharedData->maxCachedSerialNum = globalSequenceNum;
 	}
 	
 	if (Debug_persistent_recovery_print)
@@ -1320,13 +1320,18 @@ void PersistentStore_AddTuple(
 			 "PersistentStore_AddTuple: Going to add tuple ('%s', shared data %p)",
 			 storeData->tableName,
 			 storeSharedData);
+	/* allocate new sequence numbers if cached sequence numbers are exhausted */ 
+	if (storeSharedData->maxInUseSerialNum >= storeSharedData->maxCachedSerialNum)
+	{
+		storeSharedData->maxCachedSerialNum += 
+						PersistentStoreSharedDataMaxCachedSerialNum;
+		GlobalSequence_Set(
+							storeData->gpGlobalSequence, 
+							storeSharedData->maxCachedSerialNum);
+	}
 
 	*persistentSerialNum = ++storeSharedData->maxInUseSerialNum;
 	storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
-
-	GlobalSequence_Set(
-				storeData->gpGlobalSequence,
-				*persistentSerialNum);
 	
 	// Overwrite with the new serial number value.
 	values[storeData->attNumPersistentSerialNum - 1] = 
