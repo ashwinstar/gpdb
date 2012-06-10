@@ -2643,8 +2643,8 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				segdbDesc->conn &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				segdbDesc->canceled = true;
 				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel, pParms->pleaseCancel);
+				segdbDesc->canceled = true;
 			}
 		}
 	}

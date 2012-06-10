@@ -65,7 +65,17 @@ static bool isTargetPortal(const char *p1, const char *p2);
 
 static int	addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool i_am_superuser);
 
-static bool cleanupGang(Gang * gp);
+/* GangCleanupFailReason enumeration is the return code for cleanupGang below.
+ * It is used to represent various cleanup results
+ */
+typedef enum GangCleanupFailReason
+{
+	GANGCLEANUP_OK,			/* cleanup succeeded */
+	GANGCLEANUP_CANCELED,   /* one or more QEs got canceled */
+	GANGCLEANUP_ERROR       /* an error occured while cleaning up */
+} GangCleanupFailReason;
+
+static GangCleanupFailReason cleanupGang(Gang * gp);
 
 extern void resetSessionForPrimaryGangLoss(void);
 
@@ -1932,20 +1942,23 @@ getCdbProcessesForQD(int isPrimary)
 /*
  * cleanupGang():
  *
- * A return value of "true" means that the gang was intact (or NULL).
+ * A return value of GANGCLEANUP_OK means that the gang was intact (or NULL).
  *
- * A return value of false, means that a problem was detected and the
+ * A return value of GANGCLEANUP_ERROR, means that a problem was detected and the
  * gang has been disconnected (and so should not be put back onto the
  * available list).
+ *
+ * A return code of GANGCLEANUP_CANCELED means that one of the QEs got cancled so we
+ * disconnected the whole gang because we were not certain it cleaned up completely
  */
-bool
+GangCleanupFailReason
 cleanupGang(Gang *gp)
 {
 	int			i;
 	bool		was_canceled = false;
 
 	if (gp == NULL)
-		return true;
+		return GANGCLEANUP_OK;
 
 	elog(DEBUG5, "cleaning up gang %d", gp->gang_id);
 
@@ -1967,7 +1980,7 @@ cleanupGang(Gang *gp)
 	 * things getting HUNG.
 	 */
 	if (proc_exit_inprogress)
-		return true;
+		return GANGCLEANUP_OK;
 
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
@@ -1979,7 +1992,7 @@ cleanupGang(Gang *gp)
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
 
 		if (segdbDesc == NULL)
-			return false;
+			return GANGCLEANUP_ERROR;
 		if (segdbDesc->canceled)
 			was_canceled = true;
 		
@@ -2015,7 +2028,7 @@ cleanupGang(Gang *gp)
 					disconnectAndDestroyGang(gp);
 					gp = NULL;
 					Insist(false);
-					return false;
+					return GANGCLEANUP_ERROR;
 				}
 			}
 		}
@@ -2028,7 +2041,7 @@ cleanupGang(Gang *gp)
 			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 				elog(LOG, "lost connection with segworker group member");
 			disconnectAndDestroyGang(gp);
-			return false;
+			return GANGCLEANUP_ERROR;
 		}
 
 		/* QE is no longer associated with a slice. */
@@ -2040,18 +2053,18 @@ cleanupGang(Gang *gp)
 	}
 
 	gp->allocated = false;
-	if (was_canceled && gp->type != GANGTYPE_PRIMARY_WRITER)
+	if (was_canceled)
 	{
 		/* destroy this canceled gang and do not return it to the list */
 		disconnectAndDestroyGang(gp);
 		gp = NULL;
 		if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 			elog(DEBUG5, "cleanupGang done - gang destroyed");
-		return false;
+		return GANGCLEANUP_CANCELED;
 	}
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG5, "cleanupGang done");
-	return true;
+	return GANGCLEANUP_OK;
 }
 
 static bool NeedResetSession = false;
@@ -2411,6 +2424,7 @@ void
 freeGangsForPortal(char *portal_name)
 {
 	MemoryContext oldContext;
+	GangCleanupFailReason reason;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -2429,13 +2443,15 @@ freeGangsForPortal(char *portal_name)
 	 */
 	if (!portal_name)
 	{
-		if (!cleanupGang(primaryWriterGang))
+		reason = cleanupGang(primaryWriterGang);
+		if (reason != GANGCLEANUP_OK)
 		{
 			primaryWriterGang = NULL;	/* cleanupGang called
 										 * disconnectAndDestroyGang() already */
 			disconnectAndDestroyAllGangs();
 
-			elog(ERROR, "could not temporarily connect to one or more segments");
+			if (reason != GANGCLEANUP_CANCELED)
+				elog(ERROR, "could not temporarily connect to one or more segments");
 
 			return;
 		}
@@ -2471,7 +2487,7 @@ freeGangsForPortal(char *portal_name)
 				allocatedReaderGangsN = list_delete_cell(allocatedReaderGangsN, cur_item, prev_item);
 
 				/* we only return the gang to the available list if it is good */
-				if (cleanupGang(gp))
+				if (cleanupGang(gp) == GANGCLEANUP_OK)
 					availableReaderGangsN = lappend(availableReaderGangsN, gp);
 
 				if (prev_item)
@@ -2511,7 +2527,7 @@ freeGangsForPortal(char *portal_name)
 				allocatedReaderGangs1 = list_delete_cell(allocatedReaderGangs1, cur_item, prev_item);
 
 				/* we only return the gang to the available list if it is good */
-				if (cleanupGang(gp))
+				if (cleanupGang(gp) == GANGCLEANUP_OK)
 					availableReaderGangs1 = lappend(availableReaderGangs1, gp);
 
 				if (prev_item)
