@@ -83,7 +83,7 @@ static void open_external_writable_source(ExternalInsertDesc extInsertDesc);
 static int	external_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void external_senddata(URL_FILE *extfile, CopyState pstate);
 static void external_scan_error_callback(void *arg);
-void readHeaderLine(CopyState pstate);
+static DataLineStatus readHeaderLine(CopyState pstate);
 static void close_external_source(FILE *dataSource, bool failOnError, const char *relname);
 static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom);
 static void justifyDatabuf(StringInfo buf);
@@ -979,9 +979,10 @@ externalgettup_defined(FileScanDesc scan)
 				/* on first time around just throw the header line away */
 				if (pstate->header_line && pstate->bytesread > 0)
 				{
+					DataLineStatus ret_mode = LINE_OK;
 					PG_TRY();
 					{
-						readHeaderLine(pstate);
+						ret_mode = readHeaderLine(pstate);
 					}
 					PG_CATCH();
 					{
@@ -1007,6 +1008,9 @@ externalgettup_defined(FileScanDesc scan)
 						}
 					}
 					PG_END_TRY();
+					
+					if (ret_mode == NEED_MORE_DATA)
+						continue;					
 
 					EXT_RESET_LINEBUF;
 					pstate->header_line = false;
@@ -1879,11 +1883,19 @@ external_scan_error_callback(void *arg)
  * This function should be called only once for each data file
  * and only if HEADER is specified in the SQL command.
  */
-void readHeaderLine(CopyState pstate)
+static DataLineStatus readHeaderLine(CopyState pstate)
 {
+	DataLineStatus ret_mode = LINE_OK;
+	
 	pstate->line_done = pstate->csv_mode ?
 		CopyReadLineCSV(pstate, pstate->bytesread) :
 		CopyReadLineText(pstate, pstate->bytesread);
+	
+	/* Did not get a complete and valid data line? */
+	if(!pstate->line_done && !pstate->fe_eof)
+		ret_mode = NEED_MORE_DATA;
+	
+	return ret_mode;
 }
 
 /*
