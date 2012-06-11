@@ -28,118 +28,118 @@ FROM gp_dist_random('gp_id');
 VACUUM FREEZE pg_proc;
 -- ... and the rest
 
-CREATE FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075, DESCRIPTION="Cancels a specific query");
+CREATE FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) RETURNS bool LANGUAGE internal VOLATILE AS 'gp_cancel_query' WITH (OID=5075);
 COMMENT ON FUNCTION @gpupgradeschemaname@.gp_cancel_query(int4, int4) IS 'Cancels a specific query';
 
 CREATE FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4, bool) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'generate_subscripts' WITH (OID=823, DESCRIPTION="array subscripts generator");
+	AS 'generate_subscripts' WITH (OID=823);
 COMMENT ON FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4, bool) IS 'array subscripts generator';
 
 CREATE FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4) RETURNS SETOF int4 LANGUAGE internal IMMUTABLE STRICT 
-    AS 'generate_subscripts_nodir' WITH (OID=824, DESCRIPTION="array subscripts generator");
+    AS 'generate_subscripts_nodir' WITH (OID=824);
 COMMENT ON FUNCTION @gpupgradeschemaname@.generate_subscripts(anyarray, int4) IS 'array subscripts generator';
 
 CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT
-	AS 'pg_get_function_arguments' WITH (OID=2934, DESCRIPTION="argument list of a function");
+	AS 'pg_get_function_arguments' WITH (OID=2934);
 COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_arguments(oid) IS 'argument list of a function';
 
 CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_result(oid) RETURNS text LANGUAGE internal STABLE STRICT
-	AS 'pg_get_function_result' WITH (OID=2935, DESCRIPTION="result type of a function");
+	AS 'pg_get_function_result' WITH (OID=2935);
 COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_result(oid) IS 'result type of a function';
 
 CREATE FUNCTION @gpupgradeschemaname@.pg_get_function_identity_arguments(oid) RETURNS text LANGUAGE internal STABLE STRICT 
-	AS 'pg_get_function_identity_arguments' WITH (OID=2936, DESCRIPTION="identity argument list of a function");
+	AS 'pg_get_function_identity_arguments' WITH (OID=2936);
 COMMENT ON FUNCTION @gpupgradeschemaname@.pg_get_function_identity_arguments(oid) IS 'identity argument list of a function';
  
 CREATE FUNCTION  @gpupgradeschemaname@.interval_interval_div("interval", "interval") RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'interval_interval_div' WITH (OID=2918, DESCRIPTION="divide");
+	AS 'interval_interval_div' WITH (OID=2918);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_interval_div("interval", "interval") IS 'divide';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_interval_mod("interval", "interval") RETURNS "interval" LANGUAGE internal IMMUTABLE STRICT 
-	AS 'interval_interval_mod' WITH (OID=2919, DESCRIPTION="divide");
+	AS 'interval_interval_mod' WITH (OID=2919);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_interval_mod("interval", "interval") IS 'remainder';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT 
-	AS 'numeric_interval_bound' WITH (OID=2991, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'numeric_interval_bound' WITH (OID=2991);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric) IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE 
-	AS 'numeric_interval_bound' WITH (OID=2992, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'numeric_interval_bound' WITH (OID=2992);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric, int4) IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric, int4, numeric) RETURNS numeric LANGUAGE internal IMMUTABLE 
-	AS 'numeric_interval_bound' WITH (OID=2993, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'numeric_interval_bound' WITH (OID=2993);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(numeric, numeric, int4, numeric) IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval") RETURNS timestamp LANGUAGE internal IMMUTABLE STRICT  
-	AS 'timestamp_interval_bound' WITH (OID=2994, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'timestamp_interval_bound' WITH (OID=2994);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval") IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval", int4) RETURNS timestamp LANGUAGE internal IMMUTABLE  
-	AS 'timestamp_interval_bound' WITH (OID=2995, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'timestamp_interval_bound' WITH (OID=2995);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval", int4) IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval", int4, timestamp) RETURNS timestamp LANGUAGE internal IMMUTABLE  
-	AS 'timestamp_interval_bound' WITH (OID=2996, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'timestamp_interval_bound' WITH (OID=2996);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamp, "interval", int4, timestamp) IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval") RETURNS timestamptz LANGUAGE internal IMMUTABLE STRICT  
-	AS 'timestamptz_interval_bound' WITH (OID=2997, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'timestamptz_interval_bound' WITH (OID=2997);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval") IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4) RETURNS timestamptz LANGUAGE internal IMMUTABLE  
-	AS 'timestamptz_interval_bound' WITH (OID=2998, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'timestamptz_interval_bound' WITH (OID=2998);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4) IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4, timestamptz) RETURNS timestamptz LANGUAGE internal IMMUTABLE  
-	AS 'timestamptz_interval_bound' WITH (OID=2999, DESCRIPTION="boundary of the interval containing the given value");
+	AS 'timestamptz_interval_bound' WITH (OID=2999);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.interval_bound(timestamptz, "interval", int4, timestamptz) IS 'boundary of the interval containing the given value';
 
 CREATE FUNCTION  @gpupgradeschemaname@.generate_series("timestamp", "timestamp", "interval") RETURNS SETOF "timestamp" LANGUAGE internal VOLATILE STRICT  
-	AS 'generate_series_timestamp' WITH (OID=2916, DESCRIPTION="non-persistent series generator");
+	AS 'generate_series_timestamp' WITH (OID=2916);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.generate_series("timestamp", "timestamp", "interval") IS 'non-persistent series generator';
 
 CREATE FUNCTION  @gpupgradeschemaname@.generate_series("timestamptz", "timestamptz", "interval") RETURNS SETOF "timestamptz" LANGUAGE internal VOLATILE STRICT  
-	AS 'generate_series_timestamptz' WITH (OID=2917, DESCRIPTION="non-persistent series generator");
+	AS 'generate_series_timestamptz' WITH (OID=2917);
 COMMENT ON FUNCTION  @gpupgradeschemaname@.generate_series("timestamptz", "timestamptz", "interval") IS 'non-persistent series generator';
 
 CREATE FUNCTION @gpupgradeschemaname@.bool(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT
-	AS 'textbool' WITH (OID=2970, DESCRIPTION="convert text to boolean");
+	AS 'textbool' WITH (OID=2970);
 COMMENT ON FUNCTION @gpupgradeschemaname@.bool(text) IS 'convert text to boolean';
 
 --
 -- MPP-16121 - basic arithmetic for int2, int8
 --
 CREATE FUNCTION @gpupgradeschemaname@.int82pl(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int82pl' WITH (OID=3241, DESCRIPTION="add");
+	AS 'int82pl' WITH (OID=3241);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int82pl(int8, int2) IS 'add';
 
 CREATE FUNCTION @gpupgradeschemaname@.int82mi(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int82mi' WITH (OID=3242, DESCRIPTION="subtract");
+	AS 'int82mi' WITH (OID=3242);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int82mi(int8, int2) IS 'subtract';
 
 CREATE FUNCTION @gpupgradeschemaname@.int82mul(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int82mul' WITH (OID=3243, DESCRIPTION="multiply");
+	AS 'int82mul' WITH (OID=3243);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int82mul(int8, int2) IS 'multiply';
 
 CREATE FUNCTION @gpupgradeschemaname@.int82div(int8, int2) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int82div' WITH (OID=3244, DESCRIPTION="divide");
+	AS 'int82div' WITH (OID=3244);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int82div(int8, int2) IS 'divide';
 
 CREATE FUNCTION @gpupgradeschemaname@.int28pl(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int28pl' WITH (OID=3245, DESCRIPTION="add");
+	AS 'int28pl' WITH (OID=3245);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int28pl(int2, int8) IS 'add';
 
 CREATE FUNCTION @gpupgradeschemaname@.int28mi(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int28mi' WITH (OID=3246, DESCRIPTION="subtract");
+	AS 'int28mi' WITH (OID=3246);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int28mi(int2, int8) IS 'subtract';
 
 CREATE FUNCTION @gpupgradeschemaname@.int28mul(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int28mul' WITH (OID=3247, DESCRIPTION="multiply");
+	AS 'int28mul' WITH (OID=3247);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int28mul(int2, int8) IS 'multiply';
 
 CREATE FUNCTION @gpupgradeschemaname@.int28div(int2, int8) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT
-	AS 'int28div' WITH (OID=3248, DESCRIPTION="divide");
+	AS 'int28div' WITH (OID=3248);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int28div(int2, int8) IS 'divide';
 
 -- MPP-16125
@@ -200,16 +200,16 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.txid_visible_in_snapshot(int8, @gpupgr
 
 -- MPP-15707, MPP-17314, MPP-17339 - properly expose convert_* functions
 CREATE FUNCTION @gpupgradeschemaname@.length(bytea, name) RETURNS int4 LANGUAGE internal STABLE STRICT 
-	AS 'length_in_encoding' WITH (OID=2966, DESCRIPTION="length of string in specified encoding");
+	AS 'length_in_encoding' WITH (OID=2966);
 
 CREATE FUNCTION @gpupgradeschemaname@.convert_from(bytea, name) RETURNS text LANGUAGE internal STABLE STRICT 
-	AS 'pg_convert_from' WITH (OID=2967, DESCRIPTION="convert string with specified source encoding name");
+	AS 'pg_convert_from' WITH (OID=2967);
 
 CREATE FUNCTION @gpupgradeschemaname@.convert_to(text, name) RETURNS bytea LANGUAGE internal STABLE STRICT 
-	AS 'pg_convert_to' WITH (OID=2968, DESCRIPTION="convert string with specified destination encoding name");
+	AS 'pg_convert_to' WITH (OID=2968);
 
 CREATE FUNCTION @gpupgradeschemaname@."convert"(bytea, name, name) RETURNS bytea LANGUAGE internal STABLE STRICT 
-	AS 'pg_convert' WITH (OID=2969, DESCRIPTION="convert string with specified encoding names");
+	AS 'pg_convert' WITH (OID=2969);
 
 -- MPP-15707, MPP-17314, MPP-17340 - delete convert(text, name) => text [OID=1717]
 DELETE FROM @gpupgradeschemaname@.pg_depend WHERE refclassid = 1255 and refobjid = 1717;
@@ -272,19 +272,19 @@ DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_operator_load;
 CREATE TYPE @gpupgradeschemaname@.complex (oid=825);
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_in(cstring) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_in' WITH (OID=9026, DESCRIPTION="IO");
+	AS 'complex_in' WITH (OID=9026);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_in(cstring)  IS 'IO';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_out(@gpupgradeschemaname@.complex) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_out' WITH (OID=9027, DESCRIPTION="IO");
+	AS 'complex_out' WITH (OID=9027);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_out(@gpupgradeschemaname@.complex)  IS 'IO';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_recv(internal) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_recv' WITH (OID=9028, DESCRIPTION="IO");
+	AS 'complex_recv' WITH (OID=9028);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_recv(internal)  IS 'IO';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_send(@gpupgradeschemaname@.complex) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_send' WITH (OID=9029, DESCRIPTION="IO");
+	AS 'complex_send' WITH (OID=9029);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_send(@gpupgradeschemaname@.complex)  IS 'IO';
 
 CREATE TYPE @gpupgradeschemaname@.complex(
@@ -302,190 +302,190 @@ CREATE TYPE @gpupgradeschemaname@.complex(
 COMMENT ON TYPE @gpupgradeschemaname@.complex IS 'double-precision floating point complex number, 16-byte storage';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex(float8, float8) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'construct_complex' WITH (OID=9030, DESCRIPTION="constructs a complex number with given real part and imaginary part");
+	AS 'construct_complex' WITH (OID=9030);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex(float8, float8)  IS 'constructs a complex number with given real part and imaginary part';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_trig(float8, float8) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'construct_complex_trig' WITH (OID=9031, DESCRIPTION="constructs a complex number with given magnitude and phase");
+	AS 'construct_complex_trig' WITH (OID=9031);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_trig(float8, float8)  IS 'constructs a complex number with given magnitude and phase';
 
 CREATE FUNCTION @gpupgradeschemaname@.re(@gpupgradeschemaname@.complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_re' WITH (OID=9032, DESCRIPTION="returns the real part of the argument");
+	AS 'complex_re' WITH (OID=9032);
 COMMENT ON FUNCTION @gpupgradeschemaname@.re(@gpupgradeschemaname@.complex)  IS 'returns the real part of the argument';
 
 CREATE FUNCTION @gpupgradeschemaname@.im(@gpupgradeschemaname@.complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_im' WITH (OID=9033, DESCRIPTION="returns the imaginary part of the argument");
+	AS 'complex_im' WITH (OID=9033);
 COMMENT ON FUNCTION @gpupgradeschemaname@.im(@gpupgradeschemaname@.complex)  IS 'returns the imaginary part of the argument';
 
 CREATE FUNCTION @gpupgradeschemaname@.radians(@gpupgradeschemaname@.complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_arg' WITH (OID=9035, DESCRIPTION="returns the phase of the argument");
+	AS 'complex_arg' WITH (OID=9035);
 COMMENT ON FUNCTION @gpupgradeschemaname@.radians(@gpupgradeschemaname@.complex)  IS 'returns the phase of the argument';
 
 CREATE FUNCTION @gpupgradeschemaname@.complexabs(@gpupgradeschemaname@.complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_mag' WITH (OID=9036, DESCRIPTION="returns the magnitude of the argument");
+	AS 'complex_mag' WITH (OID=9036);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complexabs(@gpupgradeschemaname@.complex)  IS 'returns the magnitude of the argument';
 
 CREATE FUNCTION @gpupgradeschemaname@.abs(@gpupgradeschemaname@.complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_mag' WITH (OID=9037, DESCRIPTION="returns the magnitude of the argument");
+	AS 'complex_mag' WITH (OID=9037);
 COMMENT ON FUNCTION @gpupgradeschemaname@.abs(@gpupgradeschemaname@.complex)  IS 'returns the magnitude of the argument';
 
 CREATE FUNCTION @gpupgradeschemaname@.conj(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_conj' WITH (OID=9038, DESCRIPTION="returns the conjunction of the argument");
+	AS 'complex_conj' WITH (OID=9038);
 COMMENT ON FUNCTION @gpupgradeschemaname@.conj(@gpupgradeschemaname@.complex)  IS 'returns the conjunction of the argument';
 
 CREATE FUNCTION @gpupgradeschemaname@.hashcomplex(@gpupgradeschemaname@.complex) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_hash' WITH (OID=9039, DESCRIPTION="hash");
+	AS 'complex_hash' WITH (OID=9039);
 COMMENT ON FUNCTION @gpupgradeschemaname@.hashcomplex(@gpupgradeschemaname@.complex)  IS 'hash';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_eq(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS bool  LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_eq' WITH (OID=9040, DESCRIPTION="equal");
+	AS 'complex_eq' WITH (OID=9040);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_eq(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'equal';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_ne(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS bool  LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_ne' WITH (OID=9041, DESCRIPTION="not equal");
+	AS 'complex_ne' WITH (OID=9041);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_ne(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'not equal';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_pl(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_pl' WITH (OID=9042, DESCRIPTION="plus");
+	AS 'complex_pl' WITH (OID=9042);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_pl(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'plus';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_up(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_up' WITH (OID=9043, DESCRIPTION="unary plus");
+	AS 'complex_up' WITH (OID=9043);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_up(@gpupgradeschemaname@.complex)  IS 'unary plus';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_mi(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_mi' WITH (OID=9044, DESCRIPTION="minus");
+	AS 'complex_mi' WITH (OID=9044);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_mi(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'minus';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_um(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_um' WITH (OID=9045, DESCRIPTION="unary minus");
+	AS 'complex_um' WITH (OID=9045);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_um(@gpupgradeschemaname@.complex)  IS 'unary minus';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_mul(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_mul' WITH (OID=9046, DESCRIPTION="multiply");
+	AS 'complex_mul' WITH (OID=9046);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_mul(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'multiply';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_div(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_div' WITH (OID=9047, DESCRIPTION="divide");
+	AS 'complex_div' WITH (OID=9047);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_div(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'divide';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_power(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_pow' WITH (OID=9048, DESCRIPTION="exponentiation (x^y)");
+	AS 'complex_pow' WITH (OID=9048);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_power(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'exponentiation (x^y)';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_sqrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_sqrt' WITH (OID=9049, DESCRIPTION="squre root");
+	AS 'complex_sqrt' WITH (OID=9049);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_sqrt(@gpupgradeschemaname@.complex)  IS 'squre root';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_cbrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_cbrt' WITH (OID=9050, DESCRIPTION="cube root");
+	AS 'complex_cbrt' WITH (OID=9050);
 COMMENT ON FUNCTION @gpupgradeschemaname@.complex_cbrt(@gpupgradeschemaname@.complex)  IS 'cube root';
 
 CREATE FUNCTION @gpupgradeschemaname@.degrees(@gpupgradeschemaname@.complex) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_degrees' WITH (OID=9051, DESCRIPTION="phase to degrees");
+	AS 'complex_degrees' WITH (OID=9051);
 COMMENT ON FUNCTION @gpupgradeschemaname@.degrees(@gpupgradeschemaname@.complex)  IS 'phase to degrees';
 
 CREATE FUNCTION @gpupgradeschemaname@.exp(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_exp' WITH (OID=9052, DESCRIPTION="natural exponential (e^x)");
+	AS 'complex_exp' WITH (OID=9052);
 COMMENT ON FUNCTION @gpupgradeschemaname@.exp(@gpupgradeschemaname@.complex)  IS 'natural exponential (e^x)';
 
 CREATE FUNCTION @gpupgradeschemaname@.ln(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_ln' WITH (OID=9053, DESCRIPTION="natural logarithm");
+	AS 'complex_ln' WITH (OID=9053);
 COMMENT ON FUNCTION @gpupgradeschemaname@.ln(@gpupgradeschemaname@.complex)  IS 'natural logarithm';
 
 CREATE FUNCTION @gpupgradeschemaname@.log(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_log10' WITH (OID=9054, DESCRIPTION="base 10 logarithm");
+	AS 'complex_log10' WITH (OID=9054);
 COMMENT ON FUNCTION @gpupgradeschemaname@.log(@gpupgradeschemaname@.complex)  IS 'base 10 logarithm';
 
 CREATE FUNCTION @gpupgradeschemaname@.log(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_log' WITH (OID=9055, DESCRIPTION="logarithm base arg1 of arg2");
+	AS 'complex_log' WITH (OID=9055);
 COMMENT ON FUNCTION @gpupgradeschemaname@.log(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'logarithm base arg1 of arg2';
 
 CREATE FUNCTION @gpupgradeschemaname@.acos(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_acos' WITH (OID=9056, DESCRIPTION="acos");
+	AS 'complex_acos' WITH (OID=9056);
 COMMENT ON FUNCTION @gpupgradeschemaname@.acos(@gpupgradeschemaname@.complex)  IS 'acos';
 
 CREATE FUNCTION @gpupgradeschemaname@.asin(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_asin' WITH (OID=9057, DESCRIPTION="asin");
+	AS 'complex_asin' WITH (OID=9057);
 COMMENT ON FUNCTION @gpupgradeschemaname@.asin(@gpupgradeschemaname@.complex)  IS 'asin';
 
 CREATE FUNCTION @gpupgradeschemaname@.atan(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_atan' WITH (OID=9058, DESCRIPTION="atan");
+	AS 'complex_atan' WITH (OID=9058);
 COMMENT ON FUNCTION @gpupgradeschemaname@.atan(@gpupgradeschemaname@.complex)  IS 'atan';
 
 CREATE FUNCTION @gpupgradeschemaname@.cos(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_cos' WITH (OID=9059, DESCRIPTION="cos");
+	AS 'complex_cos' WITH (OID=9059);
 COMMENT ON FUNCTION @gpupgradeschemaname@.cos(@gpupgradeschemaname@.complex)  IS 'cos';
 
 CREATE FUNCTION @gpupgradeschemaname@.cot(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_cot' WITH (OID=9060, DESCRIPTION="cot");
+	AS 'complex_cot' WITH (OID=9060);
 COMMENT ON FUNCTION @gpupgradeschemaname@.cot(@gpupgradeschemaname@.complex)  IS 'cot';
 
 CREATE FUNCTION @gpupgradeschemaname@.sin(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_sin' WITH (OID=9061, DESCRIPTION="sin");
+	AS 'complex_sin' WITH (OID=9061);
 COMMENT ON FUNCTION @gpupgradeschemaname@.sin(@gpupgradeschemaname@.complex)  IS 'sin';
 
 CREATE FUNCTION @gpupgradeschemaname@.tan(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_tan' WITH (OID=9062, DESCRIPTION="tan");
+	AS 'complex_tan' WITH (OID=9062);
 COMMENT ON FUNCTION @gpupgradeschemaname@.tan(@gpupgradeschemaname@.complex)  IS 'tan';
 
 CREATE FUNCTION @gpupgradeschemaname@.dotproduct(_complex, _complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_dot_product' WITH (OID=9063, DESCRIPTION="dot product");
+	AS 'complex_dot_product' WITH (OID=9063);
 COMMENT ON FUNCTION @gpupgradeschemaname@.dotproduct(_complex, _complex)  IS 'dot product';
 
 CREATE FUNCTION @gpupgradeschemaname@.float82complex(float8) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'float82complex' WITH (OID=9064, DESCRIPTION="(internal) type cast from float8 to complex");
+	AS 'float82complex' WITH (OID=9064);
 COMMENT ON FUNCTION @gpupgradeschemaname@.float82complex(float8)  IS '(internal) type cast from float8 to complex';
 
 CREATE FUNCTION @gpupgradeschemaname@.float42complex(float4) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'float42complex' WITH (OID=9065, DESCRIPTION="(internal) type cast from float4 to complex");
+	AS 'float42complex' WITH (OID=9065);
 COMMENT ON FUNCTION @gpupgradeschemaname@.float42complex(float4)  IS '(internal) type cast from float4 to complex';
 
 CREATE FUNCTION @gpupgradeschemaname@.int82complex(int8) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'int82complex' WITH (OID=9066, DESCRIPTION="(internal) type cast from int8 to complex");
+	AS 'int82complex' WITH (OID=9066);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int82complex(int8)  IS '(internal) type cast from int8 to complex';
 
 CREATE FUNCTION @gpupgradeschemaname@.int42complex(int4) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'int42complex' WITH (OID=9067, DESCRIPTION="(internal) type cast from int4 to complex");
+	AS 'int42complex' WITH (OID=9067);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int42complex(int4)  IS '(internal) type cast from int4 to complex';
 
 CREATE FUNCTION @gpupgradeschemaname@.int22complex(int2) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'int22complex' WITH (OID=9068, DESCRIPTION="(internal) type cast from int2 to complex");
+	AS 'int22complex' WITH (OID=9068);
 COMMENT ON FUNCTION @gpupgradeschemaname@.int22complex(int2)  IS '(internal) type cast from int2 to complex';
 
 CREATE FUNCTION @gpupgradeschemaname@.power(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_pow' WITH (OID=9084, DESCRIPTION="exponentiation (x^y)");
+	AS 'complex_pow' WITH (OID=9084);
 COMMENT ON FUNCTION @gpupgradeschemaname@.power(@gpupgradeschemaname@.complex, @gpupgradeschemaname@.complex)  IS 'exponentiation (x^y)';
 
 CREATE FUNCTION @gpupgradeschemaname@.sqrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_sqrt' WITH (OID=9085, DESCRIPTION="squre root");
+	AS 'complex_sqrt' WITH (OID=9085);
 COMMENT ON FUNCTION @gpupgradeschemaname@.sqrt(@gpupgradeschemaname@.complex)  IS 'square root';
 
 CREATE FUNCTION @gpupgradeschemaname@.cbrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'complex_cbrt' WITH (OID=9086, DESCRIPTION="cube root");
+	AS 'complex_cbrt' WITH (OID=9086);
 COMMENT ON FUNCTION @gpupgradeschemaname@.cbrt(@gpupgradeschemaname@.complex)  IS 'cube root'; 
 
 CREATE FUNCTION @gpupgradeschemaname@.numeric2point("numeric") RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
-	AS 'numeric2complex' WITH (OID=9087, DESCRIPTION="(internal) type cast from numeric to complex");
+	AS 'numeric2complex' WITH (OID=9087);
 COMMENT ON FUNCTION @gpupgradeschemaname@.numeric2point("numeric")  IS '(internal) type cast from numeric to complex';
 
 -- uuid data type --
 CREATE TYPE @gpupgradeschemaname@.uuid(OID=2950);
 
 CREATE FUNCTION @gpupgradeschemaname@.uuid_in(cstring) RETURNS @gpupgradeschemaname@.uuid LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_in' WITH (OID=2952, DESCRIPTION="I/O");
+	AS 'uuid_in' WITH (OID=2952);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_in(cstring) IS 'I/O';
 
 CREATE FUNCTION @gpupgradeschemaname@.uuid_out(@gpupgradeschemaname@.uuid) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_out' WITH (OID=2953, DESCRIPTION="I/O");
+	AS 'uuid_out' WITH (OID=2953);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_out(@gpupgradeschemaname@.uuid) IS 'I/O';
 
 CREATE FUNCTION @gpupgradeschemaname@.uuid_recv(internal) RETURNS @gpupgradeschemaname@.uuid LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_recv' WITH (OID=2961, DESCRIPTION="I/O");
+	AS 'uuid_recv' WITH (OID=2961);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_recv(internal) IS 'I/O';
  
 CREATE FUNCTION @gpupgradeschemaname@.uuid_send(@gpupgradeschemaname@.uuid) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_send' WITH (OID=2962, DESCRIPTION="I/O");
+	AS 'uuid_send' WITH (OID=2962);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_send(@gpupgradeschemaname@.uuid) IS 'I/O';
 
 CREATE TYPE @gpupgradeschemaname@.uuid(
@@ -502,43 +502,43 @@ COMMENT ON TYPE @gpupgradeschemaname@.uuid IS 'UUID data type';
 
 
 CREATE FUNCTION @gpupgradeschemaname@.uuid_lt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_lt' WITH (OID=2954, DESCRIPTION="less-than");
+	AS 'uuid_lt' WITH (OID=2954);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_lt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'less-than';
 
 CREATE FUNCTION @gpupgradeschemaname@.uuid_le(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_le' WITH (OID=2955, DESCRIPTION="less-than-or-equal");
+	AS 'uuid_le' WITH (OID=2955);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_le(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'less-than-or-equal';
 
 CREATE FUNCTION @gpupgradeschemaname@.uuid_eq(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_eq' WITH (OID=2956, DESCRIPTION="equal");
+	AS 'uuid_eq' WITH (OID=2956);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_eq(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'equal';
  
 CREATE FUNCTION @gpupgradeschemaname@.uuid_ge(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_ge' WITH (OID=2957, DESCRIPTION="greater-than-or-equal");
+	AS 'uuid_ge' WITH (OID=2957);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_ge(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'greater-than-or-equal';
  
 CREATE FUNCTION @gpupgradeschemaname@.uuid_gt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_gt' WITH (OID=2958, DESCRIPTION="greater-than");
+	AS 'uuid_gt' WITH (OID=2958);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_gt(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'greater-than';
  
 CREATE FUNCTION @gpupgradeschemaname@.uuid_ne(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS bool LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_ne' WITH (OID=2959, DESCRIPTION="not-equal");
+	AS 'uuid_ne' WITH (OID=2959);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_ne(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'not-equal';
  
 CREATE FUNCTION @gpupgradeschemaname@.uuid_cmp(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_cmp' WITH (OID=2960, DESCRIPTION="btree less-equal-greater");
+	AS 'uuid_cmp' WITH (OID=2960);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_cmp(@gpupgradeschemaname@.uuid, @gpupgradeschemaname@.uuid) IS 'btree less-equal-greater';
  
 CREATE FUNCTION @gpupgradeschemaname@.uuid_hash(@gpupgradeschemaname@.uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_hash' WITH (OID=2963, DESCRIPTION="hash");
+	AS 'uuid_hash' WITH (OID=2963);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_hash(@gpupgradeschemaname@.uuid) IS 'hash';
  
 CREATE FUNCTION @gpupgradeschemaname@.text_uuid(text) RETURNS @gpupgradeschemaname@.uuid LANGUAGE internal IMMUTABLE STRICT 
-	AS 'text_uuid' WITH (OID=2964, DESCRIPTION="convert text to uuid");
+	AS 'text_uuid' WITH (OID=2964);
 COMMENT ON FUNCTION @gpupgradeschemaname@.text_uuid(text) IS 'convert text to uuid';
  
 CREATE FUNCTION @gpupgradeschemaname@.uuid_text(@gpupgradeschemaname@.uuid) RETURNS text LANGUAGE internal IMMUTABLE STRICT 
-	AS 'uuid_text' WITH (OID=2965, DESCRIPTION="convert uuid to text");
+	AS 'uuid_text' WITH (OID=2965);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_text(@gpupgradeschemaname@.uuid) IS 'convert uuid to text';
 
 -- Create Operator Class for UUID
