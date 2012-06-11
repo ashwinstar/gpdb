@@ -201,15 +201,19 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.txid_visible_in_snapshot(int8, @gpupgr
 -- MPP-15707, MPP-17314, MPP-17339 - properly expose convert_* functions
 CREATE FUNCTION @gpupgradeschemaname@.length(bytea, name) RETURNS int4 LANGUAGE internal STABLE STRICT 
 	AS 'length_in_encoding' WITH (OID=2966);
+COMMENT ON FUNCTION @gpupgradeschemaname@.length(bytea, name) IS 'length of string in specified encoding';
 
 CREATE FUNCTION @gpupgradeschemaname@.convert_from(bytea, name) RETURNS text LANGUAGE internal STABLE STRICT 
 	AS 'pg_convert_from' WITH (OID=2967);
+COMMENT ON FUNCTION @gpupgradeschemaname@.convert_from(bytea, name) IS 'convert string with specified source encoding name';
 
 CREATE FUNCTION @gpupgradeschemaname@.convert_to(text, name) RETURNS bytea LANGUAGE internal STABLE STRICT 
 	AS 'pg_convert_to' WITH (OID=2968);
+COMMENT ON FUNCTION @gpupgradeschemaname@.convert_to(text, name) IS 'convert string with specified destination encoding name';
 
 CREATE FUNCTION @gpupgradeschemaname@."convert"(bytea, name, name) RETURNS bytea LANGUAGE internal STABLE STRICT 
 	AS 'pg_convert' WITH (OID=2969);
+COMMENT ON FUNCTION @gpupgradeschemaname@."convert"(bytea, name, name) IS 'convert string with specified encoding names';
 
 -- MPP-15707, MPP-17314, MPP-17340 - delete convert(text, name) => text [OID=1717]
 DELETE FROM @gpupgradeschemaname@.pg_depend WHERE refclassid = 1255 and refobjid = 1717;
