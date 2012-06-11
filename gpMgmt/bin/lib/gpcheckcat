@@ -174,7 +174,7 @@ def usage(exitarg = None):
 ###############################
 
 def getversion():
-    versions = ["3.2", "3.3", "4.0", "4.1", "main"]
+    versions = ["3.2", "3.3", "4.0", "4.1", "4.2", "main"]
     db = connect()
     curs = db.query('''
     select regexp_replace(version(), 
@@ -1827,6 +1827,94 @@ def checkPartitionRegularity():
             myprint('  Execution error: ' + str(e))
 
     db.close()
+
+#############
+def checkInheritanceDeprecation():
+    """
+    MPP-16335 - Paris deprecated the use of inheritance as a first-class feature. 
+    Any use of inheritance unrelated to partitioning is exposed by these checks.
+    """
+    logger.info('-----------------------------------')
+    logger.info('Checking inheritance deprecation ...')
+    qry = """
+    SELECT parent_relation.oid as parent_oid,
+           parent_namespace.nspname as parent_nspname,
+           parent_relation.relname as parent_name,
+           child_relation.oid as child_oid,
+           child_namespace.nspname as child_nspname,
+           child_relation.relname as child_name
+    FROM pg_inherits,
+         pg_class parent_relation,
+         pg_namespace parent_namespace,
+         pg_class child_relation,
+         pg_namespace child_namespace
+    WHERE inhparent = parent_relation.oid
+      AND parent_relation.relnamespace = parent_namespace.oid
+      AND inhrelid = child_relation.oid
+      AND child_relation.relnamespace = child_namespace.oid
+      AND NOT EXISTS (
+        SELECT * 
+        FROM pg_partition_rule
+        WHERE parchildrelid = inhrelid
+    )
+    """
+    testname = 'inheritance'
+    err = []
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+
+        """
+        gp_enable_inheritance - it does exactly what it sounds like. 
+
+        In normal circumstances, the presence or absence of the GUC determines whether
+        we look to expose use of inheritance unrelated to partitioning.
+
+        In upgrade circumstances, we must run checkcat against an older GPDB, where
+        the GUC will not exist. Since our desire is to have customers pursue a migration
+        away from any usage of inheritance, we will run this test during upgrade; 
+        if, however, a customer feels that inheritance is still necessary,
+        we provide an environment variable GP_ENABLE_INHERITANCE which causes this
+        test to be skipped, thereby unblocking upgrade.
+
+        The endgame is to rip out inheritance entirely, after the PARIS release.
+        """
+        skip = False
+        if "GP_ENABLE_INHERITANCE" in os.environ:
+            skip = True
+        elif GV.version > "4.2":
+            curs = db.query("SHOW gp_enable_inheritance")
+            inheritance_enabled = curs.getresult()[0][0]
+            if inheritance_enabled == "on":
+                skip = True
+            
+        if skip:
+            logger.info('Detected override of inheritance deprecation')
+            logger.info('[SKIP]  %s' % testname)
+        else:
+            curs = db.query(qry)
+            for row in curs.dictresult():
+                err.append(row)
+
+            if not err:
+                logger.info('[OK]  %s' % testname)
+            else:
+                GV.testStatus = False
+                setError(ERROR_NOREPAIR)
+                logger.info('[FAIL]  %s' % testname)
+                logger.error('Inheritance has been deprecated and is no longer supported.')
+                logger.error('%s test has %d issue(s)' % (testname, len(err)) )
+                logger.error(qry)
+                for e in err:
+                    logger.error('    Table "%s.%s" directly inherits from "%s.%s".'
+                                    % (e['child_nspname'],
+                                       e['child_name'],
+                                       e['parent_nspname'],
+                                       e['parent_name']))
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        myprint('[ERROR] executing test: %s' % testname)
+        myprint('  Execution error: ' + str(e))
 
 #############
 def checkPGClass():
@@ -3666,6 +3754,14 @@ name_test = {
          "version": 'main',
          "order": 14,
          "online": True
+    },
+    "inheritance_deprecation":
+    {
+        "description": "Check for usage of inheritance unrelated to partitioning",
+        "fn": lambda: checkInheritanceDeprecation(),
+        "version": 'main',
+        "order": 15,
+        "online": True
     }
 }
 
