@@ -21,7 +21,6 @@ MODCAT_OBJS= gpmodcatversion.o pg_crc.o crc32c.o
 DATADIR=$(top_srcdir)/src/test/regress/data
 
 UPGRADEFILES = $(DATADIR)/upgrade/upg2_catupgrade.sql \
-			   $(DATADIR)/upgrade/upg2_catupgrade_check.sql \
 			   $(DATADIR)/upgrade_paris/upg2_catupgrade_paris.sql
 
 DATAFILES = $(DATADIR)/upgrade_paris/pg_cast.data \
