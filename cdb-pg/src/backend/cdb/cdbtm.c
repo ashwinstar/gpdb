@@ -2000,6 +2000,11 @@ redoDistributedForgetCommitRecord(TMGXACT_LOG * gxact_log)
 static void
 descGxactLog(StringInfo buf, TMGXACT_LOG * gxact_log)
 {
+	if (!gxact_log)
+	{
+		return;
+	}
+
 	appendStringInfo(buf, " gid = %s, gxid = %u",
 					 gxact_log->gid, gxact_log->gxid);
 }

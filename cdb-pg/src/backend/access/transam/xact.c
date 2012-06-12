@@ -993,8 +993,8 @@ RecordTransactionCommit(void)
 	int16						persistentCommitObjectCount;
 	char						*persistentCommitBuffer = NULL;
 
-	int			nchildren;
-	TransactionId *children;
+	int			nchildren = 0;
+	TransactionId 	*children = NULL;
 	bool		isDtxPrepared;
 	bool		omitCommitRecordForDirtyQEReader;
 	TMGXACT_LOG gxact_log;
@@ -1107,7 +1107,7 @@ RecordTransactionCommit(void)
 			xl_xact_commit xlrec;
 
 			xlrec.xtime = time(NULL);
-		    //xlrec.xact_time = xactStopTimestamp;
+		    	//xlrec.xact_time = xactStopTimestamp;
 			xlrec.persistentCommitObjectCount = persistentCommitObjectCount;
 			xlrec.nsubxacts = nchildren;
 			rdata[0].data = (char *) (&xlrec);
@@ -1152,7 +1152,7 @@ RecordTransactionCommit(void)
 			if (isDtxPrepared)
 			{
 				getDtxLogInfo(&gxact_log);
-				
+			
 				rdata[lastrdata].next = &(rdata[3]);
 				rdata[3].data = (char *) &gxact_log;
 				rdata[3].len = sizeof(gxact_log);
@@ -6750,7 +6750,7 @@ int
 xactGetCommittedChildren(TransactionId **ptr)
 {
 	TransactionState s = CurrentTransactionState;
-	int			nchildren;
+	int			nchildren = 0;
 	TransactionId *children;
 	ListCell   *p;
 
@@ -6762,6 +6762,7 @@ xactGetCommittedChildren(TransactionId **ptr)
 	}
 
 	children = (TransactionId *) palloc(nchildren * sizeof(TransactionId));
+	MemSet(children, 0, (nchildren*sizeof(TransactionId)));	
 	*ptr = children;
 
 	foreach(p, s->childXids)
@@ -6789,6 +6790,11 @@ xact_get_distributed_info_from_commit(xl_xact_commit *xlrec)
 			PersistentEndXactRec_DeserializeLen(
 											data,
 											xlrec->persistentCommitObjectCount);
+
+	if (deserializeLen == 0)
+	{
+		return NULL;
+	}
 	
 	sub_xids = (TransactionId *)&data[deserializeLen]; 
 
@@ -6865,6 +6871,11 @@ xact_redo_distributed_commit(xl_xact_commit *xlrec, TransactionId xid)
 	 * Get the global transaction information first.
 	 */
 	gxact_log = xact_get_distributed_info_from_commit(xlrec);
+
+	if (!gxact_log)
+	{
+		return;
+	}
 
 	/*
 	 * Crack open the gid to get the timestamp.
@@ -7194,11 +7205,15 @@ xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 	int			i;
 	uint8 *data;
 	PersistentEndXactRecObjects persistentCommitObjects;
-	TransactionId *sub_xids;
+	TransactionId *sub_xids = NULL;
 
-	appendStringInfo(buf, "%04u-%02u-%02u %02u:%02u:%02u",
+	if (tm)
+	{
+		appendStringInfo(buf, "%04u-%02u-%02u %02u:%02u:%02u",
 					 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
 					 tm->tm_hour, tm->tm_min, tm->tm_sec);
+	}
+	
 	data = xlrec->data;
 	appendStringInfo(buf, "; persistent commit object count = %d",
 					 xlrec->persistentCommitObjectCount);
@@ -7207,7 +7222,7 @@ xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 								xlrec->persistentCommitObjectCount,
 								&persistentCommitObjects,
 								&data);
-	
+
 	sub_xids = (TransactionId *)data; 
 
 	if (persistentCommitObjects.typed.fileSysActionInfosCount > 0)
@@ -7256,13 +7271,13 @@ xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 static void
 xact_desc_distributed_commit(StringInfo buf, xl_xact_commit *xlrec)
 {
-	TMGXACT_LOG *gxact_log;
+	TMGXACT_LOG *gxact_log = NULL;
 
 	/* 
 	 * We put the global transaction information last, so call the regular xact
 	 * commit routine.
 	 */
-	gxact_log = (TMGXACT_LOG *) xact_desc_commit(buf, xlrec);
+	gxact_log = (TMGXACT_LOG *)xact_desc_commit(buf, xlrec);
 
 	descDistributedCommitRecord(buf, gxact_log);
 }
@@ -7335,7 +7350,7 @@ void
 xact_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	char		*rec = XLogRecGetData(record);
+	char		*rec = (char*)(record) + sizeof(XLogRecord);
 
 	if (info == XLOG_XACT_COMMIT)
 	{
@@ -7360,6 +7375,7 @@ xact_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 		xl_xact_commit_prepared *xlrec = (xl_xact_commit_prepared *) rec;
 
 		appendStringInfo(buf, "commit %u: ", xlrec->xid);
+
 		xact_desc_commit(buf, &xlrec->crec);
 	}
 	else if (info == XLOG_XACT_ABORT_PREPARED)

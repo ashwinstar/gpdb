@@ -5246,8 +5246,8 @@ out_target(StringInfo buf, xl_heaptid *target)
 {
 	appendStringInfo(buf, "rel %u/%u/%u; tid %u/%u",
 			 target->node.spcNode, target->node.dbNode, target->node.relNode,
-					 ItemPointerGetBlockNumber(&(target->tid)),
-					 ItemPointerGetOffsetNumber(&(target->tid)));
+			 (&(target->tid) != NULL && (&(target->tid))->ip_posid != 0) ? ItemPointerGetBlockNumber(&(target->tid)) : 0,
+                         (&(target->tid) != NULL && (&(target->tid))->ip_posid != 0) ? ItemPointerGetOffsetNumber(&(target->tid)) : 0);
 }
 
 void

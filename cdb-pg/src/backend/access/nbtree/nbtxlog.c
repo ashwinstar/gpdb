@@ -802,7 +802,7 @@ out_insert(StringInfo buf, bool isleaf, bool ismeta, XLogRecord *record)
 	if ((record->xl_info & XLR_BKP_BLOCK_1) && !ismeta && isleaf)
 	{
 		appendStringInfo(buf, "; page %u",
-						 ItemPointerGetBlockNumber(&(xlrec->target.tid)));
+				 ((&(xlrec->target.tid))->ip_posid != 0) ? ItemPointerGetBlockNumber(&(xlrec->target.tid)) : 0);
 		return;					/* nothing to do */
 	}
 
@@ -811,9 +811,9 @@ out_insert(StringInfo buf, bool isleaf, bool ismeta, XLogRecord *record)
 	if (!(record->xl_info & XLR_BKP_BLOCK_1))
 	{
 		appendStringInfo(buf, "; add length %d item at offset %d in page %u",
-						 datalen, 
-						 ItemPointerGetOffsetNumber(&(xlrec->target.tid)),
-						 ItemPointerGetBlockNumber(&(xlrec->target.tid)));
+						 datalen,
+			(&(xlrec->target.tid) != NULL && (&(xlrec->target.tid))->ip_posid != 0) ? ItemPointerGetBlockNumber(&(xlrec->target.tid)) : 0,
+                        (&(xlrec->target.tid) != NULL && (&(xlrec->target.tid))->ip_posid != 0) ? ItemPointerGetOffsetNumber(&(xlrec->target.tid)) : 0);	 
 	}
 
 	if (ismeta)

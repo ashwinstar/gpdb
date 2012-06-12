@@ -719,6 +719,7 @@ static char *XLogContiguousCopy(
 	}
 
 	buffer = (char*)palloc(len);
+	MemSet(buffer, 0, len);
 
 	memcpy(buffer, record, sizeof(XLogRecord));
 	rdt = rdata;
@@ -1218,7 +1219,7 @@ begin:;
 	if (Debug_xlog_insert_print)
 	{
 		StringInfoData buf;
-		char *contiguousCopy;
+		char *contiguousCopy = NULL;
 
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "XLOG INSERT @ %s, total length %u, data length %u: ",
@@ -9205,7 +9206,7 @@ void
 xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	char		*rec = XLogRecGetData(record);
+	char		*rec = (char*)(record) + sizeof(XLogRecord);
 
 	if (info == XLOG_CHECKPOINT_SHUTDOWN ||
 		info == XLOG_CHECKPOINT_ONLINE)
@@ -9250,10 +9251,6 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 				 dtxCheckpoint->committedCount,
 				 dtxCheckpointLen,
 				 masterMirroringCheckpointLen);
-			if (ptas != NULL)
-                           appendStringInfo(buf,
-                                     ", prepared transaction agg state count = %d",
-				      ptas->count);
 
 			if (masterMirroringCheckpointLen > 0)
 			  /* KAS this is probably always true for new twophase. */

@@ -1077,7 +1077,7 @@ StartPrepare(GlobalTransaction gxact)
 {
         TransactionId xid = gxact->proc.xid;
         TwoPhaseFileHeader hdr;
-        TransactionId *children;
+        TransactionId *children = NULL;
 
         int32                                           persistentPrepareSerializeLen;
         PersistentEndXactRecObjects persistentPrepareObjects;
@@ -1964,6 +1964,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
         rdata[0].data = (char *) (&xlrec);
         rdata[0].len = MinSizeOfXactCommitPrepared;
         rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = NULL;	
         /* dump persistent commit objects */
         if (persistentCommitObjectCount > 0)
         {

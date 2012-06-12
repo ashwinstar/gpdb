@@ -425,7 +425,7 @@ void
 mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	char		*rec = XLogRecGetData(record);
+	char		*rec = (char*)(record) + sizeof(XLogRecord);
 	xl_mm_fs_obj *xlrec = (xl_mm_fs_obj *) rec;
 	char *path = obj_get_path(xlrec);
 
@@ -460,7 +460,7 @@ mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 		 */
 		elog(ERROR, "The object's path can not be constructed based on the xlog record. "
 				        "The dbid in the xlog record, master %u and mirror %u, does no match the current dbid %u.",
-				 GpIdentity.dbid, xlrec->u.dbid.master, xlrec->u.dbid.mirror);
+				 	xlrec->u.dbid.master, xlrec->u.dbid.mirror, GpIdentity.dbid);
 	}
 
 	if (info == MMXLOG_CREATE_DIR)
