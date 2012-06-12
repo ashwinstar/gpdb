@@ -17,7 +17,7 @@ DESCRIPTION
 *****************************************************
 
 
-gpfdist is Greenplum’s parallel file distribution program. 
+gpfdist is Greenplum's parallel file distribution program. 
 It is used by readable external tables and gpload to serve 
 external table files to all Greenplum Database segments in 
 parallel. It is used by writable external tables to accept 
