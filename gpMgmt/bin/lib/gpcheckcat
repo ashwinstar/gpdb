@@ -25,7 +25,6 @@ import time
 import getopt
 
 try:
-    from gppylib.gplog import *
     from gppylib.gpcatalog import *
     from gppylib.commands.unix import *
     from pygresql.pgdb import DatabaseError
@@ -38,10 +37,35 @@ parallelism = 8
 oidmap = {}
 
 #-------------------------------------------------------------------------------
-EXECNAME = os.path.split(__file__)[-1]
-setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
-very_quiet_stdout_logging()
-logger = get_default_logger()
+# Setup LOGGER
+#-------------------------------------------------------------------------------
+logger = logging.getLogger('gpcheckcat')
+logger.setLevel(logging.DEBUG)
+
+formatStr = '%(asctime)s:gpcheckcat:-[%(levelname)-s]:-%(message)s'
+formatter = logging.Formatter(formatStr, '%Y%m%d:%H:%M:%S')
+empty_formatter = logging.Formatter()
+
+logdir = os.path.join(os.path.expanduser('~'), 'gpAdminLogs')
+if not os.path.exists(logdir): 
+    os.mkdir(logdir)
+logfile = '%s/gpcheckcat_%s.log' % (logdir, strftime('%Y%m%d_%H%M%S', localtime()))
+fhandler = logging.FileHandler(logfile, 'w')
+fhandler.setLevel(logging.INFO)
+fhandler.setFormatter(formatter)
+logger.addHandler(fhandler)
+
+shandler = logging.StreamHandler()
+shandler.setLevel(logging.CRITICAL)
+shandler.setFormatter(empty_formatter)
+logger.addHandler(shandler)
+
+def log_literal(lvl, msg):
+    """Log to the log file but without extra formatting."""
+    fhandler.setFormatter(empty_formatter)
+    logger.log(lvl, msg)
+    fhandler.setFormatter(formatter)
+
 #-------------------------------------------------------------------------------
 
 ################
@@ -2315,9 +2339,9 @@ def checkDepend():
             setError(ERROR_NOREPAIR)
             logger.info('[FAIL] basic object dependencies')
             logger.error('  found %d dependencies on dropped objects' % len(err))
-            for e in err:
-                logger.info(formatErr(e[0], e[1], e[2]))
             logger.info(qry)
+            for e in err:
+                logger.error(formatErr(e[0], e[1], e[2]))
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -2999,9 +3023,9 @@ def checkTableACL(cat):
             # logger.error(qry)
 
             fields = curs.listfields()
-            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
             processACLResult(catname, fields, curs.getresult())
 
     except Exception, e:
@@ -3084,9 +3108,9 @@ def checkTableForeignKey(cat):
                             (catname, nrows, pkcatname, '.'.join(pklist)))
 
                 fields = curs.listfields()
-                log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
+                log_literal(logging.ERROR,"    " + " | ".join(fields))
                 for row in curs.getresult():
-                    log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+                    log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
                 processForeignKeyResult(catname, len(fklist), pkcatname, fields, curs.getresult())
 
                 if catname == 'gp_fastsequence' and pkcatname == 'pg_class':
@@ -3265,9 +3289,9 @@ def checkTableMissingEntry(cat):
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
             processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "missing")
            
 
@@ -3414,9 +3438,9 @@ def checkTableInconsistentEntry(cat):
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
             processInconsistentEntryResult(catname, pkey, fields, curs.getresult())
 
 
@@ -3546,9 +3570,9 @@ def checkTableDuplicateEntry(cat):
             logger.error('  %s has %d issue(s)' % (catname, nrows))
 
             fields = curs.listfields()
-            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logging.ERROR,"    " + " | ".join(map(str, row)))
             processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
 
     except Exception, e:
@@ -4856,11 +4880,11 @@ def checkcatReport():
     notReported = set(GV.failedTest).difference(reportedTest)
     if len(notReported) > 0:
         myprint('Failed test(s) that are not reported here: %s' % (', '.join(notReported)))
-        myprint('See %s for detail\n' % get_logfile())
+        myprint('See %s for detail\n' % logfile)
 
 
 def myprint(str):
-    log_literal(logger,logging.CRITICAL,str)
+    log_literal(logging.CRITICAL,str)
 
 
 #############
