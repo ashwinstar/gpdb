@@ -579,12 +579,10 @@ def checkPartitionIntegrity():
             logger.info('[FAIL] partition with oids check')
             logger.error('partition with oids check found %d issue(s)' % len(err))
             logger.error(qry)
-            for e in err[0:100]: 
+            for e in err:
                 row = e[2]
                 logger.error(" table %s.%s oid %s" % 
                          (row['nspname'], row['relname'], row['oid']))
-            if len(err) > 100:
-                logger.error("...")
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint('[ERROR] executing test: checkPartitionIntegrity')
@@ -672,10 +670,8 @@ def checkPartitionIntegrity():
             setError(ERROR_REMOVE)
             logger.info('[FAIL] partition distribution policy check')
             logger.error('partition distribution policy check found %d issue(s)' % len(err))
-            if len(err) > 100:
-                logger.error(qry)
+            logger.error(qry)
 
-            count = 0
             for e in err:
                 cfg = e[0]
                 col = e[1]
@@ -684,21 +680,10 @@ def checkPartitionIntegrity():
                 # generate repair script for this row
                 distributeRandomly(row['parchildrelid'])
 
-                # report at most 100 rows, for brevity
-                if count == 100:
-                    logger.error("...")
-                    count += 1
-                if count > 100:
-                    continue
-
-                if count == 0:
-                    logger.error("--------")
-                    logger.error("  " + " | ".join(map(str, col)))
-                    logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
-
-            
+                logger.error("--------")
+                logger.error("  " + " | ".join(map(str, col)))
+                logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
                 logger.error("  " + " | ".join([str(row[x]) for x in col]))
-                count += 1
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -1764,16 +1749,11 @@ def checkPartitionRegularity():
                 logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
                 efmt = '  partitioned table "{tableid}" has unenforced {con_type_phrase} constraint: "{partid}"'
                 repair_fmt = partitionRegularityChecks['unenforced_constraint_repairs']
-                n = 0
                 for e in err:
-                    n = n+1
-                    if n <= 100:
-                        logger.error(efmt.format(**e))
+                    logger.error(efmt.format(**e))
                     repair_sequence = repair_fmt.format(**e)
                     for dbid in GV.cfg:
                         addDemoteConstraint(dbid, repair_sequence)
-                    if len(err) > 100:
-                        logger.error("...")
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -1807,19 +1787,14 @@ def checkPartitionRegularity():
                 logger.info('[FAIL]  %s' % testname)
                 logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
                 efmt = '  part table "%s" has constraint named "%s"; should be "%s"'
-                n = 0
                 for e in err:
-                    n = n+1
-                    if n <= 100:
-                        # part name, wrong constraint name, right constraint name
-                       logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
+                    # part name, wrong constraint name, right constraint name
+                    logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
                     for dbid in GV.cfg:
                         buildAdjustConname(
 					     	dbid, e['tableid'], int(e['partrelid']), 
 		    				quote_value(e['partconname']), 
 			    			quote_value(e['tableconname']) )
-                if len(err) > 100:
-                    logger.error("...")
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -1936,10 +1911,8 @@ def checkPGClass():
         logger.info('[FAIL] pg_class')
         logger.error('pg_class has %d issue(s)' % len(err))
         logger.error(qry)
-        for e in err[0:100]: 
+        for e in err:
             logger.error(formatErr(e[0], e[1], e[2]))
-        if len(err) > 100:
-            logger.error("...")
 
 
 #############
@@ -2014,10 +1987,8 @@ def checkPGNamespace():
         logger.error('found %d references to non-existent schemas' % len(err))
         logger.error(qry)
 
-        for e in err[0:100]: 
+        for e in err:
             logger.error(formatErr(e[0], e[1], e[2]))
-        if len(err) > 100:
-            logger.error("...")
         schemaids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -2344,7 +2315,9 @@ def checkDepend():
             setError(ERROR_NOREPAIR)
             logger.info('[FAIL] basic object dependencies')
             logger.error('  found %d dependencies on dropped objects' % len(err))
-            # logger.info(qry)
+            for e in err:
+                logger.info(formatErr(e[0], e[1], e[2]))
+            logger.info(qry)
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -2421,12 +2394,10 @@ def checkOwners():
             logger.info('[FAIL] table ownership')
             logger.error('found %d table ownership issue(s)' % len(rows))
             logger.error('%s' % qry)
-            for row in rows[0:100]:
+            for row in rows:
                 logger.error('  %s.%s relowner %s != %s'
                     % (row['nspname'], row['relname'], row['rolname'],
                        row['master_rolname']))
-            if len(rows) > 100:
-                logger.error("...")
             for row in rows:
                 fixupowners(row['nspname'], row['relname'], row['rolname'],
                             row['master_rolname'])
@@ -2469,12 +2440,10 @@ def checkOwners():
             logger.info('[FAIL] type ownership')
             logger.error('found %d type ownership issue(s)' % len(rows))
             logger.error('%s' % qry)
-            for row in rows[0:100]:
+            for row in rows:
                 logger.error('  %s.%s typeowner %s != %s'
                     % (row['nspname'], row['typname'], row['rolname'],
                        row['master_rolname']))
-            if len(rows) > 100:
-                logger.error("...")
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -2917,35 +2886,21 @@ def checkPersistentTables():
             logger.error('%s found %d issue(s)' % (qname, len(err)))
             logger.error(qry)
             
-            # Report at most 100 rows per segment, for brevity
             last    = None
-            count   = 0
             for e in err:
                 cfg = e[0]
                 col = e[1]
                 row = e[2]
                 
-                # If this is a new host start again
+                # If this is a new host start again, print host info
                 if last != cfg:
-                    count = 0
                     last = cfg
-
-                if count == 100:
-                    logger.error("...")
-                    count += 1
-                if count > 100:
-                    continue
-
-                # Actual formatting could be prettied up more
-                if count == 0:
                     logger.error("--------")
                     logger.error("%s:%s:%s" % (cfg['hostname'], 
                                                cfg['port'], 
                                                cfg['datadir']))
                     logger.error("  " + " | ".join(map(str, col)))
                 logger.error("  " + " | ".join([str(row[x]) for x in col]))
-                count += 1
-
     return
 
 
