@@ -105,6 +105,7 @@ struct ddboost_options
   bool writeToDDFileFromInput;
   bool rename;
   bool setCredential;
+  bool verify;
 };
 
 static struct ddboost_options *dd_options = NULL;
@@ -233,6 +234,7 @@ main(int argc, char **argv)
 {
 	int			failCount = 0;
 	int			ret = 0;
+    bool        createStorageUnit = false;
 
 	/* This struct holds the values of the command line parameters */
 	InputOptions inputOpts;
@@ -256,13 +258,30 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false);
-	
-	if (ret)
-	{
-		mpp_err_msg(logError, progname, "Initialization of ddboost failed. Check login credentials\n");
-		goto cleanup;
-	}
+    /* When --verify is specified - we always create Storage Unit */
+    if (dd_options->verify == true)
+        createStorageUnit= true;
+
+    /* TODO:
+     * Split initDDSystem() to init() and all other needed functionality (e.g. connect, createStorageUnit ...)
+     */
+    ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, createStorageUnit);
+
+    if (ret)
+    {
+		/* The main reason for this 'if', is that we want to keep the same behaviour 	*/
+		/* for all other cases when --verify is not specified 							*/
+        if (dd_options->verify)
+        {
+            mpp_err_msg(logError, progname, "Could not connect to DD_host with DD_user and the DD_password.\n");
+            failCount = 1;
+        }
+        else
+        {
+	        mpp_err_msg(logError, progname, "Initialization of ddboost failed. Check login credentials\n");
+        }
+    	goto cleanup;
+    }
 
 	/* Take appropriate actions here */
 	if (dd_options->copyFromDDBoost)
@@ -420,10 +439,10 @@ usage(void)
     printf("  To create a fake backup file containing only the data for the specified table. \n");
     printf("  The destination directory should exist on the local disk.\n\n\n");        
     printf("  --setCredential  --hostname <DD_host>  --user=<DD_user>"); 
-    printf("                   [--password=<DD_password>  --logLevel=<INFO,WARN,DEBUG,ERROR,NONE> --logSize=<1-1000 (MB)>]\n");
+    printf("                   [--password=<DD_password>  --logLevel=<NONE, ERROR, WARN, INFO, DEBUG> --logSize=<1-1000 (MB)>]\n");
     printf("  Set the ddboost login credentials. Hostname and user are required.\n");
     printf("  If the password option is not specified, it will be interactivly requested.\n");
-    printf("  If the log options are not specified, the default values will be used (level will be INFO and size 50 MB).\n\n\n");
+    printf("  If the log options are not specified, the default values will be used (level will be DEBUG and size 50 MB).\n\n\n");
     printf("  --sync	--dir=<local_disk_full_path_name>\n");
     printf("  To copy over the config, global dump, post_data and cdatabase files from DDBoost to GPDB\n"); 
     printf("  Generally we specify the master data directory as the destination.\n\n\n");		
@@ -433,11 +452,14 @@ usage(void)
     printf("  --dd_boost_buf_size=<size_in_bytes>\n");
     printf("  DDboost I/O buffer size. Max IO buffer size is 1MB\n\n\n");
     printf("  --rename  --from-file=<ddboost_full_path_name_source>  --to-file=<ddboost_full_path_name_dest>\n");
-    printf("  Rename file specified by --from-file to a destination specified by --to-file on DDBoost\n");  
-    printf("  Warning !! This operation will overwrite/delete an existing file if specified as destination.\n\n\n");  
-    printf("  --help                   \n");
+    printf("  Rename file specified by --from-file to a destination specified by --to-file on DDBoost\n");
+    printf("  Warning !! This operation will overwrite/delete an existing file if specified as destination.\n\n\n");
+    printf("  --verify\n");
+    printf("  Verify the DD_user and the DD_password on the DD_host\n");
+    printf("  This will also create the Storage Unit.\n\n\n");
+    printf("  --help\n");
     printf("  Show this help, then exit.\n\n\n");
-    printf("  --version \n");
+    printf("  --version\n");
     printf("  Output version information, then exit.\n\n\n");
 }
 
@@ -479,7 +501,8 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"password", required_argument, NULL, 26},
 		{"logLevel", required_argument, NULL, 27},
 		{"logSize", required_argument, NULL, 28},
-		
+		{"verify", no_argument, NULL, 29},
+
 		{NULL, 0, NULL, 0}
 	};
 
@@ -629,25 +652,29 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
             case 22:
                 dd_options->copy = true;
                 break;
-		
-	    case 23:
-	      dd_options->setCredential = true;
-	      break;
-	    case 24:
-	      dd_options->hostname = Safe_strdup(optarg);
-	      break;
-	    case 25:
-	      dd_options->user = Safe_strdup(optarg);
-	      break;
-	    case 26:
-	      dd_options->password = Safe_strdup(optarg);
-	      break;
-	    case 27:
-	      dd_options->log_level = Safe_strdup(optarg);
-	      break;
-	    case 28:
-	      dd_options->log_size = Safe_strdup(optarg);
-	      break;
+
+		    case 23:
+		      	dd_options->setCredential = true;
+		      	break;
+		    case 24:
+		        dd_options->hostname = Safe_strdup(optarg);
+		        break;
+		    case 25:
+		        dd_options->user = Safe_strdup(optarg);
+		        break;
+		    case 26:
+		        dd_options->password = Safe_strdup(optarg);
+		        break;
+		    case 27:
+		        dd_options->log_level = Safe_strdup(optarg);
+		        break;
+		    case 28:
+		        dd_options->log_size = Safe_strdup(optarg);
+	      	    break;
+            case 29:
+		        dd_options->verify = true;
+	      	    break;
+
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				return false;
@@ -667,10 +694,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	    return false;
 	}
 	else if (dd_options->setCredential && (dd_options->timestamp || dd_options->directory || dd_options->from_file || dd_options->to_file || 
-																				 dd_options->deleteDir || dd_options->deleteFile || dd_options->database || dd_options->syncFilesFromTimestamp ||
+									       dd_options->deleteDir || dd_options->deleteFile || dd_options->database || dd_options->syncFilesFromTimestamp ||
 	                                       dd_options->listDir || dd_options->listDirFull || dd_options->copyFromDDBoost || dd_options->copyToDDBoost ||
 	                                       dd_options->copy || dd_options->readFile || dd_options->getFreePercent || dd_options->getLatestTimestamp ||
-	                                       dd_options->syncFiles || dd_options->writeToDDFileFromInput || dd_options->rename))
+	                                       dd_options->syncFiles || dd_options->writeToDDFileFromInput || dd_options->rename || dd_options->verify))
 	{
 	    mpp_err_msg_cache(logError, progname, "The option --setCredential and its corresponding options are standalone."
 	                                          "They shouldn't be used in conjunction with any other gpddboost option.\n");
@@ -3232,7 +3259,8 @@ cleanup:
 #else
 int main(int argc, char **argv)
 {
-	printf("\ngpddboost not supported on this platform\n");	
+	/* TODO: change printf() to mpp_err_msg() */
+	printf("\ngpddboost is not supported on this platform\n\n");
 	return 0;
 }	
 #endif
