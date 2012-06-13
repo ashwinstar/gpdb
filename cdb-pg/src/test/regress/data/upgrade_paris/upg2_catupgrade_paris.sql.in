@@ -1,29 +1,17 @@
 -- MPP-16665 - make fundamental changes to pg_proc ...
-UPDATE pg_class SET relnatts = 22 WHERE relname = 'pg_proc'; 
-SELECT catDML(
-'UPDATE pg_class SET relnatts = 22 WHERE relname = ''pg_proc''') 
-FROM gp_dist_random('gp_id');
-INSERT INTO pg_attribute VALUES (1255, 'provariadic',     26, -1,  4, 20, 0, -1, -1,  true, 'p', 'i',  true, false, false, true, 0),
-                                (1255, 'pronargdefaults', 21, -1,  2, 21, 0, -1, -1,  true, 'p', 's',  true, false, false, true, 0),
-                                (1255, 'proargdefaults',  25, -1, -1, 22, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0);
+SELECT catDML('UPDATE pg_class SET relnatts = 22 WHERE relname = ''pg_proc'''); 
 SELECT catDML(
 'INSERT INTO pg_attribute VALUES (1255, ''provariadic'',     26, -1,  4, 20, 0, -1, -1,  true, ''p'', ''i'',  true, false, false, true, 0),
                                  (1255, ''pronargdefaults'', 21, -1,  2, 21, 0, -1, -1,  true, ''p'', ''s'',  true, false, false, true, 0),
-                                 (1255, ''proargdefaults'',  25, -1, -1, 22, 0, -1, -1, false, ''x'', ''i'', false, false, false, true, 0)')
-FROM gp_dist_random('gp_id');
+                                 (1255, ''proargdefaults'',  25, -1, -1, 22, 0, -1, -1, false, ''x'', ''i'', false, false, false, true, 0)'
+);
 \c
-UPDATE pg_proc SET provariadic = 0,
-                   pronargdefaults = 0,
-                   proargdefaults = NULL;
 SELECT catDML(
 'UPDATE pg_proc SET provariadic = 0,
                     pronargdefaults = 0,
-                    proargdefaults = NULL')
-FROM gp_dist_random('gp_id');
-UPDATE pg_proc SET probin = NULL WHERE probin = '-';
-SELECT catDML(
-'UPDATE pg_proc SET probin = NULL WHERE probin = ''-''')
-FROM gp_dist_random('gp_id');
+                    proargdefaults = NULL'
+);
+SELECT catDML( 'UPDATE pg_proc SET probin = NULL WHERE probin = ''-''');
 
 VACUUM FREEZE pg_proc;
 -- ... and the rest
@@ -216,10 +204,9 @@ CREATE FUNCTION @gpupgradeschemaname@."convert"(bytea, name, name) RETURNS bytea
 COMMENT ON FUNCTION @gpupgradeschemaname@."convert"(bytea, name, name) IS 'convert string with specified encoding names';
 
 -- MPP-15707, MPP-17314, MPP-17340 - delete convert(text, name) => text [OID=1717]
-DELETE FROM @gpupgradeschemaname@.pg_depend WHERE refclassid = 1255 and refobjid = 1717;
 select @gpupgradeschemaname@.catDML(
-'DELETE FROM @gpupgradeschemaname@.pg_depend WHERE refclassid = 1255 and refobjid = 1717')
-from gp_dist_random('gp_id');
+'DELETE FROM @gpupgradeschemaname@.pg_depend WHERE refclassid = 1255 and refobjid = 1717'
+);
 
 DROP FUNCTION @gpupgradeschemaname@."convert"(text, name);
 
@@ -612,13 +599,9 @@ DROP EXTERNAL WEB TABLE __@gpupgradeschemaname@_gpmigrator.pg_amproc_load;
 DROP SCHEMA __@gpupgradeschemaname@_gpmigrator;
 
 -- MPP-17173/ MPP-17183 - eliminate NULLs in pg_extprotocol's OID columns
-UPDATE pg_extprotocol
-SET ptcreadfn = CASE WHEN ptcreadfn IS NULL THEN 0 ELSE ptcreadfn END,
-    ptcwritefn = CASE WHEN ptcwritefn IS NULL THEN 0 ELSE ptcwritefn END,
-    ptcvalidatorfn = CASE WHEN ptcvalidatorfn IS NULL THEN 0 ELSE ptcvalidatorfn END;
 SELECT catDML(
 'UPDATE pg_extprotocol
  SET ptcreadfn = CASE WHEN ptcreadfn IS NULL THEN 0 ELSE ptcreadfn END,
      ptcwritefn = CASE WHEN ptcwritefn IS NULL THEN 0 ELSE ptcwritefn END,
-     ptcvalidatorfn = CASE WHEN ptcvalidatorfn IS NULL THEN 0 ELSE ptcvalidatorfn END')
-FROM gp_dist_random('gp_id');
+     ptcvalidatorfn = CASE WHEN ptcvalidatorfn IS NULL THEN 0 ELSE ptcvalidatorfn END'
+);
