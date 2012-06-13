@@ -1494,4 +1494,27 @@ install_udfs:
 	sed -e "s|%%CURRENT_DIRECTORY%%|$${GPHOME}/lib|g; s|%%GPOPTUTILS_NAMESPACE%%|${GPOPTUTILS_NAMESPACE}|g; s|%%EXT%%|$(LDSFX)|g" $(OPTIMIZER)/libgpoptudf/examples/load.sql.in > /tmp/load.sql
 	psql $(PGDATABASE) -a -f /tmp/load.sql
 
+create_orca_installer:
+	rm -rf $(BLD_TOP)/orca_tmp
+	mkdir -p $(BLD_TOP)/orca_tmp
+	for b in libnaucrates libgpopt libgpoptudf; do \
+		rm -f $(INSTLOC)/lib/$$b.$(LDSFX); \
+		cp $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(BLD_TOP)/orca_tmp; \
+	done
+	cp $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX)  $(BLD_TOP)/orca_tmp
+	cp $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(BLD_TOP)/orca_tmp
+	cp $(OPTIMIZER)/libgpoptudf/examples/load.sql.in $(BLD_TOP)/orca_tmp
+	tar zcvf $(BLD_TOP)/orca.tgz -C $(BLD_TOP)/orca_tmp .
+	sed \
+	  -e "s|%%BUILD_NUMBER%%|$${BUILD_NUMBER:=99999}|g" \
+	  -e "s|%%PULSE_BUILD_TIMESTAMP%%|$${PULSE_BUILD_TIMESTAMP:=n/a}|g" \
+	  -e "s|%%GPDB_VER%%|$(VERSION)|g" \
+	  -e "s|%%OPTIMIZER_VER%%|$(OPTIMIZER_VER)|g" \
+	  -e "s|%%LIBGPOS_VER%%|$(LIBGPOS_VER)|g" \
+	  -e "s|%%XERCES_VER%%|$(XERCES_VER)|g" \
+	  $(BLD_TOP)/releng/bin/orca_installer_hdr.sh > $(BLD_TOP)/releng/bin/orca_installer_hdr.sh.out
+	cat $(BLD_TOP)/releng/bin/orca_installer_hdr.sh.out $(BLD_TOP)/orca.tgz > $(BLD_TOP)/gpdb-orca-$(MPP_ARCH).sh
+	chmod a+x $(BLD_TOP)/gpdb-orca-$(MPP_ARCH).sh
+	rm -rf $(BLD_TOP)/orca_tmp
+
 ## ----------------------------------------------------------------------
