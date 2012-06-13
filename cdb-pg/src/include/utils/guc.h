@@ -156,7 +156,6 @@ extern bool gp_appendonly_verify_block_checksums;
 extern bool gp_appendonly_verify_write_block;
 extern bool gp_heap_require_relhasoids_match;
 extern bool gp_suppress_distributed_tx_vacuum;
-extern bool gp_new_reindex_database;
 extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
 extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;
 extern bool	Debug_appendonly_guard_end_quicklz_scratch;

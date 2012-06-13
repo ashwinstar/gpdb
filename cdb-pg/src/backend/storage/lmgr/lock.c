@@ -2472,9 +2472,9 @@ static const char *const LockTagTypeNames[] = {
 	"append-only segment file",
 	"object",
 	"resource queue",
+	"database maintenance",
 	"userlock",
-	"advisory",
-	"database maintenance"
+	"advisory"
 };
 
 int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
@@ -2944,7 +2944,12 @@ lock_twophase_postcommit(TransactionId xid, uint16 info,
 												HASH_FIND,
 												NULL);
 	if (!lock)
-		elog(PANIC, "failed to re-find shared lock object");
+	{
+		elog(PANIC, "failed to re-find shared lock object id(%u,%u,%u,%u,%u,%u)",
+			 locktag->locktag_field1, locktag->locktag_field2,
+			 locktag->locktag_field3, locktag->locktag_field4,
+			 locktag->locktag_type, locktag->locktag_lockmethodid);
+	}
 
 	/*
 	 * Re-find the proclock object (ditto).
@@ -2997,4 +3002,21 @@ lock_twophase_postabort(TransactionId xid, uint16 info,
 						void *recdata, uint32 len)
 {
 	lock_twophase_postcommit(xid, info, recdata, len);
+}
+
+const char *
+LockModeName(LOCKMODE lockmode)
+{
+	if (lockmode < 0 || lockmode > AccessExclusiveLock)
+	{
+		return "Unknown";
+	}
+	else if (lockmode == NoLock)
+	{
+		return "NoLock";
+	}
+	else
+	{
+		return lock_mode_names[lockmode];
+	}
 }
