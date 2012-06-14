@@ -167,9 +167,6 @@ class Global():
         # ownership fixups
         self.Owners = []
     
-        # drop leaked temporary schemas
-        self.Schemas = []
-    
         # fix distribution policies
         self.Policies = []
         
@@ -3822,7 +3819,6 @@ def runAllTests():
              len(GV.Reindex) > 0 or 
              len(GV.Constraints) > 0 or
              len(GV.Owners) > 0 or 
-             len(GV.Schemas) > 0 or
              len(GV.Policies) > 0)
     if GV.opt['-g'] != None and fixes:
         try:
@@ -3958,27 +3954,6 @@ def runAllTests():
             file.close()
 
             script += 'echo "Correcting table ownership"\n'
-            c = GV.cfg[1]
-            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
-                    (c['hostname'], c['port'], filename, GV.dbname, filename)
-
-        if len(GV.Schemas) > 0:
-            # Remove leaked temporary schemas
-            filename = 'fixnamespace.sql'
-            fullpath = '%s/%s' % (GV.opt['-g'], filename)
-
-            try:
-                file = open(fullpath, 'w')
-            except Exception, e:
-                logger.fatal('Unable to create file "%s": %s' %
-                             (fullpath, str(e)))
-                sys.exit(1)
-
-            for s in GV.Schemas:
-                file.write('DROP SCHEMA IF EXISTS "%s" CASCADE;\n' % s)
-            file.close()
-
-            script += 'echo "Dropping temporary schemas"\n'
             c = GV.cfg[1]
             script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
