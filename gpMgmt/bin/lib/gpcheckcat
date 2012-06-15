@@ -17,16 +17,14 @@ Usage: gpcheckcat [<option>] [dbname]
     -C catname : run cross consistency, FK and ACL tests for this catalog table
 
 '''
-import sys, os, subprocess, tempfile, stat, re
+import sys, os, subprocess, tempfile, stat, re, logging
 from threading import Thread
-from datetime import datetime
-from time import localtime, strftime
-import time
+from datetime import timedelta
+from time import localtime, strftime, time
 import getopt
 
 try:
     from gppylib.gpcatalog import *
-    from gppylib.commands.unix import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
 except ImportError, e:
@@ -40,7 +38,7 @@ oidmap = {}
 # Setup LOGGER
 #-------------------------------------------------------------------------------
 logger = logging.getLogger('gpcheckcat')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 formatStr = '%(asctime)s:gpcheckcat:-[%(levelname)-s]:-%(message)s'
 formatter = logging.Formatter(formatStr, '%Y%m%d:%H:%M:%S')
@@ -51,7 +49,7 @@ if not os.path.exists(logdir):
     os.mkdir(logdir)
 logfile = '%s/gpcheckcat_%s.log' % (logdir, strftime('%Y%m%d_%H%M%S', localtime()))
 fhandler = logging.FileHandler(logfile, 'w')
-fhandler.setLevel(logging.INFO)
+fhandler.setLevel(logging.DEBUG)
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
 
@@ -65,6 +63,9 @@ def log_literal(lvl, msg):
     fhandler.setFormatter(empty_formatter)
     logger.log(lvl, msg)
     fhandler.setFormatter(formatter)
+
+def log_verbose():
+    logger.setLevel(logging.DEBUG)
 
 #-------------------------------------------------------------------------------
 
@@ -242,7 +243,7 @@ def parseCommandLine():
     if GV.opt['-l']: return
 
     if GV.opt['-v']:
-        enable_verbose_logging()
+        log_verbose()
 
     setdef('-P', 'PGPASSWORD')
     setdef('-U', 'PGUSER')
@@ -3763,12 +3764,12 @@ def runTestCatname(cat):
 
     for t in sorted(tests):
         myprint("Performing test '%s' for %s" % (t,cat.getTableName()))
-        stime = time.time()
+        stime = time()
         tests[t]()
-        etime = time.time()
+        etime = time()
         elapsed = etime - stime
         GV.elapsedTime += elapsed
-        elapsed = str(datetime.timedelta(seconds=elapsed))[:-4]
+        elapsed = str(timedelta(seconds=elapsed))[:-4]
         GV.totalTestRun += 1
         myprint('Total runtime for this test: %s' % (elapsed))
 
@@ -3786,12 +3787,12 @@ def runOneTest(name):
         myprint("Performing test '%s'" % name)
         GV.totalTestRun += 1
         GV.testStatus = True
-        stime = time.time()
+        stime = time()
         name_test[name]["fn"]()
-        etime = time.time()
+        etime = time()
         elapsed = etime - stime
         GV.elapsedTime += elapsed
-        elapsed = str(datetime.timedelta(seconds=elapsed))[:-4]
+        elapsed = str(timedelta(seconds=elapsed))[:-4]
         myprint('Total runtime for this test: %s' % (elapsed))
         if GV.testStatus == False:
             GV.failedTest.append(name)
@@ -4834,7 +4835,7 @@ def checkcatReport():
     myprint('')
     myprint('SUMMARY REPORT')
     myprint('===================================================================')
-    elapsed = str(datetime.timedelta(seconds=GV.elapsedTime))[:-4]
+    elapsed = str(timedelta(seconds=GV.elapsedTime))[:-4]
     myprint('Total runtime for %d test(s): %s' % (GV.totalTestRun, elapsed))
 
     if len(GPObjectGraph) == 0 and len(GV.failedTest) == 0:
