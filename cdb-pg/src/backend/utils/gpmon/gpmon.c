@@ -19,6 +19,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
+#include "storage/ipc.h"
 
 /* Extern stuff */
 extern const char * show_session_authorization(void);
@@ -42,12 +43,15 @@ struct  {
 int64 gpmon_tick = 0;
 
 void gpmon_sig_handler(int sig);
+static void gpmon_at_proc_exit(int code, Datum arg);
 
 void gpmon_sig_handler(int sig) 
 {
 	gpmon_tick++;
 }
 
+/* Information used to update gpmon status of a query in case of a FATAL error */
+gpmon_qlogkey_t gpmon_cleanup_key;
 
 void gpmon_init(void)
 {
@@ -101,6 +105,23 @@ void gpmon_init(void)
 	gpmon.gxaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	gpmon.gxaddr.sin_port = htons(gpperfmon_port);
 	gpmon.pid = pid;
+
+	if (gp_enable_gpperfmon
+			&& Gp_role == GP_ROLE_DISPATCH)
+	{
+		/*
+		 * Adding hook to update gpmon status for a query encountering
+		 * FATAL error. Callback will be called during proc_exit_prepare.
+		 *
+		 * Save information required to identify the query in gpmon_cleanup_key.
+		 */
+
+		gpmon_gettmid(&gpmon_cleanup_key.tmid); /* master startup time */
+		gpmon_cleanup_key.ssid = gp_session_id; /* session id */
+		gpmon_cleanup_key.ccnt = -1; 	/* we don't have the command id yet */
+
+		on_proc_exit(gpmon_at_proc_exit,0);
+	}
 }
 
 /**
@@ -137,6 +158,50 @@ static void gpmon_record_kv(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt
 	fclose(fp);
 }
 
+
+/*
+ * gpmon_save_command_id
+ *
+ * Save the current gp_command_count. This will be used to update the
+ * gpmon status of the query during proc_exit for a FATAL error
+ */
+void
+gpmon_save_command_cnt(void)
+{
+	gpmon_cleanup_key.ccnt = gp_command_count;
+}
+
+/*
+ * gpmon_at_proc_exit
+ *
+ * on_proc_exit hook to clean up gpmon query status for a dying query
+ */
+static void
+gpmon_at_proc_exit(int code, Datum arg)
+{
+
+	if (code != 0
+		&& gp_enable_gpperfmon
+		&& Gp_role == GP_ROLE_DISPATCH)
+	{
+		gpmon_record_update(gpmon_cleanup_key.tmid,
+				gpmon_cleanup_key.ssid,
+				gpmon_cleanup_key.ccnt,
+				GPMON_QLOG_STATUS_ERROR);
+	}
+	return;
+}
+
+/*
+ * gpmon_record_update
+ *
+ * Update the status of a query in the associated text file. The file name is
+ * generated using the three key components:
+ * - tmid: master start timestamp
+ * - ssit: session id
+ * - ccnt: command count of the query
+ *
+ */
 void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 						 apr_int32_t status)
 {
@@ -157,6 +222,12 @@ void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 	fclose(fp);
 }
 
+/*
+ * gpmon_gettmid
+ *
+ * Retrieve the master start timestamp from the distributed transaction id
+ *
+ */
 void gpmon_gettmid(apr_int32_t* tmid)
 {
     char buff[TMGIDSIZE] = {0};
@@ -165,7 +236,13 @@ void gpmon_gettmid(apr_int32_t* tmid)
     sscanf(buff, "%d-%d", tmid, &xid);
 } 
 
-
+/*
+ * gpmon_send
+ *
+ * Send a packet to the perfmon process using the address stored in the
+ * global gpmon variable
+ *
+ */
 void gpmon_send(gpmon_packet_t* p)
 {
 	if (p->magic != GPMON_MAGIC)  {

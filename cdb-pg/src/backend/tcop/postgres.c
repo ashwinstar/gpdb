@@ -3741,7 +3741,17 @@ ProcessInterrupts(void)
 		 * yank the carpet out from under any dispatched threads!
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
+		{
+			if (gp_enable_gpperfmon)
+			{
+				/*
+				 * Save gp_command_cnt so that we can find the query
+				 * and update the gpmon status during on_proc_exit
+				 */
+				gpmon_save_command_cnt();
+			}
 			CdbShutdownPortals();
+		}
 
 		ereport(FATAL,
 				(errcode(ERRCODE_ADMIN_SHUTDOWN),

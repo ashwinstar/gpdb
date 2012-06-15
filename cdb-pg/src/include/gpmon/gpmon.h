@@ -59,6 +59,7 @@ extern void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket);
 extern void gpmon_qlog_query_canceling(gpmon_packet_t *gpmonPacket);
 extern void gpmon_send(gpmon_packet_t*);
 extern void gpmon_gettmid(apr_int32_t*);
+extern void gpmon_save_command_cnt(void);
 
 /* ------------------------------------------------------------------
          FSINFO
