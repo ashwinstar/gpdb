@@ -5,7 +5,7 @@
  * Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/dbsize.c,v 1.9.2.1 2007/03/11 06:44:11 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/dbsize.c,v 1.9.2.3 2010/01/23 21:29:17 tgl Exp $
  *
  */
 
@@ -129,6 +129,8 @@ db_dir_size(const char *path)
 	while ((direntry = ReadDir(dirdesc, path)) != NULL)
 	{
 		struct stat fst;
+
+		CHECK_FOR_INTERRUPTS();
 
 		if (strcmp(direntry->d_name, ".") == 0 ||
 			strcmp(direntry->d_name, "..") == 0)
@@ -304,6 +306,8 @@ calculate_tablespace_size(Oid tblspcOid)
 	while ((direntry = ReadDir(dirdesc, tblspcPath)) != NULL)
 	{
 		struct stat fst;
+
+		CHECK_FOR_INTERRUPTS();
 
 		if (strcmp(direntry->d_name, ".") == 0 ||
 			strcmp(direntry->d_name, "..") == 0)
