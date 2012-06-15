@@ -2004,64 +2004,13 @@ def checkPGNamespace():
         logger.info('[OK] missing schema definitions')
     else:
         GV.testStatus = False
-        setError(ERROR_REMOVE)
+        setError(ERROR_NOREPAIR)
         logger.info('[FAIL] missing schema definitons')
         logger.error('found %d references to non-existent schemas' % len(err))
         logger.error(qry)
-
         for e in err:
             logger.error(formatErr(e[0], e[1], e[2]))
-        schemaids = {}
-        for e in err:
-            seg = e[0]['dbid'] 
-            if not schemaids.has_key(seg):
-                schemaids[seg] = []
-                
-            schemaids[seg].append(e[2]['nsp'])    
 
-        for seg in schemaids:
-            # unique
-            schemas = set(schemaids[seg])
-            for schemaid in schemas:
-                c = GV.cfg[seg]
-                removeSchema(seg, connect2(c), schemaid)
-
-
-
-#############
-# remove all remnants of a schema
-def removeSchema(seg, db, schemaid):
-    try:
-        # see if table has a toast table and if so, remove that
-        # must do it like this so we can get toast tables
-        qry = 'select oid from pg_class where relnamespace = %i' % schemaid
-        curs = db.query(qry)
-        for row in curs.dictresult():
-            removeTable(seg, db, row['oid'])
-    
-        # get schema name
-        curs = db.query('select nspname from pg_namespace where oid = %i' % schemaid)
-        if curs.ntuples() > 0:
-            row = db.getresult()[0]
-            schemaname = row[0]
-            oidmap[schemaid] = schemaname
-        else:
-            schemaname = str(schemaid)
-    
-        buildRemove(seg, 'schema operators', 'pg_operator',
-                    dict([('oprnamespace', schemaid)]), schemaname)
-    
-        buildRemove(seg, 'schema types', 'pg_type',
-                    dict([('typnamespace', schemaid)]), schemaname)
-    
-        buildRemove(seg, 'schema procedures', 'pg_proc',
-                    dict([('pronamespace', schemaid)]), schemaname)
-    
-        removeDepend(seg, db, schemaid, schemaname)
-
-    except Exception, e:
-        logger.error('removeSchema: ' + str(e))
-    
 
 #############
 '''
@@ -2107,59 +2056,6 @@ def removeFastSequence(db):
 
 
 #############
-def removeTable(seg, db, reloid):
-    try:
-        # see if table has a toast table and if so, remove that
-        qry = """
-          SELECT oid, reltoastrelid, reltoastidxid
-          FROM pg_class
-          WHERE oid = %i
-        """ % reloid
-        curs = db.query(qry)
-        for row in curs.dictresult():
-            if row['reltoastrelid'] != 0:
-                removeTable(seg, db, row['reltoastrelid'])
-            if row['reltoastidxid'] != 0:
-                removeTable(seg, db, row['reltoastidxid'])
-    
-        if reloid in oidmap:
-            rel = oidmap[reloid]
-        else:
-            # get relname
-            curs = db.query('select nspname, relname, relnamespace from pg_namespace n' +
-                        ' right outer join pg_class c on ' +
-                        '(c.relnamespace = n.oid) where c.oid = %i' % reloid)
-            if curs.ntuples() > 0:
-                row = curs.getresult()[0]
-                nspname = row[0]
-                relname = row[1]
-                if nspname == None:
-                    nspname = str(row[2])
-                rel = nspname + '.' + relname
-                oidmap[reloid] = rel
-            else:
-                rel = str(reloid)
-    
-        removeInheritance(seg, db, reloid, rel)
-        removeStats(seg, db, reloid, rel)
-        removeAttributes(seg, db, reloid, rel)
-        removeRelTuple(seg, db, reloid, rel)
-        removeIndexes(seg, db, reloid, rel)
-        removeRelType(seg, db, reloid, rel)
-        removeExtTable(seg, db, reloid, rel)
-        removeAppendOnly(seg, db, reloid, rel)
-        removeDepend(seg, db, reloid, rel)
-    
-        if seg == -1:
-            removePolicy(seg, db, reloid, rel)
-
-    except Exception, e:
-        logger.error('removeTable: ' + str(e))
-
-def removeInheritance(seg, db, reloid, rel):
-    buildRemove(seg, 'inheritance', 'pg_inherits',
-                dict([('inhrelid', reloid),('inhparent', reloid)]), rel)
-
 
 def removeIndexConstraint(nspname, relname, constraint):
     GV.Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s" CASCADE;' % \
@@ -2167,73 +2063,6 @@ def removeIndexConstraint(nspname, relname, constraint):
 
 def distributeRandomly(rel):
     GV.Policies.append('ALTER TABLE %s SET DISTRIBUTED RANDOMLY;' % rel)
-
-def removeStats(seg, db, reloid, rel):
-    buildRemove(seg, 'statistics', 'pg_statistic',
-                dict([('starelid', reloid)]), rel)
-
-def removeRelTuple(seg, db, reloid, rel):
-    buildRemove(seg, 'relation tuple', 'pg_class',
-                dict([('oid', reloid)]), rel)
-
-def removeExtTable(seg, db, reloid, rel):
-    buildRemove(seg, 'external table definition', 'pg_exttable',
-                dict([('reloid', reloid)]), rel)
-
-def removePolicy(seg, db, reloid, rel):
-    buildRemove(seg, 'Distribution policy', 'gp_distribution_policy',
-                dict([('localoid', reloid)]), rel)
-
-def removeAttributes(seg, db, reloid, rel):
-    buildRemove(seg, 'attributes', 'pg_attribute',
-                dict([('attrelid', reloid)]), rel)
-    removeAttrDefs(seg, db, reloid, rel)
-    removeConstraints(seg, db, reloid, rel)
-
-def removeAttrDefs(seg, db, reloid, rel):
-    buildRemove(seg, 'attribute defaults', 'pg_attrdef',
-                dict([('adrelid', reloid)]), rel)
-
-def removeConstraints(seg, db, reloid, rel):
-    buildRemove(seg, 'constraints', 'pg_constraint',
-                dict([('conrelid', reloid)]), rel)
-
-def removeRelType(seg, db, reloid, rel):
-    buildRemove(seg, 'relation type tuple', 'pg_type',
-                dict([('typrelid', reloid)]), rel)
-
-def removeIndexes(seg, db, reloid, rel):
-    buildRemove(seg, 'indexes', 'pg_index', {'indrelid': reloid}, rel)
-
-def removeAppendOnly(seg, db, reloid, rel):
-    try:
-        # see if table has appendonly subtables and if so, remove them
-        qry = """
-          SELECT relid, segrelid, segidxid
-          FROM pg_appendonly
-          WHERE relid = %i
-        """ % reloid
-        curs = db.query(qry)
-        if curs.ntuples() == 0:
-            return
-        for row in curs.dictresult():
-            if row['segrelid'] != 0:
-                removeTable(seg, db, row['segrelid'])
-            if row['segidxid'] != 0:
-                removeTable(seg, db, row['segidxid'])
-        
-        buildRemove(seg, 'append only subtables', 'pg_appendonly',
-                    {'relid': reloid}, rel)
-
-    except Exception, e:
-        myprint('removeAppendOnly: ' + str(e))
-
-
-def removeDepend(seg, db, reloid, rel):
-    buildRemove(seg, 'dependencies', 'pg_depend',
-                {'objid': reloid, 'refobjid': reloid}, rel)
-    buildRemove(seg, 'shared dependencies', 'pg_shdepend',
-                {'objid': reloid, 'refobjid': reloid}, rel)
 
 def buildRemove(seg, name, table, cols, objname):
     first = False
