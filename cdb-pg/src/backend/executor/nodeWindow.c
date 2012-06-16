@@ -478,9 +478,13 @@ static void freeFrameBuffers(WindowState *wstate);
 
 /*
  * WindowBufferCursor
- * This is an abstract cursor to scan the frame buffer.  This holds transient
- * state of a window level, so you have to make sure the scan on the same window
- * level should happen once at a time.
+ * This is an abstract cursor to scan the frame buffer.  The tricky part is that
+ * the underlying tuplestore may or may not have rows while in some circumstances
+ * we should look at the input buffer as the last row, which is called "last_agg."
+ * The usage of these APIs is straightforward; BeginScan, Next, EndScan.  Don't
+ * open multiple cursors at one time on the same window level, as the cursor
+ * has a transient tuplestore reader, so you have to make sure the scan on
+ * the same window level should happen once at a time.
  */
 typedef struct WindowBufferCursorData
 {
@@ -5769,13 +5773,8 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 }
 
 /*
- * The buffer cursor abstracts a scan on the frame.  The tricky part is that
- * the underlying tuplestore may or may not have rows while in some circumstances
- * we should look at the input buffer as the last row, which is called "last_agg."
- * The usage of these APIs is straightforward; BeginScan, Next, EndScan.  Don't
- * open multiple cursors at one time on the same window level, as the cursor
- * has a transient tuplestore reader.
- * The forward parameter indicates if this cursor starts at the beginning and scans
+ * Open a buffer cursor on this window level.  The forward parameter
+ * indicates if this cursor starts at the beginning and scans
  * forward, or if it starts at the end of frame and scans backward.
  */
 static WindowBufferCursor
@@ -5836,21 +5835,7 @@ windowBufferBeginScan(WindowState *wstate, WindowStatePerLevel level_state,
 		if (ntuplestore_acc_tell(cursor->reader, NULL))
 			ntuplestore_acc_advance(cursor->reader, 1);
 		else
-		{
-			/*
-			 * In forward, if the leader is at invalid position and
-			 * the leading edge is not equal to the current as PRECEDING bound,
-			 * we return nothing.
-			 */
-			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
-				(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
-				 ((level_state->is_rows && level_state->lead_rows != 0) ||
-				  (!level_state->is_rows && !exec_eq_exprstate(wstate,
-															   level_state->lead_range_eq_expr)))))
-				cursor->has_tuples = false;
-			else
-				ntuplestore_acc_seek_first(cursor->reader);
-		}
+			ntuplestore_acc_seek_first(cursor->reader);
 	}
 	else
 	{
@@ -5879,50 +5864,53 @@ windowBufferNextTupleStore(WindowBufferCursor cursor)
 {
 	WindowStatePerLevel			level_state = cursor->level_state;
 	FrameBufferEntry		   *entry = level_state->curr_entry_buf;
+	bool						found;
 
-	if (!cursor->reader_eof)
+	/*
+	 * Fast pass check.
+	 */
+	if (cursor->reader_eof)
+		return NULL;
+
+	if (!cursor->first)
+		ntuplestore_acc_advance(cursor->reader, cursor->forward ? 1 : -1);
+	cursor->first = false;
+	if (!ntuplestore_acc_tell(cursor->reader, NULL))
+		cursor->reader_eof = true;
+	else
 	{
-		if (!cursor->first)
-			ntuplestore_acc_advance(cursor->reader, cursor->forward ? 1 : -1);
-		cursor->first = false;
-		if (!ntuplestore_acc_tell(cursor->reader, NULL))
+		/*
+		 * If the reader intersects the other side, it means the end of frame.
+		 */
+		if (cursor->forward)
+		{
+			if (ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+				 ntuplestore_acc_is_before(level_state->lead_reader,
+										   cursor->reader))
 			cursor->reader_eof = true;
+		}
 		else
 		{
-			/*
-			 * If the reader intersects the other side, it means the end of frame.
-			 */
-			if (cursor->forward)
-			{
-				if (ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
-					 ntuplestore_acc_is_before(level_state->lead_reader,
-											   cursor->reader))
-				cursor->reader_eof = true;
-			}
-			else
-			{
-				if (ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
-					ntuplestore_acc_is_before(cursor->reader,
-											  level_state->trail_reader))
-				cursor->reader_eof = true;
-			}
+			if (ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
+				ntuplestore_acc_is_before(cursor->reader,
+										  level_state->trail_reader))
+			cursor->reader_eof = true;
 		}
 	}
 
-	if (!cursor->reader_eof)
-	{
-		bool						found;
+	/*
+	 * Check it again, and if it's now eof, nothing is returned.
+	 */
+	if (cursor->reader_eof)
+		return NULL;
 
-		found = getCurrentValue(cursor->reader, level_state, entry);
-		/*
-		 * As we are sure the reader is at a valid position, the entry must be found.
-		 */
-		Assert(found);
+	found = getCurrentValue(cursor->reader, level_state, entry);
+	/*
+	 * As we are sure the reader is at a valid position, the entry must be found.
+	 */
+	Assert(found);
 
-		return  entry->func_values;
-	}
-
-	return NULL;
+	return  entry->func_values;
 }
 
 /*
