@@ -5110,6 +5110,21 @@ get_windowref_expr(WindowRef *wref, deparse_context *context)
 	get_rule_expr((Node *) wref->args, context, true);
 	appendStringInfoChar(buf, ')');
 
+	switch(wref->null_treatment)
+	{
+		case NULL_TREATMENT_NONE:
+			/* Do nothing */
+			break;
+		case NULL_TREATMENT_RESPECT:
+			appendStringInfo(buf, " RESPECT NULLS");
+			break;
+		case NULL_TREATMENT_IGNORE:
+			appendStringInfo(buf, " IGNORE NULLS");
+			break;
+		default:
+			elog(ERROR, "unexpected null treatment %d", wref->null_treatment);
+			break;
+	}
 	/* now for the OVER clause */
 	appendStringInfo(buf, " OVER");
 

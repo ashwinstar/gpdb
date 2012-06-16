@@ -1172,6 +1172,7 @@ _copyWindowRef(const WindowRef *from)
 	COPY_SCALAR_FIELD(winindex);
 	COPY_SCALAR_FIELD(winstage);
 	COPY_SCALAR_FIELD(winlevel);
+	COPY_SCALAR_FIELD(null_treatment);
 
 	return newnode;
 }
@@ -2178,6 +2179,7 @@ _copyFuncCall(const FuncCall *from)
 	COPY_NODE_FIELD(over);
 	COPY_SCALAR_FIELD(location);
 	COPY_NODE_FIELD(agg_filter);
+	COPY_SCALAR_FIELD(null_treatment);
 
 	return newnode;
 }

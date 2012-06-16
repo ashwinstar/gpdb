@@ -8080,3 +8080,78 @@ select stddev(n) over(order by d range between current row and interval '1 day' 
                      |  89 | 89.0000000000000000 | 89
 (3 rows)
 
+-- MPP-14996
+create table ignull(i numeric, j numeric, k numeric) distributed by(i);
+copy ignull from stdin;
+select i, j, first_value(j) ignore nulls over (order by i) as f1,
+	first_value(j) ignore nulls over (order by i range between 2 preceding and current row) as f2,
+	first_value(j) ignore nulls over (order by i range between 1 following and 3 following) as f3,
+	first_value(j) ignore nulls over (order by i rows between 2 preceding and 1 preceding) as f4,
+	first_value(j) ignore nulls over (order by i rows between 2 following and 2 following) as f5,
+	first_value(j) ignore nulls over (order by i range between current row and unbounded following) as f6
+	from ignull;
+ i  | j | f1 | f2 | f3 | f4 | f5 | f6 
+----+---+----+----+----+----+----+----
+  1 |   |    |    |  3 |    |  3 |  3
+  2 |   |    |    |  3 |    |  4 |  3
+  3 | 3 |  3 |  3 |  4 |    |    |  3
+  4 | 4 |  3 |  3 |  6 |  3 |  6 |  4
+  5 |   |  3 |  3 |  6 |  3 |  7 |  6
+  6 | 6 |  3 |  4 |  7 |  4 |    |  6
+  7 | 7 |  3 |  6 |    |  6 |    |  7
+  8 |   |  3 |  6 |    |  6 |    |   
+  9 |   |  3 |  7 |    |  7 |    |   
+ 10 |   |  3 |    |    |    |    |   
+(10 rows)
+
+select i, j, last_value(j) ignore nulls over (order by i) as l1,
+	last_value(j) ignore nulls over (order by i range between 2 preceding and current row) as l2,
+	last_value(j) ignore nulls over (order by i range between 1 following and 3 following) as l3,
+	last_value(j) ignore nulls over (order by i rows between 2 preceding and 1 preceding) as l4,
+	last_value(j) ignore nulls over (order by i rows between 2 following and 2 following) as l5,
+	last_value(j) ignore nulls over (order by i range between current row and unbounded following) as l6
+	from ignull;
+ i  | j | l1 | l2 | l3 | l4 | l5 | l6 
+----+---+----+----+----+----+----+----
+  1 |   |    |    |  4 |    |  3 |  7
+  2 |   |    |    |  4 |    |  4 |  7
+  3 | 3 |  3 |  3 |  6 |    |  4 |  7
+  4 | 4 |  4 |  4 |  7 |  3 |  6 |  7
+  5 |   |  4 |  4 |  7 |  4 |  7 |  7
+  6 | 6 |  6 |  6 |  7 |  4 |  7 |  7
+  7 | 7 |  7 |  7 |  7 |  6 |    |  7
+  8 |   |  7 |  7 |    |  7 |    |  7
+  9 |   |  7 |  7 |    |  7 |    |   
+ 10 |   |  7 |  7 |    |  7 |    |   
+(10 rows)
+
+select k, i, j, first_value(j) ignore nulls over (partition by k order by i) as f10,
+	last_value(j) ignore nulls over (partition by k order by i) as l10
+	from ignull order by k, i;
+ k | i  | j | f10 | l10 
+---+----+---+-----+-----
+ 1 |  1 |   |     |    
+ 1 |  2 |   |     |    
+ 1 |  3 | 3 |   3 |   3
+ 1 |  4 | 4 |   3 |   4
+ 2 |  5 |   |     |    
+ 2 |  6 | 6 |   6 |   6
+ 2 |  7 | 7 |   6 |   7
+ 2 |  8 |   |   6 |   7
+ 2 |  9 |   |   6 |   7
+ 3 | 10 |   |     |    
+(10 rows)
+
+-- negative
+select count(*) ignore nulls over () from ignull;
+ERROR:  function "count" cannot be used with a null treatment clause
+LINE 1: select count(*) ignore nulls over () from ignull;
+               ^
+select row_number() ignore nulls over () from ignull;
+ERROR:  function "row_number" cannot be used with a null treatment clause
+LINE 1: select row_number() ignore nulls over () from ignull;
+               ^
+select f() ignore nulls from ignull;
+ERROR:  syntax error at or near "from"
+LINE 1: select f() ignore nulls from ignull;
+                                ^

@@ -1005,6 +1005,7 @@ _outWindowRef(StringInfo str, WindowRef *node)
 	WRITE_UINT_FIELD(winindex);
 	WRITE_ENUM_FIELD(winstage, WinStage);
 	WRITE_UINT_FIELD(winlevel);
+	WRITE_ENUM_FIELD(null_treatment, NullTreatment);
 }
 
 static void
@@ -2931,6 +2932,7 @@ _outFuncCall(StringInfo str, FuncCall *node)
 	WRITE_NODE_FIELD(over);
 	WRITE_INT_FIELD(location);
 	WRITE_NODE_FIELD(agg_filter);
+	WRITE_ENUM_FIELD(null_treatment, NullTreatment);
 }
 
 static void

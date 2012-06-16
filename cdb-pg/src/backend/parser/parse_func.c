@@ -77,7 +77,7 @@ Node *
 ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
                   List *agg_order, bool agg_star, bool agg_distinct, 
                   bool func_variadic, bool is_column,
-                  WindowSpec *over, int location, Node *agg_filter)
+                  WindowSpec *over, int location, FuncCall *funccall)
 {
 	Oid			rettype = InvalidOid;
 	Oid			funcid = InvalidOid;
@@ -96,6 +96,14 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	bool        retstrict = false;
 	bool        retordered = false;
 	FuncDetailCode fdresult;
+	Node	   *agg_filter = NULL;
+	NullTreatment null_treatment = NULL_TREATMENT_NONE;
+
+	if (funccall)
+	{
+		agg_filter = funccall->agg_filter;
+		null_treatment = funccall->null_treatment;
+	}
 
 	/*
 	 * Most of the rest of the parser just assumes that functions do not have
@@ -483,6 +491,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		/* must be a window function call */
 		WindowRef  *winref = makeNode(WindowRef);
 		HeapTuple	tuple;	
+		bool		winnulltreatment = false;
 		
 		if (retset)
 			ereport(ERROR,
@@ -514,13 +523,18 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		tuple = SearchSysCache(WINFNOID, ObjectIdGetDatum(funcid), 0, 0, 0);
 		if (HeapTupleIsValid(tuple))
 		{
+			Form_pg_window	pg_window;
+
 			if (agg_filter)
 			    ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("window function \"%s\" can not be used with a "
+						 errmsg("window function \"%s\" cannot be used with a "
 								"filter clause",
 								NameListToString(funcname)),
 						 parser_errposition(pstate, location)));
+
+			pg_window = (Form_pg_window) GETSTRUCT(tuple);
+			winnulltreatment = pg_window->winnulltreatment;
 
 			/*
 			 * We perform more checks – such as whether the window
@@ -530,6 +544,17 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 			ReleaseSysCache(tuple);
 		}
+		/*
+		 * IGNORE NULLS / RESPECT NULLS can be specified only for
+		 * the window functions that allow them.
+		 */
+		if (null_treatment != NULL_TREATMENT_NONE && !winnulltreatment)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("function \"%s\" cannot be used with a "
+							"null treatment clause",
+							NameListToString(funcname)),
+					 parser_errposition(pstate, location)));
 
 		winref->winfnoid = funcid;
 		winref->restype = rettype;
@@ -562,6 +587,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		}
 
 		winref->windistinct = agg_distinct;
+		winref->null_treatment = null_treatment;
 		winref->location = location;
 
 		transformWindowFuncCall(pstate, winref);

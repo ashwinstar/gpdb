@@ -333,6 +333,7 @@ typedef struct FuncCall
 	int			location;		/* token location, or -1 if unknown */
 	Node	   *over;			/* over clause */
     Node       *agg_filter;     /* aggregation filter clause */
+	NullTreatment null_treatment; /* RESPECT NULLS | IGNORE NULLS */
 } FuncCall;
 
 /*

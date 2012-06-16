@@ -320,9 +320,6 @@ DECLARE_UNIQUE_INDEX(pg_exttable_reloid_index, 6041, on pg_exttable using btree(
 /* relation id: 2600 - pg_aggregate 20101018 */
 DECLARE_UNIQUE_INDEX(pg_aggregate_fnoid_index, 2650, on pg_aggregate using btree(aggfnoid oid_ops));
 #define AggregateAggfnoidIndexId	2650
-/* relation id: 5004 - pg_window 20101018 */
-DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
-#define WindowWinfnoidIndexId	5005
 /* relation id: 5035 - gp_san_configuration 20101104 */
 DECLARE_UNIQUE_INDEX(gp_san_config_mountid_index, 6111, on gp_san_configuration using btree(mountid int2_ops));
 #define GpSanConfigMountidIndexId	6111
@@ -386,7 +383,6 @@ DECLARE_UNIQUE_INDEX(gp_verification_history_vertoken_index, 6431, on gp_verific
 /* relation id: 9903 - pg_partition_encoding 20110814 */
 DECLARE_UNIQUE_INDEX(pg_partition_encoding_parencoid_parencattnum_index, 9908, on pg_partition_encoding using btree(parencoid oid_ops, parencattnum int2_ops));
 #define PartitionEncodingParencoidAttnumIndexId	9908
-
 /* relation id: 3124 - pg_proc_callback 20110829 */
 DECLARE_UNIQUE_INDEX(pg_proc_callback_profnoid_promethod_index, 3126, on pg_proc_callback using btree(profnoid oid_ops, promethod char_ops));
 #define ProcCallbackProfnoidPromethodIndexId	3126
@@ -396,10 +392,12 @@ DECLARE_INDEX(pg_partition_encoding_parencoid_index, 9909, on pg_partition_encod
 /* relation id: 3056 - pg_compression 20110901 */
 DECLARE_UNIQUE_INDEX(pg_compression_oid_index, 3058, on pg_compression using btree(oid oid_ops));
 #define CompressionOidIndexId	3058
-
 /* relation id: 3056 - pg_compression 20110901 */
 DECLARE_UNIQUE_INDEX(pg_compression_compname_index, 3059, on pg_compression using btree(compname name_ops));
 #define CompressionCompnameIndexId	3059
+/* relation id: 5004 - pg_window 20120612 */
+DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
+#define WindowWinfnoidIndexId	5005
 
 /* TIDYCAT_END_CODEGEN */
 

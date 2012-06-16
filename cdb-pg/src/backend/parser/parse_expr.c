@@ -1310,7 +1310,7 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 false,
 							 (WindowSpec *)fn->over,
 							 fn->location, 
-							 fn->agg_filter);
+							 fn);
 }
 
 /*

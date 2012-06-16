@@ -476,11 +476,38 @@ static void resetTransValues(WindowStatePerLevel level_state,
 static void freeFrameBuffer(WindowFrameBuffer buffer);
 static void freeFrameBuffers(WindowState *wstate);
 
+/*
+ * WindowBufferCursor
+ * This is an abstract cursor to scan the frame buffer.  This holds transient
+ * state of a window level, so you have to make sure the scan on the same window
+ * level should happen once at a time.
+ */
+typedef struct WindowBufferCursorData
+{
+	WindowState		   *wstate;				/* state of this window */
+	WindowStatePerLevel level_state;		/* state of this window level */
+	NTupleStoreAccessor *reader;			/* reader to scan rows */
+	NTupleStorePos		orig_pos;			/* original position of the reader */
+	bool				use_last_agg;		/* should scan "last_agg"? */
+	bool				reader_eof;			/* is reader at end of scan? */
+	bool				has_tuples;			/* does frame has tuples? */
+	bool				forward;			/* scan direction */
+	bool				first;				/* is first fetch of tupstore? */
+} WindowBufferCursorData;
+
+typedef struct WindowBufferCursorData *WindowBufferCursor;
+
+static WindowBufferCursor windowBufferBeginScan(WindowState *wstate,
+				WindowStatePerLevel level_state, bool forward);
+static List *windowBufferNextTupleStore(WindowBufferCursor cursor);
+static List *windowBufferNextLastAgg(WindowBufferCursor cursor);
+static List *windowBufferNext(WindowBufferCursor cursor);
+static void windowBufferEndScan(WindowBufferCursor cursor);
+
 /* the functions for the Window node */
 static WindowState *makeWindowState(Window *window, EState *estate);
 static void initializePartition(WindowState *wstate);
 static bool checkOutputReady(WindowState *wstate);
-static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
 static int initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 					  WindowStatePerFunction funcstate, ExprContext *econtext,
 					  bool check_nulls);
@@ -504,8 +531,8 @@ static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *ws
 							   ExprContext *econtext, bool check_nulls);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state,
 							 WindowState *wstate);
-static Datum last_value_internal(WindowRefExprState *wrxstate, bool *isnull);
-static Datum first_value_internal(WindowRefExprState *wrxstate, bool *isnull);
+static Datum first_last_value_internal(WindowRefExprState *wrxstate,
+									   bool *isnull, bool isfirstvalue);
 static FrameBufferEntry *createFrameBufferEntry(WindowStatePerLevel level_state);
 static void freeFrameBufferEntry(FrameBufferEntry *entry);
 static void advanceEdgeForRange(WindowStatePerLevel level_state,
@@ -5741,6 +5768,253 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 	return ltfunctions;
 }
 
+/*
+ * The buffer cursor abstracts a scan on the frame.  The tricky part is that
+ * the underlying tuplestore may or may not have rows while in some circumstances
+ * we should look at the input buffer as the last row, which is called "last_agg."
+ * The usage of these APIs is straightforward; BeginScan, Next, EndScan.  Don't
+ * open multiple cursors at one time on the same window level, as the cursor
+ * has a transient tuplestore reader.
+ * The forward parameter indicates if this cursor starts at the beginning and scans
+ * forward, or if it starts at the end of frame and scans backward.
+ */
+static WindowBufferCursor
+windowBufferBeginScan(WindowState *wstate, WindowStatePerLevel level_state,
+					  bool forward)
+{
+	WindowBufferCursor	cursor;
+	bool				include_last_agg = false;
+
+	cursor = (WindowBufferCursor) palloc0(sizeof(WindowBufferCursorData));
+	/*
+	 * Because it is a short-term use, we don't allocate a new accessor but
+	 * use the existing one to scan the tuplestore.  The other side of reader
+	 * should remain so that detection of frame end can work correctly (i.e.
+	 * if both reader intersects, it means the end of frame.)
+	 *
+	 * Remember the original position of accessor so later we can restore it.
+	 */
+	if (forward)
+	{
+		(void) ntuplestore_acc_tell(level_state->trail_reader,
+									&cursor->orig_pos);
+		cursor->reader = level_state->trail_reader;
+	}
+	else
+	{
+		(void) ntuplestore_acc_tell(level_state->lead_reader,
+									&cursor->orig_pos);
+		cursor->reader = level_state->lead_reader;
+	}
+
+	/*
+	 * This is a little complicated condition to tell if the last_agg row should
+	 * be looked at.  After setting use_last_agg, we'll return last_agg
+	 * just after finishing to return all the rows in the tuplestore.
+	 */
+	if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
+		include_last_agg = true;
+	if (!EDGE_IS_BOUND(level_state->frame->lead) ||
+		EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead) ||
+		EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
+		include_last_agg = true;
+	cursor->use_last_agg = (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+							level_state->agg_filled && include_last_agg);
+
+	/*
+	 * Also we check if this frame has tuples.  If this is false, entire frame
+	 * is empty and nothing should be returned.
+	 */
+	cursor->has_tuples = hasTuplesInFrame(level_state, wstate);
+
+	if (forward)
+	{
+		/*
+		 * Since the trail_reader points to the value before the trailing
+		 * edge, we advance the trail_reader by one.
+		 */
+		if (ntuplestore_acc_tell(cursor->reader, NULL))
+			ntuplestore_acc_advance(cursor->reader, 1);
+		else
+		{
+			/*
+			 * In forward, if the leader is at invalid position and
+			 * the leading edge is not equal to the current as PRECEDING bound,
+			 * we return nothing.
+			 */
+			if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+				(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
+				 ((level_state->is_rows && level_state->lead_rows != 0) ||
+				  (!level_state->is_rows && !exec_eq_exprstate(wstate,
+															   level_state->lead_range_eq_expr)))))
+				cursor->has_tuples = false;
+			else
+				ntuplestore_acc_seek_first(cursor->reader);
+		}
+	}
+	else
+	{
+		/*
+		 * In backward, make sure the reader is on the last.
+		 */
+		if (!ntuplestore_acc_tell(cursor->reader, NULL))
+			ntuplestore_acc_seek_last(cursor->reader);
+	}
+
+	cursor->first = true;
+	cursor->level_state = level_state;
+	cursor->wstate = wstate;
+	cursor->forward = forward;
+
+	return cursor;
+}
+
+/*
+ * A helper of windowBufferNext.  Scans and advances in the tuplestore.
+ * If it has reached to the end, sets reader_eof to true and returns NULL.
+ * Otherwise returns a valid List containing serialized WindowValues.
+ */
+static List *
+windowBufferNextTupleStore(WindowBufferCursor cursor)
+{
+	WindowStatePerLevel			level_state = cursor->level_state;
+	FrameBufferEntry		   *entry = level_state->curr_entry_buf;
+
+	if (!cursor->reader_eof)
+	{
+		if (!cursor->first)
+			ntuplestore_acc_advance(cursor->reader, cursor->forward ? 1 : -1);
+		cursor->first = false;
+		if (!ntuplestore_acc_tell(cursor->reader, NULL))
+			cursor->reader_eof = true;
+		else
+		{
+			/*
+			 * If the reader intersects the other side, it means the end of frame.
+			 */
+			if (cursor->forward)
+			{
+				if (ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
+					 ntuplestore_acc_is_before(level_state->lead_reader,
+											   cursor->reader))
+				cursor->reader_eof = true;
+			}
+			else
+			{
+				if (ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
+					ntuplestore_acc_is_before(cursor->reader,
+											  level_state->trail_reader))
+				cursor->reader_eof = true;
+			}
+		}
+	}
+
+	if (!cursor->reader_eof)
+	{
+		bool						found;
+
+		found = getCurrentValue(cursor->reader, level_state, entry);
+		/*
+		 * As we are sure the reader is at a valid position, the entry must be found.
+		 */
+		Assert(found);
+
+		return  entry->func_values;
+	}
+
+	return NULL;
+}
+
+/*
+ * A helper of windowBufferNext.  Scans "last_agg" if we should, and converts the
+ * input buffer to a List of WindowValues.  Since last_agg is the last row of
+ * the frame if any, we set the use_last_agg to false after scanning and will never
+ * get the values again.
+ */
+static List *
+windowBufferNextLastAgg(WindowBufferCursor cursor)
+{
+	if (cursor->use_last_agg)
+	{
+		WindowStatePerLevel	level_state = cursor->level_state;
+		WindowState		   *wstate = cursor->wstate;
+		FrameBufferEntry   *entry = level_state->curr_entry_buf;
+		bool				found;
+		ExprContext		   *econtext = wstate->ps.ps_ExprContext;
+		TupleTableSlot	   *slot = econtext->ecxt_scantuple;
+		Size				len;
+
+		found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+												  wstate->spare);
+		Assert(found);
+
+		/*
+		 * Serialize and deserialize the input buffer.  This seems a little redundant,
+		 * but the format of input buffer and WindowValue is different, and as
+		 * we want the same format values from the buffer cursor, we do this here.
+		 * It is actually not so bad, as it's done in memory.
+		 */
+		econtext->ecxt_scantuple = wstate->spare;
+		MemSet(wstate->serial_array, 0, wstate->max_size);
+		serializeEntry(level_state, econtext,
+					   &(wstate->serial_array), &(wstate->max_size), &len);
+		entry = deserializeEntry(level_state, entry, wstate->serial_array, len);
+		/* Get back the slot. */
+		econtext->ecxt_scantuple = slot;
+		/* We never use this again as it's the logical last row. */
+		cursor->use_last_agg = false;
+
+		return entry->func_values;
+	}
+
+	return NULL;
+}
+
+/*
+ * Scans the frame buffer and returns the current value.  It advances the cursor
+ * 1 forward or backward.  If the scan is finished, it returns NULL.
+ */
+static List *
+windowBufferNext(WindowBufferCursor cursor)
+{
+	List	   *func_values;
+
+	if (!cursor->has_tuples)
+		return NULL;
+
+	if (cursor->forward)
+	{
+		/*
+		 * In forward, start from tuplestore and use last_agg after that.
+		 */
+		func_values = windowBufferNextTupleStore(cursor);
+		if (func_values)
+			return func_values;
+		return windowBufferNextLastAgg(cursor);
+	}
+	else
+	{
+		/*
+		 * In backward, start from last_agg and use tuplestore after that.
+		 */
+		func_values = windowBufferNextLastAgg(cursor);
+		if (func_values)
+			return func_values;
+		return windowBufferNextTupleStore(cursor);
+	}
+}
+
+/*
+ * Ends the cursor.  The cursor will be freed.  The reader will be ok to use again.
+ */
+static void
+windowBufferEndScan(WindowBufferCursor cursor)
+{
+	if(!ntuplestore_acc_seek(cursor->reader, &cursor->orig_pos))
+		ntuplestore_acc_set_invalid(cursor->reader);
+	pfree(cursor);
+}
+
 /* -----------------
  * ExecInitWindow
  *
@@ -6392,93 +6666,75 @@ lag_generic(PG_FUNCTION_ARGS)
     PG_RETURN_DATUM(d);
 }
 
+/*
+ * The common code for first_value and last_value.  The isfirstvalue
+ * is true if this is for first_value.  The two functions are only
+ * different in the scanning direction.
+ */
 static Datum
-last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
+first_last_value_internal(WindowRefExprState *wrxstate, bool *isnull,
+						  bool isfirstvalue)
 {
 	WindowState *wstate = wrxstate->windowstate;
 	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
 	WindowStatePerLevel level_state = funcstate->wlevel;
-	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
-	bool has_lead_entry = false;
-	WindowValue *lead_value = NULL;
-	bool lead_valid = true;
-	bool has_tuples = true;
-	bool include_last_agg = false;
+	WindowRef		   *wref = funcstate->wref;
+	WindowBufferCursor	cursor;
+	List			   *func_values;
+	WindowValue		   *winvalue;
 
-	has_tuples = hasTuplesInFrame(level_state, wstate);
-		
-	if (has_tuples)
+	/*
+	 * Start a buffer cursor.  If it's first_value, the direction
+	 * is forward.
+	 */
+	cursor = windowBufferBeginScan(wstate, level_state, isfirstvalue);
+	do{
+		winvalue = NULL;
+		func_values = windowBufferNext(cursor);
+		/*
+		 * If this is out of frame, stop here.
+		 */
+		if (!func_values)
+			break;
+		/*
+		 * Fetch the argument value.
+		 */
+		winvalue = (WindowValue *)
+			list_nth(func_values, funcstate->serial_index);
+	} while(wref->null_treatment == NULL_TREATMENT_IGNORE &&
+			winvalue->valueIsNull);
+	windowBufferEndScan(cursor);
+
+	/*
+	 * Set the result if found, otherwise set NULL.
+	 */
+	if (winvalue)
 	{
-		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
-			include_last_agg = true;
-
-		if (!EDGE_IS_BOUND(level_state->frame->lead) ||
-			EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
-			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
-			include_last_agg = true;
-
-		if (!level_state->agg_filled &&
-			!ntuplestore_acc_tell(level_state->lead_reader, NULL))
-		{
-			lead_valid = false;
-			ntuplestore_acc_seek_last(level_state->lead_reader);
-		}
-
-		if (level_state->is_rows)
-		{
-			if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-				level_state->num_lead_rows >= level_state->trail_rows)
-				has_lead_entry = getCurrentValue(level_state->lead_reader,
-												 level_state, lead_entry);
-		}
-		else
-		{
-			has_lead_entry = getCurrentValue(level_state->lead_reader,
-											 level_state, lead_entry);
-		}
-
-		if (has_lead_entry)
-			lead_value = (WindowValue *)list_nth(lead_entry->func_values,
-												 funcstate->serial_index);
+		funcstate->win_value = winvalue->value;
+		funcstate->win_value_is_null = winvalue->valueIsNull;
 	}
-
-	if (lead_value != NULL)
-	{
-		funcstate->win_value = lead_value->value;
-		funcstate->win_value_is_null = lead_value->valueIsNull;
-	}
-
 	else
 	{
-		if (has_tuples && include_last_agg && level_state->agg_filled)
-		{
-			funcstate->win_value = funcstate->aggTransValue;
-			funcstate->win_value_is_null = funcstate->aggTransValueIsNull;
-		}
-
-		else
-		{
-			funcstate->win_value = 0;
-			funcstate->win_value_is_null = true;
-		}
+		funcstate->win_value = (Datum) 0;
+		funcstate->win_value_is_null = true;
 	}
-
 	*isnull = funcstate->win_value_is_null;
-
-	if (!lead_valid)
-		ntuplestore_acc_set_invalid(level_state->lead_reader);
 
 	return funcstate->win_value;
 }
 
+/*
+ * last_value returns the last value of the argument within the frame.
+ * If IGNORE NULLS is specified, scan up to a non-NULL value.
+ */
 Datum
 last_value_generic(PG_FUNCTION_ARGS)
 {
 	Datum d;
 	bool isnull = false;
 	
-	d = last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
-							&isnull);
+	d = first_last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+								  &isnull, false);
 	
 	if (isnull)
 	   PG_RETURN_NULL();
@@ -6486,109 +6742,18 @@ last_value_generic(PG_FUNCTION_ARGS)
 	return d;
 }
 
-static Datum
-first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
-{
-	WindowState *wstate = wrxstate->windowstate;
-	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
-	WindowStatePerLevel level_state = funcstate->wlevel;
-	FrameBufferEntry *trail_entry = level_state->trail_entry_buf;
-	bool has_trail_entry = false;
-	WindowValue *trail_value = NULL;
-	NTupleStorePos orig_pos;
-	bool trail_valid;
-	bool has_tuples = true;
-
-	has_tuples = hasTuplesInFrame(level_state, wstate);
-
-	if (!has_tuples)
-	{
-		funcstate->win_value = 0;
-		funcstate->win_value_is_null = true;
-
-		*isnull = true;
-		return funcstate->win_value;
-	}
-	
-	/* Save the position for the trail_reader */
-	trail_valid = ntuplestore_acc_tell(level_state->trail_reader, &orig_pos);
-
-	/* Since the trail_reader points to the value that is right before
-	 * the trailing edge, we advance the trail_reader by one.
-	 */
-	if (trail_valid)
-		ntuplestore_acc_advance(level_state->trail_reader, 1);
-	else
-	{
-		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
-			ntuplestore_acc_seek_first(level_state->trail_reader);
-	}
-
-	if (level_state->is_rows)
-	{
-		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-			level_state->num_lead_rows >= level_state->trail_rows)
-			has_trail_entry = getCurrentValue(level_state->trail_reader,
-											  level_state, trail_entry);
-	}
-	else
-	{
-		has_trail_entry = getCurrentValue(level_state->trail_reader,
-										  level_state, trail_entry);
-	}
-
-	if (has_trail_entry)
-		trail_value = (WindowValue *)list_nth(trail_entry->func_values,
-											  funcstate->serial_index);
-
-	if (trail_value != NULL)
-	{
-		funcstate->win_value = trail_value->value;
-		funcstate->win_value_is_null = trail_value->valueIsNull;
-	}
-
-	else
-	{
-		bool include_last_agg = false;
-		
-		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
-			include_last_agg = true;
-
-		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
-			include_last_agg = true;
-
-		if ((has_tuples || include_last_agg || trail_valid) &&
-			level_state->agg_filled)
-		{
-			funcstate->win_value = funcstate->aggTransValue;
-			funcstate->win_value_is_null = funcstate->aggTransValueIsNull;
-		}
-		
-		else
-		{
-			funcstate->win_value = 0;
-			funcstate->win_value_is_null = true;
-		}
-	}
-
-	/* Reset the trail_reader to its original position. */
-	if (!ntuplestore_acc_seek(level_state->trail_reader, &orig_pos))
-		ntuplestore_acc_set_invalid(level_state->trail_reader);
-
-	*isnull = funcstate->win_value_is_null;
-
-	return funcstate->win_value;
-}
-
+/*
+ * first_value returns the first value of the argument within the frame.
+ * If IGNORE NULLS is specified, scan down to a non-NULL value.
+ */
 Datum
 first_value_generic(PG_FUNCTION_ARGS)
 {
     Datum d;
     bool isnull = false;
 
-    d = first_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
-                            &isnull);
+    d = first_last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
+								  &isnull, true);
 
     if (isnull)
        PG_RETURN_NULL();

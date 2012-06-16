@@ -1512,3 +1512,42 @@ select stddev(n) over(order by d range between current row and interval '1 day' 
        sum(n) over(order by d range between current row and interval '1 day' following),
        avg(n) over(order by d range between current row and interval '1 day' following), n from test;
 
+-- MPP-14996
+create table ignull(i numeric, j numeric, k numeric) distributed by(i);
+copy ignull from stdin;
+1	\N	1
+2	\N	1
+3	3	1
+4	4	1
+5	\N	2
+6	6	2
+7	7	2
+8	\N	2
+9	\N	2
+10	\N	3
+\.
+
+select i, j, first_value(j) ignore nulls over (order by i) as f1,
+	first_value(j) ignore nulls over (order by i range between 2 preceding and current row) as f2,
+	first_value(j) ignore nulls over (order by i range between 1 following and 3 following) as f3,
+	first_value(j) ignore nulls over (order by i rows between 2 preceding and 1 preceding) as f4,
+	first_value(j) ignore nulls over (order by i rows between 2 following and 2 following) as f5,
+	first_value(j) ignore nulls over (order by i range between current row and unbounded following) as f6
+	from ignull;
+
+select i, j, last_value(j) ignore nulls over (order by i) as l1,
+	last_value(j) ignore nulls over (order by i range between 2 preceding and current row) as l2,
+	last_value(j) ignore nulls over (order by i range between 1 following and 3 following) as l3,
+	last_value(j) ignore nulls over (order by i rows between 2 preceding and 1 preceding) as l4,
+	last_value(j) ignore nulls over (order by i rows between 2 following and 2 following) as l5,
+	last_value(j) ignore nulls over (order by i range between current row and unbounded following) as l6
+	from ignull;
+
+select k, i, j, first_value(j) ignore nulls over (partition by k order by i) as f10,
+	last_value(j) ignore nulls over (partition by k order by i) as l10
+	from ignull order by k, i;
+
+-- negative
+select count(*) ignore nulls over () from ignull;
+select row_number() ignore nulls over () from ignull;
+select f() ignore nulls from ignull;

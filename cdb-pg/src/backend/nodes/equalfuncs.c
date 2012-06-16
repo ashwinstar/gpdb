@@ -238,6 +238,7 @@ _equalWindowRef(const WindowRef *a, const WindowRef *b)
 	COMPARE_SCALAR_FIELD(winindex);
 	COMPARE_SCALAR_FIELD(winstage);
 	COMPARE_SCALAR_FIELD(winlevel);
+	COMPARE_SCALAR_FIELD(null_treatment);
 
 	return true;
 }
@@ -2017,6 +2018,7 @@ _equalFuncCall(const FuncCall *a, const FuncCall *b)
 	COMPARE_NODE_FIELD(over);
 	COMPARE_SCALAR_FIELD(location);
 	COMPARE_NODE_FIELD(agg_filter);
+	COMPARE_SCALAR_FIELD(null_treatment);
 
 	return true;
 }

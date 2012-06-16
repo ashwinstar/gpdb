@@ -978,6 +978,7 @@ _readFuncCall(const char ** str)
 	READ_NODE_FIELD(over);
 	READ_INT_FIELD(location);
 	READ_NODE_FIELD(agg_filter);
+	READ_ENUM_FIELD(null_treatment, NullTreatment);
 	READ_DONE();
 }
 
@@ -1183,6 +1184,7 @@ _readWindowRef(const char ** str)
 	READ_UINT_FIELD(winindex);
 	READ_ENUM_FIELD(winstage, WinStage);
 	READ_UINT_FIELD(winlevel);
+	READ_ENUM_FIELD(null_treatment, NullTreatment);
 
 	READ_DONE();
 }

@@ -370,6 +370,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <list>	window_partition_clause opt_window_partition_clause
 				opt_window_order_clause
 %type <str>		opt_window_name window_name
+%type <ival>	opt_null_treatment
 
 %type <list>	row type_list array_expr_list
 %type <node>	case_expr case_arg when_clause when_operand case_default
@@ -540,7 +541,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 
 	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK RECURSIVE 
     REFERENCES REINDEX REJECT_P RELATIVE_P 
-	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
+	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESPECT RESTART RESTRICT
 	RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROLLUP ROW ROWS RULE
 
@@ -10967,14 +10968,18 @@ b_expr:		c_expr
  * ambiguity to the b_expr syntax.
  */
 c_expr:		columnref								{ $$ = $1; }
-			| func_expr OVER '(' window_spec ')'
+			| func_expr opt_null_treatment OVER '(' window_spec ')'
 				{
 					/*
 					 * We break out the window function from func_expr
 					 * to avoid shift/reduce errors.
 					 */
 					if (IsA($1, FuncCall))
-						((FuncCall *)$1)->over = $4;
+					{
+						FuncCall *func = (FuncCall *) $1;
+						func->over = $5;
+						func->null_treatment = $2;
+					}
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -11088,6 +11093,23 @@ table_value_select_clause:
 
 window_name: ColId { $$ = $1; }
 		;
+
+/*
+ * RESPECT NULLS | IGNORE NULLS
+ */
+opt_null_treatment: 	RESPECT NULLS_P
+				{
+					$$ = NULL_TREATMENT_RESPECT;
+				}
+			| IGNORE_P NULLS_P
+				{
+					$$ = NULL_TREATMENT_IGNORE;
+				}
+			| /*EMPTY*/
+				{
+					$$ = NULL_TREATMENT_NONE;
+				}
+			;
 
 
 simple_func: 	func_name '(' ')'
@@ -12749,6 +12771,7 @@ unreserved_keyword:
 			| REPLACE
 			| RESET
 			| RESOURCE
+			| RESPECT
 			| RESTART
 			| RESTRICT
 			| RETURNS
