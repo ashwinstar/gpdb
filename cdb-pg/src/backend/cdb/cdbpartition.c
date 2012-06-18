@@ -8900,10 +8900,10 @@ compareIndexKey(Datum indDatum, bool indNull, Datum pgindDatum, bool pgindNull)
 Oid
 getPartsIndexInfoRelid(partsIndexInfo *iInfo, Oid rootOid, Oid partOid)
 {
-	Datum   	indKeyDatum;
-	Datum   	pgindDatum;
-	Datum 		indExprsDatum;
-	Datum 		indPredDatum;
+	Datum   	indKeyDatum = (Datum) 0;
+	Datum   	pgindDatum = (Datum) 0;
+	Datum 		indExprsDatum = (Datum) 0;
+	Datum 		indPredDatum = (Datum) 0;
 	Relation        indexRelation;
 	HeapTuple       tup;
 	cqContext       cqc;
