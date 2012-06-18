@@ -5734,3 +5734,9 @@
  CREATE FUNCTION cbrt(complex) RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'complex_cbrt' WITH (OID=9086, DESCRIPTION="cube root"); 
  
  CREATE FUNCTION numeric2point("numeric") RETURNS complex LANGUAGE internal IMMUTABLE STRICT AS 'numeric2complex' WITH (OID=9087, DESCRIPTION="(internal) type cast from numeric to complex");
+
+CREATE FUNCTION gp_get_part_constraints(oid, oid) RETURNS text LANGUAGE internal IMMUTABLE AS 'gp_get_part_constraints' WITH (OID=9926, DESCRIPTION="gp_get_part_constraints");
+
+CREATE FUNCTION gp_map_attnums(oid, oid, int2vector) RETURNS int2vector LANGUAGE internal IMMUTABLE AS 'gp_map_attnums' WITH (OID=9927, DESCRIPTION="gp_map_attnums");
+
+CREATE FUNCTION gp_map_attnums_in_expr(oid, oid, text) RETURNS text LANGUAGE internal IMMUTABLE AS 'gp_map_attnums_in_expr' WITH (OID=9929, DESCRIPTION="gp_map_attnums_in_expr");

@@ -69,6 +69,38 @@ typedef struct part_rule_cxt
 } part_rule_cxt;
 
 
+/* 
+ * partsIndexInfo encapsulates the parts index info returned by
+ * getPartsIndexInfo 
+ * It is also used as input to getPartsIndexInfoRelid to lookup
+ * the index relid. 
+ * 
+ * PARTS_INDEX_INFO_NCOLS should be kept in sync with partsIndexInfo.
+ */
+#define PARTS_INDEX_INFO_NCOLS  5
+
+typedef struct partsIndexInfo
+{
+	/* pointer to an array of index keys */
+	int2vector      *indKey;
+
+	/* index predicate for partial indexes */
+	text            *indPred;
+
+	/* index exprs for indexes defined on expressions */
+	text            *indExprs;
+
+	/* unique index */
+	bool            indIsUnique;
+
+	/* concatenated list of check constraints of each partition 
+	 * on which this index is defined 
+	 * This field maybe NULL when used to lookup index relid
+	 */
+	text            *partCons;
+} partsIndexInfo;
+
+
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
 #define parkindIsList(c)   ((c) == 'l')
@@ -230,5 +262,8 @@ extern void AddPartitionEncoding(Oid relid, Oid paroid, AttrNumber attnum,
 extern void RemovePartitionEncodingByRelid(Oid relid);
 extern void RemovePartitionEncodingByRelidAttribute(Oid relid, AttrNumber attnum);
 extern Datum *get_partition_encoding_attoptions(Relation rel, Oid paroid);
+
+extern partsIndexInfo **getPartsIndexInfo(Oid relid, int *num_rows);
+extern Oid getPartsIndexInfoRelid(partsIndexInfo *iInfo, Oid rootOid, Oid partOid);
 
 #endif   /* CDBPARTITION_H */

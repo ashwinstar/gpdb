@@ -31,6 +31,7 @@
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
+#include "executor/spi.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/var.h"
 #include "parser/analyze.h"
@@ -8151,3 +8152,878 @@ get_deparsed_partition_encodings(Oid relid, Oid paroid)
 
 	return out;
 }
+
+/*
+ * gp_get_parts_index_info_function
+ *   Set returning function - returns index information on a partitioned 
+ *   table. One row per "distinct" index in the partitioning hierarchy
+ *   is returned. 
+ *
+ *   Each index with the same index key, index predicate, index expression
+ *   uniqueness attribute is considered the same.
+ */
+PG_FUNCTION_INFO_V1(gp_get_parts_index_info_function);
+Datum
+gp_get_parts_index_info_function(PG_FUNCTION_ARGS)
+{
+	Oid                     relid = PG_GETARG_OID(0); 
+	FuncCallContext         *funcctx; 
+	MemoryContext           oldcontext; 
+	TupleDesc               tupdesc; 
+	HeapTuple               tuple; 
+	int                     numrows = 0; 
+	bool                    nulls[PARTS_INDEX_INFO_NCOLS];
+
+	typedef struct Context
+	{
+		struct partsIndexInfo **index_rows;
+	} Context;
+
+	Context *context;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		/* create a function context */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/* switch memory context for multiple function calls */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* build tupdesc for result tuples */
+		tupdesc = CreateTemplateTupleDesc(PARTS_INDEX_INFO_NCOLS, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "indkey",
+				INT2VECTOROID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "indpred",
+				TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "indexprs",
+				TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "indisunique",
+				BOOLOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "partcons",
+				TEXTOID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		context = (Context *)palloc(sizeof(Context));
+		funcctx->user_fctx = (void *) context;
+
+		/* do the actual work */
+		context->index_rows = getPartsIndexInfo(relid, &numrows);
+		funcctx->max_calls = numrows;
+	}
+
+	funcctx = SRF_PERCALL_SETUP(); 
+	context = (Context *)funcctx->user_fctx;
+
+
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		/* fetch each tuple, and return */
+		Datum values[PARTS_INDEX_INFO_NCOLS];
+		Datum result;
+
+		partsIndexInfo *index_rowsP =
+			context->index_rows[funcctx->call_cntr];
+
+		for (int i = 0; i < PARTS_INDEX_INFO_NCOLS; i++)
+			nulls[i] = false;
+
+
+		Assert(index_rowsP->indKey != NULL);
+		values[0] = PointerGetDatum(index_rowsP->indKey);
+
+		if (index_rowsP->indPred)
+			values[1] = PointerGetDatum(index_rowsP->indPred);
+		else
+			nulls[1] = true;
+
+		if (index_rowsP->indExprs)
+			values[2] = PointerGetDatum(index_rowsP->indExprs);
+		else
+			nulls[2] = true;
+
+		values[3] = BoolGetDatum(index_rowsP->indIsUnique);
+		values[4] = PointerGetDatum(index_rowsP->partCons);
+
+		/* build tuple */
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+		/* make the tuple into a datum */
+		result = HeapTupleGetDatum(tuple);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+	else
+	{
+		SRF_RETURN_DONE(funcctx);
+	}
+}
+
+/* 
+ * getPartsIndexInfoOutputRows
+ *  construct output of getPartsIndexInfo function
+ */
+static partsIndexInfo **
+getPartsIndexInfoOutputRows(int *numrows)
+{	
+	int     	i; 
+	partsIndexInfo **indexRows;
+	char		*indKey;
+	char 		*indPred;
+	char		*indExprs;
+	char 		*indisUnique; 
+	char 		*partCons;
+
+	*numrows = SPI_processed; 
+
+	/* allocate space for output */ 
+	indexRows = (partsIndexInfo **)palloc0(*numrows * sizeof(partsIndexInfo*));
+
+	for (i = 0; i < *numrows; i++)
+		indexRows[i] = (partsIndexInfo *)palloc0(sizeof(partsIndexInfo));
+
+	Assert(SPI_tuptable != NULL);
+
+	for (i = 0; i < *numrows; i++)
+	{
+		HeapTuple tuple = SPI_tuptable->vals[i];
+		TupleDesc tupdesc = SPI_tuptable->tupdesc;
+
+		indKey = SPI_getvalue(tuple, tupdesc, 1);
+		indexRows[i]->indKey = (int2vector *)DatumGetPointer(
+				DirectFunctionCall1(int2vectorin, 
+					PointerGetDatum(indKey)));
+
+		indPred = SPI_getvalue(tuple, tupdesc, 2);
+		if (indPred)
+		{
+			indexRows[i]->indPred = DatumGetTextP(DirectFunctionCall1(textin,
+						PointerGetDatum(indPred)));
+		} 
+
+		indExprs = SPI_getvalue(tuple, tupdesc, 3);
+		if (indExprs)
+		{
+			indexRows[i]->indExprs = DatumGetTextP(DirectFunctionCall1(
+						textin, PointerGetDatum(indExprs)));
+		}
+
+		indisUnique = SPI_getvalue(tuple, tupdesc, 4);
+		indexRows[i]->indIsUnique = DatumGetBool(DirectFunctionCall1(boolin, 
+					CStringGetDatum(indisUnique)));
+
+		partCons = SPI_getvalue(tuple, tupdesc, 5);
+		if (!partCons)
+		{
+			ereport(ERROR, 
+					(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					 errmsg("unable to obtain partCons info"),
+					 errdetail("SPI_connect failed getPartsIndexInfo")));
+		}
+
+		indexRows[i]->partCons = DatumGetTextP(DirectFunctionCall1(textin, 
+					CStringGetDatum(partCons)));
+	}
+
+	return indexRows;
+}
+
+
+/*
+ * getPartsIndexInfo
+ *   Function returns index information on partitioned tables. 
+ *   One row per "distinct" index in the partitioning hierarchy 
+ *   is returned. 
+ * 
+ *   This function takes the OID of the root of the partitioned
+ *   table and returns an array of partsIndexInfo structures.a
+ *   Size of array is returned in num_rows.
+ *   Each entry in the array corresponds to one distinct index
+ *   in the partitioning hierarchy. Each index with the same 
+ *   index key, index predicate, index expression, uniqueness
+ *   attribute is considered the same. 
+ *   If the input OID is not the root of a partitioned table
+ *   0 num_rows are returned.
+ */
+partsIndexInfo **
+getPartsIndexInfo(Oid relid, int *num_rows)
+{
+	StringInfoData  sqlstmt;
+	int             rc;
+	MemoryContext   callerContext = NULL;
+	MemoryContext   saveContext = NULL;
+	partsIndexInfo **indexRows;
+	bool    	connected = false;
+
+	/* save the context for the results */
+	callerContext = CurrentMemoryContext;
+
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt,
+			"select gp_map_attnums(%d, pr1.parchildrelid, indkey) as ind_key, "
+			"gp_map_attnums_in_expr(%d, pr1.parchildrelid, indpred) as ind_pred, "
+			"gp_map_attnums_in_expr(%d, pr1.parchildrelid, indexprs) as ind_exprs, "
+			"indisunique, "
+			"string_agg"
+			"(gp_get_part_constraints(pr1.parchildrelid, %d), ' , ') "
+			"as ind_desc "
+			"from pg_partition_rule pr1, pg_index i1 "
+			"where pr1.paroid in (select "
+			"oid from pg_partition where parrelid = %d and "
+			"paristemplate = false) and i1.indrelid = "
+			"pr1.parchildrelid "
+			"group by (ind_key, ind_pred, ind_exprs, indisunique)" ,
+			relid, relid, relid, relid, relid);
+
+	PG_TRY();
+	{
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, 
+					(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					 errmsg("unable to obtain part index info"),
+					 errdetail("SPI_connect failed getPartsIndexInfo")));
+		}
+		connected = true;
+
+		/* Execute the query */
+		rc = SPI_execute(sqlstmt.data, false, 0);
+		if (rc < 0) 
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					 errmsg("unable to obtain part index info"),
+					 errdetail("SPI_connect failed getPartsIndexInfo"))); 
+		}
+
+		/* switch to caller context and handle results */
+		saveContext = MemoryContextSwitchTo(callerContext);
+
+		/* construct the output information */
+		indexRows = getPartsIndexInfoOutputRows(num_rows);
+
+		MemoryContextSwitchTo(saveContext);
+
+		connected = false;
+		SPI_finish();
+	}
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return indexRows;
+}
+
+/*
+ * isDefaultPart
+ *   Given an OID, returns true if the oid represents a DEFAULT part.
+ *   An error is raised if the oid does not represent a partitioned table.
+ */
+static bool
+isDefaultPart(Oid partOid)
+{
+	bool parisdefault;
+	HeapTuple tuple;
+
+	tuple = caql_getfirst(NULL,
+			cql("SELECT * FROM pg_partition_rule"
+				" WHERE parchildrelid = :1",
+				ObjectIdGetDatum(partOid)));
+	if (!HeapTupleIsValid(tuple))
+	{
+		elog(ERROR, "could not find entry for part in pg_partition_rule %u",
+				partOid);
+	}
+
+	parisdefault = ((Form_pg_partition_rule) GETSTRUCT(tuple))->parisdefault;
+
+	heap_freetuple(tuple);
+	return parisdefault;
+}
+
+/*
+ * isConstraintOnPartKey
+ *   Function checks if the given constraint is defined on the partitioning
+ *   key columns
+ */
+static bool
+isConstraintOnPartKey(HeapTuple conTup, Relation conRel, int2vector *paratts, AttrMap *map)
+{
+	Datum   conkeyDatum;
+	bool    conkeyIsNull = false;
+	Datum   *conkeyArray;
+	int     conkeyArrayLength; 
+	int2vector *conkeyVector; 
+	bool    result = true; 
+	int	parnatts = paratts->dim1; 
+	int2    keys[parnatts]; 
+	int 	i;
+
+	/* Fetch the constraint key */
+	conkeyDatum = heap_getattr(conTup, Anum_pg_constraint_conkey,
+			RelationGetDescr(conRel), &conkeyIsNull);
+
+	Assert (!conkeyIsNull);
+
+	deconstruct_array(DatumGetArrayTypeP(conkeyDatum),
+			INT2OID, 2, true, 's',
+			&conkeyArray, NULL, &conkeyArrayLength);
+
+	if (conkeyArrayLength != parnatts)
+		return false;
+
+	/* map the constraint key attnums to root attnums */
+	for (i = 0; i < conkeyArrayLength; i++)
+	{
+		int16 key =  DatumGetInt16(conkeyArray[i]);
+		keys[i] = (int16)attrMap(map, key);
+	} 
+
+	/* build the mapped conkey attnum int2vector */
+	conkeyVector = buildint2vector(keys, conkeyArrayLength); 
+
+	/* compare with the partitioning key */
+	result = DatumGetBool(DirectFunctionCall2(int2vectoreq, 
+				PointerGetDatum(conkeyVector),
+				PointerGetDatum(paratts)));
+	return result;
+}
+
+/*
+ * getPartConstraints
+ *   Given an OID, returns a Node that represents all the check constraints
+ *   on the table AND'd together. 
+ *   If paratts input is not NULL, only those check constraints defined on 
+ *   the columns listed in paratts, are included in the output.
+ */
+static Node *
+getPartConstraints(Oid partOid, Oid rootOid, int2vector *paratts)
+{
+	cqContext       *pcqCtx;
+	cqContext       cqc;
+	Relation        conRel;
+	HeapTuple       conTup;
+	Node            *conExpr;
+	Node            *result = NULL;
+	Datum           conBinDatum;
+	char            *conBin;
+	bool            conbinIsNull = false;
+	char            conType = 'c';
+	AttrMap		*map;
+
+	/* create the map needed for mapping attnums */
+	Relation rootRel = heap_open(rootOid, AccessShareLock); 
+	Relation partRel = heap_open(partOid, AccessShareLock); 
+
+	map_part_attrs(partRel, rootRel, &map, false); 
+
+	heap_close(rootRel, AccessShareLock);
+	heap_close(partRel, AccessShareLock);
+
+	/* Fetch the pg_constraint row. */
+	conRel = heap_open(ConstraintRelationId, AccessShareLock);
+
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), conRel),
+			cql("SELECT * FROM pg_constraint "
+				" WHERE conrelid = :1 AND contype = :2",
+				ObjectIdGetDatum(partOid), CharGetDatum(conType)));
+
+	while (HeapTupleIsValid(conTup = caql_getnext(pcqCtx)))
+	{
+		if (paratts)
+		{
+			if (!(isConstraintOnPartKey(conTup, conRel, paratts, map)))
+			{
+				/* ignore constraints not defined on partitioning key */
+				continue;
+			}
+		}
+
+		/* Fetch the constraint expression in parsetree form */
+		conBinDatum = heap_getattr(conTup, Anum_pg_constraint_conbin,
+				RelationGetDescr(conRel), &conbinIsNull);
+
+		Assert (!conbinIsNull);
+
+
+		/* map the attnums in constraint expression to root attnums */
+		conBin = DatumGetCString(DirectFunctionCall1(textout, conBinDatum));
+		conExpr = stringToNode(conBin);
+		conExpr = attrMapExpr(map, conExpr);
+		conBin = nodeToString(conExpr);
+
+		if (result)
+		{
+			result = (Node *)make_andclause(list_make2(result, conExpr));
+		}
+		else
+		{
+			result = conExpr;
+		}
+	}
+
+	caql_endscan(pcqCtx);
+	heap_close(conRel, AccessShareLock);
+	return result;
+}
+
+/*
+ * getSiblingsOfDefaultPart
+ *   Given a DEFAULT part OID, returns a list of the siblings of the 
+ *   default part. Siblings are all the parts that have the same parent. 
+ *   In addition, the function also returns the partitioning key attnums
+ *   that define the level on which the DEFAULT part exists. 
+ */
+static List *
+getSiblingsOfDefaultPart(Oid partOid, int2vector **paratts)
+{
+	List            *srelid = NIL;
+	cqContext       *pcqCtx;
+	Oid             parparentrule;
+	Oid             paroid;
+	int2vector *atts = NULL;
+	bool            isnull;
+	Form_pg_partition partDesc;
+	Form_pg_partition_rule parRuleDesc;
+	Form_pg_partition_rule parRuleDesc2;
+	HeapTuple       parruleTuple;
+	HeapTuple       parruleTuple2;
+	HeapTuple       partTuple;
+	Relation        parRelation;
+
+	/* lookup the parparentrule and paroid of current part */
+	parruleTuple = caql_getfirst(NULL,
+			cql("SELECT * FROM pg_partition_rule"
+				" WHERE parchildrelid = :1",
+				ObjectIdGetDatum(partOid)));
+
+	if (!HeapTupleIsValid(parruleTuple))
+	{
+		elog(ERROR, "could not find entry for part in pg_partition_rule %u",
+				partOid);
+	}
+
+	parRuleDesc = (Form_pg_partition_rule) GETSTRUCT(parruleTuple);
+	paroid = parRuleDesc->paroid;
+	parparentrule = parRuleDesc->parparentrule;
+
+	heap_freetuple(parruleTuple);
+
+	parRelation = heap_open(PartitionRelationId, AccessShareLock);
+	/* using paroid fetched above, lookup parnatts, paratts in pg_partition */
+	partTuple = caql_getfirst(NULL,
+			cql("SELECT * from pg_partition"
+				" WHERE oid = :1",
+				ObjectIdGetDatum(paroid)));
+
+	if (!HeapTupleIsValid(partTuple))
+	{
+		elog(ERROR, "could not find entry pg_partition for %u",
+				paroid);
+	}
+
+
+
+	/* get the parnatts and paratts */
+	atts = DatumGetPointer(heap_getattr(partTuple, Anum_pg_partition_paratts,
+				RelationGetDescr(parRelation), &isnull));
+	Assert(!isnull);
+	partDesc = (Form_pg_partition) GETSTRUCT(partTuple);
+
+	/* allocate space to hold the partitioning key attnums */
+	*paratts = palloc(Int2VectorSize(partDesc->parnatts));
+
+	memcpy(*paratts, atts, Int2VectorSize(partDesc->parnatts));
+
+	heap_close(parRelation, AccessShareLock);
+	heap_freetuple(partTuple);
+
+	/* 2nd scan on pg_partition_rule to get list of siblings */
+	pcqCtx = caql_beginscan(NULL,
+			cql("SELECT * FROM pg_partition_rule "
+				" WHERE parparentrule = :1",
+				ObjectIdGetDatum(parparentrule)));
+
+	while (HeapTupleIsValid(parruleTuple2 = caql_getnext(pcqCtx)))
+	{
+		parRuleDesc2 = (Form_pg_partition_rule) GETSTRUCT(parruleTuple2);
+		if (parRuleDesc2->parchildrelid != partOid)
+		{
+			srelid = lappend_oid(srelid, parRuleDesc2->parchildrelid);
+		}
+	}
+
+	caql_endscan(pcqCtx);
+
+	return srelid;
+}
+
+
+/*
+ * getDefaultPartConstraints
+ *   Given a DEFAULT part OID, returns a Node that represents the
+ *   constraints on the DEFAULT part. The constraints are constructed 
+ *   by taking the negation of all the check constraints on all the 
+ *   siblings and AND'ing them to the constraint on the DEFAULT part.
+ */
+static Node *
+getDefaultPartConstraints(Oid partOid, Oid rootOid)
+{
+	Node            *resultNode = NULL;
+	Node            *sibCons = NULL;
+	List            *sibList = NULL;
+	Node            *negExpr = NULL;
+	ListCell        *lc;
+	int2vector      *paratts;
+
+	sibList = getSiblingsOfDefaultPart(partOid, &paratts);
+
+	/* get check constraints of sibs defined on partitioning key 
+	 * columns, negate each constraint, and AND them */
+	foreach (lc, sibList)
+	{
+		Oid sibId = lfirst_oid(lc);
+		sibCons = getPartConstraints(sibId, rootOid, paratts);
+
+		/* negate the constraint if it exists on pk */
+		if (sibCons)
+			negExpr = (Node *)make_notclause((Expr *)sibCons);
+
+		/* AND it to existing one */
+		if (negExpr)
+		{
+			if (resultNode)
+				resultNode = (Node *)make_andclause(list_make2(resultNode, negExpr));
+			else
+				resultNode = negExpr;
+		}
+	}
+
+	return resultNode;
+}
+
+/*
+ * gp_get_part_constraints
+ */
+Datum
+gp_get_part_constraints(PG_FUNCTION_ARGS)
+{
+	Oid             partOid = PG_GETARG_OID(0);
+	Oid             rootOid = PG_GETARG_OID(1);
+	bool            parIsDefault;
+	Node            *conList;
+	Node            *sibConList = NULL;
+
+	/* return NULL if this is a non-leaf part */
+	if (!rel_is_leaf_partition(partOid))
+		PG_RETURN_NULL();
+
+	/* get constraints on partOid */
+	conList = getPartConstraints(partOid, rootOid, NULL);
+
+	/* handle DEFAULT part*/
+	parIsDefault = isDefaultPart(partOid);
+
+	if (parIsDefault)
+	{
+		/* get sibling constraints */
+		sibConList = getDefaultPartConstraints(partOid, rootOid);
+
+		if (sibConList)
+		{
+			/* AND them to current constraints */
+			if (conList)
+				conList = (Node *)make_andclause(list_make2(conList, sibConList));
+			else
+				conList = sibConList;
+		}
+	}
+
+	return DirectFunctionCall1(textin, CStringGetDatum(nodeToString(conList)));
+}
+
+/* 
+ * gp_map_attnums
+ *  Given an input vector of attnums, a source relation oid, and a target
+ *  relation oid, this function maps the attnums in the input 
+ *  int2vector to the corresponding attnums in the target relation.
+ */
+Datum
+gp_map_attnums(PG_FUNCTION_ARGS)
+{
+	Oid             rootOid = PG_GETARG_OID(0);
+	Oid             partOid = PG_GETARG_OID(1);
+	int2vector      *input; 
+	int2            nAtts;
+	int2vector      *inputVector;
+	int2            *inputArray;
+	int             i;
+
+	AttrMap      *attMap = NULL;
+
+	if (PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	input = (int2vector *)PG_GETARG_POINTER(2); 
+	Relation rootRel = heap_open(rootOid, AccessShareLock); 
+	Relation partRel = heap_open(partOid, AccessShareLock); 
+
+	map_part_attrs(partRel, rootRel, &attMap, false); 
+
+	heap_close(rootRel, AccessShareLock);
+	heap_close(partRel, AccessShareLock);
+
+	if (!attMap)
+		PG_RETURN_POINTER(input);
+
+	nAtts = input->dim1;
+	inputArray = (int2 *)palloc(sizeof(int2) * nAtts);
+
+	for (i = 0; i < nAtts; i++)
+	{
+		inputArray[i] = attrMap(attMap, input->values[i]);
+	} 
+
+	inputVector = buildint2vector(inputArray, nAtts); 
+
+	if (attMap)
+		/* free the attmap allocated by map_part_attrs */
+		pfree(attMap); 
+
+	if (inputArray)
+		pfree(inputArray);
+
+	PG_RETURN_POINTER(inputVector);
+}
+
+/* 
+ * gp_map_attnums_in_expr
+ *      Given an expression, source relation oid, target relation oid, this 
+ *      function maps the attnums in the expression to the corresponding 
+ *      attnums in the target relation.
+ */
+Datum
+gp_map_attnums_in_expr(PG_FUNCTION_ARGS)
+{
+	Oid             rootOid = PG_GETARG_OID(0);
+	Oid             partOid = PG_GETARG_OID(1);
+	AttrMap         *attMap = NULL;
+	Node            *inNode = NULL;
+	char            *inNodeStr = NULL;
+	text            *inNodeText = NULL;
+
+	if (PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	inNodeText = PG_GETARG_TEXT_P(2);
+	inNodeStr = text_to_cstring(inNodeText);
+	inNode = (Node *)stringToNode(inNodeStr);
+
+	Relation rootRel = heap_open(rootOid, AccessShareLock); 
+	Relation partRel = heap_open(partOid, AccessShareLock); 
+
+	/* attMap allocated by map_part_attrs */ 
+	map_part_attrs(partRel, rootRel, &attMap, false); 
+
+	heap_close(rootRel, AccessShareLock);
+	heap_close(partRel, AccessShareLock);
+
+	if (attMap == NULL)
+	{
+		PG_RETURN_TEXT_P(inNodeText);	
+	}
+
+	/* attrMapExpr makes a copy of the mapped expression Node */ 
+	inNode = attrMapExpr(attMap, inNode); 
+
+	/* free the attmap allocated by map_part_attrs */ 
+	pfree(attMap); 
+
+	inNodeStr = nodeToString(inNode);
+	inNodeText = cstring_to_text(inNodeStr);
+
+	PG_RETURN_TEXT_P(inNodeText);
+}
+
+/* 
+ * compareIndexAttr
+ */
+static bool
+compareIndexAttr(Datum indPredDatum, bool indNull, Datum pgindPredDatum, bool pgindNull)
+{
+	bool indMatch = false; 
+
+	if (indNull && pgindNull) 
+		indMatch = true;
+
+	if (!indNull && !pgindNull) 
+	{
+		if  (DatumGetBool(DirectFunctionCall2(texteq, indPredDatum,
+						pgindPredDatum)))
+			indMatch = true;
+	}
+
+	return indMatch;
+}
+
+static bool
+compareIndexKey(Datum indDatum, bool indNull, Datum pgindDatum, bool pgindNull)
+{
+	bool indMatch = false; 
+	if (indNull && pgindNull) 
+		indMatch = true; 
+
+	if (!indNull && !pgindNull) 
+	{
+		if  (DatumGetBool(DirectFunctionCall2(int2vectoreq, indDatum,
+						pgindDatum)))
+			indMatch = true;
+	}
+
+	return indMatch;
+}
+		
+/* 
+ * getPartsIndexInfoRelid
+ *      This function returns the index id of the index corresponding 
+ *      to the index described by the partsIndexInfo input structure
+ *      in the relation identified by the relid. 
+ *      This function returns the 1st matching index.
+ */
+Oid
+getPartsIndexInfoRelid(partsIndexInfo *iInfo, Oid rootOid, Oid partOid)
+{
+	Datum   	indKeyDatum;
+	Datum   	pgindDatum;
+	Datum 		indExprsDatum;
+	Datum 		indPredDatum;
+	Relation        indexRelation;
+	HeapTuple       tup;
+	cqContext       cqc;
+	cqContext       *pcqCtx;
+	Oid             resultOid = InvalidOid;
+	bool 		isNull = false;
+	bool 		inKeyNull = true;
+	bool 		inPredNull = true;
+	bool 		inExprsNull = true;
+
+	indexRelation = heap_open(IndexRelationId, AccessShareLock);
+
+
+	/* map the attrnos in the user supplied indKey to the target part */
+	if (iInfo->indKey)
+	{
+		inKeyNull = false;
+		indKeyDatum = DirectFunctionCall3(gp_map_attnums,
+				ObjectIdGetDatum(partOid),
+				ObjectIdGetDatum(rootOid),
+				PointerGetDatum(iInfo->indKey));
+	}
+
+	/* map the attrnos in the indExprs and indPred */
+	if (iInfo->indExprs)
+	{
+		inExprsNull = false;
+		indExprsDatum = DirectFunctionCall3(gp_map_attnums_in_expr,
+				ObjectIdGetDatum(partOid),
+				ObjectIdGetDatum(rootOid),
+				PointerGetDatum(iInfo->indExprs)); 
+	}
+
+	if (iInfo->indPred)
+	{
+		inPredNull = false;
+		indPredDatum = DirectFunctionCall3(gp_map_attnums_in_expr,
+				ObjectIdGetDatum(partOid),
+				ObjectIdGetDatum(rootOid),
+				PointerGetDatum(iInfo->indPred));
+	}
+
+	/* now look up pg_index using indrelid */
+	pcqCtx = caql_beginscan( 
+			caql_addrel(cqclr(&cqc), indexRelation), 
+			cql("SELECT * FROM pg_index" 
+				" WHERE indrelid = :1", 
+				ObjectIdGetDatum(partOid)));
+
+	/* fetch tuples and compare indKey, indExprs, and indPred */
+	while (HeapTupleIsValid(tup = caql_getnext(pcqCtx)))
+	{
+		Form_pg_index indForm = (Form_pg_index) GETSTRUCT(tup);
+
+		pgindDatum = heap_getattr(tup,
+				Anum_pg_index_indkey,
+				RelationGetDescr(indexRelation),
+				&isNull);
+
+		if (!compareIndexKey(indKeyDatum, inKeyNull, pgindDatum, isNull))
+			continue;
+
+		/* compare indpred */
+		pgindDatum = heap_getattr(tup, 
+				Anum_pg_index_indpred, 
+				RelationGetDescr(indexRelation), 
+				&isNull); 
+
+		/* go on to the next row if indpreds don't match */ 
+		if (!compareIndexAttr(indPredDatum, inPredNull, pgindDatum, isNull))
+			continue;
+
+		/* compare indexprs */
+		pgindDatum = heap_getattr(tup, 
+				Anum_pg_index_indexprs, 
+				RelationGetDescr(indexRelation), 
+				&isNull); 
+
+		/* if found a match, get the indexrelid */ 
+		if (compareIndexAttr(indExprsDatum, inExprsNull, pgindDatum, isNull))
+		{
+			resultOid = indForm->indexrelid; 
+		}
+	} 
+
+	caql_endscan(pcqCtx); 
+	heap_close(indexRelation, AccessShareLock); 
+
+	return resultOid;
+}
+
+/* 
+ * function wrapper for testing getPartsIndexInfoRelid 
+ */
+PG_FUNCTION_INFO_V1(gp_get_parts_index_relid);
+Datum
+gp_get_parts_index_relid(PG_FUNCTION_ARGS)
+{
+        Oid                     rootOid = PG_GETARG_OID(0);
+        Oid                     partOid = PG_GETARG_OID(1);
+        partsIndexInfo		partsIndexInfo;
+        Oid                     resultOid;
+
+        partsIndexInfo.indKey = NULL;
+        partsIndexInfo.indPred = NULL;
+        partsIndexInfo.indExprs = NULL;
+        partsIndexInfo.partCons = NULL;
+
+        if (!PG_ARGISNULL(2))
+                partsIndexInfo.indKey = PG_GETARG_POINTER(2);
+
+        if (!PG_ARGISNULL(3))
+                partsIndexInfo.indPred = PG_GETARG_POINTER(3);
+
+        if (!PG_ARGISNULL(4))
+                partsIndexInfo.indExprs = PG_GETARG_POINTER(4);
+
+        /* do the actual work */
+        resultOid = getPartsIndexInfoRelid(&partsIndexInfo, rootOid, partOid);
+
+        return ObjectIdGetDatum(resultOid);
+}
+

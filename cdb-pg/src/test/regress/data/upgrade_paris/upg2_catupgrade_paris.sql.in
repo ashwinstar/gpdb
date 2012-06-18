@@ -532,6 +532,19 @@ CREATE FUNCTION @gpupgradeschemaname@.uuid_text(@gpupgradeschemaname@.uuid) RETU
 	AS 'uuid_text' WITH (OID=2965);
 COMMENT ON FUNCTION @gpupgradeschemaname@.uuid_text(@gpupgradeschemaname@.uuid) IS 'convert uuid to text';
 
+-- partitioning related functions 
+CREATE FUNCTION @gpupgradeschemaname@.gp_get_part_constraints(oid, oid) RETURNS text LANGUAGE internal IMMUTABLE 
+	AS 'gp_get_part_constraints' WITH (OID=9926);
+COMMENT ON FUNCTION @gpupgradeschemaname@.gp_get_part_constraints(oid, oid)  IS '(internal) get the constraints on a part';
+
+CREATE FUNCTION @gpupgradeschemaname@.gp_map_attnums(oid, oid, int2vector) RETURNS int2vector LANGUAGE internal IMMUTABLE 
+	AS 'gp_map_attnums' WITH (OID=9927);
+COMMENT ON FUNCTION @gpupgradeschemaname@.gp_map_attnums(oid, oid, int2vector)  IS '(internal) maps attnums in input';
+
+CREATE FUNCTION @gpupgradeschemaname@.gp_map_attnums_in_expr(oid, oid, text) RETURNS text LANGUAGE internal IMMUTABLE 
+	AS 'gp_map_attnums_in_expr' WITH (OID=9929);
+COMMENT ON FUNCTION @gpupgradeschemaname@.gp_map_attnums_in_expr(oid, oid, text)  IS '(internal) map attnums in input expr';
+
 -- Create Operator Class for UUID
 --		add entries to pg_opclass
 \set pg_opclass_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_opclass.data'"`

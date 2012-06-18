@@ -26,7 +26,7 @@ followed if adding a new type.
 
 4. Run the following command in cdb-pg/src/include/catalog:
 
-   $ perl catullus.pl –procdef pg_proc.sql –prochdr pg_proc.h –typedef pg_type.sql –typehdr pg_type.h
+   $ perl catullus.pl -procdef pg_proc.sql -prochdr pg_proc.h -typedef pg_type.sql -typehdr pg_type.h
 
   catullus.pl will re-generate the pg_proc.h file with the appropriate 
   DATA statement for the fn_sql function definition. If a new type 
