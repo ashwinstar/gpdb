@@ -1756,6 +1756,8 @@ form_default_storage_directive(List *enc)
 			continue;
 		if (pg_strcasecmp("fillfactor", el->defname) == 0)
 			continue;
+		if (pg_strcasecmp("tablename", el->defname) == 0)
+			continue;
 		out = lappend(out, copyObject(el));
 	}
 	return out;
