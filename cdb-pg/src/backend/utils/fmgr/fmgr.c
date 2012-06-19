@@ -154,7 +154,7 @@ fmgr_lookupByName(const char *name)
 void
 fmgr_info(Oid functionId, FmgrInfo *finfo)
 {
-	fmgr_info_cxt(functionId, finfo, CurrentMemoryContext);
+	fmgr_info_cxt_security(functionId, finfo, CurrentMemoryContext, false);
 }
 
 /*
@@ -169,7 +169,7 @@ fmgr_info_cxt(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt)
 
 /*
  * This one does the actual work.  ignore_security is ordinarily false
- * but is set to true by fmgr_security_definer to avoid recursion.
+ * but is set to true when we need to avoid recursion.
  */
 static void
 fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
@@ -390,7 +390,13 @@ fmgr_info_other_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 		elog(ERROR, "cache lookup failed for language %u", language);
 	languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
 
-	fmgr_info(languageStruct->lanplcallfoid, &plfinfo);
+	/*
+	 * Look up the language's call handler function, ignoring any attributes
+	 * that would normally cause insertion of fmgr_security_definer.  We
+	 * need to get back a bare pointer to the actual C-language function.
+	 */
+	fmgr_info_cxt_security(languageStruct->lanplcallfoid, &plfinfo,
+						   CurrentMemoryContext, true);
 	finfo->fn_addr = plfinfo.fn_addr;
 
 	/*
