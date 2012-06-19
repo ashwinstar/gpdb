@@ -618,3 +618,19 @@ SELECT catDML(
      ptcwritefn = CASE WHEN ptcwritefn IS NULL THEN 0 ELSE ptcwritefn END,
      ptcvalidatorfn = CASE WHEN ptcvalidatorfn IS NULL THEN 0 ELSE ptcvalidatorfn END'
 );
+
+-- MPP-17634 add pg_window.winnulltreatment
+ALTER TABLE @gpupgradeschemaname@.pg_window
+    ADD COLUMN winnulltreatment boolean;
+SELECT catDML(
+'UPDATE @gpupgradeschemaname@.pg_window SET winnulltreatment = ''t''
+ FROM pg_proc WHERE pg_proc.oid = pg_window.winfnoid AND
+      (pg_proc.proname = ''first_value'' OR pg_proc.proname = ''last_value'')
+      AND pg_proc.oid < 10000'
+);
+SELECT catDML(
+'UPDATE @gpupgradeschemaname@.pg_window SET winnulltreatment = ''f''
+ WHERE winnulltreatment IS NULL'
+);
+ALTER TABLE @gpupgradeschemaname@.pg_window
+    ALTER COLUMN winnulltreatment SET NOT NULL;
