@@ -12,7 +12,6 @@ from datetime import datetime
 import sys
 import socket
 from optparse import Option, OptionGroup, OptionParser, OptionValueError
-from sets import Set
 
 import re
 import stat
@@ -22,15 +21,14 @@ try:
     from gppylib import pgconf
     from gppylib import userinput
     from gppylib.commands.base import Command
+    from gppylib.gpddboostmanager import *
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.operations import Operation
     from gppylib.operations.dump import DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
-    from gppylib.operations.utils import DEFAULT_NUM_WORKERS
-    from gppylib.gparray import GpArray
+    from gppylib.operations.utils import DEFAULT_NUM_WORKERS    
     from gppylib.db import dbconn
-    from getpass import getpass
-    
-    
+
+
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
  
@@ -78,33 +76,32 @@ class GpCronDump(Operation):
         self.report_dir = options.report_dir
         self.encoding = options.encoding
         self.output_options = options.output_options
-        self.ddboost_hosts = options.ddboost_hosts
-        self.ddboost_user = options.ddboost_user
-        self.ddboost_config_remove = options.ddboost_config_remove
-        self.ddboost_verify = options.ddboost_verify
-        # This variable indicates whether we need to exit after verifying the DDBoost credentials 
-        self.ddboost_verify_and_exit = False
-    
+        self.use_ddboost = options.use_ddboost
+
         # TODO: if action is 'append', wouldn't you expect a lack of input to result in [], as opposed to None?
         if self.include_dump_tables is None: self.include_dump_tables = []
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
-        if self.output_options is None: self.output_options = []
-        if self.ddboost_hosts is None: self.ddboost_hosts = []
-
-        if not (self.clear_dumps_only or bool(self.ddboost_hosts) or bool(self.ddboost_user) or self.ddboost_config_remove):
+        if self.output_options is None: self.output_options = []                
+        
+        # DDBoost related parameters
+        self.ddboost_options = GpDdboostManager(options, self.master_port, self.only_ddboost_options(options))
+        
+        
+        if not (self.clear_dumps_only or bool(self.ddboost_options.ddboost_hosts) or bool(self.ddboost_options.ddboost_user) or self.ddboost_options.ddboost_config_remove):
             if self.dump_databases is not None:
                 self.dump_databases = self.dump_databases.split(",")
             elif 'PGDATABASE' in os.environ:
                 self.dump_databases = [os.environ['PGDATABASE']]
                 logger.info("Setting dump database to value of $PGDATABASE which is %s" % self.dump_databases[0])
             else:
-                if self.ddboost_verify is True:
+                if self.ddboost_options.ddboost_verify is True:
                     # We would expect to verify the credentials here and return some exit code,
                     # but __init__() should return None, not 'int' - hence we are forced to use
-                    # some kind of flag  
-                    self.ddboost_verify_and_exit = True
+                    # some flag
+                    self.ddboost_options.ddboost_verify_and_exit = True
                 else:
                     raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
+
 
         if options.bypass_disk_check:
             self.free_space_percent = None
@@ -112,149 +109,40 @@ class GpCronDump(Operation):
         if options.backup_set is not None:
             logger.info("-w is no longer supported, will continue with dump of primary segments.")
 
-        self.ddboost = options.ddboost
-        if self.ddboost:
+        if self.use_ddboost:
             self.free_space_percent = None
             logger.info('Bypassing disk space checks due to DDBoost parameters')
             if self.backup_dir is not None:
                 raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
-        
-    def getGpArray(self):
-        return GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)
-    
-         
-    def getHostSet(self, gparray):
-        hostlist = gparray.get_hostlist(includeMaster=True)
-        hostset = Set(hostlist)
-        return hostset
-
 
     # check if one of gpcrondump option was specified, except of ddboost options
-    def only_ddboost_options(self):
-        return ((self.dump_databases is None) and (self.dump_schema is None) and (self.report_dir is None)
-                and (self.backup_dir is None)
-                and not (self.include_dump_tables or self.output_options or self.clear_dumps_only or self.pre_vacuum
-					     or self.clear_dumps_only or self.dump_global or self.rollback or self.exclude_dump_tables
-					     or self.dump_config or self.clear_dumps_only or self.clear_dumps or self.post_vacuum or self.history))
-
-    def validateUserName(self, userName):
-        if not re.search(r'^[a-zA-Z0-9-_]{1,30}$', userName):
-            legal_username_str = """
-			The username length must be between 1 to 30 characters.
-			
-			The following characters are allowed:
-                1) Lowercase letters (a-z)
-                2) Uppercase letters (A-Z) 
-                3) Numbers (0-9)
-                4) Special characters (- and _)
-				
-		    Note: whitespace characters are not allowed.
-			"""
-            raise ExceptionNoStackTraceNeeded(legal_username_str)
-
-
-    def validatePassword(self, password):
-        if not re.search(r'^[a-zA-Z0-9!@#$%^&+=\*\\/\(\)-_~;:\'\"<>\{\}\[\]|\?\.\,`"]{1,40}$', password):
-            legal_password_str = """
-            The password length must be between 1 to 40 characters.
-			
-            The following characters are allowed:
-                1) Lowercase letters (a-z) 
-                2) Uppercase letters (A-Z) 
-                3) Numbers (0-9)
-                4) Special characters (! @ # $ % ^ & + = * \ / - _ ~ ; : ' " { [ ( < > ) ] } | ? . and ,). 
-            """
-            raise ExceptionNoStackTraceNeeded(legal_password_str)
-
+    def only_ddboost_options(self, options):
+        return ((options.dump_databases is None) and (options.dump_schema is None) and (options.report_dir is None)
+                and (options.backup_dir is None) and (options.use_ddboost is False)
+                and not (options.include_dump_tables or options.output_options or options.clear_dumps_only or options.pre_vacuum
+                         or options.clear_dumps_only or options.dump_global or options.rollback or options.exclude_dump_tables
+                         or options.dump_config or options.clear_dumps_only or options.clear_dumps or options.post_vacuum or options.history))
 
     def writeToFile(self, content, filePathName):
         f = open(filePathName, 'w')
         f.write(content)
         f.close()
-        os.chmod(filePathName, stat.S_IREAD | stat.S_IWRITE)
+        os.chmod(filePathName, stat.S_IREAD | stat.S_IWRITE)    
 
-    def sshToHosts(self, gpHostsSet, ddboostHostsSet, user, password):
-        logger.debug("DDboost host(s): %s" % ddboostHostsSet)
-        numberOfDdboostNics = len(ddboostHostsSet)
+    def execute(self):
 
-		# This for loops over all the segment hosts and executes appropriate 'gpddboost --setCredential' command
-        for index, host in enumerate(gpHostsSet):                          
-            # If more then one NIC is specified, we configure the GP hosts with these ddboost NICs in a round robin manner
-            currentDdboostHost = ddboostHostsSet[index % numberOfDdboostNics]            
-            ddcmd = 'source ' + os.environ['GPHOME'] + '/greenplum_path.sh; ' + os.environ['GPHOME'] + \
-					'/bin/gpddboost  --setCredential --hostname=' + currentDdboostHost + ' --user=' + re.escape(user)
-            logger.debug("running gpddboost on host %s: %s --password=*" % (host, ddcmd))
+        # Execute the DDBoost related actions. If the return value is True, 
+        # it means that only DDBoost related activity should be executed;
+        # meaning we should exit now
+        if self.ddboost_options.execute() == True:
+            return 0;
 
-            # Note: the password can't be printed to log/stdout and therefore was concatenated to ddcmd only after priniting it to log
-            ddcmd += " --password=" + re.escape(password)
-            cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
-            # TODO: capture the output of the 'gpddboost' (e.g. with 'subprocess.Popen()' istead of 'os.system()')
-            if not os.system(cmdline):
-                logger.info("config delivered successfully to %s " % host)
-            else:
-                logger.warn("problem delivering the config to %s " % host)
-
-        logger.debug("done with sshToHosts. credentials were set on all servers")
-
-
-    # Verify the DDBoost credentials using the credentials that stored on the Master
-    # TODO: verify also all the hosts in self.ddboost_hosts (ping to the hosts, I think there is some Python function for that)
-    def _ddboostVerify(self):
-        verifyCmdLine = os.environ['GPHOME'] + '/bin/gpddboost --verify'
-        logger.debug("Executing gpddboost to verify DDBoost credentials: %s" % verifyCmdLine)
-        if not os.system(verifyCmdLine):
-            logger.info("The specified DDBoost credentials are OK")
-        else:
-            raise ExceptionNoStackTraceNeeded('Failed to connect to DD_host with DD_user and the DD_password')
-
-        
-    def execute(self):    
-        if bool(self.ddboost_hosts) or bool(self.ddboost_user):
-            # check that both options are specified
-            if not (bool(self.ddboost_hosts) and bool(self.ddboost_user)):
-                raise ExceptionNoStackTraceNeeded('For DDBoost config, both options are required --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>.')
-
-            # check that no other gpcrondump option was specified
-            if self.only_ddboost_options() and not self.ddboost_config_remove:
-                self.validateUserName(userName = self.ddboost_user)
-                hostset = self.getHostSet(self.getGpArray())
-                p = getpass()
-                self.validatePassword(password = p)
-                self.sshToHosts(hostset, self.ddboost_hosts, self.ddboost_user, p)
-                # Since --ddboost-host and --ddboost-user are standalone - verify and then exit
-                if self.ddboost_verify is True:
-                    self.ddboost_verify_and_exit = True
-                else:
-                    # If no verification is needed - just exit
-                    return 0
-            else:
-                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options (only with --ddboost-verify).')
-        
-        # If --ddboost-verify or --ddboost is specified, we check the credentials that stored on the Master
-		# In case of --ddboost we force the verification (MPP-17510)
-        if bool(self.ddboost_verify) or bool(self.ddboost):
-            self._ddboostVerify()
-
-            # Check if we need to exit now
-            if self.ddboost_verify_and_exit is True:
-                return 0
-
-        # The ddboost_config_remove actually configures the ddboost with dummy values
-        if self.ddboost_config_remove:
-            if self.ddboost_config_remove and self.only_ddboost_options():
-                hostset = self.getHostSet(self.getGpArray())
-                # The username and the password must be at least 2 characters long, so we just use 2 spaces for each
-                self.sshToHosts(hostset, [' '],'  ','  ')
-                return 0;
-            else:
-                raise ExceptionNoStackTraceNeeded('The option --ddboost-config-remove is standalone. It is NOT used in conjunction with any other gocrondump options.')
-            
         if self.clear_dumps_only:
             DeleteOldestDumps(master_datadir = self.master_datadir,
                               master_port = self.master_port,
-                              ddboost = self.ddboost).run()
+                              ddboost = self.use_ddboost).run()
             return
-        
+
         if self.post_script is not None:
             self._validate_run_program()
 
@@ -289,7 +177,7 @@ class GpCronDump(Operation):
                                         batch_default = self.batch_default,
                                         master_datadir = self.master_datadir,
                                         master_port = self.master_port,
-                                        ddboost = self.ddboost).run()
+                                        ddboost = self.use_ddboost).run()
 
             post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
                                                  compress = self.compress,
@@ -298,7 +186,7 @@ class GpCronDump(Operation):
                                                  batch_default = self.batch_default,
                                                  master_datadir = self.master_datadir,
                                                  master_port = self.master_port,
-                                                 ddboost = self.ddboost).run()
+                                                 ddboost = self.use_ddboost).run()
             
             current_exit_status = max(dump_outcome['exit_status'], post_dump_outcome['exit_status'])
             final_exit_status = max(final_exit_status, current_exit_status)
@@ -319,7 +207,7 @@ class GpCronDump(Operation):
                     DumpGlobal(timestamp = post_dump_outcome['timestamp'],
                                master_datadir = self.master_datadir,
                                backup_dir = self.backup_dir,
-                               ddboost = self.ddboost).run()
+                               ddboost = self.use_ddboost).run()
                 else:
                     logger.info("Skipping global dump due to issues during post-dump checks.")
             
@@ -339,7 +227,7 @@ class GpCronDump(Operation):
                     DeleteCurrentDump(timestamp = post_dump_outcome['timestamp'],
                                       master_datadir = self.master_datadir,
                                       master_port = self.master_port,
-                                      ddboost = self.ddboost).run()
+                                      ddboost = self.use_ddboost).run()
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
                                   "Failed for database %s with return code %d dump files rolled back. [Start=%s End=%s] Options passed [%s]" 
                                     % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
@@ -354,7 +242,7 @@ class GpCronDump(Operation):
                 if self.clear_dumps:
                     deleted_dump_set = DeleteOldestDumps(master_datadir = self.master_datadir, 
                                                          master_port = self.master_port,
-                                                         ddboost = self.ddboost).run()
+                                                         ddboost = self.use_ddboost).run()
 
             if self.post_vacuum:
                 logger.info('Commencing post-dump vacuum...')
@@ -375,7 +263,7 @@ class GpCronDump(Operation):
             DumpConfig(backup_dir = self.backup_dir,
                        master_datadir = self.master_datadir,
                        master_port = self.master_port,
-                       ddboost = self.ddboost).run()
+                       ddboost = self.use_ddboost).run()
         
         if self.post_script is not None:
             self._run_program()
@@ -627,27 +515,18 @@ def create_parser():
     addTo.add_option('-i', action='store_true', dest='bypass_cluster_check', default=False, help="No longer supported.")
     addTo.add_option('-p', action='store_true', dest='dump_primaries', default=True, help="No longer supported.")  
     addTo.add_option('-w', dest='backup_set', help="No longer supported.")
-   
 
     parser.add_option_group(addTo)
 
+        ##############################
+        # DDBoost related parameters #
+        ##############################
     ddOpt = OptionGroup(parser, "DDBoost")
-    ddOpt.add_option('--ddboost', dest='ddboost', help="Dump to DDBoost using ~/.ddconfig", action="store_true", default=False)
+    ddOpt.add_option('--ddboost', dest='use_ddboost', help="Dump to DDBoost using ~/DDBOOST_CONFIG", action="store_true", default=False)
     parser.add_option_group(ddOpt)
-   
-    # DDBoostConfig options
-    ddConfigOpt = OptionGroup(parser, "DDBoostConfig")
-    # ddboost-host may have more then one host
-    ddConfigOpt.add_option('--ddboost-host', dest='ddboost_hosts', action='append', default=None,
-                           help="Configuration of ddboost hostname.")
-    ddConfigOpt.add_option('--ddboost-user', dest='ddboost_user', action='store', default=None, 
-                           help="Configuration of ddboost user.")
-    ddConfigOpt.add_option('--ddboost-config-remove', dest='ddboost_config_remove', action='store_true', default=False,
-                           help="Remove ~/.ddconfig file.")
-    ddConfigOpt.add_option('--ddboost-verify', dest='ddboost_verify', action='store_true', default=False, 
-                           help="Verify DDBoost credentials on DDBoost host.")
-
-    parser.add_option_group(ddConfigOpt)
+    
+    # Add DDBoost management options to the parser
+    add_ddboost_options_to_parser(parser)
     
     
     parser.setHelp([
