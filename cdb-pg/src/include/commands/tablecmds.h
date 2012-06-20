@@ -50,6 +50,8 @@ extern void DefineForeignRelation(CreateForeignStmt *createForeignStmt);
 
 extern void	DefinePartitionedRelation(CreateStmt *stmt, Oid reloid);
 
+extern void EvaluateDeferredStatements(List *deferredStmts);
+
 extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 						   DropStmt *stmt /* MPP */);
 
