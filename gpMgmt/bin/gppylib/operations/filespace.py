@@ -309,7 +309,9 @@ class CheckFilespaceConsistency(Operation):
         operation_list = []
         for seg in self.gparray.getDbList():
             cur_filespace_entry = cur_filespace_entries[seg.getSegmentDbId()]
-            peer_filespace_entry = GetPeerFilespaceEntry(cur_filespace_entries, seg.getSegmentDbId()).run()
+            peer_filespace_entry = get_peer_filespace_entry(cur_filespace_entries, seg.getSegmentDbId(), seg.getSegmentContentId(), self.gparray.getDbList())
+            logger.debug('current_filespace_entry = %s' % str(cur_filespace_entry))
+            logger.debug('peer_filespace_entry = %s' % str(peer_filespace_entry))
             operation_list.append(RemoteOperation(CheckFilespaceEntriesLocally(cur_filespace_entry, peer_filespace_entry, pg_system_fs_entries[seg.getSegmentDbId()][2], self.file_type),
                                                   seg.getSegmentHostName()
                                                  )
@@ -330,7 +332,7 @@ class CheckFilespaceConsistency(Operation):
         
         return True
             
-class GetPeerFilespaceEntry(Operation):
+def get_peer_filespace_entry(filespace_entries, dbid, content_id, segments):
     """
         Returns the filespace entry for a given 
         DbId corresponding to its peer. 
@@ -339,19 +341,15 @@ class GetPeerFilespaceEntry(Operation):
         returns the filespace entry of the primary. 
     
         @param:  DbId of the primary segment    
+                 content id of the segment
         @return: A tuple of the form 
                  filespace oid, dbid, filespace directory
     """
-    def __init__(self, filespace_entries, dbid):
-        self.filespace_entries = filespace_entries
-        self.dbid = dbid
+    logger.debug('Getting peer filespace entry for %s' % dbid)
+    for seg in segments:
+        if seg.getSegmentContentId() == content_id and seg.getSegmentDbId() != dbid:
+            return  filespace_entries[seg.getSegmentDbId()]
 
-    def execute(self):
-        logger.debug('Getting peer filespace entry for %s' % self.dbid)
-        current_filespace_entry = self.filespace_entries[self.dbid]
-        for k, v in self.filespace_entries.items():
-            if os.path.split(v[2])[-1] == os.path.split(current_filespace_entry[2])[-1] and k != current_filespace_entry[1]:
-                return v
 
 class UpdateFlatFilesLocally(Operation):
     """
@@ -434,7 +432,9 @@ class UpdateFlatFiles(Operation):
             for seg in segments:
                 filespace_oid = cur_filespace_entries[seg.getSegmentDbId()][0]
                 cur_filespace_entry = cur_filespace_entries[seg.getSegmentDbId()]
-                peer_filespace_entry = GetPeerFilespaceEntry(cur_filespace_entries, seg.getSegmentDbId()).run()
+                peer_filespace_entry = get_peer_filespace_entry(cur_filespace_entries, seg.getSegmentDbId(), seg.getSegmentContentId(), db_list)
+                logger.debug('cur_filespace_entry = %s' % str(cur_filespace_entry))
+                logger.debug('peer_filespace_entry = %s' % str(peer_filespace_entry))
                 flat_file = os.path.join(pg_system_filespace_entries[seg.getSegmentDbId()][2],
                                          GP_TRANSACTION_FILES_FILESPACE)
                 operation_list.append(RemoteOperation(UpdateFlatFilesLocally(flat_file,
@@ -463,7 +463,9 @@ class UpdateFlatFiles(Operation):
             for seg in segments:
                 filespace_oid = cur_filespace_entries[seg.getSegmentDbId()][0]
                 cur_filespace_entry = cur_filespace_entries[seg.getSegmentDbId()]
-                peer_filespace_entry = GetPeerFilespaceEntry(cur_filespace_entries, seg.getSegmentDbId()).run()
+                peer_filespace_entry = get_peer_filespace_entry(cur_filespace_entries, seg.getSegmentDbId(), seg.getSegmentContentId(), db_list)
+                logger.debug('cur_filespace_entry = %s' % str(cur_filespace_entry))
+                logger.debug('peer_filespace_entry = %s' % str(peer_filespace_entry))
                 flat_file = os.path.join(pg_system_filespace_entries[seg.getSegmentDbId()][2],
                                          GP_TEMPORARY_FILES_FILESPACE)
                 operation_list.append(RemoteOperation(UpdateFlatFilesLocally(flat_file,
@@ -836,7 +838,7 @@ class RollBackFilespaceChanges(Operation):
         operations = []
         for seg in self.segments:
             logger.debug('Creating RemoteOperation for segment %s' % seg)
-            peer_filespace_entry = GetPeerFilespaceEntry(self.cur_filespace_entries, seg.getSegmentDbId()).run()
+            peer_filespace_entry = get_peer_filespace_entry(self.cur_filespace_entries, seg.getSegmentDbId(), seg.getSegmentContentId(), self.segments)
             if self.file_type == FileType.TRANSACTION_FILES:
                 #Move from new -> cur
                 operations.append(RemoteOperation(MoveTransFilespaceLocally(self.new_filespace_entries[seg.getSegmentDbId()],
@@ -889,8 +891,7 @@ class GetMoveOperationList(Operation):
             logger.debug('segmenthostname = %s' % seg.getSegmentHostName())
             logger.debug(self.new_filespace_entries[seg.getSegmentDbId()])
             logger.debug(self.cur_filespace_entries[seg.getSegmentDbId()])
-            peer_filespace_entry = GetPeerFilespaceEntry(self.new_filespace_entries, 
-                                                                            seg.getSegmentDbId()).run()
+            peer_filespace_entry = get_peer_filespace_entry(self.new_filespace_entries, seg.getSegmentDbId(), seg.getSegmentContentId(), self.segments)
             if self.file_type == FileType.TRANSACTION_FILES:
                 operations.append(RemoteOperation(MoveTransFilespaceLocally(self.cur_filespace_entries[seg.getSegmentDbId()],
                                                                      self.new_filespace_name, 
