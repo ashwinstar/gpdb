@@ -1247,10 +1247,7 @@ _readFuncCall(void)
 
     READ_NODE_FIELD(over);          /*CDB*/
     READ_NODE_FIELD(agg_filter);    /*CDB*/
-	if (pg_strtok_peek_fldname("null_treatment"))
-	{
-		READ_ENUM_FIELD(null_treatment, NullTreatment);
-	}
+	READ_ENUM_FIELD(null_treatment, NullTreatment);
 
 	READ_DONE();
 }
@@ -1486,7 +1483,10 @@ _readWindowRef(void)
 	READ_UINT_FIELD(winindex);
     READ_ENUM_FIELD(winstage, WinStage);
 	READ_UINT_FIELD(winlevel);
-	READ_ENUM_FIELD(null_treatment, NullTreatment);
+	if (pg_strtok_peek_fldname("null_treatment"))
+	{
+		READ_ENUM_FIELD(null_treatment, NullTreatment);
+	}
 
 	READ_DONE();
 }
