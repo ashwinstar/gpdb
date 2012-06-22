@@ -571,7 +571,7 @@ class MoveTransFilespaceLocally(Operation):
                             self.md5_check(src_dir, dst_dir)
                         except (IOError, OSError), e:
                             raise MoveFilespaceError('Failed to calculate md5 checksums !')
-                else:
+                elif CheckDir(src_dir).run():
                 #We use the src segment as the source of truth and copy everything
                     if CheckDir(dst_dir).run():
                         shutil.rmtree(dst_dir)
