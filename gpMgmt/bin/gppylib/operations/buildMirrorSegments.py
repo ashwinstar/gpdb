@@ -228,8 +228,7 @@ class GpMirrorListToBuild:
                                         cur_filespace_name,
                                         cur_filespace_entries,
                                         new_filespace_entries,
-                                        pg_system_filespace_entries,
-                                        rollback=True).run() 
+                                        pg_system_filespace_entries).run() 
                 raise
 
         if os.path.exists(os.path.join(default_filespace_dir, GP_TEMPORARY_FILES_FILESPACE)):
