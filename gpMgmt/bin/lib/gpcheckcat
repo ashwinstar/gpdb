@@ -156,12 +156,6 @@ class Global():
         # dictionary of SQL statements. Key is dbid
         self.DemoteConstraint = {}
     
-        # array of SQL statements. Key is dbid
-        self.ReSync = {}
-    
-        # Indexes to rebuild
-        self.Reindex = []
-    
         # constraints which are actually unenforcable
         self.Constraints = []
     
@@ -1747,8 +1741,6 @@ def checkPartitionRegularity():
     
     if irregular:
         logger.warn('skipping test %s due to constraint irregularities' % testname)
-    elif GV.Remove:
-        logger.warn('skipping test %s due to required removals' % testname)
     else:
         # logger.info('Checking %s ...' % testname)
 
@@ -1787,8 +1779,6 @@ def checkPartitionRegularity():
     
     if irregular:
         logger.warn('skipping test %s due to constraint irregularities' % testname)
-    elif GV.Remove:
-        logger.warn('skipping test %s due to required removals' % testname)
     elif GV.DemoteConstraint:
         logger.warn('skipping test %s due to unenforced constraint removals' % testname)
     else:
@@ -3645,8 +3635,6 @@ def runAllTests():
     fixes = (len(GV.Remove) > 0 or 
              len(GV.AdjustConname) > 0 or
              len(GV.DemoteConstraint) > 0 or
-             len(GV.ReSync) > 0 or 
-             len(GV.Reindex) > 0 or 
              len(GV.Constraints) > 0 or
              len(GV.Owners) > 0 or 
              len(GV.Policies) > 0)
@@ -3668,12 +3656,6 @@ def runAllTests():
         # build a script to run these files     
         script = '#!/bin/bash\ncd $(dirname $0)\n'
 
-        # don't remove anything if ReSync possible --
-        # comment out the delete statements from the repair scripts
-        maybeRemove = "";
-        if len(GV.ReSync):
-            maybeRemove="# "
-        
         # use the per-dbid loop for removal and for contraint
         # name adjustments
         
@@ -3714,35 +3696,15 @@ def runAllTests():
 
             file.close()
 
-            script += '\n%secho "Repairing segment %i"' % (maybeRemove, seg)
+            script += '\necho "Repairing segment %i"' % (seg)
             script += '''
-{maybe}env PGOPTIONS="-c gp_session_role=utility {guc}" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
+env PGOPTIONS="-c gp_session_role=utility {guc}" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
 '''.format(
-                maybe = maybeRemove,
                 guc = catmod_guc,
                 hostname = c['hostname'], 
                 port = c['port'], 
                 fname = filename, 
                 dbname = GV.dbname)
-
-        if len(GV.Reindex) > 0:
-            filename = 'reindex.sql'
-            fullpath = '%s/%s' % (GV.opt['-g'], filename)
-            try:
-                file = open(fullpath, 'w')
-            except Exception, e:
-                logger.fatal('Unable to create file "%s": %s' % 
-                             (fullpath, str(e)))
-                sys.exit(1)
-
-            for r in GV.Reindex:
-                file.write('REINDEX INDEX %s;\n' % r)
-            file.close()
-
-            script += 'echo "Reindexing potentially damaged bitmap indexes"\n'
-            c = GV.cfg[1]
-            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
-                    (c['hostname'], c['port'], filename, GV.dbname, filename)
 
         if len(GV.Constraints) > 0:
             GV.Constraints = list(set(GV.Constraints))
