@@ -224,7 +224,7 @@ recovery configuration file. The output file lists the
 currently invalid segments and their default recovery 
 location in the format that is required by the -i option. 
 Use together with the -p option to output a sample file 
-for recovering on a different host. This file can be 
+for recovering to a different host. This file can be 
 edited to supply alternate recovery locations if needed.
 
 
@@ -276,7 +276,10 @@ this file will only have one location (for the default filespace,
 pg_system). These file system locations must exist on all segment 
 hosts in the array and have sufficient disk space to accommodate 
 recovered segments.
-
+Note: The -s and -S options are only used when you recover to 
+existing hosts in the cluster. You cannot use these options 
+when you recover to a new host. To recover to a new host, 
+use the -i and -o options.
 
 -S <output_filespace_config_file>
 
