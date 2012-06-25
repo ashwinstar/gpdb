@@ -7350,7 +7350,7 @@ void
 xact_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	char		*rec = (char*)(record) + sizeof(XLogRecord);
+	char		*rec = XLogRecGetData(record);
 
 	if (info == XLOG_XACT_COMMIT)
 	{

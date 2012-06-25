@@ -708,7 +708,7 @@ static char *XLogContiguousCopy(
 	char *buffer;
 
 	rdt = rdata;
-	len = sizeof(XLogRecord);
+	len = SizeOfXLogRecord;
 	while (rdt != NULL)
 	{
 		if (rdt->data != NULL)
@@ -721,9 +721,9 @@ static char *XLogContiguousCopy(
 	buffer = (char*)palloc(len);
 	MemSet(buffer, 0, len);
 
-	memcpy(buffer, record, sizeof(XLogRecord));
+	memcpy(buffer, record, SizeOfXLogRecord);
 	rdt = rdata;
-	len = sizeof(XLogRecord);
+	len = SizeOfXLogRecord;
 	while (rdt != NULL)
 	{
 		if (rdt->data != NULL)

@@ -425,7 +425,7 @@ void
 mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	char		*rec = (char*)(record) + sizeof(XLogRecord);
+	char		*rec = XLogRecGetData(record);
 	xl_mm_fs_obj *xlrec = (xl_mm_fs_obj *) rec;
 	char *path = obj_get_path(xlrec);
 
