@@ -15765,20 +15765,12 @@ ATPExecPartSplit(Relation rel,
 			PartitionElem *pelem = makeNode(PartitionElem);
 			Oid newchildrelid = InvalidOid;
 			AlterPartitionCmd *storenode = NULL;
-			List *intostorage_opts;
 
 			/* use storage options for existing rel */
-			if (into_exists == i)
-				intostorage_opts = existstorage_opts;
-			else
-			{
-				intostorage_opts = reloptions_list(RelationGetRelid(rel));
-			}
-
-			if (intostorage_opts)
+			if (existstorage_opts)
 			{
 				storenode = makeNode(AlterPartitionCmd);
-				storenode->arg1 = (Node *)intostorage_opts;
+				storenode->arg1 = (Node *)existstorage_opts;
 				storenode->location = -1;
 			}
 			pelem->storeAttr = (Node *)storenode;
