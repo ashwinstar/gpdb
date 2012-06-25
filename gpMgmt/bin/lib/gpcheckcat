@@ -445,45 +445,7 @@ def getGPConfiguration():
 
 def checkDistribPolicy():
     logger.info('-----------------------------------')
-    logger.info('Checking constraints on randomly distributed tables')
-    qry = '''
-    select n.nspname, rel.relname, pk.conname as constraint
-    from   pg_constraint pk
-      join pg_class rel on (pk.conrelid = rel.oid)
-      join pg_namespace n on (rel.relnamespace = n.oid)
-      join gp_distribution_policy d on (rel.oid = d.localoid)
-    where pk.contype in('p', 'u') and d.attrnums is null
-    '''
-
-    db = connect2(GV.cfg[1])
-    try:
-        curs = db.query(qry)
-        err = []
-        for row in curs.dictresult():
-            err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
-
-        if not err:
-            logger.info('[OK] randomly distributed tables')
-        else:
-            GV.testStatus = False
-            setError(ERROR_REMOVE)
-            logger.info('[FAIL] randomly distributed tables')
-            logger.error('pg_constraint has %d issue(s)' % len(err))
-            logger.error(qry)
-            for e in err: 
-                logger.error(formatErr(e[0], e[1], e[2]))
-            for e in err:
-                cons = e[2]
-                removeIndexConstraint(cons['nspname'], cons['relname'],
-                                  cons['constraint'])
-    except Exception, e:
-        setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkDistribPolicy')
-        myprint('  Execution error: ' + str(e))
-
-
-    logger.info('-----------------------------------')
-    logger.info('Checking that unique constraints are only on distribution columns')
+    logger.info('Checking constraints on randomly distributed tables and unique constraints are only on distribution columns')
 
     # final part of the WHERE clause here is a little tricky: we want to make
     # sure that the set of distribution columns is a left subset of the
@@ -498,6 +460,7 @@ def checkDistribPolicy():
           (d.attrnums is null or not 
            d.attrnums operator(pg_catalog.<@) pk.conkey)
     '''
+    db = connect2(GV.cfg[1])
     try:
         curs = db.query(qry)
 
@@ -506,11 +469,11 @@ def checkDistribPolicy():
             err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
 
         if not err:
-            logger.info('[OK] unique constraints')
+            logger.info('[OK] randomly distributed tables and unique constraints')
         else:
             GV.testStatus = False
             setError(ERROR_REMOVE)
-            logger.info('[FAIL] unique constraints')
+            logger.info('[FAIL] randomly distributed tables and unique constraints')
             logger.error('pg_constraint has %d issue(s)' % len(err))
             logger.error(qry)
             for e in err: logger.error(formatErr(e[0], e[1], e[2]))
@@ -3513,7 +3476,7 @@ name_test = {
     },
     "distribution_policy":
     {
-         "description": "Check constraints on randomly distributed tables",
+         "description": "Check constraints on randomly distributed tables and unique constraints are only on distribution columns",
          "fn": lambda: checkDistribPolicy(),
          "version": 'main',
          "order": 9,
