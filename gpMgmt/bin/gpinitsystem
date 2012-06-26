@@ -79,23 +79,6 @@ OUTPUT_CONFIG=""
 GPHOSTCACHELOOKUP=$WORKDIR/lib/gphostcachelookup.py
 
 #******************************************************************************
-# DCA Specific Variables
-#******************************************************************************
-DCA_VERSION_FILE="/etc/gpdb-appliance-version"
-
-DCA_RESQUEUE_PRIORITY_NAME="gp_resqueue_priority"
-DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME="gp_resqueue_priority_cpucores_per_segment"
-DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME="gp_resqueue_priority_sweeper_interval"
-
-DCA_MASTER_RESQUEUE_PRIORITY_VAL="on"
-DCA_MASTER_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL=24
-DCA_MASTER_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL=1000
-
-DCA_SEGMENT_RESQUEUE_PRIORITY_VAL="on"
-DCA_SEGMENT_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL=4
-DCA_SEGMENT_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL=1000
-
-#******************************************************************************
 # Functions
 #******************************************************************************
 USAGE () {
@@ -1912,31 +1895,6 @@ LOAD_GP_TOOLKIT () {
 	$RM /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME
 }
 
-SET_DCA_CONFIG_SETTINGS () {
-	LOG_MSG "[INFO]:-Setting DCA specific configuration values..." 1
-
-	LOG_MSG "[INFO]:-$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_VAL" 1
-	$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_VAL
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ]; then
-		LOG_MSG "[WARN]:-Failed to set value for $DCA_RESQUEUE_PRIORITY_NAME" 1
-	fi
-	
-	LOG_MSG "[INFO]:-$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL" 1
-	$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ]; then
-		LOG_MSG "[WARN]:-Failed to set value for $DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME" 1
-	fi
-
-	LOG_MSG "[INFO]:-$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL" 1
-	$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ]; then
-		LOG_MSG "[WARN]:-Failed to set value for $DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME" 1
-	fi
-}
-
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -2083,10 +2041,6 @@ fi
 
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 	CREATE_STANDBY_QD
-fi
-
-if [ -f $DCA_VERSION_FILE ]; then
-	SET_DCA_CONFIG_SETTINGS	
 fi
 
 env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$U_DB" -c "CHECKPOINT;" >> $LOG_FILE 2>&1
