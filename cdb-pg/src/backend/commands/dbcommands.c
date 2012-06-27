@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.187.2.2 2007/04/12 15:04:41 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.187.2.4 2010/03/25 14:45:21 alvherre Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1870,9 +1870,29 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	{
 		alter_subtype = "RESET ALL";
 
-		/* RESET ALL, so just set datconfig to null */
-		repl_null[Anum_pg_database_datconfig - 1] = true;
-		repl_val[Anum_pg_database_datconfig - 1] = (Datum) 0;
+		ArrayType  *new = NULL;
+		Datum		datum;
+		bool		isnull;
+
+		/*
+		 * in RESET ALL, request GUC to reset the settings array; if none
+		 * left, we can set datconfig to null; otherwise use the returned
+		 * array
+		 */
+		datum = heap_getattr(tuple, Anum_pg_database_datconfig,
+							 RelationGetDescr(rel), &isnull);
+		if (!isnull)
+			new = GUCArrayReset(DatumGetArrayTypeP(datum));
+		if (new)
+		{
+			repl_val[Anum_pg_database_datconfig - 1] = PointerGetDatum(new);
+			repl_null[Anum_pg_database_datconfig - 1] = false;
+		}
+		else
+		{
+			repl_null[Anum_pg_database_datconfig - 1] = true;
+			repl_val[Anum_pg_database_datconfig - 1] = (Datum) 0;
+		}
 	}
 	else
 	{
