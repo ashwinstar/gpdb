@@ -297,6 +297,7 @@ bool		gp_appendonly_verify_block_checksums = false;
 bool 		gp_appendonly_verify_write_block = false;
 bool		gp_heap_require_relhasoids_match = true;
 bool		gp_suppress_distributed_tx_vacuum = false;
+bool		gp_new_reindex_database = false;
 bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
@@ -2050,6 +2051,16 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_suppress_distributed_tx_vacuum,
+		false, NULL, NULL
+	},
+	
+	{
+		{"gp_new_reindex_database", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Make REINDEX SYSTEM|DATABASE work for the cluster.  Make it determine the OIDs in the Master and ditribute them down to the segments."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_new_reindex_database,
 		false, NULL, NULL
 	},
 	

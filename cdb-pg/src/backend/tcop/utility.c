@@ -1581,6 +1581,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ReindexStmt:
+		if (gp_new_reindex_database)
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 
@@ -1597,7 +1598,7 @@ ProcessUtility(Node *parsetree,
 						 * REINDEX DATABASE will execute/dispatch REINDEX TABLE on
 						 * each table found in pg_class.
 						 */
-						ReindexDatabase(stmt);
+						ReindexDatabaseNew(stmt);
 						break;
 					default:
 						elog(ERROR, "unrecognized object type: %d",
@@ -1609,6 +1610,53 @@ ProcessUtility(Node *parsetree,
 					Gp_role == GP_ROLE_DISPATCH)
 				{
 					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+				}
+			}
+		else
+			{
+				ReindexStmt *stmt = (ReindexStmt *) parsetree;
+
+				switch (stmt->kind)
+				{
+					case OBJECT_INDEX:
+						ReindexIndex(stmt);
+						break;
+					case OBJECT_TABLE:
+						ReindexTable(stmt);
+						break;
+					case OBJECT_DATABASE:
+						ReindexDatabase(stmt);
+						break;
+					default:
+						elog(ERROR, "unrecognized object type: %d",
+							 (int) stmt->kind);
+						break;
+				}
+
+				if (Gp_role == GP_ROLE_DISPATCH)
+				{
+					if (stmt->kind != OBJECT_DATABASE)
+						CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+					else
+					{
+						/*
+						 * REINDEX DATABASE must be dispatched different, because it can't
+						 * be in a user transaction
+						 */
+						StringInfoData buffer;
+
+						initStringInfo(&buffer);
+
+						/* MPP-1832: REINDEX SYSTEM generates sets
+						 * kind to OBJECT_DATABASE, but sets do_user
+						 * to false */
+						if (!stmt->do_user)
+							appendStringInfo(&buffer, "REINDEX SYSTEM \"%s\"", stmt->name);
+						else
+							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
+
+						CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					}
 				}
 			}
 			break;

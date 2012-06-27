@@ -1468,14 +1468,7 @@ ReindexIndex(ReindexStmt *stmt)
 	Oid			mapoid = InvalidOid;
 	List        *extra_oids = NIL;
 
-	indOid = RangeVarGetRelid(stmt->relation, stmt->missing_ok);
-	if (!OidIsValid(indOid))
-	{
-		/*
-		 * Silently ignore.
-		 */
-		return;
-	}
+	indOid = RangeVarGetRelid(stmt->relation, false);
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(indOid),
 						   0, 0, 0);
@@ -1551,15 +1544,7 @@ ReindexTable(ReindexStmt *stmt)
 	Assert(stmt->relation != NULL);
 	Assert(stmt->relation->relname != NULL);
 
-	heapOid = RangeVarGetRelid(stmt->relation, stmt->missing_ok);
-	if (!OidIsValid(heapOid))
-	{
-		/*
-		 * Silently ignore.
-		 */
-		return;
-	}
-	
+	heapOid = RangeVarGetRelid(stmt->relation, false);
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(heapOid),
 						   0, 0, 0);
@@ -1588,7 +1573,7 @@ ReindexTable(ReindexStmt *stmt)
 	ReleaseSysCache(tuple);
 
 	if (!reindex_relation(heapOid, true, true, true, &stmt->new_ind_oids,
-						  Gp_role == GP_ROLE_DISPATCH, stmt->missing_ok))
+						  Gp_role == GP_ROLE_DISPATCH))
 	{
 		if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
@@ -1658,7 +1643,7 @@ ExecuteSpiReindexTable(char *displayRelName)
 		/*
 		 * Build sql statement to reindex the table.
 		 */
-		appendStringInfo(&sqlstmt, "REINDEX TABLE IF EXISTS %s", displayRelName);
+		appendStringInfo(&sqlstmt, "REINDEX TABLE %s", displayRelName);
 
 		/*
 		 * Execute the command.
@@ -1690,7 +1675,7 @@ ExecuteSpiReindexTable(char *displayRelName)
  * separate transaction, so we can release the lock on it right away.
  */
 void
-ReindexDatabase(ReindexStmt *stmt)
+ReindexDatabaseNew(ReindexStmt *stmt)
 {
 	Relation	relationRelation;
 	HeapScanDesc scan;
@@ -1815,6 +1800,136 @@ ReindexDatabase(ReindexStmt *stmt)
 		CommitTransactionCommand();
 	}
 	setupRegularDtxContext();
+	StartTransactionCommand();
+
+	MemoryContextDelete(private_context);
+}
+/*
+ * ReindexDatabase
+ *		Recreate indexes of a database.
+ *
+ * To reduce the probability of deadlocks, each table is reindexed in a
+ * separate transaction, so we can release the lock on it right away.
+ */
+void
+ReindexDatabase(ReindexStmt *stmt)
+{
+	cqContext  *pcqCtx;
+	HeapTuple	tuple;
+	MemoryContext private_context;
+	MemoryContext old;
+	List	   *relids = NIL;
+	ListCell   *l;
+	bool do_system = stmt->do_system;
+	bool do_user = stmt->do_user;
+	const char *databaseName = stmt->name;
+
+	AssertArg(databaseName);
+
+	if (strcmp(databaseName, get_database_name(MyDatabaseId)) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("can only reindex the currently open database")));
+
+	if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+					   databaseName);
+
+	/*
+	 * We cannot run inside a user transaction block; if we were inside a
+	 * transaction, then our commit- and start-transaction-command calls would
+	 * not have the intended effect!
+	 */
+	PreventTransactionChain((void *) databaseName, "REINDEX DATABASE");
+
+	/*
+	 * Create a memory context that will survive forced transaction commits we
+	 * do below.  Since it is a child of PortalContext, it will go away
+	 * eventually even if we suffer an error; there's no need for special
+	 * abort cleanup logic.
+	 */
+	private_context = AllocSetContextCreate(PortalContext,
+											"ReindexDatabase",
+											ALLOCSET_DEFAULT_MINSIZE,
+											ALLOCSET_DEFAULT_INITSIZE,
+											ALLOCSET_DEFAULT_MAXSIZE);
+
+	/*
+	 * We always want to reindex pg_class first.  This ensures that if there
+	 * is any corruption in pg_class' indexes, they will be fixed before we
+	 * process any other tables.  This is critical because reindexing itself
+	 * will try to update pg_class.
+	 */
+	if (do_system)
+	{
+		old = MemoryContextSwitchTo(private_context);
+		relids = lappend_oid(relids, RelationRelationId);
+		MemoryContextSwitchTo(old);
+	}
+
+	/*
+	 * Scan pg_class to build a list of the relations we need to reindex.
+	 *
+	 * We only consider plain relations here (toast rels will be processed
+	 * indirectly by reindex_relation).
+	 */
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class", NULL));
+
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	{
+		Form_pg_class classtuple = (Form_pg_class) GETSTRUCT(tuple);
+
+		if (classtuple->relkind != RELKIND_RELATION)
+			continue;
+
+		/* Skip temp tables of other backends; we can't reindex them at all */
+		if (isOtherTempNamespace(classtuple->relnamespace))
+			continue;
+
+		/* Check user/system classification, and optionally skip */
+		if (IsSystemClass(classtuple))
+		{
+			if (!do_system)
+				continue;
+		}
+		else
+		{
+			if (!do_user)
+				continue;
+		}
+
+		if (IsUnderPostmaster)	/* silently ignore shared tables */
+		{
+			if (classtuple->relisshared)
+				continue;
+		}
+
+		if (HeapTupleGetOid(tuple) == RelationRelationId)
+			continue;			/* got it already */
+
+		old = MemoryContextSwitchTo(private_context);
+		relids = lappend_oid(relids, HeapTupleGetOid(tuple));
+		MemoryContextSwitchTo(old);
+	}
+	caql_endscan(pcqCtx);
+
+	/* Now reindex each rel in a separate transaction */
+	CommitTransactionCommand();
+	foreach(l, relids)
+	{
+		Oid			relid = lfirst_oid(l);
+
+		StartTransactionCommand();
+		/* functions in indexes may want a snapshot set */
+		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+		if (reindex_relation(relid, true, true, true, NULL, false))
+			ereport(NOTICE,
+					(errmsg("table \"%s\" was reindexed",
+							get_rel_name(relid))));
+		CommitTransactionCommand();
+	}
 	StartTransactionCommand();
 
 	MemoryContextDelete(private_context);

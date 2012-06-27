@@ -549,7 +549,6 @@ bool            lf_mppIsWriter;              /* 15 */
 
 extern int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData);
 
-extern const char *LockModeName(LOCKMODE lockmode);
 
 #ifdef LOCK_DEBUG
 extern void DumpLocks(PGPROC *proc);

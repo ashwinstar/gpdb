@@ -1520,11 +1520,7 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 						   0, 0, 0);
 
 	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_COMMAND_ERROR),
-				 errmsg("relation \"%s\" does not exist",
-						relation->relname),
-				 errOmitLocation(true)));
+		elog(ERROR, "relation \"%s\" does not exist", relation->relname);
 
 	/* MPP-3260: disallow direct DROP TABLE of a partition */
 	if (stmt && rel_is_child_partition(relOid) && !stmt->bAllowPartn)
@@ -1888,7 +1884,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			/*
 			 * Reconstruct the indexes to match, and we're done.
 			 */
-			reindex_relation(heap_relid, true, true, true, &indoids, true, /* ignoreNonExistent */ false);
+			reindex_relation(heap_relid, true, true, true, &indoids, true);
 			new_ind_oids = lappend(new_ind_oids, indoids);
 		}
 
@@ -2011,7 +2007,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			/*
 			 * Reconstruct the indexes to match, and we're done.
 			 */
-			reindex_relation(heap_relid, true, true, true, &ind_oids, false, /* ignoreNonExistent */ false);
+			reindex_relation(heap_relid, true, true, true, &ind_oids, false);
 
 			cell2 = lnext(cell2);
 			cell3 = lnext(cell3);
@@ -5460,7 +5456,7 @@ ATRewriteTables(List **wqueue,
 			 * oids!
 			 */
 			reindex_relation(tab->relid, false, false, false,
-							 poidmap, poidmap && Gp_role == GP_ROLE_DISPATCH, /* ignoreNonExistent */ false);
+							 poidmap, poidmap && Gp_role == GP_ROLE_DISPATCH);
 		}
 		else
 		{
@@ -13133,7 +13129,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 	/* now, reindex */
 	reindex_relation(tarrelid, false, false /* ao_segs ? */, false,
-					 &oid_map, Gp_role == GP_ROLE_DISPATCH, /* ignoreNonExistent */ false);
+					 &oid_map, Gp_role == GP_ROLE_DISPATCH);
 
 	/* Step (g) */
 	if (Gp_role == GP_ROLE_DISPATCH)
