@@ -8080,6 +8080,32 @@ select stddev(n) over(order by d range between current row and interval '1 day' 
                      |  89 | 89.0000000000000000 | 89
 (3 rows)
 
+drop table if exists test1;
+NOTICE:  table "test1" does not exist, skipping
+create table test1 (i numeric, j numeric, d1 date, d2 date);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+insert into test1 values (-1, 2, '2011-05-01', '2011-04-30'), (2, 3, '2011-05-02', '2011-05-01'), (3, 4, '2011-05-03', '2011-05-02');
+select stddev(i) over(order by j rows i preceding), i, j from test1;
+ERROR:  ROWS parameter cannot be negative
+select stddev(i) over(order by j rows j preceding), i, j from test1;
+       stddev       | i  | j 
+--------------------+----+---
+                    | -1 | 2
+ 2.1213203435596426 |  2 | 3
+ 2.0816659994661327 |  3 | 4
+(3 rows)
+
+select stddev(i) over(order by j range (d1-d2) preceding) from test1;
+         stddev         
+------------------------
+                       
+     2.1213203435596426
+ 0.70710678118654752440
+(3 rows)
+
+select stddev(i) over(order by j range (d2-d1) preceding) from test1;
+ERROR:  RANGE parameter cannot be negative
 -- MPP-14996
 create table ignull(i numeric, j numeric, k numeric) distributed by(i);
 copy ignull from stdin;

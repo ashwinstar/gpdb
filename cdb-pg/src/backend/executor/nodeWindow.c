@@ -30,6 +30,7 @@
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
+#include "parser/parse_type.h"
 #include "utils/acl.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -161,10 +162,9 @@ typedef struct WindowStatePerLevelData
 	 */
 	bool	empty_frame;
 
-	/* XXX: merge the following 4 fields into 2 */
 	/* state for rows frame is simple (for now) */
-	long int trail_rows;
-	long int lead_rows;
+	int64 trail_rows;
+	int64 lead_rows;
 
 	/* state for range frame is more complex */
 	Datum trail_range;
@@ -176,8 +176,8 @@ typedef struct WindowStatePerLevelData
 	 *
 	 * For preceding edges, these numbers are 0 or negative.
 	 */
-	long int num_trail_rows;
-	long int num_lead_rows;
+	int64 num_trail_rows;
+	int64 num_lead_rows;
 
 	/* state for frame edges (for both ROWS and RANGE frames) */
 	ExprState *trail_expr;
@@ -190,6 +190,20 @@ typedef struct WindowStatePerLevelData
 	/* RANGE frame only; see comments on init_bound_frame_edge_expr */
 	ExprState *trail_range_eq_expr;
 	ExprState *lead_range_eq_expr;
+
+	/*
+	 * The function oid of the ordering operator for a RANGE frame
+	 * edge value
+	 *
+	 * This is used, together with range_edge_zero, to check whether
+	 * a delayed RANGE frame edge is negative.
+	 */
+	Oid range_edge_ordering_oper;
+
+	/*
+	 * The datum to represent the RANGE edge value "0"
+	 */
+	Datum range_edge_zero;
 
 	/* The frame buffer to buffer the intermediate results for
 	 * the functions in this level key.
@@ -412,14 +426,14 @@ typedef struct WindowFrameBufferData
 	 * Currently, these two counters do not be modified after a trim
 	 * operation.
 	 */
-	long int num_rows_before;
-	long int num_rows_after;
+	int64 num_rows_before;
+	int64 num_rows_after;
 
 	/* The trailing and leading number of rows from current_row if
 	 * this frame is a ROW frame.
 	 */
-	long int trail_rows;
-	long int lead_rows;
+	int64 trail_rows;
+	int64 lead_rows;
 
 	/* The trailing and leading range from current_row if this frame
 	 * is a RANGE frame.
@@ -445,8 +459,8 @@ typedef WindowFrameBufferData *WindowFrameBuffer;
 static WindowFrameBuffer createRangeFrameBuffer(Datum trail_range,
 												Datum lead_range,
 												int bytes);
-static WindowFrameBuffer createRowsFrameBuffer(long int trail_rows,
-											   long int lead_rows,
+static WindowFrameBuffer createRowsFrameBuffer(int64 trail_rows,
+											   int64 lead_rows,
 											   int bytes);
 static WindowFrameBuffer resetFrameBuffer(WindowFrameBuffer buffer);
 static void appendToFrameBuffer(WindowStatePerLevel level_state,
@@ -462,8 +476,8 @@ static bool hasEnoughDataInRange(WindowFrameBuffer buffer,
 static bool hasEnoughDataInRows(WindowFrameBuffer buffer,
 								WindowStatePerLevel level_state,
 								WindowState *wstate,
-								long int trail_rows,
-								long int lead_rows);
+								int64 trail_rows,
+								int64 lead_rows);
 static void computeFrameValue(WindowStatePerLevel level_state,
 							  WindowState *wstate,
 							  NTupleStoreAccessor *trail_reader,
@@ -610,7 +624,7 @@ createRangeFrameBuffer(Datum trail_range, Datum lead_range, int bytes)
  * createRowsFrameBuffer -- create a new WindowFrameBuffer of the ROWS type.
  */
 static WindowFrameBuffer
-createRowsFrameBuffer(long int trail_rows, long int lead_rows, int bytes)
+createRowsFrameBuffer(int64 trail_rows, int64 lead_rows, int bytes)
 {
 	WindowFrameBuffer buffer =
 		(WindowFrameBuffer) palloc0(sizeof(WindowFrameBufferData));
@@ -1563,7 +1577,7 @@ static bool
 hasEnoughDataInRows(WindowFrameBuffer buffer,
 					WindowStatePerLevel level_state,
 					WindowState *wstate,
-					long int trail_rows, long int lead_rows)
+					int64 trail_rows, int64 lead_rows)
 {
 	if (level_state->empty_frame)
 		return true;
@@ -3908,26 +3922,11 @@ invokeWindowFuncs(WindowState *wstate)
 }
 
 /*
- * range_is_negative -- return true if the range expression
- * is negative.
- */
-static bool
-range_is_negative(ExprState *edge_expr,
-				  Datum value)
-{
-	/*
-	 * XXX Most likely not good enough to just compare the value
-	 * with 0 here.
-	 */
-	if (value < 0)
-		return true;
-	
-	return false;
-}
-
-/*
  * get_delay_edge -- evaluate the expression from the current row,
- * and return the value for the given DELAY_BOUND edge.
+ * and return the value for the given DELAY_BOUND edge, for both
+ * rows and range frames.
+ *
+ * This function also errors out when the edge value is NULL.
  */
 static Datum
 get_delay_edge(WindowFrameEdge *edge,
@@ -3944,10 +3943,12 @@ get_delay_edge(WindowFrameEdge *edge,
 
 	econtext->ecxt_scantuple = wstate->curslot;
 	if (TupIsNull(wstate->curslot))
+	{
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
+	}
 	
 	oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
@@ -3958,32 +3959,80 @@ get_delay_edge(WindowFrameEdge *edge,
 	MemoryContextSwitchTo(oldctx);
 
 	if (isnull)
+	{
 		ereport(ERROR,
 				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 				 errmsg("%s parameter cannot be NULL",
 						(is_rows ? "ROWS" : "RANGE"))));
-
-	if (is_rows && edge_param < 0)
-		ereport(ERROR,
-				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-				 errmsg("%s parameter cannot be negative",
-						(is_rows ? "ROWS" : "RANGE")),
-								   errOmitLocation(true)));
-
-	/* Check if the range expression is negative. */
-	if (!is_rows)
-		if (range_is_negative(edge_expr, edge_param))
-			ereport(ERROR,
-					(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
-					 errmsg("%s parameter cannot be negative",
-							(is_rows ? "ROWS" : "RANGE")),
-									   errOmitLocation(true)));
-
-	if (is_rows && EDGE_IS_BOUND_PRECEDING(edge))
-		edge_param = 0 - edge_param;
+	}
 
 	return edge_param;
 }
+
+/*
+ * get_delay_row_edge -- evaluate the expression from the current row,
+ * and return the value for the given DELAY_BOUND edge for a rows frame.
+ *
+ * This function also errors out when the edge value is not valid for
+ * a row frame: NULL or negative.
+ */
+static int64
+get_delay_row_edge(WindowFrameEdge *edge,
+				   ExprState *edge_expr,
+				   WindowState *wstate)
+{
+	Assert(EDGE_IS_DELAYED(edge));
+	
+	Datum edge_value_datum = get_delay_edge(edge, edge_expr, true /* is_rows */, wstate);
+	int64 edge_value = DatumGetInt64(edge_value_datum);
+	
+	if (edge_value < 0)
+	{
+		ereport(ERROR,
+				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+				 errmsg("ROWS parameter cannot be negative")));
+	}
+
+	if (EDGE_IS_BOUND_PRECEDING(edge))
+	{
+		edge_value = 0 - edge_value;
+	}
+	
+	return edge_value;
+}
+
+/*
+ * get_delay_range_edge -- evaluate the expression from the current row,
+ * and return the value for the given DELAY_BOUND edge for a range frame.
+ *
+ * This function also errors out when the edge value is not valid for
+ * a range frame: NULL or negative.
+ */
+static Datum
+get_delay_range_edge(WindowFrameEdge *edge,
+					 ExprState *edge_expr,
+					 Oid edge_ordering_oper,
+					 Datum edge_zero,
+					 WindowState *wstate)
+{
+	Assert(EDGE_IS_DELAYED(edge));
+	
+	Datum edge_value_datum = get_delay_edge(edge, edge_expr, false /* is_rows */, wstate);
+	
+	/* Check whether the range edge value is negative. */
+	Assert(OidIsValid(edge_ordering_oper));
+	Datum result = OidFunctionCall2(edge_ordering_oper, edge_value_datum, edge_zero);
+	if (DatumGetBool(result))
+	{
+		ereport(ERROR,
+				(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
+				 errmsg("RANGE parameter cannot be negative")));
+		
+	}
+	
+	return edge_value_datum;
+}
+
 
 /*
  * checkLastRowForEdge -- check if the last row in the current partition
@@ -4304,7 +4353,8 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 
 	/* Compute the new edge value */
 	*p_request_value = 
-		get_delay_edge(edge, edge_expr, level_state->is_rows, wstate);
+		get_delay_range_edge(edge, edge_expr, level_state->range_edge_ordering_oper,
+							 level_state->range_edge_zero, wstate);
 
 	/* Set the edge to current_row */
 	found = ntuplestore_acc_tell(frame_buffer->current_row_reader, &pos);
@@ -4334,8 +4384,8 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 							WindowFrameEdge *edge,
 							ExprState *edge_expr,
 							NTupleStoreAccessor *edge_reader,
-							long int *p_request_num_rows,
-							long int *p_num_rows,
+							int64 *p_request_num_rows,
+							int64 *p_num_rows,
 							bool is_lead_edge)
 {
 	WindowFrameBuffer frame_buffer = level_state->frame_buffer;
@@ -4346,7 +4396,7 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 	Assert(list_length(level_state->level_funcs) >= 1);
 
 	*p_request_num_rows = 
-		get_delay_edge(edge, edge_expr, level_state->is_rows, wstate);
+		get_delay_row_edge(edge, edge_expr, wstate);
 
 	*p_num_rows = 0;
 
@@ -5350,6 +5400,20 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		level_state->trail_range_eq_expr = n;
 	else
 		level_state->lead_range_eq_expr = n;
+
+	/*
+	 * Find the function oid of the ordering operator for
+	 * the RANGE edge, and create the datum that represents
+	 * the "0" value.
+	 */
+	Operator edge_ordering = ordering_oper(rtype, false /* noError */);
+	level_state->range_edge_ordering_oper = oprfuncid(edge_ordering);
+	
+	Type edge_type = typeidType(rtype);
+	level_state->range_edge_zero = stringTypeDatum(edge_type, "0", exprTypmod(edge->val));
+
+	ReleaseSysCache(edge_ordering);
+	ReleaseSysCache(edge_type);
 }
 
 /*
@@ -5572,10 +5636,10 @@ init_frames(WindowState *wstate)
 				if (EDGE_IS_BOUND(frame->trail) &&
 					level_state->frame->trail->val != NULL)
 				{
-					long int rows_param = 0;
+					int64 rows_param = 0;
 					bool isnull = true;
 					Expr *expr = (Expr *)level_state->frame->trail->val;
-					expr = coerceType(expr, INT4OID);
+					expr = coerceType(expr, INT8OID);
 					
 					level_state->trail_expr =
 						ExecInitExpr((Expr *)expr, 
@@ -5603,10 +5667,10 @@ init_frames(WindowState *wstate)
 				if (EDGE_IS_BOUND(frame->lead) &&
 					level_state->frame->lead->val != NULL)
 				{
-					long int rows_param = 0;
+					int64 rows_param = 0;
 					bool isnull = true;
 					Expr *expr = (Expr *)level_state->frame->lead->val;
-					expr = coerceType(expr, INT4OID);
+					expr = coerceType(expr, INT8OID);
 
 					level_state->lead_expr = 
 						ExecInitExpr((Expr *)expr, 
@@ -5628,8 +5692,9 @@ init_frames(WindowState *wstate)
 					level_state->lead_rows = rows_param;
 				}
 				else
-					level_state->lead_rows = 0L;
+					level_state->lead_rows = 0;
 			}
+			
 			else
 			{
 				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 

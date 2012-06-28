@@ -1551,3 +1551,12 @@ select stddev(n) over(order by d range between current row and interval '1 day' 
        sum(n) over(order by d range between current row and interval '1 day' following),
        avg(n) over(order by d range between current row and interval '1 day' following), n from test;
 
+drop table if exists test1;
+create table test1 (i numeric, j numeric, d1 date, d2 date);
+insert into test1 values (-1, 2, '2011-05-01', '2011-04-30'), (2, 3, '2011-05-02', '2011-05-01'), (3, 4, '2011-05-03', '2011-05-02');
+
+select stddev(i) over(order by j rows i preceding), i, j from test1;
+select stddev(i) over(order by j rows j preceding), i, j from test1;
+
+select stddev(i) over(order by j range (d1-d2) preceding) from test1;
+select stddev(i) over(order by j range (d2-d1) preceding) from test1;
