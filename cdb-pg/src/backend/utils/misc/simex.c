@@ -49,7 +49,7 @@ const SimExESClassAssociate SimExESClassAssociateTable[] =
 {
 	{SimExESClass_OOM, SimExESSubClass_OOM_ReturnNull, "OOM_ReturnNull"},
 	{SimExESClass_Cancel, SimExESSubClass_Cancel_QueryCancel, "Cancel_QueryCancel"},
-	{SimExESClass_Cancel, SimExESSubClass_Cancel_ProcDie, "Cancel_ProcDie"},
+	{SimExESClass_Terminate, SimExESSubClass_Terminate_ProcDie, "Terminate_ProcDie"},
 	{SimExESClass_CacheInvalidation, SimExESSubClass_CacheInvalidation, "Cache_Invalidation"},
 	{SimExESClass_SysError, SimExESSubClass_SysError_Net, "SysError_Net"},
 	{SimExESClass_ProcKill, SimExESSubClass_ProcKill_BgWriter, "Send SIGKILL to writer process"},

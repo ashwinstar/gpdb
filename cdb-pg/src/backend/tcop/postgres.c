@@ -3546,7 +3546,10 @@ ProcessInterrupts(void)
 
 #ifdef USE_TEST_UTILS
 	/* disable SimEx for CHECK_FOR_INTERRUPTS */
-	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_Cancel)
+	if (gp_simex_init &&
+		gp_simex_run &&
+		(gp_simex_class == SimExESClass_Cancel ||
+		 gp_simex_class == SimExESClass_Terminate))
 	{
 		gp_simex_run = 0;
 	}
@@ -3627,7 +3630,10 @@ ProcessInterrupts(void)
 
 #ifdef USE_TEST_UTILS
 	/* restore SimEx for CHECK_FOR_INTERRUPTS */
-	if (gp_simex_init && simex_run && gp_simex_class == SimExESClass_Cancel)
+	if (gp_simex_init &&
+		simex_run &&
+		(gp_simex_class == SimExESClass_Cancel ||
+		 gp_simex_class == SimExESClass_Terminate))
 	{
 		gp_simex_run = simex_run;
 	}

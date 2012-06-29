@@ -92,7 +92,11 @@ do { \
 		CHECK_TIME_SLICE(); \
 	} \
 \
-	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_Cancel && !InterruptPending) \
+	if (gp_simex_init && \
+		gp_simex_run && \
+		(gp_simex_class == SimExESClass_Cancel || \
+		 gp_simex_class == SimExESClass_Terminate) && \
+		!InterruptPending) \
 	{\
 		SimExESSubClass subclass = SimEx_CheckInject(); \
 		if (subclass == SimExESSubClass_Cancel_QueryCancel) \
@@ -100,7 +104,7 @@ do { \
 			InterruptPending = true; \
 			QueryCancelPending = true; \
 		}\
-		else if (subclass == SimExESSubClass_Cancel_ProcDie) \
+		else if (subclass == SimExESSubClass_Terminate_ProcDie) \
 		{\
 			InterruptPending = true; \
 			ProcDiePending = true; \

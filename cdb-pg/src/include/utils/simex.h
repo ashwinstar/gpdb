@@ -35,6 +35,7 @@ typedef enum SimExESClass
 	SimExESClass_Base = 0,
 	SimExESClass_OOM = SimExESClass_Base,	// out-of-memory
 	SimExESClass_Cancel,					// cancel
+	SimExESClass_Terminate,					// terminate the process
 	SimExESClass_CacheInvalidation,         // cache invaldation messages
 	SimExESClass_SysError,				    // system call failure
 	SimExESClass_ProcKill,					// kill process with SIGKILL
@@ -60,7 +61,7 @@ typedef enum SimExESSubClass
 	SimExESSubClass_OK = 0,
 	SimExESSubClass_OOM_ReturnNull,
 	SimExESSubClass_Cancel_QueryCancel,
-	SimExESSubClass_Cancel_ProcDie,
+	SimExESSubClass_Terminate_ProcDie,
 	SimExESSubClass_CacheInvalidation,
 	SimExESSubClass_SysError_Net,
 	SimExESSubClass_ProcKill_BgWriter,
