@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "access/genam.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/heap.h"                   /* SystemAttributeDefinition() */    
 #include "catalog/pg_amop.h"
@@ -25,6 +26,8 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_aggregate.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbpartition.h"
@@ -37,7 +40,7 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
+#include "utils/fmgroids.h"
 
 /*				---------- AMOP CACHES ----------						 */
 
@@ -939,6 +942,31 @@ get_func_name(Oid funcid)
 }
 
 /*
+ * get_type_name
+ *	  returns the name of the type with the given oid
+ *
+ * Note: returns a palloc'd copy of the string, or NULL if no such type.
+ */
+char *
+get_type_name(Oid oid)
+{
+	// get type name
+	HeapTuple	tp;
+	
+	tp = SearchSysCache(TYPEOID, oid, 0, 0, 0);
+	
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
+		char *result = pstrdup(NameStr(typtup->typname));
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return NULL;
+}
+
+/*
  * get_func_rettype
  *		Given procedure id, return the function's result type.
  */
@@ -955,6 +983,28 @@ get_func_rettype(Oid funcid)
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
 	result = ((Form_pg_proc) GETSTRUCT(tp))->prorettype;
+	ReleaseSysCache(tp);
+	return result;
+}
+
+/*
+ * get_agg_transtype
+ *		Given aggregate id, return the aggregate transition function's result type.
+ */
+Oid
+get_agg_transtype(Oid aggid)
+{
+	HeapTuple	tp;
+	Oid			result;
+
+	tp = SearchSysCache(AGGFNOID,
+						ObjectIdGetDatum(aggid),
+						0, 0, 0);
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for aggregate %u", aggid);
+
+	Form_pg_aggregate aggform = (Form_pg_aggregate) GETSTRUCT(tp);
+	result = aggform->aggtranstype;
 	ReleaseSysCache(tp);
 	return result;
 }
@@ -2388,6 +2438,21 @@ free_attstatsslot(Oid atttype,
 		pfree(numbers);
 }
 
+/*
+ * get_att_stats
+ *		Get attribute statistics. Return a copy of the HeapTuple object, or NULL
+ *		if no stats found for attribute
+ * 
+ */
+HeapTuple
+get_att_stats(Oid relid, AttrNumber attrnum)
+{
+	return SearchSysCacheCopy(STATRELATT,
+						ObjectIdGetDatum(relid),
+						Int16GetDatum(attrnum),
+						0, 0);
+}
+
 /*				---------- PG_NAMESPACE CACHE ----------				 */
 
 /*
@@ -2449,4 +2514,225 @@ get_roleid_checked(const char *rolname)
 				 errmsg("role \"%s\" does not exist", rolname),
 						   errOmitLocation(true)));
 	return roleid;
+}
+
+
+/*
+ * relation_oids
+ *	  Extract all relation oids from the catalog.
+ */
+List *
+relation_oids()
+{
+	List			*relationOids = NIL;
+	Relation		pgclass = NULL;
+	HeapScanDesc 	scan = NULL;
+	HeapTuple		tuple = NULL;
+
+	pgclass = heap_open(RelationRelationId, AccessShareLock);
+
+	scan = heap_beginscan(pgclass, SnapshotNow, 0 /* key length */, NULL);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Form_pg_class pgclassEntry = (Form_pg_class) GETSTRUCT(tuple);
+
+		switch (pgclassEntry->relstorage)
+		{
+			case RELSTORAGE_HEAP:
+			case RELSTORAGE_AOCOLS:
+			case RELSTORAGE_AOROWS:
+			case RELSTORAGE_EXTERNAL:
+			{
+				Oid relOid = HeapTupleGetOid(tuple);
+				relationOids = lappend_oid(relationOids, relOid);
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	heap_endscan(scan);
+	heap_close(pgclass, AccessShareLock);
+	return relationOids;
+}
+
+/*
+ * operator_oids
+ *	  Extract all operator oids from the catalog.
+ */
+List *
+operator_oids()
+{
+	List			*operatorOids = NIL;
+	Relation		operatortable = NULL;
+	HeapScanDesc 	scan = NULL;
+	HeapTuple		tuple = NULL;
+
+	operatortable = heap_open(OperatorRelationId, AccessShareLock);
+
+	scan = heap_beginscan(operatortable, SnapshotNow, 0 /* key length */, NULL);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Oid opOid = HeapTupleGetOid(tuple);
+		operatorOids = lappend_oid(operatorOids, opOid);
+	}
+
+	heap_endscan(scan);
+	heap_close(operatortable, AccessShareLock);
+	return operatorOids;
+}
+
+/*
+ * function_oids
+ *	  Extract all function oids from the catalog.
+ */
+List *
+function_oids()
+{
+	List			*functionOids = NIL;
+	Relation		functiontable = NULL;
+	HeapScanDesc 	scan = NULL;
+	HeapTuple		tuple = NULL;
+
+	functiontable = heap_open(ProcedureRelationId, AccessShareLock);
+
+	scan = heap_beginscan(functiontable, SnapshotNow, 0 /* key length */, NULL);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Oid funcOid = HeapTupleGetOid(tuple);
+		functionOids = lappend_oid(functionOids, funcOid);
+	}
+
+	heap_endscan(scan);
+	heap_close(functiontable, AccessShareLock);
+	return functionOids;
+}
+
+/*
+ * relation_exists
+ *	  Is there a relation with the given oid
+ */
+bool
+relation_exists(Oid oid)
+{
+	return SearchSysCacheExists(RELOID, oid, 0, 0, 0);
+}
+
+/*
+ * index_exists
+ *	  Is there an index with the given oid
+ */
+bool
+index_exists(Oid oid)
+{
+	return SearchSysCacheExists(INDEXRELID, oid, 0, 0, 0);
+}
+
+/*
+ * type_exists
+ *	  Is there a type with the given oid
+ */
+bool
+type_exists(Oid oid)
+{
+	return SearchSysCacheExists(TYPEOID, oid, 0, 0, 0);
+}
+
+/*
+ * operator_exists
+ *	  Is there an operator with the given oid
+ */
+bool
+operator_exists(Oid oid)
+{
+	return SearchSysCacheExists(OPEROID, oid, 0, 0, 0);
+}
+
+/*
+ * function_exists
+ *	  Is there a function with the given oid
+ */
+bool
+function_exists(Oid oid)
+{
+	return SearchSysCacheExists(PROCOID, oid, 0, 0, 0);
+}
+
+/*
+ * aggregate_exists
+ *	  Is there an aggregate with the given oid
+ */
+bool
+aggregate_exists(Oid oid)
+{
+	return SearchSysCacheExists(AGGFNOID, oid, 0, 0, 0);
+}
+
+/*
+ * get_relation_keys
+ *	  Return a list of relation keys
+ */
+List *
+get_relation_keys(Oid relid)
+{
+	List *keys = NIL;
+
+	// lookup unique constraints for relation from the catalog table
+	ScanKeyData skey[1];
+	ScanKeyInit(&skey[0], Anum_pg_constraint_conrelid, BTEqualStrategyNumber, F_OIDEQ, relid);
+
+	Relation rel = heap_open(ConstraintRelationId, AccessShareLock);
+	SysScanDesc scan = systable_beginscan
+						(
+						rel, 
+						ConstraintRelidIndexId, 
+						true, 
+						SnapshotNow, 
+						1, 
+						skey
+						);
+	
+	HeapTuple	htup = NULL;
+
+	while (HeapTupleIsValid(htup = systable_getnext(scan)))
+	{
+		Form_pg_constraint contuple = (Form_pg_constraint) GETSTRUCT(htup);
+
+		// skip non-unique constraints
+		if (CONSTRAINT_UNIQUE != contuple->contype &&
+			CONSTRAINT_PRIMARY != contuple->contype)
+		{
+			continue;
+		}
+			
+		// store key set in an array
+		List *key = NIL;
+		
+		bool null = false;
+		Datum dat = 
+				heap_getattr(htup, Anum_pg_constraint_conkey, RelationGetDescr(rel), &null);
+		
+		Datum *dats = NULL;
+		int numKeys = 0;
+
+		// extract key elements
+		deconstruct_array(DatumGetArrayTypeP(dat), INT2OID, 2, true, 's', &dats, NULL, &numKeys);
+			
+		for (int i = 0; i < numKeys; i++)
+		{
+			int16 key_elem =  DatumGetInt16(dats[i]);
+			key = lappend_int(key, key_elem);
+		}
+		
+		keys = lappend(keys, key);
+	}
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	return keys;
 }

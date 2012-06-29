@@ -67,6 +67,7 @@ extern Oid	get_func_signature(Oid funcid, Oid **argtypes, int *nargs);
 extern bool get_func_retset(Oid funcid);
 extern bool func_strict(Oid funcid);
 extern char func_volatile(Oid funcid);
+extern Oid get_agg_transtype(Oid aggid);
 extern Oid	get_relname_relid(const char *relname, Oid relnamespace);
 extern char *get_rel_name(Oid relid);
 extern char *get_rel_name_partition(Oid relid);
@@ -75,6 +76,7 @@ extern Oid	get_rel_type_id(Oid relid);
 extern char get_rel_relkind(Oid relid);
 extern char get_rel_relstorage(Oid relid);
 extern Oid	get_rel_tablespace(Oid relid);
+extern char *get_type_name(Oid typid);
 extern bool get_typisdefined(Oid typid);
 extern int16 get_typlen(Oid typid);
 extern bool get_typbyval(Oid typid);
@@ -106,6 +108,7 @@ extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
 extern int32 get_attavgwidth(Oid relid, AttrNumber attnum);
+extern HeapTuple get_att_stats(Oid relid, AttrNumber attnum);
 extern bool get_attstatsslot(HeapTuple statstuple,
 				 Oid atttype, int32 atttypmod,
 				 int reqkind, Oid reqop,
@@ -118,6 +121,16 @@ extern char *get_namespace_name(Oid nspid);
 extern Oid	get_roleid(const char *rolname);
 extern Oid	get_roleid_checked(const char *rolname);
 
+extern List *relation_oids(void);
+extern List *operator_oids(void);
+extern List *function_oids(void);
+extern bool relation_exists(Oid oid);
+extern bool index_exists(Oid oid);
+extern bool type_exists(Oid oid);
+extern bool function_exists(Oid oid);
+extern bool operator_exists(Oid oid);
+extern bool aggregate_exists(Oid oid);
+extern List *get_relation_keys(Oid relid);
 #define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
 
 #define TypeIsToastable(typid)	(get_typstorage(typid) != 'p')

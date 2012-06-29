@@ -440,6 +440,19 @@ _copyExternalScan(const ExternalScan *from)
 	return newnode;
 }
 
+static void
+copyIndexScanFields(const IndexScan *from, IndexScan *newnode)
+{
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	COPY_SCALAR_FIELD(indexid);
+	COPY_NODE_FIELD(indexqual);
+	COPY_NODE_FIELD(indexqualorig);
+	COPY_NODE_FIELD(indexstrategy);
+	COPY_NODE_FIELD(indexsubtype);
+	COPY_SCALAR_FIELD(indexorderdir);
+}
+
 
 /*
  * _copyIndexScan
@@ -449,20 +462,21 @@ _copyIndexScan(const IndexScan *from)
 {
 	IndexScan  *newnode = makeNode(IndexScan);
 
-	/*
-	 * copy node superclass fields
-	 */
-	CopyScanFields((Scan *) from, (Scan *) newnode);
+	copyIndexScanFields(from, newnode);
 
-	/*
-	 * copy remainder of node
-	 */
-	COPY_SCALAR_FIELD(indexid);
-	COPY_NODE_FIELD(indexqual);
-	COPY_NODE_FIELD(indexqualorig);
-	COPY_NODE_FIELD(indexstrategy);
-	COPY_NODE_FIELD(indexsubtype);
-	COPY_SCALAR_FIELD(indexorderdir);
+	return newnode;
+}
+
+/*
+ * _copyIndexOnlyScan
+ */
+static IndexOnlyScan *
+_copyIndexOnlyScan(const IndexOnlyScan *from)
+{
+	IndexOnlyScan  *newnode = makeNode(IndexOnlyScan);
+
+	/* IndexOnlyScan has the same content as IndexScan */
+	copyIndexScanFields(from, (IndexScan *)newnode);
 
 	return newnode;
 }
@@ -4118,6 +4132,9 @@ copyObject(const void *from)
 			break;
 		case T_IndexScan:
 			retval = _copyIndexScan(from);
+			break;
+		case T_IndexOnlyScan:
+			retval = _copyIndexOnlyScan(from);
 			break;
 		case T_BitmapIndexScan:
 			retval = _copyBitmapIndexScan(from);

@@ -637,6 +637,7 @@ bool		gp_cte_sharing = false;
 /* ORCA related gucs */
 bool		gp_optimizer;
 bool		gp_log_optimizer;
+bool		gp_opt_minidump;
 bool		gp_opt_print_query;
 bool		gp_opt_print_plan;
 bool		gp_opt_print_xform;
@@ -3381,6 +3382,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_log_optimizer,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_opt_minidump", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Produce a minidump on every query."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_minidump,
 		false, NULL, NULL
 	},
 

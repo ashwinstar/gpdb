@@ -26,6 +26,10 @@
  * CREATE OR REPLACE FUNCTION gp_partition_expansion(oid)
  *   RETURNS setof oid
  *   AS '$libdir/gp_partition_functions.so', 'gp_partition_expansion_wrapper' LANGUAGE C STRICT;
+ *
+ * CREATE OR REPLACE FUNCTION gp_partition_inverse(oid)
+ *   RETURNS setof record
+ *   AS '$libdir/gp_partition_functions.so', 'gp_partition_inverse_wrapper' LANGUAGE C STRICT;
  */
 
 #include "postgres.h"
@@ -41,14 +45,17 @@ PG_MODULE_MAGIC;
 extern Datum gp_partition_propagation(PG_FUNCTION_ARGS);
 extern Datum gp_partition_selection(PG_FUNCTION_ARGS);
 extern Datum gp_partition_expansion(PG_FUNCTION_ARGS);
+extern Datum gp_partition_inverse(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(gp_partition_propagation_wrapper);
 PG_FUNCTION_INFO_V1(gp_partition_selection_wrapper);
 PG_FUNCTION_INFO_V1(gp_partition_expansion_wrapper);
+PG_FUNCTION_INFO_V1(gp_partition_inverse_wrapper);
 
 extern Datum gp_partition_propagation_wrapper(PG_FUNCTION_ARGS);
 extern Datum gp_partition_selection_wrapper(PG_FUNCTION_ARGS);
 extern Datum gp_partition_expansion_wrapper(PG_FUNCTION_ARGS);
+extern Datum gp_partition_inverse_wrapper(PG_FUNCTION_ARGS);
 
 /*
  * gp_partition_propagation_wrapper
@@ -78,4 +85,14 @@ Datum
 gp_partition_expansion_wrapper(PG_FUNCTION_ARGS)
 {
 	return gp_partition_expansion(fcinfo);
+}
+
+/*
+ * gp_partition_inverse_wrapper
+ *    The wrapper for creating a user-defined C function for gp_partition_inverse.
+ */
+Datum
+gp_partition_inverse_wrapper(PG_FUNCTION_ARGS)
+{
+	return gp_partition_inverse(fcinfo);
 }

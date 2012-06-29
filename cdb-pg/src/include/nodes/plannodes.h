@@ -467,6 +467,11 @@ typedef struct IndexScan
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 } IndexScan;
 
+/*
+ * IndexOnlyScan node, which has the same content as IndexScan node.
+ */
+typedef IndexScan IndexOnlyScan;
+
 /* ----------------
  *		bitmap index scan node
  *

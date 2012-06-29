@@ -514,6 +514,7 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_DynamicTableScan,
 		&&Exec_Jmp_ExternalScan,
 		&&Exec_Jmp_IndexScan,
+		&&Exec_Jmp_IndexOnlyScan,
 		&&Exec_Jmp_BitmapIndexScan,
 		&&Exec_Jmp_BitmapHeapScan,
 		&&Exec_Jmp_BitmapAppendOnlyScan,
@@ -593,6 +594,10 @@ Exec_Jmp_ExternalScan:
 
 Exec_Jmp_IndexScan:
 	result = ExecIndexScan((IndexScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_IndexOnlyScan:
+	// result = ExecIndexOnlyScan((IndexOnlyScanState *) node);
 	goto Exec_Jmp_Done;
 
 	/* BitmapIndexScanState does not yield tuples */

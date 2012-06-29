@@ -2906,6 +2906,19 @@ _readExternalScan(const char ** str)
 	READ_DONE();
 }
 
+static void
+readIndexScanFields(const char ** str, IndexScan *local_node)
+{
+	readScanInfo(str, (Scan *)local_node);
+
+	READ_OID_FIELD(indexid);
+	READ_NODE_FIELD(indexqual);
+	READ_NODE_FIELD(indexqualorig);
+	READ_NODE_FIELD(indexstrategy);
+	READ_NODE_FIELD(indexsubtype);
+	READ_ENUM_FIELD(indexorderdir, ScanDirection);
+}
+
 /*
  * _readIndexScan
  */
@@ -2914,19 +2927,21 @@ _readIndexScan(const char ** str)
 {
 	READ_LOCALS(IndexScan);
 
-	readScanInfo(str, (Scan *)local_node);
-
-	READ_OID_FIELD(indexid);
-	READ_NODE_FIELD(indexqual);
-	READ_NODE_FIELD(indexqualorig);
-	READ_NODE_FIELD(indexstrategy);
-	READ_NODE_FIELD(indexsubtype);
-
-	READ_ENUM_FIELD(indexorderdir, ScanDirection);
+	readIndexScanFields(str, local_node);
 
 	READ_DONE();
 }
 
+static IndexOnlyScan *
+_readIndexOnlyScan(const char ** str)
+{
+	READ_LOCALS(IndexOnlyScan);
+	
+	/* IndexOnlyScan has the same content as IndexScan. */
+	readIndexScanFields(str, local_node);
+	
+	READ_DONE();
+}
 
 static BitmapIndexScan *
 _readBitmapIndexScan(const char ** str)
@@ -3817,6 +3832,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_IndexScan:
 				return_value = _readIndexScan(str);
+				break;
+			case T_IndexOnlyScan:
+				return_value = _readIndexOnlyScan(str);
 				break;
 			case T_BitmapIndexScan:
 				return_value = _readBitmapIndexScan(str);

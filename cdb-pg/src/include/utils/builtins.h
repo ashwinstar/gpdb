@@ -1232,5 +1232,6 @@ extern Datum gp_map_attnums(PG_FUNCTION_ARGS);
 extern Datum gp_get_part_constraints(PG_FUNCTION_ARGS);
 extern Datum gp_get_parts_index_relid(PG_FUNCTION_ARGS);
 extern Datum gp_get_parts_index_info_function(PG_FUNCTION_ARGS);
+extern Datum gp_partition_inverse(PG_FUNCTION_ARGS);
 
 #endif   /* BUILTINS_H */

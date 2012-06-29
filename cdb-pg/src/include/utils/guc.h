@@ -309,6 +309,7 @@ extern int  WalSendClientTimeout;
 extern char  *data_directory;
 
 // ORCA-related gucs
+extern bool gp_opt_minidump;
 extern bool gp_opt_print_query;
 extern bool gp_opt_print_plan;
 extern bool gp_opt_print_xform;

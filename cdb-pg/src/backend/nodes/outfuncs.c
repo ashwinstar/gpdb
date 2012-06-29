@@ -507,10 +507,8 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 }
 
 static void
-_outIndexScan(StringInfo str, IndexScan *node)
+outIndexScanFields(StringInfo str, IndexScan *node)
 {
-	WRITE_NODE_TYPE("INDEXSCAN");
-
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
@@ -519,6 +517,23 @@ _outIndexScan(StringInfo str, IndexScan *node)
 	WRITE_NODE_FIELD(indexstrategy);
 	WRITE_NODE_FIELD(indexsubtype);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
+}
+
+static void
+_outIndexScan(StringInfo str, IndexScan *node)
+{
+	WRITE_NODE_TYPE("INDEXSCAN");
+
+	outIndexScanFields(str, node);
+}
+
+static void
+_outIndexOnlyScan(StringInfo str, IndexOnlyScan *node)
+{
+	WRITE_NODE_TYPE("INDEXONLYSCAN");
+	
+	/* IndexOnlyScan has the same content as IndexScan */
+	outIndexScanFields(str, (IndexScan *)node);
 }
 
 static void
@@ -3882,6 +3897,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_IndexScan:
 				_outIndexScan(str, obj);
+				break;
+			case T_IndexOnlyScan:
+				_outIndexOnlyScan(str, obj);
 				break;
 			case T_BitmapIndexScan:
 				_outBitmapIndexScan(str, obj);
