@@ -510,8 +510,8 @@ main(int argc, char **argv)
 	if (dd_boost_enabled)
 	{
 
-		if (initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false))
-               	{
+		if (connectToDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME))
+		{
 			mpp_err_msg(logInfo, progname, "Initializing DD system failed\n");
 			exit(1);
 		}

@@ -847,35 +847,37 @@ parseDbidSet(int *dbidset, char *dump_set)
 
 #ifdef USE_DDBOOST
 #include <dlfcn.h>
-#include "clb_base.h"
+#include "clb.h"
+#include "ddboost/cdb_ddboost_util.h"
 
 #define	NO_ERR	0
 
 ddp_client_info_t dd_client_info = {DDP_CL_DDP, "Greenplum Database version " GP_VERSION};
-struct ddboost_logs
-{
-	ddp_severity_t logLevel ;
-	unsigned int logsSize ;
-} ddboost_logs_info;
+
+/* Holds the info of the current DD connection */
+ddboost_connection_info dd_conn_info = { 0 };
 
 /* define function pointers in order to use the LB functions with dlsym */
-void (*clb_getErrorMessage)(int errorCode, char **errorMessage) = NULL;
-int (*clb_create)(const char* lockboxId, const char* passphrase, int overwrite, clbContext lbCntx, clbHandle *clbH) = NULL;
-int (*clb_open)(const char* lockboxId, const char* passphrase, clbContext lbCntx, clbHandle *clbH) = NULL;
-int (*clb_close)(clbHandle clbH) = NULL;
-void (*clb_free)(void *buffer) = NULL;
-int (*clb_setLockboxMode)(clbHandle clbH, clb_mode_e mode) = NULL;
-int (*clb_createItemAsText)(clbHandle clbH, const char* itemName, const char* secret) = NULL;
-int (*clb_retrieveItemAsText)(clbHandle clbH, const char* itemName, char** secret) = NULL;
-
+void (*lb_getErrorMessage)(int errorCode, char **errorMessage) = NULL;
+int (*lb_create)(const char* lockboxId, const char* passphrase, int overwrite, clbContext lbCntx, clbHandle *clbH) = NULL;
+int (*lb_open)(const char* lockboxId, const char* passphrase, clbContext lbCntx, clbHandle *clbH) = NULL;
+int (*lb_close)(clbHandle clbH) = NULL;
+void (*lb_free)(void *buffer) = NULL;
+int (*lb_setLockboxMode)(clbHandle clbH, clb_mode_e mode) = NULL;
+int (*lb_createItemAsText)(clbHandle clbH, const char* itemName, const char* secret) = NULL;
+int (*lb_retrieveItemAsText)(clbHandle clbH, const char* itemName, char** secret) = NULL;
+int (*lb_containsItem)(clbHandle clbH, const char* itemName, int *exists) = NULL;
+int (*lb_updateItemAsText)(clbHandle clbH, const char* itemName, const char* secret);
 
 static int setItem(clbHandle* LB, char *key, char *value);
 static int getItem(clbHandle* LB, char *key, char **value);
+static int updateItem(clbHandle* LB, char *key, const char *value);
 static int setLBEnv(void);
 static int createLB(clbHandle* LB,char* name);
-static int openLB(clbHandle* LB,char* name);
-static int validateDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size);
-static int getDDBoostCredential(char** hostname, char** user, char** password, char** log_level ,char** log_size);
+static int openLB(clbHandle* LB,char* name, bool ifPrintError);
+static int validateDDBoostCredential(char *hostname, char *user, char *password, char* log_level, char* log_size);
+static int getDDBoostCredential(char** hostname, char** user, char** password, char** log_level, char** log_size, char **suName);
+
 
 /*
  * Set the environment variable LD_LIBRARY_PATH in order to dynamically load LB's libraries.
@@ -893,6 +895,11 @@ setLBEnv(void)
 	char *libdirname = "lib/rsa_csp";
 	char *libname = "libCSP-lb.so";
 	int  newldpath_len = 0;
+	static bool isLbEnvLoaded = false;
+
+	/* If the LB libraries were already loaded - no need to load the again */
+	if (isLbEnvLoaded == true)
+		return 0;
 
 	if (NULL == gphome)
 	{
@@ -930,51 +937,95 @@ setLBEnv(void)
 		return -1;
 	}
 
-	if (NULL == (clb_getErrorMessage = dlsym(hdl, "clb_getErrorMessage")) ||
-			NULL == (clb_create = dlsym(hdl, "clb_create")) ||
-			NULL == (clb_open = dlsym(hdl, "clb_open")) ||
-			NULL == (clb_close = dlsym(hdl, "clb_close")) ||
-			NULL == (clb_free = dlsym(hdl, "clb_free")) ||
-			NULL == (clb_setLockboxMode = dlsym(hdl, "clb_setLockboxMode")) ||
-			NULL == (clb_createItemAsText = dlsym(hdl, "clb_createItemAsText")) ||
-			NULL == (clb_retrieveItemAsText = dlsym(hdl, "clb_retrieveItemAsText")))
+	if (NULL == (lb_getErrorMessage = dlsym(hdl, "clb_getErrorMessage")) ||
+		NULL == (lb_create = dlsym(hdl, "clb_create")) ||
+		NULL == (lb_open = dlsym(hdl, "clb_open")) ||
+		NULL == (lb_close = dlsym(hdl, "clb_close")) ||
+		NULL == (lb_free = dlsym(hdl, "clb_free")) ||
+		NULL == (lb_setLockboxMode = dlsym(hdl, "clb_setLockboxMode")) ||
+		NULL == (lb_createItemAsText = dlsym(hdl, "clb_createItemAsText")) ||
+		NULL == (lb_retrieveItemAsText = dlsym(hdl, "clb_retrieveItemAsText")) ||
+		NULL == (lb_containsItem = dlsym(hdl, "clb_containsItem")) ||
+		NULL == (lb_updateItemAsText = dlsym(hdl, "clb_updateItemAsText")))
 	{
 		mpp_err_msg("ERROR", "ddboost", "Failed to load dynamic libraries. Can't set ddboost credentials\n");
 		return -1;
 	}
 
 	mpp_err_msg("DEBUG", "ddboost", "Libraries were loaded successfully\n");
+	/* Indicate that the LB libraries were loaded */
+	isLbEnvLoaded = true;
 	return 0;
 }
 
 static int
 setItem(clbHandle* LB, char *key, char *value)
 {
-	int iError = clb_createItemAsText(*LB, key, value);
+	int iError = lb_createItemAsText(*LB, key, value);
 	if (iError != NO_ERR)
 	{
-		char* eMsg= NULL;;
-		clb_getErrorMessage(iError,&eMsg);
+		char* eMsg= NULL;
+		lb_getErrorMessage(iError,&eMsg);
 		mpp_err_msg("ERROR", "ddboost", eMsg);
-		clb_free(eMsg);
-		clb_close(*LB);
+		lb_free(eMsg);
+		lb_close(*LB);
 		return iError;
 	};
 
 	return 0;
 }
 
+
+/* Receives the new value to update with */
+int updateLbItem(char *key, const char *value)
+{
+	int			result;
+	clbHandle 	LB;
+
+	/* Open the Lockbox */
+	result = openLB(&LB, DDBOOST_CONFIG_FILE, true);
+	if (result != NO_ERR)
+		return -1;
+
+	/* Update the LB with the new value */
+	result = updateItem(&LB, key, value);
+	if (result != NO_ERR)
+		return -1;
+
+	return NO_ERR;
+}
+
+
+/* This function updates the value of the given item in Lockbox					*/
+/* NOTE: this item (key) must exist in the LB, otherwise the function will fail	*/
+static int updateItem(clbHandle* LB, char *key, const char *value)
+{
+	int iError = lb_updateItemAsText(*LB, key, value);
+	if (iError != NO_ERR)
+	{
+		char* eMsg= NULL;
+		lb_getErrorMessage(iError,&eMsg);
+		mpp_err_msg("ERROR", "ddboost", "%s\n", eMsg);
+		lb_free(eMsg);
+		lb_close(*LB);
+		return iError;
+	};
+
+	return 0;
+}
+
+
 static int
 getItem(clbHandle* LB, char *key, char **value)
 {
-	int iError = clb_retrieveItemAsText(*LB, key, value);
+	int iError = lb_retrieveItemAsText(*LB, key, value);
 	if (iError != NO_ERR)
 	{
-		char* eMsg= NULL;;
-		clb_getErrorMessage(iError,&eMsg);
-		mpp_err_msg("ERROR", "ddboost", eMsg);
-		clb_free(eMsg);
-		clb_close(*LB);
+		char* eMsg = NULL;
+		lb_getErrorMessage(iError,&eMsg);
+		mpp_err_msg("ERROR", "ddboost", "%s\n", eMsg);
+		lb_free(eMsg);
+		lb_close(*LB);
 		return iError;
 	};
 
@@ -988,7 +1039,7 @@ createLB(clbHandle* LB,char* name)
 	char filepath[PATH_MAX];
 	char *home = getenv("HOME");
 	char* eMsg = NULL;
-	char clb_pass[35] = "1!qQ";
+	char lb_pass[35] = "1!qQ";
 	int _base64_len = sizeof(_base64)/sizeof(unsigned char) - 2;
 
 	if (NULL == home)
@@ -1011,31 +1062,31 @@ createLB(clbHandle* LB,char* name)
 	/* choose valid characters from _base64 for the lockbox password */
 	for (i=4; i < 34; i++)
 	{
-		clb_pass[i] = _base64[rand() % _base64_len];
+		lb_pass[i] = _base64[rand() % _base64_len];
 	}
-	clb_pass[34] = '\0';
+	lb_pass[34] = '\0';
 	
 	/* 
-	 * for creating the lockbox we should call to clb_create.
+	 * for creating the lockbox we should call to lb_create.
 	 * this function needs a password with at least 8 characters, with several constraints.
 	 * the password is set to optional few lines later, but we must initialize it during the LB creation. 
 	 * of course we don't want to use fixed password, so we're using a random password
 	 */
-	mpp_err_msg("INFO", "ddboost", "creating LB on %s\n", filepath);
-	if ((iError = clb_create(filepath, clb_pass, 1 /*overwrite flag*/, 0 /*reserved*/,LB))!=NO_ERR)
+	mpp_err_msg("DEBUG", "ddboost", "creating LB on %s\n", filepath);
+	if ((iError = lb_create(filepath, lb_pass, 1 /*overwrite flag*/, 0 /*reserved*/,LB))!=NO_ERR)
 	{
-		clb_getErrorMessage(iError,&eMsg);
+		lb_getErrorMessage(iError,&eMsg);
 		mpp_err_msg("ERROR", "ddboost", "%s\n", eMsg);
-		clb_free(eMsg);
+		lb_free(eMsg);
 		return iError;
 	};
 
-	if ((iError = clb_setLockboxMode(*LB, CLB_PASSPHRASE_OPTIONAL))!=NO_ERR)
+	if ((iError = lb_setLockboxMode(*LB, CLB_PASSPHRASE_OPTIONAL))!=NO_ERR)
 	{
-		clb_getErrorMessage(iError,&eMsg);
+		lb_getErrorMessage(iError,&eMsg);
 		mpp_err_msg("ERROR", "ddboost", "%s\n", eMsg);
-		clb_free(eMsg);
-		clb_close(*LB);
+		lb_free(eMsg);
+		lb_close(*LB);
 
 		return iError;
 	};
@@ -1043,17 +1094,17 @@ createLB(clbHandle* LB,char* name)
 	return 0;
 }
 
+/* Open the Lockbox */
 static int
-openLB(clbHandle* LB,char* name)
+openLB(clbHandle* LB, char* name, bool ifPrintError)
 {
 	int iError;
 	char filepath[PATH_MAX];	
 	char *home = getenv("HOME");	
-	char* eMsg = NULL;
 
 	if (NULL == home)
 	{
-		mpp_err_msg("ERROR", "ddboost", "HOME undefined, can't set ddboost credentials\n");
+		mpp_err_msg("ERROR", "ddboost", "HOME is undefined, can't open LB\n");
 		return -1;
 	}
 	
@@ -1065,71 +1116,99 @@ openLB(clbHandle* LB,char* name)
 		return -1;
 	}
 
-	mpp_err_msg("INFO", "ddboost", "opening LB on %s\n", filepath);
-	if ((iError = clb_open(filepath, NULL, 0 /*reserved*/,LB))!=NO_ERR)
+	mpp_err_msg("DEBUG", "ddboost", "opening LB on %s\n", filepath);
+	if ((iError = lb_open(filepath, NULL, 0 /*reserved*/,LB))!=NO_ERR)
 	{
-		clb_getErrorMessage(iError,&eMsg);
-		mpp_err_msg("ERROR", "ddboost", "%s\n", eMsg);
-		clb_free(eMsg);
+		/* It is up to the caller whether to print the error message */
+		if (ifPrintError)
+		{
+			char *eMsg = NULL;
+			lb_getErrorMessage(iError, &eMsg);
+			mpp_err_msg("ERROR", "ddboost", "%s\n", eMsg);
+			lb_free(eMsg);
+		}
 		return iError;
 	};
-	return 0;
+	return NO_ERR;
 }
 
 /*
- * Write the hostname, user, password, log_level and log_size to the LB
+ * Write the hostname, user, password, log_level, log_size and suName to the LB
  * Returns 0 in case of success, and -1 otherwise.
  */
 int
-setDDBoostCredential(char *hostname, char *user, char *password, char* log_level ,char* log_size)
+setDDBoostCredential(char *hostname, char *user, char *password, char *log_level, char *log_size)
 {
-	if (validateDDBoostCredential(hostname, user, password, log_level , log_size))
+	char		*suName = NULL;
+	clbHandle 	LB;
+
+	if (validateDDBoostCredential(hostname, user, password, log_level, log_size))
 		return -1;
 
-	clbHandle LB;
-	if (createLB(&LB, "DDBOOST_CONFIG"))
+	/* In order to simplify things, we create a new Lockbox every time we set the credentials. 	*/
+	/* Hence, in order to save the existing SU, we use getExistingLbItems() 					*/
+
+	/* Save the existing SU name (if exists) */
+	if (getExistingLbItems(&suName))
 		return -1;
-	if (setItem(&LB , "hostname",hostname))
+	if (suName == NULL)
+		suName = LB_DEFAULT_VALUE_STORAGE_UNIT_NAME;
+
+	/* Create the Lockbox */
+	if (createLB(&LB, DDBOOST_CONFIG_FILE))
 		return -1;
-	if (setItem(&LB , "user",user))
+
+	if (setItem(&LB, "hostname",hostname))
 		return -1;
-	if (setItem(&LB , "password",password))
+	if (setItem(&LB, "user",user))
+		return -1;
+	if (setItem(&LB, "password",password))
 		return -1;
 
 	if (log_level)
 	{
-		if (setItem(&LB , "log_level",log_level))
+		if (setItem(&LB, "log_level",log_level))
 			return -1;
 	}
 	else
 	{
-		if (setItem(&LB , "log_level","DEBUG"))
+		if (setItem(&LB, "log_level", LB_DEFAULT_VALUE_LOG_LEVEL))
 			return -1;
 	}
 
 	if (log_size)
 	{
-		if (setItem(&LB , "log_size",log_size))
+		if (setItem(&LB, "log_size",log_size))
 			return -1;
 	}
 	else
 	{
-		if (setItem(&LB , "log_size","50"))
+		if (setItem(&LB, "log_size", LB_DEFAULT_VALUE_LOG_SIZE))
 			return -1;
 	}
 
-	clb_close(LB);
+	/* Set the storage unit name*/
+	if (setItem(&LB, LB_ITEM_NAME_STORAGE_UNIT_NAME, suName))
+		return -1;
+
+	lb_close(LB);
 
 	return 0;
 }
 
-int
-getDDBoostCredential(char** hostname, char** user, char** password, char **log_level ,char** log_size)
+int getDDBoostCredential(char** hostname, char** user, char** password,	char **log_level, char** log_size, char **suName)
 {
+	int result;
 	clbHandle LB;
 
-	if (openLB(&LB,"DDBOOST_CONFIG"))
+	/* Open the Lockbox */
+	result = openLB(&LB, DDBOOST_CONFIG_FILE, true);
+	if (result != NO_ERR)
+	{
 		return -1;
+	}
+
+	/* Get the credentials from the Lockbox */
 	if (getItem(&LB , "hostname",hostname))
 		return -1;
 	if (getItem(&LB , "user",user))
@@ -1140,7 +1219,12 @@ getDDBoostCredential(char** hostname, char** user, char** password, char **log_l
 		return -1;
 	if (getItem(&LB , "log_size",log_size))
 		return -1;
-	clb_close(LB);
+
+	/* Get the storage unit name */
+	if (getItem(&LB, LB_ITEM_NAME_STORAGE_UNIT_NAME, suName))
+		return -1;
+
+	lb_close(LB);
 	return 0;
 }
 
@@ -1196,249 +1280,221 @@ validateDDBoostCredential(char *hostname, char *user, char *password, char* log_
 	return 0;
 }
 
-int
-parseDDBoostCredential(char *hostname, char *user, char *password, const char *progName)
-{
-	char filepath[PATH_MAX];	
-	char *home = getenv("HOME");
-	char line[PATH_MAX];
-	
-	if (NULL == home)
-	{
-		mpp_err_msg("ERROR", progName, "HOME undefined, can't set ddboost credentials\n");
-		return -1;
-	}
-	
-	memset(filepath, 0, PATH_MAX);
-	snprintf(filepath, strlen(home) + strlen(DDBOOST_CONFIG_FILE) + 2, "%s/%s", home, DDBOOST_CONFIG_FILE);
-
-	memset(line, 0, PATH_MAX);
-	memset(hostname, 0, PATH_MAX);
-	memset(user, 0, PATH_MAX);
-	memset(password, 0, PATH_MAX);
-
-	FILE *fp = fopen(filepath, "r");
-	if (!fp)
-	{
-		mpp_err_msg("ERROR", progName, "error opening DD Boost credential config file %s\n", filepath);
-		return -1;
-	}
-
-	if (!fgets(line, PATH_MAX, fp))
-	{
-		mpp_err_msg("ERROR", progName, "end of DD Boost config file, missing hostname\n");
-		return -1;
-	}
-	strncpy(hostname, line, strlen(line) - 1);
-	memset(line, 0, PATH_MAX);
-
-	if (!fgets(line, PATH_MAX, fp))
-	{
-		mpp_err_msg("ERROR", progName, "end of DD Boost config file, missing user name \n");
-		return -1;
-	}
-	if (strlen(line) > (DDBOOST_USERNAME_MAXLENGTH + 1) || strlen(line) < 2)
-	{
-		mpp_err_msg("ERROR", progName, "username too long or too short, user name is limited to 30 characters\n");
-		return -1;
-	}
-	strncpy(user, line, strlen(line) - 1);
-	memset(line, 0, PATH_MAX);
-
-	if (!fgets(line, PATH_MAX, fp))
-	{
-		mpp_err_msg("ERROR", progName, "end of DD Boost config file, missing password\n");
-		return -1;
-	}
-	if (strlen(line) > (DDBOOST_PASSWORD_MAXLENGTH + 1) || strlen(line) < 2)
-	{
-		mpp_err_msg("ERROR", progName, "password too long or too short, password is limited to 40 characters\n");
-		return -1;
-	}
-	strncpy(password, line, strlen(line) - 1);
-
-
-	if (!fgets(line, PATH_MAX, fp))
-	{
-		mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log param (level = DEBUG, size = 50MB) \n");
-		ddboost_logs_info.logLevel = DDP_SEV_DEBUG;
-		ddboost_logs_info.logsSize = 50*1024*1024;
-		return 0;
-	}
-	if (!strncmp("INFO",line,4))
-		ddboost_logs_info.logLevel = DDP_SEV_INFO;
-	else if (!strncmp("WARN",line,4))
-		ddboost_logs_info.logLevel = DDP_SEV_WARN;
-	else if (!strncmp("DEBUG",line,5))
-		ddboost_logs_info.logLevel = DDP_SEV_DEBUG;
-	else if (!strncmp("ERROR",line,5))
-		ddboost_logs_info.logLevel = DDP_SEV_ERROR;
-	else if (!strncmp("NONE",line,4))
-		ddboost_logs_info.logLevel = DDP_SEV_NONE;
-	else
-	{
-		mpp_err_msg("ERROR", progName, "Illegal value for log level: %s, please use INFO, WARN, DEBUG, ERROR or NONE\n",line);
-		return -1;
-	}
-	mpp_err_msg("INFO", progName, "DD log level = %u \n",ddboost_logs_info.logLevel);
-
-
-	if (!fgets(line, PATH_MAX, fp))
-	{
-		mpp_err_msg("INFO", progName, "end of DD Boost config file, using defaults log size = 50(MB) \n");
-		return 0;
-	}
-	int size = atoi(line);
-	if (size < 1 || size > 1000)
-	{
-		mpp_err_msg("ERROR", progName, "Illegal value for log size(MB): %s, please use size between 1 and 1000\n",line);
-		return -1;
-	}
-	ddboost_logs_info.logsSize = size * 1024 * 1024;
-	mpp_err_msg("INFO", progName, "DD log size = %u(bytes) \n",ddboost_logs_info.logsSize);
-	return 0;
-}
-
 /* if the file too long this will rotate the files_name to file_name_0 - .._10 . the last file is deleted*/
 void rotate_dd_logs(const char *file_name, unsigned int num_of_files, unsigned int log_size)
 {
-    struct stat st;
-    
-    if (stat(file_name,&st) == 0)
-        {
-            unsigned int size = (unsigned int)st.st_size;
-            if (size > log_size)
-                {
-                    
-                    char tmp_name[80];
-                    char next_tmp_name[80];
-                    sprintf(tmp_name,"%s_%u",file_name,num_of_files);
-                    int r = remove(tmp_name);
-                    if (r != 0)
-                        mpp_err_msg("INFO","rotate_dd_logs","didn't delete of %s , %s\n" ,tmp_name, strerror( errno ));
+	struct stat st;
 
-                    for (unsigned int i = num_of_files - 1; i > 0; i--){                        
-                        snprintf(next_tmp_name, 80, "%s_%u",file_name,i + 1);
-                        snprintf(tmp_name,80 ,"%s_%u", file_name,i);
-                      
-                        if (rename(tmp_name, next_tmp_name) != 0)
-                            mpp_err_msg("INFO","rotate_dd_logs","didn't rename of %s to %s : %s\n" ,tmp_name,next_tmp_name,strerror( errno ));
-                    }
-                    snprintf(next_tmp_name, 80, "%s_%u",file_name,1);
-                    if ((r = rename(file_name, next_tmp_name)) != 0)
-                        mpp_err_msg("INFO","rotate_dd_logs","didn't rename first log %s to %s : %s" ,tmp_name,next_tmp_name,strerror( errno ));
-                   
-                }
-        }
-    else
-        mpp_err_msg("INFO","rotate_dd_logs","failed to find size");
+	if (stat(file_name, &st) == 0)
+	{
+		unsigned int size = (unsigned int) st.st_size;
+		if (size > log_size)
+		{
+			int r;
+			uint i;
+			char tmp_name[80];
+			char next_tmp_name[80];
+			sprintf(tmp_name, "%s_%u", file_name, num_of_files);
+			r = remove(tmp_name);
+			if (r != 0)
+				mpp_err_msg("INFO", "rotate_dd_logs", "Could not delete %s, %s\n", tmp_name, strerror(errno));
+
+			for (i = num_of_files - 1; i > 0; i--)
+			{
+				snprintf(next_tmp_name, 80, "%s_%u", file_name, i + 1);
+				snprintf(tmp_name, 80, "%s_%u", file_name, i);
+
+				if (rename(tmp_name, next_tmp_name) != 0)
+					mpp_err_msg("INFO", "rotate_dd_logs", "Could not rename %s to %s : %s\n", tmp_name, next_tmp_name, strerror(errno));
+			}
+			snprintf(next_tmp_name, 80, "%s_%u", file_name, 1);
+			if ((r = rename(file_name, next_tmp_name)) != 0)
+				mpp_err_msg("INFO", "rotate_dd_logs", "Could not rename first log %s to %s : %s", tmp_name, next_tmp_name, strerror(errno));
+		}
+	}
+	else
+		mpp_err_msg("INFO", "rotate_dd_logs", "Cannot access %s\n", file_name);
 }
+
+const char *ddp_log_severity_string[] = { "NONE", "ERROR", "WARNING", "INFO", "DEBUG" };
+
 /* Initialize the file for logging DDboost related information */
 void
 _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
 {
 
-    if (severity >  ddboost_logs_info.logLevel)//filtering of the logs
-        return;
+	if (severity > dd_conn_info.logLevel) //filtering of the logs
+		return;
+	else
+	{
+		FILE* log_file = NULL;
+		time_t ltime;
+		struct tm *Tm;
+		char file_name[] = "libDDBoost.log";
 
-    FILE* log_file = NULL;
-    time_t ltime;
-    struct tm *Tm;
-    char file_name[] = "libDDBoost.log";
-    
-    rotate_dd_logs(file_name, DDBOOST_LOG_NUM_OF_FILES, ddboost_logs_info.logsSize / DDBOOST_LOG_NUM_OF_FILES);
+		/* This is just to prevent out of boundary access */
+		if (severity > DDP_SEV_DEBUG)
+			severity = DDP_SEV_DEBUG;
+		if (severity < DDP_SEV_NONE)
+			severity = DDP_SEV_NONE;
 
-    log_file = fopen(file_name, "a");
+		rotate_dd_logs(file_name, DDBOOST_LOG_NUM_OF_FILES,	dd_conn_info.logsSize / DDBOOST_LOG_NUM_OF_FILES);
 
-       
-    if (log_file) {
-        ltime = time(NULL);
-        Tm = localtime(&ltime);
-        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
-                           Tm->tm_mon + 1, Tm->tm_mday,
-                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
-                           log_msg);
-        fclose(log_file);
-    }
+		log_file = fopen(file_name, "a");
+
+		if (log_file)
+		{
+			ltime = time(NULL);
+			Tm = localtime(&ltime);
+			fprintf(log_file, "%02d/%02d %02d:%02d:%02d [%s]: %s\n",
+							   Tm->tm_mon + 1, Tm->tm_mday,
+							   Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
+							   ddp_log_severity_string[severity], log_msg);
+			fclose(log_file);
+		}
+	}
 }
 
-int
-initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info, char **ddp_su_name,
-		bool createStorageUnit)
+
+/* This function inits DD related context, and connects to the Data Domain */
+int connectToDDSystem(ddp_inst_desc_t *ddp_inst, ddp_conn_desc_t *ddp_conn, ddp_client_info_t *cl_info, char **ddp_su_name)
 {
 	int err = DD_ERR_NONE;
-	uint POOL_SIZE = DDBOOST_POOL_SIZE;
-	char *storage_unit_name = NULL;
-	char *dd_boost_username = NULL;
 	char *dd_boost_passwd = NULL;
-	char *dd_boost_hostname = NULL;
 	char *log_level = NULL;
 	char *log_size = NULL;
 
-	err = getDDBoostCredential(&dd_boost_hostname,
-			&dd_boost_username,
-			&dd_boost_passwd ,
-			&log_level,
-			&log_size);
+	if (initDDSystem(ddp_inst, cl_info))
+		return -1;
 
+	err = getDDBoostCredential(&dd_conn_info.hostname,
+			&dd_conn_info.username,
+			&dd_boost_passwd,
+			&log_level,
+			&log_size,
+			&dd_conn_info.storageUnitName);
 	if (err)
 	{
 		mpp_err_msg("ERROR", "ddboost", "Parsing DDBoost login credentials failed\n");
 		return -1;
 	}
 
-	storage_unit_name = (char*)malloc(PATH_MAX);
-	if (storage_unit_name == NULL)
+	/* Copy the storage unit name */
+	*ddp_su_name = Safe_strdup(dd_conn_info.storageUnitName);
+
+	err = ddp_connect_with_user_pwd(*ddp_inst, dd_conn_info.hostname, NULL, dd_conn_info.username, dd_boost_passwd, ddp_conn);
+	if (err != DD_ERR_NONE)
 	{
-		mpp_err_msg("ERROR", "ddboost", "Memory allocation failed during DDBoost initialization\n");
-		return -1;
+		mpp_err_msg("ERROR", "ddboost", "ddboost connect failed. Error: \"%s\" (errno = %d)\n", ddp_errstr(err), err);
+		return err;
 	}
-	sprintf(storage_unit_name, "%s", "GPDB");
-	*ddp_su_name = storage_unit_name;
+
+	if (!strncmp("INFO", log_level, 4))
+		dd_conn_info.logLevel = DDP_SEV_INFO;
+	else if (!strncmp("WARN", log_level, 4))
+		dd_conn_info.logLevel = DDP_SEV_WARN;
+	else if (!strncmp("DEBUG", log_level, 5))
+		dd_conn_info.logLevel = DDP_SEV_DEBUG;
+	else if (!strncmp("ERROR", log_level, 5))
+		dd_conn_info.logLevel = DDP_SEV_ERROR;
+	else if (!strncmp("NONE", log_level, 4))
+		dd_conn_info.logLevel = DDP_SEV_NONE;
+
+	dd_conn_info.logsSize = atoi(log_size) * 1024 * 1024;
+
+	return NO_ERR;
+}
+
+
+/* This function inits the DD related context (if needed) */
+int initDDSystem(ddp_inst_desc_t *ddp_inst, ddp_client_info_t *cl_info)
+{
+	int 		err;
+	static int	isDdInitialized = false;
+
+	if (isDdInitialized == true)
+		return NO_ERR;
 
 	err = ddp_init("gp_dump");
-	if (err != DD_ERR_NONE) {
-		mpp_err_msg("ERROR", "ddboost", "ddboost init failed. Err = %d\n", err);
-		return err;
-	}
-
-	err = ddp_instance_create(POOL_SIZE, cl_info, ddp_inst);
-	if (err)
+	if (err != DD_ERR_NONE)
 	{
-		mpp_err_msg("ERROR", "ddboost", "ddboost instance creation failed. Err = %d\n", err);
-		return err;
+		mpp_err_msg("ERROR", "ddboost", "ddboost init failed. Error: \"%s\" (errno = %d)\n", ddp_errstr(err), err);
+		return -1;
 	}
 
-	ddp_log_init(*ddp_inst, NULL, _ddp_test_log);
-
-	err = ddp_connect_with_user_pwd(*ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, ddp_conn);
-	if (err != DD_ERR_NONE) {
-		mpp_err_msg("ERROR", "ddboost", "ddboost connect failed. Err = %d\n", err);
-		return err;
-	}
-
-	if (createStorageUnit)
+	err = ddp_instance_create(DDBOOST_POOL_SIZE, cl_info, ddp_inst);
+	if (err != DD_ERR_NONE)
 	{
-		err = ddp_create_storage_unit(*ddp_conn, storage_unit_name);
-		if (err != DD_ERR_NONE) {
-			mpp_err_msg("ERROR", "ddboost", "ddboost create storage unit failed. Err = %d\n", err);
-			return err;
+		mpp_err_msg("ERROR", "ddboost", "ddboost instance creation failed. Error: \"%s\" (errno = %d)\n", ddp_errstr(err), err);
+		return -1;
+	}
+
+	err = ddp_log_init(*ddp_inst, NULL, _ddp_test_log);
+	if (err != DD_ERR_NONE)
+	{
+		mpp_err_msg("WARNING", "ddboost", "Failed to init the DD logs. Error: \"%s\" (errno = %d)\n", ddp_errstr(err), err);
+	}
+
+	/* Indicate that the initialization is done */
+	isDdInitialized = true;
+	return NO_ERR;
+}
+
+
+/* This function checks whether there are existing items in the lockbox */
+/* The items that we check are:											*/
+/*	- 'StorageUnitName'													*/
+int getExistingLbItems(char **currentSuName)
+{
+	int 		result;
+	clbHandle 	LB;
+
+	/* Try to open the existing Lockbox */
+	result = openLB(&LB, DDBOOST_CONFIG_FILE, false);
+	if (result == NO_ERR)
+	{
+		/* If the Lockbox exists, we will check whether the "StorageUnitName" item exists	*/
+		/* If yes - we will store it, and save to the Lockbox later 						*/
+		int suExists;
+		result = lb_containsItem(LB, LB_ITEM_NAME_STORAGE_UNIT_NAME, &suExists);
+		if (result == NO_ERR)
+		{
+			if (suExists)
+			{
+				/* If StorageUnitName exists - get the value */
+				if (getItem(&LB, LB_ITEM_NAME_STORAGE_UNIT_NAME, currentSuName) == NO_ERR)
+				{
+					return NO_ERR;
+				}
+				else
+					/* If StorageUnitName exists, but we can't get the value - indicate an error */
+					return -1;
+			}
+			else
+				/* The Lockbox exists, bit the SU doesn't exist */
+				return NO_ERR;
+		}
+		else
+			/* If Lockbox exists, but we can't open it - indicate an error */
+			return -1;
+	}
+	else
+	{
+		/* If the Lockbox doesn't exist - this is not an error */
+		if (result == CLB_ERR_LB_FILE_NOT_FOUND)
+		{
+			return NO_ERR;
+		}
+		else
+		{
+			/* If the Lockbox exists but cannot be opened - indicate an error*/
+			char *eMsg = NULL;
+			lb_getErrorMessage(result, &eMsg);
+			mpp_err_msg("ERROR", "ddboost", "%s\n", eMsg);
+			lb_free(eMsg);
+			return -1;
 		}
 	}
-
-	if (!strncmp("INFO",log_level,4))
-		ddboost_logs_info.logLevel = DDP_SEV_INFO;
-	else if (!strncmp("WARN",log_level,4))
-		ddboost_logs_info.logLevel = DDP_SEV_WARN;
-	else if (!strncmp("DEBUG",log_level,5))
-		ddboost_logs_info.logLevel = DDP_SEV_DEBUG;
-	else if (!strncmp("ERROR",log_level,5))
-		ddboost_logs_info.logLevel = DDP_SEV_ERROR;
-	else if (!strncmp("NONE",log_level,4))
-		ddboost_logs_info.logLevel = DDP_SEV_NONE;
-	
-	ddboost_logs_info.logsSize = atoi(log_size)*1024*1024;	
-
-	return 0;
 }
+
 #endif

@@ -86,19 +86,21 @@ class GpCronDump(Operation):
         # DDBoost related parameters
         self.ddboost_options = GpDdboostManager(options, self.master_port, self.only_ddboost_options(options))
         
-        
-        if not (self.clear_dumps_only or bool(self.ddboost_options.ddboost_hosts) or bool(self.ddboost_options.ddboost_user) or self.ddboost_options.ddboost_config_remove):
+        # This if is to check whether we want to perform some configuration, rather than actually perform a backup
+        if not (self.clear_dumps_only or bool(self.ddboost_options.ddboost_hosts) or bool(self.ddboost_options.ddboost_user) or self.ddboost_options.ddboost_config_remove  
+                or bool(self.ddboost_options.list_su) or (self.ddboost_options.create_su)):
             if self.dump_databases is not None:
                 self.dump_databases = self.dump_databases.split(",")
             elif 'PGDATABASE' in os.environ:
                 self.dump_databases = [os.environ['PGDATABASE']]
                 logger.info("Setting dump database to value of $PGDATABASE which is %s" % self.dump_databases[0])
             else:
-                if self.ddboost_options.ddboost_verify is True:
-                    # We would expect to verify the credentials here and return some exit code,
+                if (self.ddboost_options.managment_operations is True):
+                    # We would expect to perform the ddboost related operations here and return some exit code,
                     # but __init__() should return None, not 'int' - hence we are forced to use
                     # some flag
-                    self.ddboost_options.ddboost_verify_and_exit = True
+                    self.ddboost_options.ddboost_configure_and_exit = True
+                    print 'ddboost_configure_and_exit = ' + self.ddboost_options.ddboost_configure_and_exit + '\n'
                 else:
                     raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
 
@@ -134,7 +136,7 @@ class GpCronDump(Operation):
         # Execute the DDBoost related actions. If the return value is True, 
         # it means that only DDBoost related activity should be executed;
         # meaning we should exit now
-        if self.ddboost_options.execute() == True:
+        if self.ddboost_options.execute() is True:
             return 0;
 
         if self.clear_dumps_only:
