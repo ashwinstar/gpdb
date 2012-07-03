@@ -1932,6 +1932,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             self.logger.info('Populating %s.%s with data from database %s' % (gpexpand_schema, status_detail_table, dbname.decode('utf-8')) )
             self._populate_regular_tables(dbname)
             self._populate_partitioned_tables(dbname)
+            self._update_distribution_policy(dbname)
 
         nowStr = datetime.datetime.now()
         statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP DONE', '%s' ) " % (gpexpand_schema,status_table,nowStr)
@@ -2024,27 +2025,6 @@ WHERE
 
         table_conn.commit()
         table_conn.close()
-        table_conn = self.connect_database(dbname)
-        #null out the dist policies
-        sql = """
-UPDATE  gp_distribution_policy
-  SET attrnums = NULL
-FROM pg_class c
-    JOIN pg_namespace n ON (c.relnamespace=n.oid)
-WHERE
-    localoid = c.oid
-    AND c.oid NOT IN ( SELECT parrelid as oid FROM pg_partition
-                    UNION
-                   SELECT parchildrelid as oid FROM pg_partition_rule
-                 )
-    AND n.nspname != 'gpexpand';
-        """
-
-        self.logger.debug(sql)
-        dbconn.execSQL(table_conn,sql)
-        table_conn.commit()
-        table_conn.close()
-        pass
 
 
     def _populate_partitioned_tables(self,dbname):
@@ -2126,7 +2106,31 @@ ORDER BY tablename, c2.oid desc;
 
         table_conn.commit()
         table_conn.close()
+
+
+    def _update_distribution_policy(self, dbname):
+        """ NULL out the distribution policy for both
+            regular and paritioned table before expansion
+        """
+        
         table_conn = self.connect_database(dbname)
+        #null out the dist policies
+        sql = """
+UPDATE  gp_distribution_policy
+  SET attrnums = NULL
+FROM pg_class c
+    JOIN pg_namespace n ON (c.relnamespace=n.oid)
+WHERE
+    localoid = c.oid
+    AND c.oid NOT IN ( SELECT parrelid as oid FROM pg_partition
+                    UNION
+                   SELECT parchildrelid as oid FROM pg_partition_rule
+                 )
+    AND n.nspname != 'gpexpand';
+        """
+
+        self.logger.debug(sql)
+        dbconn.execSQL(table_conn,sql)
 
         sql = """
 UPDATE gp_distribution_policy
@@ -2150,8 +2154,7 @@ UPDATE gp_distribution_policy
         dbconn.execSQL(table_conn,sql)
         table_conn.commit()
         table_conn.close()
-
-
+        
     def form_dist_policy_name(self,conn,rs_val,table_oid):
         if rs_val is None:
             return (None,None)
