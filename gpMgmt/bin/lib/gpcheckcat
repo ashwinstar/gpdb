@@ -17,55 +17,23 @@ Usage: gpcheckcat [<option>] [dbname]
     -C catname : run cross consistency, FK and ACL tests for this catalog table
 
 '''
-import sys, os, subprocess, tempfile, stat, re, logging
+import sys, os, subprocess, tempfile, stat, re
 from threading import Thread
 from datetime import timedelta
 from time import localtime, strftime, time
 import getopt
 
 try:
-    from gppylib.gpcatalog import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
+    from gppylib.gpcatalog import *
+    from gpcheckcat_lib import *
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
 parallelism = 8
 # cache OID -> object name cache
 oidmap = {}
-
-#-------------------------------------------------------------------------------
-# Setup LOGGER
-#-------------------------------------------------------------------------------
-logger = logging.getLogger('gpcheckcat')
-logger.setLevel(logging.INFO)
-
-formatStr = '%(asctime)s:gpcheckcat:-[%(levelname)-s]:-%(message)s'
-formatter = logging.Formatter(formatStr, '%Y%m%d:%H:%M:%S')
-empty_formatter = logging.Formatter()
-
-logdir = os.path.join(os.path.expanduser('~'), 'gpAdminLogs')
-if not os.path.exists(logdir): 
-    os.mkdir(logdir)
-logfile = '%s/gpcheckcat_%s.log' % (logdir, strftime('%Y%m%d_%H%M%S', localtime()))
-fhandler = logging.FileHandler(logfile, 'w')
-fhandler.setLevel(logging.DEBUG)
-fhandler.setFormatter(formatter)
-logger.addHandler(fhandler)
-
-shandler = logging.StreamHandler()
-shandler.setLevel(logging.CRITICAL)
-shandler.setFormatter(empty_formatter)
-logger.addHandler(shandler)
-
-def log_literal(lvl, msg):
-    """Log to the log file but without extra formatting."""
-    fhandler.setFormatter(empty_formatter)
-    logger.log(lvl, msg)
-    fhandler.setFormatter(formatter)
-
-def log_verbose():
-    logger.setLevel(logging.DEBUG)
 
 #-------------------------------------------------------------------------------
 
@@ -147,29 +115,11 @@ class Global():
         
     def reset_stmt_queues(self):
 
-        # dictionary of SQL statements. Key is dbid
-        self.Remove = {}
-    
-        # dictionary of SQL statements. Key is dbid
-        self.AdjustConname = {}
-    
-        # dictionary of SQL statements. Key is dbid
-        self.DemoteConstraint = {}
-    
-        # constraints which are actually unenforcable
-        self.Constraints = []
-    
-        # ownership fixups
-        self.Owners = []
-    
-        # fix distribution policies
-        self.Policies = []
-        
         self.missingEntryStatus = None
         self.inconsistentEntryStatus = None
         self.foreignKeyStatus = None
         self.aclStatus = None
-
+        self.demoteConstraintStatus = None
 
         # the following variables used for reporting purposes
         self.elapsedTime = 0
@@ -186,22 +136,6 @@ def usage(exitarg = None):
     print __doc__
     sys.exit(exitarg)
 
-
-###############################
-
-def getversion():
-    versions = ["3.2", "3.3", "4.0", "4.1", "4.2", "main"]
-    db = connect()
-    curs = db.query('''
-    select regexp_replace(version(), 
-       E'.*PostgreSQL [^ ]+ .Greenplum Database ([1-9]+.[0-9]+|main).*', 
-       E'\\\\1') as ver;''')
-
-    row = curs.getresult()[0]
-    version = row[0]
-
-    logger.debug('got version %s' % version)
-    return version
 
 ###############################
 def getalldbs():
@@ -443,6 +377,7 @@ def getGPConfiguration():
     db.close()
     return cfg
 
+
 def checkDistribPolicy():
     logger.info('-----------------------------------')
     logger.info('Checking constraints on randomly distributed tables and unique constraints are only on distribution columns')
@@ -476,11 +411,17 @@ def checkDistribPolicy():
             logger.info('[FAIL] randomly distributed tables and unique constraints')
             logger.error('pg_constraint has %d issue(s)' % len(err))
             logger.error(qry)
-            for e in err: logger.error(formatErr(e[0], e[1], e[2]))
+            stmt = '\n'
             for e in err:
+                logger.error(formatErr(e[0], e[1], e[2]))
                 cons = e[2]
-                removeIndexConstraint(cons['nspname'], cons['relname'],
-                                  cons['constraint'])
+                stmt += 'ALTER TABLE "{nspname}"."{relname}" DROP CONSTRAINT "{constraint}" CASCADE;\n'\
+                        .format( nspname    = cons['nspname'],
+                                 relname    = cons['relname'],
+                                 constraint = cons['constraint'] )
+            comment = 'Dropping invalid unique constraints'
+            RSCRIPT.create_repair_script(GV.dbname, MASTERDB, 'removeConstraint', stmt, comment)
+
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint('[ERROR] executing test: checkDistribPolicy')
@@ -651,18 +592,21 @@ def checkPartitionIntegrity():
             logger.error('partition distribution policy check found %d issue(s)' % len(err))
             logger.error(qry)
 
+            stmt = '\n'
             for e in err:
-                cfg = e[0]
                 col = e[1]
                 row = e[2]
 
                 # generate repair script for this row
-                distributeRandomly(row['parchildrelid'])
+                stmt += 'ALTER TABLE %s SET DISTRIBUTED RANDOMLY;\n' % row['parchildrelid']
 
                 logger.error("--------")
                 logger.error("  " + " | ".join(map(str, col)))
                 logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
                 logger.error("  " + " | ".join([str(row[x]) for x in col]))
+
+            comment = 'Fixing distribution policies'
+            RSCRIPT.create_repair_script(GV.dbname, MASTERDB, 'fixDistribution', stmt, comment)
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
@@ -1626,15 +1570,17 @@ def checkPartitionRegularity():
     # Rio partitioning changes introduce new regularity requirements for constraints
     # on partitioned tables.  These are the checks.
     #
-    okayToRun = GV.missingEntryStatus and GV.inconsistentEntryStatus and GV.foreignKeyStatus
+    okayToRun = GV.missingEntryStatus and GV.inconsistentEntryStatus \
+                and GV.foreignKeyStatus and not GV.opt['-R']
     irregular = False
 
     logger.info('-----------------------------------')
     logger.info('Checking pg_partition/pg_constraint regularity ...')
     
     if not okayToRun:
-        logger.warn('unable to run pg_partition/pg_constraint regularity checks')
-        logger.warn('prerequisite tests failed or not run')
+        myprint('--- unable to run pg_partition/pg_constraint regularity checks')
+        myprint('--- prerequisite tests (inconsistent, missing_extraneous, foreign_key) failed or not run')
+        GV.totalTestRun -= 1 
         return
     
     db = connect()
@@ -1721,16 +1667,18 @@ def checkPartitionRegularity():
                 logger.info('[OK]  %s' % testname)
             else:
                 GV.testStatus = False
+                GV.demoteConstraintStatus = True
                 setError(ERROR_REMOVE)
                 logger.info('[FAIL]  %s' % testname)
                 logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
                 efmt = '  partitioned table "{tableid}" has unenforced {con_type_phrase} constraint: "{partid}"'
                 repair_fmt = partitionRegularityChecks['unenforced_constraint_repairs']
-                for e in err:
+                stmt = '\n'
+                for e in sorted(err):
                     logger.error(efmt.format(**e))
-                    repair_sequence = repair_fmt.format(**e)
-                    for dbid in GV.cfg:
-                        addDemoteConstraint(dbid, repair_sequence)
+                    stmt += repair_fmt.format(**e) + '\n'
+                comment = 'demote constraint'
+                RSCRIPT.create_repair_script(GV.dbname, SEGDBS, 'demoteUnenforcedConstraint', stmt, comment)
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -1742,7 +1690,7 @@ def checkPartitionRegularity():
     
     if irregular:
         logger.warn('skipping test %s due to constraint irregularities' % testname)
-    elif GV.DemoteConstraint:
+    elif GV.demoteConstraintStatus:
         logger.warn('skipping test %s due to unenforced constraint removals' % testname)
     else:
         # logger.info('Checking %s ...' % testname)
@@ -1762,14 +1710,27 @@ def checkPartitionRegularity():
                 logger.info('[FAIL]  %s' % testname)
                 logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
                 efmt = '  part table "%s" has constraint named "%s"; should be "%s"'
+                stmt = '\n'
                 for e in err:
                     # part name, wrong constraint name, right constraint name
                     logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
-                    for dbid in GV.cfg:
-                        buildAdjustConname(
-					     	dbid, e['tableid'], int(e['partrelid']), 
-		    				quote_value(e['partconname']), 
-			    			quote_value(e['tableconname']) )
+                    relname    = e['tableid']
+                    relid      = int(e['partrelid'])
+                    oldconname = quote_value(e['partconname'])
+                    newconname = quote_value(e['tableconname'])
+
+                    stmt += """
+--Constraint Name: {oldconname} on {relname} becomes {newconname}
+UPDATE pg_constraint
+SET conname = {newconname}
+WHERE conrelid = {relid} and conname = {oldconname};
+                            """.format(oldconname = oldconname,
+                                       newconname = newconname,
+                                       relname = relname,
+                                       relid = relid)
+
+                comment = 'adjust partitioned table conname'
+                RSCRIPT.create_repair_script(GV.dbname, SEGDBS, 'adjustConname', stmt, comment)
 
         except Exception, e:
             setError(ERROR_NOREPAIR)
@@ -1831,7 +1792,7 @@ def checkInheritanceDeprecation():
         skip = False
         if "GP_ENABLE_INHERITANCE" in os.environ:
             skip = True
-        elif GV.version > "4.2":
+        elif DBVERSION > "4.2":
             curs = db.query("SHOW gp_enable_inheritance")
             inheritance_enabled = curs.getresult()[0][0]
             if inheritance_enabled == "on":
@@ -1981,9 +1942,7 @@ def removeFastSequence(db):
     '''
     try:
         qry = """ 
-              SELECT dbid, objid 
-                FROM gp_segment_configuration AS cfg JOIN
-			         (SELECT gp_segment_id, objid
+			         SELECT gp_segment_id, array_agg(objid) as objids
                         FROM (select gp_segment_id, objid from gp_fastsequence
                               union
                               select gp_segment_id, objid from gp_dist_random('gp_fastsequence')) AS fs
@@ -1992,70 +1951,21 @@ def removeFastSequence(db):
                               union
                               select oid from gp_dist_random('pg_class')) AS c
                         ON (fs.objid = c.oid)
-                     WHERE c.oid IS NULL) AS r
-                  ON r.gp_segment_id = cfg.content 
-               WHERE cfg.role = 'p';
+                     WHERE c.oid IS NULL GROUP BY gp_segment_id;
               """
+
         curs = db.query(qry)
         for row in curs.dictresult():
-            seg     = row['dbid']				# dbid of targetted segment
-            name    = 'gp_fastsequence tuple'	# for comment purposes 
-            table   = 'gp_fastsequence' 		# table name
-            cols    = {'objid': row['objid']} 	# column name and value
-            objname = 'gp_fastsequence'			# for comment purposes 
-            buildRemove(seg, name, table, cols, objname)
+            segid  = row['gp_segment_id']
+            objids = [i for i in row['objids'][1:-1].split(',')]
+            stmt = '\n'
+            for objid in objids:
+                stmt += 'DELETE FROM gp_fastsequence WHERE objid = %s; \n' % (objid)
+            comment = 'Removing gp_fastsequence entries'
+            RSCRIPT.create_repair_script(GV.dbname, segid, 'removeFastSequence', stmt, comment)
+
     except Exception, e:
         logger.error('removeFastSequence: ' + str(e))
-
-
-#############
-
-def removeIndexConstraint(nspname, relname, constraint):
-    GV.Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s" CASCADE;' % \
-            (nspname, relname, constraint))
-
-def distributeRandomly(rel):
-    GV.Policies.append('ALTER TABLE %s SET DISTRIBUTED RANDOMLY;' % rel)
-
-def buildRemove(seg, name, table, cols, objname):
-    first = False
-    fullstr = ''
-    str = ''
-    for col in cols:
-        if not first:
-            fullstr = '--Object Name: %s\n--Remove %s for %i\n' %  \
-                (objname, name, cols[col])
-        if len(str) > 0:
-            str += ' or '
-        str += '%s = \'%s\'' % (col, cols[col])
-    fullstr += 'DELETE FROM %s WHERE %s;' % (table, str)
-    addRemove(seg, fullstr)
-
-def addRemove(seg, line):
-    if not GV.Remove.has_key(seg):
-        GV.Remove[seg] = []
-    GV.Remove[seg].append(line)
-
-def buildAdjustConname(seg, relname, relid, oldconname, newconname):
-    # relname text
-    # relid oid as int
-    # old/newconname text
-    stmt = '--Constraint Name: %s on %s becomes %s\n' % \
-        (oldconname, relname, newconname)
-    stmt += 'UPDATE pg_constraint\n'
-    stmt += 'SET conname = %s\n' % newconname
-    stmt += 'WHERE conrelid = %d and conname = %s;' % (relid, oldconname)
-    addAdjustConname(seg, stmt)
-
-def addAdjustConname(seg, stmt):
-    if not GV.AdjustConname.has_key(seg):
-        GV.AdjustConname[seg] = []
-    GV.AdjustConname[seg].append(stmt)
-
-def addDemoteConstraint(seg, repair_sequence):
-    if not GV.DemoteConstraint.has_key(seg):
-        GV.DemoteConstraint[seg] = []
-    GV.DemoteConstraint[seg].append(repair_sequence)    
 
 
 #############
@@ -2130,21 +2040,6 @@ def checkDepend():
         myprint(qry)
         
 
-def fixupowners(nspname, relname, oldrole, newrole):
-    
-    # Must first alter the table to the wrong owner, then back to the right
-    # owner.  The purpose of this is that AT doesn't dispatch the change unless
-    # it think the table actually changed owner.
-    #
-    # Note: this means that the Owners list must be run in the order given.
-    #
-    GV.Owners.append('-- owner for "%s"."%s"' % (nspname, relname))
-    GV.Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
-                  (nspname, relname, oldrole))
-    GV.Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
-                  (nspname, relname, newrole))
-
-
 def checkOwners():
     logger.info('-----------------------------------')
     logger.info('Checking table ownership')
@@ -2202,9 +2097,21 @@ def checkOwners():
                 logger.error('  %s.%s relowner %s != %s'
                     % (row['nspname'], row['relname'], row['rolname'],
                        row['master_rolname']))
+
+            stmt = ''
             for row in rows:
-                fixupowners(row['nspname'], row['relname'], row['rolname'],
-                            row['master_rolname'])
+                stmt += """
+-- owner for "{nspname}"."{relname}"
+ALTER TABLE "{nspname}"."{relname}" OWNER TO "{oldrole}";
+ALTER TABLE "{nspname}"."{relname}" OWNER TO "{newrole}";
+                        """.format(nspname = row['nspname'],
+                                   relname = row['relname'],
+                                   oldrole = row['rolname'],
+                                   newrole = row['master_rolname'])
+
+            comment = 'Correcting table ownership'
+            RSCRIPT.create_repair_script(GV.dbname, MASTERDB, 'fixOwner', stmt, comment)
+
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint("[ERROR] executing: check table ownership")
@@ -3583,174 +3490,10 @@ def runOneTest(name):
 
 #-------------------------------------------------------------------------------
 def runAllTests():
-    '''
-    perform catalog check for specified database
-    '''
-
+    '''Perform catalog check for specified database'''
     for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
-        if name_test[name]["version"] >= GV.version:
+        if name_test[name]["version"] >= DBVERSION:
             runOneTest(name)
-
-    closeDbs()
-
-    logger.info("------------------------------------")
-
-    fixes = (len(GV.Remove) > 0 or 
-             len(GV.AdjustConname) > 0 or
-             len(GV.DemoteConstraint) > 0 or
-             len(GV.Constraints) > 0 or
-             len(GV.Owners) > 0 or 
-             len(GV.Policies) > 0)
-    if GV.opt['-g'] != None and fixes:
-        try:
-            if not os.path.exists(GV.opt['-g']):
-                os.mkdir(GV.opt['-g'])
-        except Exception, e:
-            logger.fatal('Unable to create directory "%s": %s' % 
-                         (GV.opt['-g'], str(e)))
-            sys.exit(1)
-                   
-        logger.debug('Building catalog repair scripts')
-        # set allow_system_table_mods GUC for gpdb >= 4.2
-        catmod_guc = ""
-        if GV.version >= "4.2":
-            catmod_guc = "-c allow_system_table_mods=dml"
-
-        # build a script to run these files     
-        script = '#!/bin/bash\ncd $(dirname $0)\n'
-
-        # use the per-dbid loop for removal and for contraint
-        # name adjustments
-        
-        dbids = set(GV.Remove.keys())
-        dbids = dbids.union(GV.AdjustConname.keys())
-        dbids = dbids.union(GV.DemoteConstraint.keys())
-
-        for seg in dbids:
-            # dbid.host.port.dbname.sql
-            c = GV.cfg[seg]
-            filename = '%i.%s.%i.%s.sql' % (seg, c['hostname'],
-                        c['port'], GV.dbname)
-            filename = filename.replace(' ', '_')
-            fullpath = '%s/%s' % (GV.opt['-g'], filename)
-            try:
-                file = open(fullpath, 'w')
-            except Exception, e:
-                logger.fatal('Unable to create file "%s": %s' % 
-                             (fullpath, str(e)))
-                sys.exit(1)
-
-            #unique
-            lines = set()
-            if GV.Remove.has_key(seg):
-                lines = lines.union(GV.Remove[seg])
-            if GV.AdjustConname.has_key(seg):
-                lines = lines.union(GV.AdjustConname[seg])
-            if GV.DemoteConstraint.has_key(seg):
-                lines = lines.union(GV.DemoteConstraint[seg])
-
-            # make sure it is sorted
-            li = list(lines)
-            li.sort()
-            file.write('BEGIN;\n');
-            for line in li:
-                file.write(line + '\n')
-            file.write('COMMIT;\n');
-
-            file.close()
-
-            script += '\necho "Repairing segment %i"' % (seg)
-            script += '''
-env PGOPTIONS="-c gp_session_role=utility {guc}" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
-'''.format(
-                guc = catmod_guc,
-                hostname = c['hostname'], 
-                port = c['port'], 
-                fname = filename, 
-                dbname = GV.dbname)
-
-        if len(GV.Constraints) > 0:
-            GV.Constraints = list(set(GV.Constraints))
-            filename = 'removeconstraints.sql'
-            fullpath = '%s/%s' % (GV.opt['-g'], filename)
-            try:
-                file = open(fullpath, 'w')
-            except Exception, e:
-                logger.fatal('Unable to create file "%s": %s' % 
-                             (fullpath, str(e)))
-                sys.exit(1)
-
-            for r in GV.Constraints:
-                file.write('%s\n' % r)
-            file.close()
-
-            script += 'echo "Dropping invalid unique constraints"\n'
-            c = GV.cfg[1]
-            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
-                    (c['hostname'], c['port'], filename, GV.dbname, filename)
-
-        if len(GV.Owners) > 0:
-            # Previously we removed duplicate statements from the "Owners" list
-            # by casting it through a "list(set(...))", however this does not work
-            # since the order of items in the list is important for correct 
-            # results.
-            filename = 'fixowners.sql'
-            fullpath = '%s/%s' % (GV.opt['-g'], filename)
-
-            try:
-                file = open(fullpath, 'w')
-            except Exception, e:
-                logger.fatal('Unable to create file "%s": %s' %
-                             (fullpath, str(e)))
-                sys.exit(1)
-
-            for r in GV.Owners:
-                file.write('%s\n' % r)
-            file.close()
-
-            script += 'echo "Correcting table ownership"\n'
-            c = GV.cfg[1]
-            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
-                    (c['hostname'], c['port'], filename, GV.dbname, filename)
-
-        if len(GV.Policies) > 0:
-            # changes to distribution policies
-            filename = 'fixdistribution.sql'
-            fullpath = '%s/%s' % (GV.opt['-g'], filename)
-
-            try:
-                file = open(fullpath, 'w')
-            except Exception, e:
-                logger.fatal('Unable to create file "%s": %s' %
-                             (fullpath, str(e)))
-                sys.exit(1)
-
-            for r in GV.Policies:
-                file.write('%s\n' % r)
-            file.close()
-
-            script += 'echo "Fixing distribution policies"\n'
-            c = GV.cfg[1]
-            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
-                    (c['hostname'], c['port'], filename, GV.dbname, filename)
-
-
-        try:
-            path = '%s/runsql.sh' % GV.opt['-g']
-            file = open(path, 'w')
-            file.write(script)
-            file.close()
-            os.chmod(path, stat.S_IXUSR | stat.S_IRUSR | stat.S_IWUSR)
-        except Exception, e:
-            logger.fatal('Could not write script: %s' % str(e))
-            sys.exit(1)
-
-        myprint('')
-        myprint('[INFO]: repair scripts generated in directory %s' % GV.opt['-g'])
-
-    if GV.retcode >= ERROR_NOREPAIR:
-        logger.warn('[WARN]: unable to generate repairs for some issues')
-    logger.info("Check complete")
 
 
 #-------------------------------------------------------------------------------
@@ -4625,8 +4368,7 @@ if __name__ == '__main__':
         listAllTests()
         sys.exit(GV.retcode)
 
-    GV.version = getversion()
-    if GV.version < "4.0":
+    if DBVERSION < "4.0":
         myprint("Error: only Greenplum database version >= 4.0 are supported\n")
         sys.exit(GV.retcode)
 
@@ -4645,7 +4387,7 @@ if __name__ == '__main__':
 
         myprint('')
         myprint("Connected as user \'%s\' to database '%s', port '%d', gpdb version '%s'" \
-                   % (GV.opt['-U'], GV.dbname, GV.report_cfg[-1]['port'], GV.version))
+                   % (GV.opt['-U'], GV.dbname, GV.report_cfg[-1]['port'], DBVERSION))
         myprint('-------------------------------------------------------------------')
            
         if GV.opt['-R']:
@@ -4672,5 +4414,14 @@ if __name__ == '__main__':
         # skip shared tables on subsequent passes
         if not GV.opt['-S']:
             GV.opt['-S'] = "none"
+
+    # One repair script for the entire runs 
+    logger.info("------------------------------------")
+    if RSCRIPT.create_script_driver(GV.opt['-g']):
+        myprint('[INFO]: repair scripts generated in directory %s' % GV.opt['-g'])
+
+    if GV.retcode >= ERROR_NOREPAIR:
+        logger.warn('[WARN]: unable to generate repairs for some issues')
+    logger.info("Check complete")
 
     sys.exit(GV.retcode)
