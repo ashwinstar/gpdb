@@ -6791,11 +6791,6 @@ xact_get_distributed_info_from_commit(xl_xact_commit *xlrec)
 											data,
 											xlrec->persistentCommitObjectCount);
 
-	if (deserializeLen == 0)
-	{
-		return NULL;
-	}
-	
 	sub_xids = (TransactionId *)&data[deserializeLen]; 
 
 	return (TMGXACT_LOG*) &sub_xids[xlrec->nsubxacts];
