@@ -366,7 +366,7 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.complex_power(@gpupgradeschemaname@.co
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_sqrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
 	AS 'complex_sqrt' WITH (OID=9049);
-COMMENT ON FUNCTION @gpupgradeschemaname@.complex_sqrt(@gpupgradeschemaname@.complex)  IS 'squre root';
+COMMENT ON FUNCTION @gpupgradeschemaname@.complex_sqrt(@gpupgradeschemaname@.complex)  IS 'square root';
 
 CREATE FUNCTION @gpupgradeschemaname@.complex_cbrt(@gpupgradeschemaname@.complex) RETURNS @gpupgradeschemaname@.complex LANGUAGE internal IMMUTABLE STRICT 
 	AS 'complex_cbrt' WITH (OID=9050);
