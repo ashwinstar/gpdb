@@ -395,7 +395,7 @@ DECLARE_UNIQUE_INDEX(pg_compression_oid_index, 3058, on pg_compression using btr
 /* relation id: 3056 - pg_compression 20110901 */
 DECLARE_UNIQUE_INDEX(pg_compression_compname_index, 3059, on pg_compression using btree(compname name_ops));
 #define CompressionCompnameIndexId	3059
-/* relation id: 5004 - pg_window 20120612 */
+/* relation id: 5004 - pg_window 20120703 */
 DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
 #define WindowWinfnoidIndexId	5005
 

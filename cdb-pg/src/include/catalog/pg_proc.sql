@@ -5740,3 +5740,5 @@ CREATE FUNCTION gp_get_part_constraints(oid, oid) RETURNS text LANGUAGE internal
 CREATE FUNCTION gp_map_attnums(oid, oid, int2vector) RETURNS int2vector LANGUAGE internal IMMUTABLE AS 'gp_map_attnums' WITH (OID=9927, DESCRIPTION="gp_map_attnums");
 
 CREATE FUNCTION gp_map_attnums_in_expr(oid, oid, text) RETURNS text LANGUAGE internal IMMUTABLE AS 'gp_map_attnums_in_expr' WITH (OID=9929, DESCRIPTION="gp_map_attnums_in_expr");
+
+CREATE FUNCTION lead_lag_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT AS 'lead_lag_frame_maker' WITH (OID=5081);

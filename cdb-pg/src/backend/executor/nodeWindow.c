@@ -6574,32 +6574,31 @@ ntile_final(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(result);
 }
 
+/*
+ * The common code for lead and lag.
+ */
 static Datum
 lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 {
-	int64 offset = 0;
-	Datum val_expr = 0;
-	bool val_expr_null = true;
 	WindowRefExprState *wrxstate =
-		(WindowRefExprState *)PG_GETARG_POINTER(0);
+		(WindowRefExprState *) PG_GETARG_POINTER(0);
 	WindowState *wstate = wrxstate->windowstate;
-	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
 	WindowStatePerLevel level_state = funcstate->wlevel;
-	FrameBufferEntry *lead_entry = level_state->lead_entry_buf;
-	bool has_lead_entry = false;
-	WindowValue *lead_value = NULL;
+	WindowBufferCursor	cursor;
+	List			   *func_values;
 
 	Insist(PG_NARGS() >= 2);
-	
-	if (PG_NARGS() > 3)
-	{
-		val_expr = PG_GETARG_DATUM(3);
-		val_expr_null = PG_ARGISNULL(3);
-	}
-	
+	Assert(level_state->is_rows);
+
+	/*
+	 * Check the offset argument if given.  It is actually not used to
+	 * retrieve the value, as the frame is tracking the offset.
+	 */
 	if (PG_NARGS() > 2)
 	{
+		int64				offset = 1;
+
 		if (PG_ARGISNULL(2))
 		{
 			if (is_lead)
@@ -6609,82 +6608,62 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 		}
 
 		offset = PG_GETARG_INT64(2);
-	}
-	
-	if (PG_NARGS() == 2)
-	{
-	 	offset = 1; /* default */
-	}
+		if (offset < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("%s offset cannot be negative",
+							is_lead ? "LEAD" : "LAG"),
+									   errOmitLocation(true)));
 
-	if (offset < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("%s offset cannot be negative",
-						is_lead ? "LEAD" : "LAG"),
-								   errOmitLocation(true)));
-
-	Assert(level_state->is_rows);
-	if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-		level_state->num_lead_rows >= level_state->trail_rows)
-		has_lead_entry = getCurrentValue(level_state->lead_reader,
-										 level_state, lead_entry);
-			
-	if (has_lead_entry)
-	{
-		lead_value = (WindowValue *)list_nth(lead_entry->func_values,
-											 funcstate->serial_index);
-
-		funcstate->win_value = lead_value->value;
-		funcstate->win_value_is_null = lead_value->valueIsNull;
 	}
 
-	/* The value could be stored in aggTransValue. */
-	else if (level_state->agg_filled &&
-			 (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true) ||
-			 (EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead) &&
-			  level_state->num_lead_rows >= level_state->trail_rows)))
+	/*
+	 * The direction doesn't matter, as the frame has only one row.
+	 */
+	cursor = windowBufferBeginScan(wstate, level_state, true);
+	func_values = windowBufferNext(cursor);
+	/*
+	 * If this is out of frame, return the default value argument,
+	 * or NULL if not given.
+	 */
+	if (!func_values)
 	{
-		funcstate->win_value = funcstate->aggTransValue;
-		funcstate->win_value_is_null = funcstate->aggTransValueIsNull;
-	}
-	
-	else
-	{
-		WindowRefExprState *wrxstate = funcstate->wrxstate;
-		ExprState *argstate;
-		int nargs = list_length(wrxstate->args);
-		FunctionCallInfoData fcinfo;
-		int argno = 3;
-
-		Assert(nargs <= 4);
-
-		if (level_state->lead_rows < 0 ||
-			level_state->num_lead_rows < level_state->lead_rows)
+		if (PG_NARGS() > 3)
 		{
-			/* Use the default value if any. */
-			if (nargs == 4)
-			{
-				argstate = (ExprState *)list_nth(wrxstate->args, argno);
-				funcstate->win_value = ExecEvalExpr(argstate, econtext,
-														fcinfo.argnull + argno, NULL);
-				funcstate->win_value_is_null = fcinfo.argnull[argno];
-			}
-			
+			funcstate->win_value_is_null = PG_ARGISNULL(3);
+			if (!funcstate->win_value_is_null)
+				funcstate->win_value = PG_GETARG_DATUM(3);
 			else
-			{
-				funcstate->win_value = 0;
-				funcstate->win_value_is_null = true;
-			}
+				funcstate->win_value = (Datum) 0;
 		}
-
 		else
 		{
-			funcstate->win_value = 0;
+			funcstate->win_value = (Datum) 0;
 			funcstate->win_value_is_null = true;
 		}
 	}
+	else
+	{
+		WindowValue		   *winvalue;
+
+		winvalue = (WindowValue *)
+			list_nth(func_values, funcstate->serial_index);
+
+		if (winvalue)
+		{
+			funcstate->win_value = winvalue->value;
+			funcstate->win_value_is_null = winvalue->valueIsNull;
+		}
+		else
+		{
+			funcstate->win_value = (Datum) 0;
+			funcstate->win_value_is_null = true;
+		}
+	}
+	windowBufferEndScan(cursor);
 
 	*isnull = funcstate->win_value_is_null;
+
 	return funcstate->win_value;
 }
 
@@ -6812,6 +6791,75 @@ first_value_generic(PG_FUNCTION_ARGS)
        PG_RETURN_NULL();
 
     return d;
+}
+
+/*
+ * a helper function for lead and lag to make frame.
+ */
+Datum
+lead_lag_frame_maker(PG_FUNCTION_ARGS)
+{
+	WindowRef	   *wref = (WindowRef *) PG_GETARG_POINTER(0);
+	WindowFrame	   *frame = makeNode(WindowFrame);
+	Node		   *offset;
+	Oid				fnoid;
+	HeapTuple		tuple;
+	Form_pg_window	winform;
+	char			winkind;
+
+	if (list_length(wref->args) > 1)
+		offset = (Node *) list_nth(wref->args, 1);
+	else
+	{
+		offset = (Node *) makeConst(INT8OID,
+									-1,
+									8,
+									Int64GetDatum(1),
+									false,
+									true);
+	}
+
+	frame->system_generated = true;
+	frame->is_between = true;
+	frame->is_rows = true;
+	frame->trail = makeNode(WindowFrameEdge);
+	frame->lead = makeNode(WindowFrameEdge);
+
+	fnoid = wref->winfnoid;
+	tuple = SearchSysCache(WINFNOID,
+						   ObjectIdGetDatum(fnoid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for window function %u", fnoid);
+	winform = (Form_pg_window) GETSTRUCT(tuple);
+	winkind = winform->winkind;
+	ReleaseSysCache(tuple);
+
+	switch (winkind)
+	{
+	case WINKIND_LAG:
+		if (IsA(offset, Const))
+			frame->trail->kind = frame->lead->kind =
+				WINDOW_BOUND_PRECEDING;
+		else
+			frame->trail->kind = frame->lead->kind =
+				WINDOW_DELAYED_BOUND_PRECEDING;
+		break;
+	case WINKIND_LEAD:
+		if (IsA(offset, Const))
+			frame->trail->kind = frame->lead->kind =
+				WINDOW_BOUND_FOLLOWING;
+		else
+			frame->trail->kind = frame->lead->kind =
+				WINDOW_DELAYED_BOUND_FOLLOWING;
+		break;
+	default:
+		elog(ERROR, "internal window framing error");
+	}
+
+	frame->trail->val = frame->lead->val = offset;
+
+	PG_RETURN_POINTER(frame);
 }
 
 void
