@@ -383,7 +383,6 @@ FreeExecutorState(EState *estate)
 	if (!estate->es_is_subquery &&
 		estate->dynamicTableScanInfo != NULL)
 	{
-		Assert(dynamicTableScanInfo != estate->dynamicTableScanInfo);
 		freeDynamicTableScanInfo(estate->dynamicTableScanInfo);
 		estate->dynamicTableScanInfo = NULL;
 	}

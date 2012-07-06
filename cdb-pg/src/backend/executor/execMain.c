@@ -932,10 +932,14 @@ ExecutorRun(QueryDesc *queryDesc,
 		if(result == NULL)
 			estate->es_got_eos = true;
 
+		AssertImply(dynamicTableScanInfo != NULL,
+					dynamicTableScanInfo != origDynamicTableScanInfo);
 		dynamicTableScanInfo = origDynamicTableScanInfo;
     }
 	PG_CATCH();
 	{
+		AssertImply(dynamicTableScanInfo != NULL,
+					dynamicTableScanInfo != origDynamicTableScanInfo);
 		dynamicTableScanInfo = origDynamicTableScanInfo;
 
         /* If EXPLAIN ANALYZE, let qExec try to return stats to qDisp. */
