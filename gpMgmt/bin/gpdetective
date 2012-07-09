@@ -209,6 +209,8 @@ class GPDetective:
                 elif switch == '--cores':
                     self.runcore = truth(switch, val)
                 elif switch[1] in 'hpPU':
+                    if (switch[1] == 'p' or switch[1] == 'h') and not self.runconnected:
+                        raise Exception('You cannot use -p or -h with connect=false')
                     self.opt[switch] = val
         except Exception, e:
             usage('Error: ' + str(e))
@@ -231,6 +233,11 @@ class GPDetective:
         # Make sure port is actually an integer
         try: self.opt['-p'] = int(self.opt['-p'])
         except ValueError: exit('Error: Could not determine PORT')
+
+        #If connect=false, make sure that the master data directory is set
+        if not self.runconnected:
+            if not os.environ.get('MASTER_DATA_DIRECTORY'):
+                exit('Error: MASTER_DATA_DIRECTORY has to be set for connect=false')
 
         # Connect to master
         if self.runconnected == True:
