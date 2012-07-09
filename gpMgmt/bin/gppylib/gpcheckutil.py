@@ -237,6 +237,7 @@ class GenericLinuxOutputData:
         self.ioschedulers = None
         self.sysctl = None
         self.limitsconf = None
+        self.limitsconfnproc = None
         self.ntp = None
 
     def __str__(self):
@@ -248,6 +249,10 @@ class GenericLinuxOutputData:
         grc = "============= LIMITS=========================\n"
         gre = "============= LIMITS ERRORMSG================\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.limitsconf.__str__(), gre, self.limitsconf.errormsg)
+
+        grc = "============= LIMITS NPROC=========================\n"
+        gre = "============= LIMITS NPROC ERRORMSG================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.limitsconfnproc.__str__(), gre, self.limitsconfnproc.errormsg)
 
         mnt = "============= MOUNT==========================\n"
         mte = "============= MOUNT ERRORMSG=================\n"
@@ -287,6 +292,8 @@ class ApplianceOutputData:
         self.ioschedulers = None
         self.sysctl = None
         self.limitsconf = None
+        self.limitsconfnproc = None
+        self.limits = None
         self.connectemc = None
         self.ntp = None
 
@@ -339,6 +346,10 @@ class ApplianceOutputData:
         grc = "============= LIMITS=========================\n"
         gre = "============= LIMITS ERRORMSG================\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.limitsconf.__str__(), gre, self.limitsconf.errormsg)
+
+        grc = "============= LIMITS NPROC=========================\n"
+        gre = "============= LIMITS NPROC ERRORMSG================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.limitsconfnproc.__str__(), gre, self.limitsconfnproc.errormsg)
 
         mnt = "============= MOUNT==========================\n"
         mte = "============= MOUNT ERRORMSG=================\n"

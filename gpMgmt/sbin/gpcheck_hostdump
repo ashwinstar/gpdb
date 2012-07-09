@@ -479,7 +479,30 @@ def collectLimits():
 
     return data
 
+def collectLimitsNproc():
 
+    data = limitsconf()
+
+    try:
+        with open("/etc/security/limits.d/90-nproc.conf") as file:
+            for line in file:
+                
+                line = removeComments(line)
+
+                words = line.split()
+                if len(words) != 4:
+                    continue
+
+                domain = words[0].strip()
+                type = words[1].strip()
+                item = words[2].strip()
+                value = words[3].strip()
+                data.lines.append(limitsconf_entry(domain, type, item, value))
+
+     except Exception, e:
+        data.errormsg = e.__str__()
+
+    return data
 
 
 # returns populated sysctl object
@@ -734,6 +757,7 @@ def processGenericLinuxServer():
     output.blockdev = collectBlockdev()
     output.sysctl = collectSysctl()
     output.limitsconf = collectLimits()
+    output.limitsconfnproc = collectLimitsNproc()
     output.ntp = collectNtpd()
 
 
@@ -754,6 +778,7 @@ def processApplianceServer():
     output.rclocal = collectRclocal()
     output.sysctl = collectSysctl()
     output.limitsconf = collectLimits()
+    output.limitsconfnproc = collectLimitsNproc()
     output.connectemc = collectConnectemc()
     output.ntp = collectNtpd()
 

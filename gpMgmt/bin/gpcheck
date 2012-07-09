@@ -419,6 +419,39 @@ def testNtp(host):
     if not host.data.ntp.running:
         printError(host.hostname, "ntpd not detected on machine")
 
+def populateFoundValues(table, data_file):
+    
+    for entry in data_file.lines:
+
+        if (entry.type, entry.item) not in table:
+            continue
+
+        tabledata = table[(entry.type, entry.item)]
+
+        # we only supersede previous data if it is specific to gpadmin or it is * and there is not 
+        # specific gpadmin data already
+        if entry.domain == 'gpadmin' or (entry.domain == '*' and tabledata.domain != 'gpadmin'):
+
+            tabledata.value_found = entry.value
+
+def checkLimits(table, host, file):
+
+    for k in table:
+
+        ld = table[k]
+
+        if not ld.value_found:
+            printError(host.hostname, "%s %s not found in %s" % (k[0], k[1], file))
+            continue
+
+        try:
+            found = int(ld.value_found)
+        except:
+            found = 0
+
+        if found < ld.value_expected:
+
+            printError(host.hostname, "%s %s in %s has value %d lower than expected value %d" % (k[0], k[1], file, found, ld.value_expected))
 
 def testLimitsConf(host):
 
@@ -436,36 +469,11 @@ def testLimitsConf(host):
     table[('soft', 'nproc')] = limitsconf_data(131072)
     table[('hard', 'nproc')] = limitsconf_data(131072)
 
-    for entry in host.data.limitsconf.lines:
+    populateFoundValues(table, host.data.limitsconf)
+    checkLimits(table, host, '/etc/security/limits.conf')
 
-        if (entry.type, entry.item) not in table:
-            continue
-
-        tabledata = table[(entry.type, entry.item)]
-
-        # we only supersede previous data if it is specific to gpadmin or it is * and there is not 
-        # specific gpadmin data already
-        if entry.domain == 'gpadmin' or (entry.domain == '*' and tabledata.domain != 'gpadmin'):
-
-            tabledata.value_found = entry.value
-
-    for k in table:
-
-        ld = table[k]
-
-        if not ld.value_found:
-            printError(host.hostname, "%s %s not found in /etc/security/limits.conf" % (k[0], k[1]))
-            continue
-
-        try:
-            found = int(ld.value_found)
-        except:
-            found = 0
-
-        if found < ld.value_expected:
-
-            printError(host.hostname, "%s %s in  /etc/security/limits.conf has value %d lower than expected value %d" % (k[0], k[1], found, ld.value_expected))
-
+    populateFoundValues(table, host.data.limitsconfnproc)
+    checkLimits(table, host, '/etc/security/limits.d/90-nproc.conf')
 
 def testLinuxMounts(host):
 
