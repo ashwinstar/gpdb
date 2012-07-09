@@ -554,12 +554,7 @@ class GPDetective:
             cmd.insert(0, 'ssh')
             cmd.insert(1, host)
         
-        # A stupid hack to ignore unmatched globs in 'ls'
-        if (cmd[0] == 'ls'):
-            x = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        else:            
-            x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
-        return str(x.communicate()[0].strip())
+        return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog).communicate()[0].strip()
 
     #------------------------------------------------------------
     def log(self, test):
