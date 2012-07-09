@@ -131,7 +131,7 @@ class GPDetective:
     pg_dump_options = None
     rungpstate    = True
     runpg_dumpall = True
-    rungpcheckos  = True
+    rungpcheck  = True
     rungpcheckcat = True
     runcore       = True
     runconnected  = True
@@ -303,13 +303,13 @@ class GPDetective:
            elif diagList[0] == 'n' or diagList[0] == 'none':
               # One diagnostic 'none' implies turn off everyting.
               self.rungpstate    = False
-              self.rungpcheckos  = False
+              self.rungpcheck  = False
               self.rungpcheckcat = False
               return
         
         # If we got this far, turn everything off.
         self.rungpstate    = False
-        self.rungpcheckos  = False
+        self.rungpcheck  = False
         self.rungpcheckcat = False
 
         # Go through the list, and selectively turn on the corresponding diagnostic
@@ -319,7 +319,7 @@ class GPDetective:
             elif diag == 's' or diag == 'state':
                self.rungpstate = True
             elif diag == 'o' or diag == 'os':
-               self.rungpcheckos = True
+               self.rungpcheck = True
             elif diag == 'c' or diag == 'catalog':
                self.rungpcheckcat = True
             else:
@@ -995,7 +995,7 @@ class GPDetective:
     def systemInfo(self):
         '''
         1. Run gpstate
-        2. Run gpcheckos
+        2. Run gpcheck
         '''
         self.log('systemInfo')
 
@@ -1005,12 +1005,16 @@ class GPDetective:
 #        self.writeCmd('gpstate_master.log',         
 #                      ['gpstate', '-d', self.masterdir])
 
-        if self.rungpcheckos == True:
-           self.writeCmd('gpcheckos_master.log',   
-                         ['gpcheckos', '-vm', '-h', self.opt['-h']])
+        if self.rungpcheck == True:
+           self.writeCmd('gpcheck_master.log',   
+                         ['gpcheck', '-h', self.opt['-h']])
+           self.writeCmd('gpcheck_verbose_master.log',
+                         ['gpcheck', '--stdout', 'h', self.opt['-h']])
            if self.runconnected == True:
-              self.writeCmd('gpcheckos_segments.log', 
-                            ['gpcheckos', '-vf', 'hosts'])
+              self.writeCmd('gpcheck_segments.log', 
+                            ['gpcheck', '-f', 'hosts'])
+              self.writeCmd('gpcheck_verbose_segments.log', 
+                            ['gpcheck', '--stdout', '-f', 'hosts'])
         
 
     #------------------------------------------------------------
@@ -1218,7 +1222,7 @@ class GPDetective:
         '''
         Creates the temporary directory and cds to that location
         '''
-        if not os.path.isabs(self.tempdir):
+        if self.tempdir and not os.path.isabs(self.tempdir):
             raise Exception('Please specify the absolute path for the temp directory')
 
         self.logdir = tempfile.mkdtemp(dir=self.tempdir)
