@@ -1216,6 +1216,9 @@ class GPDetective:
         '''
         Creates the temporary directory and cds to that location
         '''
+        if not os.path.isabs(self.tempdir):
+            raise Exception('Please specify the absolute path for the temp directory')
+
         self.logdir = tempfile.mkdtemp(dir=self.tempdir)
         os.chdir(self.logdir)
         timestamp = self.runCmd('date +%Y%m%d%H%M%S')
