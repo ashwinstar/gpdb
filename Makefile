@@ -1010,6 +1010,7 @@ SET_VERSION_SCRIPTS = \
 	bin/gpcrondump.py \
 	bin/gpdbrestore \
 	bin/gpdeletesystem \
+	bin/gpdetective \
 	bin/gpexpand \
 	bin/gpfilespace \
 	bin/gpinitstandby \

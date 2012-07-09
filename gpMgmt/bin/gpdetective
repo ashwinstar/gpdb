@@ -62,14 +62,7 @@ GPHOME=os.environ.get('GPHOME')
 SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
 #============================================================
-def pretty_version(v):
-    '''
-    Turns the RCS revision number into a prettier format
-    '''
-    m = re.compile('Revision: #(\d+)').search(v)
-    if m: return str((float(m.group(1))+100)/100)
-    else: return str(v)
-__version__ = pretty_version('$Revision$')
+__version__ = 'version $Revision$'
 
 #============================================================
 def usage(exitarg = None):
@@ -253,7 +246,7 @@ class GPDetective:
         # Setup the log directory
         self.mklogdir()
         self.errlog = open('error.log', 'w')
-        self.errlog.write('gpdetective version ' + __version__ + '\n')
+        self.errlog.write('gpdetective ' + __version__ + '\n')
         self.errlog.flush()
         print 'Collecting information'
         self.getConfiguration()
