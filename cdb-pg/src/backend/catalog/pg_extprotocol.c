@@ -47,7 +47,7 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 					     Oid			 protOid,
 					     bool			 trusted)
 {
-	Relation	protdesc;
+	Relation	rel;
 	HeapTuple	tup;
 	bool		nulls[Natts_pg_extprotocol];
 	Datum		values[Natts_pg_extprotocol];
@@ -55,12 +55,13 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 	Oid			writefn = InvalidOid;
 	Oid			validatorfn = InvalidOid;
 	NameData	prtname;
-	TupleDesc	tupDesc;
 	int			i;
 	ObjectAddress myself,
 				referenced;
 	Oid 		ownerId = GetUserId();
-
+	cqContext	cqc;
+	cqContext	cqc2;
+	cqContext  *pcqCtx;
 
 	/* sanity checks (caller should have caught these) */
 	if (!protocolName)
@@ -83,6 +84,26 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 				 errmsg("protocol \"%s\" already exists",
 						 protocolName),
 				 errhint("pick a different protocol name")));
+	}
+
+	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
+
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("INSERT INTO pg_extprotocol",
+				NULL));
+
+	/* make sure there is no existing protocol of same name */
+	if (caql_getcount(
+				caql_addrel(cqclr(&cqc2), rel),
+				cql("SELECT COUNT(*) FROM pg_extprotocol "
+					" WHERE ptcname = :1 ",
+					PointerGetDatum((char *) protocolName))))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("protocol \"%s\" already exists", 
+						protocolName)));
 	}
 
 	/*
@@ -118,19 +139,16 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 	values[Anum_pg_extprotocol_ptctrusted - 1] = BoolGetDatum(trusted);
 	nulls[Anum_pg_extprotocol_ptcacl - 1] = true;
 
-	protdesc = heap_open(ExtprotocolRelationId, RowExclusiveLock);
-	tupDesc = protdesc->rd_att;
-
-	tup = heap_form_tuple(tupDesc, values, nulls);
+	tup = caql_form_tuple(pcqCtx, values, nulls);
 
 	if (protOid != (Oid) 0)
 		HeapTupleSetOid(tup, protOid);
 
-	protOid = simple_heap_insert(protdesc, tup);
+	/* insert a new tuple */
+	protOid = caql_insert(pcqCtx, tup); /* implicit update of index as well */
 
-	CatalogUpdateIndexes(protdesc, tup);
-
-	heap_close(protdesc, RowExclusiveLock);
+	caql_endscan(pcqCtx);
+	heap_close(rel, RowExclusiveLock);
 
 	/*
 	 * Create dependencies for the protocol

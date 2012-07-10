@@ -2406,39 +2406,48 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
 
 	/* Now work on pg_statistic */
 	{
-		HeapTuple oldStatisticsTuple;
-		Relation	pgstatisticRel;
+		HeapTuple	oldStatisticsTuple;
+		cqContext  *pcqCtx;
 
-		pgstatisticRel = heap_open(StatisticRelationId, RowExclusiveLock);
-		oldStatisticsTuple = SearchSysCache(STATRELATT, 
-											ObjectIdGetDatum(relationOid),
-											Int16GetDatum(attNum),
-											0,0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_statistic "
+					" WHERE starelid = :1 "
+					" AND staattnum = :2 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(relationOid),
+					Int16GetDatum(attNum)));
+
+		oldStatisticsTuple = caql_getnext(pcqCtx);
 
 		if (HeapTupleIsValid(oldStatisticsTuple))
 		{
 			/* pg_statistic tuple exists. */
-			HeapTuple stup = heap_modify_tuple(oldStatisticsTuple,
-					RelationGetDescr(pgstatisticRel),
+			HeapTuple stup = caql_modify_current(pcqCtx,
 					values,
 					nulls,
 					replaces);
-			ReleaseSysCache(oldStatisticsTuple);
-			simple_heap_update(pgstatisticRel, &stup->t_self, stup);
-			CatalogUpdateIndexes(pgstatisticRel, stup);
+
+			caql_update_current(pcqCtx, stup);
+			/* and Update indexes (implicit) */
+
 			heap_freetuple(stup);
 		}
 		else
 		{
-			/* insert new tuple into pg_statistic. we are guaranteed no-one else
-			 * will overwrite this row because of ShareUpdateExclusiveLock on the relation. */
-			HeapTuple stup = heap_form_tuple(RelationGetDescr(pgstatisticRel), values, nulls);
-			simple_heap_insert(pgstatisticRel, stup);
-			CatalogUpdateIndexes(pgstatisticRel, stup);
+			/* insert new tuple into pg_statistic. we are guaranteed
+			 * no-one else will overwrite this row because of
+			 * ShareUpdateExclusiveLock on the relation. 
+			 */
+
+			HeapTuple stup = caql_form_tuple(pcqCtx, values, nulls);
+
+			caql_insert(pcqCtx, stup);
+			/* and Update indexes (implicit) */
+
 			heap_freetuple(stup);
 		}
-
-		heap_close(pgstatisticRel, RowExclusiveLock);	
+		caql_endscan(pcqCtx);
 	}
 
 }
@@ -2745,5 +2754,3 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 
 	PG_RETURN_ARRAYTYPE_P(result);
 }
-
-

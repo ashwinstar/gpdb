@@ -78,6 +78,8 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	Relation	tgrel;
 	cqContext  *pcqCtx;
 	cqContext	cqc;
+	cqContext  *pcqCtx2;
+	cqContext	cqc2;
 	Relation	pgrel;
 	HeapTuple	tuple;
 	Oid			fargtypes[1];	/* dummy */
@@ -189,6 +191,11 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	 */
 	tgrel = heap_open(TriggerRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), tgrel),
+			cql("INSERT INTO pg_trigger ",
+				NULL));
+
 	if (OidIsValid(stmt->trigOid))
 		trigoid = stmt->trigOid;
 	else
@@ -259,13 +266,13 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	 * NOTE that this is cool only because we have AccessExclusiveLock on the
 	 * relation, so the trigger set won't be changing underneath us.
 	 */
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), tgrel),
+	pcqCtx2 = caql_beginscan(
+			caql_addrel(cqclr(&cqc2), tgrel),
 			cql("SELECT * FROM pg_trigger "
 				" WHERE tgrelid = :1 ",
 				ObjectIdGetDatum(RelationGetRelid(rel))));
 	
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx2)))
 	{
 		Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(tuple);
 
@@ -276,7 +283,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 						 trigname, stmt->relation->relname)));
 		found++;
 	}
-	caql_endscan(pcqCtx);
+	caql_endscan(pcqCtx2);
 
 	/*
 	 * Find and validate the trigger function.
@@ -385,7 +392,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	tgattr = buildint2vector(NULL, 0);
 	values[Anum_pg_trigger_tgattr - 1] = PointerGetDatum(tgattr);
 
-	tuple = heap_form_tuple(RelationGetDescr(tgrel), values, nulls);
+	tuple = caql_form_tuple(pcqCtx, values, nulls);
 
 	/* force tuple to have the desired OID */
 	HeapTupleSetOid(tuple, trigoid);
@@ -393,15 +400,14 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	/*
 	 * Insert tuple into pg_trigger.
 	 */
-	simple_heap_insert(tgrel, tuple);
-
-	CatalogUpdateIndexes(tgrel, tuple);
+	caql_insert(pcqCtx, tuple); /* implicit update of index as well */
 
 	myself.classId = TriggerRelationId;
 	myself.objectId = trigoid;
 	myself.objectSubId = 0;
 
 	heap_freetuple(tuple);
+	caql_endscan(pcqCtx);
 	heap_close(tgrel, RowExclusiveLock);
 
 	pfree(DatumGetPointer(values[Anum_pg_trigger_tgname - 1]));
@@ -413,18 +419,24 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 	 * entries.
 	 */
 	pgrel = heap_open(RelationRelationId, RowExclusiveLock);
-	tuple = SearchSysCacheCopy(RELOID,
-							   ObjectIdGetDatum(RelationGetRelid(rel)),
-							   0, 0, 0);
+
+	pcqCtx = caql_addrel(cqclr(&cqc), pgrel);
+
+	tuple  = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(RelationGetRelid(rel))));
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u",
 			 RelationGetRelid(rel));
 
 	((Form_pg_class) GETSTRUCT(tuple))->reltriggers = found + 1;
 
-	simple_heap_update(pgrel, &tuple->t_self, tuple);
-
-	CatalogUpdateIndexes(pgrel, tuple);
+	caql_update_current(pcqCtx, tuple);
+	/* and Update indexes (implicit) */
 
 	heap_freetuple(tuple);
 	heap_close(pgrel, RowExclusiveLock);
@@ -530,6 +542,7 @@ RemoveTriggerById(Oid trigOid)
 {
 	Relation	tgrel;
 	cqContext	cqc;
+	cqContext  *pcqCtx;
 	HeapTuple	tup;
 	Oid			relid;
 	Relation	rel;
@@ -539,11 +552,13 @@ RemoveTriggerById(Oid trigOid)
 
 	tgrel = heap_open(TriggerRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), tgrel);
+
 	/*
 	 * Find the trigger to delete.
 	 */
 	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), tgrel),
+			pcqCtx,
 			cql("SELECT * FROM pg_trigger "
 				" WHERE oid = :1 "
 				" FOR UPDATE ",
@@ -574,7 +589,7 @@ RemoveTriggerById(Oid trigOid)
 	/*
 	 * Delete the pg_trigger tuple.
 	 */
-	simple_heap_delete(tgrel, &tup->t_self);
+	caql_delete_current(pcqCtx);
 
 	heap_close(tgrel, RowExclusiveLock);
 
@@ -587,9 +602,16 @@ RemoveTriggerById(Oid trigOid)
 	 * no one else is creating/deleting triggers on this rel at the same time.
 	 */
 	pgrel = heap_open(RelationRelationId, RowExclusiveLock);
-	tuple = SearchSysCacheCopy(RELOID,
-							   ObjectIdGetDatum(relid),
-							   0, 0, 0);
+
+	pcqCtx = caql_addrel(cqclr(&cqc), pgrel);
+
+	tuple  = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relid)));
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 	classForm = (Form_pg_class) GETSTRUCT(tuple);
@@ -599,9 +621,8 @@ RemoveTriggerById(Oid trigOid)
 			 RelationGetRelationName(rel));
 	classForm->reltriggers--;
 
-	simple_heap_update(pgrel, &tuple->t_self, tuple);
-
-	CatalogUpdateIndexes(pgrel, tuple);
+	caql_update_current(pcqCtx, tuple);
+	/* and Update indexes (implicit) */
 
 	heap_freetuple(tuple);
 
@@ -799,10 +820,8 @@ EnableDisableTrigger(Relation rel, const char *tgname,
 
 			newtrig->tgenabled = enable;
 
-			simple_heap_update(tgrel, &newtup->t_self, newtup);
-
-			/* Keep catalog indexes current */
-			CatalogUpdateIndexes(tgrel, newtup);
+			caql_update_current(pcqCtx, newtup);
+			/* and Update indexes (implicit) */
 
 			heap_freetuple(newtup);
 

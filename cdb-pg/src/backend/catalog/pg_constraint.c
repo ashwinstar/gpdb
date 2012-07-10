@@ -63,7 +63,6 @@ CreateConstraintEntry(const char *constraintName,
 					  const char *conBin,
 					  const char *conSrc)
 {
-	Relation	conDesc;
 	HeapTuple	tup;
 	bool		nulls[Natts_pg_constraint];
 	Datum		values[Natts_pg_constraint];
@@ -72,8 +71,12 @@ CreateConstraintEntry(const char *constraintName,
 	NameData	cname;
 	int			i;
 	ObjectAddress conobject;
+	cqContext  *pcqCtx;
 
-	conDesc = heap_open(ConstraintRelationId, RowExclusiveLock);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("INSERT INTO pg_constraint",
+				NULL));
 
 	Assert(constraintName);
 	namestrcpy(&cname, constraintName);
@@ -154,21 +157,18 @@ CreateConstraintEntry(const char *constraintName,
 	else
 		nulls[Anum_pg_constraint_consrc - 1] = true;
 
-	tup = heap_form_tuple(RelationGetDescr(conDesc), values, nulls);
+	tup = caql_form_tuple(pcqCtx, values, nulls);
 
 	/* force tuple to have the desired OID */
 	if (OidIsValid(conOid))
 		HeapTupleSetOid(tup, conOid);
-	conOid = simple_heap_insert(conDesc, tup);
-
-	/* update catalog indexes */
-	CatalogUpdateIndexes(conDesc, tup);
+	conOid = caql_insert(pcqCtx, tup); /* implicit update of index as well */
 
 	conobject.classId = ConstraintRelationId;
 	conobject.objectId = conOid;
 	conobject.objectSubId = 0;
 
-	heap_close(conDesc, RowExclusiveLock);
+	caql_endscan(pcqCtx);
 
 	if (OidIsValid(relId))
 	{
@@ -414,12 +414,15 @@ RemoveConstraintById(Oid conId)
 	Relation	conDesc;
 	HeapTuple	tup;
 	cqContext	cqc;
+	cqContext  *pcqCtx;
 	Form_pg_constraint con;
 
 	conDesc = heap_open(ConstraintRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), conDesc);
+
 	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), conDesc),
+			pcqCtx,
 			cql("SELECT * FROM pg_constraint "
 				" WHERE oid = :1 "
 				" FOR UPDATE ",
@@ -453,11 +456,20 @@ RemoveConstraintById(Oid conId)
 			Relation	pgrel;
 			HeapTuple	relTup;
 			Form_pg_class classForm;
+			cqContext	cqc2;
+			cqContext  *pcqCtx2;
 
 			pgrel = heap_open(RelationRelationId, RowExclusiveLock);
-			relTup = SearchSysCacheCopy(RELOID,
-										ObjectIdGetDatum(con->conrelid),
-										0, 0, 0);
+
+			pcqCtx2 = caql_addrel(cqclr(&cqc2), pgrel);
+
+			relTup = caql_getfirst(
+					pcqCtx2,
+					cql("SELECT * FROM pg_class "
+						" WHERE oid = :1 "
+						" FOR UPDATE ",
+						ObjectIdGetDatum(con->conrelid)));
+
 			if (!HeapTupleIsValid(relTup))
 				elog(ERROR, "cache lookup failed for relation %u",
 					 con->conrelid);
@@ -467,10 +479,9 @@ RemoveConstraintById(Oid conId)
 				elog(ERROR, "relation \"%s\" has relchecks = 0",
 					 RelationGetRelationName(rel));
 			classForm->relchecks--;
-
-			simple_heap_update(pgrel, &relTup->t_self, relTup);
-
-			CatalogUpdateIndexes(pgrel, relTup);
+			
+			caql_update_current(pcqCtx2, relTup);
+			/* and Update indexes (implicit) */
 
 			heap_freetuple(relTup);
 
@@ -499,7 +510,7 @@ RemoveConstraintById(Oid conId)
 		elog(ERROR, "constraint %u is not of a known type", conId);
 
 	/* Fry the constraint itself */
-	simple_heap_delete(conDesc, &tup->t_self);
+	caql_delete_current(pcqCtx);
 
 	/* Clean up */
 	heap_close(conDesc, RowExclusiveLock);

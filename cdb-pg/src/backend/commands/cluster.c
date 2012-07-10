@@ -357,9 +357,11 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		/*
 		 * Check that the index still exists
 		 */
-		if (!SearchSysCacheExists(RELOID,
-								  ObjectIdGetDatum(rvtc->indexOid),
-								  0, 0, 0))
+		if (0 == caql_getcount(
+					NULL,
+					cql("SELECT COUNT(*) FROM pg_class "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(rvtc->indexOid))))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
 			return false;

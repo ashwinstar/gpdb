@@ -166,6 +166,7 @@ shdepChangeDep(Relation sdepRel, Oid classid, Oid objid,
 			   SharedDependencyType deptype)
 {
 	Oid			dbid = classIdGetDbId(classid);
+	bool		bGotOne = false;
 	HeapTuple	oldtup = NULL;
 	HeapTuple	scantup;
 	cqContext  *pcqCtx;
@@ -198,37 +199,43 @@ shdepChangeDep(Relation sdepRel, Oid classid, Oid objid,
 		if (((Form_pg_shdepend) GETSTRUCT(scantup))->deptype != deptype)
 			continue;
 		/* Caller screwed up if multiple matches */
-		if (oldtup)
+		if (bGotOne)
 			elog(ERROR,
 				 "multiple pg_shdepend entries for object %u/%u deptype %c",
 				 classid, objid, deptype);
-		oldtup = heap_copytuple(scantup);
+		bGotOne = true;
 	}
-
 	caql_endscan(pcqCtx);
 
-	if (isSharedObjectPinned(refclassid, refobjid, sdepRel))
-	{
-		/* No new entry needed, so just delete existing entry if any */
-		if (oldtup)
-			simple_heap_delete(sdepRel, &oldtup->t_self);
-	}
-	else if (oldtup)
-	{
-		/* Need to update existing entry */
-		Form_pg_shdepend shForm = (Form_pg_shdepend) GETSTRUCT(oldtup);
+	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX
+	 * Should match this logic:
+	 *
+	 *  if isSharedObjectpinned
+	 *     if Gotone then drop it
+	 *  else 
+     *     if Gotone 
+     *     then update it
+     *     else insert it
+	 *
+	 * XXX XXX XXX XXX XXX XXX XXX XXX XXX
+	 */ 
 
-		/* Since oldtup is a copy, we can just modify it in-memory */
-		shForm->refclassid = refclassid;
-		shForm->refobjid = refobjid;
-
-		simple_heap_update(sdepRel, &oldtup->t_self, oldtup);
-
-		/* keep indexes current */
-		CatalogUpdateIndexes(sdepRel, oldtup);
-	}
-	else
+	if (!bGotOne) /* no match */
 	{
+		/* if no match and pinned, new entry not needed */
+		if (isSharedObjectPinned(refclassid, refobjid, sdepRel))
+		{
+			/* just return -- don't need to free anything because
+			 * sdelRel was passed in, and pcqCtx is freed 
+			 */
+			return;
+		}
+
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), sdepRel),
+				cql("INSERT INTO pg_shdepend ",
+					NULL));
+
 		/* Need to insert new entry */
 		Datum		values[Natts_pg_shdepend];
 		bool		nulls[Natts_pg_shdepend];
@@ -247,15 +254,64 @@ shdepChangeDep(Relation sdepRel, Oid classid, Oid objid,
 		 * we are reusing oldtup just to avoid declaring a new variable, but
 		 * it's certainly a new tuple
 		 */
-		oldtup = heap_form_tuple(RelationGetDescr(sdepRel), values, nulls);
-		simple_heap_insert(sdepRel, oldtup);
+		oldtup = caql_form_tuple(pcqCtx, values, nulls);
+		caql_insert(pcqCtx, oldtup);
+		/* and Update indexes (implicit) */
 
-		/* keep indexes current */
-		CatalogUpdateIndexes(sdepRel, oldtup);
+		heap_freetuple(oldtup);
+		caql_endscan(pcqCtx);
+	}
+	else
+	{
+		/* XXX XXX Do the scan again, but do the update/delete this time */
+
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), sdepRel),
+				cql("SELECT * FROM pg_shdepend "
+					" WHERE dbid = :1 "
+					" AND classid = :2 "
+					" AND objid = :3 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(dbid),
+					ObjectIdGetDatum(classid),
+					ObjectIdGetDatum(objid)));
+
+		while (HeapTupleIsValid(scantup = caql_getnext(pcqCtx)))
+		{
+			/* Ignore if not of the target dependency type */
+			if (((Form_pg_shdepend) GETSTRUCT(scantup))->deptype != deptype)
+				continue;
+			/* 
+			 * NOTE: already tested for multiple matches - just use
+			 * first one 
+			 */
+
+			if (isSharedObjectPinned(refclassid, refobjid, sdepRel))
+			{
+				/* No new entry needed, so just delete existing entry if any */
+				caql_delete_current(pcqCtx);
+			}
+			else
+			{
+				oldtup = heap_copytuple(scantup);
+
+				/* Need to update existing entry */
+				Form_pg_shdepend shForm = (Form_pg_shdepend) GETSTRUCT(oldtup);
+
+				/* Since oldtup is a copy, we can just modify it in-memory */
+				shForm->refclassid = refclassid;
+				shForm->refobjid = refobjid;
+
+				caql_update_current(pcqCtx, oldtup);
+				/* and Update indexes (implicit) */
+
+				heap_freetuple(oldtup);
+			}
+			break;
+		}
+		caql_endscan(pcqCtx);
 	}
 
-	if (oldtup)
-		heap_freetuple(oldtup);
 }
 
 /*
@@ -749,6 +805,8 @@ shdepAddDependency(Relation sdepRel, Oid classId, Oid objectId,
 	HeapTuple	tup;
 	Datum		values[Natts_pg_shdepend];
 	bool		nulls[Natts_pg_shdepend];
+	cqContext  *pcqCtx;
+	cqContext	cqc;
 
 	/*
 	 * Make sure the object doesn't go away while we record the dependency on
@@ -756,6 +814,11 @@ shdepAddDependency(Relation sdepRel, Oid classId, Oid objectId,
 	 * shared dependencies.
 	 */
 	shdepLockAndCheckObject(refclassId, refobjId);
+	
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), sdepRel),
+			cql("INSERT INTO pg_shdepend ",
+				NULL));
 
 	memset(nulls, false, sizeof(nulls));
 
@@ -770,15 +833,14 @@ shdepAddDependency(Relation sdepRel, Oid classId, Oid objectId,
 	values[Anum_pg_shdepend_refobjid - 1] = ObjectIdGetDatum(refobjId);
 	values[Anum_pg_shdepend_deptype - 1] = CharGetDatum(deptype);
 
-	tup = heap_form_tuple(RelationGetDescr(sdepRel), values, nulls);
+	tup = caql_form_tuple(pcqCtx, values, nulls);
 
-	simple_heap_insert(sdepRel, tup);
-
-	/* keep indexes current */
-	CatalogUpdateIndexes(sdepRel, tup);
+	caql_insert(pcqCtx, tup);
+	/* and Update indexes (implicit) */
 
 	/* clean up */
 	heap_freetuple(tup);
+	caql_endscan(pcqCtx);
 }
 
 /*
@@ -872,13 +934,17 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 	switch (classId)
 	{
 		case AuthIdRelationId:
-			if (!SearchSysCacheExists(AUTHOID,
-									  ObjectIdGetDatum(objectId),
-									  0, 0, 0))
+			if (0 == caql_getcount(
+						NULL,
+						cql("SELECT COUNT(*) FROM pg_authid "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(objectId))))
+			{
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("role %u was concurrently dropped",
 								objectId)));
+			}
 			break;
 
 			/*

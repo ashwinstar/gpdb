@@ -32,6 +32,7 @@ typedef struct cqListData
 typedef struct cqContextData
 {
 	bool		cq_free;		/* if true, free this ctx at endscan */
+	bool		cq_freeScan;	/* if true, free scan at endscan */
 	Relation	cq_heap_rel;	/* catalog being scanned */
 	TupleDesc	cq_tupdesc;		/* tuple descriptor */
 	SysScanDesc cq_sysScan;		/* heap or index scan */		
@@ -93,12 +94,38 @@ void		 caql_endscan(cqContext *pCtx);
 */
 /* delete current tuple */
 void		 caql_delete_current(cqContext *pCtx);
+/* insert tuple */
+Oid			 caql_insert(cqContext *pCtx, HeapTuple tup);
 /* update current tuple */
 void		 caql_update_current(cqContext *pCtx, HeapTuple tup);
 /* modify current tuple */
 HeapTuple	 caql_modify_current(cqContext *pCtx, Datum *replValues,
 								 bool *replIsnull,
 								 bool *doReplace);
+/* form tuple */
+HeapTuple	 caql_form_tuple(cqContext *pCtx, Datum *replValues,
+							 bool *replIsnull);
+
+/* 
+   NOTE: don't confuse caql_getattr and caql_getattname.  
+
+   caql_getattr extracts the specified column (by attnum) from the
+   current tuple in the pcqCtx.
+
+   caql_getattname fetches a copy of tuple from pg_attribute that
+   _describes_ a column of a table. (should really be get_by_attname)
+
+ */
+
+/* equivalent of SysCacheGetAttr - extract a specific attribute for
+ *  current tuple 
+ */
+Datum caql_getattr(cqContext *pCtx, AttrNumber attnum, bool *isnull);
+
+/* equivalent of SearchSysCacheCopyAttName - return copy of the tuple
+ * describing a column of a table  
+ */
+HeapTuple caql_getattname(cqContext *pCtx, Oid relid, const char *attname);
 
 /* return the specified Name or Text column of the first tuple 
    (and set the fetchcount or isnull if specified)

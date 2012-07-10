@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 22 of calico.pl, released
- Thu Apr 26 15:46:54 2012.
+ This document describes version 28 of calico.pl, released
+ Tue May 22 15:30:32 2012.
 
 =head1 SYNOPSIS
 
@@ -106,6 +106,10 @@ The CaQL parsing and code generation is driven by the tidycat json
 metadata file, which describes the catalog tables, their indexes and
 dependencies.
 
+=head2 INSERT/UPDATE Syntax
+
+CaQL has been extended to handle INSERT and UPDATE.
+
 
 =head1 CAVEATS/FUTURE WORK
 
@@ -114,14 +118,8 @@ dependencies.
 Use the tidycat dependency information (JSON) to generate improved
 locking, e.g. handle the case where one transaction does CREATE TABLE
 in a schema and a concurrent transaction DROPs the schema, leading to
-a catalog corruption.  However, in order to obtain the correct
-locking, we may need to extend CaQL to handle INSERT/UPDATE.
-
-=head2 INSERT/UPDATE Syntax
-
-Extending CaQL to handle INSERT/UPDATE will eliminate repetetive,
-error-prone, hand-coded update routines and let us group multiple CaQL
-statements into a single transaction.
+a catalog corruption.  Understanding INSERT/UPDATE may be key to
+obtaining the correct locking.
 
 =head2 External Catalog
 
@@ -214,8 +212,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '22';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1335480414';
+	$glob_glob->{_sleazy_properties}->{version} = '28';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1337725831';
 	
 	    die ("missing required argument for 'metadata'")
 	    unless (defined($s_metadata));
@@ -334,10 +332,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1335480414
+      "slzy_date" : 1337725831
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "23"
+   "version" : "28"
 }
 
 EOF_bigstr
@@ -359,6 +357,10 @@ The CaQL parsing and code generation is driven by the tidycat json
 metadata file, which describes the catalog tables, their indexes and
 dependencies.
 
+{HEAD2} INSERT/UPDATE Syntax
+
+CaQL has been extended to handle INSERT and UPDATE.
+
 
 {HEAD1} CAVEATS/FUTURE WORK
 
@@ -367,14 +369,8 @@ dependencies.
 Use the tidycat dependency information (JSON) to generate improved
 locking, e.g. handle the case where one transaction does CREATE TABLE
 in a schema and a concurrent transaction DROPs the schema, leading to
-a catalog corruption.  However, in order to obtain the correct
-locking, we may need to extend CaQL to handle INSERT/UPDATE.
-
-{HEAD2} INSERT/UPDATE Syntax
-
-Extending CaQL to handle INSERT/UPDATE will eliminate repetetive,
-error-prone, hand-coded update routines and let us group multiple CaQL
-statements into a single transaction.
+a catalog corruption.  Understanding INSERT/UPDATE may be key to
+obtaining the correct locking.
 
 {HEAD2} External Catalog
 
@@ -695,6 +691,36 @@ EOF_bigstr
 					});
 } # end undef_obj
 
+sub insertinto
+{
+my $insertguts  = <<'EOF_bigstr';
+static
+SysScanDesc
+{FUNCNAME}({FUNCARGS})
+{
+	Relation	rel;
+
+	{SELECTFROM_ELOG}
+
+	pcql->relationId = {RELATIONID};
+
+	if (!pCtx->cq_externrel)
+	{
+		{SYSCACHETUPDESC}
+		{
+			pCtx->cq_heap_rel = heap_open(pcql->relationId, pCtx->cq_lockmode);
+			pCtx->cq_tupdesc  = RelationGetDescr(pCtx->cq_heap_rel);
+		}
+	}
+	rel = pCtx->cq_heap_rel;
+
+	return NULL; /* XXX XXX: don't init scan */
+}
+EOF_bigstr
+
+	return $insertguts;
+} # end insertinto
+
 # choose an index which can satisfy the predicate.  
 # If bexact=true, then index cols must match predicate col order 
 # (for ORDER BY)
@@ -971,6 +997,23 @@ sub dothing
 			if ($domethod =~ m/^select/);
 
 		$tname = shift @foo;
+	}
+	elsif ($qry =~ m/^\s*insert\s+into/i)
+	{
+		my @foo = 
+			($qry =~ 
+			 m/^\s*insert\s+into\s+(\w*)/i);
+
+		die "bad tname for $qerr" unless (1 == scalar(@foo));
+
+		$domethod = "insert";
+
+		$tname = shift @foo;
+
+	}
+	else
+	{
+		die "bad cql: $qerr";
 	}
 
 	# map the files back to the catalog tables (for pablopcatso)
@@ -1367,6 +1410,8 @@ sub dothing
 	# can only use syscache for equality primary key lookup
 	if (defined($syscacheid) && length($syscacheid) && $bAllEq)
 	{
+		$bqh->{syscacheid} = $syscacheid;
+
 		$basicargs->{SYSCACHECHECK} =
 			doformat(syscacheid(),
 					 $basicargs,
@@ -1450,6 +1495,14 @@ sub dothing
 					 $basicargs
 			);
 	}
+	elsif ($domethod =~ m/insert/i)
+	{
+		$bigstr = 
+			doformat(insertinto(),
+					 $basicargs
+			);
+	}
+
 
 	$bigstr =~ s/^\s*$striprex\s*$//gm;
 	$bigstr =~ s/^(\s*)$striprex(.*)$/$1$2/gm;
@@ -1581,6 +1634,7 @@ sub check_bind_variables
 	return 1;
 } # end check_bind_variables
 
+# extract caql from c source file
 sub get_caql
 {
 	my ($caqlh, $filnam, $bigh) = @_;
@@ -1714,15 +1768,24 @@ sub get_caql
 			(($basic_qry =~ m/count\(\*\)/) ? 1 : 0);
 		$caqlh->{queries}->{$qry}->{bUpdate} = 
 			($basic_qry =~ m/for update/) ? 1 : 0;
+		$caqlh->{queries}->{$qry}->{bInsert} = 
+			($basic_qry =~ m/^insert/) ? 1 : 0;
 
 		die "bad query in $filnam: $qry -- cannot DELETE ... FOR UPDATE"
 			if ($caqlh->{queries}->{$qry}->{bDelete} &&
+				$caqlh->{queries}->{$qry}->{bUpdate});
+
+		die "bad query in $filnam: $qry -- cannot INSERT ... FOR UPDATE"
+			if ($caqlh->{queries}->{$qry}->{bInsert} &&
 				$caqlh->{queries}->{$qry}->{bUpdate});
 
 		# strip out delete, count(*), for update attributes
 		$basic_qry =~ s/^select\s+count\(\*\)/select */;
 
 		$basic_qry =~ s/^delete/select */;
+
+		# temporarily treat INSERT as SELECT * (but reverse later)
+		$basic_qry =~ s/^insert\s+into/select * from/;
 
 		# SELECT ... ORDER BY ... FOR UPDATE 
 
@@ -1843,6 +1906,10 @@ sub get_caql
 		die "bad query in $filnam: $qry"
 			unless ($basic_qry =~ m/^select\s+\*\s+from/i);
 
+		# fix the basic query to show INSERT
+		$basic_qry =~ s/^select\s+\*\s+from/insert into/i
+			if ($caqlh->{queries}->{$qry}->{bInsert});
+
 		$caqlh->{queries}->{$qry}->{basic} = $basic_qry;
 
 		$caqlh->{basic}->{$basic_qry} = { files => {} , 
@@ -1885,6 +1952,7 @@ struct caql_hash_cookie
 	int bDelete;            /* query performs DELETE */
 	int bCount;             /* SELECT COUNT(*) (or DELETE) */
 	int bUpdate;            /* SELECT ... FOR UPDATE */
+	int bInsert;            /* INSERT INTO  */
 	AttrNumber attnum;      /* column number (or 0 if no column specified) */
 };
 %%
@@ -1922,6 +1990,7 @@ sub more_header
 
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_aggregate.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
@@ -1957,6 +2026,7 @@ sub more_header
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
+#include "catalog/pg_user_mapping.h"
 #include "catalog/pg_tidycat.h"
 
 #include "catalog/gp_configuration.h"
@@ -2029,7 +2099,7 @@ cqContext *caql_switch(struct caql_hash_cookie *pchn,
 
 	if (!pCtx->cq_setlockmode)
 	{
-		if (pchn->bDelete || pchn->bUpdate)
+		if (pchn->bDelete || pchn->bUpdate || pchn->bInsert)
 			pCtx->cq_lockmode = RowExclusiveLock;
 		else
 			pCtx->cq_lockmode = AccessShareLock;
@@ -2308,6 +2378,8 @@ int caql_getcount(cqContext *pCtx0, cq_list *pcql)
 		elog(ERROR, "invalid caql string: %s\nfile: %s, line %d", 
 			 caql_str, pcql->filename, pcql->lineno);
 
+	Assert(!pchn->bInsert); /* INSERT not allowed */
+
 	/* use the provided context, or provide a clean local ctx  */
 	if (pCtx0)
 		pCtx = pCtx0;
@@ -2369,6 +2441,8 @@ HeapTuple caql_getfirst_only(cqContext *pCtx0, bool *pbOnly, cq_list *pcql)
 	if (NULL == pchn)
 		elog(ERROR, "invalid caql string: %s\nfile: %s, line %d", 
 			 caql_str, pcql->filename, pcql->lineno);
+
+	Assert(!pchn->bInsert); /* INSERT not allowed */
 
 	/* use the provided context, or provide a clean local ctx  */
 	if (pCtx0)
@@ -2439,7 +2513,6 @@ cqContext *caql_beginscan(cqContext *pCtx0, cq_list *pcql)
 		pCtx->cq_free = true;  /* free this context in caql_endscan */
 	}
 
-
 	if (NULL == pchn)
 		elog(ERROR, "invalid caql string: %s\nfile: %s, line %d", 
 			 caql_str, pcql->filename, pcql->lineno);
@@ -2450,6 +2523,13 @@ cqContext *caql_beginscan(cqContext *pCtx0, cq_list *pcql)
 			 caql_str, pcql->filename, pcql->lineno);
 
 	pCtx = caql_switch(pchn, pCtx, pcql);
+
+	pCtx->cq_freeScan = true;
+	if (pchn->bInsert) /* INSERT allowed, but no subsequent fetches */
+	{
+		pCtx->cq_freeScan = false; /* didn't allocate a scanner */
+		pCtx->cq_EOF  = true;
+	}
 
 	return (pCtx);
 }
@@ -2523,13 +2603,16 @@ HeapTuple caql_getprev(cqContext *pCtx)
  */
 void caql_endscan(cqContext *pCtx)
 {
-	if (!pCtx->cq_usesyscache)
-		systable_endscan(pCtx->cq_sysScan); 
-	else
+	if (pCtx->cq_freeScan)
 	{
-		/* XXX XXX: no need to release if never fetched a valid tuple */
-		if (HeapTupleIsValid(pCtx->cq_lasttup))
-			ReleaseSysCache(pCtx->cq_lasttup);
+		if (!pCtx->cq_usesyscache)
+			systable_endscan(pCtx->cq_sysScan); 
+		else
+		{
+			/* XXX XXX: no need to release if never fetched a valid tuple */
+			if (HeapTupleIsValid(pCtx->cq_lasttup))
+				ReleaseSysCache(pCtx->cq_lasttup);
+		}
 	}
 	if (!pCtx->cq_externrel)
 		heap_close(pCtx->cq_heap_rel, pCtx->cq_lockmode);
@@ -2552,6 +2635,30 @@ void caql_delete_current(cqContext *pCtx)
 	if (HeapTupleIsValid(pCtx->cq_lasttup))
 		simple_heap_delete(rel, &(pCtx->cq_lasttup)->t_self);
 }
+
+/* ----------------------------------------------------------------
+ * caql_insert()
+ * during beginscan/endscan iteration, insert a tuple
+ * NOTE: a separate call to CatalogUpdateIndexes after this will 
+ * cause an error
+ * ----------------------------------------------------------------
+ */
+Oid caql_insert(cqContext *pCtx, HeapTuple tup)
+{
+	Relation		 rel;
+	Oid				 result;
+
+	rel  = pCtx->cq_heap_rel;
+
+	{
+		result = simple_heap_insert(rel, tup);
+		/* keep the catalog indexes up to date (if has any) */
+		if (RelationGetForm(rel)->relhasindex) /* check from ExecOpenIndices */
+			CatalogUpdateIndexes(rel, tup);
+	}
+	return (result);
+}
+
 /* ----------------------------------------------------------------
  * caql_update_current()
  * during beginscan/endscan iteration, update current tuple,
@@ -2577,7 +2684,7 @@ void caql_update_current(cqContext *pCtx, HeapTuple tup)
 }
 /* ----------------------------------------------------------------
  * caql_modify_current()
- * during beginscan/endscan iteration, modify current tuple,
+ * during beginscan/endscan iteration, modify current tuple
  * ----------------------------------------------------------------
  */
 HeapTuple caql_modify_current(cqContext *pCtx, Datum *replValues,
@@ -2599,6 +2706,96 @@ HeapTuple caql_modify_current(cqContext *pCtx, Datum *replValues,
 	}
 
 	return (tuple);
+}
+/* ----------------------------------------------------------------
+ * caql_form_tuple()
+ * during beginscan/endscan iteration, form a tuple
+ * ----------------------------------------------------------------
+ */
+HeapTuple caql_form_tuple(cqContext *pCtx, Datum *replValues,
+						  bool *replIsnull)
+{
+	Relation				 rel;
+	HeapTuple				 tuple = NULL;
+
+	rel  = pCtx->cq_heap_rel;
+
+	{
+		tuple = heap_form_tuple(RelationGetDescr(rel), 
+								replValues,
+								replIsnull);
+	}
+
+	return (tuple);
+}
+
+/* ----------------------------------------------------------------
+ * caql_getattr()
+ * during beginscan/endscan iteration, get a tuple attribute for
+ * current tuple
+ * ----------------------------------------------------------------
+ */
+Datum caql_getattr(cqContext *pCtx, AttrNumber attnum, bool *isnull)
+{
+	Relation				 rel;
+
+	rel  = pCtx->cq_heap_rel;
+
+	Assert(HeapTupleIsValid(pCtx->cq_lasttup));
+
+	if (pCtx->cq_usesyscache)
+	{
+		return (SysCacheGetAttr(pCtx->cq_cacheId, 
+								pCtx->cq_lasttup,
+								attnum,
+								isnull));
+	}
+	else
+	{
+		return (heap_getattr(pCtx->cq_lasttup,
+							 attnum,
+							 RelationGetDescr(rel), 
+							 isnull));
+	}
+}
+
+/* ----------------------------------------------------------------
+ * caql_getattname()
+ *
+ * The equivalent of SearchSysCacheCopyAttName - 
+ * caql_getfirst(pCtx,	
+ *    "SELECT * FROM pg_attribute
+ *     WHERE attrelid = :relid
+ *     AND attname = :attname
+ *     AND attisdropped is false"
+ *    );
+ *
+ * That is, find the existing ("undropped") attribute and return
+ * a copy.
+ * ----------------------------------------------------------------
+ */
+HeapTuple caql_getattname(cqContext *pCtx, Oid relid, const char *attname)
+{
+	HeapTuple tup;
+
+	tup = SearchSysCacheCopyAttName(relid, attname);
+
+	if (pCtx)
+	{
+		/* treat as ATTNAME cache lookup */
+		pCtx->cq_usesyscache = true;
+		pCtx->cq_cacheId      = ATTNAME;
+		pCtx->cq_cacheNumKeys = 2;
+
+		if (!pCtx->cq_setidxOK)
+			pCtx->cq_useidxOK = true;
+
+		/* for caql_update_current(), etc */
+		pCtx->cq_lasttup = tup;
+	}   
+
+	return (tup);
+
 }
 
 EOF_bigstr
@@ -2776,6 +2973,8 @@ Oid caql_getoid_plus(cqContext *pCtx0, int *pFetchcount,
 		elog(ERROR, "invalid caql string: %s\nfile: %s, line %d", 
 			 caql_str, pcql->filename, pcql->lineno);
 
+	Assert(!pchn->bInsert); /* INSERT not allowed */
+
 	/* use the provided context, or provide a clean local ctx  */
 	if (pCtx0)
 		pCtx = pCtx0;
@@ -2862,6 +3061,8 @@ Oid caql_getoid_only(cqContext *pCtx0, bool *pbOnly, cq_list *pcql)
 		elog(ERROR, "invalid caql string: %s\nfile: %s, line %d", 
 			 caql_str, pcql->filename, pcql->lineno);
 
+	Assert(!pchn->bInsert); /* INSERT not allowed */
+
 	/* use the provided context, or provide a clean local ctx  */
 	if (pCtx0)
 		pCtx = pCtx0;
@@ -2927,6 +3128,8 @@ char *caql_getcstring_plus(cqContext *pCtx0, int *pFetchcount,
 	if (NULL == pchn)
 		elog(ERROR, "invalid caql string: %s\nfile: %s, line %d", 
 			 caql_str, pcql->filename, pcql->lineno);
+
+	Assert(!pchn->bInsert); /* INSERT not allowed */
 
 	/* use the provided context, or provide a clean local ctx  */
 	if (pCtx0)
@@ -3024,6 +3227,7 @@ sub do_gperf
 		print $gpo $caqlh->{queries}->{$qry}->{bDelete} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{bCount} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{bUpdate} . ", ";
+		print $gpo $caqlh->{queries}->{$qry}->{bInsert} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{colnum} . "\n";
 	}
 
@@ -3045,8 +3249,24 @@ sub do_gperf
 		{
 			print $gpo "/* index: *None*  */\n";
 		}
-		print $gpo "/* clients: \n";
+		if (exists($caqlh->{basic}->{$bq}->{syscacheid}))
+		{
+			my $bqsc = $caqlh->{basic}->{$bq}->{syscacheid};
+			print $gpo "/* syscacheid: $bqsc  */\n";
+		}
+		print $gpo "/* clients: ";
+		{
+			# print total client count
+			my $totclient = 0;
+			for my $filc (sort(keys(%{$caqlh->{basic}->{$bq}->{files}})))
+			{
+				$totclient += $caqlh->{basic}->{$bq}->{files}->{$filc};
+			}
+			print $gpo $totclient;
+		}
 
+		print $gpo " \n";
+		# breakdown references per file
 		for my $filc (sort(keys(%{$caqlh->{basic}->{$bq}->{files}})))
 		{
 			my $fn2 = $filc;
@@ -3318,15 +3538,17 @@ sub caql_stats
  * catquery statistics
  *	
  *	total files: {nfiles}
- *	total caql queries: {nqueries}
+ *	total caql queries (including inserts): {nqueries}
  *	total unique queries: {nuniq}
  *	total basic queries: {nbasic}
+ *	total insert statements: {ninsert}
  *	
  * ----------------------------------------------------------------
  */
 
 EOF_bigstr
 	my $totquerycnt = 0;
+	my $totinsertcnt = 0;
 
 	# for all distinct queries
 	while (my ($kk, $vv) = each(%{$caqlh->{queries}}))
@@ -3337,13 +3559,19 @@ EOF_bigstr
 			$totquerycnt += $ww;
 		}
 	}
+	while (my ($kk, $vv) = each(%{$caqlh->{basic}}))
+	{
+		$totinsertcnt += 1
+			if ($kk =~ m/^insert/i);
+	}
 
 	$bigstr = doformat($bigstr, 
 					   {
 						   nfiles => scalar(keys(%{$caqlh->{files}})) ,
 						   nqueries => $totquerycnt,
 						   nuniq => scalar(keys(%{$caqlh->{queries}})),
-						   nbasic => scalar(keys(%{$caqlh->{basic}}))
+						   nbasic => scalar(keys(%{$caqlh->{basic}})),
+						   ninsert => $totinsertcnt
 					   }
 		);
 						   

@@ -110,6 +110,8 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	TablespaceDirNode tablespaceDirNode;
 	ItemPointerData persistentTid;
 	int64		persistentSerialNum;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	/* validate */
 
@@ -193,6 +195,11 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("INSERT INTO pg_tablespace",
+				NULL));
+
 	MemSet(nulls, true, sizeof(nulls));
 
 	values[Anum_pg_tablespace_spcname - 1] =
@@ -205,19 +212,19 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	nulls[Anum_pg_tablespace_spcowner - 1] = false;
 	nulls[Anum_pg_tablespace_spcfsoid - 1] = false;
 
-	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+	tuple = caql_form_tuple(pcqCtx, values, nulls);
 
 	/* Keep oids synchonized between master and segments */
 	if (OidIsValid(stmt->tsoid))
 		HeapTupleSetOid(tuple, stmt->tsoid);
 
-	tablespaceoid = simple_heap_insert(rel, tuple);
-
-	CatalogUpdateIndexes(rel, tuple);
+	tablespaceoid = caql_insert(pcqCtx, tuple);
+	/* and Update indexes (implicit) */
 
 	heap_freetuple(tuple);
 
 	/* We keep the lock on pg_tablespace until commit */
+	caql_endscan(pcqCtx);
 	heap_close(rel, NoLock);
 
 	/* Create the persistent directory for the tablespace */
@@ -274,6 +281,7 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	Relation					 rel;
 	HeapTuple					 tuple;
 	cqContext					 cqc;
+	cqContext					*pcqCtx;
 	Oid							 tablespaceoid;
 	int32						 count;
 	RelFileNode					 relfilenode;	
@@ -308,8 +316,10 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel); 
+
 	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_tablespace "
 				 " WHERE spcname = :1 "
 				 " FOR UPDATE ", 
@@ -359,7 +369,7 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	/*
 	 * Remove the pg_tablespace tuple (this will roll back if we fail below)
 	 */
-	simple_heap_delete(rel, &tuple->t_self);
+	caql_delete_current(pcqCtx);
 
 	/*
 	 * Remove any comments on this tablespace.
@@ -729,14 +739,18 @@ RenameTableSpace(const char *oldname, const char *newname)
 	Relation			 rel;
 	Oid					 tablespaceoid;
 	cqContext			 cqc;
+	cqContext			 cqc2;
+	cqContext			*pcqCtx;
 	HeapTuple			 newtuple;
 	Form_pg_tablespace	 newform;
 
 	/* Search pg_tablespace */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
 	newtuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_tablespace "
 				" WHERE spcname = :1 "
 				" FOR UPDATE ", 
@@ -767,7 +781,7 @@ RenameTableSpace(const char *oldname, const char *newname)
 
 	/* Make sure the new name doesn't exist */
 	if (caql_getcount(
-				caql_addrel(cqclr(&cqc), rel), /* rely on rowexclusive */
+				caql_addrel(cqclr(&cqc2), rel), /* rely on rowexclusive */
 				cql("SELECT COUNT(*) FROM pg_tablespace "
 					" WHERE spcname = :1 ",
 					CStringGetDatum(newname))))
@@ -779,7 +793,8 @@ RenameTableSpace(const char *oldname, const char *newname)
 	/* OK, update the entry */
 	namestrcpy(&(newform->spcname), newname);
 
-	simple_heap_update(rel, &newtuple->t_self, newtuple);
+	caql_update_current(pcqCtx, newtuple);
+	/* and Update indexes (implicit) */
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -788,8 +803,6 @@ RenameTableSpace(const char *oldname, const char *newname)
 						   GetUserId(),
 						   "ALTER", "RENAME"
 				);
-
-	CatalogUpdateIndexes(rel, newtuple);
 
 	heap_close(rel, NoLock);
 }
@@ -803,14 +816,17 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 	Relation			 rel;
 	Oid					 tablespaceoid;
 	cqContext			 cqc;
+	cqContext			*pcqCtx;
 	Form_pg_tablespace	 spcForm;
 	HeapTuple			 tup;
 
 	/* Search pg_tablespace */
 	rel = heap_open(TableSpaceRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
 	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_tablespace "
 				" WHERE spcname = :1 "
 				" FOR UPDATE ", 
@@ -878,9 +894,10 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 			repl_val[Anum_pg_tablespace_spcacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+		newtuple = caql_modify_current(pcqCtx, repl_val, repl_null, repl_repl);
 
-		simple_heap_update(rel, &newtuple->t_self, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* MPP-6929: metadata tracking */
 		if (Gp_role == GP_ROLE_DISPATCH)
@@ -889,8 +906,6 @@ AlterTableSpaceOwner(const char *name, Oid newOwnerId)
 							   GetUserId(),
 							   "ALTER", "OWNER"
 					);
-
-		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
 

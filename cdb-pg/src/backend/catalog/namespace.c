@@ -20,6 +20,7 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/catquery.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -295,9 +296,12 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 			return myTempNamespace;
 		}
 		/* use exact schema given */
-		namespaceId = GetSysCacheOid(NAMESPACENAME,
-									 CStringGetDatum(newRelation->schemaname),
-									 0, 0, 0);
+		namespaceId = caql_getoid(
+				NULL,
+				cql("SELECT oid FROM pg_namespace "
+					" WHERE nspname = :1 ",
+					CStringGetDatum(newRelation->schemaname)));
+
 		if (!OidIsValid(namespaceId))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -453,10 +457,14 @@ TypenameGetTypid(const char *typname)
 	{
 		Oid			namespaceId = lfirst_oid(l);
 
-		typid = GetSysCacheOid(TYPENAMENSP,
-							   PointerGetDatum((char *) typname),
-							   ObjectIdGetDatum(namespaceId),
-							   0, 0);
+		typid = caql_getoid(
+				NULL,
+				cql("SELECT oid FROM pg_type "
+					" WHERE typname = :1 "
+					" AND typnamespace = :2 ",
+					PointerGetDatum((char *) typname),
+					ObjectIdGetDatum(namespaceId)));
+
 		if (OidIsValid(typid))
 			return typid;
 	}
@@ -518,10 +526,14 @@ TypeIsVisible(Oid typid)
 				visible = true;
 				break;
 			}
-			if (SearchSysCacheExists(TYPENAMENSP,
-									 PointerGetDatum((char *) typname),
-									 ObjectIdGetDatum(namespaceId),
-									 0, 0))
+			
+			if (caql_getcount(
+						NULL,
+						cql("SELECT COUNT(*) FROM pg_type "
+							" WHERE typname = :1 "
+							" AND typnamespace = :2 ",
+							PointerGetDatum((char *) typname),
+							ObjectIdGetDatum(namespaceId))))
 			{
 				/* Found something else first in path */
 				break;
@@ -1487,11 +1499,16 @@ OpclassnameGetOpcid(Oid amid, const char *opcname)
 		if (namespaceId == myTempNamespace)
 			continue;			/* do not look in temp namespace */
 
-		opcid = GetSysCacheOid(CLAAMNAMENSP,
-							   ObjectIdGetDatum(amid),
-							   PointerGetDatum((char *) opcname),
-							   ObjectIdGetDatum(namespaceId),
-							   0);
+		opcid = caql_getoid(
+				NULL,
+				cql("SELECT oid FROM pg_opclass "
+					" WHERE opcamid = :1 "
+					" AND opcname = :2 "
+					" AND opcnamespace = :3 ",
+					ObjectIdGetDatum(amid),
+					PointerGetDatum((char *) opcname),
+					ObjectIdGetDatum(namespaceId)));
+
 		if (OidIsValid(opcid))
 			return opcid;
 	}
@@ -1572,10 +1589,14 @@ ConversionGetConid(const char *conname)
 		if (namespaceId == myTempNamespace)
 			continue;			/* do not look in temp namespace */
 
-		conid = GetSysCacheOid(CONNAMENSP,
-							   PointerGetDatum((char *) conname),
-							   ObjectIdGetDatum(namespaceId),
-							   0, 0);
+		conid = caql_getoid(
+				NULL,
+				cql("SELECT oid FROM pg_conversion "
+					" WHERE conname = :1 "
+					" AND connamespace = :2 ",
+					PointerGetDatum((char *) conname),
+					ObjectIdGetDatum(namespaceId)));
+
 		if (OidIsValid(conid))
 			return conid;
 	}
@@ -1711,9 +1732,12 @@ LookupExplicitNamespace(const char *nspname)
 		 */
 	}
 
-	namespaceId = GetSysCacheOid(NAMESPACENAME,
-								 CStringGetDatum((char *) nspname),
-								 0, 0, 0);
+	namespaceId = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_namespace "
+				" WHERE nspname = :1 ",
+				CStringGetDatum((char *) nspname)));
+
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -1753,9 +1777,12 @@ LookupCreationNamespace(const char *nspname)
 		return myTempNamespace;
 	}
 
-	namespaceId = GetSysCacheOid(NAMESPACENAME,
-								 CStringGetDatum((char *) nspname),
-								 0, 0, 0);
+	namespaceId = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_namespace "
+				" WHERE nspname = :1 ",
+				CStringGetDatum((char *) nspname)));
+
 	if (!OidIsValid(namespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -1802,9 +1829,12 @@ QualifiedNameGetCreationNamespace(List *names, char **objname_p)
 			return myTempNamespace;
 		}
 		/* use exact schema given */
-		namespaceId = GetSysCacheOid(NAMESPACENAME,
-									 CStringGetDatum(schemaname),
-									 0, 0, 0);
+		namespaceId = caql_getoid(
+				NULL,
+				cql("SELECT oid FROM pg_namespace "
+					" WHERE nspname = :1 ",
+					CStringGetDatum(schemaname)));
+
 		if (!OidIsValid(namespaceId))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -2136,9 +2166,13 @@ recomputeNamespacePath(void)
 				char	   *rname;
 
 				rname = NameStr(((Form_pg_authid) GETSTRUCT(tuple))->rolname);
-				namespaceId = GetSysCacheOid(NAMESPACENAME,
-											 CStringGetDatum(rname),
-											 0, 0, 0);
+
+				namespaceId = caql_getoid(
+						NULL,
+						cql("SELECT oid FROM pg_namespace "
+							" WHERE nspname = :1 ",
+							CStringGetDatum(rname)));
+
 				ReleaseSysCache(tuple);
 				if (OidIsValid(namespaceId) &&
 					!list_member_oid(oidlist, namespaceId) &&
@@ -2166,9 +2200,12 @@ recomputeNamespacePath(void)
 		else
 		{
 			/* normal namespace reference */
-			namespaceId = GetSysCacheOid(NAMESPACENAME,
-										 CStringGetDatum(curname),
-										 0, 0, 0);
+			namespaceId = caql_getoid(
+					NULL,
+					cql("SELECT oid FROM pg_namespace "
+						" WHERE nspname = :1 ",
+						CStringGetDatum(curname)));
+
 			if (OidIsValid(namespaceId) &&
 				!list_member_oid(oidlist, namespaceId) &&
 				pg_namespace_aclcheck(namespaceId, roleid,
@@ -2584,14 +2621,19 @@ assign_search_path(const char *newval, bool doit, GucSource source)
 				continue;
 			if (strcmp(curname, "pg_temp") == 0)
 				continue;
-			if (!SearchSysCacheExists(NAMESPACENAME,
-									  CStringGetDatum(curname),
-									  0, 0, 0))
+
+			if (0 == caql_getcount(
+						NULL,
+						cql("SELECT COUNT(*) FROM pg_namespace "
+							" WHERE nspname = :1 ",
+							CStringGetDatum(curname))))
+			{
 				if (Gp_role != GP_ROLE_EXECUTE)
 					ereport((source == PGC_S_TEST) ? NOTICE : ERROR,
 							(errcode(ERRCODE_UNDEFINED_SCHEMA),
 							 errmsg("schema \"%s\" does not exist", curname),
 							 errOmitLocation(true)));
+			}
 		}
 	}
 
@@ -2669,13 +2711,19 @@ TempNamespaceValid(bool error_if_removed)
 	{
 		/*
 		 * Warning:  To use the syscache, there must be a valid ResourceOwner.
-		 * This implies we must be in a Portal, and if we are in a Portal, we are in
-		 * a transaction.  So you can't use this if we are currently idle.
+		 * This implies we must be in a Portal, and if we are in a
+		 * Portal, we are in a transaction.  So you can't use this if
+		 * we are currently idle.
 		 */
 		AcceptInvalidationMessages();  /* minimize race conditions */
-		myTempNamespace = GetSysCacheOid(NAMESPACEOID,
-									 	 ObjectIdGetDatum(myTempNamespace),
-									 	 0, 0, 0);
+
+		/* NOTE: use of syscache with caql ! */
+		/* XXX XXX: jic 20120430: is this correct - check if oid exists? */
+		myTempNamespace = caql_getoid(
+				NULL,
+				cql("SELECT oid FROM pg_namespace "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(myTempNamespace)));
 
 		if (OidIsValid(myTempNamespace))
 			return true;
@@ -2761,9 +2809,11 @@ pg_table_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (!SearchSysCacheExists(RELOID,
-							  ObjectIdGetDatum(oid),
-							  0, 0, 0))
+	if (0 == caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_class "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oid))))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(RelationIsVisible(oid));
@@ -2774,9 +2824,11 @@ pg_type_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (!SearchSysCacheExists(TYPEOID,
-							  ObjectIdGetDatum(oid),
-							  0, 0, 0))
+	if (0 == caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_type "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oid))))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(TypeIsVisible(oid));
@@ -2787,9 +2839,11 @@ pg_function_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (!SearchSysCacheExists(PROCOID,
-							  ObjectIdGetDatum(oid),
-							  0, 0, 0))
+	if (0 == caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_proc "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oid))))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(FunctionIsVisible(oid));
@@ -2800,9 +2854,11 @@ pg_operator_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (!SearchSysCacheExists(OPEROID,
-							  ObjectIdGetDatum(oid),
-							  0, 0, 0))
+	if (0 == caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_operator "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oid))))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(OperatorIsVisible(oid));
@@ -2813,9 +2869,11 @@ pg_opclass_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (!SearchSysCacheExists(CLAOID,
-							  ObjectIdGetDatum(oid),
-							  0, 0, 0))
+	if (0 == caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_opclass "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oid))))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(OpclassIsVisible(oid));
@@ -2826,9 +2884,11 @@ pg_conversion_is_visible(PG_FUNCTION_ARGS)
 {
 	Oid			oid = PG_GETARG_OID(0);
 
-	if (!SearchSysCacheExists(CONOID,
-							  ObjectIdGetDatum(oid),
-							  0, 0, 0))
+	if (0 == caql_getcount(
+				NULL,
+				cql("SELECT COUNT(*) FROM pg_conversion "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oid))))
 		PG_RETURN_NULL();
 
 	PG_RETURN_BOOL(ConversionIsVisible(oid));

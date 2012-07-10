@@ -150,10 +150,14 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	 * TypeCreate will complain).  If it doesn't, create it as a shell, so
 	 * that the OID is known for use in the I/O function definitions.
 	 */
-	typoid = GetSysCacheOid(TYPENAMENSP,
-							CStringGetDatum(typeName),
-							ObjectIdGetDatum(typeNamespace),
-							0, 0);
+	typoid = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_type "
+				" WHERE typname = :1 "
+				" AND typnamespace = :2 ",
+				CStringGetDatum(typeName),
+				ObjectIdGetDatum(typeNamespace)));
+
 	if (!OidIsValid(typoid))
 	{
 		/*

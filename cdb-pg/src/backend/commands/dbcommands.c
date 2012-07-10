@@ -652,6 +652,8 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	int			dbconnlimit = -1;
 
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	if (shouldDispatch)
 		if (Persistent_BeforePersistenceWork())
@@ -949,6 +951,10 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	 * directories.
 	 */
 	pg_database_rel = heap_open(DatabaseRelationId, RowExclusiveLock);
+	pcqCtx = caql_beginscan(
+							caql_addrel(cqclr(&cqc), pg_database_rel), 
+							cql("INSERT INTO pg_database",
+								NULL));
 
 	if (Gp_role == GP_ROLE_EXECUTE && stmt->dbOid != 0)
 		dboid = stmt->dbOid;
@@ -1011,15 +1017,12 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	new_record_nulls[Anum_pg_database_datconfig - 1] = true;
 	new_record_nulls[Anum_pg_database_datacl - 1] = true;
 
-	tuple = heap_form_tuple(RelationGetDescr(pg_database_rel),
+	tuple = caql_form_tuple(pcqCtx, 
 							new_record, new_record_nulls);
 
 	HeapTupleSetOid(tuple, dboid);
 
-	simple_heap_insert(pg_database_rel, tuple);
-
-	/* Update indexes */
-	CatalogUpdateIndexes(pg_database_rel, tuple);
+	caql_insert(pcqCtx, tuple); /* implicit update of index as well */
 
 	/*
 	 * Now generate additional catalog entries associated with the new DB
@@ -1300,6 +1303,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	 * prevent any risk of deadlock failure while updating flat file)
 	 */
 	heap_close(pg_database_rel, NoLock);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Set flag to update flat database file at commit.
@@ -1317,7 +1321,6 @@ dropdb(const char *dbname, bool missing_ok)
 	bool		db_istemplate = true;
 	Oid			defaultTablespace = InvalidOid;
 	Relation	pgdbrel;
-	HeapTuple	tup;
 
 	AssertArg(dbname);
 
@@ -1428,15 +1431,17 @@ dropdb(const char *dbname, bool missing_ok)
 	/*
 	 * Remove the database's tuple from pg_database.
 	 */
-	tup = SearchSysCache(DATABASEOID,
-						 ObjectIdGetDatum(db_id),
-						 0, 0, 0);
-	if (!HeapTupleIsValid(tup))
+
+	cqContext	cqc2;
+
+	if (0 == caql_getcount(
+				caql_addrel(cqclr(&cqc2), pgdbrel),
+				cql("DELETE FROM pg_database "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(db_id))))
+	{
 		elog(ERROR, "cache lookup failed for database %u", db_id);
-
-	simple_heap_delete(pgdbrel, &tup->t_self);
-
-	ReleaseSysCache(tup);
+	}
 
 	/*
 	 * Delete any comments associated with the database.
@@ -1624,6 +1629,8 @@ RenameDatabase(const char *oldname, const char *newname)
 	Oid			db_id = InvalidOid;
 	HeapTuple	newtup;
 	Relation	rel;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
@@ -1676,13 +1683,20 @@ RenameDatabase(const char *oldname, const char *newname)
 				 errmsg("permission denied to rename database")));
 
 	/* rename */
-	newtup = SearchSysCacheCopy(DATABASEOID,
-								ObjectIdGetDatum(db_id),
-								0, 0, 0);
+
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+	newtup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_database "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(db_id)));
+
 	if (!HeapTupleIsValid(newtup))
 		elog(ERROR, "cache lookup failed for database %u", db_id);
 	namestrcpy(&(((Form_pg_database) GETSTRUCT(newtup))->datname), newname);
-	simple_heap_update(rel, &newtup->t_self, newtup);
+
+	caql_update_current(pcqCtx, newtup); /* implicit update of index as well */
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1691,8 +1705,6 @@ RenameDatabase(const char *oldname, const char *newname)
 						   GetUserId(),
 						   "ALTER", "RENAME"
 				);
-
-	CatalogUpdateIndexes(rel, newtup);
 
 	/*
 	 * Close pg_database, but keep lock till commit (this is important to
@@ -1717,6 +1729,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	HeapTuple	tuple,
 				newtuple;
 	cqContext	cqc;
+	cqContext  *pcqCtx;
 	ListCell   *option;
 	int			connlimit = -1;
 	DefElem    *dconnlimit = NULL;
@@ -1753,8 +1766,10 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 	 */
 	rel = heap_open(DatabaseRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
 	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_database" 
 				" WHERE datname = :1 FOR UPDATE", 
 				CStringGetDatum(stmt->dbname)));
@@ -1783,9 +1798,10 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 		new_record_repl[Anum_pg_database_datconnlimit - 1] = true;
 	}
 
-	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), new_record,
-								 new_record_nulls, new_record_repl);
-	simple_heap_update(rel, &tuple->t_self, newtuple);
+	newtuple = caql_modify_current(pcqCtx, new_record,
+								   new_record_nulls, new_record_repl);
+	caql_update_current(pcqCtx, newtuple); 
+	/* and Update indexes (implicit) */
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1794,9 +1810,6 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 						   GetUserId(),
 						   "ALTER", "CONNECTION LIMIT"
 				);
-
-	/* Update indexes */
-	CatalogUpdateIndexes(rel, newtuple);
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
@@ -1831,6 +1844,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		newtuple;
 	Relation	rel;
 	cqContext	cqc;
+	cqContext  *pcqCtx;
 	Datum		repl_val[Natts_pg_database];
 	bool		repl_null[Natts_pg_database];
 	bool		repl_repl[Natts_pg_database];
@@ -1846,8 +1860,10 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	 */
 	rel = heap_open(DatabaseRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
 	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_database" 
 				" WHERE datname = :1 FOR UPDATE", 
 				CStringGetDatum(stmt->dbname)));
@@ -1921,10 +1937,10 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 			repl_null[Anum_pg_database_datconfig - 1] = true;
 	}
 
-	newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel),
-								 repl_val, repl_null, repl_repl);
-	simple_heap_update(rel, &tuple->t_self, newtuple);
-
+	newtuple = caql_modify_current(pcqCtx,
+								   repl_val, repl_null, repl_repl);
+	caql_update_current(pcqCtx, newtuple); 
+	/* and Update indexes (implicit) */
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1933,9 +1949,6 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 						   GetUserId(),
 						   "ALTER", alter_subtype
 				);
-
-	/* Update indexes */
-	CatalogUpdateIndexes(rel, newtuple);
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
@@ -2012,6 +2025,7 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 	HeapTuple	tuple;
 	Relation	rel;
 	cqContext	cqc;
+	cqContext  *pcqCtx;
 	Form_pg_database datForm;
 	Oid			dboid = InvalidOid;
 	/*
@@ -2021,8 +2035,10 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 	 */
 	rel = heap_open(DatabaseRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
 	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_database" 
 				" WHERE datname = :1 FOR UPDATE", 
 				CStringGetDatum((char *)dbname)));
@@ -2095,9 +2111,10 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 			repl_val[Anum_pg_database_datacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
-		simple_heap_update(rel, &newtuple->t_self, newtuple);
-		CatalogUpdateIndexes(rel, newtuple);
+		newtuple = caql_modify_current(pcqCtx,
+									   repl_val, repl_null, repl_repl);
+		caql_update_current(pcqCtx, newtuple); 
+		/* and Update indexes (implicit) */
 
 		heap_freetuple(newtuple);
 
@@ -2355,19 +2372,13 @@ get_database_oid(const char *dbname)
 char *
 get_database_name(Oid dbid)
 {
-	HeapTuple	dbtuple;
 	char	   *result;
 
-	dbtuple = SearchSysCache(DATABASEOID,
-							 ObjectIdGetDatum(dbid),
-							 0, 0, 0);
-	if (HeapTupleIsValid(dbtuple))
-	{
-		result = pstrdup(NameStr(((Form_pg_database) GETSTRUCT(dbtuple))->datname));
-		ReleaseSysCache(dbtuple);
-	}
-	else
-		result = NULL;
+	result = caql_getcstring(
+			NULL,
+			cql("SELECT datname FROM pg_database "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(dbid)));
 
 	return result;
 }

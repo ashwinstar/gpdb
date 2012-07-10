@@ -88,7 +88,6 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 {
 	Relation			 rel;
 	HeapTuple			 tuple;
-	TupleDesc			 tupdesc;
 	NameData			 fsname;		/* filespace name */
 	Oid					 ownerId;		/* OID of the OWNER of the filespace */
 	Oid					 fsoid;	/* OID of the created filespace */
@@ -101,6 +100,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	List                *nodeSegs = NULL;
 	ItemPointerData		 persistentTid;
 	int64				 persistentSerialNum;
+	cqContext			 cqc;
+	cqContext			*pcqCtx;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		elog(ERROR, "cannot create filespaces in utility mode");
@@ -135,11 +136,18 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	namestrcpy(&fsname, stmt->filespacename);
 
 	/*
-	 * Because rollback of filespace creation is unpleasant we prefer to ensure
-	 * that we fully serialize CREATE FILESPACE operations.  Therefore we take a
-	 * big lock up-front.
+	 * Because rollback of filespace creation is unpleasant we prefer
+	 * to ensure that we fully serialize CREATE FILESPACE operations.
+	 * Therefore we take a big lock up-front.
+	 * NOTE: AccessExclusiveLock, not RowExclusiveLock
 	 */
 	rel = heap_open(FileSpaceRelationId, AccessExclusiveLock);
+
+	pcqCtx = 
+			caql_beginscan(
+					caql_addrel(cqclr(&cqc), rel),
+					cql("INSERT INTO pg_filespace",
+						NULL));
 
 	/* Check that there is no other filespace by this name. */
 	fsoid = get_filespace_oid(rel, stmt->filespacename);
@@ -397,25 +405,26 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	Assert(rel);
 
 	/* Insert tuple into pg_filespace */
-	tupdesc = RelationGetDescr(rel);
 	MemSet(nulls, false, sizeof(nulls));
 	values[Anum_pg_filespace_fsname - 1]  = NameGetDatum(&fsname);
 	values[Anum_pg_filespace_fsowner - 1] = ObjectIdGetDatum(ownerId);
-	tuple = heap_form_tuple(tupdesc, values, nulls);
+	tuple = caql_form_tuple(pcqCtx, values, nulls);
 
 	/* Keep oids synchonized between master and segments */
 	if (OidIsValid(stmt->fsoid))
 		HeapTupleSetOid(tuple, stmt->fsoid);
-	fsoid = simple_heap_insert(rel, tuple);
+
+	/* insert a new tuple */
+	fsoid = caql_insert(pcqCtx, tuple); /* implicit update of index as well */
 	Assert(OidIsValid(fsoid));
 
-	CatalogUpdateIndexes(rel, tuple);
 	heap_freetuple(tuple);
 
 	/* Record dependency on owner */
 	recordDependencyOnOwner(FileSpaceRelationId, fsoid, ownerId);
 
 	/* Keep the lock until commit/abort */
+	caql_endscan(pcqCtx);
 	heap_close(rel, NoLock);
 
 	/*
@@ -433,7 +442,6 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		rel = heap_open(FileSpaceEntryRelationId, RowExclusiveLock);
-		tupdesc = RelationGetDescr(rel);
 
 		foreach(cell, stmt->locations)
 		{
@@ -661,6 +669,7 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	Form_pg_filespace fsForm;
 	HeapTuple	      tup;
 	cqContext		  cqc;
+	cqContext		 *pcqCtx;
 
 	/*
 	 * This was from a generic AltrStmt node which allows for fully qualified
@@ -676,8 +685,10 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	/* Search pg_filespace */
 	rel = heap_open(FileSpaceRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
 	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_filespace "
 				" where fsname = :1 "
 				" FOR UPDATE ",
@@ -732,9 +743,10 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 		values[Anum_pg_filespace_fsowner - 1] = ObjectIdGetDatum(newOwnerId);
 
 		tupdesc = RelationGetDescr(rel);
-		newtuple = heap_modify_tuple(tup, tupdesc, values, nulls, replace);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replace);
 
-		simple_heap_update(rel, &newtuple->t_self, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* MPP-6929: metadata tracking */
 		if (Gp_role == GP_ROLE_DISPATCH)
@@ -743,8 +755,6 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 							   GetUserId(),
 							   "ALTER", "OWNER"
 					);
-
-		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
 
@@ -766,14 +776,18 @@ RenameFileSpace(const char *oldname, const char *newname)
 	Oid          fsoid;
 	HeapTuple	 newtuple;
 	cqContext	 cqc;
+	cqContext	 cqc2;
+	cqContext	*pcqCtx;
 	int			 numFsname;
 	Form_pg_filespace newform;
 
 	/* Search pg_filespace */
 	rel = heap_open(FileSpaceRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
 	newtuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_filespace "
 				" where fsname = :1 "
 				" FOR UPDATE ",
@@ -809,7 +823,7 @@ RenameFileSpace(const char *oldname, const char *newname)
 	}
 
 	numFsname = caql_getcount(
-			caql_addrel(cqclr(&cqc), rel),
+			caql_addrel(cqclr(&cqc2), rel),
 			cql("SELECT COUNT(*) FROM pg_filespace "
 				" where fsname = :1 ",
 				CStringGetDatum(newname)));
@@ -822,7 +836,8 @@ RenameFileSpace(const char *oldname, const char *newname)
 	/* OK, update the entry */
 	namestrcpy(&(newform->fsname), newname);
 
-	simple_heap_update(rel, &newtuple->t_self, newtuple);
+	caql_update_current(pcqCtx, newtuple);
+	/* and Update indexes (implicit) */
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -832,7 +847,6 @@ RenameFileSpace(const char *oldname, const char *newname)
 						   "ALTER", "RENAME"
 				);
 
-	CatalogUpdateIndexes(rel, newtuple);
 
 	heap_close(rel, RowExclusiveLock);
 }
@@ -1144,9 +1158,18 @@ filespace_check_empty(Oid fsoid)
 void
 add_catalog_filespace_entry(Relation rel, Oid fsoid, int16 dbid, char *location)
 {
-	HeapTuple tuple;
-	Datum evalues[Natts_pg_filespace_entry];
-	bool enulls[Natts_pg_filespace_entry];
+	HeapTuple	 tuple;
+	Datum		 evalues[Natts_pg_filespace_entry];
+	bool		 enulls[Natts_pg_filespace_entry];
+	cqContext	 cqc;
+	cqContext	*pcqCtx;
+
+	/* NOTE: rel must have correct lock mode for INSERT */
+	pcqCtx = 
+			caql_beginscan(
+					caql_addrel(cqclr(&cqc), rel),
+					cql("INSERT INTO pg_filespace_entry",
+						NULL));
 
 	MemSet(enulls, false, sizeof(enulls));
 
@@ -1156,10 +1179,14 @@ add_catalog_filespace_entry(Relation rel, Oid fsoid, int16 dbid, char *location)
 	evalues[Anum_pg_filespace_entry_fselocation - 1] =
 				DirectFunctionCall1(textin, CStringGetDatum(location));
 
-	tuple = heap_form_tuple(RelationGetDescr(rel), evalues, enulls);
-	simple_heap_insert(rel, tuple);
-	CatalogUpdateIndexes(rel, tuple);
+	tuple = caql_form_tuple(pcqCtx, evalues, enulls);
+
+	/* insert a new tuple */
+	caql_insert(pcqCtx, tuple); /* implicit update of index as well */
+
 	heap_freetuple(tuple);
+	caql_endscan(pcqCtx);
+
 }
 
 void

@@ -60,118 +60,152 @@ select * from caql2 except select * from caql1;
 select * from caql1;
                mod               |                hsh                
 ---------------------------------+-----------------------------------
- adt/regproc.c                   |  218b7c6de871b91706f23ed313521078
+ adt/acl.c                       |  605398fc1dfe37cd4e6d05ed36738acc
+ adt/regproc.c                   |  849bc20f82c1e9067944a5d3005d42cb
  cache/relcache.c                |  93dd297ad278e58b84a15359cc9b2ff6
- catalog/aclchk.c                |  ff1af3ec94d4e4092f7483f4f5aae57e
+ catalog/aclchk.c                |  8342c98903309011477e51a4e51000c9
  catalog/heap.c                  |  d4a055867541d8472db2e1760fca5dbb
- catalog/index.c                 |  f21677c7af2d44165bc6b4360224b9ea
+ catalog/index.c                 |  7ac28065b36c82a7a6d6cc1ffbbddad8
  catalog/pg_appendonly.c         |  86d796d54a277f76caa8d9044ea9aec4
- catalog/pg_attribute_encoding.c |  6dc635de0865a217e773048c84dbe9dd
+ catalog/pg_attribute_encoding.c |  c429a4cc0ad2042b8a63a957e8485e87
  catalog/pg_compression.c        |  ff94f49700cd769b2d047e4051b8b7a9
- catalog/pg_conversion.c         |  079b4ce79879654adb23a6a693026071
+ catalog/pg_conversion.c         |  e67b161334b39fac4e074f8e725a60a3
  catalog/pg_depend.c             |  df2ccb2474bce5c598f7e7b097d4dbaa
  catalog/pg_largeobject.c        |  98e5bbb0bc24bd19115a7b5984ab1791
- catalog/pg_proc.c               |  45d8ff9ae13ea3d04a2b2d31fe3646a1
- catalog/pg_proc_callback.c      |  97c78176885f2fea31efc7afa1d2e417
- cdb/cdbfts.c                    |  5ca0bdbf42bd0adceca1f82123281e30
- commands/comment.c              |  fc16f789464e5ad75825b84bf0b8e4ec
- commands/foreigncmds.c          |  25ab929b877fc734d842b11a269e8ecc
- commands/functioncmds.c         |  d173924dfdc1d704b6c5ea2f8601269a
- commands/indexcmds.c            |  4b176327dec09cd8493b26a756a1a188
- commands/queue.c                |  892202a501616310e509ddaeaaeb687f
- commands/tablecmds.c            |  ccdc54caec651811c51484587f85d546
- commands/typecmds.c             |  ff266877f08fb46228bd5f413c1191e4
- commands/user.c                 |  dd8dc69ba43bfafcdb68d35b846d93ec
- commands/vacuum.c               |  1a6107a4ff2955f9b217c7a9b814331b
+ catalog/pg_operator.c           |  fadec837920effb6ec3406fbc841800e
+ catalog/pg_proc.c               |  0d54089cff40bbf82e46d5cbd196a18b
+ catalog/pg_proc_callback.c      |  6318ae99c9084542748333bbe3c9483e
+ catalog/pg_type.c               |  2a323aac38abc2d1d0e9a159d7a71587
+ cdb/cdbfts.c                    |  b99ef4b438329fcdd6c22717983017ce
+ cdb/cdbtm.c                     |  9a1f4d2b497d2f797f4574e817e00950
+ commands/comment.c              |  982abe82b1194a6bed7f710265ce3709
+ commands/conversioncmds.c       |  b195b6c207ff48ef48257e12ef3db81a
+ commands/foreigncmds.c          |  0cd40626e6948e5eabf0eedc87378856
+ commands/functioncmds.c         |  776a2ca0c6985c5606a0f259503a1bc9
+ commands/indexcmds.c            |  b31af7afcf36f399e8455cb5b06945cb
+ commands/operatorcmds.c         |  1fce8ac406e14958b6f20c80d14556ac
+ commands/queue.c                |  3214f80d7c3cc923b17bc4d5eaee113b
+ commands/sequence.c             |  986f8c38bebe0df9735767339dfd3dcf
+ commands/tablecmds.c            |  c19bfd00107723da9daad1c513fe541b
+ commands/typecmds.c             |  79133a0f0cc549daaa0b8a69aaf4f63b
+ commands/user.c                 |  fb1c5144dda39658d0601f5c9b0520a2
+ commands/vacuum.c               |  a1ec704a4d9b815d773b463ecc1b079a
  gp/segadmin.c                   |  878c6c1c0468c04ef9eb925d120697b7
  large_object/inv_api.c          |  33e1338710922cef0304f950b7970388
- parser/analyze.c                |  c4bc1ae6ce3bc0d31c057bf81bd9f250
- parser/parse_func.c             |  ad5d6d2de9c09f4c9f2a5e685fbb5412
+ parser/analyze.c                |  e0b373e547b26c32b1433fcd70df859e
+ parser/parse_func.c             |  c1202e0250592903a6103742b2d1efb9
+ parser/parse_relation.c         |  256a6529171f6cdb18985c02e750f7ba
+ parser/parse_type.c             |  9fca02ebb70475836ca1996684e72904
+ rewrite/rewriteDefine.c         |  11048426e057a9a5714e0548a483f771
+ rewrite/rewriteSupport.c        |  30ce266b6bf7000f66dcf50419f30c82
  util/plancat.c                  |  2588a9a57f3594005335eed442279045
- adt/ruleutils.c                 |  b961cc936d78b0bf468cd2891fdf1364
- catalog/dependency.c            |  e7c738011328dbae324c5c1c49f8b00d
+ adt/dbsize.c                    |  817db90d6ec9a46ed53fe61b26a3718e
+ adt/ruleutils.c                 |  10ba14a0fd44cc0f69256271501dbaa6
+ catalog/dependency.c            |  0aae2d29dee32b9243e94592279f17ae
  catalog/gp_fastsequence.c       |  2c574d81d860568fbd8bedfb8565b3b0
- catalog/pg_constraint.c         |  0490a4ffd4ee77be8a80d5b09ae8238b
- catalog/pg_extprotocol.c        |  676d1e5e4593083c831a7f38d27f5b44
- catalog/pg_exttable.c           |  0ad823f56ab9fe686155d1499ebc2e07
- catalog/pg_shdepend.c           |  1655038e220dad23c8249a0812348e54
- cdb/cdbcat.c                    |  85f7b0ab57fd5c261a83fb8ed60c0a20
- cdb/cdbpartition.c              |  6b50c997c089f2a9686cfa64c1075518
- cdb/cdbutil.c                   |  0b44e0cdcd113863b623217605a1c74e
- commands/analyze.c              |  190d4611b2e43aaa3ac8ec8a18cb5a7c
+ catalog/namespace.c             |  965d062be47902d03d467d0227701df1
+ catalog/pg_aggregate.c          |  15cfb14c3afdad0fe38f3915aa2b6ecf
+ catalog/pg_constraint.c         |  372f613de87f8f10e99e790e6052590e
+ catalog/pg_extprotocol.c        |  4424804be94b495a2dde469945c04fc2
+ catalog/pg_exttable.c           |  08c2a1cb8a183ad42e038238596085c9
+ catalog/pg_namespace.c          |  cfe58c0c170fb49778eaf064c62b0963
+ catalog/pg_shdepend.c           |  f1b3b93615282b2cb578f18201e9d561
+ cdb/cdbcat.c                    |  bb791a1c421e640e79f5a97e102cbbc9
+ cdb/cdbpartition.c              |  1737ff46a1be6cf358910d9d7df2e809
+ cdb/cdbutil.c                   |  6d9be21597a8faedf3740fe5a944213b
+ commands/aggregatecmds.c        |  2ce35f0f506c494030a54f7d5d78bec6
+ commands/analyze.c              |  17e95bc0aeacd2197401fa627c18583b
  commands/async.c                |  e52c0b97c5d93309f04996badc310a35
- commands/cluster.c              |  28ad1bba1048ec167d36102becf09713
- commands/dbcommands.c           |  c88cdb64f3156e08497211904d0a440e
- commands/extprotocolcmds.c      |  a659d14e99d7515873032d1d984a0507
- commands/filespace.c            |  ac299869c09e8d5e4b3166d06a002c40
- commands/opclasscmds.c          |  0310a68d149ffe3be5788dbd65d2491e
- commands/proclang.c             |  cdf946f9817495100bd0e1168494d498
- commands/tablespace.c           |  5be4b67afabb2eadbf2a728265cfcca2
- commands/trigger.c              |  f3a154e0b9c7517d3c6dd5d8e376e286
- fts/fts.c                       |  286b15e471a4b6c68bfd6914b30e5594
- fts/ftssan.c                    |  e36506ff03400bc46efbbc77ad5006ea
- postmaster/autovacuum.c         |  89f5ba29c462e2dd3ac9395f89005139
+ commands/cluster.c              |  62dde6aabfc1db7766911fef86398c7c
+ commands/dbcommands.c           |  9b2a9165000e8d3c5b8125d108993f5a
+ commands/extprotocolcmds.c      |  f1fdffe504d5e95f06f26304aa8c7a10
+ commands/filespace.c            |  bff5446f10e4ebc0cec4f1bed290cdc5
+ commands/opclasscmds.c          |  37f0117238438ed25d726fd9a1fa0b46
+ commands/proclang.c             |  1d6f71560f18466db0764e10a383a194
+ commands/schemacmds.c           |  2a51fb48d63073bbc1cf863e6b94845e
+ commands/tablespace.c           |  0a4533bc9a681188a7f04a48014dd69c
+ commands/trigger.c              |  0e34b4ac36694fcc30e2673f83ef4d68
+ foreign/foreign.c               |  4bf56962ceef3feb6363b8d0b53e4e5b
+ fts/fts.c                       |  73740f51e40cfd53c1aa3ba2b00f8685
+ postmaster/autovacuum.c         |  4e920e5ea3b259acea0f59b37effd864
  resscheduler/resscheduler.c     |  d47caf2eb447ce88d297414eedac22cb
  rewrite/rewriteRemove.c         |  c95c8732de66b9faccd206dffba0507b
-(53 rows)
+(70 rows)
 
 select * from caql2;
                mod               |                hsh                
 ---------------------------------+-----------------------------------
- adt/ruleutils.c                 |  b961cc936d78b0bf468cd2891fdf1364
- catalog/dependency.c            |  e7c738011328dbae324c5c1c49f8b00d
+ adt/dbsize.c                    |  817db90d6ec9a46ed53fe61b26a3718e
+ adt/ruleutils.c                 |  10ba14a0fd44cc0f69256271501dbaa6
+ catalog/dependency.c            |  0aae2d29dee32b9243e94592279f17ae
  catalog/gp_fastsequence.c       |  2c574d81d860568fbd8bedfb8565b3b0
- catalog/pg_constraint.c         |  0490a4ffd4ee77be8a80d5b09ae8238b
- catalog/pg_extprotocol.c        |  676d1e5e4593083c831a7f38d27f5b44
- catalog/pg_exttable.c           |  0ad823f56ab9fe686155d1499ebc2e07
- catalog/pg_shdepend.c           |  1655038e220dad23c8249a0812348e54
- cdb/cdbcat.c                    |  85f7b0ab57fd5c261a83fb8ed60c0a20
- cdb/cdbpartition.c              |  6b50c997c089f2a9686cfa64c1075518
- cdb/cdbutil.c                   |  0b44e0cdcd113863b623217605a1c74e
- commands/analyze.c              |  190d4611b2e43aaa3ac8ec8a18cb5a7c
+ catalog/namespace.c             |  965d062be47902d03d467d0227701df1
+ catalog/pg_aggregate.c          |  15cfb14c3afdad0fe38f3915aa2b6ecf
+ catalog/pg_constraint.c         |  372f613de87f8f10e99e790e6052590e
+ catalog/pg_extprotocol.c        |  4424804be94b495a2dde469945c04fc2
+ catalog/pg_exttable.c           |  08c2a1cb8a183ad42e038238596085c9
+ catalog/pg_namespace.c          |  cfe58c0c170fb49778eaf064c62b0963
+ catalog/pg_shdepend.c           |  f1b3b93615282b2cb578f18201e9d561
+ cdb/cdbcat.c                    |  bb791a1c421e640e79f5a97e102cbbc9
+ cdb/cdbpartition.c              |  1737ff46a1be6cf358910d9d7df2e809
+ cdb/cdbutil.c                   |  6d9be21597a8faedf3740fe5a944213b
+ commands/aggregatecmds.c        |  2ce35f0f506c494030a54f7d5d78bec6
+ commands/analyze.c              |  17e95bc0aeacd2197401fa627c18583b
  commands/async.c                |  e52c0b97c5d93309f04996badc310a35
- commands/cluster.c              |  28ad1bba1048ec167d36102becf09713
- commands/dbcommands.c           |  c88cdb64f3156e08497211904d0a440e
- commands/extprotocolcmds.c      |  a659d14e99d7515873032d1d984a0507
- commands/filespace.c            |  ac299869c09e8d5e4b3166d06a002c40
- commands/opclasscmds.c          |  0310a68d149ffe3be5788dbd65d2491e
- commands/proclang.c             |  cdf946f9817495100bd0e1168494d498
- commands/tablespace.c           |  5be4b67afabb2eadbf2a728265cfcca2
- commands/trigger.c              |  f3a154e0b9c7517d3c6dd5d8e376e286
- fts/fts.c                       |  286b15e471a4b6c68bfd6914b30e5594
- fts/ftssan.c                    |  e36506ff03400bc46efbbc77ad5006ea
- postmaster/autovacuum.c         |  89f5ba29c462e2dd3ac9395f89005139
+ commands/cluster.c              |  62dde6aabfc1db7766911fef86398c7c
+ commands/dbcommands.c           |  9b2a9165000e8d3c5b8125d108993f5a
+ commands/extprotocolcmds.c      |  f1fdffe504d5e95f06f26304aa8c7a10
+ commands/filespace.c            |  bff5446f10e4ebc0cec4f1bed290cdc5
+ commands/opclasscmds.c          |  37f0117238438ed25d726fd9a1fa0b46
+ commands/proclang.c             |  1d6f71560f18466db0764e10a383a194
+ commands/schemacmds.c           |  2a51fb48d63073bbc1cf863e6b94845e
+ commands/tablespace.c           |  0a4533bc9a681188a7f04a48014dd69c
+ commands/trigger.c              |  0e34b4ac36694fcc30e2673f83ef4d68
+ foreign/foreign.c               |  4bf56962ceef3feb6363b8d0b53e4e5b
+ fts/fts.c                       |  73740f51e40cfd53c1aa3ba2b00f8685
+ postmaster/autovacuum.c         |  4e920e5ea3b259acea0f59b37effd864
  resscheduler/resscheduler.c     |  d47caf2eb447ce88d297414eedac22cb
  rewrite/rewriteRemove.c         |  c95c8732de66b9faccd206dffba0507b
- adt/regproc.c                   |  218b7c6de871b91706f23ed313521078
+ adt/acl.c                       |  605398fc1dfe37cd4e6d05ed36738acc
+ adt/regproc.c                   |  849bc20f82c1e9067944a5d3005d42cb
  cache/relcache.c                |  93dd297ad278e58b84a15359cc9b2ff6
- catalog/aclchk.c                |  ff1af3ec94d4e4092f7483f4f5aae57e
+ catalog/aclchk.c                |  8342c98903309011477e51a4e51000c9
  catalog/heap.c                  |  d4a055867541d8472db2e1760fca5dbb
- catalog/index.c                 |  f21677c7af2d44165bc6b4360224b9ea
+ catalog/index.c                 |  7ac28065b36c82a7a6d6cc1ffbbddad8
  catalog/pg_appendonly.c         |  86d796d54a277f76caa8d9044ea9aec4
- catalog/pg_attribute_encoding.c |  6dc635de0865a217e773048c84dbe9dd
+ catalog/pg_attribute_encoding.c |  c429a4cc0ad2042b8a63a957e8485e87
  catalog/pg_compression.c        |  ff94f49700cd769b2d047e4051b8b7a9
- catalog/pg_conversion.c         |  079b4ce79879654adb23a6a693026071
+ catalog/pg_conversion.c         |  e67b161334b39fac4e074f8e725a60a3
  catalog/pg_depend.c             |  df2ccb2474bce5c598f7e7b097d4dbaa
  catalog/pg_largeobject.c        |  98e5bbb0bc24bd19115a7b5984ab1791
- catalog/pg_proc.c               |  45d8ff9ae13ea3d04a2b2d31fe3646a1
- catalog/pg_proc_callback.c      |  97c78176885f2fea31efc7afa1d2e417
- cdb/cdbfts.c                    |  5ca0bdbf42bd0adceca1f82123281e30
- commands/comment.c              |  fc16f789464e5ad75825b84bf0b8e4ec
- commands/foreigncmds.c          |  25ab929b877fc734d842b11a269e8ecc
- commands/functioncmds.c         |  d173924dfdc1d704b6c5ea2f8601269a
- commands/indexcmds.c            |  4b176327dec09cd8493b26a756a1a188
- commands/queue.c                |  892202a501616310e509ddaeaaeb687f
- commands/tablecmds.c            |  ccdc54caec651811c51484587f85d546
- commands/typecmds.c             |  ff266877f08fb46228bd5f413c1191e4
- commands/user.c                 |  dd8dc69ba43bfafcdb68d35b846d93ec
- commands/vacuum.c               |  1a6107a4ff2955f9b217c7a9b814331b
+ catalog/pg_operator.c           |  fadec837920effb6ec3406fbc841800e
+ catalog/pg_proc.c               |  0d54089cff40bbf82e46d5cbd196a18b
+ catalog/pg_proc_callback.c      |  6318ae99c9084542748333bbe3c9483e
+ catalog/pg_type.c               |  2a323aac38abc2d1d0e9a159d7a71587
+ cdb/cdbfts.c                    |  b99ef4b438329fcdd6c22717983017ce
+ cdb/cdbtm.c                     |  9a1f4d2b497d2f797f4574e817e00950
+ commands/comment.c              |  982abe82b1194a6bed7f710265ce3709
+ commands/conversioncmds.c       |  b195b6c207ff48ef48257e12ef3db81a
+ commands/foreigncmds.c          |  0cd40626e6948e5eabf0eedc87378856
+ commands/functioncmds.c         |  776a2ca0c6985c5606a0f259503a1bc9
+ commands/indexcmds.c            |  b31af7afcf36f399e8455cb5b06945cb
+ commands/operatorcmds.c         |  1fce8ac406e14958b6f20c80d14556ac
+ commands/queue.c                |  3214f80d7c3cc923b17bc4d5eaee113b
+ commands/sequence.c             |  986f8c38bebe0df9735767339dfd3dcf
+ commands/tablecmds.c            |  c19bfd00107723da9daad1c513fe541b
+ commands/typecmds.c             |  79133a0f0cc549daaa0b8a69aaf4f63b
+ commands/user.c                 |  fb1c5144dda39658d0601f5c9b0520a2
+ commands/vacuum.c               |  a1ec704a4d9b815d773b463ecc1b079a
  gp/segadmin.c                   |  878c6c1c0468c04ef9eb925d120697b7
  large_object/inv_api.c          |  33e1338710922cef0304f950b7970388
- parser/analyze.c                |  c4bc1ae6ce3bc0d31c057bf81bd9f250
- parser/parse_func.c             |  ad5d6d2de9c09f4c9f2a5e685fbb5412
+ parser/analyze.c                |  e0b373e547b26c32b1433fcd70df859e
+ parser/parse_func.c             |  c1202e0250592903a6103742b2d1efb9
+ parser/parse_relation.c         |  256a6529171f6cdb18985c02e750f7ba
+ parser/parse_type.c             |  9fca02ebb70475836ca1996684e72904
+ rewrite/rewriteDefine.c         |  11048426e057a9a5714e0548a483f771
+ rewrite/rewriteSupport.c        |  30ce266b6bf7000f66dcf50419f30c82
  util/plancat.c                  |  2588a9a57f3594005335eed442279045
-(53 rows)
+(70 rows)
 
 -- end_ignore
 -- cleanup
@@ -202,6 +236,21 @@ comment on operator #~#~# (NONE, int8) is 'bad operator';
 drop operator #~#~# (int8, NONE);
 ERROR:  operator does not exist: bigint #~#~#
 drop operator #~#~# (NONE, int8 );
+-- try (and fail) renaming a language
+alter LANGUAGE plpgsql RENAME TO funky;
+ERROR:  must be superuser to rename procedural language
+select has_language_privilege('caql_luser', 14, 'USAGE');
+ has_language_privilege 
+------------------------
+ t
+(1 row)
+
+select has_language_privilege('caql_luser', 14, 'USAGE WITH GRANT OPTION');
+ has_language_privilege 
+------------------------
+ f
+(1 row)
+
 -- need privs to create op class and comment on language
 set role caql_super_luser;
 create operator class myi2ops 
@@ -216,6 +265,30 @@ comment on operator class myi2ops using btree is 'wow';
 drop operator class myi2ops using btree;
 comment on language sql is 'wow';
 comment on language sql is null;
+select has_language_privilege('caql_luser', 14, 'USAGE');
+ has_language_privilege 
+------------------------
+ t
+(1 row)
+
+select has_language_privilege('caql_luser', 14, 'USAGE WITH GRANT OPTION');
+ has_language_privilege 
+------------------------
+ f
+(1 row)
+
+select has_language_privilege('caql_super_luser', 14, 'USAGE');
+ has_language_privilege 
+------------------------
+ t
+(1 row)
+
+select has_language_privilege('caql_super_luser', 14, 'USAGE WITH GRANT OPTION');
+ has_language_privilege 
+------------------------
+ t
+(1 row)
+
 -- no privs
 set role caql_luser;
 CREATE or replace FUNCTION caql_timestamp(float8) 

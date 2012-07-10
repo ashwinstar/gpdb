@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -55,7 +56,6 @@ AggregateCreateWithOid(const char		*aggName,
 					   bool              aggordered,
 					   Oid				 procOid)
 {
-	Relation	aggdesc;
 	HeapTuple	tup;
 	bool		nulls[Natts_pg_aggregate];
 	Datum		values[Natts_pg_aggregate];
@@ -72,10 +72,11 @@ AggregateCreateWithOid(const char		*aggName,
 	Oid         prorettype;
 	Oid		   *fnArgs;
 	int			nargs_transfn;
-	TupleDesc	tupDesc;
 	int			i;
 	ObjectAddress myself,
 				referenced;
+	cqContext  *pcqCtx;
+	cqContext  *pcqCtx2;
 
 	/* sanity checks (caller should have caught these) */
 	if (!aggName)
@@ -138,9 +139,14 @@ AggregateCreateWithOid(const char		*aggName,
 						NameListToString(aggtransfnName),
 						format_type_be(aggTransType))));
 
-	tup = SearchSysCache(PROCOID,
-						 ObjectIdGetDatum(transfn),
-						 0, 0, 0);
+	pcqCtx2 = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(transfn)));
+
+	tup = caql_getnext(pcqCtx2);
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for function %u", transfn);
 	proc = (Form_pg_proc) GETSTRUCT(tup);
@@ -158,7 +164,7 @@ AggregateCreateWithOid(const char		*aggName,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("must not omit initial value when transition function is strict and transition type is not compatible with input type")));
 	}
-	ReleaseSysCache(tup);
+	caql_endscan(pcqCtx2);
 
 	/* handle inverse transition function, if supplied */
 	if (agginvtransfnName)
@@ -361,15 +367,17 @@ AggregateCreateWithOid(const char		*aggName,
 		nulls[Anum_pg_aggregate_agginitval - 1] = true;
 	values[Anum_pg_aggregate_aggordered - 1] = BoolGetDatum(aggordered);
 
-	aggdesc = heap_open(AggregateRelationId, RowExclusiveLock);
-	tupDesc = aggdesc->rd_att;
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("INSERT INTO pg_aggregate",
+				NULL));
 
-	tup = heap_form_tuple(tupDesc, values, nulls);
-	simple_heap_insert(aggdesc, tup);
+	tup = caql_form_tuple(pcqCtx, values, nulls);
 
-	CatalogUpdateIndexes(aggdesc, tup);
+	/* insert a new tuple */
+	caql_insert(pcqCtx, tup); /* implicit update of index as well */
 
-	heap_close(aggdesc, RowExclusiveLock);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Create dependencies for the aggregate (above and beyond those already

@@ -451,19 +451,28 @@ AtCommit_Notify(void)
 static void
 Exec_Listen(Relation lRel, const char *relname)
 {
-	HeapScanDesc scan;
 	HeapTuple	tuple;
 	Datum		values[Natts_pg_listener];
 	bool		nulls[Natts_pg_listener];
 	NameData	condname;
 	bool		alreadyListener = false;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	if (Trace_notify)
 		elog(DEBUG1, "Exec_Listen(%s,%d)", relname, MyProcPid);
 
+	Assert(RelationGetRelid(lRel) == ListenerRelationId);
+
 	/* Detect whether we are already listening on this relname */
-	scan = heap_beginscan(lRel, SnapshotNow, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), lRel),
+			cql("SELECT * FROM pg_listener "
+				" FOR UPDATE ",
+				NULL));
+
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_listener listener = (Form_pg_listener) GETSTRUCT(tuple);
 
@@ -475,7 +484,7 @@ Exec_Listen(Relation lRel, const char *relname)
 			break;
 		}
 	}
-	heap_endscan(scan);
+	caql_endscan(pcqCtx);
 
 	if (alreadyListener)
 		return;
@@ -490,15 +499,17 @@ Exec_Listen(Relation lRel, const char *relname)
 	values[Anum_pg_listener_listenerpid - 1] = Int32GetDatum(MyProcPid);
 	values[Anum_pg_listener_notification - 1] = Int32GetDatum(0);		/* no notifies pending */
 
-	tuple = heap_form_tuple(RelationGetDescr(lRel), values, nulls);
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), lRel),
+			cql("INSERT INTO pg_listener ",
+				NULL));
 
-	simple_heap_insert(lRel, tuple);
+	tuple = caql_form_tuple(pcqCtx, values, nulls);
 
-#ifdef NOT_USED					/* currently there are no indexes */
-	CatalogUpdateIndexes(lRel, tuple);
-#endif
+	caql_insert(pcqCtx, tuple);
 
 	heap_freetuple(tuple);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * now that we are listening, make sure we will unlisten before dying.
@@ -519,14 +530,22 @@ Exec_Listen(Relation lRel, const char *relname)
 static void
 Exec_Unlisten(Relation lRel, const char *relname)
 {
-	HeapScanDesc scan;
 	HeapTuple	tuple;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	if (Trace_notify)
 		elog(DEBUG1, "Exec_Unlisten(%s,%d)", relname, MyProcPid);
 
-	scan = heap_beginscan(lRel, SnapshotNow, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	Assert(RelationGetRelid(lRel) == ListenerRelationId);
+
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), lRel),
+			cql("SELECT * FROM pg_listener "
+				" FOR UPDATE ",
+				NULL));
+
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_listener listener = (Form_pg_listener) GETSTRUCT(tuple);
 
@@ -534,7 +553,7 @@ Exec_Unlisten(Relation lRel, const char *relname)
 			strncmp(NameStr(listener->relname), relname, NAMEDATALEN) == 0)
 		{
 			/* Found the matching tuple, delete it */
-			simple_heap_delete(lRel, &tuple->t_self);
+			caql_delete_current(pcqCtx);
 
 			/*
 			 * We assume there can be only one match, so no need to scan the
@@ -543,7 +562,7 @@ Exec_Unlisten(Relation lRel, const char *relname)
 			break;
 		}
 	}
-	heap_endscan(scan);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * We do not complain about unlistening something not being listened;
@@ -565,6 +584,8 @@ Exec_UnlistenAll(Relation lRel)
 	if (Trace_notify)
 		elog(DEBUG1, "Exec_UnlistenAll");
 
+	Assert(RelationGetRelid(lRel) == ListenerRelationId);
+
 	/* Find and delete all entries with my listenerPID */
 
 	numDel = caql_getcount(
@@ -583,13 +604,15 @@ Exec_UnlistenAll(Relation lRel)
 static void
 Send_Notify(Relation lRel)
 {
-	TupleDesc	tdesc = RelationGetDescr(lRel);
-	HeapScanDesc scan;
 	HeapTuple	lTuple,
 				rTuple;
 	Datum		value[Natts_pg_listener];
 	bool		repl[Natts_pg_listener],
 				nulls[Natts_pg_listener];
+	cqContext	cqc;
+	cqContext  *pcqCtx;
+
+	Assert(RelationGetRelid(lRel) == ListenerRelationId);
 
 	/* preset data to update notify column to MyProcPid */
 	memset(nulls, false, sizeof(nulls));
@@ -598,9 +621,13 @@ Send_Notify(Relation lRel)
 	memset(value, 0, sizeof(value));
 	value[Anum_pg_listener_notification - 1] = Int32GetDatum(MyProcPid);
 
-	scan = heap_beginscan(lRel, SnapshotNow, 0, NULL);
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), lRel),
+			cql("SELECT * FROM pg_listener "
+				" FOR UPDATE ",
+				NULL));
 
-	while ((lTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	while (HeapTupleIsValid(lTuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_listener listener = (Form_pg_listener) GETSTRUCT(lTuple);
 		char	   *relname = NameStr(listener->relname);
@@ -645,22 +672,18 @@ Send_Notify(Relation lRel)
 				 * we should just do it for any failure (certainly at least
 				 * for EPERM too...)
 				 */
-				simple_heap_delete(lRel, &lTuple->t_self);
+				caql_delete_current(pcqCtx);
 			}
 			else if (listener->notification == 0)
 			{
 				/* Rewrite the tuple with my PID in notification column */
-				rTuple = heap_modify_tuple(lTuple, tdesc, value, nulls, repl);
-				simple_heap_update(lRel, &lTuple->t_self, rTuple);
+				rTuple = caql_modify_current(pcqCtx, value, nulls, repl);
 
-#ifdef NOT_USED					/* currently there are no indexes */
-				CatalogUpdateIndexes(lRel, rTuple);
-#endif
+				caql_update_current(pcqCtx, rTuple);
 			}
 		}
 	}
-
-	heap_endscan(scan);
+	caql_endscan(pcqCtx);
 }
 
 /*

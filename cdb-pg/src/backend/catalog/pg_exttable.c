@@ -56,7 +56,8 @@ InsertExtTableEntry(Oid 	tbloid,
 	HeapTuple	pg_exttable_tuple = NULL;
 	bool		nulls[Natts_pg_exttable];
 	Datum		values[Natts_pg_exttable];
-
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
  	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, false, sizeof(nulls));
@@ -65,6 +66,11 @@ InsertExtTableEntry(Oid 	tbloid,
      * Open and lock the pg_exttable catalog.
      */
 	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
+
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), pg_exttable_rel),
+			cql("INSERT INTO pg_exttable",
+				NULL));
 
 	values[Anum_pg_exttable_reloid - 1] = ObjectIdGetDatum(tbloid);
 	values[Anum_pg_exttable_fmttype - 1] = CharGetDatum(formattype);
@@ -109,15 +115,16 @@ InsertExtTableEntry(Oid 	tbloid,
 	values[Anum_pg_exttable_encoding - 1] = Int32GetDatum(encoding);
 	values[Anum_pg_exttable_writable - 1] = BoolGetDatum(iswritable);
 
-	pg_exttable_tuple = heap_form_tuple(RelationGetDescr(pg_exttable_rel),
-									   values, nulls);
+	pg_exttable_tuple = caql_form_tuple(pcqCtx, values, nulls);
 
-	simple_heap_insert(pg_exttable_rel, pg_exttable_tuple);
+	/* insert a new tuple */
+	caql_insert(pcqCtx, pg_exttable_tuple); 
+	/* and Update indexes (implicit) */
 
-	CatalogUpdateIndexes(pg_exttable_rel, pg_exttable_tuple);
+	caql_endscan(pcqCtx);
 
 	/*
-     * Close the gp_distribution_policy relcache entry without unlocking.
+     * Close the pg_exttable relcache entry without unlocking.
      * We have updated the catalog: consequently the lock must be held until
      * end of transaction.
      */

@@ -71,16 +71,17 @@ addProcCallback(Oid profnoid, Oid procallback, char promethod)
 {
 	bool		nulls[Natts_pg_proc_callback];
 	Datum		values[Natts_pg_proc_callback];
-	Relation    proc_callback_rel;
-	TupleDesc   tupDesc;
 	HeapTuple   tup;
+	cqContext  *pcqCtx;
 	
 	Insist(OidIsValid(profnoid));
 	Insist(OidIsValid(procallback));
 
 	/* open pg_proc_callback */
-	proc_callback_rel = heap_open(ProcCallbackRelationId, RowExclusiveLock);
-	tupDesc = proc_callback_rel->rd_att;
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("INSERT INTO pg_proc_callback ",
+				NULL));
 
 	/* Build the tuple and insert it */
 	nulls[Anum_pg_proc_callback_profnoid - 1]	  = false;
@@ -89,13 +90,13 @@ addProcCallback(Oid profnoid, Oid procallback, char promethod)
 	values[Anum_pg_proc_callback_profnoid - 1]	  = ObjectIdGetDatum(profnoid);
 	values[Anum_pg_proc_callback_procallback - 1] = ObjectIdGetDatum(procallback);
 	values[Anum_pg_proc_callback_promethod - 1]	  = CharGetDatum(promethod);
-	tup = heap_form_tuple(tupDesc, values, nulls);
+
+	tup = caql_form_tuple(pcqCtx, values, nulls);
 	
 	/* Insert tuple into the relation */
-	simple_heap_insert(proc_callback_rel, tup);
-	CatalogUpdateIndexes(proc_callback_rel, tup);
+	caql_insert(pcqCtx, tup);  /* implicit update of index as well */
 
-	heap_close(proc_callback_rel, RowExclusiveLock);
+	caql_endscan(pcqCtx);
 }
 
 

@@ -233,9 +233,8 @@ CreateComments(Oid oid, Oid classoid, int32 subid, char *comment)
 			caql_delete_current(pcqCtx);
 		else
 		{
-			newtuple = heap_modify_tuple(oldtuple, 
-										 RelationGetDescr(description), values,
-										 nulls, replaces);
+			newtuple = caql_modify_current(pcqCtx,
+										   values, nulls, replaces);
 			caql_update_current(pcqCtx, newtuple);
 			/* update_current updates the index -- don't do it twice */
 		}
@@ -249,11 +248,16 @@ CreateComments(Oid oid, Oid classoid, int32 subid, char *comment)
 
 	if (newtuple == NULL && comment != NULL)
 	{
-		newtuple = heap_form_tuple(RelationGetDescr(description),
-								   values, nulls);
-		simple_heap_insert(description, newtuple);
-		CatalogUpdateIndexes(description, newtuple);
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), description),
+				cql("INSERT INTO pg_description",
+					NULL));
+
+		newtuple = caql_form_tuple(pcqCtx, values, nulls);
+		caql_insert(pcqCtx, newtuple); /* implicit update of index as well */
+
 		heap_freetuple(newtuple);
+		caql_endscan(pcqCtx);
 	}
 
 	/* Done */
@@ -320,9 +324,8 @@ CreateSharedComments(Oid oid, Oid classoid, char *comment)
 			caql_delete_current(pcqCtx);
 		else
 		{
-			newtuple = heap_modify_tuple(oldtuple, 
-										 RelationGetDescr(shdescription),
-										 values, nulls, replaces);
+			newtuple = caql_modify_current(pcqCtx,
+										   values, nulls, replaces);
 			caql_update_current(pcqCtx, newtuple);
 			/* update_current updates the index -- don't do it twice */
 		}
@@ -336,11 +339,16 @@ CreateSharedComments(Oid oid, Oid classoid, char *comment)
 
 	if (newtuple == NULL && comment != NULL)
 	{
-		newtuple = heap_form_tuple(RelationGetDescr(shdescription),
-								   values, nulls);
-		simple_heap_insert(shdescription, newtuple);
-		CatalogUpdateIndexes(shdescription, newtuple);
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), shdescription),
+				cql("INSERT INTO pg_shdescription",
+					NULL));
+
+		newtuple = caql_form_tuple(pcqCtx, values, nulls);
+		caql_insert(pcqCtx, newtuple); /* implicit update of index as well */
+
 		heap_freetuple(newtuple);
+		caql_endscan(pcqCtx);
 	}
 
 	/* Done */
@@ -715,9 +723,12 @@ CommentNamespace(List *qualname, char *comment)
 				 errmsg("schema name may not be qualified")));
 	namespace = strVal(linitial(qualname));
 
-	oid = GetSysCacheOid(NAMESPACENAME,
-						 CStringGetDatum(namespace),
-						 0, 0, 0);
+	oid = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_namespace "
+				" WHERE nspname = :1 ",
+				CStringGetDatum(namespace)));
+
 	if (!OidIsValid(oid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -803,6 +814,8 @@ CommentRule(List *qualname, char *comment)
 	}
 	else
 	{
+		cqContext  *pcqCtx;
+
 		/* New-style: rule and relname both provided */
 		Assert(nnames >= 2);
 		relname = list_truncate(list_copy(qualname), nnames - 1);
@@ -814,10 +827,16 @@ CommentRule(List *qualname, char *comment)
 		reloid = RelationGetRelid(relation);
 
 		/* Find the rule's pg_rewrite tuple, get its OID */
-		tuple = SearchSysCache(RULERELNAME,
-							   ObjectIdGetDatum(reloid),
-							   PointerGetDatum(rulename),
-							   0, 0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_rewrite "
+					" WHERE ev_class = :1 "
+					" AND rulename = :2 ",
+					ObjectIdGetDatum(reloid),
+					PointerGetDatum(rulename)));
+
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -825,7 +844,7 @@ CommentRule(List *qualname, char *comment)
 							rulename, RelationGetRelationName(relation))));
 		Assert(reloid == ((Form_pg_rewrite) GETSTRUCT(tuple))->ev_class);
 		ruleoid = HeapTupleGetOid(tuple);
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 	}
 
 	/* Check object security */
@@ -1162,9 +1181,12 @@ CommentLanguage(List *qualname, char *comment)
 				 errmsg("language name may not be qualified")));
 	language = strVal(linitial(qualname));
 
-	oid = GetSysCacheOid(LANGNAME,
-						 CStringGetDatum(language),
-						 0, 0, 0);
+	oid = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_language "
+				" WHERE lanname = :1 ",
+				CStringGetDatum(language)));
+
 	if (!OidIsValid(oid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -1197,7 +1219,7 @@ CommentOpClass(List *qualname, List *arguments, char *comment)
 	char	   *opcname;
 	Oid			amID;
 	Oid			opcID;
-	HeapTuple	tuple;
+	int			fetchCount = 0;
 
 	Assert(list_length(arguments) == 1);
 	amname = strVal(linitial(arguments));
@@ -1205,9 +1227,12 @@ CommentOpClass(List *qualname, List *arguments, char *comment)
 	/*
 	 * Get the access method's OID.
 	 */
-	amID = GetSysCacheOid(AMNAME,
-						  CStringGetDatum(amname),
-						  0, 0, 0);
+	amID = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_am "
+				" WHERE amname = :1 ",
+				CStringGetDatum(amname)));
+
 	if (!OidIsValid(amID))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1227,40 +1252,52 @@ CommentOpClass(List *qualname, List *arguments, char *comment)
 		Oid			namespaceId;
 
 		namespaceId = LookupExplicitNamespace(schemaname);
-		tuple = SearchSysCache(CLAAMNAMENSP,
-							   ObjectIdGetDatum(amID),
-							   PointerGetDatum(opcname),
-							   ObjectIdGetDatum(namespaceId),
-							   0);
+
+		opcID = caql_getoid_plus(
+				NULL,
+				&fetchCount,
+				NULL,
+				cql("SELECT oid FROM pg_opclass "
+					" WHERE opcamid = :1 "
+					" AND opcname = :2 "
+					" AND opcnamespace = :3 ",
+					ObjectIdGetDatum(amID),
+					PointerGetDatum(opcname),
+					ObjectIdGetDatum(namespaceId)));
 	}
 	else
 	{
+		Oid	opcID1;
 		/* Unqualified opclass name, so search the search path */
-		opcID = OpclassnameGetOpcid(amID, opcname);
-		if (!OidIsValid(opcID))
+		opcID1 = OpclassnameGetOpcid(amID, opcname);
+		if (!OidIsValid(opcID1))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 							opcname, amname)));
-		tuple = SearchSysCache(CLAOID,
-							   ObjectIdGetDatum(opcID),
-							   0, 0, 0);
+
+
+		opcID = caql_getoid_plus(
+				NULL,
+				&fetchCount,
+				NULL,
+				cql("SELECT oid FROM pg_opclass "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(opcID1)));
 	}
 
-	if (!HeapTupleIsValid(tuple))
+	if (0 == fetchCount)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 						NameListToString(qualname), amname)));
-
-	opcID = HeapTupleGetOid(tuple);
+	}
 
 	/* Permission check: must own opclass */
 	if (!pg_opclass_ownercheck(opcID, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPCLASS,
 					   NameListToString(qualname));
-
-	ReleaseSysCache(tuple);
 
 	/* Call CreateComments() to create/drop the comments */
 	CreateComments(opcID, OperatorClassRelationId, 0, comment);
@@ -1333,7 +1370,7 @@ CommentCast(List *qualname, List *arguments, char *comment)
 	TypeName   *targettype;
 	Oid			sourcetypeid;
 	Oid			targettypeid;
-	HeapTuple	tuple;
+	int			fetchCount = 0;
 	Oid			castOid;
 
 	Assert(list_length(qualname) == 1);
@@ -1346,19 +1383,24 @@ CommentCast(List *qualname, List *arguments, char *comment)
 	sourcetypeid = typenameTypeId(NULL, sourcetype);
 	targettypeid = typenameTypeId(NULL, targettype);
 
-	tuple = SearchSysCache(CASTSOURCETARGET,
-						   ObjectIdGetDatum(sourcetypeid),
-						   ObjectIdGetDatum(targettypeid),
-						   0, 0);
-	if (!HeapTupleIsValid(tuple))
+	castOid = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT * FROM pg_cast "
+				" WHERE castsource = :1 "
+				" AND casttarget = :2 ",
+				ObjectIdGetDatum(sourcetypeid),
+				ObjectIdGetDatum(targettypeid)));
+
+	if (0 == fetchCount)
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("cast from type %s to type %s does not exist",
 						TypeNameToString(sourcetype),
 						TypeNameToString(targettype))));
-
-	/* Get the OID of the cast */
-	castOid = HeapTupleGetOid(tuple);
+	}
 
 	/* Permission check */
 	if (!pg_type_ownercheck(sourcetypeid, GetUserId())
@@ -1368,8 +1410,6 @@ CommentCast(List *qualname, List *arguments, char *comment)
 				 errmsg("must be owner of type %s or type %s",
 						TypeNameToString(sourcetype),
 						TypeNameToString(targettype))));
-
-	ReleaseSysCache(tuple);
 
 	/* Call CreateComments() to create/drop the comments */
 	CreateComments(castOid, CastRelationId, 0, comment);

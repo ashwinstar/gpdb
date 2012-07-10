@@ -187,7 +187,6 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 {
 	HeapTuple	tup;
 	Relation	rel;
-	TupleDesc	dsc;
 	Oid			ptcId;
 	Oid			ownerId;
 	AclResult	aclresult;
@@ -196,21 +195,22 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	Datum		ownerDatum;
 	Datum		trustedDatum;
 	cqContext	cqc;	
+	cqContext  *pcqCtx;
 	
 	/*
 	 * Check the pg_extprotocol relation to be certain the protocol
 	 * is there.
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
-	dsc = RelationGetDescr(rel);
+
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
 
 	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_extprotocol "
 				" WHERE ptcname = :1 "
 				" FOR UPDATE ",
 				CStringGetDatum(name)));
-
 
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
@@ -220,9 +220,8 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 
 	ptcId = HeapTupleGetOid(tup);
 
-	ownerDatum = heap_getattr(tup,
+	ownerDatum = caql_getattr(pcqCtx,
 							  Anum_pg_extprotocol_ptcowner,
-							  dsc,
 							  &isNull);
 
 	if(isNull)
@@ -233,10 +232,9 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 
 	ownerId = DatumGetObjectId(ownerDatum);
 
-	trustedDatum = heap_getattr(tup,
-							 Anum_pg_extprotocol_ptctrusted,
-							 dsc,
-							 &isNull);
+	trustedDatum = caql_getattr(pcqCtx,
+								Anum_pg_extprotocol_ptctrusted,
+								&isNull);
 
 	if(isNull)
 		ereport(ERROR,
@@ -288,9 +286,8 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		replaces[Anum_pg_extprotocol_ptcowner - 1] = true;
 		values[Anum_pg_extprotocol_ptcowner - 1] = ObjectIdGetDatum(newOwnerId);
 
-		aclDatum = heap_getattr(tup,
+		aclDatum = caql_getattr(pcqCtx,
 								Anum_pg_extprotocol_ptcacl,
-								dsc,
 								&isNull);
 
 		if (!isNull)
@@ -301,13 +298,11 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 			values[Anum_pg_extprotocol_ptcacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values,
+									   nulls, replaces);
 
-		simple_heap_update(rel, &newtuple->t_self, newtuple);
-
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(rel, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		heap_freetuple(newtuple);
 
@@ -326,26 +321,25 @@ RenameExtProtocol(const char *oldname, const char *newname)
 {
 	HeapTuple	tup;
 	Relation	rel;
-	TupleDesc	dsc;
 	Oid			ptcId;
 	bool		isNull;
 	cqContext	cqc;		
+	cqContext  *pcqCtx;
 	
 	/*
 	 * Check the pg_extprotocol relation to be certain the protocol
 	 * is there.
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
-	dsc = RelationGetDescr(rel);
+
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
 
 	tup = caql_getfirst(
-			caql_addrel(cqclr(&cqc), rel),
+			pcqCtx,
 			cql("SELECT * FROM pg_extprotocol "
 				" WHERE ptcname = :1 "
 				" FOR UPDATE ",
 				CStringGetDatum(oldname)));
-
-	
 
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
@@ -355,10 +349,10 @@ RenameExtProtocol(const char *oldname, const char *newname)
 
 	ptcId = HeapTupleGetOid(tup);
 
-	(void) heap_getattr(tup,
-							  Anum_pg_extprotocol_ptcowner,
-							  dsc,
-							  &isNull);
+	/* just check the null flag */
+	(void) caql_getattr(pcqCtx,
+						Anum_pg_extprotocol_ptcowner,
+						&isNull);
 
 	if(isNull)
 		ereport(ERROR,
@@ -389,13 +383,11 @@ RenameExtProtocol(const char *oldname, const char *newname)
 		replaces[Anum_pg_extprotocol_ptcname - 1] = true;
 		values[Anum_pg_extprotocol_ptcname - 1] = CStringGetDatum(newname);
 
-		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values,
+									   nulls, replaces);
 
-		simple_heap_update(rel, &newtuple->t_self, newtuple);
-
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(rel, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		heap_freetuple(newtuple);
 	}

@@ -600,7 +600,8 @@ objectNamesToOids(GrantObjectType objtype, List *objnames)
 						NULL,
 						&fetchCount,
 						NULL,
-						cql("SELECT oid FROM pg_language WHERE lanname = :1 ",
+						cql("SELECT oid FROM pg_language "
+							" WHERE lanname = :1 ",
 							PointerGetDatum(langname)));
 
 				if (0 == fetchCount)
@@ -623,7 +624,8 @@ objectNamesToOids(GrantObjectType objtype, List *objnames)
 						NULL,
 						&fetchCount,
 						NULL,
-						cql("SELECT oid FROM pg_namespace WHERE nspname = :1 ",
+						cql("SELECT oid FROM pg_namespace "
+							" WHERE nspname = :1 ",
 							CStringGetDatum(nspname)));
 
 				if (0 == fetchCount)
@@ -646,7 +648,8 @@ objectNamesToOids(GrantObjectType objtype, List *objnames)
 						NULL,
 						&fetchCount,
 						NULL,
-						cql("SELECT oid FROM pg_tablespace WHERE spcname = :1",
+						cql("SELECT oid FROM pg_tablespace "
+							" WHERE spcname = :1",
 							CStringGetDatum(spcname)));
 
 				if (0 == fetchCount)
@@ -725,17 +728,23 @@ ExecGrant_Relation(InternalGrant *istmt)
 		int				 noldmembers = 0;
 		Oid				*oldmembers;
 		bool			 bTemp;
+		cqContext		 cqc;
+		cqContext		*pcqCtx;
 
 		bTemp = false;
 
-		cql0("SELECT * FROM pg_class WHERE oid = :1 FOR UPDATE ",
-			 ObjectIdGetDatum(relOid));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_class "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(relOid)));
 
-		tuple = SearchSysCache(RELOID,
-							   ObjectIdGetDatum(relOid),
-							   0, 0, 0);
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for relation %u", relOid);
+
 		pg_class_tuple = (Form_pg_class) GETSTRUCT(tuple);
 
 		/* Not sensible to grant on an index */
@@ -910,10 +919,10 @@ ExecGrant_Relation(InternalGrant *istmt)
 			replaces[Anum_pg_class_relacl - 1] = true;
 			values[Anum_pg_class_relacl - 1] = PointerGetDatum(new_acl);
 
-			newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation),
-										 values, nulls, replaces);
+			newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 		
 		/* MPP-7572: Don't track metadata if table in any
 		 * temporary namespace
@@ -935,8 +944,6 @@ ExecGrant_Relation(InternalGrant *istmt)
 							   (istmt->is_grant) ? "GRANT" : "REVOKE"
 					);
 
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
 
 		if (!istmt->cooked_privs)
 		{
@@ -947,7 +954,7 @@ ExecGrant_Relation(InternalGrant *istmt)
 								  nnewmembers, newmembers);
 		}
 
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -990,13 +997,18 @@ ExecGrant_Database(InternalGrant *istmt)
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
 		HeapTuple	tuple;
+		cqContext	cqc;
+		cqContext  *pcqCtx;
 
-		cql0("SELECT * FROM pg_database WHERE oid = :1 FOR UPDATE ",
-			 ObjectIdGetDatum(datId));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_database "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(datId)));
 
-		tuple = SearchSysCache(DATABASEOID,
-							   ObjectIdGetDatum(datId),
-							   0, 0, 0);
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for database %u", datId);
 
@@ -1052,10 +1064,10 @@ ExecGrant_Database(InternalGrant *istmt)
 		replaces[Anum_pg_database_datacl - 1] = true;
 		values[Anum_pg_database_datacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* MPP-6929: metadata tracking */
 		if (Gp_role == GP_ROLE_DISPATCH)
@@ -1066,16 +1078,13 @@ ExecGrant_Database(InternalGrant *istmt)
 							   (istmt->is_grant) ? "GRANT" : "REVOKE"
 					);
 
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
-
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(DatabaseRelationId, HeapTupleGetOid(tuple),
 							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -1118,14 +1127,18 @@ ExecGrant_Fdw(InternalGrant *istmt)
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
+		cqContext	cqc;
+		cqContext  *pcqCtx;
 
-		cql0("SELECT * FROM pg_foreign_data_wrapper WHERE oid = :1 "
-			 " FOR UPDATE ",
-			 ObjectIdGetDatum(fdwid));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_foreign_data_wrapper "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(fdwid)));
 
-		tuple = SearchSysCache(FOREIGNDATAWRAPPEROID,
-							   ObjectIdGetDatum(fdwid),
-							   0, 0, 0);
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwid);
 
@@ -1182,13 +1195,10 @@ ExecGrant_Fdw(InternalGrant *istmt)
 		replaces[Anum_pg_foreign_data_wrapper_fdwacl - 1] = true;
 		values[Anum_pg_foreign_data_wrapper_fdwacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
-
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(ForeignDataWrapperRelationId,
@@ -1197,7 +1207,7 @@ ExecGrant_Fdw(InternalGrant *istmt)
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -1240,13 +1250,18 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
+		cqContext	cqc;
+		cqContext  *pcqCtx;
 
-		cql0("SELECT * FROM pg_foreign_server WHERE oid = :1 FOR UPDATE ",
-			 ObjectIdGetDatum(srvid));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_foreign_server "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(srvid)));
 
-		tuple = SearchSysCache(FOREIGNSERVEROID,
-							   ObjectIdGetDatum(srvid),
-							   0, 0, 0);
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for foreign server %u", srvid);
 
@@ -1303,13 +1318,10 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 		replaces[Anum_pg_foreign_server_srvacl - 1] = true;
 		values[Anum_pg_foreign_server_srvacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
-
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(ForeignServerRelationId,
@@ -1318,7 +1330,7 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -1361,13 +1373,18 @@ ExecGrant_Function(InternalGrant *istmt)
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
+		cqContext	cqc;
+		cqContext  *pcqCtx;
 
-		cql0("SELECT * FROM pg_proc WHERE oid = :1 FOR UPDATE ",
-			 ObjectIdGetDatum(funcId));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_proc "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(funcId)));
 
-		tuple = SearchSysCache(PROCOID,
-							   ObjectIdGetDatum(funcId),
-							   0, 0, 0);
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", funcId);
 
@@ -1423,13 +1440,10 @@ ExecGrant_Function(InternalGrant *istmt)
 		replaces[Anum_pg_proc_proacl - 1] = true;
 		values[Anum_pg_proc_proacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
-
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(ProcedureRelationId, funcId,
@@ -1437,7 +1451,7 @@ ExecGrant_Function(InternalGrant *istmt)
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -1480,13 +1494,18 @@ ExecGrant_Language(InternalGrant *istmt)
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
+		cqContext	cqc;
+		cqContext  *pcqCtx;
 
-		cql0("SELECT * FROM pg_language WHERE oid = :1 FOR UPDATE ",
-			 ObjectIdGetDatum(langId));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_language "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(langId)));
 
-		tuple = SearchSysCache(LANGOID,
-							   ObjectIdGetDatum(langId),
-							   0, 0, 0);
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for language %u", langId);
 
@@ -1552,13 +1571,10 @@ ExecGrant_Language(InternalGrant *istmt)
 		replaces[Anum_pg_language_lanacl - 1] = true;
 		values[Anum_pg_language_lanacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
-
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(LanguageRelationId, HeapTupleGetOid(tuple),
@@ -1566,7 +1582,7 @@ ExecGrant_Language(InternalGrant *istmt)
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -1609,13 +1625,18 @@ ExecGrant_Namespace(InternalGrant *istmt)
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
+		cqContext	cqc;
+		cqContext  *pcqCtx;
 
-		cql0("SELECT * FROM pg_namespace WHERE oid = :1 FOR UPDATE ",
-			 ObjectIdGetDatum(nspid));
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_namespace "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
+					ObjectIdGetDatum(nspid)));
 
-		tuple = SearchSysCache(NAMESPACEOID,
-							   ObjectIdGetDatum(nspid),
-							   0, 0, 0);
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for namespace %u", nspid);
 
@@ -1672,10 +1693,10 @@ ExecGrant_Namespace(InternalGrant *istmt)
 		replaces[Anum_pg_namespace_nspacl - 1] = true;
 		values[Anum_pg_namespace_nspacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* MPP-6929: metadata tracking */
 		if (Gp_role == GP_ROLE_DISPATCH)
@@ -1685,8 +1706,6 @@ ExecGrant_Namespace(InternalGrant *istmt)
 							   "PRIVILEGE", 
 							   (istmt->is_grant) ? "GRANT" : "REVOKE"
 					);
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(NamespaceRelationId, HeapTupleGetOid(tuple),
@@ -1694,7 +1713,7 @@ ExecGrant_Namespace(InternalGrant *istmt)
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -1738,11 +1757,16 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 		Oid		   *newmembers;
 		HeapTuple	tuple;
 		cqContext	cqc;
+		cqContext  *pcqCtx;
 
-		tuple = caql_getfirst(
-				caql_addrel(cqclr(&cqc), relation), 
-				cql("SELECT * FROM pg_tablespace WHERE oid = :1 FOR UPDATE ",
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_tablespace "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
 					ObjectIdGetDatum(tblId)));
+
+		tuple = caql_getnext(pcqCtx);
 
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for tablespace %u", tblId);
@@ -1799,10 +1823,10 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 		replaces[Anum_pg_tablespace_spcacl - 1] = true;
 		values[Anum_pg_tablespace_spcacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* MPP-6929: metadata tracking */
 		if (Gp_role == GP_ROLE_DISPATCH)
@@ -1813,14 +1837,13 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 							   (istmt->is_grant) ? "GRANT" : "REVOKE"
 					);
 
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
-
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(TableSpaceRelationId, tblId,
 							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
+
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -1868,12 +1891,17 @@ ExecGrant_ExtProtocol(InternalGrant *istmt)
 		Datum		trustedDatum;
 		Datum		ptcnameDatum;
 		cqContext	cqc;
+		cqContext  *pcqCtx;
 		TupleDesc	reldsc = RelationGetDescr(relation);
 
-		tuple = caql_getfirst(
-				caql_addrel(cqclr(&cqc), relation), 
-				cql("SELECT * FROM pg_extprotocol WHERE oid = :1 FOR UPDATE ",
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_extprotocol "
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
 					ObjectIdGetDatum(ptcid)));
+
+		tuple = caql_getnext(pcqCtx);
 
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "lookup failed for external protocol %u", ptcid);
@@ -1970,13 +1998,10 @@ ExecGrant_ExtProtocol(InternalGrant *istmt)
 		replaces[Anum_pg_extprotocol_ptcacl - 1] = true;
 		values[Anum_pg_extprotocol_ptcacl - 1] = PointerGetDatum(new_acl);
 
-		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
-									 nulls, replaces);
+		newtuple = caql_modify_current(pcqCtx, values, nulls, replaces);
 
-		simple_heap_update(relation, &newtuple->t_self, newtuple);
-
-		/* keep the catalog indexes up to date */
-		CatalogUpdateIndexes(relation, newtuple);
+		caql_update_current(pcqCtx, newtuple);
+		/* and Update indexes (implicit) */
 
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(ExtprotocolRelationId,
@@ -1984,6 +2009,8 @@ ExecGrant_ExtProtocol(InternalGrant *istmt)
 							  ownerId, istmt->is_grant,
 							  noldmembers, oldmembers,
 							  nnewmembers, newmembers);
+
+		caql_endscan(pcqCtx);
 
 		pfree(new_acl);
 
@@ -2172,14 +2199,18 @@ has_rolcatupdate(Oid roleid)
 {
 	bool		rolcatupdate;
 	HeapTuple	tuple;
+	cqContext  *pcqCtx;
 
 	/* XXX XXX: SELECT rolcatupdate */
-	cql0("SELECT * FROM pg_authid WHERE oid = :1 ",
-		 ObjectIdGetDatum(roleid));
 
-	tuple = SearchSysCache(AUTHOID,
-						   ObjectIdGetDatum(roleid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_authid "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(roleid)));
+	
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -2187,7 +2218,7 @@ has_rolcatupdate(Oid roleid)
 
 	rolcatupdate = ((Form_pg_authid) GETSTRUCT(tuple))->rolcatupdate;
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return rolcatupdate;
 }
@@ -2390,20 +2421,24 @@ pg_database_aclmask(Oid db_oid, Oid roleid,
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	cqContext  *pcqCtx;
 
 	/* Superusers bypass all permission checking. */
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_database WHERE oid = :1 ",
-		 ObjectIdGetDatum(db_oid));
-
 	/*
 	 * Get the database's ACL from pg_database
 	 */
-	tuple = SearchSysCache(DATABASEOID,
-						   ObjectIdGetDatum(db_oid),
-						   0, 0, 0);
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_database "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(db_oid)));
+	
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
@@ -2431,7 +2466,7 @@ pg_database_aclmask(Oid db_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2652,11 +2687,12 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	AclMode		result;
 	Relation	pg_tablespace;
 	HeapTuple	tuple;
-	cqContext	cqc;
 	Datum		aclDatum;
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	/*
 	 * Only shared relations can be stored in global space; don't let even
@@ -2676,10 +2712,15 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	 */
 	pg_tablespace = heap_open(TableSpaceRelationId, AccessShareLock);
 
-	tuple = caql_getfirst(
+	/* XXX XXX select spcowner, spcacl */
+
+	pcqCtx = caql_beginscan(
 			caql_addrel(cqclr(&cqc), pg_tablespace), 
-			cql("SELECT * FROM pg_tablespace WHERE oid = :1 ",
+			cql("SELECT * FROM pg_tablespace "
+				" WHERE oid = :1 ",
 				ObjectIdGetDatum(spc_oid)));
+
+	tuple = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
@@ -2709,6 +2750,7 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
+	caql_endscan(pcqCtx);
 	heap_close(pg_tablespace, AccessShareLock);
 
 	return result;
@@ -2863,6 +2905,7 @@ pg_extprotocol_aclmask(Oid ptcOid, Oid roleid,
 	Oid			ownerId;
 	Relation	rel;
 	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	/* Bypass permission checks for superusers */
 	if (superuser_arg(roleid))
@@ -2870,10 +2913,13 @@ pg_extprotocol_aclmask(Oid ptcOid, Oid roleid,
 	
 	rel = heap_open(ExtprotocolRelationId, AccessShareLock);
 
-	tuple = caql_getfirst(
+	pcqCtx = caql_beginscan(
 			caql_addrel(cqclr(&cqc), rel), 
-			cql("SELECT * FROM pg_extprotocol WHERE oid = :1 ",
+			cql("SELECT * FROM pg_extprotocol "
+				" WHERE oid = :1 ",
 				ObjectIdGetDatum(ptcOid)));
+
+	tuple = caql_getnext(pcqCtx);
 
 	/* We assume that there can be at most one matching tuple */
 	if (!HeapTupleIsValid(tuple))
@@ -2915,7 +2961,7 @@ pg_extprotocol_aclmask(Oid ptcOid, Oid roleid,
 		pfree(acl);
 
 	/* Finish up scan and close pg_extprotocol catalog. */
-	
+	caql_endscan(pcqCtx);	
 	heap_close(rel, AccessShareLock);
 
 	return result;

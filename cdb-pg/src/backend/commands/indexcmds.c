@@ -160,6 +160,8 @@ DefineIndex(RangeVar *heapRelation,
 	bool		need_longlock = true;
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 	char	   *altconname = stmt ? stmt->altconname : NULL;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 
 	/*
@@ -829,9 +831,15 @@ DefineIndex(RangeVar *heapRelation,
 	/* Index can now be marked valid -- update its pg_index entry */
 	pg_index = heap_open(IndexRelationId, RowExclusiveLock);
 
-	indexTuple = SearchSysCacheCopy(INDEXRELID,
-									ObjectIdGetDatum(indexRelationId),
-									0, 0, 0);
+	pcqCtx = caql_addrel(cqclr(&cqc), pg_index);
+
+	indexTuple = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_index "
+				" WHERE indexrelid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(indexRelationId)));
+
 	if (!HeapTupleIsValid(indexTuple))
 		elog(ERROR, "cache lookup failed for index %u", indexRelationId);
 	indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
@@ -841,8 +849,8 @@ DefineIndex(RangeVar *heapRelation,
 
 	indexForm->indisvalid = true;
 
-	simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
-	CatalogUpdateIndexes(pg_index, indexTuple);
+	caql_update_current(pcqCtx, indexTuple); 
+	/* and Update indexes (implicit) */
 
 	heap_close(pg_index, RowExclusiveLock);
 
@@ -1677,8 +1685,7 @@ ExecuteSpiReindexTable(char *displayRelName)
 void
 ReindexDatabaseNew(ReindexStmt *stmt)
 {
-	Relation	relationRelation;
-	HeapScanDesc scan;
+	cqContext  *pcqCtx;
 	HeapTuple	tuple;
 	MemoryContext private_context;
 	MemoryContext old;
@@ -1739,9 +1746,11 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 	 * We only consider plain relations here (toast rels will be processed
 	 * indirectly by reindex_relation).
 	 */
-	relationRelation = heap_open(RelationRelationId, AccessShareLock);
-	scan = heap_beginscan(relationRelation, SnapshotNow, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class", NULL));
+
+	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
 		Form_pg_class classtuple = (Form_pg_class) GETSTRUCT(tuple);
 
@@ -1778,8 +1787,7 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 		displayRelNames = lappend(displayRelNames, displayRelName);
 		MemoryContextSwitchTo(old);
 	}
-	heap_endscan(scan);
-	heap_close(relationRelation, AccessShareLock);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Now reindex each rel in a separate distibuted transaction so the OIDs

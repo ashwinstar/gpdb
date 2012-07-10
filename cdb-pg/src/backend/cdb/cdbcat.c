@@ -205,6 +205,8 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 
 	bool		nulls[2];
 	Datum		values[2];
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
 
@@ -212,6 +214,11 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
      * Open and lock the gp_distribution_policy catalog.
      */
 	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
+
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), gp_policy_rel),
+			cql("INSERT INTO gp_distribution_policy ",
+				NULL));
 
 	/*
 	 * Convert C arrays into Postgres arrays.
@@ -241,18 +248,17 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 	else
 		nulls[1] = true;
 
-	gp_policy_tuple = heap_form_tuple(RelationGetDescr(gp_policy_rel), values, nulls);
+	gp_policy_tuple = caql_form_tuple(pcqCtx, values, nulls);
 
-	simple_heap_insert(gp_policy_rel, gp_policy_tuple);
-
-	/* update catalog indexes */
-	CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);
+	/* Insert tuple into the relation */
+	caql_insert(pcqCtx, gp_policy_tuple); /* implicit update of index as well*/
 
 	/*
      * Close the gp_distribution_policy relcache entry without unlocking.
      * We have updated the catalog: consequently the lock must be held until
      * end of transaction.
      */
+	caql_endscan(pcqCtx);
     heap_close(gp_policy_rel, NoLock);
 }                               /* GpPolicyStore */
 
@@ -267,6 +273,7 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 	Relation	gp_policy_rel;
 	HeapTuple	gp_policy_tuple = NULL;
 	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	ArrayType  *attrnums;
 
@@ -280,6 +287,8 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
      * Open and lock the gp_distribution_policy catalog.
      */
 	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
+
+	pcqCtx = caql_addrel(cqclr(&cqc), gp_policy_rel);
 
 	/*
 	 * Convert C arrays into Postgres arrays.
@@ -317,7 +326,7 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 	 * Select by value of the localoid field
 	 */
 	gp_policy_tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), gp_policy_rel), 
+			pcqCtx,
 			cql("SELECT * FROM gp_distribution_policy "
 				" WHERE localoid = :1 "
 				" FOR UPDATE ",
@@ -330,20 +339,19 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 	if (HeapTupleIsValid(gp_policy_tuple))
 	{
 		
-		HeapTuple newtuple = heap_modify_tuple(gp_policy_tuple, RelationGetDescr(gp_policy_rel), values,
-								nulls, repl);
+		HeapTuple newtuple = caql_modify_current(pcqCtx, values,
+												 nulls, repl);
 								
-		simple_heap_update(gp_policy_rel, &gp_policy_tuple->t_self, newtuple);
-		/* update catalog indexes */
-		CatalogUpdateIndexes(gp_policy_rel, newtuple);
+		caql_update_current(pcqCtx, newtuple); 
+		/* and Update indexes (implicit) */
+
 		heap_freetuple(newtuple);
 	}
 	else
 	{
-		gp_policy_tuple = heap_form_tuple(RelationGetDescr(gp_policy_rel), values, nulls);
-		simple_heap_insert(gp_policy_rel, gp_policy_tuple);
-		/* update catalog indexes */
-		CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);
+		gp_policy_tuple = caql_form_tuple(pcqCtx, values, nulls);
+		caql_insert(pcqCtx, gp_policy_tuple);
+		/* and Update indexes (implicit) */
 	}
 	
 	/*
@@ -364,34 +372,25 @@ void
 GpPolicyRemove(Oid tbloid)
 {
 	Relation	gp_policy_rel;
-	HeapTuple	gp_policy_tuple = NULL;
 	cqContext	cqc;
-
 
     /*
      * Open and lock the gp_distribution_policy catalog.
      */
 	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
 
-	/* XXX XXX: could be a delete if fix catalogupdateindexes jic 2011/12/09 */
-	gp_policy_tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), gp_policy_rel), 
-			cql("SELECT * FROM gp_distribution_policy "
-				" WHERE localoid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(tbloid)));
-
-	if(!HeapTupleIsValid(gp_policy_tuple))
+	/* Delete the policy entry from the catalog. */
+	if (0 == caql_getcount(
+				caql_addrel(cqclr(&cqc), gp_policy_rel),
+				cql("DELETE FROM gp_distribution_policy "
+					" WHERE localoid = :1 ",
+					ObjectIdGetDatum(tbloid))))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("distribution policy for relation \"%d\" does not exist",
 						tbloid)));
-
-	/* Delete the policy entry from the catalog. */
-	simple_heap_delete(gp_policy_rel, &gp_policy_tuple->t_self);
-
-	/* update catalog indexes */
-	CatalogUpdateIndexes(gp_policy_rel, gp_policy_tuple);
+	}
 
 	/*
      * Close the gp_distribution_policy relcache entry without unlocking.

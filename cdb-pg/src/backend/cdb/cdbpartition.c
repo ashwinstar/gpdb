@@ -255,8 +255,8 @@ rel_is_leaf_partition(Oid relid)
 	int maxdepth = 0;
 	int mylevel = 0;
 	int fetchCount = 0;
-	cqContext	*pcqCtx;
 	cqContext	 cqc;
+	cqContext	*pcqCtx;
 	Oid partitioned_rel = InvalidOid; /* OID of the root table of the
 									   * partition set
 									   */
@@ -996,12 +996,14 @@ char_to_parttype(char c)
 static void
 add_partition(Partition *part)
 {
-	Datum values[Natts_pg_partition];
-	bool isnull[Natts_pg_partition];
-	Relation partrel;
-	HeapTuple tup;
-	oidvector *opclass;
-	int2vector *attnums;
+	Datum		 values[Natts_pg_partition];
+	bool		 isnull[Natts_pg_partition];
+	Relation	 partrel;
+	HeapTuple	 tup;
+	oidvector	*opclass;
+	int2vector	*attnums;
+	cqContext	 cqc;
+	cqContext	*pcqCtx;
 	
 	MemSet(isnull, 0, sizeof(bool) * Natts_pg_partition);
 	
@@ -1019,14 +1021,20 @@ add_partition(Partition *part)
 	values[Anum_pg_partition_parclass - 1] = PointerGetDatum(opclass);
 	
 	partrel = heap_open(PartitionRelationId, RowExclusiveLock);
+
+	pcqCtx = 
+			caql_beginscan(
+					caql_addrel(cqclr(&cqc), partrel),
+					cql("INSERT INTO pg_partition ",
+						NULL));
 	
-	tup = heap_form_tuple(RelationGetDescr(partrel), values, isnull);
-	
-	part->partid = simple_heap_insert(partrel, tup);
-	
-	/* Update indexes */
-	CatalogUpdateIndexes(partrel, tup);
-	
+	tup = caql_form_tuple(pcqCtx, values, isnull);
+
+	/* Insert tuple into the relation */
+	part->partid = caql_insert(pcqCtx, tup);
+	/* and Update indexes (implicit) */	
+
+	caql_endscan(pcqCtx);
 	heap_close(partrel, NoLock);
 }
 
@@ -1037,11 +1045,13 @@ add_partition(Partition *part)
 static void
 add_partition_rule(PartitionRule *rule)
 {
-	Datum values[Natts_pg_partition_rule];
-	bool isnull[Natts_pg_partition_rule];
-	Relation rulerel;
-	HeapTuple tup;
-	NameData name;
+	Datum		 values[Natts_pg_partition_rule];
+	bool		 isnull[Natts_pg_partition_rule];
+	Relation	 rulerel;
+	HeapTuple	 tup;
+	NameData	 name;
+	cqContext	 cqc;
+	cqContext	*pcqCtx;
 	
 	MemSet(isnull, 0, sizeof(bool) * Natts_pg_partition_rule);
 	
@@ -1086,14 +1096,20 @@ add_partition_rule(PartitionRule *rule)
 							ObjectIdGetDatum(rule->partemplatespaceId);
 	
 	rulerel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
+
+	pcqCtx = 
+			caql_beginscan(
+					caql_addrel(cqclr(&cqc), rulerel),
+					cql("INSERT INTO pg_partition_rule ",
+						NULL));
 	
-	tup = heap_form_tuple(RelationGetDescr(rulerel), values, isnull);
-	
-	rule->parruleid = simple_heap_insert(rulerel, tup);
-	
-	/* Update indexes */
-	CatalogUpdateIndexes(rulerel, tup);
-	
+	tup = caql_form_tuple(pcqCtx, values, isnull);
+
+	/* Insert tuple into the relation */	
+	rule->parruleid = caql_insert(pcqCtx, tup);
+	/* and Update indexes (implicit) */	
+
+	caql_endscan(pcqCtx);
 	heap_close(rulerel, NoLock);
 }
 
@@ -5949,9 +5965,10 @@ atpxDropList(Relation rel, PartitionNode *pNode)
 void
 exchange_part_rule(Oid oldrelid, Oid newrelid)
 {
-	HeapTuple tuple;
-	Relation catalogRelation;
+	HeapTuple	 tuple;
+	Relation	 catalogRelation;
 	cqContext	 cqc;
+	cqContext	*pcqCtx;
 	
 	/* pg_partition and  pg_partition_rule are populated only on the 
 	 * entry database, so a call to this function is only meaningful 
@@ -5960,8 +5977,10 @@ exchange_part_rule(Oid oldrelid, Oid newrelid)
 	
 	catalogRelation = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), catalogRelation);
+
 	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), catalogRelation), 	
+			pcqCtx,
 			cql("SELECT * FROM pg_partition_rule "
 				" WHERE parchildrelid = :1 "
 				" FOR UPDATE ",
@@ -5969,13 +5988,11 @@ exchange_part_rule(Oid oldrelid, Oid newrelid)
 
 	if (HeapTupleIsValid(tuple))
 	{
-		/* XXX XXX: caql tuple is already copied */
-		tuple = heap_copytuple(tuple);
-		
 		((Form_pg_partition_rule)GETSTRUCT(tuple))->parchildrelid = newrelid;
 		
-		simple_heap_update(catalogRelation, &tuple->t_self, tuple);
-		CatalogUpdateIndexes(catalogRelation, tuple);
+		caql_update_current(pcqCtx, tuple);
+		/* and Update indexes (implicit) */	
+
 		heap_freetuple(tuple);
 	}
 	
@@ -7935,13 +7952,17 @@ selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
 static void
 add_partition_encoding(Oid relid, Oid paroid, AttrNumber attnum, List *encoding)
 {
-	Relation pgperel;
-	Datum partoptions;
-	Datum values[Natts_pg_partition_encoding];
-	bool nulls[Natts_pg_partition_encoding];
-	HeapTuple tuple;
+	Datum		 partoptions;
+	Datum		 values[Natts_pg_partition_encoding];
+	bool		 nulls[Natts_pg_partition_encoding];
+	HeapTuple	 tuple;
+	cqContext	*pcqCtx;
 
-	pgperel = heap_open(PartitionEncodingRelationId, RowExclusiveLock);
+	pcqCtx = 
+			caql_beginscan(
+					NULL,
+					cql("INSERT INTO pg_partition_encoding ",
+						NULL));
 
 	Insist(attnum > 0);
 
@@ -7956,15 +7977,14 @@ add_partition_encoding(Oid relid, Oid paroid, AttrNumber attnum, List *encoding)
 	values[Anum_pg_partition_encoding_parencattnum - 1] = Int16GetDatum(attnum);
 	values[Anum_pg_partition_encoding_parencattoptions - 1] = partoptions;
 
-	tuple = heap_form_tuple(RelationGetDescr(pgperel), values, nulls);
+	tuple = caql_form_tuple(pcqCtx, values, nulls);
 
-	simple_heap_insert(pgperel, tuple);
-
-	CatalogUpdateIndexes(pgperel, tuple);
+	/* Insert tuple into the relation */	
+	caql_insert(pcqCtx, tuple); /* implicit update of index as well */
 
 	heap_freetuple(tuple);
 
-	heap_close(pgperel, RowExclusiveLock);
+	caql_endscan(pcqCtx);
 }
 
 static void

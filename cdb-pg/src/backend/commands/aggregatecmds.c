@@ -22,6 +22,7 @@
  */
 #include "postgres.h"
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -321,15 +322,24 @@ RenameAggregate(List *name, List *args, const char *newname)
 	Form_pg_proc procForm;
 	Relation	rel;
 	AclResult	aclresult;
+	cqContext	cqc2;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
 	/* Look up function and make sure it's an aggregate */
 	procOid = LookupAggNameTypeNames(name, args, false);
 
-	tup = SearchSysCacheCopy(PROCOID,
-							 ObjectIdGetDatum(procOid),
-							 0, 0, 0);
+	pcqCtx = caql_addrel(cqclr(&cqc), rel);
+
+	tup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(procOid)));
+
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for function %u", procOid);
 	procForm = (Form_pg_proc) GETSTRUCT(tup);
@@ -337,11 +347,16 @@ RenameAggregate(List *name, List *args, const char *newname)
 	namespaceOid = procForm->pronamespace;
 
 	/* make sure the new name doesn't exist */
-	if (SearchSysCacheExists(PROCNAMEARGSNSP,
-							 CStringGetDatum((char *) newname),
-							 PointerGetDatum(&procForm->proargtypes),
-							 ObjectIdGetDatum(namespaceOid),
-							 0))
+	if (caql_getcount(
+				caql_addrel(cqclr(&cqc2), rel),
+				cql("SELECT COUNT(*) FROM pg_proc "
+					" WHERE proname = :1 "
+					" AND proargtypes = :2 "
+					" AND pronamespace = :3 ",
+					CStringGetDatum((char *) newname),
+					PointerGetDatum(&procForm->proargtypes),
+					ObjectIdGetDatum(namespaceOid))))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_FUNCTION),
 				 errmsg("function %s already exists in schema \"%s\"",
@@ -349,6 +364,7 @@ RenameAggregate(List *name, List *args, const char *newname)
 												  procForm->pronargs, NIL,
 											   procForm->proargtypes.values),
 						get_namespace_name(namespaceOid))));
+	}
 
 	/* must be owner */
 	if (!pg_proc_ownercheck(procOid, GetUserId()))
@@ -363,8 +379,7 @@ RenameAggregate(List *name, List *args, const char *newname)
 
 	/* rename */
 	namestrcpy(&(((Form_pg_proc) GETSTRUCT(tup))->proname), newname);
-	simple_heap_update(rel, &tup->t_self, tup);
-	CatalogUpdateIndexes(rel, tup);
+	caql_update_current(pcqCtx, tup); /* implicit update of index as well */
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);

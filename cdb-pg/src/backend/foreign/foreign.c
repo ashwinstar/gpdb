@@ -12,6 +12,7 @@
  */
 #include "postgres.h"
 
+#include "access/catquery.h"
 #include "access/reloptions.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_foreign_data_wrapper.h"
@@ -84,9 +85,11 @@ GetForeignDataWrapperOidByName(const char *fdwname, bool missing_ok)
 {
 	Oid			fdwId;
 
-	fdwId = GetSysCacheOid(FOREIGNDATAWRAPPERNAME,
-						   CStringGetDatum(fdwname),
-						   0, 0, 0);
+	fdwId = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_foreign_data_wrapper "
+				" WHERE fdwname = :1 ",
+				CStringGetDatum(fdwname)));
 
 	if (!OidIsValid(fdwId) && !missing_ok)
 		ereport(ERROR,
@@ -178,9 +181,11 @@ GetForeignServerOidByName(const char *srvname, bool missing_ok)
 {
 	Oid			serverid;
 
-	serverid = GetSysCacheOid(FOREIGNSERVERNAME,
-							  CStringGetDatum(srvname),
-							  0, 0, 0);
+	serverid = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_foreign_server "
+				" WHERE srvname = :1 ",
+				CStringGetDatum(srvname)));
 
 	if (!OidIsValid(serverid) && !missing_ok)
 		ereport(ERROR,

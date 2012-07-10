@@ -86,6 +86,14 @@ comment on operator #~#~# (NONE, int8) is 'bad operator';
 drop operator #~#~# (int8, NONE);
 drop operator #~#~# (NONE, int8 );
 
+-- try (and fail) renaming a language
+
+alter LANGUAGE plpgsql RENAME TO funky;
+
+select has_language_privilege('caql_luser', 14, 'USAGE');
+
+select has_language_privilege('caql_luser', 14, 'USAGE WITH GRANT OPTION');
+
 
 -- need privs to create op class and comment on language
 
@@ -105,6 +113,14 @@ drop operator class myi2ops using btree;
 
 comment on language sql is 'wow';
 comment on language sql is null;
+
+select has_language_privilege('caql_luser', 14, 'USAGE');
+
+select has_language_privilege('caql_luser', 14, 'USAGE WITH GRANT OPTION');
+
+select has_language_privilege('caql_super_luser', 14, 'USAGE');
+
+select has_language_privilege('caql_super_luser', 14, 'USAGE WITH GRANT OPTION');
 
 -- no privs
 set role caql_luser;

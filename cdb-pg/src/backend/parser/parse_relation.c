@@ -17,8 +17,9 @@
 
 #include <ctype.h>
 
-#include "access/heapam.h"
 #include "access/genam.h"
+#include "access/catquery.h"
+#include "access/heapam.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_exttable.h"
@@ -479,10 +480,13 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 		if (attnum != InvalidAttrNumber)
 		{
 			/* now check to see if column actually is defined */
-			if (SearchSysCacheExists(ATTNUM,
-									 ObjectIdGetDatum(rte->relid),
-									 Int16GetDatum(attnum),
-									 0, 0))
+			if (caql_getcount(
+						NULL,
+						cql("SELECT COUNT(*) FROM pg_attribute "
+							" WHERE attrelid = :1 "
+							" AND attnum = :2 ",
+							ObjectIdGetDatum(rte->relid),
+							Int16GetDatum(attnum))))
 			{
 				result = (Node *) make_var(pstate, rte, attnum, location);
 				/* Require read access */

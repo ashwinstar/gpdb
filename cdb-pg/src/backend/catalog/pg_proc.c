@@ -103,7 +103,6 @@ ProcedureCreate(const char *procedureName,
 	bool		replaces[Natts_pg_proc];
 	Oid			relid;
 	NameData	procname;
-	TupleDesc	tupDesc;
 	bool		is_update;
 	ObjectAddress myself,
 				referenced;
@@ -111,6 +110,8 @@ ProcedureCreate(const char *procedureName,
 	bool		isnull;
 	Datum		ndefDatum;
 	int			ndefCount;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	/*
 	 * sanity checks
@@ -338,14 +339,21 @@ ProcedureCreate(const char *procedureName,
 		nulls[Anum_pg_proc_proargdefaults - 1] = true;
 
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
-	tupDesc = RelationGetDescr(rel);
 
 	/* Check for pre-existing definition */
-	oldtup = SearchSysCache(PROCNAMEARGSNSP,
-							PointerGetDatum((char *) procedureName),
-							PointerGetDatum(parameterTypes),
-							ObjectIdGetDatum(procNamespace),
-							0);
+
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), rel),
+			cql("SELECT * FROM pg_proc "
+				" WHERE proname = :1 "
+				" AND proargtypes = :2 "
+				" AND pronamespace = :3 "
+				" FOR UPDATE ",
+				PointerGetDatum((char *) procedureName),
+				PointerGetDatum(parameterTypes),
+				ObjectIdGetDatum(procNamespace)));
+
+	oldtup = caql_getnext(pcqCtx);
 
 	if (HeapTupleIsValid(oldtup))
 	{
@@ -503,11 +511,11 @@ ProcedureCreate(const char *procedureName,
 		if (OidIsValid(describeFuncOid))
 		{
 			HeapTuple   depTup;
-			cqContext  *pcqCtx;			
+			cqContext  *pcqCtx2;
 
 
 			/* XXX XXX: SELECT COUNT(*) ... AND classid = :3, RewriteRelationId) */
-			pcqCtx = caql_beginscan(
+			pcqCtx2 = caql_beginscan(
 					NULL,
 					cql("SELECT * FROM pg_depend "
 						" WHERE refclassid = :1 "
@@ -515,7 +523,7 @@ ProcedureCreate(const char *procedureName,
 						ObjectIdGetDatum(ProcedureRelationId),
 						ObjectIdGetDatum(oldOid)));
 
-			while (HeapTupleIsValid(depTup = caql_getnext(pcqCtx)))
+			while (HeapTupleIsValid(depTup = caql_getnext(pcqCtx2)))
 			{
 				Form_pg_depend depData = (Form_pg_depend) GETSTRUCT(depTup);
 				if (depData->classid == RewriteRelationId)
@@ -526,7 +534,7 @@ ProcedureCreate(const char *procedureName,
 							 errOmitLocation(true)));
 				}
 			}
-			caql_endscan(pcqCtx);
+			caql_endscan(pcqCtx2);
 		}
 
 		/* Can't change aggregate or window status, either */
@@ -566,26 +574,31 @@ ProcedureCreate(const char *procedureName,
 		replaces[Anum_pg_proc_proacl - 1] = false;
 
 		/* Okay, do it... */
-		tup = heap_modify_tuple(oldtup, tupDesc, values, nulls, replaces);
-		simple_heap_update(rel, &tup->t_self, tup);
+		tup = caql_modify_current(pcqCtx, values, nulls, replaces);
+		caql_update_current(pcqCtx, tup); /* implicit update of index as well*/
 
-		ReleaseSysCache(oldtup);
+		caql_endscan(pcqCtx);
 		is_update = true;
 	}
 	else
 	{
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), rel),
+				cql("INSERT INTO pg_proc ",
+					NULL));
+
 		/* Creating a new procedure */
-		tup = heap_form_tuple(tupDesc, values, nulls);
+		tup = caql_form_tuple(pcqCtx, values, nulls);
 
 		if (OidIsValid(funcOid))
 			HeapTupleSetOid(tup, funcOid);
+		
+		/* Insert tuple into the relation */
+		caql_insert(pcqCtx, tup);  /* implicit update of index as well */
 
-		simple_heap_insert(rel, tup);
+		caql_endscan(pcqCtx);
 		is_update = false;
 	}
-
-	/* Need to update indexes for either the insert or update case */
-	CatalogUpdateIndexes(rel, tup);
 
 	retval = HeapTupleGetOid(tup);
 

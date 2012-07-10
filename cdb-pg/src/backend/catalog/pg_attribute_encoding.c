@@ -32,30 +32,32 @@
 static void
 add_attribute_encoding_entry(Oid relid, AttrNumber attnum, Datum attoptions)
 {
-	Relation pgaerel;
 	Datum values[Natts_pg_attribute_encoding];
 	bool nulls[Natts_pg_attribute_encoding];
 	HeapTuple tuple;
+	cqContext	   *pcqCtx;
 	
 	Insist(!gp_upgrade_mode);
 	Insist(attnum != InvalidAttrNumber);
 	
-	pgaerel = heap_open(AttributeEncodingRelationId, RowExclusiveLock);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("INSERT INTO pg_attribute_encoding",
+				NULL));
 
 	MemSet(nulls, 0, sizeof(nulls));
 	values[Anum_pg_attribute_encoding_attrelid - 1] = ObjectIdGetDatum(relid);
 	values[Anum_pg_attribute_encoding_attnum - 1] = Int16GetDatum(attnum);
 	values[Anum_pg_attribute_encoding_attoptions - 1] = attoptions;
 
-	tuple = heap_form_tuple(RelationGetDescr(pgaerel), values, nulls);
+	tuple = caql_form_tuple(pcqCtx, values, nulls);
 
-	simple_heap_insert(pgaerel, tuple);
-
-	CatalogUpdateIndexes(pgaerel, tuple);
+	/* insert a new tuple */
+	caql_insert(pcqCtx, tuple); /* implicit update of index as well */
 
 	heap_freetuple(tuple);
 
-	heap_close(pgaerel, RowExclusiveLock);
+	caql_endscan(pcqCtx);
 }
 
 /*
