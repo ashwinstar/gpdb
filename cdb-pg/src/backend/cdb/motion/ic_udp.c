@@ -30,9 +30,9 @@
 #include "miscadmin.h"
 #include "libpq/libpq-be.h"
 #include "libpq/ip.h"
+#include "utils/atomic.h"
 #include "utils/builtins.h"
 #include "utils/debugbreak.h"
-
 #include "utils/pg_crc.h"
 
 #include "cdb/cdbselect.h"
@@ -109,7 +109,10 @@ WSAPoll(
 #undef select
 #endif
 
-#define MAX_TRY (2)
+#define MAX_TRY (64)
+
+/* 1/4 sec in msec */
+#define RX_THREAD_POLL_TIMEOUT (250)
 
 /*
  * Flags definitions for flag-field of UDP-messages
@@ -245,15 +248,7 @@ struct ThreadWaitingState
 typedef struct ReceiveControlInfo ReceiveControlInfo;
 struct ReceiveControlInfo
 {
-	/*
-	 * Lock and condition variable for coordination between
-	 * receiver and background thread. It protects the rx buffer
-	 * pool and the mainWaitingState.
-	 */
-	pthread_mutex_t	lock;
-	pthread_cond_t cond;
-
-	/* Main thread (Receiver) waiting state. */
+	/* Main thread waiting state. */
 	ThreadWaitingState mainWaitingState;
 
 	/*
@@ -340,42 +335,30 @@ static SendBufferPool snd_buffer_pool;
  * SendControlInfo
  *
  * The related control information for sending data packets and handing acks.
- * Main thread (Sender) and background thread use the information in
- * this data structure to synchronize the data packets sending and ack handling
- * logic.
+ * Main thread use the information in this data structure to do ack handling
+ * and congestion control.
  *
  */
 typedef struct SendControlInfo SendControlInfo;
 struct SendControlInfo
 {
-	/* This lock protects all the sending connections, send buffer pool, the
-	 * unack queue ring and the waiting field of this structure.
-	 *
-	 * Rationale for only one lock for all sending connections, send buffer pool
-	 * and the unack queue ring:
-	 *
-	 * At first thought, one may think we need per connection lock here, but after
-	 * experiment comparison, per connection lock and one lock does not show significant
-	 * performance difference.
-	 *
-	 * The reason is: the contention here is low due to the nature of small number
-	 * of threads (only two here). Another drawback of fine grained locking the
-	 * complexity of the code, especially when dealing with error cases and query
-	 * cancel cases...
-	 */
-	pthread_mutex_t	lock;
+	/* The buffer used for accepting acks */
+	icpkthdr *ackBuffer;
 
-	/* The condition variable for sender to wait a buffer. */
-	pthread_cond_t cond;
+	/* congestion window */
+	float cwnd;
 
-	/* Main thread (Sender) is waiting for buffer? */
-	bool waiting;
+	/* minimal congestion control window */
+	float minCwnd;
+
+	/* slow start threshold */
+	float ssthresh;
 
 };
 
 /*
- * Main thread (Sender) and background thread use the information in
- * this data structure to synchronize the handling of acks and packet sending.
+ * Main thread use the information in this data structure to do ack handling
+ * and congestion control.
  */
 static SendControlInfo snd_control_info;
 
@@ -428,26 +411,20 @@ struct ICGlobalControlInfo
 	uint32 socketSendBufferSize;
 	uint32 socketRecvBufferSize;
 
-	/*
-	 * The socket fd used for UDP interconnect.
-	 * This socket is used for all the message sending
-	 * and receiving work of this process.
-	 */
-	int		fd;
-
-	/* The port the background thread is listening on. */
-	int32	port;
-
-	/* UDP socket address family. */
-	int 	txFamily;
+	uint64 lastExpirationCheckTime;
 
 	/* MemoryContext for UDP interconnect. */
 	MemoryContext memContext;
 
-	/* Lock for (connHtab, isSender and shutdown fields) */
+	/*
+	 * Lock and condition variable for coordination between
+	 * main thread and background thread. It protects the shared data
+	 * between the two thread (the connHtab, rx buffer pool and the mainWaitingState etc.).
+	 */
 	pthread_mutex_t lock;
+	pthread_cond_t cond;
 
-	/* Am I a sender? Protected by the lock in this data structure. */
+	/* Am I a sender? */
 	bool isSender;
 
 	/* Global connection htab for both sending connections and
@@ -456,7 +433,7 @@ struct ICGlobalControlInfo
 	ConnHashTable connHtab;
 
 	/* Used by main thread to ask the background thread to exit. */
-	bool shutdown;
+	uint32 shutdown;
 
 #if defined(__darwin__) && !defined(IC_USE_PTHREAD_SYNCHRONIZATION)
 	UDPSignal usig;
@@ -473,20 +450,30 @@ static ICGlobalControlInfo ic_control_info;
  * Macro for unack queue ring, round trip time (RTT) and expiration period (RTO)
  *
  * UNACK_QUEUE_RING_SLOTS_NUM - the number of slots in the unack queue ring.
- * 								this value should be greater than or equal to 2.
+ *                              this value should be greater than or equal to 2.
  * TIMER_SPAN                 - timer period in us
+ * TIMER_CHECKING_PERIOD      - timer checking period, multiply TIMER_SPAN by a small factor to 
+ *                              allow OS cached acks handled before retransmit.
  * UNACK_QUEUE_RING_LENGTH    - the whole time span of the unack queue ring
- * DEFAULT_RTT                - default rtt in us
+ * DEFAULT_RTT                - default rtt in us.
  * MIN_RTT                    - min rtt in us
  * MAX_RTT                    - max rtt in us
  * RTT_SHIFT_COEFFICIENT      - coefficient for RTT computation
+ *
+ * DEFAULT_DEV                - default round trip standard deviation
+ * MAX_DEV                    - max dev
+ * DEV_SHIFT_COEFFICIENT      - coefficient for DEV computation
+ *
  * MAX_EXPIRATION_PERIOD      - max expiration period in us
+ *
+ * MAX_SEQS_IN_DISORDER_ACK   - max number of sequences that can be transmitted in a
+ *                              disordered packet ack.
  *
  *
  * Considerations on the settings of the values:
  *
  * TIMER_SPAN and UNACK_QUEUE_RING_SLOTS_NUM define the ring period.
- * Currently, it is UNACK_QUEUE_RING_LENGTH (10 seconds).
+ * Currently, it is UNACK_QUEUE_RING_LENGTH (20 seconds).
  *
  * The definition of UNACK_QUEUE_RING_LENGTH is quite related to the size of
  * sender side buffer and the size we may resend in a burst for an expiration event
@@ -499,38 +486,47 @@ static ICGlobalControlInfo ic_control_info;
  * for example, 100MB, there is about 96M/2000 = 50K per slot.
  * This is fine for the OS (with buffer 2M for each socket generally) and switch.
  *
- * Even when the buffers are not evenly distributed in the ring and there are some packet
- * losses, the disorder and duplicate packet handling logic will make assure the number
- * of outstanding buffers (in unack queues) converge fast to 0.
+ * Note that even when the buffers are not evenly distributed in the ring and there are some packet
+ * losses, the congestion control mechanism, the disorder and duplicate packet handling logic will
+ * make assure the number of outstanding buffers (in unack queues) not very large.
  *
- * MIN_RTT/MAX_RTT/DEFAULT_RTT/MAX_EXPIRATION_PERIOD gives some heuristic values about
+ * MIN_RTT/MAX_RTT/DEFAULT_RTT/MIN_EXPIRATION_PERIOD/MAX_EXPIRATION_PERIOD gives some heuristic values about
  * the computation of RTT and expiration period. RTT and expiration period (RTO) are not
  * constant for various kinds of hardware and workloads. Thus, they are computed dynamically.
  * But we also want to bound the values of RTT and MAX_EXPIRATION_PERIOD. It is
  * because there are some faults that may make RTT a very abnormal value. Thus, RTT and
- * expiration period are upper bounded.
+ * expiration period are upper and lower bounded.
  *
- * For expiration period (RTO) computation, two methods are tried. One is the straightforward
- * linear method used in the code. The other is a variance/deviation based method (like TCP).
- * But we found that it variance based method is not as good as linear method. It may be due to
- * the different flow control method used for the UDP/TCP based protocols.
+ * MAX_SEQS_IN_DISORDER_ACK should be smaller than (MIN_PACKET_SIZE - sizeof(icpkthdr))/sizeof(uint32).
+ * It is due to the limitation of the ack receive buffer size.
  *
  */
-#define UNACK_QUEUE_RING_SLOTS_NUM 2000
-#define TIMER_SPAN 5000
+#define UNACK_QUEUE_RING_SLOTS_NUM (2000)
+#define TIMER_SPAN (10000) /* 10ms */
+#define TIMER_CHECKING_PERIOD (TIMER_SPAN * 2 + 1000)
 #define UNACK_QUEUE_RING_LENGTH (UNACK_QUEUE_RING_SLOTS_NUM * TIMER_SPAN)
 
-#define DEFAULT_RTT (TIMER_SPAN/5)
+#define DEFAULT_RTT (2 * TIMER_SPAN) /* 20ms */
 #define MIN_RTT (TIMER_SPAN/50)
-#define MAX_RTT (25 * TIMER_SPAN)
-#define RTT_SHIFT_COEFFICIENT 3 /* RTT_COEFFICIENT 1/8 (0.125) */
+#define MAX_RTT (20 * TIMER_SPAN) /* 200ms */
+#define RTT_SHIFT_COEFFICIENT (3) /* RTT_COEFFICIENT 1/8 (0.125) */
 
-#define MAX_EXPIRATION_PERIOD (120 * TIMER_SPAN)
+#define DEFAULT_DEV (0)
+#define MIN_DEV MIN_RTT
+#define MAX_DEV MAX_RTT
+#define DEV_SHIFT_COEFFICIENT (2) /* DEV_COEFFICIENT 1/4 (0.25) */
+
+#define MAX_EXPIRATION_PERIOD (100 * TIMER_SPAN) /* 1s */
+#define MIN_EXPIRATION_PERIOD (2 * TIMER_SPAN) /* 20ms */
+
+#define MAIN_THREAD_POLL_TIME_OUT ((TIMER_CHECKING_PERIOD)/1000)
+
+#define MAX_SEQS_IN_DISORDER_ACK (4)
 
 /*
  * UnackQueueRing
  *
- * An unacked queue ring is used to decide which packet is expired in a constant time manner.
+ * An unacked queue ring is used to decide which packet is expired in constant time.
  *
  * Each slot of the ring represents a fixed time span, for example 1ms, and
  * each slot has a associated buffer list/queue which contains the packets
@@ -552,6 +548,13 @@ struct UnackQueueRing
 	/* the slot index corresponding to current time */
 	int	idx;
 
+	/* the number of outstanding packets in unack queue ring */
+	int numOutStanding;
+
+	/* the number of outstanding packets that use the
+	 * shared bandwidth in the congestion window. */
+	int numSharedOutStanding;
+
 	/* time slots */
 	ICBufferList slots[UNACK_QUEUE_RING_SLOTS_NUM];
 };
@@ -559,8 +562,25 @@ struct UnackQueueRing
 /*
  * All connections in a process share this unack queue ring instance.
  */
-static UnackQueueRing unack_queue_ring = {0, 0};
+static UnackQueueRing unack_queue_ring = {0, 0, 0};
 
+/*
+ * AckSendParam
+ *
+ * The prarmeters for ack sending.
+ */
+typedef struct AckSendParam
+{
+	/* connection we send ack for */
+	MotionConn *conn;
+
+	/* the ack flag */
+	int32 flags;
+
+	/* the seqs of the ack */
+	uint32 seq;
+	uint32 extraSeq;
+} AckSendParam;
 
 /*
  * ICStatistics
@@ -569,40 +589,40 @@ static UnackQueueRing unack_queue_ring = {0, 0};
  *
  * Note that the statistics for ic is not accurate for multiple cursor case on QD.
  *
+ * totalRecvQueueSize        - receive queue size sum when main thread is trying to get a packet.
+ * recvQueueSizeCountingTime - counting times when computing totalRecvQueueSize.
+ * totalCapacity             - the capacity sum when packets are tried to be sent.
+ * capacityCountingTime      - counting times used to compute totalCapacity.
+ * totalBuffers              - total buffers available when sending packets.
+ * bufferCountingTime        - counting times when compute totalBuffers.
  * retransmits               - the number of packet retransmits.
  * mismatchNum               - the number of mismatched packets received.
  * crcErrors                 - the number of crc errors.
  * sndPktNum                 - the number of packets sent by sender.
  * recvPktNum                - the number of packets received by receiver.
- * totalCapacity             - the capacity sum when packets are tried to be sent.
- * capacityCountingTime      - counting times used to compute totalCapacity.
- * totalBuffers              - total buffers available when sending packets.
- * bufferCountingTime        - counting times when compute totalBuffers.
  * disorderedPktNum          - disordered packet number.
  * duplicatedPktNum          - duplicate packet number.
  * recvAckNum                - the number of Acks received.
- * totalRecvQueueSize        - receive queue size sum when main thread is trying to get a packet.
- * recvQueueSizeCountingTime - counting times when computing totalRecvQueueSize.
  * statusQueryMsgNum         - the number of status query messages sent.
  *
  */
 typedef struct ICStatistics
 {
-	uint64	retransmits;
-	uint64	mismatchNum;
-	uint64	crcErrors;
-	uint64	sndPktNum;
-	uint64	recvPktNum;
+	uint64	totalRecvQueueSize;
+	uint64	recvQueueSizeCountingTime;
 	uint64	totalCapacity;
 	uint64	capacityCountingTime;
 	uint64	totalBuffers;
 	uint64	bufferCountingTime;
-	uint64	disorderedPktNum;
-	uint64  duplicatedPktNum;
-	uint64	recvAckNum;
-	uint64	totalRecvQueueSize;
-	uint64	recvQueueSizeCountingTime;
-	uint64	statusQueryMsgNum;
+	int32	retransmits;
+	int32	mismatchNum;
+	int32	crcErrors;
+	int32	sndPktNum;
+	int32	recvPktNum;
+	int32	disorderedPktNum;
+	int32   duplicatedPktNum;
+	int32	recvAckNum;
+	int32	statusQueryMsgNum;
 } ICStatistics;
 
 /* Statistics for UDP interconnect. */
@@ -645,12 +665,13 @@ static void connAddHash(ConnHashTable *ht, MotionConn *conn);
 static MotionConn *findConnByHeader(ConnHashTable *ht, icpkthdr *hdr);
 static void destroyConnHashTable(ConnHashTable *ht);
 
+static inline void sendAckWithParam(AckSendParam *param);
 static void sendAck(MotionConn *conn, int32 flags, uint32 seq, uint32 extraSeq);
 static void sendDisorderAck(MotionConn *conn, uint32 seq, uint32 extraSeq, uint32 lostPktCnt);
-static void sendStatusQueryMessage(MotionConn *conn, uint32 seq);
+static void sendStatusQueryMessage(MotionConn *conn, int fd, uint32 seq);
 static inline void sendControlMessage(icpkthdr *pkt, int fd, struct sockaddr *addr, socklen_t peerLen);
 
-static void putRxBufferAndSendAck(MotionConn *conn);
+static void putRxBufferAndSendAck(MotionConn *conn, AckSendParam *param);
 static inline void putRxBufferToFreeList(RxBufferPool *p, icpkthdr *buf);
 static inline icpkthdr *getRxBufferFromFreeList(RxBufferPool *p);
 static icpkthdr *getRxBuffer(RxBufferPool *p);
@@ -716,18 +737,18 @@ static void *rxThreadFunc(void *arg);
 
 static void handleMismatch(icpkthdr *pkt, struct sockaddr_storage *peer, int peer_len);
 static void inline handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now);
-static void handleAck(MotionConn *ackConn, icpkthdr *pkt);
+static bool handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry);
 static void handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, int16 motionId);
 static void handleDisorderPacket(MotionConn *conn, int pos, uint32 tailSeq, icpkthdr *pkt);
-static bool handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer, socklen_t *peerlen);
-static void handleAckForDuplicatePkt(MotionConn *conn, icpkthdr *pkt);
-static void handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt);
+static bool handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer, socklen_t *peerlen, AckSendParam *param);
+static bool handleAckForDuplicatePkt(MotionConn *conn, icpkthdr *pkt);
+static bool handleAckForDisorderPkt(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, icpkthdr *pkt);
 
 static inline void prepareXmit(MotionConn *conn);
 static inline void addCRC(icpkthdr *pkt);
 static inline bool checkCRC(icpkthdr *pkt);
-static inline void sendBuffers(MotionConn *conn);
-static void sendOnce(ICBuffer *buf, MotionConn * conn);
+static void sendBuffers(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn);
+static void sendOnce(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, ICBuffer *buf, MotionConn * conn);
 static inline uint64 computeExpirationPeriod(MotionConn *conn, uint32 retry);
 
 static ICBuffer *getSndBuffer();
@@ -736,8 +757,8 @@ static void initSndBufferPool();
 static void putIntoUnackQueueRing(UnackQueueRing *uqr, ICBuffer *buf, uint64 expTime, uint64 now);
 static void initUnackQueueRing(UnackQueueRing *uqr);
 
-static void checkExpiration();
-static void checkDeadlock(MotionConn *conn);
+static void checkExpiration(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry);
+static void checkDeadlock(ChunkTransportStateEntry *pEntry, MotionConn *conn);
 
 static uint64 getCurrentTime(void);
 static void initMutex(pthread_mutex_t *mutex);
@@ -745,6 +766,9 @@ static bool waitOnCondition(int timeout_us, pthread_cond_t *cond, pthread_mutex_
 
 static inline void logPkt(char *prefix, icpkthdr *pkt);
 static void aggregateStatistics(ChunkTransportStateEntry *pEntry);
+
+static inline bool pollAcks(ChunkTransportState *transportStates, int fd, int timeout);
+
 
 #if defined(__darwin__) && !defined(IC_USE_PTHREAD_SYNCHRONIZATION)
 static int udpSignalTimeoutWait(UDPSignal *sig, pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *ts);
@@ -754,6 +778,140 @@ static void setupUDPSignal(UDPSignal *sig);
 static void destroyUDPSignal(UDPSignal *sig);
 static void udpSignal(UDPSignal *sig);
 #endif
+
+/* #define TRANSFER_PROTOCOL_STATS */
+
+#ifdef TRANSFER_PROTOCOL_STATS
+typedef enum TransProtoEvent TransProtoEvent;
+enum TransProtoEvent {
+	TPE_DATA_PKT_SEND,
+	TPE_ACK_PKT_QUERY
+};
+
+typedef struct TransProtoStatEntry TransProtoStatEntry;
+struct TransProtoStatEntry
+{
+	TransProtoStatEntry	*next;
+
+	/* Basic information */
+	uint32				time;
+	TransProtoEvent		event;
+	int					dstPid;
+	uint32				seq;
+
+	/* more attributes can be added on demand. */
+	/*
+	 * float			cwnd;
+	 * int				capacity;
+	 */
+};
+
+typedef struct TransProtoStats TransProtoStats;
+struct TransProtoStats
+{
+	pthread_mutex_t		lock;
+	TransProtoStatEntry	*head;
+	TransProtoStatEntry	*tail;
+	uint64				count;
+	uint64				startTime;
+};
+
+static TransProtoStats trans_proto_stats = {PTHREAD_MUTEX_INITIALIZER, NULL, NULL, 0};
+
+/*
+ * initTransProtoStats
+ * 		Initialize the transport protocol states data structures.
+ */
+static void
+initTransProtoStats()
+{
+	pthread_mutex_lock(&trans_proto_stats.lock);
+
+	while (trans_proto_stats.head) {
+		TransProtoStatEntry *cur = NULL;
+
+		cur = trans_proto_stats.head;
+		trans_proto_stats.head = trans_proto_stats.head->next;
+
+		free(cur);
+		trans_proto_stats.count--;
+	}
+
+	trans_proto_stats.head = NULL;
+	trans_proto_stats.tail = NULL;
+	trans_proto_stats.count = 0;
+	trans_proto_stats.startTime = getCurrentTime();
+	pthread_mutex_unlock(&trans_proto_stats.lock);
+}
+
+static void
+updateStats(TransProtoEvent event, MotionConn *conn, icpkthdr *pkt)
+{
+	TransProtoStatEntry *new = NULL;
+
+	/* Add to list */
+	new = (TransProtoStatEntry *) malloc(sizeof(TransProtoStatEntry));
+	if (!new)
+		return;
+
+	memset(new, 0, sizeof(*new));
+
+	/* change the list */
+	pthread_mutex_lock(&trans_proto_stats.lock);
+	if (trans_proto_stats.count == 0)
+	{
+		/* 1st element */
+		trans_proto_stats.head = new;
+		trans_proto_stats.tail = new;
+	}
+	else
+	{
+		trans_proto_stats.tail->next = new;
+		trans_proto_stats.tail = new;
+	}
+	trans_proto_stats.count++;
+
+	new->time = getCurrentTime() - trans_proto_stats.startTime;
+	new->event = event;
+	new->dstPid = pkt->dstPid;
+	new->seq = pkt->seq;
+
+	/* Other attributes can be added on demand
+	 *	new->cwnd = snd_control_info.cwnd;
+	 *	new->capacity = conn->capacity;
+	 */
+
+	pthread_mutex_unlock(&trans_proto_stats.lock);
+}
+
+static void
+dumpTransProtoStats()
+{
+	char tmpbuf[32];
+
+	snprintf(tmpbuf, 32, "%d." UINT64_FORMAT "txt", MyProcPid, getCurrentTime());
+	FILE *ofile = fopen(tmpbuf, "w+");
+
+	pthread_mutex_lock(&trans_proto_stats.lock);
+	while (trans_proto_stats.head) {
+		TransProtoStatEntry *cur = NULL;
+
+		cur = trans_proto_stats.head;
+		trans_proto_stats.head = trans_proto_stats.head->next;
+
+		fprintf(ofile, "time %d event %d seq %d destpid %d\n", cur->time, cur->event, cur->seq, cur->dstPid);
+		free(cur);
+		trans_proto_stats.count--;
+	}
+
+	trans_proto_stats.tail = NULL;
+
+	pthread_mutex_unlock(&trans_proto_stats.lock);
+
+    fclose(ofile);
+}
+
+#endif /* TRANSFER_PROTOCOL_STATS */
 
 /*
  * initCursorICHistoryTable
@@ -1100,7 +1258,11 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 
 		fun = "fcntl(O_NONBLOCK)";
 		if (!pg_set_noblock(fd))
+		{
+			if (fd >= 0)
+				closesocket(fd);
 			continue;
+		}
 
 		fun = "bind";
 		elog(DEBUG1,"bind addrlen %d fam %d",rp->ai_addrlen,rp->ai_addr->sa_family);
@@ -1110,7 +1272,8 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 			break;					/* Success */
 		}
 
-		close(fd);
+		if (fd >= 0)
+			closesocket(fd);
 	}
 
 	if (rp == NULL)
@@ -1194,9 +1357,11 @@ InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort)
                                          ALLOCSET_DEFAULT_MAXSIZE);
 	initMutex(&ic_control_info.errorLock);
 	initMutex(&ic_control_info.lock);
-	ic_control_info.shutdown = false;
+	pthread_cond_init(&ic_control_info.cond, NULL);
+	ic_control_info.shutdown = 0;
 
 	old = MemoryContextSwitchTo(ic_control_info.memContext);
+
 	initConnHashTable(&ic_control_info.connHtab);
 
 	/*
@@ -1208,15 +1373,9 @@ InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort)
 	setupUDPSignal(&ic_control_info.usig);
 #endif
 
-	/* keep the fd/port/txFamily in the control information data structure. */
-	ic_control_info.fd = *listenerSocketFd;
-	ic_control_info.port = *listenerPort;
-	ic_control_info.txFamily = txFamily;
-
 	/* Initialize receive control data. */
-	initMutex(&rx_control_info.lock);
-	pthread_cond_init(&rx_control_info.cond, NULL);
 	resetMainThreadWaiting(&rx_control_info.mainWaitingState);
+
 	/* allocate a buffer for sending disorder messages */
 	rx_control_info.disorderBuffer = palloc0(MIN_PACKET_SIZE);
 	rx_control_info.lastDXatId = InvalidTransactionId;
@@ -1225,12 +1384,16 @@ InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort)
 
 	initRxBufferPool(&rx_buffer_pool);
 
+	/* Initialize send control data */
+	snd_control_info.cwnd = 0;
+	snd_control_info.minCwnd = 0;
+	snd_control_info.ackBuffer = palloc0(MIN_PACKET_SIZE);
+
 	MemoryContextSwitchTo(old);
 
-	/* Initialize send control data */
-	initMutex(&snd_control_info.lock);
-	snd_control_info.waiting = false;
-	pthread_cond_init(&snd_control_info.cond, NULL);
+#ifdef TRANSFER_PROTOCOL_STATS
+	initMutex(&trans_proto_stats.lock);
+#endif
 
 	/* Start up our rx-thread */
 
@@ -1274,13 +1437,10 @@ CleanupMotionUDP(void)
 	 * We still release the locks here.
 	 */
 	pthread_mutex_unlock(&ic_control_info.errorLock);
-	pthread_mutex_unlock(&rx_control_info.lock);
-	pthread_mutex_unlock(&snd_control_info.lock);
 	pthread_mutex_unlock(&ic_control_info.lock);
 
-	pthread_mutex_lock(&ic_control_info.lock);
-	ic_control_info.shutdown = true;
-	pthread_mutex_unlock(&ic_control_info.lock);
+	/* Shutdown rx thread. */
+	compare_and_swap_32(&ic_control_info.shutdown, 0, 1);
 
 	pthread_join(ic_control_info.threadHandle, NULL);
 
@@ -1290,10 +1450,13 @@ CleanupMotionUDP(void)
 
 	destroyConnHashTable(&ic_control_info.connHtab);
 
-
 	/* free the disorder buffer */
 	pfree(rx_control_info.disorderBuffer);
 	rx_control_info.disorderBuffer = NULL;
+
+	/* free the buffer for acks */
+	pfree(snd_control_info.ackBuffer);
+	snd_control_info.ackBuffer = NULL;
 
 	MemoryContextDelete(ic_control_info.memContext);
 
@@ -1313,8 +1476,6 @@ CleanupMotionUDP(void)
 		elog(LOG, "WARNING: malloc times and free times do not match.");
 #endif
 }
-
-
 
 /*
  * waitOnCondition
@@ -1600,6 +1761,29 @@ sendControlMessage(icpkthdr *pkt, int fd, struct sockaddr *addr, socklen_t peerL
 }
 
 /*
+ * setAckSendParam
+ * 		Set the ack sending parameters.
+ */
+static inline void
+setAckSendParam(AckSendParam *param, MotionConn *conn, int32 flags, uint32 seq, uint32 extraSeq)
+{
+	param->conn = conn;
+	param->flags = flags;
+	param->seq = seq;
+	param->extraSeq = extraSeq;
+}
+
+/*
+ * sendAckWithParam
+ * 		Send acknowledgment to sender.
+ */
+static inline void
+sendAckWithParam(AckSendParam *param)
+{
+	sendAck(param->conn, param->flags, param->seq, param->extraSeq);
+}
+
+/*
  * sendAck
  * 		Send acknowledgment to sender.
  */
@@ -1610,7 +1794,7 @@ sendAck(MotionConn *conn, int32 flags, uint32 seq, uint32 extraSeq)
 
 	memcpy(&msg, (char *)&conn->conn_info, sizeof(msg));
 
-	msg.flags |= flags;
+	msg.flags = flags;
 	msg.seq = seq;
 	msg.extraSeq = extraSeq;
 	msg.len = sizeof(icpkthdr);
@@ -1620,7 +1804,7 @@ sendAck(MotionConn *conn, int32 flags, uint32 seq, uint32 extraSeq)
 					msg.flags, msg.motNodeId, conn->route, msg.seq, msg.extraSeq);
 #endif
 
-	sendControlMessage(&msg, ic_control_info.fd, (struct sockaddr *)&conn->peer, conn->peer_len);
+	sendControlMessage(&msg, UDP_listenerFd, (struct sockaddr *)&conn->peer, conn->peer_len);
 
 }
 
@@ -1651,7 +1835,7 @@ sendDisorderAck(MotionConn *conn, uint32 seq, uint32 extraSeq, uint32 lostPktCnt
 	}
 #endif
 
-	sendControlMessage(disorderBuffer, ic_control_info.fd, (struct sockaddr *)&conn->peer, conn->peer_len);
+	sendControlMessage(disorderBuffer, UDP_listenerFd, (struct sockaddr *)&conn->peer, conn->peer_len);
 
 }
 
@@ -1663,7 +1847,7 @@ sendDisorderAck(MotionConn *conn, uint32 seq, uint32 extraSeq, uint32 lostPktCnt
  * the connection status (consumed seq, received seq ...).
  */
 static void
-sendStatusQueryMessage(MotionConn *conn, uint32 seq)
+sendStatusQueryMessage(MotionConn *conn, int fd, uint32 seq)
 {
 	icpkthdr msg;
 
@@ -1673,7 +1857,11 @@ sendStatusQueryMessage(MotionConn *conn, uint32 seq)
 	msg.extraSeq = 0;
 	msg.len = sizeof(msg);
 
-	sendControlMessage(&msg, ic_control_info.fd, (struct sockaddr *)&conn->peer, conn->peer_len);
+#ifdef TRANSFER_PROTOCOL_STATS
+	updateStats(TPE_ACK_PKT_QUERY, conn, &msg);
+#endif
+
+	sendControlMessage(&msg, fd, (struct sockaddr *)&conn->peer, conn->peer_len);
 
 }
 
@@ -1684,7 +1872,7 @@ sendStatusQueryMessage(MotionConn *conn, uint32 seq)
  *  SHOULD BE CALLED WITH rx_control_info.lock *LOCKED*
  */
 static void
-putRxBufferAndSendAck(MotionConn *conn)
+putRxBufferAndSendAck(MotionConn *conn, AckSendParam *param)
 {
 	icpkthdr *buf=NULL;
 
@@ -1697,7 +1885,7 @@ putRxBufferAndSendAck(MotionConn *conn)
 
 	if (buf == NULL)
 	{
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 		elog(FATAL, "putRxBufferAndSendAck: buffer is NULL");
 	}
 
@@ -1715,7 +1903,17 @@ putRxBufferAndSendAck(MotionConn *conn)
 	conn->conn_info.extraSeq = seq;
 
 	/* Send an Ack to the sender. */
-	sendAck(conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY, conn->conn_info.seq - 1, seq);
+	if((seq % 2 == 0) || (Gp_interconnect_queue_depth == 1))
+	{
+		if(param != NULL)
+		{
+			setAckSendParam(param, conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY | conn->conn_info.flags, conn->conn_info.seq - 1, seq);
+		}
+		else
+		{
+			sendAck(conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY | conn->conn_info.flags, conn->conn_info.seq - 1, seq);
+		}
+	}
 }
 
 /*
@@ -1728,25 +1926,31 @@ void
 MlPutRxBuffer(ChunkTransportState *transportStates, int motNodeID, int route)
 {
 	ChunkTransportStateEntry	*pEntry = NULL;
-	MotionConn			*conn=NULL;
+	MotionConn			*conn = NULL;
+	AckSendParam param;
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
 
 	conn = pEntry->conns + route;
 
-	pthread_mutex_lock(&rx_control_info.lock);
+	memset(&param, 0, sizeof(AckSendParam));
+
+	pthread_mutex_lock(&ic_control_info.lock);
 
 	if(conn->pBuff != NULL)
 	{
-		putRxBufferAndSendAck(conn);
+		putRxBufferAndSendAck(conn, &param);
 	}
 	else
 	{
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 		elog(FATAL, "Interconnect error: tried to release a NULL buffer");
 	}
 
-	pthread_mutex_unlock(&rx_control_info.lock);
+	pthread_mutex_unlock(&ic_control_info.lock);
+
+	if(param.conn != NULL)
+		sendAckWithParam(&param);
 }
 
 /*
@@ -2215,7 +2419,12 @@ icBufferListReturn(ICBufferList *list, bool inExpirationQueue)
 	while((buf = icBufferListPop(list)) != NULL )
 	{
 		if(inExpirationQueue) /* the buf is in also in the expiration queue */
+		{
 			icBufferListDelete(&unack_queue_ring.slots[buf->unackQueueRingSlot], buf);
+			unack_queue_ring.numOutStanding--;
+			if(icBufferListLength(list) >= 1)
+				unack_queue_ring.numSharedOutStanding--;
+		}
 
 		icBufferListAppend(&snd_buffer_pool.freeList, buf);
 	}
@@ -2235,6 +2444,8 @@ initUnackQueueRing(UnackQueueRing *uqr)
 	uqr->currentTime = getCurrentTime();
 	uqr->currentTime = uqr->currentTime - (uqr->currentTime % TIMER_SPAN);
 	uqr->idx = 0;
+	uqr->numOutStanding = 0;
+	uqr->numSharedOutStanding = 0;
 
 	for(; i < UNACK_QUEUE_RING_SLOTS_NUM; i++)
 	{
@@ -2272,8 +2483,8 @@ computeExpirationPeriod(MotionConn *conn, uint32 retry)
 #endif
 	{
 		uint32 factor = (retry <= 12 ? retry : 12);
-		return Min(MAX_EXPIRATION_PERIOD, (conn->rtt << 2) + (TIMER_SPAN * factor));
-	}
+		return Max(MIN_EXPIRATION_PERIOD, Min(MAX_EXPIRATION_PERIOD, (conn->rtt + (conn->dev << 2)) << (factor)));
+    }
 }
 
 /*
@@ -2414,7 +2625,7 @@ udpSignal(UDPSignal *sig)
 	char buf[16];
 
 #ifdef USE_ASSERT_CHECKING
-	int percent = gp_udpic_dropacks_percent > 0 ? 5 : 0;
+	int percent = gp_udpic_dropacks_percent > 0 ? 1 : 0;
 	if (testmode_inject_fault(percent))
 	{
 	#ifdef AMS_VERBOSE_LOGGING
@@ -2493,7 +2704,7 @@ destroyUDPSignal(UDPSignal *sig)
  * udpSignalGet
  * 		Try to get the signal from the socket.
  *
- * Note: Can only called from main thread.
+ * Note: Can only be called from main thread.
  */
 static bool
 udpSignalGet(UDPSignal *sig)
@@ -2611,6 +2822,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	Slice	   *recvSlice;
 	CdbProcess *cdbProc;
 	int					i;
+	uint16 port = 0;
 
 	*pOutgoingCount = 0;
 
@@ -2652,12 +2864,14 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 
 			/* send buffer pool must be initialized before this. */
 			snd_buffer_pool.maxCount += Gp_interconnect_snd_queue_depth;
+			snd_control_info.cwnd += 1;
 			conn->curBuff = getSndBuffer();
 
 			/* should have at least one buffer for each connection */
 			Assert(conn->curBuff != NULL);
 
 			conn->rtt = DEFAULT_RTT;
+			conn->dev = DEFAULT_DEV;
 			conn->lastAckTime = 0;
 			conn->tupleCount = 0;
 			conn->msgSize = sizeof(conn->conn_info);
@@ -2676,9 +2890,10 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 		conn++;
 	}
 
-	pEntry->txfd = ic_control_info.fd;
-	pEntry->txport = ic_control_info.port;
-	pEntry->txfd_family = ic_control_info.txFamily;
+	pEntry->txfd = -1;
+	pEntry->txport = 0;
+	setupUDPListeningSocket(&pEntry->txfd, &port, &pEntry->txfd_family);
+	pEntry->txport = port;
 
 	return pEntry;
 
@@ -2865,7 +3080,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 		elog(DEBUG1, "setupOutgoingUDPConnection: node %d route %d srccontent %d dstcontent %d: %s",
 			 pEntry->motNodeId, conn->route, Gp_segment, conn->cdbProc->contentid, conn->remoteHostAndPort);
 
-	conn->conn_info.srcListenerPort = ic_control_info.port;
+	conn->conn_info.srcListenerPort = (Gp_listener_port>>16) & 0x0ffff;
 	conn->conn_info.srcPid = MyProcPid;
 	conn->conn_info.dstPid = conn->cdbProc->pid;
 	conn->conn_info.dstListenerPort = conn->cdbProc->listenerPort;
@@ -3060,7 +3275,7 @@ SetupUDPInterconnect_Internal(EState *estate)
 				conn->conn_info.srcListenerPort = conn->cdbProc->listenerPort;
 				conn->conn_info.srcPid = conn->cdbProc->pid;
 				conn->conn_info.dstPid = MyProcPid;
-				conn->conn_info.dstListenerPort = ic_control_info.port;
+				conn->conn_info.dstListenerPort = (Gp_listener_port>>16) & 0x0ffff;
 				conn->conn_info.sessionId = gp_session_id;
 				conn->conn_info.icId = gp_interconnect_id;
 				conn->conn_info.flags = UDPIC_FLAGS_RECEIVER_TO_SENDER;
@@ -3075,12 +3290,17 @@ SetupUDPInterconnect_Internal(EState *estate)
 		setExpectedReceivers(estate->motionlayer_context, childId, numValidProcs);
 	}
 
+	snd_control_info.cwnd = 0;
+	snd_control_info.minCwnd = 0;
+	snd_control_info.ssthresh = 0;
+
 	/* Initiate outgoing connections. */
 	if (mySlice->parentIndex != -1)
 	{
 		initSndBufferPool(&snd_buffer_pool);
 		initUnackQueueRing(&unack_queue_ring);
 		ic_control_info.isSender = true;
+		ic_control_info.lastExpirationCheckTime = getCurrentTime();
 
 		sendingChunkTransportState = startOutgoingUDPConnections(estate->interconnect_context, mySlice, &expectedTotalOutgoing);
 		n = sendingChunkTransportState->numConns;
@@ -3093,18 +3313,26 @@ SetupUDPInterconnect_Internal(EState *estate)
 			outgoing_count++;
 			continue;
 		}
+		snd_control_info.minCwnd = snd_control_info.cwnd;
+		snd_control_info.ssthresh = snd_buffer_pool.maxCount;
+
+	#ifdef TRANSFER_PROTOCOL_STATS
+		initTransProtoStats();
+	#endif
+
 	}
 	else
 	{
 		ic_control_info.isSender = false;
+		ic_control_info.lastExpirationCheckTime = 0;
 	}
 
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		ereport(DEBUG1, (errmsg("SetupUDPInterconnect will activate "
 								"%d incoming, %d outgoing routes for gp_interconnect_id %d. "
-								"Listening on ports=%d sockfd=%d.",
+								"Listening on ports=%d/%d sockfd=%d.",
 								expectedTotalIncoming, expectedTotalOutgoing, gp_interconnect_id,
-								ic_control_info.port, ic_control_info.fd)));
+								Gp_listener_port&0x0ffff, (Gp_listener_port>>16)&0x0ffff, UDP_listenerFd)));
 
 	estate->interconnect_context->activated = true;
 
@@ -3207,7 +3435,7 @@ computeNetworkStatistics(uint64 value, uint64 *min, uint64 *max, double *sum)
  * 1) Do not handle interrupts/throw errors in Teardown, otherwise, Teardown may be called twice.
  *    It will introduce an undefined behavior. And memory leaks will be introduced.
  *
- * 2) Be careful about the adding of elog/ereport/write_log in Teardown function,
+ * 2) Be careful about adding elog/ereport/write_log in Teardown function,
  *    esp, out of HOLD_INTERRUPTS/RESUME_INTERRUPTS pair, since elog/ereport/write_log may
  *    handle interrupts.
  *
@@ -3225,6 +3453,10 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 	uint64 maxRtt = 0;
 	double avgRtt = 0;
 	uint64 minRtt = ~((uint64)0);
+
+	uint64 maxDev = 0;
+	double avgDev = 0;
+	uint64 minDev = ~((uint64)0);
 
 	bool   isReceiver = false;
 
@@ -3277,7 +3509,6 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 	 */
     pthread_mutex_lock(&ic_control_info.lock);
 
-    pthread_mutex_lock(&snd_control_info.lock);
     /*
      * Now "normal" connections which made it through our
      * peer-registration step. With these we have to worry about
@@ -3311,6 +3542,11 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
     		/* now it is safe to remove. */
     		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
 
+    		if(pEntry->txfd >= 0)
+    			closesocket(pEntry->txfd);
+    		pEntry->txfd = -1;
+    		pEntry->txfd_family = 0;
+
     		/* connection array allocation may fail in interconnect setup. */
     		if(pEntry->conns)
     		{
@@ -3322,6 +3558,7 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 
 					/* compute some statistics */
 					computeNetworkStatistics(conn->rtt, &minRtt, &maxRtt, &avgRtt);
+					computeNetworkStatistics(conn->dev, &minDev, &maxDev, &avgDev);
 
 					icBufferListReturn(&conn->sndQueue, false);
 					icBufferListReturn(&conn->unackQueue, true);
@@ -3329,22 +3566,22 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 					connDelHash(&ic_control_info.connHtab, conn);
 				}
 				avgRtt = avgRtt / pEntry->numConns;
+				avgDev = avgDev / pEntry->numConns;
 
 				/* free all send side buffers */
 				cleanSndBufferPool(&snd_buffer_pool);
     		}
     	}
+#ifdef TRANSFER_PROTOCOL_STATS
+		dumpTransProtoStats();
+#endif
+
 	}
-
-
-    pthread_mutex_unlock(&snd_control_info.lock);
 
 	/* Previously, there is a piece of code that deals with pending stops.
 	 * Now it is delegated to background rx thread which will deal with any
 	 * mismatched packets.
 	 */
-
-	pthread_mutex_lock(&rx_control_info.lock);
 
 	/*
 	 * cleanup all of our Receiving Motion nodes, these get closed
@@ -3399,7 +3636,7 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 					/* putRxBufferAndSendAck() dequeues messages and moves them to pBuff */
 					while(conn->pkt_q_size > 0)
 					{
-						putRxBufferAndSendAck(conn); /* as a side-effect this may wake the rx_thread */
+						putRxBufferAndSendAck(conn, NULL);
 					}
 
 					/* we also need to clear all the out-of-order packets */
@@ -3423,7 +3660,6 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 		/* If this happened, there is some memory leaks.. */
 		if (rx_buffer_pool.freeList == NULL)
 		{
-			pthread_mutex_unlock(&rx_control_info.lock);
 			pthread_mutex_unlock(&ic_control_info.lock);
 			elog(FATAL, "freelist NULL: count %d max %d buf %p", rx_buffer_pool.count, rx_buffer_pool.maxCount, rx_buffer_pool.freeList);
 		}
@@ -3450,13 +3686,14 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 			"UNACK_QUEUE_RING_SLOTS_NUM %d TIMER_SPAN %d DEFAULT_RTT %d "
 			"forceEOS %d, gp_interconnect_id %d ic_id_last_teardown %d "
 			"snd_buffer_pool.count %d snd_buffer_pool.maxCount %d snd_sock_bufsize %d recv_sock_bufsize %d "
-			"snd_pkt_count " UINT64_FORMAT " retransmits " UINT64_FORMAT " crc_errors " UINT64_FORMAT
-			" recv_pkt_count " UINT64_FORMAT " recv_ack_num " UINT64_FORMAT
+			"snd_pkt_count %d retransmits %d crc_errors %d"
+			" recv_pkt_count %d recv_ack_num %d"
 			" recv_queue_size_avg %f"
 			" capacity_avg %f"
 			" freebuf_avg %f "
-			"mismatch_pkt_num " UINT64_FORMAT " disordered_pkt_num " UINT64_FORMAT " duplicated_pkt_num " UINT64_FORMAT
-			" rtt [" UINT64_FORMAT ", %f, " UINT64_FORMAT "] status_query_msg_num " UINT64_FORMAT,
+			"mismatch_pkt_num %d disordered_pkt_num %d duplicated_pkt_num %d"
+			" rtt/dev [" UINT64_FORMAT "/" UINT64_FORMAT ", %f/%f, " UINT64_FORMAT "/" UINT64_FORMAT "] "
+			" cwnd %f status_query_msg_num %d",
 			ic_control_info.isSender, isReceiver,
 			Gp_interconnect_snd_queue_depth, Gp_interconnect_queue_depth, Gp_max_packet_size,
 			UNACK_QUEUE_RING_SLOTS_NUM, TIMER_SPAN, DEFAULT_RTT,
@@ -3468,13 +3705,12 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
 			(double)((double)ic_statistics.totalCapacity)/((double)ic_statistics.capacityCountingTime),
 			(double)((double)ic_statistics.totalBuffers)/((double)ic_statistics.bufferCountingTime),
 			ic_statistics.mismatchNum, ic_statistics.disorderedPktNum, ic_statistics.duplicatedPktNum,
-			(minRtt == ~((uint64)0) ? 0 : minRtt), avgRtt, maxRtt,
-			ic_statistics.statusQueryMsgNum);
+			(minRtt == ~((uint64)0) ? 0 : minRtt), (minDev == ~((uint64)0) ? 0 : minDev), avgRtt, avgDev, maxRtt, maxDev,
+			snd_control_info.cwnd, ic_statistics.statusQueryMsgNum);
 
 	ic_control_info.isSender = false;
 	memset(&ic_statistics, 0, sizeof(ICStatistics));
 
-	pthread_mutex_unlock(&rx_control_info.lock);
 	pthread_mutex_unlock(&ic_control_info.lock);
 
 	/* reset the rx thread network error flag */
@@ -3514,15 +3750,11 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		TeardownUDPInterconnect_Internal(transportStates, mlStates, forceEOS);
 
 		Assert(pthread_mutex_unlock(&ic_control_info.errorLock) != 0);
-		Assert(pthread_mutex_unlock(&rx_control_info.lock) != 0);
-		Assert(pthread_mutex_unlock(&snd_control_info.lock) != 0);
 		Assert(pthread_mutex_unlock(&ic_control_info.lock) != 0);
 	}
 	PG_CATCH();
 	{
 		pthread_mutex_unlock(&ic_control_info.errorLock);
-		pthread_mutex_unlock(&rx_control_info.lock);
-		pthread_mutex_unlock(&snd_control_info.lock);
 		pthread_mutex_unlock(&ic_control_info.lock);
 		PG_RE_THROW();
 	}
@@ -3604,7 +3836,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 		{
 			Assert(rxconn->pBuff);
 
-			pthread_mutex_unlock(&rx_control_info.lock);
+			pthread_mutex_unlock(&ic_control_info.lock);
 
 			elog(DEBUG2, "got data with length %d", rxconn->recvBytes);
 			/* successfully read into this connection's buffer. */
@@ -3619,13 +3851,13 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 		retries++;
 
 		/* 2. Wait for data to become ready */
-		if (waitOnCondition(MAIN_THREAD_COND_TIMEOUT, &rx_control_info.cond, &rx_control_info.lock))
+		if (waitOnCondition(MAIN_THREAD_COND_TIMEOUT, &ic_control_info.cond, &ic_control_info.lock))
 		{
 			continue; /* success ! */
 		}
 
 		/* handle timeout, check for cancel */
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 
 		/* check the potential errors in rx thread. */
 		checkRxThreadError();
@@ -3643,7 +3875,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 		if ((retries & 0x3f) == 0)
 			checkQDConnectionAlive();
 
-		pthread_mutex_lock(&rx_control_info.lock);
+		pthread_mutex_lock(&ic_control_info.lock);
 
 	} /* for (;;) */
 
@@ -3681,7 +3913,7 @@ RecvTupleChunkFromAnyUDP_Internal(MotionLayerState *mlStates,
 
 	index = pEntry->scanStart;
 
-	pthread_mutex_lock(&rx_control_info.lock);
+	pthread_mutex_lock(&ic_control_info.lock);
 
 	for (i = 0; i < pEntry->numConns; i++, index++)
 	{
@@ -3706,7 +3938,7 @@ RecvTupleChunkFromAnyUDP_Internal(MotionLayerState *mlStates,
 
 	if(found)
 	{
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 
 		tcItem = RecvTupleChunk(conn, transportStates->teardownActive);
 		*srcRoute = conn->route;
@@ -3721,7 +3953,7 @@ RecvTupleChunkFromAnyUDP_Internal(MotionLayerState *mlStates,
 #endif
 	if (activeCount == 0)
 	{
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 		return NULL;
 	}
 
@@ -3751,12 +3983,12 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 
 		/* error if mutex still held (debug build only) */
         Assert(pthread_mutex_unlock(&ic_control_info.errorLock) != 0);
-		Assert(pthread_mutex_unlock(&rx_control_info.lock) != 0);
+		Assert(pthread_mutex_unlock(&ic_control_info.lock) != 0);
 	}
 	PG_CATCH();
 	{
         pthread_mutex_unlock(&ic_control_info.errorLock);
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -3807,11 +4039,11 @@ RecvTupleChunkFromUDP_Internal(ChunkTransportState *transportStates,
 	}
 #endif
 
-	pthread_mutex_lock(&rx_control_info.lock);
+	pthread_mutex_lock(&ic_control_info.lock);
 
 	if (!conn->stillActive)
 	{
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 		return NULL;
 	}
 
@@ -3822,7 +4054,7 @@ RecvTupleChunkFromUDP_Internal(ChunkTransportState *transportStates,
 	{
 		prepareRxConnForRead(conn);
 
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 
 		TupleChunkListItem	tcItem=NULL;
 
@@ -3832,7 +4064,7 @@ RecvTupleChunkFromUDP_Internal(ChunkTransportState *transportStates,
 	}
 
 	/* no existing data, we've got to read a packet */
-	/* receiveChunksUDP() releases rx_control_info.lock as a side-effect */
+	/* receiveChunksUDP() releases ic_control_info.lock as a side-effect */
 
 	TupleChunkListItem chunks = receiveChunksUDP(transportStates, pEntry, motNodeID, &route, conn, transportStates->teardownActive);
 
@@ -3856,12 +4088,12 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 
 		/* error if mutex still held (debug build only) */
         Assert(pthread_mutex_unlock(&ic_control_info.errorLock) != 0);
-		Assert(pthread_mutex_unlock(&rx_control_info.lock) != 0);
+		Assert(pthread_mutex_unlock(&ic_control_info.lock) != 0);
 	}
 	PG_CATCH();
 	{
         pthread_mutex_unlock(&ic_control_info.errorLock);
-		pthread_mutex_unlock(&rx_control_info.lock);
+		pthread_mutex_unlock(&ic_control_info.lock);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -3876,9 +4108,9 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 void
 markUDPConnInactive(MotionConn *conn)
 {
-	pthread_mutex_lock(&rx_control_info.lock);
+	pthread_mutex_lock(&ic_control_info.lock);
 	conn->stillActive = false;
-	pthread_mutex_unlock(&rx_control_info.lock);
+	pthread_mutex_unlock(&ic_control_info.lock);
 
 	return;
 }
@@ -3957,6 +4189,9 @@ handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now)
 
 	buf = icBufferListDelete(&ackConn->unackQueue, buf);
 	buf = icBufferListDelete(&unack_queue_ring.slots[buf->unackQueueRingSlot], buf);
+	unack_queue_ring.numOutStanding--;
+	if(icBufferListLength(&ackConn->unackQueue) >= 1)
+		unack_queue_ring.numSharedOutStanding--;
 
 	ackTime = now - buf->sentTime;
 
@@ -3968,10 +4203,28 @@ handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now)
 	if(!udp_testmode)
 #endif
 	{
-		uint64 newRTT = 0;
-		/* newRTT = buf->conn->rtt * (1 - RTT_COEFFICIENT) + ackTime * RTT_COEFFICIENT; */
-		newRTT = buf->conn->rtt - (buf->conn->rtt >> RTT_SHIFT_COEFFICIENT) + (ackTime >> RTT_SHIFT_COEFFICIENT);
-		buf->conn->rtt = Min(MAX_RTT, Max(newRTT, MIN_RTT));
+        uint64 newRTT = 0;
+        uint64 newDEV = 0;
+
+        if(buf->nRetry == 0)
+        {
+            /* newRTT = buf->conn->rtt * (1 - RTT_COEFFICIENT) + ackTime * RTT_COEFFICIENT; */
+        	newRTT = buf->conn->rtt - (buf->conn->rtt >> RTT_SHIFT_COEFFICIENT) + (ackTime >> RTT_SHIFT_COEFFICIENT);
+        	newRTT = Min(MAX_RTT, Max(newRTT, MIN_RTT));
+        	buf->conn->rtt = newRTT;
+
+        	/* newDEV = buf->conn->dev * (1 - DEV_COEFFICIENT) + DEV_COEFFICIENT * abs(ackTime - newRTT); */
+        	newDEV = buf->conn->dev - (buf->conn->dev >> DEV_SHIFT_COEFFICIENT) + (abs(ackTime - newRTT) >> DEV_SHIFT_COEFFICIENT);
+        	newDEV = Min(MAX_DEV, Max(newDEV, MIN_DEV));
+        	buf->conn->dev = newDEV;
+
+        	/* adjust the conjestion control window. */
+        	if(snd_control_info.cwnd < snd_control_info.ssthresh)
+        		snd_control_info.cwnd += 1;
+        	else
+        		snd_control_info.cwnd += 1/snd_control_info.cwnd;
+        	snd_control_info.cwnd = Min(snd_control_info.cwnd, snd_buffer_pool.maxCount);
+        }
 	}
 
 	buf->conn->stat_total_ack_time += ackTime;
@@ -3994,20 +4247,6 @@ handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now)
 		icBufferListLog(&buf->conn->sndQueue);
 	}
 #endif
-
-
-	if((snd_control_info.waiting)
-			|| (icBufferListLength(&buf->conn->unackQueue) == 0
-					&& icBufferListLength(&buf->conn->sndQueue) == 0
-					&& buf->conn->waitEOS))
-	{
-
-#if defined(__darwin__) && !defined(IC_USE_PTHREAD_SYNCHRONIZATION)
-		udpSignal(&ic_control_info.usig);
-#else
-		pthread_cond_signal(&snd_control_info.cond);
-#endif
-	}
 }
 
 /*
@@ -4016,119 +4255,209 @@ handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now)
  *
  * if we receive a stop message, return true (caller will clean up).
  */
-static void
-handleAck(MotionConn *ackConn, icpkthdr *pkt)
+static bool
+handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry)
 {
-	/* read packet, is this the ack we want ?
-	 *
-	 * Here, using gp_interconnect_id is safe, since
-	 * only senders get acks. QD (never be a sender) does not. QD may
-	 * have several concurrent running interconnect
-	 * instances.
-	 */
-	if (pkt->srcContentId == Gp_segment &&
-		pkt->srcPid == MyProcPid &&
-		pkt->srcListenerPort == (ic_control_info.port) &&
-		pkt->sessionId == gp_session_id &&
-		pkt->icId == gp_interconnect_id)
+
+	bool ret = false;
+	MotionConn *ackConn = NULL;
+	int n;
+
+	struct sockaddr_storage peer;
+	socklen_t peerlen;
+
+	struct icpkthdr *pkt = snd_control_info.ackBuffer;
+
+
+	bool shouldSendBuffers = false;
+
+	for (;;)
 	{
 
-		ackConn->stat_count_acks++;
+		/* ready to read on our socket ? */
+		peerlen = sizeof(peer);
+		n = recvfrom(pEntry->txfd, (char *)pkt, MIN_PACKET_SIZE, 0,
+					 (struct sockaddr *)&peer, &peerlen);
 
-		/* We simply disregard pkt losses (NAK) due to process start race (that is,
-		 * sender is started earlier than receiver. rx background thread may receive
-		 * packets when connections are not created yet).
-		 *
-		 * Another option is to resend the packet immediately,
-		 * but experiments do not show any benefits.
+		if (n < 0)
+		{
+			if (errno == EWOULDBLOCK) /* had nothing to read. */
+			{
+				aggregateStatistics(pEntry);
+				return ret;
+			}
+
+			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+			if (errno == EINTR)
+				continue;
+
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error waiting for peer ack"),
+							errdetail("During recvfrom() call.\n")));
+			/* not reached */
+		}
+		else if (n < sizeof(struct icpkthdr))
+		{
+			continue;
+		}
+		else if (n != pkt->len)
+		{
+			continue;
+		}
+
+		/*
+		 * check the CRC of the payload.
 		 */
-
-		if(pkt->flags & UDPIC_FLAGS_NAK)
-			return;
-
-		uint64 now = getCurrentTime();
-
-		if(pkt->flags & UDPIC_FLAGS_CAPACITY)
+		if (gp_interconnect_full_crc)
 		{
-			ackConn->lastAckTime = now;
-			if(pkt->extraSeq > ackConn->consumedSeq)
+			if(!checkCRC(pkt))
 			{
-				ackConn->capacity += pkt->extraSeq - ackConn->consumedSeq;
-				ackConn->consumedSeq = pkt->extraSeq;
-				sendBuffers(ackConn);
+				gp_atomic_add_32(&ic_statistics.crcErrors, 1);
+				if (DEBUG2 >= log_min_messages)
+					write_log("received network data error, dropping bad packet, user data unaffected.");
+				continue;
 			}
 		}
-		else if (pkt->flags & UDPIC_FLAGS_DUPLICATE)
+
+#ifdef AMS_VERBOSE_LOGGING
+		log_pkt("GOT ACK", pkt);
+#endif
+
+
+		/* read packet, is this the ack we want ?
+		 *
+		 * Here, using gp_interconnect_id is safe, since
+		 * only senders get acks. QD (never be a sender) does not. QD may
+		 * have several concurrent running interconnect
+		 * instances.
+		 */
+		if (pkt->srcContentId == Gp_segment &&
+				pkt->srcPid == MyProcPid &&
+				pkt->srcListenerPort == ((Gp_listener_port>>16) & 0x0ffff) &&
+				pkt->sessionId == gp_session_id &&
+				pkt->icId == gp_interconnect_id)
 		{
-			if (DEBUG1 >= log_min_messages)
-				write_log("GOTDUPACK [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
 
-			handleAckForDuplicatePkt(ackConn, pkt);
-			return;
-		}
-		else if(pkt->flags & UDPIC_FLAGS_DISORDER)
-		{
-			if (DEBUG1 >= log_min_messages)
-				write_log("GOTDISORDER [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
+			/* packet is for me. Note here we do not need to get a connection lock here,
+			 * since background rx thread only read the hash table.
+			 */
+			ackConn = findConnByHeader(&ic_control_info.connHtab, pkt);
 
-			handleAckForDisorderPkt(ackConn, pkt);
-			return;
-		}
-
-		if (pkt->seq <= ackConn->receivedAckSeq)
-		{
-			if (DEBUG1 >= log_min_messages)
-				write_log("ack with bad seq?! expected (%d, %d] got %d flags 0x%x, capacity %d consumedSeq %d", ackConn->receivedAckSeq, ackConn->sentSeq, pkt->seq, pkt->flags, ackConn->capacity, ackConn->consumedSeq);
-
-			return;
-		}
-
-		/* haven't gotten a stop request, maybe this is one ? */
-		if (pkt->flags & UDPIC_FLAGS_STOP)
-		{
-			if (DEBUG1 >= log_min_messages)
-				write_log("got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, pkt->seq, ackConn->conn_info.seq);
-
-			ackConn->stopRequested = true;
-			ackConn->conn_info.flags |= UDPIC_FLAGS_STOP;
-			/* continue to deal with acks */
-		}
-
-		/* deal with a regular ack. */
-		if (pkt->flags & UDPIC_FLAGS_ACK)
-		{
-			ICBufferLink *link = NULL;
-			ICBufferLink *next = NULL;
-			ICBuffer *buf = NULL;
-
-		#ifdef AMS_VERBOSE_LOGGING
-			write_log("GOTACK [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
-		#endif
-
-			link = icBufferListFirst(&ackConn->unackQueue);
-			buf = GET_ICBUFFER_FROM_PRIMARY(link);
-
-			while(!icBufferListIsHead(&ackConn->unackQueue, link) && buf->pkt->seq <= pkt->seq)
+			if (ackConn == NULL)
 			{
-				next = link->next;
-				handleAckedPacket(ackConn, buf, now);
-				link = next;
-				buf = GET_ICBUFFER_FROM_PRIMARY(link);
+				elog(LOG, "Received ack for unknown connection (flags 0x%x)", pkt->flags);
+				continue;
 			}
-			return;
+
+			ackConn->stat_count_acks++;
+			ic_statistics.recvAckNum++;
+
+			/* We simply disregard pkt losses (NAK) due to process start race (that is,
+			 * sender is started earlier than receiver. rx background thread may receive
+			 * packets when connections are not created yet).
+			 *
+			 * Another option is to resend the packet immediately,
+			 * but experiments do not show any benefits.
+			 */
+
+			if(pkt->flags & UDPIC_FLAGS_NAK)
+				continue;
+
+			uint64 now = getCurrentTime();
+			while(true)
+			{
+				if(pkt->flags & UDPIC_FLAGS_CAPACITY)
+				{
+					ackConn->lastAckTime = now;
+					if(pkt->extraSeq > ackConn->consumedSeq)
+					{
+						ackConn->capacity += pkt->extraSeq - ackConn->consumedSeq;
+						ackConn->consumedSeq = pkt->extraSeq;
+						shouldSendBuffers = true;
+					}
+				}
+				else if (pkt->flags & UDPIC_FLAGS_DUPLICATE)
+				{
+					if (DEBUG1 >= log_min_messages)
+						write_log("GOTDUPACK [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
+
+					shouldSendBuffers |= (handleAckForDuplicatePkt(ackConn, pkt));
+					break;
+				}
+				else if(pkt->flags & UDPIC_FLAGS_DISORDER)
+				{
+					if (DEBUG1 >= log_min_messages)
+						write_log("GOTDISORDER [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
+
+					shouldSendBuffers |= (handleAckForDisorderPkt(transportStates, pEntry, ackConn, pkt));
+					break;
+				}
+
+				if (pkt->seq <= ackConn->receivedAckSeq)
+				{
+					if (DEBUG1 >= log_min_messages)
+						write_log("ack with bad seq?! expected (%d, %d] got %d flags 0x%x, capacity %d consumedSeq %d", ackConn->receivedAckSeq, ackConn->sentSeq, pkt->seq, pkt->flags, ackConn->capacity, ackConn->consumedSeq);
+					break;
+				}
+
+				/* haven't gotten a stop request, maybe this is one ? */
+				if ((pkt->flags & UDPIC_FLAGS_STOP) && !ackConn->stopRequested && ackConn->stillActive)
+				{
+				#ifdef AMS_VERBOSE_LOGGING
+					elog(LOG, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, pkt->seq, ackConn->conn_info.seq);
+				#endif
+					ackConn->stopRequested = true;
+					ackConn->conn_info.flags |= UDPIC_FLAGS_STOP;
+					ret = true;
+					/* continue to deal with acks */
+				}
+
+				/* deal with a regular ack. */
+				if (pkt->flags & UDPIC_FLAGS_ACK)
+				{
+					ICBufferLink *link = NULL;
+					ICBufferLink *next = NULL;
+					ICBuffer *buf = NULL;
+
+				#ifdef AMS_VERBOSE_LOGGING
+					write_log("GOTACK [seq %d] from route %d; srcpid %d dstpid %d cmd %d flags 0x%x connseq %d", pkt->seq, ackConn->route, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->flags, ackConn->conn_info.seq);
+				#endif
+
+					link = icBufferListFirst(&ackConn->unackQueue);
+					buf = GET_ICBUFFER_FROM_PRIMARY(link);
+
+					while(!icBufferListIsHead(&ackConn->unackQueue, link) && buf->pkt->seq <= pkt->seq)
+					{
+						next = link->next;
+						handleAckedPacket(ackConn, buf, now);
+						shouldSendBuffers = true;
+						link = next;
+						buf = GET_ICBUFFER_FROM_PRIMARY(link);
+					}
+				}
+				break;
+			}
+
+			/* When there is a capacity increase or some outstanding buffers
+			 * removed from the unack queue ring, we should try to send buffers for the connection.
+			 * Even when stop is received, we still send here, since in STOP/EOS
+			 * race case, we may have been in EOS sending logic and will not check stop message.
+			 */
+			if(shouldSendBuffers)
+				sendBuffers(transportStates, pEntry, ackConn);
 		}
-	}
-	else
-		if (DEBUG1 >= log_min_messages)
-			write_log("handleAck: not the ack we're looking for (flags 0x%x)...mot(%d) content(%d:%d) srcpid(%d:%d) dstpid(%d) srcport(%d:%d) dstport(%d) sess(%d:%d) cmd(%d:%d)",
+		else
+			if (DEBUG1 >= log_min_messages)
+				write_log("handleAck: not the ack we're looking for (flags 0x%x)...mot(%d) content(%d:%d) srcpid(%d:%d) dstpid(%d) srcport(%d:%d) dstport(%d) sess(%d:%d) cmd(%d:%d)",
 					pkt->flags, pkt->motNodeId,
 					pkt->srcContentId, Gp_segment,
 					pkt->srcPid, MyProcPid,
 					pkt->dstPid,
-					pkt->srcListenerPort, (ic_control_info.port),
+					pkt->srcListenerPort, ((Gp_listener_port>>16) & 0x0ffff),
 					pkt->dstListenerPort,
 					pkt->sessionId, gp_session_id,
 					pkt->icId, gp_interconnect_id);
+	}
 }
 
 /*
@@ -4199,7 +4528,7 @@ prepareXmit(MotionConn *conn)
  * 		Send a packet.
  */
 static void
-sendOnce(ICBuffer *buf, MotionConn * conn)
+sendOnce(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, ICBuffer *buf, MotionConn * conn)
 {
 	int32			n;
 
@@ -4214,7 +4543,7 @@ sendOnce(ICBuffer *buf, MotionConn * conn)
 #endif
 
 xmit_retry:
-	n = sendto(ic_control_info.fd, buf->pkt, buf->pkt->len, 0,
+	n = sendto(pEntry->txfd, buf->pkt, buf->pkt->len, 0,
 			   (struct sockaddr *)&conn->peer, conn->peer_len);
 	if (n < 0)
 	{
@@ -4224,19 +4553,19 @@ xmit_retry:
 		if (errno == EAGAIN) /* no space ? not an error. */
 			return;
 
-		/* Error case, this may happen in both main thread and rx background thread,
-		 * treat it like in background thread. Finally, main thread will find this error.
-		 */
-		setRxThreadError(errno);
-
-		return;
-
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect error writing an outgoing packet: %m"),
+						errdetail("error during sendto() call (error:%d).\n"
+								  "For Remote Connection: contentId=%d at %s",
+								  errno, conn->remoteContentId,
+								  conn->remoteHostAndPort)));
 		/* not reached */
 	}
 
 	if (n != buf->pkt->len)
 	{
-		write_log("Interconnect error writing an outgoing packet [seq %d]: short transmit (given %d sent %d) during sendto() call."
+		if (DEBUG1 >= log_min_messages)
+			write_log("Interconnect error writing an outgoing packet [seq %d]: short transmit (given %d sent %d) during sendto() call."
 				  "For Remote Connection: contentId=%d at %s", buf->pkt->seq, buf->pkt->len, n,
 				  conn->remoteContentId,
 				  conn->remoteHostAndPort);
@@ -4257,26 +4586,31 @@ xmit_retry:
 static void
 handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, int16 motionId)
 {
-
 	int 	i = 0;
 
-	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-		elog(DEBUG1, "handleStopMsgs: node %d", motionId);
-
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "handleStopMsgs: node %d", motionId);
+#endif
 	while (i < pEntry->numConns)
 	{
-		MotionConn *conn = NULL;
+		MotionConn *conn=NULL;
 
 		conn = pEntry->conns + i;
 
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG3, "handleStopMsgs: node %d route %d %s %s", motionId, conn->route,
+			(conn->stillActive ? "active" : "NOT active"), (conn->stopRequested ? "stop requested" : ""));
+		elog(DEBUG3, "handleStopMsgs: node %d route %d msgSize %d", motionId, conn->route, conn->msgSize);
+#endif
+
+		/*
+		 * MPP-2427: we're guaranteed to have recently flushed, but
+		 * this might not be empty (if we got a stop on a buffer that
+		 * wasn't the one we were sending) ... empty it first so the
+		 * outbound buffer is empty when we get here.
+		 */
 		if (conn->stillActive && conn->stopRequested)
 		{
-
-			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-			{
-				elog(DEBUG1, "handleStopMsgs: node %d route %d %s %s, msgSize %d", motionId, conn->route,
-						(conn->stillActive ? "active" : "NOT active"), (conn->stopRequested ? "stop requested" : ""), conn->msgSize);
-			}
 
 			/* mark buffer empty */
 			conn->tupleCount = 0;
@@ -4285,20 +4619,19 @@ handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *p
 			/* now send our stop-ack EOS */
 			conn->conn_info.flags |= UDPIC_FLAGS_EOS;
 
-			if(conn->curBuff != NULL)
-			{
-				conn->pBuff[conn->msgSize] = 'S';
-				conn->msgSize += 1;
+			Assert(conn->curBuff != NULL);
 
-				prepareXmit(conn);
+			conn->pBuff[conn->msgSize] = 'S';
+			conn->msgSize += 1;
 
-				/* now ready to actually send */
-				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-					elog(DEBUG1, "handleStopMsgs: node %d route %d, seq %d", motionId, i, conn->conn_info.seq);
+			prepareXmit(conn);
 
-				/* place it into the send queue */
-				icBufferListAppend(&conn->sndQueue, conn->curBuff);
-			}
+			/* now ready to actually send */
+			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				elog(DEBUG1, "handleStopMsgs: node %d route %d, seq %d", motionId, i, conn->conn_info.seq);
+
+			/* place it into the send queue */
+			icBufferListAppend(&conn->sndQueue, conn->curBuff);
 
 			/* return all buffers */
 			icBufferListReturn(&conn->sndQueue, false);
@@ -4313,7 +4646,21 @@ handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *p
 			conn->stillActive = false;
 			conn->stopRequested = false;
 		}
+
 		i++;
+
+		if(i == pEntry->numConns)
+		{
+			if(pollAcks(transportStates, pEntry->txfd, 0))
+			{
+				if(handleAcks(transportStates, pEntry))
+				{
+					/* more stops found, loop again.*/
+					i = 0;
+					continue;
+				}
+			}
+		}
 	}
 }
 
@@ -4322,14 +4669,27 @@ handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *p
  * sendBuffers
  * 		Called by sender to send the buffers in the send queue.
  *
- * Send the buffers in the send queue of the connection if there is capacity left.
+ * Send the buffers in the send queue of the connection if there is capacity left
+ * and the congestion control condition is satisfied.
+ *
+ * Here, we make assure that a connection can have at least one outstanding buffer.
+ * This is very important for two reasons:
+ *
+ * 1) The handling logic of the ack of the outstanding buffer can always send a buffer
+ *    in the send queue. Otherwise, there maybe a deadlock.
+ * 2) This makes assure that any connection can have a minimum bandwidth for data
+ *    sending.
+ *
  * After sending a buffer, the buffer will be placed into both the unack queue and
- * the corresponding queue in the time wheel.
+ * the corresponding queue in the unack queue ring.
  */
-static inline void
-sendBuffers(MotionConn *conn)
+static void
+sendBuffers(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
-	while(conn->capacity > 0 && icBufferListLength(&conn->sndQueue) > 0)
+	while(conn->capacity > 0
+			&& icBufferListLength(&conn->sndQueue) > 0
+			&& (icBufferListLength(&conn->unackQueue) == 0
+					|| unack_queue_ring.numSharedOutStanding < (snd_control_info.cwnd - snd_control_info.minCwnd)))
 	{
 		ICBuffer *buf = NULL;
 		buf = icBufferListPop(&conn->sndQueue);
@@ -4342,6 +4702,10 @@ sendBuffers(MotionConn *conn)
 		conn->capacity--;
 
 		icBufferListAppend(&conn->unackQueue, buf);
+		unack_queue_ring.numOutStanding++;
+		if(icBufferListLength(&conn->unackQueue) > 1)
+			unack_queue_ring.numSharedOutStanding++;
+
 		putIntoUnackQueueRing(&unack_queue_ring, buf, computeExpirationPeriod(buf->conn, buf->nRetry), now);
 
 		/*
@@ -4353,7 +4717,11 @@ sendBuffers(MotionConn *conn)
 		 * interrupts is potentially checked, if there is a pending query cancel,
 		 * it will lead to a dangled buffer (memory leak).
 		 */
-		sendOnce(buf, conn);
+#ifdef TRANSFER_PROTOCOL_STATS
+		updateStats(TPE_DATA_PKT_SEND, conn, buf->pkt);
+#endif
+
+		sendOnce(transportStates, pEntry, buf, conn);
 		ic_statistics.sndPktNum++;
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -4383,7 +4751,7 @@ sendBuffers(MotionConn *conn)
  * the format of a disorder message:
  * I) pkt header
  *  - seq      -> packet sequence number that triggers the disorder message
- *  - extraSeq -> the largest seq of the consumed packets
+ *  - extraSeq -> the largest seq of the received packets
  *  - flags    -> UDPIC_FLAGS_DISORDER
  *  - len      -> sizeof(icpkthdr) + sizeof(uint32) * (lost pkt count)
  * II) content
@@ -4396,7 +4764,7 @@ handleDisorderPacket(MotionConn *conn, int pos, uint32 tailSeq, icpkthdr *pkt)
 	int start = 0;
 	uint32 lostPktCnt = 0;
 	uint32 *curSeq = (uint32 *)&rx_control_info.disorderBuffer[1];
-	uint32 maxSeqs = (MIN_PACKET_SIZE - sizeof(icpkthdr))/sizeof(uint32);
+	uint32 maxSeqs = MAX_SEQS_IN_DISORDER_ACK;
 
 #ifdef AMS_VERBOSE_LOGGING
 	write_log("PROCESS_DISORDER PKT BEGIN:");
@@ -4425,7 +4793,7 @@ handleDisorderPacket(MotionConn *conn, int pos, uint32 tailSeq, icpkthdr *pkt)
 #endif
 
 	/* when reaching here, cnt must not be 0 */
-	sendDisorderAck(conn, pkt->seq, conn->conn_info.extraSeq, lostPktCnt);
+	sendDisorderAck(conn, pkt->seq, conn->conn_info.seq - 1, lostPktCnt);
 }
 
 /*
@@ -4433,8 +4801,8 @@ handleDisorderPacket(MotionConn *conn, int pos, uint32 tailSeq, icpkthdr *pkt)
  * 		Called by sender to deal with acks for disorder packet.
  */
 
-static void
-handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
+static bool
+handleAckForDisorderPkt(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, icpkthdr *pkt)
 {
 
 	ICBufferLink *link = NULL;
@@ -4443,6 +4811,22 @@ handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
 	uint64 now = getCurrentTime();
 	uint32 *curLostPktSeq = 0;
 	int lostPktCnt = 0;
+	static uint32 times = 0;
+	static uint32 lastSeq = 0;
+	bool shouldSendBuffers = false;
+
+	if(pkt->extraSeq != lastSeq)
+	{
+		lastSeq = pkt->extraSeq;
+		times = 0;
+		return false;
+	}
+	else
+	{
+		times++;
+		if(times != 2)
+			return false;
+	}
 
 	curLostPktSeq = (uint32 *) &pkt[1];
 	lostPktCnt = (pkt->len - sizeof(icpkthdr)) / sizeof(uint32);
@@ -4474,6 +4858,7 @@ handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
 		if (buf->pkt->seq == pkt->seq)
 		{
 			handleAckedPacket(conn, buf, now);
+			shouldSendBuffers = true;
 			break;
 		}
 
@@ -4486,7 +4871,11 @@ handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
 			putIntoUnackQueueRing(&unack_queue_ring, buf,
 					computeExpirationPeriod(buf->conn, buf->nRetry), now);
 
-			sendOnce(buf, buf->conn);
+#ifdef TRANSFER_PROTOCOL_STATS
+			updateStats(TPE_DATA_PKT_SEND, conn, buf->pkt);
+#endif
+
+			sendOnce(transportStates, pEntry, buf, buf->conn);
 
 #ifdef AMS_VERBOSE_LOGGING
 			write_log("RESEND a buffer for DISORDER: seq %d", buf->pkt->seq);
@@ -4506,6 +4895,7 @@ handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
 
 			next = link->next;
 			handleAckedPacket(conn, buf, now);
+			shouldSendBuffers = true;
 			link = next;
 			buf = GET_ICBUFFER_FROM_PRIMARY(link);
 		}
@@ -4521,6 +4911,9 @@ handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
 		}
 	}
 
+	snd_control_info.ssthresh = Max(snd_control_info.cwnd/2, snd_control_info.minCwnd);
+	snd_control_info.cwnd = snd_control_info.ssthresh;
+
 #ifdef AMS_VERBOSE_LOGGING
 	write_log("After DISORDER: sndQ %d unackQ %d", icBufferListLength(&conn->sndQueue), icBufferListLength(&conn->unackQueue));
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
@@ -4530,6 +4923,7 @@ handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
 	}
 #endif
 
+	return shouldSendBuffers;
 }
 
 /*
@@ -4537,13 +4931,14 @@ handleAckForDisorderPkt(MotionConn *conn, icpkthdr *pkt)
  * 		Called by sender to deal with acks for duplicate packet.
  *
  */
-static void
+static bool
 handleAckForDuplicatePkt(MotionConn *conn, icpkthdr *pkt)
 {
 	ICBufferLink *link = NULL;
 	ICBuffer *buf = NULL;
 	ICBufferLink *next = NULL;
 	uint64 now = getCurrentTime();
+	bool shouldSendBuffers = false;
 
 #ifdef AMS_VERBOSE_LOGGING
 	write_log("RESEND the unacked buffers in the queue due to %s", pkt->len == 0 ? "PROCESS_START_RACE" : "DISORDER");
@@ -4553,7 +4948,7 @@ handleAckForDuplicatePkt(MotionConn *conn, icpkthdr *pkt)
 	{
 		/* Indicate a bug here. */
 		write_log("ERROR: invalid duplicate message: seq %d extraSeq %d", pkt->seq, pkt->extraSeq);
-		return;
+		return false;
 	}
 
 	link = icBufferListFirst(&conn->unackQueue);
@@ -4564,6 +4959,7 @@ handleAckForDuplicatePkt(MotionConn *conn, icpkthdr *pkt)
 	{
 		next = link->next;
 		handleAckedPacket(conn, buf, now);
+		shouldSendBuffers = true;
 		link = next;
 		buf = GET_ICBUFFER_FROM_PRIMARY(link);
 	}
@@ -4575,12 +4971,14 @@ handleAckForDuplicatePkt(MotionConn *conn, icpkthdr *pkt)
 		if(buf->pkt->seq == pkt->seq)
 		{
 			handleAckedPacket(conn, buf, now);
+			shouldSendBuffers = true;
 			break;
 		}
 		link = next;
 		buf = GET_ICBUFFER_FROM_PRIMARY(link);
 	}
 
+	return shouldSendBuffers;
 }
 
 /*
@@ -4588,15 +4986,14 @@ handleAckForDuplicatePkt(MotionConn *conn, icpkthdr *pkt)
  * 		Check whether packets expire. If a packet expires, resend the packet,
  * 		and adjust its position in the unack queue ring.
  *
- * ##Call this function with ic_control_info.lock and snd_control_info.lock locked.
- *
  */
 static void
-checkExpiration()
+checkExpiration(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry)
 {
 	/* check for expiration */
 	uint64 now = getCurrentTime();
 	int count = 0;
+	int retransmits = 0;
 	while (now >= (unack_queue_ring.currentTime + TIMER_SPAN) && count++ < UNACK_QUEUE_RING_SLOTS_NUM)
 	{
 		/* expired, need to resend them */
@@ -4608,7 +5005,13 @@ checkExpiration()
 					&unack_queue_ring,
 					curBuf,
 					computeExpirationPeriod(curBuf->conn, curBuf->nRetry), now);
-			sendOnce(curBuf, curBuf->conn);
+			
+#ifdef TRANSFER_PROTOCOL_STATS
+			updateStats(TPE_DATA_PKT_SEND, curBuf->conn, curBuf->pkt);
+#endif
+
+			sendOnce(transportStates, pEntry, curBuf, curBuf->conn);
+			retransmits++;
 			ic_statistics.retransmits++;
 			curBuf->conn->stat_count_resent++;
 			curBuf->conn->stat_max_resent = Max(curBuf->conn->stat_max_resent, curBuf->conn->stat_count_resent);
@@ -4627,7 +5030,11 @@ checkExpiration()
 	 * deal with case when there is a long time this function is not called.
 	 */
 	unack_queue_ring.currentTime = now - (now % TIMER_SPAN);
-
+	if(retransmits > 0)
+	{
+		snd_control_info.ssthresh = Max(snd_control_info.cwnd/2, snd_control_info.minCwnd);
+		snd_control_info.cwnd = snd_control_info.minCwnd;
+	}
 }
 
 /*
@@ -4646,27 +5053,103 @@ checkExpiration()
  * and hardware. It occurred only when fault injection is enabled and a large number packets and
  * acknowledgments are discarded. Thus, here we use a relatively large deadlock check period.
  *
- * NOTE: Should call this function with lock.
- *
  */
 static void
-checkDeadlock(MotionConn *conn)
+checkDeadlock(ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
-	/* request the capacity to avoid the deadlock case */
-	uint64 deadlockCheckTime = Min(MAX_EXPIRATION_PERIOD, Max((computeExpirationPeriod(conn, 0) >> 2), (TIMER_SPAN >> 2)));
+	uint64 deadlockCheckTime;
+
+#ifdef USE_ASSERT_CHECKING
+	if(udp_testmode)
+	{
+		deadlockCheckTime = 100000;
+	}
+	else
+#endif
+	{
+		deadlockCheckTime = Min(MAX_EXPIRATION_PERIOD, Max((computeExpirationPeriod(conn, 0) << 2), (TIMER_SPAN << 2)));
+	}
+
 	uint64 now = getCurrentTime();
 
+	/* request the capacity to avoid the deadlock case */
 	if((now - conn->lastAckTime) > deadlockCheckTime)
 	{
 		if(icBufferListLength(&conn->unackQueue) == 0 && conn->capacity == 0 && icBufferListLength(&conn->sndQueue) > 0)
 		{
-			sendStatusQueryMessage(conn, conn->conn_info.seq - 1);
+			sendStatusQueryMessage(conn, pEntry->txfd, conn->conn_info.seq - 1);
 			conn->lastAckTime = now;
-			/* restart RTT for capacity ack loss. */
-			conn->rtt = DEFAULT_RTT;
 			ic_statistics.statusQueryMsgNum++;
 		}
 	}
+}
+
+/*
+ * pollAcks
+ * 		Timeout polling of acks
+ */
+static inline bool
+pollAcks(ChunkTransportState *transportStates, int fd, int timeout)
+{
+	struct pollfd nfd;
+	int n;
+
+	nfd.fd = fd;
+	nfd.events = POLLIN;
+
+	n = poll(&nfd, 1, timeout);
+	if (n < 0)
+	{
+		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+		if (errno == EINTR)
+			return false;
+
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect error waiting for peer ack"),
+						errdetail("During poll() call.\n")));
+
+		/* not reached */
+	}
+
+	if (n == 0) /* timeout */
+	{
+		return false;
+	}
+
+	/* got an ack to handle (possibly a stop message) */
+	if (n == 1 && (nfd.events & POLLIN))
+	{
+		return true;
+	}
+
+	return false;
+
+}
+
+/*
+ * checkExceptions
+ * 		Check exceptions including packet expiration, deadlock, bg thread error, NIC failure...
+ */
+static void
+checkExceptions(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, int retry)
+{
+	uint64 now = getCurrentTime();
+	if(now - ic_control_info.lastExpirationCheckTime > TIMER_CHECKING_PERIOD)
+	{
+		checkExpiration(transportStates, pEntry);
+		ic_control_info.lastExpirationCheckTime = now;
+	}
+
+	if((retry & 0x3) == 0)
+	{
+		checkDeadlock(pEntry, conn);
+		checkRxThreadError();
+		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+	}
+
+	/* NIC on master (and thus the QD connection) may become bad, check it. */
+	if ((retry & 0x3f) == 0)
+		checkQDConnectionAlive();
 }
 
 /*
@@ -4689,8 +5172,9 @@ SendChunkUDP(MotionLayerState *mlStates,
 {
 
 	int		length=TYPEALIGN(TUPLE_CHUNK_ALIGN, tcItem->chunk_length);
-	ICBuffer *buf = NULL;
 	int		retry = 0;
+	bool	doCheckExpiration = false;
+	bool	gotStops = false;
 
 	Assert(conn->msgSize > 0);
 
@@ -4712,79 +5196,60 @@ SendChunkUDP(MotionLayerState *mlStates,
 	ic_statistics.totalCapacity += conn->capacity;
 	ic_statistics.capacityCountingTime++;
 
-	/* NEVER CALL "return" IN PG_TRY-CATCH BLOCK */
-	PG_TRY();
+	/* try to send it */
+
+	prepareXmit(conn);
+
+	icBufferListAppend(&conn->sndQueue, conn->curBuff);
+	sendBuffers(transportStates, pEntry, conn);
+
+	doCheckExpiration = (getCurrentTime() - ic_control_info.lastExpirationCheckTime) > TIMER_CHECKING_PERIOD ? true : false;
+
+	/* get a new buffer */
+	conn->curBuff = NULL;
+	conn->pBuff = NULL;
+
+	while (doCheckExpiration || (conn->curBuff = getSndBuffer()) == NULL)
 	{
-		/* try to send it */
-
-		prepareXmit(conn);
-
-		pthread_mutex_lock(&snd_control_info.lock);
-		icBufferListAppend(&conn->sndQueue, conn->curBuff);
-		sendBuffers(conn);
-
-		/* get a new buffer */
-		conn->curBuff = NULL;
-		conn->pBuff = NULL;
-
-		if(conn->conn_info.flags & UDPIC_FLAGS_STOP)
+		if (pollAcks(transportStates, pEntry->txfd, doCheckExpiration ? 0 : MAIN_THREAD_POLL_TIME_OUT))
 		{
-			handleStopMsgs(transportStates, pEntry, motionId);
-			Assert(!conn->stillActive);
-			pthread_mutex_unlock(&snd_control_info.lock);
-		}
-		else
-		{
-			while((buf = getSndBuffer()) == NULL)
+			if (handleAcks(transportStates, pEntry))
 			{
-				snd_control_info.waiting = true;
-				if(waitOnCondition(MAIN_THREAD_COND_TIMEOUT, &snd_control_info.cond, &snd_control_info.lock))
-					continue;
-
-				snd_control_info.waiting = false;
-				checkDeadlock(conn);
-				pthread_mutex_unlock(&snd_control_info.lock);
-
-				/* check the potential errors in rx thread. */
-				checkRxThreadError();
-				ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-
-				/* NIC on master (and thus the QD connection) may become bad, check it. */
-				if ((retry++ & 0x3f) == 0)
-					checkQDConnectionAlive();
-
-				pthread_mutex_lock(&snd_control_info.lock);
+				/* We make sure that we deal with the stop messages
+				 * only after we get a buffer. Otherwise, if the stop
+				 * message is not for this connection, this will lead
+				 * to an error for the following data sending of this
+				 * connection.
+				 */
+				gotStops = true;
 			}
-			snd_control_info.waiting = false;
-			pthread_mutex_unlock(&snd_control_info.lock);
-
-			conn->curBuff = buf;
-			conn->pBuff = (uint8 *) conn->curBuff->pkt;
-
-			/* reinitialize connection */
-			conn->tupleCount = 0;
-			conn->msgSize = sizeof(conn->conn_info);
-
-			/* now we can copy the input to the new buffer */
-			memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
-			conn->msgSize += length;
-
-			conn->tupleCount++;
 		}
+		retry++;
 
-		/* error if mutex still held (debug build only) */
-        Assert(pthread_mutex_unlock(&ic_control_info.errorLock) != 0);
-		Assert(pthread_mutex_unlock(&snd_control_info.lock) != 0);
-		Assert(snd_control_info.waiting == false);
+		checkExceptions(transportStates, pEntry, conn, retry);
+		doCheckExpiration = false;
 	}
-	PG_CATCH();
+
+	conn->pBuff = (uint8 *) conn->curBuff->pkt;
+
+	if (gotStops)
 	{
-		snd_control_info.waiting = false;
-        pthread_mutex_unlock(&ic_control_info.errorLock);
-		pthread_mutex_unlock(&snd_control_info.lock);
-		PG_RE_THROW();
+		/* handling stop message will make some connection not active anymore */
+		handleStopMsgs(transportStates, pEntry, motionId);
+		gotStops = false;
+		if (!conn->stillActive)
+			return true;
 	}
-	PG_END_TRY();
+
+	/* reinitialize connection */
+	conn->tupleCount = 0;
+	conn->msgSize = sizeof(conn->conn_info);
+
+	/* now we can copy the input to the new buffer */
+	memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
+	conn->msgSize += length;
+
+	conn->tupleCount++;
 
 	return true;
 }
@@ -4806,7 +5271,6 @@ SendEosUDP(MotionLayerState *mlStates,
 	MotionConn *conn;
 	int			i = 0;
 	int			retry = 0;
-	int			totalRetry = 0;
 	int			activeCount = 0;
 
 	if (!transportStates)
@@ -4838,8 +5302,6 @@ SendEosUDP(MotionLayerState *mlStates,
 	 */
 	doBroadcast(mlStates, transportStates, pEntry, tcItem, NULL);
 
-	pthread_mutex_lock(&snd_control_info.lock);
-
 	/* now flush all of the buffers. */
 	for (i = 0; i < pEntry->numConns; i++)
 	{
@@ -4859,7 +5321,7 @@ SendEosUDP(MotionLayerState *mlStates,
 
 			/* place it into the send queue */
 			icBufferListAppend(&conn->sndQueue, conn->curBuff);
-			sendBuffers(conn);
+			sendBuffers(transportStates, pEntry, conn);
 
 			conn->tupleCount = 0;
 			conn->msgSize = sizeof(conn->conn_info);
@@ -4878,75 +5340,47 @@ SendEosUDP(MotionLayerState *mlStates,
 	 *
 	 */
 
-	/* NEVER CALL "return" IN PG_TRY-CATCH BLOCK */
-	PG_TRY();
+	while(activeCount > 0)
 	{
-		while(activeCount > 0)
+		activeCount = 0;
+
+		for (i = 0; i < pEntry->numConns; i++)
 		{
-			activeCount = 0;
+			conn = pEntry->conns + i;
 
-			for (i = 0; i < pEntry->numConns; i++)
+			if (conn->state == mcsStarted && conn->stillActive)
 			{
-				conn = pEntry->conns + i;
+				retry = 0;
 
-				if (conn->state == mcsStarted && conn->stillActive)
+				/* wait until this queue is emptied */
+				while(icBufferListLength(&conn->unackQueue) > 0 || icBufferListLength(&conn->sndQueue) > 0)
 				{
-					retry = 0;
+					if(pollAcks(transportStates, pEntry->txfd, MAIN_THREAD_POLL_TIME_OUT))
+						handleAcks(transportStates, pEntry);
 
-					/* wait until this queue is emptied */
-					while(icBufferListLength(&conn->unackQueue) > 0 || icBufferListLength(&conn->sndQueue) > 0)
-					{
-						checkDeadlock(conn);
-						conn->waitEOS = true;
-				 		if(waitOnCondition(MAIN_THREAD_COND_TIMEOUT, &snd_control_info.cond, &snd_control_info.lock))
-				 			continue;
+					retry++;
 
-						conn->waitEOS = false;
-						pthread_mutex_unlock(&snd_control_info.lock);
+					checkExceptions(transportStates, pEntry, conn, retry);
 
-						/* check the potential errors in rx thread. */
-						checkRxThreadError();
-
-						ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-
-						/* NIC on master (and thus the QD connection) may become bad, check it. */
-						if ((totalRetry++ & 0x3f) == 0)
-							checkQDConnectionAlive();
-
-						pthread_mutex_lock(&snd_control_info.lock);
-						if(retry >= (MAX_TRY))
-							break;
-					}
-				}
-
-				if(icBufferListLength(&conn->unackQueue) == 0 && icBufferListLength(&conn->sndQueue) == 0)
-				{
-					conn->state = mcsEosSent;
-					conn->stillActive = false;
-				}
-				else
-				{
-					activeCount++;
+					if(retry >= MAX_TRY)
+						break;
 				}
 			}
+
+			if(icBufferListLength(&conn->unackQueue) == 0 && icBufferListLength(&conn->sndQueue) == 0)
+			{
+				conn->state = mcsEosSent;
+				conn->stillActive = false;
+			}
+			else
+			{
+				activeCount++;
+			}
 		}
-
-		pthread_mutex_unlock(&snd_control_info.lock);
-
-		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-			elog(DEBUG1, "SendEosUDP leaving, activeCount %d", activeCount);
-
-		/* error if mutex still held (debug build only) */
-        Assert(pthread_mutex_unlock(&ic_control_info.errorLock) != 0);
-        Assert(pthread_mutex_unlock(&snd_control_info.lock) != 0);
 	}
-	PG_CATCH();
-	{
-		pthread_mutex_unlock(&ic_control_info.errorLock);
-		pthread_mutex_unlock(&snd_control_info.lock);
-	    PG_RE_THROW();
-	}
- 	PG_END_TRY();
+
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		elog(DEBUG1, "SendEosUDP leaving, activeCount %d", activeCount);
 }
 
 /*
@@ -4969,7 +5403,7 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 	/*
 	 * Note: we're only concerned with receivers here.
 	 */
-	pthread_mutex_lock(&rx_control_info.lock);
+	pthread_mutex_lock(&ic_control_info.lock);
 
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG1, "Interconnect needs no more input from slice%d; notifying senders to stop.",
@@ -4995,7 +5429,7 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 				/* need to drop the queues in the teardown function. */
 				while(conn->pkt_q_size > 0)
 				{
-					putRxBufferAndSendAck(conn); /* as a side-effect this may wake the rx_thread */
+					putRxBufferAndSendAck(conn, NULL);
 				}
 			}
 			else
@@ -5013,7 +5447,7 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 				if (conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6)
 				{
 					uint32 seq = conn->conn_info.seq > 0 ? conn->conn_info.seq - 1 : 0;
-					sendAck(conn, UDPIC_FLAGS_STOP | UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY, seq, seq);
+					sendAck(conn, UDPIC_FLAGS_STOP | UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY | conn->conn_info.flags, seq, seq);
 
 					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 						elog(DEBUG1, "sent stop message. node %d route %d seq %d", motNodeID, i, seq);
@@ -5023,11 +5457,10 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 						elog(DEBUG1, "first packet did not arrive yet. don't sent stop message. node %d route %d", motNodeID, i);
 				}
-
 			}
 		}
 	}
-	pthread_mutex_unlock(&rx_control_info.lock);
+	pthread_mutex_unlock(&ic_control_info.lock);
 }
 
 /*
@@ -5171,7 +5604,6 @@ checkQDConnectionAlive(void)
 	}
 }
 
-
 /*
  * getCurrentTime
  * 		get current time
@@ -5238,11 +5670,11 @@ putIntoUnackQueueRing(UnackQueueRing *uqr, ICBuffer *buf, uint64 expTime, uint64
 
 /*
  * handleDataPacket
- * 		Handling the data packets.
+ * 		Handling the data packet.
  *
  */
 static bool
-handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer, socklen_t *peerlen)
+handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer, socklen_t *peerlen, AckSendParam *param)
 {
 
 	if((pkt->len == sizeof(icpkthdr)) && (pkt->flags & UDPIC_FLAGS_CAPACITY))
@@ -5253,7 +5685,8 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 	#ifdef AMS_VERBOSE_LOGGING
 		logPkt("STATUS QUERY MESSAGE", pkt);
 	#endif
-		sendAck(conn, UDPIC_FLAGS_CAPACITY | UDPIC_FLAGS_ACK, conn->conn_info.seq - 1, conn->conn_info.extraSeq);
+		setAckSendParam(param, conn, UDPIC_FLAGS_CAPACITY | UDPIC_FLAGS_ACK | conn->conn_info.flags, conn->conn_info.seq - 1, conn->conn_info.extraSeq);
+
 		return false;
 	}
 
@@ -5326,7 +5759,8 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 
 		if(conn->conn_info.seq < pkt->seq)
 			conn->conn_info.seq = pkt->seq; /* note here */
-		sendAck(conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_STOP | UDPIC_FLAGS_CAPACITY, pkt->seq, pkt->seq);
+
+		setAckSendParam(param, conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_STOP | UDPIC_FLAGS_CAPACITY | conn->conn_info.flags, pkt->seq, pkt->seq);
 
 		/* we only update stillActive if eos has been sent by peer. */
 		if (pkt->flags & UDPIC_FLAGS_EOS)
@@ -5347,7 +5781,7 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 			write_log("dropped ack ? ignored data packet w/ cmd %d conn->cmd %d node %d route %d seq %d expected %d flags 0x%x",
 					  pkt->icId, conn->conn_info.icId, pkt->motNodeId,
 					  conn->route, pkt->seq, conn->conn_info.seq, pkt->flags);
-		sendAck(conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY, conn->conn_info.seq - 1, conn->conn_info.extraSeq);
+		setAckSendParam(param, conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_CAPACITY | conn->conn_info.flags, conn->conn_info.seq - 1, conn->conn_info.extraSeq);
 
 		return false;
 	}
@@ -5362,7 +5796,8 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 					  pkt->motNodeId, conn->route, conn->conn_info.seq, pkt->seq);
 		if(conn->conn_info.seq < pkt->seq)
 			conn->conn_info.seq = pkt->seq;
-		sendAck(conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_STOP | UDPIC_FLAGS_CAPACITY, pkt->seq, pkt->seq);
+		setAckSendParam(param, conn, UDPIC_FLAGS_ACK | UDPIC_FLAGS_STOP | UDPIC_FLAGS_CAPACITY | conn->conn_info.flags, pkt->seq, pkt->seq);
+
 		return false;
 	}
 
@@ -5412,6 +5847,10 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 				if (DEBUG1 >= log_min_messages)
 					write_log("RX_THREAD: the packet with EOS flag is available for access in the queue for route %d", conn->route);
 			}
+
+			/* ack data packet */
+			setAckSendParam(param, conn, UDPIC_FLAGS_CAPACITY | UDPIC_FLAGS_ACK | conn->conn_info.flags, conn->conn_info.seq - 1, conn->conn_info.extraSeq);
+
 			#ifdef AMS_VERBOSE_LOGGING
 				write_log("SAVE conn %p pkt at QUEUE TAIL [seq %d] at pos [%d] for node %d route %d, [head seq] %d, queue size %d, queue head %d queue tail %d", conn, pkt->seq, pos, pkt->motNodeId, conn->route, headSeq, conn->pkt_q_size, conn->pkt_q_head, conn->pkt_q_tail);
 			#endif
@@ -5431,7 +5870,7 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 		if (DEBUG1 >= log_min_messages)
 			write_log("DUPLICATE pkt [seq %d], [head seq] %d, queue size %d, queue head %d queue tail %d", pkt->seq, headSeq, conn->pkt_q_size, conn->pkt_q_head, conn->pkt_q_tail);
 
-		sendAck(conn, UDPIC_FLAGS_DUPLICATE, pkt->seq, conn->conn_info.seq - 1);
+		setAckSendParam(param, conn, UDPIC_FLAGS_DUPLICATE | conn->conn_info.flags, pkt->seq, conn->conn_info.seq - 1);
 		ic_statistics.duplicatedPktNum++;
 		return false;
 	}
@@ -5456,7 +5895,7 @@ handleDataPacket(MotionConn *conn, icpkthdr *pkt, struct sockaddr_storage *peer,
 #if defined(__darwin__) && !defined(IC_USE_PTHREAD_SYNCHRONIZATION)
 		udpSignal(&ic_control_info.usig);
 #else
-		pthread_cond_signal(&rx_control_info.cond);
+		pthread_cond_signal(&ic_control_info.cond);
 #endif
 	}
 
@@ -5480,41 +5919,29 @@ rxThreadFunc(void *arg)
 {
 	icpkthdr *pkt=NULL;
 	bool	skip_poll=false;
-	uint64 lastCheckExpirationTime = 0;
 
 	gp_set_thread_sigmasks();
 
 	for (;;)
 	{
 		struct pollfd nfd;
-		int		timeout;
 		int		n;
 
 		/* check shutdown condition*/
-		pthread_mutex_lock(&ic_control_info.lock);
-		if (ic_control_info.shutdown)
+
+		if(compare_and_swap_32(&ic_control_info.shutdown, 1, 0))
 		{
 			if (DEBUG1 >= log_min_messages)
 				write_log("udp-ic: rx-thread shutting down");
-
-			if (pkt)
-			{
-				pthread_mutex_lock(&rx_control_info.lock);
-				freeRxBuffer(&rx_buffer_pool, pkt);
-				pkt = NULL;
-				pthread_mutex_unlock(&rx_control_info.lock);
-			}
-			pthread_mutex_unlock(&ic_control_info.lock);
 			break;
 		}
-		pthread_mutex_unlock(&ic_control_info.lock);
 
 		/* Try to get a buffer */
 		if (pkt == NULL)
 		{
-			pthread_mutex_lock(&rx_control_info.lock);
+			pthread_mutex_lock(&ic_control_info.lock);
 			pkt = getRxBuffer(&rx_buffer_pool);
-			pthread_mutex_unlock(&rx_control_info.lock);
+			pthread_mutex_unlock(&ic_control_info.lock);
 
 			if (pkt == NULL)
 			{
@@ -5526,19 +5953,15 @@ rxThreadFunc(void *arg)
 		if (!skip_poll)
 		{
 			/* Do we have inbound traffic to handle ?*/
-			nfd.fd = ic_control_info.fd;
+			nfd.fd = UDP_listenerFd;
 			nfd.events = POLLIN;
 
-			timeout = TIMER_SPAN/1000;
-
-			n = poll(&nfd, 1, timeout);
+			n = poll(&nfd, 1, RX_THREAD_POLL_TIMEOUT);
 
 			if (n < 0)
 			{
 				if (errno == EINTR)
-				{
 					continue;
-				}
 
 				/*
 				 * ERROR case: if simply break out the loop here, there will be a hung here,
@@ -5552,24 +5975,7 @@ rxThreadFunc(void *arg)
 			}
 
 			if (n == 0)
-			{
-				/* Check expiration.
-				 *
-				 * The connection hash table should be locked to avoid
-				 * connection addition/removal from the hash table when
-				 * we are checking unack queue ring.
-				 */
-				pthread_mutex_lock(&ic_control_info.lock);
-				if(ic_control_info.isSender)
-				{
-					pthread_mutex_lock(&snd_control_info.lock);
-					checkExpiration();
-					lastCheckExpirationTime = getCurrentTime();
-					pthread_mutex_unlock(&snd_control_info.lock);
-				}
-				pthread_mutex_unlock(&ic_control_info.lock);
 				continue;
-			}
 		}
 
 		if (skip_poll || (n == 1 && (nfd.events & POLLIN)))
@@ -5584,7 +5990,7 @@ rxThreadFunc(void *arg)
 			socklen_t peerlen;
 
 			peerlen = sizeof(peer);
-			read_count = recvfrom(ic_control_info.fd, (char *)pkt, Gp_max_packet_size, 0,
+			read_count = recvfrom(UDP_listenerFd, (char *)pkt, Gp_max_packet_size, 0,
 								  (struct sockaddr *)&peer, &peerlen);
 
 			if (DEBUG5 >= log_min_messages)
@@ -5611,10 +6017,10 @@ rxThreadFunc(void *arg)
 
 			if (read_count < sizeof(pkt))
 			{
-				write_log("Interconnect error: short conn receive (%d)", read_count);
+				if (DEBUG1 >= log_min_messages)
+					write_log("Interconnect error: short conn receive (%d)", read_count);
 				continue;
 			}
-
 
 			/* when we get a "good" recvfrom() result, we can skip poll() until we get a bad one. */
 			skip_poll = true;
@@ -5641,7 +6047,7 @@ rxThreadFunc(void *arg)
 			{
 				if(!checkCRC(pkt))
 				{
-					ic_statistics.crcErrors++;
+					gp_atomic_add_32(&ic_statistics.crcErrors, 1);
 					if (DEBUG2 >= log_min_messages)
 						write_log("received network data error, dropping bad packet, user data unaffected.");
 					continue;
@@ -5652,6 +6058,9 @@ rxThreadFunc(void *arg)
 				logPkt("GOT MESSAGE", pkt);
 			#endif
 
+			AckSendParam param;
+			memset(&param, 0, sizeof(AckSendParam));
+
 			/*
 			 * Get the connection for the pkt.
 			 *
@@ -5660,29 +6069,16 @@ rxThreadFunc(void *arg)
 			 *  the connection addition/removal from the hash table
 			 *  during the mean time.
 			 */
-			pthread_mutex_lock(&ic_control_info.lock);
 
+			pthread_mutex_lock(&ic_control_info.lock);
 			conn = findConnByHeader(&ic_control_info.connHtab, pkt);
 
 			if (conn != NULL)
 			{
-				/* Handling an Ack */
-				if(pkt->flags & UDPIC_FLAGS_RECEIVER_TO_SENDER)
-				{
-					pthread_mutex_lock(&snd_control_info.lock);
-					handleAck(conn, pkt);
-					ic_statistics.recvAckNum++;
-					pthread_mutex_unlock(&snd_control_info.lock);
-				}
-				else
-				{
-					/* Handling a regular packet */
-					pthread_mutex_lock(&rx_control_info.lock);
-					if(handleDataPacket(conn, pkt, &peer, &peerlen))
-						pkt = NULL;
-					ic_statistics.recvPktNum++;
-					pthread_mutex_unlock(&rx_control_info.lock);
-				}
+				/* Handling a regular packet */
+				if(handleDataPacket(conn, pkt, &peer, &peerlen, &param))
+					pkt = NULL;
+				ic_statistics.recvPktNum++;
 			}
 			else
 			{
@@ -5695,8 +6091,6 @@ rxThreadFunc(void *arg)
 				 */
 				if((pkt->flags & UDPIC_FLAGS_RECEIVER_TO_SENDER) == 0)
 				{
-					pthread_mutex_lock(&rx_control_info.lock);
-
 					if (DEBUG1 >= log_min_messages)
 						write_log("mismatched packet received, seq %d, srcpid %d, dstpid %d, icid %d, sid %d", pkt->seq, pkt->srcPid, pkt->dstPid, pkt->icId, pkt->sessionId);
 
@@ -5706,26 +6100,24 @@ rxThreadFunc(void *arg)
 
 					handleMismatch(pkt, &peer, peerlen);
 					ic_statistics.mismatchNum++;
-					pthread_mutex_unlock(&rx_control_info.lock);
-				}
-			}
-
-			/* Check expiration */
-			if(getCurrentTime() - lastCheckExpirationTime >= TIMER_SPAN)
-			{
-				if(ic_control_info.isSender)
-				{
-					pthread_mutex_lock(&snd_control_info.lock);
-					checkExpiration();
-					pthread_mutex_unlock(&snd_control_info.lock);
-					lastCheckExpirationTime = getCurrentTime();
 				}
 			}
 			pthread_mutex_unlock(&ic_control_info.lock);
 
+			if(param.conn != NULL)
+				sendAckWithParam(&param);
 		}
 
 		/* pthread_yield(); */
+	}
+
+	/* Before retrun, we release the packet. */
+	if (pkt)
+	{
+		pthread_mutex_lock(&ic_control_info.lock);
+		freeRxBuffer(&rx_buffer_pool, pkt);
+		pkt = NULL;
+		pthread_mutex_unlock(&ic_control_info.lock);
 	}
 
 	/* nothing to return */
@@ -5887,7 +6279,7 @@ handleMismatch(icpkthdr *pkt, struct sockaddr_storage *peer, int peer_len)
 			 * 3) UDPIC_FLAGS_CAPACITY
 			 * which are from original packet
 			 */
-			sendAck(&dummyconn, ack_flags, dummyconn.conn_info.seq, dummyconn.conn_info.seq);
+			sendAck(&dummyconn, ack_flags | dummyconn.conn_info.flags, dummyconn.conn_info.seq, dummyconn.conn_info.seq);
 		}
 	}
 	else
@@ -5895,4 +6287,175 @@ handleMismatch(icpkthdr *pkt, struct sockaddr_storage *peer, int peer_len)
 		if (DEBUG1 >= log_min_messages)
 			write_log("dropping packet from command-id %d seq %d (my cmd %d)", pkt->icId, pkt->seq, gp_interconnect_id);
 	}
+}
+
+/* The following functions are facility methods for debugging.
+ * They are quite useful when there are a large number of connections.
+ * These functions can be called from gdb to output internal information to a file.
+ */
+
+/*
+ * dumpICBufferList_Internal
+ * 		Dump a buffer list.
+ */
+static void
+dumpICBufferList_Internal(ICBufferList *list, FILE *ofile)
+{
+
+	ICBufferLink *bufLink = list->head.next;
+
+	int len = list->length;
+	int i = 0;
+
+	fprintf(ofile, "List Length %d\n", len);
+	while(bufLink != &list->head && len > 0)
+	{
+		ICBuffer *buf = (list->type == ICBufferListType_Primary ? GET_ICBUFFER_FROM_PRIMARY(bufLink)
+				: GET_ICBUFFER_FROM_SECONDARY(bufLink));
+		fprintf(ofile, "Node %d, linkptr %p ", i++, bufLink);
+		fprintf(ofile, "Packet Content [%s: seq %d extraSeq %d]: motNodeId %d, crc %d len %d "
+				"srcContentId %d dstDesContentId %d "
+				"srcPid %d dstPid %d "
+				"srcListenerPort %d dstListernerPort %d "
+				"sendSliceIndex %d recvSliceIndex %d "
+				"sessionId %d icId %d "
+				"flags %d\n",
+				buf->pkt->flags & UDPIC_FLAGS_RECEIVER_TO_SENDER ? "ACK" : "DATA",
+				buf->pkt->seq, buf->pkt->extraSeq, buf->pkt->motNodeId, buf->pkt->crc, buf->pkt->len,
+				buf->pkt->srcContentId, buf->pkt->dstContentId,
+				buf->pkt->srcPid, buf->pkt->dstPid,
+				buf->pkt->srcListenerPort, buf->pkt->dstListenerPort,
+				buf->pkt->sendSliceIndex, buf->pkt->recvSliceIndex,
+				buf->pkt->sessionId, buf->pkt->icId,
+				buf->pkt->flags);
+		bufLink = bufLink->next;
+		len--;
+	}
+}
+
+
+/*
+ * dumpICBufferList
+ * 		Dump a buffer list.
+ */
+void
+dumpICBufferList(ICBufferList *list, const char *fname)
+{
+	FILE *ofile = fopen(fname, "w+");
+
+	dumpICBufferList_Internal(list, ofile);
+    fclose(ofile);
+}
+
+/*
+ * dumpUnackQueueRing
+ * 		Dump an unack queue ring.
+ */
+void
+dumpUnackQueueRing(const char *fname)
+{
+	FILE *ofile = fopen(fname, "w+");
+    int i;
+
+    fprintf(ofile, "UnackQueueRing: currentTime " UINT64_FORMAT ", idx %d numOutstanding %d numSharedOutstanding %d\n",
+    		unack_queue_ring.currentTime, unack_queue_ring.idx,
+    		unack_queue_ring.numOutStanding, unack_queue_ring.numSharedOutStanding);
+    fprintf(ofile, "==================================\n");
+    for (i = 0; i < UNACK_QUEUE_RING_SLOTS_NUM; i++)
+    {
+    	if(icBufferListLength(&unack_queue_ring.slots[i]) > 0)
+    	{
+    		dumpICBufferList_Internal(&unack_queue_ring.slots[i], ofile);
+    	}
+    }
+
+    fclose(ofile);
+}
+
+/*
+ * dumpConnections
+ * 		Dump connections.
+ */
+void
+dumpConnections(ChunkTransportStateEntry *pEntry, const char *fname)
+{
+	int			i, j;
+    MotionConn *conn;
+
+	FILE *ofile = fopen(fname, "w+");
+    fprintf(ofile, "Entry connections: conn num %d \n", pEntry->numPrimaryConns);
+    fprintf(ofile, "==================================\n");
+
+    for (i = 0; i < pEntry->numPrimaryConns; i++)
+	{
+		conn = &pEntry->conns[i];
+
+		fprintf(ofile, "conns[%d] motNodeId=%d: remoteContentId=%d pid=%d sockfd=%d remote=%s local=%s "
+				"capacity=%d sentSeq=%d receivedAckSeq=%d consumedSeq=%d rtt=" UINT64_FORMAT
+				" dev=" UINT64_FORMAT " lastAckTime=" UINT64_FORMAT " route=%d msgSize=%d msgPos=%p"
+				" recvBytes=%d tupleCount=%d waitEOS=%d stillActive=%d stopRequested=%d "
+				"state=%d\n",
+				 i, pEntry->motNodeId,
+				 conn->remoteContentId,
+				 conn->cdbProc ? conn->cdbProc->pid : 0,
+				 conn->sockfd,
+				 conn->remoteHostAndPort,
+				 conn->localHostAndPort,
+				 conn->capacity, conn->sentSeq, conn->receivedAckSeq, conn->consumedSeq,
+				 conn->rtt, conn->dev, conn->lastAckTime, conn->route, conn->msgSize, conn->msgPos,
+				 conn->recvBytes, conn->tupleCount, conn->waitEOS, conn->stillActive, conn->stopRequested,
+				 conn->state);
+		fprintf(ofile, "conn_info [%s: seq %d extraSeq %d]: motNodeId %d, crc %d len %d "
+				"srcContentId %d dstDesContentId %d "
+				"srcPid %d dstPid %d "
+				"srcListenerPort %d dstListernerPort %d "
+				"sendSliceIndex %d recvSliceIndex %d "
+				"sessionId %d icId %d "
+				"flags %d\n",
+				conn->conn_info.flags & UDPIC_FLAGS_RECEIVER_TO_SENDER ? "ACK" : "DATA",
+				conn->conn_info.seq, conn->conn_info.extraSeq, conn->conn_info.motNodeId, conn->conn_info.crc, conn->conn_info.len,
+				conn->conn_info.srcContentId, conn->conn_info.dstContentId,
+				conn->conn_info.srcPid, conn->conn_info.dstPid,
+				conn->conn_info.srcListenerPort, conn->conn_info.dstListenerPort,
+				conn->conn_info.sendSliceIndex, conn->conn_info.recvSliceIndex,
+				conn->conn_info.sessionId, conn->conn_info.icId,
+				conn->conn_info.flags);
+
+		if(!ic_control_info.isSender)
+		{
+			fprintf(ofile, "pkt_q_size=%d pkt_q_head=%d pkt_q_tail=%d pkt_q=%p\n", conn->pkt_q_size, conn->pkt_q_head, conn->pkt_q_tail, conn->pkt_q);
+			for(j = 0; j < Gp_interconnect_queue_depth; j++)
+			{
+				if(conn->pkt_q != NULL && conn->pkt_q[j] != NULL)
+				{
+					icpkthdr *pkt = (icpkthdr *)conn->pkt_q[j];
+					fprintf(ofile, "Packet (pos %d) Info [%s: seq %d extraSeq %d]: motNodeId %d, crc %d len %d "
+							"srcContentId %d dstDesContentId %d "
+							"srcPid %d dstPid %d "
+							"srcListenerPort %d dstListernerPort %d "
+							"sendSliceIndex %d recvSliceIndex %d "
+							"sessionId %d icId %d "
+							"flags %d\n",
+							j,
+							pkt->flags & UDPIC_FLAGS_RECEIVER_TO_SENDER ? "ACK" : "DATA",
+							pkt->seq, pkt->extraSeq, pkt->motNodeId, pkt->crc, pkt->len,
+							pkt->srcContentId, pkt->dstContentId,
+							pkt->srcPid, pkt->dstPid,
+							pkt->srcListenerPort, pkt->dstListenerPort,
+							pkt->sendSliceIndex, pkt->recvSliceIndex,
+							pkt->sessionId, pkt->icId,
+							pkt->flags);
+				}
+			}
+		}
+		if(ic_control_info.isSender)
+		{
+			fprintf(ofile, "sndQueue ");
+			dumpICBufferList_Internal(&conn->sndQueue, ofile);
+			fprintf(ofile, "unackQueue ");
+			dumpICBufferList_Internal(&conn->unackQueue, ofile);
+		}
+		fprintf(ofile, "\n");
+	}
+    fclose(ofile);
 }

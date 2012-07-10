@@ -71,7 +71,7 @@ typedef struct icpkthdr
      *    extraSeq -> the extraSeq from the pkt
      * d) In a DISORDER message (UDPIC_FLAGS_DISORDER)
      *    seq      -> packet sequence number that triggers the disorder message
-     *    extraSeq -> (not used when this ack is handled) the largest seq of the consumed packets
+     *    extraSeq -> the largest seq of the received packets
      * e) In a DUPLICATE message (UDPIC_FLAGS_DUPLICATE)
      *    seq      -> packet sequence number that triggers the duplicate message
      *    extraSeq -> the largest seq of the continuously cached packets
@@ -204,6 +204,7 @@ struct MotionConn
 	uint32 consumedSeq;
 
 	uint64 rtt;
+	uint64 dev;
 	uint64 lastAckTime;
 
 
@@ -511,5 +512,8 @@ typedef struct ChunkTransportState
 	void (*SendEos)(MotionLayerState *mlStates, struct ChunkTransportState *transportStates, int motNodeID, TupleChunkListItem tcItem);
 } ChunkTransportState;
 
+extern void dumpICBufferList(ICBufferList *list, const char *fname);
+extern void dumpUnackQueueRing(const char *fname);
+extern void dumpConnections(ChunkTransportStateEntry *pEntry, const char *fname);
 #endif   /* CDBINTERCONNECT_H */
 

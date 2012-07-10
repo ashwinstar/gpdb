@@ -4551,7 +4551,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_GPDB_ADDOPT
         },
         &Gp_interconnect_snd_queue_depth,
-        4, 1, 4096, NULL, NULL
+        2, 1, 4096, NULL, NULL
 	},
 
 	{
