@@ -351,26 +351,12 @@ void analyzeStmt(VacuumStmt *stmt, List *relids)
 	{
 		/**
 		 * ANALYZE one relation (optionally, a list of columns).
-		 * If this happens to be a partitioned table, we create an explicit
-		 * list of relids with all partitioned relations.
-		 * TODO: In the future, we must do away with treating partitions separately.
 		 */
 		Oid relationOid = InvalidOid;
 		Assert(relids == NIL);
 		Assert(stmt->relation != NULL);
 		relationOid = RangeVarGetRelid(stmt->relation, false);
-		if (rel_is_partitioned(relationOid))
-		{
-			PartitionNode *pn = get_parts(relationOid, 0 /*level*/ ,
-					0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
-			Assert(pn);
-			lRelOids = all_partition_relids(pn);
-			lRelOids = lappend_oid(lRelOids, relationOid);
-		}
-		else
-		{
-			lRelOids = list_make1_oid(relationOid);
-		}
+		lRelOids = list_make1_oid(relationOid);
 	}
 
 	/*
@@ -676,7 +662,8 @@ static List* analyzableRelations(void)
 	{
 		Oid candidateOid = HeapTupleGetOid(tuple);
 		if (analyzePermitted(candidateOid)
-				&& candidateOid != StatisticRelationId)
+				&& candidateOid != StatisticRelationId
+				&& !rel_is_child_partition(candidateOid))
 		{
 			lRelOids = lappend_oid(lRelOids, candidateOid);
 		}
@@ -1290,7 +1277,7 @@ static Oid buildSampleTable(Oid relationOid,
 		}
 	}
 	
-	appendStringInfo(&strSelectQuery, "from only %s.%s as Ta where random() < %.38f ",
+	appendStringInfo(&strSelectQuery, "from %s.%s as Ta where random() < %.38f ",
 		quote_identifier(schemaName),
 		quote_identifier(tableName), randomThreshold);
 
@@ -1415,32 +1402,52 @@ static void analyzeEstimateIndexpages(Oid relationOid, Oid indexOid, float4 *ind
  * 	relPages  - estimated number of pages
  */
 static void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages)
-{	
-	StringInfoData 	sqlstmt;
-	float4          spiResult[2];
-	
+{
 	*relPages = 0.0;		
 	*relTuples = 0.0;			
-		
-	initStringInfo(&sqlstmt);
 	
-	if (isMasterOnly(relationOid))
+	List *allRelOids = NIL;
+	if (rel_is_partitioned(relationOid))
 	{
-		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
-				"from pg_class c where c.oid=%d", relationOid);		
+		PartitionNode *pn = get_parts(relationOid, 0 /*level*/ ,
+				0 /*parent*/, false /* inctemplate */, CurrentMemoryContext);
+		Assert(pn);
+		allRelOids = all_partition_relids(pn);
 	}
 	else
 	{
-		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
-				"from gp_dist_random('pg_class') c where c.oid=%d", relationOid);
+		allRelOids = list_make1_oid(relationOid);
 	}
 
-    spiExecuteWithCallback(sqlstmt.data, false /*readonly*/, 0 /*tcount */,
-        	                        spiCallback_getSingleResultRowArrayAsTwoFloat4, spiResult);
-    *relTuples = spiResult[0];
-    *relPages = spiResult[1];
+	/* iterate over all parts and add up estimates */
+	ListCell *lc = NULL;
+	foreach (lc, allRelOids)
+	{
+		Oid singleOid = lfirst_oid(lc);
+		StringInfoData 	sqlstmt;
+		float4          spiResult[2];
 
-	pfree(sqlstmt.data);
+		initStringInfo(&sqlstmt);
+
+		if (isMasterOnly(singleOid))
+		{
+			appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+					"from pg_class c where c.oid=%d", singleOid);
+		}
+		else
+		{
+			appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
+					"from gp_dist_random('pg_class') c where c.oid=%d", singleOid);
+		}
+
+		spiExecuteWithCallback(sqlstmt.data, false /*readonly*/, 0 /*tcount */,
+				spiCallback_getSingleResultRowArrayAsTwoFloat4, spiResult);
+		*relTuples += spiResult[0];
+		*relPages += spiResult[1];
+
+		pfree(sqlstmt.data);
+	}
+
 	return;
 }
 
@@ -1641,7 +1648,7 @@ static float4 analyzeComputeNDistinct(Oid sampleTableOid,
 	sampleTableName = get_rel_name(sampleTableOid); // must be pfreed 	
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "select count(*)::float4 from (select Ta.%s from only %s.%s as Ta group by Ta.%s) as Tb", 
+	appendStringInfo(&str, "select count(*)::float4 from (select Ta.%s from %s.%s as Ta group by Ta.%s) as Tb",
 			quote_identifier(attributeName), 
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName),
@@ -1682,7 +1689,7 @@ static float4 analyzeComputeNRepeating(Oid relationOid,
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "select count(v)::float4 from (select Ta.%s as v, count(Ta.%s) as f from only %s.%s as Ta group by Ta.%s) as foo where f > 1", 
+	appendStringInfo(&str, "select count(v)::float4 from (select Ta.%s as v, count(Ta.%s) as f from %s.%s as Ta group by Ta.%s) as foo where f > 1",
 			quote_identifier(attributeName), 
 			quote_identifier(attributeName),
 			quote_identifier(sampleSchemaName), 
@@ -1813,7 +1820,7 @@ static float4 analyzeNullCount(Oid relationOid, const char *attributeName)
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "select count(*)::float4 from only %s.%s as Ta where Ta.%s is null", 
+	appendStringInfo(&str, "select count(*)::float4 from %s.%s as Ta where Ta.%s is null",
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName), 
 			quote_identifier(attributeName));
@@ -1885,7 +1892,7 @@ static float4 analyzeComputeAverageWidth(Oid relationOid,
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 	
 	initStringInfo(&str);
-	appendStringInfo(&str, "select avg(pg_column_size(Ta.%s))::float4 from only %s.%s as Ta where Ta.%s is not null", 
+	appendStringInfo(&str, "select avg(pg_column_size(Ta.%s))::float4 from %s.%s as Ta where Ta.%s is not null",
 			quote_identifier(attributeName), 
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName), 
@@ -1932,7 +1939,7 @@ static void analyzeComputeMCV(Oid relationOid,
 	sampleTableName = get_rel_name(relationOid); // must be pfreed 	
 	
 	initStringInfo(&str);
-	appendStringInfo(&str, "select Ta.%s as v, count(Ta.%s)::float4/%f::float4 as f from only %s.%s as Ta "
+	appendStringInfo(&str, "select Ta.%s as v, count(Ta.%s)::float4/%f::float4 as f from %s.%s as Ta "
 			"where Ta.%s is not null group by (Ta.%s) order by f desc limit %u", 
 			quote_identifier(attributeName), 
 			quote_identifier(attributeName), 
@@ -2010,8 +2017,8 @@ static void analyzeComputeHistogram(Oid relationOid,
 	 */
 	
 	appendStringInfo(&str, "select v from ("
-			"select Ta.%s as v, row_number() over (order by Ta.%s) as r from only %s.%s as Ta where %s "
-			"union select max(Tb.%s) as v, 1 as r from only %s.%s as Tb where %s) as foo "
+			"select Ta.%s as v, row_number() over (order by Ta.%s) as r from %s.%s as Ta where %s "
+			"union select max(Tb.%s) as v, 1 as r from %s.%s as Tb where %s) as foo "
 			"where r %% %u = 1 group by v order by v", 
 			quote_identifier(attributeName), 
 			quote_identifier(attributeName), 
@@ -2691,7 +2698,7 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 	ArrayType   *result;
 	
 	Relation rel = try_relation_open(relOid, AccessShareLock, false);
-	
+
 	if (rel != NULL)
 	{
 		if (rel->rd_rel->relkind == RELKIND_RELATION)
@@ -2707,7 +2714,7 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 			else if	(RelationIsAoCols(rel))
 			{
 				gp_statistics_estimate_reltuples_relpages_ao_cs(rel, &reltuples, &relpages);
-			}	
+			}
 		}
 		else if (rel->rd_rel->relkind == RELKIND_INDEX)
 		{

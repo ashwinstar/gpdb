@@ -41,6 +41,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
+#include "funcapi.h"
 
 /*				---------- AMOP CACHES ----------						 */
 
@@ -1060,6 +1061,61 @@ get_func_signature(Oid funcid, Oid **argtypes, int *nargs)
 
 	ReleaseSysCache(tp);
 	return result;
+}
+
+/*
+ * get_func_output_arg_types
+ *		Given procedure id, return the function's output argument types
+ */
+List *
+get_func_output_arg_types(Oid funcid)
+{
+	HeapTuple	tp;
+	int		numargs;
+	Oid		*argtypes = NULL;
+	char	**argnames = NULL;
+	char	*argmodes = NULL;
+	List	*l_argtypes = NULL;
+	int		i;
+
+	tp = SearchSysCache(PROCOID,
+						ObjectIdGetDatum(funcid),
+						0, 0, 0);
+
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+
+	numargs = get_func_arg_info(tp, &argtypes, &argnames, &argmodes);
+
+	if (NULL == argmodes)
+	{
+		Assert(NULL == argnames);
+		if (NULL != argtypes)
+		{
+			pfree(argtypes);
+		}
+		ReleaseSysCache(tp);
+		return NULL;
+	}
+
+	for (i = 0; i < numargs; i++)
+	{
+		Oid argtype = argtypes[i];
+		char argmode = argmodes[i];
+
+		if (PROARGMODE_INOUT == argmode || PROARGMODE_OUT == argmode)
+		{
+			l_argtypes = lappend_oid(l_argtypes, argtype);
+		}
+		pfree(argnames[i]);
+	}
+
+	pfree(argtypes);
+	pfree(argnames);
+	pfree(argmodes);
+
+	ReleaseSysCache(tp);
+	return l_argtypes;
 }
 
 /*
