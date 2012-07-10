@@ -3563,7 +3563,7 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_enable_inheritance,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	/* End-of-list marker */
