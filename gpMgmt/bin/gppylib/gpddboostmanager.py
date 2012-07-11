@@ -37,6 +37,7 @@ class GpDdboostManager():
         self.ddboost_verify = options.ddboost_verify
         self.list_su = options.list_su
         self.create_su = options.create_su
+        self.ls = options.ls
 
         # This variable indicates whether we need to exit after finishing DDBoost configurations 
         # e.g. verifying the DDBoost credentials 
@@ -48,12 +49,13 @@ class GpDdboostManager():
         else:
             self.ddboost_hosts = options.ddboost_hosts
         
-        # If one of these flags is specified, we need to exist after the DDBoost related operations
+        # If one of these flags is specified, we need to exit after the DDBoost related operations
         self.managment_operations = ((self.list_su is True) or
                                      (self.create_su is not None) or
                                      (self.ddboost_verify is True) or
                                      (self.ddboost_user is not None) or
-                                     (self.ddboost_config_remove is True))
+                                     (self.ddboost_config_remove is True) or
+                                     (self.ls is not None))
 
     # Return values:
     #    True  - DDBoost related operation were made (gpcrondump should exit)
@@ -64,21 +66,25 @@ class GpDdboostManager():
             if not (bool(self.ddboost_hosts) and bool(self.ddboost_user)):
                 raise ExceptionNoStackTraceNeeded('for ddboost config, both options are required --ddboost-host <ddboost_hostname> --ddboost-user <ddboost_user>.')
 
+            # It makes no sense to config and remove the credentials in the same conmmand
+            if self.ddboost_config_remove is True:
+                 raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user should not be used in conjunction with --ddboost-config-remove.')
+
             # check that no other gpcrondump option was specified
-            if self.only_ddboost_options and not self.ddboost_config_remove:
+            if self.only_ddboost_options:
                 self._validateUserName(userName = self.ddboost_user)
                 hostset = self._getHostSet(self._getGpArray())
                 p = getpass()
                 self._validatePassword(password = p)
                 self._sshToHosts(hostset, self.ddboost_hosts, self.ddboost_user, p)
-                 # Since --ddboost-host and --ddboost-user are standalone - verify credentials and then exit
-                if (self.ddboost_verify is True) or (self.create_su is not None) or (self.list_su is True):
+                # Check whether we have other management operations
+                if self.managment_operations is True:
                     self.ddboost_configure_and_exit = True
                 else:
                     # If no verification is needed - just exit
                     return True
             else:
-                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
+                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user should be used with ddboost related options only.')
 
         if (self.create_su is not None):
             if self.only_ddboost_options is True:
@@ -100,6 +106,14 @@ class GpDdboostManager():
             else:
                 raise ExceptionNoStackTraceNeeded('The option --ddboost-list-su should be used with ddboost related options only.')
 
+        # List the contents of the given directory on the DDboost system (in current storage unit)
+        if self.ls is not None:
+            if self.only_ddboost_options is True:
+                self._listFiles(self.ls);
+                self.ddboost_configure_and_exit = True
+            else:
+                raise ExceptionNoStackTraceNeeded('The option --ddboost-ls should be used with ddboost related options only.')
+        
         # Check if we need to exit now
         if self.ddboost_configure_and_exit is True:
             return True
@@ -117,6 +131,14 @@ class GpDdboostManager():
         # No DDBoost operations were made.
         # Continue to other backup\restore actions
         return False;
+
+    
+    # List the contents of the given directory on the DDboost system
+    def _listFiles(self, directory):
+        cmdLine = os.environ['GPHOME'] + '/bin/gpddboost --ls --dir=' + directory 
+        logger.debug("Executing gpddboost to list the contents of the given directory: %s" % cmdLine)
+        if os.system(cmdLine):
+            raise ExceptionNoStackTraceNeeded('Failed to list the contents of the given directory')
 
 
     # List all available storage units on all DD servers    
@@ -233,6 +255,8 @@ def add_ddboost_options_to_parser(parser):
                            help="List all the storage units on all DD servers.")
     ddConfigOpt.add_option('--ddboost-create-su', dest='create_su', action='store', default=None, 
                            help="Create the given SU on on all DD servers.")
+    ddConfigOpt.add_option('--ddboost-ls', dest='ls', action='store', default=None, 
+                           help="List the contents of the given directory on the DDboost system.")
 
     parser.add_option_group(ddConfigOpt)
 

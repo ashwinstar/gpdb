@@ -100,7 +100,7 @@ class GpCronDump(Operation):
                     # but __init__() should return None, not 'int' - hence we are forced to use
                     # some flag
                     self.ddboost_options.ddboost_configure_and_exit = True
-                    print 'ddboost_configure_and_exit = ' + self.ddboost_options.ddboost_configure_and_exit + '\n'
+                    logger.debug("ddboost_configure_and_exit is %s" % str(self.ddboost_options.ddboost_configure_and_exit))
                 else:
                     raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
 
