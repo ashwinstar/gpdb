@@ -137,6 +137,7 @@ extern bool Debug_appendonly_print_read_block;
 extern bool Debug_appendonly_print_append_block;
 extern bool Debug_appendonly_print_segfile_choice;
 extern bool Debug_gp_relation_node_fetch_wait_for_debugging;
+extern bool Debug_delay_before_persistent_init_scan;
 extern bool gp_crash_recovery_abort_suppress_fatal;
 extern bool gp_persistent_statechange_suppress_error;
 extern bool Debug_bitmap_print_insert;

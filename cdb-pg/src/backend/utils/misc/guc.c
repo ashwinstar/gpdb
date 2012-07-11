@@ -278,6 +278,7 @@ bool 		Debug_appendonly_print_read_block = false;
 bool 		Debug_appendonly_print_append_block = false;
 bool 		Debug_appendonly_print_segfile_choice = false;
 bool 		Debug_gp_relation_node_fetch_wait_for_debugging = false;
+bool 		Debug_delay_before_persistent_init_scan = false;
 bool        gp_crash_recovery_abort_suppress_fatal = false;
 bool		gp_persistent_statechange_suppress_error = false;
 bool		Debug_bitmap_print_insert = false;
@@ -2534,6 +2535,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_gp_relation_node_fetch_wait_for_debugging,
+		false, NULL, NULL
+	},
+	
+	{
+		{"Debug_delay_before_persistent_init_scan", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Delay before doing the persistent init scan."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_delay_before_persistent_init_scan,
 		false, NULL, NULL
 	},
 	

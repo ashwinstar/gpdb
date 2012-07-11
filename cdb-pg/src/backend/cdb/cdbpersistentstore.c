@@ -202,7 +202,101 @@ PersistentStore_FreeEntryHashTableInit(void)
 	freeEntryHashTable = hash_create("Persistent Free Entry", 10, &info, hash_flags);
 }
 
+static void PersistentStore_DiagnoseDumpTable(
+	PersistentStoreData 		*storeData,
+
+	PersistentStoreSharedData 	*storeSharedData)
+{
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
+	PersistentStoreScan storeScan;
+
+	ItemPointerData			persistentTid;
+	int64					persistentSerialNum;
+
+	Datum					*values;
+
+	BlockNumber				lastDisplayedBlockNum;
+	bool					displayedOne;
+	BlockNumber				currentBlockNum;
+
+	elog(LOG, "Diagnostic dump of persistent table '%s'", storeData->tableName);
+
+	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
+
+	PersistentStore_BeginScan(
+						storeData,
+						storeSharedData,
+						&storeScan);
+
+	lastDisplayedBlockNum = 0;
+	displayedOne = false;
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							&persistentTid,
+							&persistentSerialNum))
+	{
+		/*
+		 * Use the BlockIdGetBlockNumber routine because ItemPointerGetBlockNumber 
+		 * asserts for valid TID.
+		 */
+		currentBlockNum = BlockIdGetBlockNumber(&persistentTid.ip_blkid);
+		if (!displayedOne || currentBlockNum != lastDisplayedBlockNum)
+		{
+			Buffer		buffer;
+			PageHeader	page;
+			XLogRecPtr	lsn;
+
+			/*
+			 * Fetch the block and display the LSN.
+			 */
+			
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+			
+			buffer = ReadBuffer(
+							PersistentStore_GetScanRelation(&storeScan),
+							currentBlockNum);
+
+			page = (PageHeader) BufferGetPage(buffer);
+
+			lsn = PageGetLSN(page);
+
+			ReleaseBuffer(buffer);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
+			elog(LOG, "Diagnostic LSN %s of page %u of persistent table '%s'",
+				 XLogLocationToString(&lsn),
+				 currentBlockNum,
+				 storeData->tableName);
+
+			lastDisplayedBlockNum = currentBlockNum;
+			displayedOne = true;
+		}
+
+		/*
+		 * Display the persistent tuple.
+		 */
+		(*storeData->printTupleCallback)(
+									LOG,
+									"Diagnose",
+									&persistentTid,
+									values);
+	}
+	
+	PersistentStore_EndScan(&storeScan);
+
+	pfree(values);
+}
+
 static void PersistentStore_InitScanAddFreeEntry(
+	PersistentStoreData 		*storeData,
+
+	PersistentStoreSharedData 	*storeSharedData,
+
 	ItemPointer		persistentTid,
 
 	ItemPointer		previousFreeTid,
@@ -216,10 +310,16 @@ static void PersistentStore_InitScanAddFreeEntry(
 	bool found;
 
 	if (PersistentStore_IsZeroTid(persistentTid))
+	{
+		PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 		elog(ERROR, "Expected persistent TID to not be (0,0)");
+	}
 
 	if (PersistentStore_IsZeroTid(previousFreeTid))
+	{
+		PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 		elog(ERROR, "Expected previous free TID to not be (0,0)");
+	}
 
 	if (freeEntryHashTable == NULL)
 		PersistentStore_FreeEntryHashTableInit();
@@ -235,8 +335,11 @@ static void PersistentStore_InitScanAddFreeEntry(
 									&found);
 
 	if (found)
+	{
+		PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 		elog(ERROR, "Duplicate free persistent TID entry %s",
 			 ItemPointerToString(persistentTid));
+	}
 
 	entry->previousFreeTid = *previousFreeTid;
 	entry->freeOrderNum = freeOrderNum;
@@ -260,8 +363,11 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	if (freeOrderNum == 0)
 	{
 		if (!PersistentStore_IsZeroTid(&freeTid))
+		{
+			PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 			elog(ERROR, "Expected free TID to be (0,0) when free order number is 0 in '%s'",
 				 storeData->tableName);
+		}
 	}
 	else
 	{
@@ -270,9 +376,12 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 		PersistentFreeEntry *removeEntry;
 		
 		if (freeEntryHashTable == NULL)
+		{
+			PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 			elog(ERROR, "Looking for free order number " INT64_FORMAT " and the free entry hash table is empty for '%s'",
 				 freeOrderNum,
 				 storeData->tableName);
+		}
 		
 		while (true)
 		{
@@ -286,27 +395,36 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 											HASH_FIND,
 											NULL);
 			if (entry == NULL)
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, 
 					 "Did not find free entry for free TID %s (free order number " INT64_FORMAT ") for '%s'",
 					 ItemPointerToString(&freeTid),
 					 freeOrderNum,
 					 storeData->tableName);
+			}
 
 			if (PersistentStore_IsZeroTid(&entry->previousFreeTid))
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, 
 					 "Previous free TID not expected to be (0,0) -- persistent Free Entry hashtable corrupted for '%s' "
 					 "(expected free order number " INT64_FORMAT ", entry free order number " INT64_FORMAT ")",
 				     storeData->tableName,
 				     freeOrderNum,
 				     entry->freeOrderNum);
+			}
 
 			if (freeOrderNum != entry->freeOrderNum)
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, 
 					 "Free entry for free TID %s has wrong free order number (expected free order number " INT64_FORMAT ", found free order number " INT64_FORMAT ") for '%s'",
 					 ItemPointerToString(&freeTid),
 					 freeOrderNum,
 					 entry->freeOrderNum,
 					 storeData->tableName);
+			}
 			
 			if (Debug_persistent_recovery_print)
 				elog(PersistentRecovery_DebugPrintLevel(), 
@@ -327,6 +445,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 									&entry->key.persistentTid,
 									&freeTid) != 0)
 				{
+					PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 					elog(ERROR, "Expected previous_free_tid %s to match the persistent TID %s for the last free entry (free order number 1) for '%s'",
 						 ItemPointerToString(&freeTid),
 						 ItemPointerToString2(&entry->key.persistentTid),
@@ -341,8 +460,11 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 								HASH_REMOVE, 
 								NULL);
 			if (removeEntry == NULL)
+			{
+				PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 				elog(ERROR, "Persistent Free Entry hashtable corrupted for '%s'",
 				     storeData->tableName);
+			}
 			entry = NULL;
 
 			freeOrderNum--;
@@ -364,6 +486,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 		 */
 		while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 		{
+			PersistentStore_DiagnoseDumpTable(storeData, storeSharedData);
 			elog(ERROR, "Found at least one unaccounted for free entry for '%s'.  Example: free order number " INT64_FORMAT ", free TID %s, previous free TID %s",
 				storeData->tableName,
 				entry->freeOrderNum,
@@ -401,6 +524,11 @@ static void PersistentStore_DoInitScan(
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
 	MemSet(&storeSharedData->maxTid, 0, sizeof(ItemPointerData));
+
+	if (!gp_before_persistence_work && Debug_delay_before_persistent_init_scan)
+	{
+        pg_usleep(30 * 1000000L);
+	}
 
 	PersistentStore_BeginScan(
 						storeData,
@@ -452,6 +580,8 @@ static void PersistentStore_DoInitScan(
 			if (!gp_persistent_skip_free_list)
 			{
 				PersistentStore_InitScanAddFreeEntry(
+												storeData,
+												storeSharedData,
 												&persistentTid,
 												&previousFreeTid,
 												/* freeOrderNum */ persistentSerialNum);
@@ -661,6 +791,12 @@ bool PersistentStore_GetNext(
 	*persistentTid = storeScan->tuple->t_self;
 
 	return true;
+}
+
+Relation PersistentStore_GetScanRelation(
+	PersistentStoreScan			*storeScan)
+{
+	return storeScan->persistentRel;
 }
 
 HeapTuple PersistentStore_GetScanTupleCopy(

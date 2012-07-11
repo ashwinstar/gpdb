@@ -573,6 +573,9 @@ extern bool PersistentStore_GetNext(
 extern HeapTuple PersistentStore_GetScanTupleCopy(
 	PersistentStoreScan			*storeScan);
 
+extern Relation PersistentStore_GetScanRelation(
+	PersistentStoreScan			*storeScan);
+
 extern void PersistentStore_EndScan(
 	PersistentStoreScan			*storeScan);
 
