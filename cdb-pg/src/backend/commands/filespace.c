@@ -904,39 +904,6 @@ get_filespace_oid(Relation rel, const char *filespacename)
 }
 
 /*
- * Lookup a filespace path for a given filespace identifier
- */
-char *
-get_filespace_path(Oid fseoid, int16 dbid)
-{
-	Relation	 rel	= heap_open(FileSpaceEntryRelationId, AccessShareLock);
-	cqContext	 cqc;
-	int			 fetchCount;
-	bool		 bIsNull;
-	char		*path	= NULL;
-
-	path = caql_getcstring_plus(
-			caql_snapshot(caql_addrel(cqclr(&cqc), rel), 
-						  SnapshotSelf), /* XXX XXX: SnapshotSelf */
-			&fetchCount,
-			&bIsNull,
-			cql("SELECT fselocation FROM pg_filespace_entry "
-				" where fsefsoid = :1 "
-				" AND fsedbid = :2 ",
-				ObjectIdGetDatum(fseoid), 
-				Int16GetDatum(dbid)));
-
-	if (fetchCount)
-	{
-		Assert(!bIsNull);
-
-		Assert(fetchCount == 1); /* should be only one */
-	}
-	heap_close(rel, AccessShareLock);
-	return path;
-}
-
-/*
  * checkPathFormat(path)
  *
  * Runs simple validations on a path supplied to CREATE FILESPACE:
