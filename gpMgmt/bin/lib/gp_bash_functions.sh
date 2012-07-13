@@ -136,7 +136,6 @@ SLEEP=`findCmdInPath sleep`
 SORT=`findCmdInPath sort`
 SPLIT=`findCmdInPath split`
 SSH=`findCmdInPath ssh`
-SYSCTL=`findCmdInPath sysctl`
 TAIL=`findCmdInPath tail`
 TAR=`findCmdInPath tar`
 TEE=`findCmdInPath tee`
