@@ -1793,9 +1793,22 @@ CHK_QE_ARRAY_PORT_RANGES () {
     MIRROR_PORT_BASE=$MIN_MIRROR_PORT
     MIRROR_REPLICATION_PORT_BASE=$MIN_MIRROR_REPLICATION_PORT
 
+	# Calculate dynamic port range
+	DYNAMIC_PORT_MIN=`$SYSCTL net.ipv4.ip_local_port_range | $AWK ' { print $3} '`
+	DYNAMIC_PORT_MAX=`$SYSCTL net.ipv4.ip_local_port_range | $AWK ' { print $4} '`
+
+    # Check that the port range is valid
+    if [[ $DYNAMIC_PORT_MIN -lt 1 || $DYNAMIC_PORT_MIN -gt 65535 || $DYNAMIC_PORT_MAX -lt 1 || $DYNAMIC_PORT_MAX -gt 65535 ]]; then 
+        ERROR_EXIT "Invalid dynamic port range. Please check for net.ipv4.ip_local_port_range" 1
+    fi
+
     #
     # now look for range conflicts
     #
+
+	if CHK_OVERLAP $MASTER_PORT $MASTER_PORT $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX; then 
+		ERROR_EXIT "[FATAL]:-MASTER_PORT overlaps with dynamic ports. Please use a port number outside of $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX"
+	fi
 
     if CHK_OVERLAP $MASTER_PORT $MASTER_PORT $MIN_PORT $MAX_PORT; then
 	ERROR_EXIT "[FATAL]:-MASTER_PORT overlaps with PORT_BASE." 2
@@ -1810,6 +1823,18 @@ CHK_QE_ARRAY_PORT_RANGES () {
 
 	if [ x"" = x"$MIRROR_REPLICATION_PORT_BASE" ]; then
 	    ERROR_EXIT "[FATAL]:-MIRROR_REPLICATION_PORT_BASE variable not set" 2
+	fi
+
+	if CHK_OVERLAP $MIN_MIRROR_PORT $MAX_MIRROR_PORT $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX; then
+		ERROR_EXIT "[FATAL]:-MIRROR_PORT overlaps with dynamic ports. Please use a port number outside of $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX"
+	fi
+
+	if CHK_OVERLAP $MIN_REPLICATION_PORT $MAX_REPLICATION_PORT $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX; then
+		ERROR_EXIT "[FATAL]:-REPLICATION_PORT overlaps with dynamic ports. Please use a port number outside of $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX"
+	fi
+
+	if CHK_OVERLAP $MIN_PORT $MAX_PORT $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX; then
+		ERROR_EXIT "[FATAL]:-PORT_BASE overlaps with dynamic ports. Please use a port number outside of $DYNAMIC_PORT_MIN $DYNAMIC_PORT_MAX"
 	fi
 
 	if CHK_OVERLAP $MASTER_PORT $MASTER_PORT $MIN_MIRROR_PORT $MAX_MIRROR_PORT; then
