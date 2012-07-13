@@ -1198,6 +1198,13 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
             elog(ERROR, "invalid tuplesort state");
             break;
     }
+
+	if (state->gpmon_pkt)
+	{
+		Gpmon_M_Set(state->gpmon_pkt,
+					GPMON_SORT_MEMORY_BYTE,
+					MemoryContextGetCurrentSpace(state->sortcontext));
+	}
 }
 
 /*
@@ -1261,6 +1268,13 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
             break;
     }
     MemoryContextSwitchTo(oldcontext);
+
+	if (state->gpmon_pkt)
+	{
+		Gpmon_M_Set(state->gpmon_pkt,
+					GPMON_SORT_MEMORY_BYTE,
+					MemoryContextGetCurrentSpace(state->sortcontext));
+	}
 }
 
 void tuplesort_flush_mk(Tuplesortstate_mk *state)
