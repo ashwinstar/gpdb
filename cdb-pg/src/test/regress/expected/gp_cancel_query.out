@@ -7,9 +7,9 @@
 --
 -- verify contents of pg_proc for gp_cancel_query
 select * from pg_proc where oid = 5075;
-     proname     | pronamespace | proowner | prolang | proisagg | prosecdef | proisstrict | proretset | provolatile | pronargs | prorettype | proiswin | proargtypes | proallargtypes | proargmodes | proargnames |     prosrc      | probin | proacl | provariadic | pronargdefaults | proargdefaults 
------------------+--------------+----------+---------+----------+-----------+-------------+-----------+-------------+----------+------------+----------+-------------+----------------+-------------+-------------+-----------------+--------+--------+-------------+-----------------+----------------
- gp_cancel_query |           11 |       10 |      12 | f        | f         | f           | f         | v           |        2 |         16 | f        | 23 23       |                |             |             | gp_cancel_query |        |        |           0 |               0 | 
+     proname     | pronamespace | proowner | prolang | proisagg | prosecdef | proisstrict | proretset | provolatile | pronargs | prorettype | proiswin | proargtypes | proallargtypes | proargmodes | proargnames |     prosrc      | probin | proacl | provariadic | pronargdefaults | proargdefaults | prodataaccess 
+-----------------+--------------+----------+---------+----------+-----------+-------------+-----------+-------------+----------+------------+----------+-------------+----------------+-------------+-------------+-----------------+--------+--------+-------------+-----------------+----------------+---------------
+ gp_cancel_query |           11 |       10 |      12 | f        | f         | f           | f         | v           |        2 |         16 | f        | 23 23       |                |             |             | gp_cancel_query |        |        |           0 |               0 |                | n
 (1 row)
 
 drop table if exists test; 

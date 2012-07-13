@@ -5729,7 +5729,6 @@ format_table_function_columns(FuncInfo *finfo, int nallargs,
 	return fn.data;
 }
 
-
 /*
  * format_function_signature: generate function name and argument list
  *
@@ -5796,6 +5795,7 @@ dumpFunc(Archive *fout, FuncInfo *finfo)
 	char	   *proisstrict;
 	char	   *prosecdef;
 	char	   *lanname;
+	char 	   *prodataaccess;
 	char	   *rettypename;
 	int			nallargs;
 	char	  **allargtypes = NULL;
@@ -5827,7 +5827,7 @@ dumpFunc(Archive *fout, FuncInfo *finfo)
 						  "pg_catalog.pg_get_function_arguments(oid) as funcargs, "
 						  "pg_catalog.pg_get_function_identity_arguments(oid) as funciargs, "
 						  "pg_catalog.pg_get_function_result(oid) as funcresult, "
-						  "provolatile, proisstrict, prosecdef, "
+						  "provolatile, proisstrict, prosecdef, prodataaccess, "
 						  "(SELECT lanname FROM pg_catalog.pg_language WHERE oid = prolang) as lanname "
 						  "FROM pg_catalog.pg_proc "
 						  "WHERE oid = '%u'::pg_catalog.oid",
@@ -5879,6 +5879,7 @@ dumpFunc(Archive *fout, FuncInfo *finfo)
 	proisstrict = PQgetvalue(res, 0, PQfnumber(res, "proisstrict"));
 	prosecdef = PQgetvalue(res, 0, PQfnumber(res, "prosecdef"));
 	lanname = PQgetvalue(res, 0, PQfnumber(res, "lanname"));
+	prodataaccess = PQgetvalue(res, 0, PQfnumber(res, "prodataaccess"));
 
 	/*
 	 * See backend/commands/define.c for details of how the 'AS' clause is
@@ -6036,6 +6037,15 @@ dumpFunc(Archive *fout, FuncInfo *finfo)
 
 	if (prosecdef[0] == 't')
 		appendPQExpBuffer(q, " SECURITY DEFINER");
+
+	if (prodataaccess[0] == PRODATAACCESS_NONE)
+		appendPQExpBuffer(q, " NO SQL");
+	else if (prodataaccess[0] == PRODATAACCESS_CONTAINS)
+		appendPQExpBuffer(q, " CONTAINS SQL");
+	else if (prodataaccess[0] == PRODATAACCESS_READS)
+		appendPQExpBuffer(q, " READS SQL DATA");
+	else if (prodataaccess[0] == PRODATAACCESS_MODIFIES)
+		appendPQExpBuffer(q, " MODIFIES SQL DATA");
 
 	appendPQExpBuffer(q, ";\n");
 

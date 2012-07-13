@@ -84,6 +84,7 @@ ProcedureCreate(const char *procedureName,
 				Datum parameterModes,
 				Datum parameterNames,
 				List *parameterDefaults,
+				char prodataaccess,
 				Oid funcOid)
 {
 	Oid			retval;
@@ -337,6 +338,7 @@ ProcedureCreate(const char *procedureName,
 		values[Anum_pg_proc_proargdefaults - 1] = CStringGetTextDatum(nodeToString(parameterDefaults));
 	else
 		nulls[Anum_pg_proc_proargdefaults - 1] = true;
+	values[Anum_pg_proc_prodataaccess - 1] = CharGetDatum(prodataaccess);
 
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 

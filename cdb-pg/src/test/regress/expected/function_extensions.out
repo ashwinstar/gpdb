@@ -3,6 +3,9 @@
 -- 	1. VARIADIC arguments
 --	2. DEFAULT arguments
 --	3. NAMED arguments
+--
+-- Test additional extensions (MPP-16060)
+-- 	1. data_access indicators
 -- -----------------------------------------------------------------
 -- -----------------------------------------------------------------
 -- 	1. VARIADIC arguments
@@ -221,14 +224,14 @@ $$ language sql strict;
 select * from tfunc ('hello', 'morning');
  id  |         tx         
 -----+--------------------
- 770 | hello, Woo.John
- 771 | hello, Ng.Jim
  778 | hello, Lau.Jerry
+ 771 | hello, Ng.Jim
  790 | hello, Smith.Jen
- 770 | morning, Woo.John
- 771 | morning, Ng.Jim
+ 770 | hello, Woo.John
  778 | morning, Lau.Jerry
+ 771 | morning, Ng.Jim
  790 | morning, Smith.Jen
+ 770 | morning, Woo.John
 (8 rows)
 
 drop table people;
@@ -309,7 +312,7 @@ select dfunc(4,5);
 
 \df dfunc
                                       List of functions
- Schema | Name  | Result data type |               Argument data types               |  Type
+ Schema | Name  | Result data type |               Argument data types               |  Type  
 --------+-------+------------------+-------------------------------------------------+--------
  public | dfunc | integer          | INOUT a integer DEFAULT 10, b integer DEFAULT 2 | normal
 (1 row)
@@ -497,7 +500,7 @@ create function dfunc(a int, b double precision default random()*10) returns dou
 
 create view dview as select random()*10, dfunc(4);
 select pg_get_viewdef('dview',true);
-                           pg_get_viewdef                           
+                       pg_get_viewdef                        
 -------------------------------------------------------------
   SELECT random() * 10::double precision, dfunc(4) AS dfunc;
 (1 row)
@@ -512,7 +515,7 @@ drop function dfunc(int, double precision) cascade;
 NOTICE:  drop cascades to rule _RETURN on view dview
 NOTICE:  drop cascades to view dview
 -- -----------------------------------------------------------------
---  3. NAMED arguments
+--	3. NAMED arguments
 -- -----------------------------------------------------------------
 --
 -- Tests for named- and mixed-notation function calling
@@ -563,7 +566,7 @@ select * from dfunc(1,2, c => 3);
 (1 row)
 
 select * from dfunc(1,2, d => 3);
- a | b | c | d
+ a | b | c | d 
 ---+---+---+---
  1 | 2 | 0 | 3
 (1 row)
@@ -818,11 +821,11 @@ CREATE VIEW dfview AS
 select * from dfview;
         q1        |        q2         |        c3        |        c4         
 ------------------+-------------------+------------------+-------------------
-              123 |               456 |              456 |               123
-              123 |  4567890123456789 | 4567890123456789 |               123
  4567890123456789 |               123 | 4567890123456789 |               123
  4567890123456789 |  4567890123456789 | 4567890123456789 |  4567890123456789
  4567890123456789 | -4567890123456789 | 4567890123456789 | -4567890123456789
+              123 |               456 |              456 |               123
+              123 |  4567890123456789 | 4567890123456789 |               123
 (5 rows)
 
 \d dfview
@@ -839,3 +842,109 @@ View definition:
 
 drop view dfview;
 drop function dfunc(anyelement, anyelement, bool);
+-- test prodataaccess 
+create function func1(int, int) returns int as
+$$
+  select $1 + $2; 
+$$ language sql immutable contains sql;
+-- check prodataaccess column in pg_proc 
+select proname, prodataaccess from pg_proc where proname = 'func1';
+ proname | prodataaccess 
+---------+---------------
+ func1   | c
+(1 row)
+
+create function func2(a anyelement, b anyelement = null, flag bool = true) 
+returns anyelement as
+$$
+  select $1 + $2; 
+$$ language sql reads sql data; 
+-- check prodataaccess column in pg_proc 
+select proname, prodataaccess from pg_proc where proname = 'func2';
+ proname | prodataaccess 
+---------+---------------
+ func2   | r
+(1 row)
+
+create function func3() returns oid as
+$$
+  select oid from pg_class where relname = 'pg_type'; 
+$$ language sql modifies sql data volatile;
+-- check prodataaccess column in pg_proc 
+select proname, prodataaccess from pg_proc where proname = 'func3';
+ proname | prodataaccess 
+---------+---------------
+ func3   | m
+(1 row)
+
+-- check default value of prodataaccess
+drop function func1(int, int);
+create function func1(int, int) returns varchar as $$
+declare
+	v_name varchar(20) DEFAULT 'zzzzz';
+begin
+	select relname from pg_class into v_name where oid=$1;
+	return v_name;
+end;
+$$ language plpgsql;
+select proname, proargnames, prodataaccess from pg_proc where proname = 'func1';
+ proname | proargnames | prodataaccess 
+---------+-------------+---------------
+ func1   |             | n
+(1 row)
+
+create function func4(int, int) returns int as
+$$
+  select $1 + $2; 
+$$ language sql;
+-- check prodataaccess column
+select proname, proargnames, prodataaccess from pg_proc where proname = 'func4';
+ proname | proargnames | prodataaccess 
+---------+-------------+---------------
+ func4   |             | c
+(1 row)
+
+-- change prodataaccess option
+create or replace function func4(int, int) returns int as
+$$
+  select $1 + $2; 
+$$ language sql modifies sql data;
+select proname, proargnames, prodataaccess from pg_proc where proname = 'func4';
+ proname | proargnames | prodataaccess 
+---------+-------------+---------------
+ func4   |             | m
+(1 row)
+
+-- data_access indicators for plpgsql
+drop function func1(int, int);
+create or replace function func1(int, int) returns varchar as $$
+declare
+	v_name varchar(20) DEFAULT 'zzzzz';
+begin
+	select relname from pg_class into v_name where oid=$1;
+	return v_name;
+end;
+$$ language plpgsql reads sql data;
+select proname, proargnames, prodataaccess from pg_proc where proname = 'func1';
+ proname | proargnames | prodataaccess 
+---------+-------------+---------------
+ func1   |             | r
+(1 row)
+
+-- check conflicts
+drop function func1(int, int);
+create function func1(int, int) returns int as
+$$
+  select $1 + $2; 
+$$ language sql immutable no sql;
+ERROR:  conflicting options
+HINT:  A SQL function cannot specify NO SQL.
+create function func1(int, int) returns int as
+$$
+  select $1 + $2; 
+$$ language sql immutable reads sql data;
+ERROR:  conflicting options
+HINT:  IMMUTABLE conflicts with READS SQL DATA.
+drop function func2(anyelement, anyelement, bool);
+drop function func3();
+drop function func4(int, int);

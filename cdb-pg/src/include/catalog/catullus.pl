@@ -1127,6 +1127,7 @@ sub printfndef
 		($tup->{provariadic} ? $tup->{provariadic} : 0) . " " .
 		($tup->{pronargdefaults} ? $tup->{pronargdefaults} : 0) . " " .
 		($tup->{proargdefault} ? $tup->{proargdefaults} : "_null_") . " " .
+		($tup->{prodataaccess} ? $tup->{prodataaccess} : prodataaccess(($fndef->{with}->{oid}), ($tup->{prolang}))) . " " .
 		"));\n";
 	$bigstr .= "DESCR(" . $fndef->{with}->{description} . ");\n"
 		if (exists($fndef->{with}->{description}));
@@ -1135,6 +1136,43 @@ sub printfndef
 
 	return $bigstr;
 } # end printfndef
+
+#
+# set the prodataaccess modifier
+#
+sub prodataaccess
+{
+	my ($oid, $lang) = @_;
+
+	# RI_FKey* functions 
+	# gp_update_ao_master_stats are set to MODIFIES SQL DATA
+	if (($oid >= 1644 and $oid <=1655) or $oid == 7173 or $oid == 7174) 
+	{
+		return  ("m");
+	}
+
+	# pg_lock_status, pg_tablespace_size, pg_database_size, pg_relation_size, 
+	# get_ao_distribution, get_ao_compression_ratio are set to READS SQL DATA
+	elsif (($oid == 1371) or 
+		($oid >= 2322 and $oid <= 2325) or 
+		($oid == 2168) or 
+		($oid >= 2286 and $oid <= 2289) or 
+		($oid == 6023) or 
+		($oid >= 7169 and $oid <= 7172))
+	{
+		return  ("r");
+	}
+	# SQL language function are set to CONTAINS SQL
+	elsif ($lang == 14)
+	{
+		return  ("c");
+	}
+	# rest are set to NO SQL
+	else
+	{
+		return  ("n");
+	}
+}
 
 # MAIN routine for pg_proc generation
 sub doprocs()

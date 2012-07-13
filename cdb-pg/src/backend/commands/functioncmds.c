@@ -520,17 +520,48 @@ interpret_func_volatility(DefElem *defel)
 	}
 }
 
+static char
+interpretProDataAccess(DefElem *defel)
+{
+	char *str = strVal(defel->arg);
+	char proDataAccess = PRODATAACCESS_NONE;
+
+	if (strcmp(str, "none") == 0)
+		proDataAccess = PRODATAACCESS_NONE;	
+	else if (strcmp(str, "contains") == 0)
+		proDataAccess = PRODATAACCESS_CONTAINS;	
+	else if (strcmp(str, "reads") == 0)
+		proDataAccess = PRODATAACCESS_READS;	
+	else if (strcmp(str, "modifies") == 0)
+		proDataAccess = PRODATAACCESS_MODIFIES;	
+	else 
+		elog(ERROR, "invalid data access \"%s\"", str);
+
+	return proDataAccess;
+}
+
+static char
+getDefaultProDataAccess(char *language)
+{
+	char proDataAccess = PRODATAACCESS_NONE;
+	if (strcmp(language, "sql") == 0)
+		proDataAccess = PRODATAACCESS_CONTAINS;
+		
+	return proDataAccess;
+}
+
 /*
  * Dissect the list of options assembled in gram.y into function
  * attributes.
  */
 static void
-compute_attributes_sql_style(List *options,
-							 List **as,
-							 char **language,
-							 char *volatility_p,
-							 bool *strict_p,
-							 bool *security_definer)
+compute_attributes_sql_style(List *options, 
+				List **as,
+				char **language,
+				char *volatility_p,
+				bool *strict_p,
+				bool *security_definer,
+				char *prodataaccess)
 {
 	ListCell   *option;
 	DefElem    *as_item = NULL;
@@ -538,6 +569,7 @@ compute_attributes_sql_style(List *options,
 	DefElem    *volatility_item = NULL;
 	DefElem    *strict_item = NULL;
 	DefElem    *security_item = NULL;
+	DefElem    *prodataaccess_item = NULL;
 
 	foreach(option, options)
 	{
@@ -559,10 +591,20 @@ compute_attributes_sql_style(List *options,
 						 errmsg("conflicting or redundant options")));
 			language_item = defel;
 		}
-		else if (compute_common_attribute(defel,
-										  &volatility_item,
-										  &strict_item,
-										  &security_item))
+		else if (strcmp(defel->defname, "prodataaccess") == 0)
+		{
+			if (prodataaccess_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("conflicting or redundant options")));
+
+			prodataaccess_item = defel;	
+			*prodataaccess = interpretProDataAccess(defel);
+		}
+		else if (compute_common_attribute(defel, 
+						&volatility_item,
+						&strict_item,
+						&security_item))
 		{
 			/* recognized common option */
 			continue;
@@ -600,6 +642,38 @@ compute_attributes_sql_style(List *options,
 		*strict_p = intVal(strict_item->arg);
 	if (security_item)
 		*security_definer = intVal(security_item->arg);
+
+	if (prodataaccess_item == NULL)
+	{
+		/* prodataaccess indicator not specified. Fill in default */
+		*prodataaccess = getDefaultProDataAccess(*language);
+	}
+
+	/* IMMUTABLE is not compatible with READS SQL or MODIFIES SQL */
+	if (*volatility_p == PROVOLATILE_IMMUTABLE && *prodataaccess == PRODATAACCESS_MODIFIES) 
+	{
+		ereport(ERROR, 
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("conflicting options"),
+				errhint("IMMUTABLE conflicts with MODIFIES SQL DATA.")));
+	}
+
+	if (*volatility_p == PROVOLATILE_IMMUTABLE && *prodataaccess == PRODATAACCESS_READS) 
+	{
+		ereport(ERROR, 
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("conflicting options"),
+				errhint("IMMUTABLE conflicts with READS SQL DATA.")));
+	}
+
+	/* SQL language function cannot specify NO SQL */
+	if ((strcmp(*language, "sql") == 0) && (*prodataaccess == PRODATAACCESS_NONE))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("conflicting options"),
+				errhint("A SQL function cannot specify NO SQL. ")));
+	}
 }
 
 
@@ -894,6 +968,7 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 	List	   *as_clause;
 	List       *describeQualName = NIL;
 	Oid         describeFuncOid  = InvalidOid;
+	char		proDataAccess = PRODATAACCESS_NONE;
 
 	/* Convert list of names to a name and namespace */
 	namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
@@ -912,7 +987,8 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 
 	/* override attributes from explicit list */
 	compute_attributes_sql_style(stmt->options,
-				   &as_clause, &language, &volatility, &isStrict, &security);
+				   &as_clause, &language, &volatility, &isStrict, &security,
+					&proDataAccess);
 
 	/* Convert language name to canonical case */
 	languageName = case_translate_language_name(language);
@@ -1034,6 +1110,7 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 					PointerGetDatum(parameterModes),
 					PointerGetDatum(parameterNames),
 					parameterDefaults,
+					proDataAccess,
 					stmt->funcOid);
 					
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -2015,4 +2092,62 @@ AlterFunctionNamespace(List *name, List *argtypes, bool isagg,
 	heap_freetuple(tup);
 
 	heap_close(procRel, RowExclusiveLock);
+}
+
+/*
+ * GetFuncSQLDataAccess
+ *  Returns the dataaccess indication of a function specified by 
+ *  the input prooid. 
+ */
+SQLDataAccess 
+GetFuncSQLDataAccess(Oid prooid)
+{
+	Relation 	procRelation;
+	HeapTuple 	procTuple;
+	bool		isnull = false;
+	char		proDataAccess;
+	SQLDataAccess	result = SDA_NO_SQL;
+	cqContext	cqc;
+
+
+	procRelation = heap_open(ProcedureRelationId, AccessShareLock);
+
+	procTuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), procRelation),
+			cql("SELECT * from pg_proc"
+				" WHERE oid = :1",
+				ObjectIdGetDatum(prooid)));
+
+	if (!HeapTupleIsValid(procTuple))
+		elog(ERROR, "cache lookup failed for relation %u", prooid);
+
+	/* get the prodataaccess */
+	proDataAccess = DatumGetChar(heap_getattr(procTuple, Anum_pg_proc_prodataaccess,
+				RelationGetDescr(procRelation), &isnull));
+
+	/* 
+	 * in upgrade mode, allow prodataaccess to be NULL, to handle the case where 
+	 * prodataaccess column has not been added to pg_proc yet. This is specifically
+	 * to handle catDML()
+	 */
+	if (gp_upgrade_mode && isnull) 
+		return SDA_NO_SQL; 
+
+	Assert(!isnull);
+
+	heap_freetuple(procTuple);
+	heap_close(procRelation, AccessShareLock);
+
+	if (proDataAccess == PRODATAACCESS_NONE)
+		result = SDA_NO_SQL; 
+	else if (proDataAccess == PRODATAACCESS_CONTAINS)
+		result = SDA_CONTAINS_SQL; 
+	else if (proDataAccess == PRODATAACCESS_READS)
+		result = SDA_READS_SQL; 
+	else if (proDataAccess == PRODATAACCESS_MODIFIES)
+		result = SDA_MODIFIES_SQL; 
+	else 
+		elog(ERROR, "invalid data access option for oid %u", prooid);
+
+	return result;
 }

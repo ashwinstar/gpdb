@@ -432,6 +432,20 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 						  gettext_noop("Type"));
 
 	if (verbose)
+	{
+		if (isGPDB5000OrLater())
+			appendPQExpBuffer(&buf,
+						  ",\n CASE\n"
+						  "  WHEN p.prodataaccess = 'n' THEN '%s'\n"
+						  "  WHEN p.prodataaccess = 'c' THEN '%s'\n"
+						  "  WHEN p.prodataaccess = 'r' THEN '%s'\n"
+						  "  WHEN p.prodataaccess = 'm' THEN '%s'\n"
+						  "END as \"%s\"",
+						  gettext_noop("no sql"),
+						  gettext_noop("contains sql"),
+						  gettext_noop("reads sql data"),
+						  gettext_noop("modifies sql data"),
+						  gettext_noop("Prodataaccess"));
 		appendPQExpBuffer(&buf,
 						  ",\n CASE\n"
 						  "  WHEN p.provolatile = 'i' THEN '%s'\n"
@@ -450,6 +464,7 @@ describeFunctions(const char *functypes, const char *pattern, bool verbose, bool
 						  gettext_noop("Language"),
 						  gettext_noop("Source code"),
 						  gettext_noop("Description"));
+	}
 
 	appendPQExpBuffer(&buf,
 					  "\nFROM pg_catalog.pg_proc p"

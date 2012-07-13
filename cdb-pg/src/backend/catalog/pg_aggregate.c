@@ -342,6 +342,7 @@ AggregateCreateWithOid(const char		*aggName,
 							  PointerGetDatum(NULL),	/* parameterModes */
 							  PointerGetDatum(NULL),	/* parameterNames */
 							  NIL,						/* parameterDefaults */
+							  PRODATAACCESS_NONE,		/* prodataaccess */
 							  procOid);
 	/*
 	 * Okay to create the pg_aggregate entry.

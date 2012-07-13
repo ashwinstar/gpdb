@@ -309,7 +309,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <range>	OptTempTableName OptErrorTableName
 %type <into>	into_clause create_as_target
 
-%type <defelt>	createfunc_opt_item common_func_opt_item
+%type <defelt>	createfunc_opt_item common_func_opt_item function_properties
 %type <fun_param> func_arg func_arg_with_default table_func_column
 %type <fun_param_mode> arg_class
 %type <typnam>	func_return func_type
@@ -489,7 +489,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	CACHE CALLED CASCADE CASCADED CASE CAST CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
-	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P CONVERT COPY COST
+	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTENT_P CONTINUE_P CONVERSION_P CONVERT COPY COST
 	CREATE CREATEDB CREATEEXTTABLE
 	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
@@ -524,7 +524,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	LOCK_P LOG_P LOGIN_P
 
 	MAPPING MASTER MATCH MAXVALUE MEDIAN MERGE MINUTE_P MINVALUE MIRROR
-	MISSING MODE MODIFY MONTH_P MOVE
+	MISSING MODE MODIFIES MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEWLINE NEXT NO NOCREATEDB NOCREATEEXTTABLE
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
@@ -539,7 +539,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 
 	QUEUE QUOTE
 
-	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK RECURSIVE 
+	RANDOMLY RANGE READ READABLE READS REAL REASSIGN RECHECK RECURSIVE 
     REFERENCES REINDEX REJECT_P RELATIVE_P 
 	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESPECT RESTART RESTRICT
 	RETURNING RETURNS REVOKE RIGHT
@@ -548,7 +548,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 	SAVEPOINT SCATTER SCHEMA SCROLL SEARCH SECOND_P 
     SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETOF SETS SHARE
-	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE START STATEMENT
+	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT SQL STABLE START STATEMENT
 	STATISTICS STDIN STDOUT STORAGE STRICT_P 
 	SUBPARTITION SUBPARTITIONS
 	SUBSTRING SUPERUSER_P SYMMETRIC
@@ -7034,6 +7034,25 @@ common_func_opt_item:
 				}
 		;
 
+function_properties:
+			NO SQL 
+				{
+					$$ = makeDefElem("prodataaccess", (Node *)makeString("none"));
+				}
+			| CONTAINS SQL 
+				{
+					$$ = makeDefElem("prodataaccess", (Node *)makeString("contains"));
+				}
+			| READS SQL DATA_P 
+				{
+					$$ = makeDefElem("prodataaccess", (Node *)makeString("reads"));
+				}
+			| MODIFIES SQL DATA_P
+				{
+					$$ = makeDefElem("prodataaccess", (Node *)makeString("modifies"));
+				}
+		;
+
 createfunc_opt_item:
 			AS func_as
 				{
@@ -7044,6 +7063,10 @@ createfunc_opt_item:
 					$$ = makeDefElem("language", (Node *)makeString($2));
 				}
 			| common_func_opt_item
+				{
+					$$ = $1;
+				}
+			| function_properties
 				{
 					$$ = $1;
 				}
@@ -12587,6 +12610,7 @@ unreserved_keyword:
 			| CONCURRENTLY
 			| CONNECTION
 			| CONSTRAINTS
+			| CONTAINS
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
@@ -12692,6 +12716,7 @@ unreserved_keyword:
 			| MISSING
 			| MODE
 			| MODIFY
+			| MODIFIES
 			| MONTH_P
 			| MOVE
 			| NAME_P
@@ -12740,6 +12765,7 @@ unreserved_keyword:
 			| RANDOMLY /* gp */
 			| READ
 			| READABLE
+			| READS
 			| REASSIGN
 			| RECHECK
 			| RECURSIVE
@@ -12776,6 +12802,7 @@ unreserved_keyword:
 			| SHOW
 			| SIMPLE
 			| SPLIT
+			| SQL
 			| STABLE
 			| START
 			| STATEMENT
