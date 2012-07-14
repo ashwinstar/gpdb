@@ -361,6 +361,7 @@ bool		filerep_inject_db_startup_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
 bool		gp_crash_recovery_suppress_ao_eof = false;
 bool		gp_watch_visibility_in_action = false;
+bool		Debug_unlink_print = false;
 bool        gp_keep_all_xlog = false;
 int 		ddboost_buf_size = 512*1024;
 
@@ -3181,6 +3182,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_watch_visibility_in_action,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_unlink_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("enable unlink logs"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_unlink_print,
 		false, NULL, NULL
 	},
 			

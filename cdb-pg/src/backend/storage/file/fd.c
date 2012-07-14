@@ -1043,6 +1043,16 @@ FileClose(File file)
 		if (unlink(vfdP->fileName))
 			elog(DEBUG1, "failed to unlink \"%s\": %m",
 				 vfdP->fileName);
+		
+		if (Debug_unlink_print)
+		{
+			ereport(LOG,
+					(errmsg("dropping file '%s' fd '%u' fdstate '%d' create_subid '%u' ",
+					vfdP->fileName,
+					vfdP->fd,
+					vfdP->fdstate,
+					vfdP->create_subid)));
+		}
 	}
 
 	/*
