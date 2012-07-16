@@ -5741,4 +5741,46 @@ CREATE FUNCTION gp_map_attnums(oid, oid, int2vector) RETURNS int2vector LANGUAGE
 
 CREATE FUNCTION gp_map_attnums_in_expr(oid, oid, text) RETURNS text LANGUAGE internal IMMUTABLE AS 'gp_map_attnums_in_expr' WITH (OID=9929, DESCRIPTION="gp_map_attnums_in_expr");
 
-CREATE FUNCTION lead_lag_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT AS 'lead_lag_frame_maker' WITH (OID=5081);
+ CREATE FUNCTION lead_lag_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT AS 'lead_lag_frame_maker' WITH (OID=5081);
+
+ CREATE FUNCTION wm_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT AS 'wm_frame_maker' WITH (OID=5082);
+
+ CREATE FUNCTION wm_avg(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7184, proiswin="t");
+
+ CREATE FUNCTION wm_var_pop(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7185, proiswin="t");
+
+ CREATE FUNCTION wm_var_samp(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7186, proiswin="t");
+
+ CREATE FUNCTION wm_stddev_pop(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7187, proiswin="t");
+
+ CREATE FUNCTION wm_stddev_samp(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7188, proiswin="t");
+
+ CREATE FUNCTION wm_avg(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7189, proiswin="t");
+
+ CREATE FUNCTION wm_var_pop(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7190, proiswin="t");
+
+ CREATE FUNCTION wm_var_samp(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7191, proiswin="t");
+
+ CREATE FUNCTION wm_stddev_pop(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7192, proiswin="t");
+
+ CREATE FUNCTION wm_stddev_samp(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy' WITH (OID=7193, proiswin="t");
+
+ CREATE FUNCTION float8_wm_avg(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_avg' WITH (OID=7194, DESCRIPTION="weighted moving average");
+
+ CREATE FUNCTION float8_wm_var_pop(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_var_pop' WITH (OID=7195, DESCRIPTION="weighted moving variance");
+
+ CREATE FUNCTION float8_wm_var_samp(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_var_samp' WITH (OID=7196, DESCRIPTION="weighted moving variance");
+
+ CREATE FUNCTION float8_wm_stddev_pop(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_stddev_pop' WITH (OID=7197, DESCRIPTION="weighted moving standard deviation");
+
+ CREATE FUNCTION float8_wm_stddev_samp(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_wm_stddev_samp' WITH (OID=7198, DESCRIPTION="weighted moving standard deviation");
+
+ CREATE FUNCTION numeric_wm_avg(internal, numeric, _numeric, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_avg' WITH (OID=7199, DESCRIPTION="weighted moving average");
+
+ CREATE FUNCTION numeric_wm_var_pop(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_var_pop' WITH (OID=7200, DESCRIPTION="weighted moving variance");
+
+ CREATE FUNCTION numeric_wm_var_samp(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_var_samp' WITH (OID=7201, DESCRIPTION="weighted moving variance");
+
+ CREATE FUNCTION numeric_wm_stddev_pop(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_stddev_pop' WITH (OID=7202, DESCRIPTION="weighted moving standard deviation");
+
+ CREATE FUNCTION numeric_wm_stddev_samp(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT AS 'numeric_wm_stddev_samp' WITH (OID=7203, DESCRIPTION="weighted moving standard deviation");

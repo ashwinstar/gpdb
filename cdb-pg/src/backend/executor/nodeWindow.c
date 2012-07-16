@@ -316,11 +316,6 @@ typedef struct WindowStatePerFunctionData
 	uint64              numNotNulls;
 } WindowStatePerFunctionData;
 
-#define FRAME_TRAIL_ROWS 	0
-#define FRAME_TRAIL_RANGE	1
-#define FRAME_LEAD_ROWS		2
-#define FRAME_LEAD_RANGE	3
-
 #define EDGE_IS_BOUND(e) \
 	(e->kind == WINDOW_BOUND_PRECEDING || \
 	 e->kind == WINDOW_BOUND_FOLLOWING || \
@@ -502,8 +497,7 @@ static void freeFrameBuffers(WindowState *wstate);
  */
 typedef struct WindowBufferCursorData
 {
-	WindowState		   *wstate;				/* state of this window */
-	WindowStatePerLevel level_state;		/* state of this window level */
+	WindowFuncContext	wcontext;
 	NTupleStoreAccessor *reader;			/* reader to scan rows */
 	NTupleStorePos		orig_pos;			/* original position of the reader */
 	bool				use_last_agg;		/* should scan "last_agg"? */
@@ -511,16 +505,11 @@ typedef struct WindowBufferCursorData
 	bool				has_tuples;			/* does frame has tuples? */
 	bool				forward;			/* scan direction */
 	bool				first;				/* is first fetch of tupstore? */
+	List			   *func_values;		/* values on the scanning row */
 } WindowBufferCursorData;
 
-typedef struct WindowBufferCursorData *WindowBufferCursor;
-
-static WindowBufferCursor windowBufferBeginScan(WindowState *wstate,
-				WindowStatePerLevel level_state, bool forward);
 static List *windowBufferNextTupleStore(WindowBufferCursor cursor);
 static List *windowBufferNextLastAgg(WindowBufferCursor cursor);
-static List *windowBufferNext(WindowBufferCursor cursor);
-static void windowBufferEndScan(WindowBufferCursor cursor);
 
 /* the functions for the Window node */
 static WindowState *makeWindowState(Window *window, EState *estate);
@@ -549,7 +538,7 @@ static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *ws
 							   ExprContext *econtext, bool check_nulls);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state,
 							 WindowState *wstate);
-static Datum first_last_value_internal(WindowRefExprState *wrxstate,
+static Datum first_last_value_internal(PG_FUNCTION_ARGS,
 									   bool *isnull, bool isfirstvalue);
 static FrameBufferEntry *createFrameBufferEntry(WindowStatePerLevel level_state);
 static void freeFrameBufferEntry(FrameBufferEntry *entry);
@@ -5838,16 +5827,42 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 }
 
 /*
+ * This is the API to start with in a typical window function.
+ */
+WindowFuncContext
+windowGetContext(PG_FUNCTION_ARGS)
+{
+	WindowFuncContext	wcontext = (WindowFuncContext) PG_GETARG_POINTER(0);
+
+	Assert(IsA(wcontext, WindowRefExprState));
+
+	return wcontext;
+}
+
+/*
+ * Returns the row number of the current row.
+ */
+int64
+windowGetRowIndex(WindowFuncContext wcontext)
+{
+	WindowState	   *wstate = wcontext->windowstate;
+
+	return wstate->row_index;
+}
+
+/*
  * Open a buffer cursor on this window level.  The forward parameter
  * indicates if this cursor starts at the beginning and scans
  * forward, or if it starts at the end of frame and scans backward.
  */
-static WindowBufferCursor
-windowBufferBeginScan(WindowState *wstate, WindowStatePerLevel level_state,
-					  bool forward)
+WindowBufferCursor
+windowBufferBeginScan(WindowFuncContext wcontext, bool forward)
 {
 	WindowBufferCursor	cursor;
 	bool				include_last_agg = false;
+	WindowState		   *wstate = wcontext->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
+	WindowStatePerLevel level_state = funcstate->wlevel;
 
 	cursor = (WindowBufferCursor) palloc0(sizeof(WindowBufferCursorData));
 	/*
@@ -5912,8 +5927,7 @@ windowBufferBeginScan(WindowState *wstate, WindowStatePerLevel level_state,
 	}
 
 	cursor->first = true;
-	cursor->level_state = level_state;
-	cursor->wstate = wstate;
+	cursor->wcontext = wcontext;
 	cursor->forward = forward;
 
 	return cursor;
@@ -5927,9 +5941,12 @@ windowBufferBeginScan(WindowState *wstate, WindowStatePerLevel level_state,
 static List *
 windowBufferNextTupleStore(WindowBufferCursor cursor)
 {
-	WindowStatePerLevel			level_state = cursor->level_state;
-	FrameBufferEntry		   *entry = level_state->curr_entry_buf;
-	bool						found;
+	WindowFuncContext	wcontext = cursor->wcontext;
+	WindowState		   *wstate = wcontext->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
+	WindowStatePerLevel	level_state = funcstate->wlevel;
+	FrameBufferEntry   *entry = level_state->curr_entry_buf;
+	bool				found;
 
 	/*
 	 * Fast pass check.
@@ -5989,8 +6006,10 @@ windowBufferNextLastAgg(WindowBufferCursor cursor)
 {
 	if (cursor->use_last_agg)
 	{
-		WindowStatePerLevel	level_state = cursor->level_state;
-		WindowState		   *wstate = cursor->wstate;
+		WindowFuncContext	wcontext = cursor->wcontext;
+		WindowState		   *wstate = wcontext->windowstate;
+		WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
+		WindowStatePerLevel	level_state = funcstate->wlevel;
 		FrameBufferEntry   *entry = level_state->curr_entry_buf;
 		bool				found;
 		ExprContext		   *econtext = wstate->ps.ps_ExprContext;
@@ -6024,16 +6043,18 @@ windowBufferNextLastAgg(WindowBufferCursor cursor)
 }
 
 /*
- * Scans the frame buffer and returns the current value.  It advances the cursor
- * 1 forward or backward.  If the scan is finished, it returns NULL.
+ * Scans the frame buffer and returns true if fetched the current value.
+ * It advances the cursor 1 forward or backward.  If the scan is finished,
+ * it returns false.  The function values are stored in the cursor, so
+ * windowBufferGetArg() later will return the value.
  */
-static List *
+bool
 windowBufferNext(WindowBufferCursor cursor)
 {
 	List	   *func_values;
 
 	if (!cursor->has_tuples)
-		return NULL;
+		return false;
 
 	if (cursor->forward)
 	{
@@ -6041,9 +6062,8 @@ windowBufferNext(WindowBufferCursor cursor)
 		 * In forward, start from tuplestore and use last_agg after that.
 		 */
 		func_values = windowBufferNextTupleStore(cursor);
-		if (func_values)
-			return func_values;
-		return windowBufferNextLastAgg(cursor);
+		if (!func_values)
+			func_values = windowBufferNextLastAgg(cursor);
 	}
 	else
 	{
@@ -6051,16 +6071,50 @@ windowBufferNext(WindowBufferCursor cursor)
 		 * In backward, start from last_agg and use tuplestore after that.
 		 */
 		func_values = windowBufferNextLastAgg(cursor);
-		if (func_values)
-			return func_values;
-		return windowBufferNextTupleStore(cursor);
+		if (!func_values)
+			func_values = windowBufferNextTupleStore(cursor);
 	}
+
+	cursor->func_values = func_values;
+
+	return func_values != NIL;
+}
+
+/*
+ * Fetch the arg value at the row this cursor is pointing.
+ */
+Datum
+windowBufferGetArg(WindowBufferCursor cursor, int argno, bool *isnull)
+{
+	WindowFuncContext	wcontext = cursor->wcontext;
+	WindowState		   *wstate = wcontext->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wcontext->funcno];
+	WindowValue		   *winvalue;
+
+	if (!cursor->func_values)
+	{
+		*isnull = true;
+		return (Datum) 0;
+	}
+
+	winvalue = (WindowValue *)
+		list_nth(cursor->func_values, funcstate->serial_index + argno);
+
+	if (!winvalue)
+	{
+		*isnull = true;
+		return (Datum) 0;
+	}
+
+	*isnull = winvalue->valueIsNull;
+
+	return winvalue->value;
 }
 
 /*
  * Ends the cursor.  The cursor will be freed.  The reader will be ok to use again.
  */
-static void
+void
 windowBufferEndScan(WindowBufferCursor cursor)
 {
 	if(!ntuplestore_acc_seek(cursor->reader, &cursor->orig_pos))
@@ -6580,16 +6634,11 @@ ntile_final(PG_FUNCTION_ARGS)
 static Datum
 lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 {
-	WindowRefExprState *wrxstate =
-		(WindowRefExprState *) PG_GETARG_POINTER(0);
-	WindowState *wstate = wrxstate->windowstate;
-	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
-	WindowStatePerLevel level_state = funcstate->wlevel;
+	WindowFuncContext	wcontext = windowGetContext(fcinfo);
 	WindowBufferCursor	cursor;
-	List			   *func_values;
+	Datum				winvalue;
 
 	Insist(PG_NARGS() >= 2);
-	Assert(level_state->is_rows);
 
 	/*
 	 * Check the offset argument if given.  It is actually not used to
@@ -6620,51 +6669,34 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 	/*
 	 * The direction doesn't matter, as the frame has only one row.
 	 */
-	cursor = windowBufferBeginScan(wstate, level_state, true);
-	func_values = windowBufferNext(cursor);
+	cursor = windowBufferBeginScan(wcontext, true);
 	/*
 	 * If this is out of frame, return the default value argument,
 	 * or NULL if not given.
 	 */
-	if (!func_values)
+	if (!windowBufferNext(cursor))
 	{
 		if (PG_NARGS() > 3)
 		{
-			funcstate->win_value_is_null = PG_ARGISNULL(3);
-			if (!funcstate->win_value_is_null)
-				funcstate->win_value = PG_GETARG_DATUM(3);
+			*isnull = PG_ARGISNULL(3);
+			if (!*isnull)
+				winvalue = PG_GETARG_DATUM(3);
 			else
-				funcstate->win_value = (Datum) 0;
+				winvalue = (Datum) 0;
 		}
 		else
 		{
-			funcstate->win_value = (Datum) 0;
-			funcstate->win_value_is_null = true;
+			winvalue = (Datum) 0;
+			*isnull = true;
 		}
 	}
 	else
 	{
-		WindowValue		   *winvalue;
-
-		winvalue = (WindowValue *)
-			list_nth(func_values, funcstate->serial_index);
-
-		if (winvalue)
-		{
-			funcstate->win_value = winvalue->value;
-			funcstate->win_value_is_null = winvalue->valueIsNull;
-		}
-		else
-		{
-			funcstate->win_value = (Datum) 0;
-			funcstate->win_value_is_null = true;
-		}
+		winvalue = windowBufferGetArg(cursor, 0, isnull);
 	}
 	windowBufferEndScan(cursor);
 
-	*isnull = funcstate->win_value_is_null;
-
-	return funcstate->win_value;
+	return winvalue;
 }
 
 /*
@@ -6704,55 +6736,40 @@ lag_generic(PG_FUNCTION_ARGS)
  * different in the scanning direction.
  */
 static Datum
-first_last_value_internal(WindowRefExprState *wrxstate, bool *isnull,
-						  bool isfirstvalue)
+first_last_value_internal(PG_FUNCTION_ARGS, bool *isnull, bool isfirstvalue)
 {
+	WindowFuncContext	wcontext = windowGetContext(fcinfo);
+	/* XXX: These are only to take out WindowRef */
+	WindowRefExprState *wrxstate = (WindowRefExprState *) wcontext;
 	WindowState *wstate = wrxstate->windowstate;
 	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
-	WindowStatePerLevel level_state = funcstate->wlevel;
+	/* XXX: Need cleaner API for NULL_TREATMENT */
 	WindowRef		   *wref = funcstate->wref;
 	WindowBufferCursor	cursor;
-	List			   *func_values;
-	WindowValue		   *winvalue;
+	Datum				winvalue;
 
 	/*
 	 * Start a buffer cursor.  If it's first_value, the direction
 	 * is forward.
 	 */
-	cursor = windowBufferBeginScan(wstate, level_state, isfirstvalue);
-	do{
-		winvalue = NULL;
-		func_values = windowBufferNext(cursor);
+	cursor = windowBufferBeginScan(wcontext, isfirstvalue);
+	do
+	{
+		winvalue = (Datum) 0;
+		*isnull = true;
 		/*
 		 * If this is out of frame, stop here.
 		 */
-		if (!func_values)
+		if (!windowBufferNext(cursor))
 			break;
 		/*
 		 * Fetch the argument value.
 		 */
-		winvalue = (WindowValue *)
-			list_nth(func_values, funcstate->serial_index);
-	} while(wref->null_treatment == NULL_TREATMENT_IGNORE &&
-			winvalue->valueIsNull);
+		winvalue = windowBufferGetArg(cursor, 0, isnull);
+	} while(wref->null_treatment == NULL_TREATMENT_IGNORE && *isnull);
 	windowBufferEndScan(cursor);
 
-	/*
-	 * Set the result if found, otherwise set NULL.
-	 */
-	if (winvalue)
-	{
-		funcstate->win_value = winvalue->value;
-		funcstate->win_value_is_null = winvalue->valueIsNull;
-	}
-	else
-	{
-		funcstate->win_value = (Datum) 0;
-		funcstate->win_value_is_null = true;
-	}
-	*isnull = funcstate->win_value_is_null;
-
-	return funcstate->win_value;
+	return winvalue;
 }
 
 /*
@@ -6765,8 +6782,7 @@ last_value_generic(PG_FUNCTION_ARGS)
 	Datum d;
 	bool isnull = false;
 	
-	d = first_last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
-								  &isnull, false);
+	d = first_last_value_internal(fcinfo, &isnull, false);
 	
 	if (isnull)
 	   PG_RETURN_NULL();
@@ -6784,8 +6800,7 @@ first_value_generic(PG_FUNCTION_ARGS)
     Datum d;
     bool isnull = false;
 
-    d = first_last_value_internal((WindowRefExprState *)PG_GETARG_POINTER(0),
-								  &isnull, true);
+    d = first_last_value_internal(fcinfo, &isnull, true);
 
     if (isnull)
        PG_RETURN_NULL();
@@ -6858,6 +6873,77 @@ lead_lag_frame_maker(PG_FUNCTION_ARGS)
 	}
 
 	frame->trail->val = frame->lead->val = offset;
+
+	PG_RETURN_POINTER(frame);
+}
+
+/*
+ * A frame maker function for weighted moving functions.  This requires the
+ * second argument to be a const array and the third as a const int.
+ */
+Datum
+wm_frame_maker(PG_FUNCTION_ARGS)
+{
+	WindowRef	   *wref = (WindowRef *) PG_GETARG_POINTER(0);
+	WindowFrame	   *frame = makeNode(WindowFrame);
+	Const		   *weights_expr, *offset_expr;
+	ArrayType	   *weights;
+	int32			width, offset;
+	int64			start, end;
+
+	frame->system_generated = true;
+	frame->is_between = true;
+	frame->is_rows = true;
+	frame->trail = makeNode(WindowFrameEdge);
+	frame->lead = makeNode(WindowFrameEdge);
+
+	weights_expr = (Const *) list_nth(wref->args, 1);
+	offset_expr = (Const *) list_nth(wref->args, 2);
+
+	if (!IsA(weights_expr, Const))
+		ereport(ERROR,
+				(errmsg("weight vector argument must be a constant")));
+	weights = DatumGetArrayTypeP(weights_expr->constvalue);
+	width = ArrayGetNItems(ARR_NDIM(weights), ARR_DIMS(weights));
+
+	/*
+	 * WM window function family requires a stable value for the weight vector
+	 * and offset value.  Up to now, the planner have hopefully reduced the
+	 * argument expressions into simple Consts.  Things that were not able to
+	 * become a Const cannot be handled by those functions.
+	 */
+	if (!IsA(offset_expr, Const))
+		ereport(ERROR,
+				(errmsg("offset argument must be a constant")));
+	offset = DatumGetInt32(offset_expr->constvalue);
+
+	start = -width + 1 + offset;
+	if (start < 0)
+		frame->trail->kind = WINDOW_BOUND_PRECEDING;
+	else if (start == 0)
+		frame->trail->kind = WINDOW_CURRENT_ROW;
+	else
+		frame->trail->kind = WINDOW_BOUND_FOLLOWING;
+	frame->trail->val = (Node *) makeConst(INT8OID,
+										   -1,
+										   8,
+										   Int64GetDatum(Abs(start)),
+										   false,
+										   true);
+
+	end = offset;
+	if (end < 0)
+		frame->lead->kind = WINDOW_BOUND_PRECEDING;
+	else if (end == 0)
+		frame->lead->kind = WINDOW_CURRENT_ROW;
+	else
+		frame->lead->kind = WINDOW_BOUND_FOLLOWING;
+	frame->lead->val = (Node *) makeConst(INT8OID,
+										  -1,
+										  8,
+										  Int64GetDatum(Abs(end)),
+										  false,
+										  true);
 
 	PG_RETURN_POINTER(frame);
 }

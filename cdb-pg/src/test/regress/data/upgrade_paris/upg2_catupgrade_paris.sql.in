@@ -573,6 +573,83 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.gp_map_attnums_in_expr(oid, oid, text)
 CREATE FUNCTION @gpupgradeschemaname@.lead_lag_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT
 	AS 'lead_lag_frame_maker' WITH (OID=5081);
 
+-- weighted moving functions
+CREATE FUNCTION @gpupgradeschemaname@.wm_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT
+	AS 'wm_frame_maker' WITH (OID=5082);
+
+/*
+ MPP-17916: we have to deal with upgrade for these.  Comment out for now.
+CREATE FUNCTION @gpupgradeschemaname@.wm_avg(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7184);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_var_pop(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7185);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_var_samp(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7186);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_stddev_pop(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+AS 'window_dummy' WITH (OID=7187);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_stddev_samp(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7188);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_avg(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7189);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_var_pop(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7190);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_var_samp(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7191);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_stddev_pop(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7192);
+
+CREATE FUNCTION @gpupgradeschemaname@.wm_stddev_samp(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'window_dummy' WITH (OID=7193);
+*/
+
+CREATE FUNCTION @gpupgradeschemaname@.float8_wm_avg(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'float8_wm_avg' WITH (OID=7194);
+COMMENT ON FUNCTION @gpupgradeschemaname@.float8_wm_avg(internal, float8, _float8, int4) IS 'weighted moving average';
+
+CREATE FUNCTION @gpupgradeschemaname@.float8_wm_var_pop(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'float8_wm_var_pop' WITH (OID=7195);
+COMMENT ON FUNCTION @gpupgradeschemaname@.float8_wm_var_pop(internal, float8, _float8, int4) IS 'weighted moving variance';
+
+CREATE FUNCTION @gpupgradeschemaname@.float8_wm_var_samp(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'float8_wm_var_samp' WITH (OID=7196);
+COMMENT ON FUNCTION @gpupgradeschemaname@.float8_wm_var_samp(internal, float8, _float8, int4) IS 'weighted moving variance';
+
+CREATE FUNCTION @gpupgradeschemaname@.float8_wm_stddev_pop(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'float8_wm_stddev_pop' WITH (OID=7197);
+COMMENT ON FUNCTION @gpupgradeschemaname@.float8_wm_stddev_pop(internal, float8, _float8, int4) IS 'weighted moving standard deviation';
+
+CREATE FUNCTION @gpupgradeschemaname@.float8_wm_stddev_samp(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'float8_wm_stddev_samp' WITH (OID=7198);
+COMMENT ON FUNCTION @gpupgradeschemaname@.float8_wm_stddev_samp(internal, float8, _float8, int4) IS 'weighted moving standard deviation';
+
+CREATE FUNCTION @gpupgradeschemaname@.numeric_wm_avg(internal, numeric, _numeric, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
+	AS 'numeric_wm_avg' WITH (OID=7199);
+COMMENT ON FUNCTION @gpupgradeschemaname@.numeric_wm_avg(internal, numeric, _numeric, int4) IS 'weighted moving average';
+
+CREATE FUNCTION @gpupgradeschemaname@.numeric_wm_var_pop(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'numeric_wm_var_pop' WITH (OID=7200);
+COMMENT ON FUNCTION @gpupgradeschemaname@.numeric_wm_var_pop(internal, numeric, _numeric, int4) IS 'weighted moving variance';
+
+CREATE FUNCTION @gpupgradeschemaname@.numeric_wm_var_samp(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'numeric_wm_var_samp' WITH (OID=7201);
+COMMENT ON FUNCTION @gpupgradeschemaname@.numeric_wm_var_samp(internal, numeric, _numeric, int4) IS 'weighted moving variance';
+
+CREATE FUNCTION @gpupgradeschemaname@.numeric_wm_stddev_pop(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'numeric_wm_stddev_pop' WITH (OID=7202);
+COMMENT ON FUNCTION @gpupgradeschemaname@.numeric_wm_stddev_pop(internal, numeric, _numeric, int4) IS 'weighted moving standard deviation';
+
+CREATE FUNCTION @gpupgradeschemaname@.numeric_wm_stddev_samp(internal, numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
+	AS 'numeric_wm_stddev_samp' WITH (OID=7203);
+COMMENT ON FUNCTION @gpupgradeschemaname@.numeric_wm_stddev_samp(internal, numeric, _numeric, int4) IS 'weighted moving standard deviation';
+
 -- Create Operator Class for UUID
 --		add entries to pg_opclass
 \set pg_opclass_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_opclass.data'"`

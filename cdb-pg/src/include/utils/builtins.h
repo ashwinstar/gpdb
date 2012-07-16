@@ -407,6 +407,12 @@ extern Datum pg_highest_oid(PG_FUNCTION_ARGS); /* MPP */
 extern Datum gp_max_distributed_xid(PG_FUNCTION_ARGS); /* MPP */
 extern Datum gp_distributed_xid(PG_FUNCTION_ARGS); /* MPP */
 
+extern Datum float8_wm_avg(PG_FUNCTION_ARGS);
+extern Datum float8_wm_var_pop(PG_FUNCTION_ARGS);
+extern Datum float8_wm_var_samp(PG_FUNCTION_ARGS);
+extern Datum float8_wm_stddev_pop(PG_FUNCTION_ARGS);
+extern Datum float8_wm_stddev_samp(PG_FUNCTION_ARGS);
+
 /* dbsize.c */
 extern Datum pg_tablespace_size_oid(PG_FUNCTION_ARGS);
 extern Datum pg_tablespace_size_name(PG_FUNCTION_ARGS);
@@ -987,6 +993,12 @@ extern Datum numeric_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum int8_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum float8_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum numeric_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
+
+extern Datum numeric_wm_avg(PG_FUNCTION_ARGS);
+extern Datum numeric_wm_var_pop(PG_FUNCTION_ARGS);
+extern Datum numeric_wm_var_samp(PG_FUNCTION_ARGS);
+extern Datum numeric_wm_stddev_pop(PG_FUNCTION_ARGS);
+extern Datum numeric_wm_stddev_samp(PG_FUNCTION_ARGS);
 
 /* ri_triggers.c */
 extern Datum RI_FKey_check_ins(PG_FUNCTION_ARGS);

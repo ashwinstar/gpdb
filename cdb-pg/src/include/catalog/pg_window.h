@@ -467,4 +467,18 @@ DATA(insert ( 7260  t f f f 7261		0		0		0	d	f	5081 ));
 DATA(insert ( 7262  t f f f 7263		0		0		0	d	f	5081 ));
 DATA(insert ( 7264  t f f f 7265		0		0		0	d	f	5081 ));
 
+/* wm_avg */
+DATA(insert ( 7184  t f f f 7194		0		0		0	d	f	5082 ));
+DATA(insert ( 7189  t f f f 7199		0		0		0	d	f	5082 ));
+/* wm_var */
+DATA(insert ( 7185  t f f f 7195		0		0		0	d	f	5082 ));
+DATA(insert ( 7186  t f f f 7196		0		0		0	d	f	5082 ));
+DATA(insert ( 7190  t f f f 7200		0		0		0	d	f	5082 ));
+DATA(insert ( 7191  t f f f 7201		0		0		0	d	f	5082 ));
+/* wm_stddev */
+DATA(insert ( 7187  t f f f 7197		0		0		0	d	f	5082 ));
+DATA(insert ( 7188  t f f f 7198		0		0		0	d	f	5082 ));
+DATA(insert ( 7192  t f f f 7202		0		0		0	d	f	5082 ));
+DATA(insert ( 7193  t f f f 7203		0		0		0	d	f	5082 ));
+
 #endif   /* _PG_WINDOW_H */

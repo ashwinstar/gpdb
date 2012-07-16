@@ -1560,3 +1560,38 @@ select k, i, j, first_value(j) ignore nulls over (partition by k order by i) as 
 select count(*) ignore nulls over () from ignull;
 select row_number() ignore nulls over () from ignull;
 select f() ignore nulls from ignull;
+
+-- weighted moving functions
+select pn,
+       wm_avg(pn, array[0.1, 0.2, 0.7], 0) over(order by pn),
+       wm_avg(pn::float, array[0.1, 0.2, 0.7], 0) over(order by pn)
+from sale;
+select pn,
+       wm_avg(pn::float, array[0.2, 0.4], -2) over(order by pn),
+       wm_avg(pn::float, array[0.2, 0.4], -1) over(order by pn),
+       wm_avg(pn::float, array[0.2, 0.4], +1) over(order by pn),
+       wm_avg(pn::float, array[0.2, 0.4], +2) over(order by pn)
+from sale;
+select pn,
+       wm_var_pop(pn, array[0.1, 0.2, 0.7], 0) over (order by pn),
+       wm_var_samp(pn, array[0.1, 0.2, 0.7], 0) over(order by pn),
+       wm_var_pop(pn::float, array[0.1, 0.2, 0.7], 0) over (order by pn),
+       wm_var_samp(pn::float, array[0.1, 0.2, 0.7], 0) over(order by pn)
+from sale;
+select pn,
+       wm_stddev_pop(pn::float, array[0.2, 0.4], -2) over(order by pn),
+       wm_stddev_pop(pn::float, array[0.2, 0.4], -1) over(order by pn),
+       wm_stddev_pop(pn::float, array[0.2, 0.4], +1) over(order by pn),
+       wm_stddev_pop(pn::float, array[0.2, 0.4], +2) over(order by pn)
+from sale;
+select wm_avg(a, '{0.2}'::numeric[], 0) over (order by a)
+from (values('NaN'::numeric),(0.1)) s(a);
+select wm_avg(a, '{0.2, 0.3}'::numeric[], 0) over (order by a)
+from (values(NULL::numeric),(0.1)) s(a);
+
+select wm_avg(pn, ary, 3) over (order by pn)
+from sale, (values('{0.1, 0.2}'::float[])) s(ary);
+select wm_avg(pn, '{0.1,0.2}'::float[], ofs) over (order by pn)
+from sale, (values(3)) s(ofs);
+select wm_var_pop(pn, array[0.1, 0.9], 0) over
+    (order by pn rows between 1 preceding and current row) from sale;

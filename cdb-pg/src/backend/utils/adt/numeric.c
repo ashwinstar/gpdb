@@ -28,6 +28,7 @@
 
 #include "access/hash.h"
 #include "catalog/pg_type.h"
+#include "executor/nodeWindow.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "utils/array.h"
@@ -6246,4 +6247,260 @@ numeric_to_pos_int8_trunc(Numeric num)
 	free_var(&var);
 	
 	return result;
+}
+
+/*
+ * Scans the window and the calculate transition values as in numeric_accum.
+ */
+static int
+numeric_wm_accum(PG_FUNCTION_ARGS,
+				 NumericVar *psumWX2, NumericVar *psumWX,
+				 NumericVar *psumW, NumericVar *psumW2, bool *isnan)
+{
+	WindowFuncContext	wcontext = windowGetContext(fcinfo);
+	WindowBufferCursor	cursor;
+	Datum				winvalue;
+	bool				isnull;
+	ArrayType		   *weight = PG_GETARG_ARRAYTYPE_P(2);
+	int4				offset = PG_GETARG_INT32(3);
+	int64				row_index;
+	Datum			   *W;
+	bool			   *W_isnull;
+	int					numweight = 0,
+						k, numrow = 0,
+						i, rscale;
+	NumericVar			vX, vWXX, vWX, vWW, *vW;
+
+	init_ro_var_from_var(&const_zero, psumWX2);
+	init_ro_var_from_var(&const_zero, psumWX);
+	init_ro_var_from_var(&const_zero, psumW);
+	init_ro_var_from_var(&const_zero, psumW2);
+
+	quick_init_var(&vX);
+	quick_init_var(&vWX);
+	quick_init_var(&vWXX);
+	quick_init_var(&vWW);
+
+	/* Transform weight vector to a NumericVar array. */
+	deconstruct_array(weight, NUMERICOID, -1, false, 'i',
+					  &W, &W_isnull, &numweight);
+	vW = (NumericVar *) palloc(numweight * sizeof(NumericVar));
+	for (i = 0; i < numweight; i++)
+		init_ro_var_from_num(DatumGetNumeric(W[i]), &vW[i]);
+
+	row_index = windowGetRowIndex(wcontext);
+	k = numweight - 1 - row_index - offset;
+	k = Max(k, 0);
+
+	*isnan = false;
+	cursor = windowBufferBeginScan(wcontext, true);
+	for (;;)
+	{
+		if (!windowBufferNext(cursor))
+			break;
+		winvalue = windowBufferGetArg(cursor, 0, &isnull);
+		if (isnull)
+		{
+			/* Skip input. */
+			k++;
+			continue;
+		}
+		/* Shouldn't happen. */
+		if (k >= numweight)
+			elog(ERROR, "frame size doesn't match weight vector");
+
+		if (NUMERIC_IS_NAN(DatumGetNumeric(winvalue)))
+			*isnan = true;
+		init_var_from_num(DatumGetNumeric(winvalue), &vX);
+		rscale = vX.dscale + vW[k].dscale;
+
+		mul_var(&vW[k], &vX, &vWX, rscale);
+		mul_var(&vWX, &vX, &vWXX, rscale + vX.dscale);
+		mul_var(&vW[k], &vW[k], &vWW, vW[k].dscale * 2);
+		/* sumWX2 += w * x * x; */
+		add_var(psumWX2, &vWXX, psumWX2);
+		/* sumWX += w * x; */
+		add_var(psumWX, &vWX, psumWX);
+		/* sumW += w */
+		add_var(psumW, &vW[k], psumW);
+		/* sumW2 += w * w */
+		add_var(psumW2, &vWW, psumW2);
+
+		k++;
+		numrow++;
+	}
+	windowBufferEndScan(cursor);
+
+	free_var(&vX);
+	free_var(&vWXX);
+	free_var(&vWX);
+	free_var(&vWW);
+
+	for (i = 0; i < numweight; i++)
+		free_var(&vW[i]);
+	pfree(vW);
+
+	return numrow;
+}
+
+/*
+ * The finalization process of (var|stdev)_(pop|samp)
+ */
+static Numeric
+numeric_wm_stddev_internal(int N, NumericVar *psumWX2, NumericVar *psumWX,
+						   NumericVar *psumW, NumericVar *psumW2,
+						   bool variance, bool sample, bool *isnull)
+{
+	NumericVar			vnumerator1,
+						vnumerator2,
+						vnumerator,
+						vdenominator,
+						vresult;
+	Numeric				result;
+	int					rscale;
+
+	*isnull = false;
+	/*
+	 * Sample stddev and variance are undefined when N <= 1; population stddev
+	 * is undefined when N == 0. Return NULL in either case.
+	 */
+	if (N <= (sample ? 1 : 0))
+	{
+		*isnull = true;
+		return NULL;
+	}
+
+	quick_init_var(&vnumerator1);
+	quick_init_var(&vnumerator2);
+	quick_init_var(&vnumerator);
+	quick_init_var(&vdenominator);
+	quick_init_var(&vresult);
+
+	rscale = Max(psumWX2->dscale, psumWX->dscale);
+	rscale = Max(rscale, psumW->dscale);
+	rscale *= 2;
+	mul_var(psumWX2, psumW, &vnumerator1, rscale);
+	mul_var(psumWX, psumWX, &vnumerator2, rscale);
+	/* numerator = sumWX2 * sumW - sumWX * sumWX; */
+	sub_var(&vnumerator1, &vnumerator2, &vnumerator);
+	/* if (numerator <= 0.0) return 0 */
+	if (cmp_var(&vnumerator, &const_zero) <= 0)
+		result = make_result(&const_zero);
+	else
+	{
+		/* denominator = sumW * sumW, or (sumW * sumW - sumW2); */
+		mul_var(psumW, psumW, &vdenominator, rscale);
+		if (sample)
+			sub_var(&vdenominator, psumW2, &vdenominator);
+		rscale = select_div_scale(&vnumerator, &vdenominator);
+		/* result = numerator / denominator; */
+		div_var(&vnumerator, &vdenominator, &vresult, rscale, true);
+		if (!variance)
+			sqrt_var(&vresult, &vresult, rscale);
+		result = make_result(&vresult);
+	}
+
+	free_var(&vnumerator1);
+	free_var(&vnumerator2);
+	free_var(&vnumerator);
+	free_var(&vdenominator);
+	free_var(&vresult);
+
+	return result;
+}
+
+Datum
+numeric_wm_avg(PG_FUNCTION_ARGS)
+{
+	NumericVar			vsumWX2, vsumWX, vsumW, vsumW2;
+	int					N;
+	bool				isnan;
+	Numeric				result;
+	int					rscale;
+
+	N = numeric_wm_accum(fcinfo, &vsumWX2, &vsumWX,
+						 &vsumW, &vsumW2, &isnan);
+
+	if (N <= 0)
+		PG_RETURN_NULL();
+
+	if (isnan)
+		result = make_result(&const_nan);
+	else
+	{
+		NumericVar			vresult;
+
+		quick_init_var(&vresult);
+		rscale = select_div_scale(&vsumWX, &vsumW);
+		div_var(&vsumWX, &vsumW, &vresult, rscale, true);
+
+		result = make_result(&vresult);
+		free_var(&vresult);
+	}
+
+	free_var(&vsumWX2);
+	free_var(&vsumWX);
+	free_var(&vsumW);
+	free_var(&vsumW2);
+
+	PG_RETURN_NUMERIC(result);
+}
+
+static Datum
+numeric_wm_stddev_body(PG_FUNCTION_ARGS, bool variance, bool sample)
+{
+	NumericVar			vsumWX2, vsumWX, vsumW, vsumW2;
+	int					N;
+	bool				isnull, isnan;
+	Numeric				result;
+
+	N = numeric_wm_accum(fcinfo, &vsumWX2, &vsumWX,
+						 &vsumW, &vsumW2, &isnan);
+
+	if (isnan)
+	{
+		isnull = false;
+		result = make_result(&const_nan);
+	}
+	else
+		result = numeric_wm_stddev_internal(N,
+											&vsumWX2,
+											&vsumWX,
+											&vsumW,
+											&vsumW2,
+											variance, sample, &isnull);
+
+	free_var(&vsumWX2);
+	free_var(&vsumWX);
+	free_var(&vsumW);
+	free_var(&vsumW2);
+
+	if (isnull)
+		PG_RETURN_NULL();
+
+	PG_RETURN_NUMERIC(result);
+}
+
+Datum
+numeric_wm_var_pop(PG_FUNCTION_ARGS)
+{
+	return numeric_wm_stddev_body(fcinfo, true, false);
+}
+
+Datum
+numeric_wm_var_samp(PG_FUNCTION_ARGS)
+{
+	return numeric_wm_stddev_body(fcinfo, true, true);
+}
+
+Datum
+numeric_wm_stddev_pop(PG_FUNCTION_ARGS)
+{
+	return numeric_wm_stddev_body(fcinfo, false, false);
+}
+
+Datum
+numeric_wm_stddev_samp(PG_FUNCTION_ARGS)
+{
+	return numeric_wm_stddev_body(fcinfo, false, true);
 }
