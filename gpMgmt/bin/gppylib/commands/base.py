@@ -353,6 +353,8 @@ def createExecutionContext(execution_context_id,remoteHost,stdin, nakedExecution
     if gExecutionContextFactory is not None:
         return gExecutionContextFactory.createExecutionContext(execution_context_id, remoteHost, stdin)
     elif execution_context_id == LOCAL:
+        if not (remoteHost is None):
+            raise Exception("Programmer Error.  Specified LOCAL execution context but did provide a remoteHost")
         return LocalExecutionContext(stdin)
     elif execution_context_id == REMOTE:
         if remoteHost is None:

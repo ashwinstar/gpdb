@@ -499,7 +499,10 @@ try:
          cmd.run(validateAfter = True)
          logger.info(str(cmd))
       if action == DELETE:
-         cmd = RemoveFiles(name = "gprepairmirrorseg remove extra file", directory = sourceFile, ctxt = LOCAL, remoteHost = sourceHost)
+         cmd = RemoveFiles(name = "gprepairmirrorseg remove extra file", 
+                           directory = sourceFile, 
+                           ctxt = REMOTE, 
+                           remoteHost = sourceHost)
          cmd.run(validateAfter = True)
          logger.info(str(cmd))
       if action == NO_ACTION:
