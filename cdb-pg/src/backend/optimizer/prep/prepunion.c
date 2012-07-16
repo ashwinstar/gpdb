@@ -902,9 +902,10 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 			continue;
 
 		/*
-		 * show root and leaf partitions
+		 * Intermediate partitions of a partitioned table do not possess any data and can be skipped.
+		 * This is not the case for inherited tables.
 		 */
-		if (!rel_is_partitioned(parentOID) && !rel_is_leaf_partition(childOID))
+		if (rel_is_child_partition(childOID) && !rel_is_leaf_partition(childOID))
 		{
 			continue;
 		}

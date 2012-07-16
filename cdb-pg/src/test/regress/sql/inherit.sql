@@ -1,4 +1,23 @@
 --
+-- Test without inheritance guc
+--
+
+set gp_enable_inheritance = false;
+
+drop schema if exists inherit cascade;
+create schema inherit;
+set search_path=inherit;
+
+create table parent(a int);
+create table child() inherits (parent); -- should error out
+
+--
+-- Support inheritance by setting the guc
+--
+
+set gp_enable_inheritance = true;
+
+--
 -- Test inheritance features
 --
 CREATE TABLE a (dummy serial, aa TEXT);
@@ -163,19 +182,8 @@ DROP TABLE inhg;
 /* Multiple primary keys creation should fail */
 CREATE TABLE inhg (x text, LIKE inhx INCLUDING INDEXES, PRIMARY KEY(x)); /* fails */
 CREATE TABLE inhz (xx text DEFAULT 'text', yy int UNIQUE);
-CREATE UNIQUE INDEX inhz_xx_idx on inhz (xx) WHERE xx <> 'test';
-/* Ok to create multiple unique indexes */
-CREATE TABLE inhg (x text UNIQUE, LIKE inhz INCLUDING INDEXES);
-INSERT INTO inhg (xx, yy, x) VALUES ('test', 5, 10);
-INSERT INTO inhg (xx, yy, x) VALUES ('test', 10, 15);
-INSERT INTO inhg (xx, yy, x) VALUES ('foo', 10, 15); -- should fail
-DROP TABLE inhg;
+CREATE UNIQUE INDEX inhz_xx_idx on inhz (xx, yy) WHERE xx <> 'test';
 DROP TABLE inhz;
-
--- Test changing the type of inherited columns
-insert into d values('test','one','two','three');
-alter table a alter column aa type integer using bit_length(aa);
-select * from d ORDER BY 1,2,3;
 
 -- Tests for casting between the rowtypes of parent and child
 -- tables. See the pgsql-hackers thread beginning Dec. 4/04

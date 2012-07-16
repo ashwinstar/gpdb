@@ -53,7 +53,7 @@ test: create_aggregate
 test: create_operator
 test: create_index
 test: drop_if_exists
-ignore: inherit
+test: inherit
 test: vacuum
 test: create_view
 ignore: sanity_check
