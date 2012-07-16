@@ -646,6 +646,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc CONCURRENTLY
 			%nonassoc CONNECTION
 			%nonassoc CONSTRAINTS
+			%nonassoc CONTAINS
 			%nonassoc CONTENT_P
 			%nonassoc CONTINUE_P
 			%nonassoc CONVERSION_P
@@ -746,6 +747,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc MIRROR
 			%nonassoc MISSING
 			%nonassoc MODE
+			%nonassoc MODIFIES
 			%nonassoc MODIFY
 			%nonassoc MONTH_P
 			%nonassoc MOVE
@@ -793,6 +795,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc RANDOMLY
 			%nonassoc READ
 			%nonassoc READABLE
+			%nonassoc READS
 			%nonassoc REASSIGN
 			%nonassoc RECHECK
 			%nonassoc RECURSIVE
@@ -827,6 +830,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc SHOW
 			%nonassoc SIMPLE
 			%nonassoc SPLIT
+			%nonassoc SQL
 			%nonassoc STABLE
 			%nonassoc START
 			%nonassoc STATEMENT
@@ -12715,8 +12719,8 @@ unreserved_keyword:
 			| MIRROR
 			| MISSING
 			| MODE
-			| MODIFY
 			| MODIFIES
+			| MODIFY
 			| MONTH_P
 			| MOVE
 			| NAME_P
@@ -12910,6 +12914,7 @@ PartitionIdentKeyword: ABORT_P
 			| CONCURRENTLY
 			| CONNECTION
 			| CONSTRAINTS
+			| CONTAINS
 			| CONVERSION_P
 			| COPY
 			| COST
@@ -13000,6 +13005,7 @@ PartitionIdentKeyword: ABORT_P
 			| MIRROR
 			| MISSING
 			| MODE
+			| MODIFIES
 			| MODIFY
 			| MOVE
 			| NAMES
@@ -13070,6 +13076,7 @@ PartitionIdentKeyword: ABORT_P
 			| SHOW
 			| SIMPLE
 			| SPLIT
+			| SQL
 			| STABLE
 			| START
 			| STATEMENT
