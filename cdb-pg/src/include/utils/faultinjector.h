@@ -150,6 +150,7 @@ typedef enum FaultInjectorIdentifier_e {
 	SubtransactionRollback,
 	SyncPersistentTable,
 	XLOGInsert,
+	LocalTmRecordTransactionCommit,
 	
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
@@ -187,6 +188,8 @@ typedef enum FaultInjectorType_e {
 	FaultInjectorTypeReset,
 	
 	FaultInjectorTypeStatus,
+	
+	FaultInjectorTypePanicSuppress,
 	
 	/* INSERT has to be done before that line */
 	FaultInjectorTypeMax,

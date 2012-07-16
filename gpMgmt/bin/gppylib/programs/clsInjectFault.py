@@ -301,7 +301,8 @@ class GpInjectFaultProgram:
 			      "suspend (suspend execution), resume (resume execution that was suspended), " \
 			      "skip (inject skip i.e. skip checkpoint), " \
 			      "memory_full (all memory is consumed when injected), " \
-			      "reset (remove fault injection), status (report fault injection status) ")
+			      "reset (remove fault injection), status (report fault injection status), " \
+			      "panic_suppress (inject suppressed PANIC in critical section) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
                             help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default." \
@@ -365,8 +366,9 @@ class GpInjectFaultProgram:
                               "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
                               "segment_transition_request (inject fault after segment receives state transition request), " \
                               "segment_probe_response (inject fault after segment is probed by FTS), " \
-				  "sync_persistent_table (inject fault to sync persistent table to disk), " \
-				  "xlog_insert (inject fault to skip insert record into xlog), " \
+			      "sync_persistent_table (inject fault to sync persistent table to disk), " \
+			      "xlog_insert (inject fault to skip insert record into xlog), " \
+			      "local_tm_record_transaction_commit (inject fault for local transactions after transaction commit is recorded and flushed in xlog ), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

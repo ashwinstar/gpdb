@@ -50,6 +50,15 @@ typedef struct FaultInjectorShmem_s {
 	HTAB		*hash;
 } FaultInjectorShmem_s;
 
+#define DECLARE_SAVE_SUPPRESS_PANIC()\
+	int SaveSuppressPanic = false
+
+#define SUPPRESS_PANIC()\
+{\
+	SaveSuppressPanic = SuppressPanic;\
+	SuppressPanic = true;\
+}
+
 static	FaultInjectorShmem_s *faultInjectorShmem = NULL;
 
 static void LockAcquire(void);
@@ -88,6 +97,7 @@ FaultInjectorTypeEnumToString[] = {
 	_("memory_full"),
 	_("reset"),
 	_("status"),
+	_("panic_suppress"),
 	_("not recognized"),
 };
 
@@ -228,7 +238,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault to sync persistent table to disk */
 	_("xlog_insert"),
 		/* inject fault to skip insert record into xlog  */
-
+	_("local_tm_record_transaction_commit"),
+		/* inject fault after recording transaction commit for local transaction  */
 	_("not recognized"),
 };
 
@@ -640,6 +651,23 @@ FaultInjector_InjectFaultIfSet(
 		case FaultInjectorTypeResume:
 			break;
 			
+		case FaultInjectorTypePanicSuppress:
+		{
+			DECLARE_SAVE_SUPPRESS_PANIC();
+			
+			entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+			
+			FaultInjector_UpdateHashEntry(entryLocal);	
+			
+			SUPPRESS_PANIC();
+			
+			ereport(FATAL, 
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
+			
+			break;
+		}
 		default:
 			
 			ereport(LOG, 
@@ -849,7 +877,6 @@ FaultInjector_NewHashEntry(
 		case FileRepTransitionToInSyncMarkCompleted:
 		case FileRepTransitionToInSyncBeforeCheckpoint:
 		case FileRepTransitionToChangeTracking:
-		case Checkpoint:
 		case TransactionCommitPass1FromCreatePendingToCreated:
 		case TransactionCommitPass1FromDropInMemoryToDropPending:
 		case TransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
@@ -945,6 +972,26 @@ FaultInjector_NewHashEntry(
 								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
 						 "could not insert fault injection, segment not in master role");
+				
+				goto exit;
+			}			
+			break;
+			
+		case LocalTmRecordTransactionCommit:
+		case Checkpoint:
+			
+			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepMirrorRole)
+			{
+				LockRelease();
+				status = STATUS_ERROR;
+				ereport(WARNING,
+						(errmsg("could not insert fault injection entry into table, "
+								"segment not in primary or master role, "
+								"fault name:'%s' fault type:'%s' ",
+								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
+				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+						 "could not insert fault injection, segment not in primary or master role");
 				
 				goto exit;
 			}			
