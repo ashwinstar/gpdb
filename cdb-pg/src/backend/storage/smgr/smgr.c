@@ -3005,6 +3005,8 @@ smgrIsAppendOnlyMirrorResyncEofs(
 	{
 		if (entry->key.nestLevel >= nestLevel)
 		{
+			/* Early exit out of a seq search loop. Need to terminate the search */
+			hash_seq_term(&iterateStatus);
 			return true;
 		}
 	}
