@@ -971,7 +971,9 @@ def undo_update_pg_hba_conf(array):
     
     logger.info('Backing up pg_hba.conf file...')
     master_data_dir = array.master.getSegmentDataDirectory()
-    os.system('mv %s/%s %s/pg_hba.conf' % (master_data_dir, PG_HBA_BACKUP, master_data_dir))
+    pg_hba_backup = os.path.join(master_data_dir, PG_HBA_BACKUP)
+    if os.path.exists(pg_hba_backup):
+        os.system('mv %s %s/pg_hba.conf' % (pg_hba_backup, master_data_dir))
 
 #-------------------------------------------------------------------------
 # Main
