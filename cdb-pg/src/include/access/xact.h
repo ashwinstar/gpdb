@@ -188,6 +188,7 @@ extern void SetSharedTransactionId_reader(TransactionId xid, CommandId cid);
 extern void SetXactSeqXlog(void);
 extern bool IsTransactionState(void);
 extern bool IsAbortInProgress(void);
+extern bool IsCommitInProgress(void);
 extern bool IsAbortedTransactionBlockState(void);
 extern void GetAllTransactionXids(
 	DistributedTransactionId	*distribXid,

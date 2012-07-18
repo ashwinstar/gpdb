@@ -373,6 +373,14 @@ IsAbortInProgress(void)
 	return (s->state == TRANS_ABORT);
 }
 
+bool
+IsCommitInProgress(void)
+{
+	TransactionState s = CurrentTransactionState;
+	
+	return (s->state == TRANS_COMMIT);
+}
+
 /*
  *	IsAbortedTransactionBlockState
  *

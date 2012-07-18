@@ -24,9 +24,11 @@
 
 #include <signal.h>
 
+#include "access/xact.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbresynchronizechangetracking.h"
+#include "postmaster/service.h"
 #include "storage/spin.h"
 #include "storage/shmem.h"
 #include "utils/faultinjector.h"
@@ -49,15 +51,6 @@ typedef struct FaultInjectorShmem_s {
 	
 	HTAB		*hash;
 } FaultInjectorShmem_s;
-
-#define DECLARE_SAVE_SUPPRESS_PANIC()\
-	int SaveSuppressPanic = false
-
-#define SUPPRESS_PANIC()\
-{\
-	SaveSuppressPanic = SuppressPanic;\
-	SuppressPanic = true;\
-}
 
 static	FaultInjectorShmem_s *faultInjectorShmem = NULL;
 
@@ -980,7 +973,7 @@ FaultInjector_NewHashEntry(
 		case LocalTmRecordTransactionCommit:
 		case Checkpoint:
 			
-			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepMirrorRole)
+			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{
 				LockRelease();
 				status = STATUS_ERROR;
