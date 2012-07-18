@@ -55,8 +55,8 @@ extern uint64 ResourceQueueGetSuperuserQueryMemoryLimit(void);
 extern uint64 PolicyAutoStatementMemForNoSpillKB(PlannedStmt *stmt, uint64 minOperatorMemKB);
 
 /**
- * Is result node memory intensive?
+ * Is plan node memory intensive?
  */
-extern bool IsResultMemoryIntesive(Result *res);
+extern bool IsMemoryIntesive(Plan *res);
 
 #endif /* MEMQUOTA_H_ */
