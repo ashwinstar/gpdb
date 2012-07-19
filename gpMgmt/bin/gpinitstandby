@@ -162,6 +162,11 @@ def parseargs():
         logger.error('Options -s and -L cannot be specified together.')
         parser.exit(2, None)
 
+    # -L and -n are exclusive
+    if options.no_restart and options.no_update:
+        logger.error('Options -L and -n cannot be specified together.')
+        parser.exit(2, None)
+
     # we either need to delete or create or sync
     if not options.remove and not options.standby_host and not options.no_update:
         logger.error('No action provided in the options.')
