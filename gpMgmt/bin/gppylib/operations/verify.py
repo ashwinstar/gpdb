@@ -1,7 +1,7 @@
 import os
 
 from gppylib import gplog
-from gppylib.commands.base import Command, WorkerPool
+from gppylib.commands.base import Command, WorkerPool, REMOTE
 from gppylib.commands.gp import get_masterdatadir, SendFilerepVerifyMessage
 from gppylib.commands.unix import Scp
 from gppylib.db import dbconn
@@ -244,7 +244,7 @@ class CleanVerification(Operation):
         for seg in to_clean:
             host = seg.getSegmentHostName()
             path = os.path.join(seg.getSegmentDataDirectory(), 'pg_verify', "*%s*" % self.token)
-            cmd = Command('cleanup', 'rm -f %s' % path, remoteHost=host)
+            cmd = Command('cleanup', 'rm -f %s' % path, ctxt=REMOTE, remoteHost=host)
             pool.addCommand(cmd)
 
         logger.info('Waiting for clean commands to complete...')
