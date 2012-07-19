@@ -1022,7 +1022,7 @@ CommentTrigger(List *qualname, char *comment)
 			caql_addrel(cqclr(&cqc), pg_trigger),
 			&fetchCount,
 			NULL,
-			cql("SELECT oid from pg_trigger "
+			cql("SELECT oid FROM pg_trigger "
 				" WHERE tgrelid = :1 "
 				" AND tgname = :2 ",
 				ObjectIdGetDatum(RelationGetRelid(relation)),
@@ -1093,7 +1093,7 @@ CommentConstraint(List *qualname, char *comment)
 
 	pcqCtx = caql_beginscan(
 			caql_addrel(cqclr(&cqc), pg_constraint),
-			cql("SELECT * from pg_constraint "
+			cql("SELECT * FROM pg_constraint "
 				" WHERE conrelid = :1 ",
 				ObjectIdGetDatum(RelationGetRelid(relation))));
 
@@ -1420,7 +1420,7 @@ CommentCast(List *qualname, List *arguments, char *comment)
  * CommentResourceQueue --
  *
  * This routine is used to add/drop any user-comments a user might
- * have regarding a filespace.  The resource queue is specified by name
+ * have regarding a RESOURCE QUEUE.  The resource queue is specified by name
  * and, if found, and the user has appropriate permissions, a
  * comment will be added/dropped using the CreateSharedComments() routine.
  *

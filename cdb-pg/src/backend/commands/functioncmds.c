@@ -2114,8 +2114,8 @@ GetFuncSQLDataAccess(Oid prooid)
 
 	procTuple = caql_getfirst(
 			caql_addrel(cqclr(&cqc), procRelation),
-			cql("SELECT * from pg_proc"
-				" WHERE oid = :1",
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
 				ObjectIdGetDatum(prooid)));
 
 	if (!HeapTupleIsValid(procTuple))

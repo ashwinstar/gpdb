@@ -637,7 +637,7 @@ RemoveFileSpaceById(Oid fsoid)
 	numDel = caql_getcount(
 			NULL,
 			cql("DELETE FROM pg_filespace "
-				" where oid = :1 ",
+				" WHERE oid = :1 ",
 				ObjectIdGetDatum(fsoid)));
 
 	if (numDel != 1) /* shouldn't happen */
@@ -652,7 +652,7 @@ DeleteFilespaceEntryTuples(Oid fsoid)
 	numDel = caql_getcount(
 			NULL,
 			cql("DELETE FROM pg_filespace_entry "
-				" where fsefsoid = :1 ",
+				" WHERE fsefsoid = :1 ",
 				ObjectIdGetDatum(fsoid)));
 }
 
@@ -690,7 +690,7 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	tup = caql_getfirst(
 			pcqCtx,
 			cql("SELECT * FROM pg_filespace "
-				" where fsname = :1 "
+				" WHERE fsname = :1 "
 				" FOR UPDATE ",
 				CStringGetDatum(fsname)));
 
@@ -789,7 +789,7 @@ RenameFileSpace(const char *oldname, const char *newname)
 	newtuple = caql_getfirst(
 			pcqCtx,
 			cql("SELECT * FROM pg_filespace "
-				" where fsname = :1 "
+				" WHERE fsname = :1 "
 				" FOR UPDATE ",
 				CStringGetDatum(oldname)));
 	if (!HeapTupleIsValid(newtuple))
@@ -825,7 +825,7 @@ RenameFileSpace(const char *oldname, const char *newname)
 	numFsname = caql_getcount(
 			caql_addrel(cqclr(&cqc2), rel),
 			cql("SELECT COUNT(*) FROM pg_filespace "
-				" where fsname = :1 ",
+				" WHERE fsname = :1 ",
 				CStringGetDatum(newname)));
 
 	if (numFsname)
@@ -872,7 +872,7 @@ get_filespace_name(Oid fsoid)
 	result = caql_getcstring(
 			NULL,
 			cql("SELECT fsname FROM pg_filespace "
-				" where oid = :1 ",
+				" WHERE oid = :1 ",
 				ObjectIdGetDatum(fsoid)));
 			
 	/* We assume that there can be at most one matching tuple */
@@ -897,7 +897,7 @@ get_filespace_oid(Relation rel, const char *filespacename)
 	result = caql_getoid(
 			caql_addrel(cqclr(&cqc), rel),
 			cql("SELECT oid FROM pg_filespace "
-				" where fsname = :1 ",
+				" WHERE fsname = :1 ",
 				CStringGetDatum(filespacename)));
 
 	return result;
@@ -1111,7 +1111,7 @@ filespace_check_empty(Oid fsoid)
 	if (caql_getcount(
 				NULL,
 				cql("SELECT COUNT(*) FROM pg_tablespace "
-					" where spcfsoid = :1 ",
+					" WHERE spcfsoid = :1 ",
 					ObjectIdGetDatum(fsoid))))
 	{
 		ereport(ERROR,
@@ -1166,7 +1166,7 @@ dbid_remove_filespace_entries(Relation rel, int16 dbid)
 	numDel = caql_getcount(
 			caql_addrel(cqclr(&cqc), rel),
 			cql("DELETE FROM pg_filespace_entry "
-				" where fsedbid = :1 ",
+				" WHERE fsedbid = :1 ",
 				Int16GetDatum(dbid)));
 }
 

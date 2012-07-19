@@ -20,19 +20,20 @@
 
 typedef struct cqListData
 {
+	bool		bGood;			/* if true, struct is allocated */
 	const char* caqlStr;		/* caql string */
 	int			numkeys;
 	int			maxkeys;
 	const char* filename;		/* FILE and LINE macros */
 	int			lineno;
 	Datum		cqlKeys[5];		/* key array */
-	Oid			relationId;
 } cq_list;
 
 typedef struct cqContextData
 {
 	bool		cq_free;		/* if true, free this ctx at endscan */
 	bool		cq_freeScan;	/* if true, free scan at endscan */
+	Oid			cq_relationId;	/* relation id */
 	Relation	cq_heap_rel;	/* catalog being scanned */
 	TupleDesc	cq_tupdesc;		/* tuple descriptor */
 	SysScanDesc cq_sysScan;		/* heap or index scan */		
@@ -46,6 +47,10 @@ typedef struct cqContextData
 	bool		cq_setidxOK;	/* set the indexOK mode */
 	bool		cq_useidxOK;	/* use supplied indexOK mode) */
 
+	Datum		cq_datumKeys[5];/* key array of datums */
+	int			cq_NumKeys;		/* number of keys */
+	ScanKeyData	cq_scanKeys[5]; /* initialized sysscan key (from datums) */
+
 	/* 	these attributes control syscache vs normal heap/index
 	 * 	scan. If setsyscache is set, then usesyscache is the
 	 * 	user-setting, else catquery chooses.  If usesyscache is set
@@ -55,7 +60,6 @@ typedef struct cqContextData
 	bool		cq_setsyscache;	/* use syscache (else heap/index scan) */
 	bool		cq_usesyscache;	/* use syscache (internal) */
 	int			cq_cacheId; 	/* cache identifier */
-	int			cq_cacheNumKeys;/* number of keys */
 	Datum	   *cq_cacheKeys;	/* array of keys */
 	HeapTuple   cq_lasttup;		/* last tuple fetched (for ReleaseSysCache) */
 

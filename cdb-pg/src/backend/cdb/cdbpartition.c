@@ -205,7 +205,7 @@ rel_is_partitioned(Oid relid)
 			(caql_getcount(
 					NULL,
 					cql("SELECT COUNT(*) FROM pg_partition "
-						" WHERE parrelid = :1",
+						" WHERE parrelid = :1 ",
 						ObjectIdGetDatum(relid))) > 0));
 }
 
@@ -233,7 +233,7 @@ rel_is_child_partition(Oid relid)
 			(caql_getcount(
 					NULL,
 					cql("SELECT COUNT(*) FROM pg_partition_rule "
-						" WHERE parchildrelid = :1",
+						" WHERE parchildrelid = :1 ",
 						ObjectIdGetDatum(relid))) > 0));
 }
 
@@ -274,7 +274,7 @@ rel_is_leaf_partition(Oid relid)
 							 &fetchCount,
 							 NULL,
 							 cql("SELECT paroid FROM pg_partition_rule "
-								 " WHERE parchildrelid = :1",
+								 " WHERE parchildrelid = :1 ",
 								 ObjectIdGetDatum(relid)));
 
 	if (!OidIsValid(paroid) || !fetchCount)
@@ -282,7 +282,7 @@ rel_is_leaf_partition(Oid relid)
 	
 	tuple = caql_getfirst(NULL,
 						  cql("SELECT * FROM pg_partition "
-							   " WHERE oid = :1",
+							   " WHERE oid = :1 ",
 							   ObjectIdGetDatum(paroid)));
 	
 	Insist(HeapTupleIsValid(tuple));
@@ -293,7 +293,7 @@ rel_is_leaf_partition(Oid relid)
 	pcqCtx = caql_beginscan(
 			cqclr(&cqc),
 			cql("SELECT * FROM pg_partition "
-				" WHERE parrelid = :1",
+				" WHERE parrelid = :1 ",
 				ObjectIdGetDatum(partitioned_rel)));
 	
 	/*
@@ -388,7 +388,7 @@ record_constraints(Relation pgcon,
 	pcqCtx = caql_beginscan(
 			caql_addrel(cqclr(&cqc), pgcon),
 			cql("SELECT * FROM pg_constraint "
-				" WHERE conrelid = :1",
+				" WHERE conrelid = :1 ",
 				ObjectIdGetDatum(RelationGetRelid(rel))));
 	
 	/* For each constraint on rel: */
@@ -8452,8 +8452,8 @@ isDefaultPart(Oid partOid)
 	HeapTuple tuple;
 
 	tuple = caql_getfirst(NULL,
-			cql("SELECT * FROM pg_partition_rule"
-				" WHERE parchildrelid = :1",
+			cql("SELECT * FROM pg_partition_rule "
+				" WHERE parchildrelid = :1 ",
 				ObjectIdGetDatum(partOid)));
 	if (!HeapTupleIsValid(tuple))
 	{
@@ -8620,8 +8620,8 @@ getSiblingsOfDefaultPart(Oid partOid, int2vector **paratts)
 
 	/* lookup the parparentrule and paroid of current part */
 	parruleTuple = caql_getfirst(NULL,
-			cql("SELECT * FROM pg_partition_rule"
-				" WHERE parchildrelid = :1",
+			cql("SELECT * FROM pg_partition_rule "
+				" WHERE parchildrelid = :1 ",
 				ObjectIdGetDatum(partOid)));
 
 	if (!HeapTupleIsValid(parruleTuple))
@@ -8639,8 +8639,8 @@ getSiblingsOfDefaultPart(Oid partOid, int2vector **paratts)
 	parRelation = heap_open(PartitionRelationId, AccessShareLock);
 	/* using paroid fetched above, lookup parnatts, paratts in pg_partition */
 	partTuple = caql_getfirst(NULL,
-			cql("SELECT * from pg_partition"
-				" WHERE oid = :1",
+			cql("SELECT * FROM pg_partition "
+				" WHERE oid = :1 ",
 				ObjectIdGetDatum(paroid)));
 
 	if (!HeapTupleIsValid(partTuple))
@@ -8668,7 +8668,7 @@ getSiblingsOfDefaultPart(Oid partOid, int2vector **paratts)
 	/* 2nd scan on pg_partition_rule to get list of siblings */
 	pcqCtx = caql_beginscan(NULL,
 			cql("SELECT * FROM pg_partition_rule "
-				" WHERE parparentrule = :1",
+				" WHERE parparentrule = :1 ",
 				ObjectIdGetDatum(parparentrule)));
 
 	while (HeapTupleIsValid(parruleTuple2 = caql_getnext(pcqCtx)))
@@ -8969,8 +8969,8 @@ getPartsIndexInfoRelid(partsIndexInfo *iInfo, Oid rootOid, Oid partOid)
 	/* now look up pg_index using indrelid */
 	pcqCtx = caql_beginscan( 
 			caql_addrel(cqclr(&cqc), indexRelation), 
-			cql("SELECT * FROM pg_index" 
-				" WHERE indrelid = :1", 
+			cql("SELECT * FROM pg_index " 
+				" WHERE indrelid = :1 ", 
 				ObjectIdGetDatum(partOid)));
 
 	/* fetch tuples and compare indKey, indExprs, and indPred */

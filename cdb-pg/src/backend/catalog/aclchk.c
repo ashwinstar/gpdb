@@ -2283,7 +2283,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	bool		updating;
 
 
-	cql0("SELECT * FROM pg_class WHERE oid = :1 ",
+	cql0("SELECT * FROM pg_class  WHERE oid = :1 ",
 		 ObjectIdGetDatum(relOid));
 
 	/*
@@ -2489,7 +2489,7 @@ pg_proc_aclmask(Oid proc_oid, Oid roleid,
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_proc WHERE oid = :1 ",
+	cql0("SELECT * FROM pg_proc  WHERE oid = :1 ",
 		 ObjectIdGetDatum(proc_oid));
 
 	/*
@@ -2548,7 +2548,7 @@ pg_language_aclmask(Oid lang_oid, Oid roleid,
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_language WHERE oid = :1 ",
+	cql0("SELECT * FROM pg_language  WHERE oid = :1 ",
 		 ObjectIdGetDatum(lang_oid));
 
 	/*
@@ -2636,7 +2636,7 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 			return mask & ACL_USAGE;
 	}
 
-	cql0("SELECT * FROM pg_namespace WHERE oid = :1 ",
+	cql0("SELECT * FROM pg_namespace  WHERE oid = :1 ",
 		 ObjectIdGetDatum(nsp_oid));
 
 	/*
@@ -2777,7 +2777,7 @@ pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_foreign_data_wrapper WHERE oid = :1 ",
+	cql0("SELECT * FROM pg_foreign_data_wrapper  WHERE oid = :1 ",
 		 ObjectIdGetDatum(fdw_oid));
 
 	/*
@@ -2843,7 +2843,7 @@ pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_foreign_server WHERE oid = :1 ",
+	cql0("SELECT * FROM pg_foreign_server  WHERE oid = :1 ",
 		 ObjectIdGetDatum(srv_oid));
 
 	/*

@@ -1748,7 +1748,7 @@ ReindexDatabaseNew(ReindexStmt *stmt)
 	 */
 	pcqCtx = caql_beginscan(
 			NULL,
-			cql("SELECT * FROM pg_class", NULL));
+			cql("SELECT * FROM pg_class ", NULL));
 
 	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
@@ -1883,7 +1883,7 @@ ReindexDatabase(ReindexStmt *stmt)
 	 */
 	pcqCtx = caql_beginscan(
 			NULL,
-			cql("SELECT * FROM pg_class", NULL));
+			cql("SELECT * FROM pg_class ", NULL));
 
 	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
