@@ -55,7 +55,7 @@ extern int	getgpsegmentCount(void);
 
 extern void buildMirrorQDDefinition(void);
 
-extern void *getEntrySegDB(int *);
+extern void *getEntrySegDB(int *count);
 
 extern bool isQDMirroringEnabled(void);
 

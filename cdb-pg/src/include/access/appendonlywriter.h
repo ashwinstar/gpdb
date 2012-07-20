@@ -114,7 +114,6 @@ extern AppendOnlyWriterData	*AppendOnlyWriter;
  */
 extern Size AppendOnlyWriterShmemSize(void);
 extern void InitAppendOnlyWriter(void);
-extern Size AppendOnlyWriterShmemSize(void);
 extern int  SetSegnoForWrite(int existingsegno, Oid relid);
 extern List *assignPerRelSegno(List *all_rels);
 extern void UpdateMasterAosegTotals(Relation parentrel,

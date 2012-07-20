@@ -146,11 +146,11 @@ extern void FtsShmemInit(void);
 
 extern bool FtsTestConnection(CdbComponentDatabaseInfo *db_to_test, bool full_scan);
 extern void FtsReConfigureMPP(bool create_new_gangs);
-extern void FtsHandleNetFailure(SegmentDatabaseDescriptor **, int);
-extern bool FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *, int);
+extern void FtsHandleNetFailure(SegmentDatabaseDescriptor **segDB, int numOfFailed);
+extern bool FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *segdbDesc, int size);
 
 extern bool verifyFtsSyncCount(void);
-extern void FtsCondSetTxnReadOnly(bool *);
+extern void FtsCondSetTxnReadOnly(bool *XactFlag);
 extern void ftsLock(void);
 extern void ftsUnlock(void);
 

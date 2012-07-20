@@ -308,7 +308,11 @@ typedef PageHeaderData *PageHeader;
  * BufferGetPage
  *		Returns the page associated with a buffer.
  */
+#ifndef CDB_MOCKING
 #define BufferGetPage(buffer) ((Page)BufferGetBlock(buffer))
+#else
+extern Page BufferGetPage(Buffer buffer);
+#endif
 
 /*
  * PageGetMaxOffsetNumber

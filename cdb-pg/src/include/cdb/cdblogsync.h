@@ -20,7 +20,7 @@ typedef enum
 }	syncCommand;
 
 extern void cdb_init_log_sync(void);
-extern bool cdb_sync_command(const char *);
+extern bool cdb_sync_command(const char *cmd);
 extern void cdb_shutdown_too_far_behind(void);
 extern void cdb_perform_redo(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *newCheckpointLoc);
 

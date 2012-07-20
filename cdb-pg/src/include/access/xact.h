@@ -267,7 +267,7 @@ extern bool FindXidInXidBuffer(XidBuffer *xidbuf,
 extern void AddSortedToXidBuffer(XidBuffer *xidbuf, TransactionId *xids,
                                  uint32 cnt);
 extern void ResetXidBuffer(XidBuffer *xidbuf);
-extern TransactionId GetLastTransactionIdFromSnapshot(DistributedTransactionId);
+extern TransactionId GetLastTransactionIdFromSnapshot(DistributedTransactionId dxid);
 
 void ShowSubtransactionsForSharedSnapshot(void);
 void GetSubXidsInXidBuffer(void);

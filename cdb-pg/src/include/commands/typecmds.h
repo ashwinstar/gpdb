@@ -41,6 +41,5 @@ extern void AlterTypeNamespace(List *names, const char *newschema);
 extern void AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 						   bool errorOnTableType);
 extern void AlterType(AlterTypeStmt *stmt);
-extern void AlterType(AlterTypeStmt *stmt);
 
 #endif   /* TYPECMDS_H */

@@ -208,8 +208,6 @@ extern void xlog_persistent_tablespace_create(Oid filespaceoid,
 											  Oid tablespaceoid);
 extern Oid PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid);
 
-extern void xlog_persistent_tablespace_create(Oid filespaceoid,
-											  Oid tablespaceoid);
 #ifdef MASTER_MIRROR_SYNC 
 void get_tablespace_data(tspc_agg_state **tas, char *caller);
 #endif

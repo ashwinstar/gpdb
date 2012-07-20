@@ -325,7 +325,7 @@ extern char *GetUserNameFromId(Oid roleid);
 extern Oid	GetUserId(void);
 extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
-extern void 	SetSessionUserId(Oid, bool);
+extern void 	SetSessionUserId(Oid userid, bool is_superuser);
 extern Oid	GetAuthenticatedUserId(void);
 extern bool IsAuthenticatedUserSuperUser(void);
 extern void GetUserIdAndContext(Oid *userid, bool *sec_def_context);
