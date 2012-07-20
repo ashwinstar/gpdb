@@ -32,7 +32,7 @@ fhandler.setLevel(logging.DEBUG)
 fhandler.setFormatter(formatter)
 logger.addHandler(fhandler)
 
-shandler = logging.StreamHandler()
+shandler = logging.StreamHandler(sys.stdout)
 shandler.setLevel(logging.CRITICAL)
 shandler.setFormatter(empty_formatter)
 logger.addHandler(shandler)
