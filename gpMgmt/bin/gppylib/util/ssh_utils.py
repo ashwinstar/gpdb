@@ -118,7 +118,9 @@ class HostList():
         
         for finished_cmd in pool.getCompletedItems():
             hostname = finished_cmd.get_hostname()
-            if not unique.get(hostname):
+            if (not hostname):
+                unique[finished_cmd.remoteHost] = finished_cmd.remoteHost
+            elif not unique.get(hostname):
                 unique[hostname] = finished_cmd.remoteHost
             elif hostname == finished_cmd.remoteHost:
                 unique[hostname] = finished_cmd.remoteHost
@@ -188,14 +190,18 @@ class Session(cmd.Cmd):
         if origTERM:
             os.putenv('TERM', origTERM)
 
+	errorOccur = False
         for p in self.pxssh:
             if self.verbose: print '[INFO] login %s' % p.x_peer
             if not p.loginWait(set_term_dumb=True):
+                errorOccur = True
                 print '[ERROR] unable to login to %s' % p.x_peer
-                print
-                print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
-                print
-                raise self.SessionError('Error logging into host %s' % p.x_peer)
+
+   	if errorOccur:
+            print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
+
+	#delete closed sessions	
+	self.pxssh[:] = [p for p in self.pxssh if not p.closed]
 
     def close(self):
         return self.clean()
