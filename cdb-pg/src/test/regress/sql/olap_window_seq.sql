@@ -1572,6 +1572,18 @@ select pn,
        wm_avg(pn::float, array[0.2, 0.4], +1) over(order by pn),
        wm_avg(pn::float, array[0.2, 0.4], +2) over(order by pn)
 from sale;
+select pn,
+       wm_var_pop(pn, array[0.1, 0.2, 0.7], 0) over (order by pn),
+       wm_var_samp(pn, array[0.1, 0.2, 0.7], 0) over(order by pn),
+       wm_var_pop(pn::float, array[0.1, 0.2, 0.7], 0) over (order by pn)::int,
+       wm_var_samp(pn::float, array[0.1, 0.2, 0.7], 0) over(order by pn)::int
+from sale;
+select pn,
+       wm_stddev_pop(pn::float, array[0.5, 0.5], -2) over(order by pn),
+       wm_stddev_pop(pn::float, array[0.5, 0.5], -1) over(order by pn),
+       wm_stddev_pop(pn::float, array[0.5, 0.5], +1) over(order by pn),
+       wm_stddev_pop(pn::float, array[0.5, 0.5], +2) over(order by pn)
+from sale;
 select wm_avg(a, '{0.2}'::numeric[], 0) over (order by a)
 from (values('NaN'::numeric),(0.1)) s(a);
 select wm_avg(a, '{0.2, 0.3}'::numeric[], 0) over (order by a)
