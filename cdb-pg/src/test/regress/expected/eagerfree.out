@@ -224,7 +224,7 @@ where t1.d = t2.d;
                            Executor memory:  3153K bytes avg, 3153K bytes max (seg0).
                            ->  Seq Scan on smallt  (cost=0.00..3.00 rows=50 width=4)
                                  Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.054 ms to first row, 0.087 ms to end, start offset by 7.425 ms.
-         ->  Materialize for deadlock safety  (cost=4.67..4.87 rows=10 width=12)
+         ->  Materialize  (cost=4.67..4.87 rows=10 width=12)
                Rows out:  Avg 101.0 rows x 2 workers.  Max 101 rows (seg0) with 17 ms to end of 11 scans, start offset by 26 ms.
                ->  HashAggregate  (cost=4.20..4.45 rows=10 width=12)
                      Group By: public.smallt.d
@@ -288,7 +288,7 @@ where t1.i = t2.i;
                Executor memory:  3153K bytes avg, 3153K bytes max (seg0).
                ->  Seq Scan on smallt  (cost=0.00..3.00 rows=50 width=4)
                      Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.035 ms to first row, 0.059 ms to end, start offset by 7.522 ms.
-         ->  Materialize for deadlock safety  (cost=3.73..3.83 rows=5 width=12)
+         ->  Materialize  (cost=3.73..3.83 rows=5 width=12)
                Rows out:  Avg 26.0 rows x 2 workers.  Max 26 rows (seg0) with 4.902 ms to first row, 4.910 ms to end of 6 scans, start offset by 10 ms.
                ->  HashAggregate  (cost=3.50..3.62 rows=5 width=12)
                      Group By: public.smallt.i
@@ -1550,7 +1550,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=0.00..0.01 rows=1 width=4)
+                                         ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1559,7 +1559,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice2; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1568,7 +1568,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice3; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1577,7 +1577,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice4; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1586,7 +1586,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice5; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1607,7 +1607,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=0.00..0.01 rows=1 width=4)
+                                         ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice6; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1616,7 +1616,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 40.0 rows x 2 workers.  Max 40 rows (seg0) with 42 ms to end of 10 scans, start offset by 571 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 200.0 rows x 2 workers.  Max 240 rows (seg1) with 42 ms to end of 15 scans, start offset by 570 ms.
                                                ->  Broadcast Motion 2:2  (slice7; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 16.0 rows x 2 workers at destination.  Max 16 rows (seg0) with 7.912 ms to first row, 42 ms to end, start offset by 490 ms.
@@ -1625,7 +1625,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 32.5 rows x 2 workers.  Max 50 rows (seg1) with 30 ms to first row, 31 ms to end of 15 scans, start offset by 570 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 162.5 rows x 2 workers.  Max 195 rows (seg1) with 30 ms to end of 15 scans, start offset by 570 ms.
                                                ->  Broadcast Motion 2:2  (slice8; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 13.0 rows x 2 workers at destination.  Max 13 rows (seg0) with 0.040 ms to first row, 34 ms to end, start offset by 532 ms.
@@ -1634,7 +1634,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 30.0 rows x 2 workers.  Max 30 rows (seg0) with 0.113 ms to first row, 0.222 ms to end of 10 scans, start offset by 571 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 150.0 rows x 2 workers.  Max 180 rows (seg1) with 0.150 ms to first row, 0.191 ms to end of 15 scans, start offset by 570 ms.
                                                ->  Broadcast Motion 2:2  (slice9; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 12.0 rows x 2 workers at destination.  Max 12 rows (seg0) with 0.056 ms to first row, 0.092 ms to end, start offset by 566 ms.
@@ -1643,7 +1643,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 22.5 rows x 2 workers.  Max 30 rows (seg1) with 0.200 ms to first row, 0.287 ms to end of 15 scans, start offset by 570 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 112.5 rows x 2 workers.  Max 135 rows (seg1) with 0.193 ms to first row, 0.226 ms to end of 15 scans, start offset by 570 ms.
                                                ->  Broadcast Motion 2:2  (slice10; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 9.0 rows x 2 workers at destination.  Max 9 rows (seg0) with 0.022 ms to first row, 0.078 ms to end, start offset by 566 ms.
@@ -1664,7 +1664,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=0.00..0.01 rows=1 width=4)
+                                         ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice11; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1673,7 +1673,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 200.0 rows x 2 workers.  Max 240 rows (seg0) with 0.106 ms to first row, 0.162 ms to end of 15 scans, start offset by 627 ms.
                                                ->  Broadcast Motion 2:2  (slice12; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 16.0 rows x 2 workers at destination.  Max 16 rows (seg0) with 0.029 ms to first row, 0.062 ms to end, start offset by 583 ms.
@@ -1682,7 +1682,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 162.5 rows x 2 workers.  Max 195 rows (seg0) with 37 ms to end of 15 scans, start offset by 627 ms.
                                                ->  Broadcast Motion 2:2  (slice13; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 13.0 rows x 2 workers at destination.  Max 13 rows (seg0) with 0.018 ms to first row, 37 ms to end, start offset by 583 ms.
@@ -1691,7 +1691,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 150.0 rows x 2 workers.  Max 180 rows (seg0) with 0.248 ms to first row, 0.290 ms to end of 15 scans, start offset by 627 ms.
                                                ->  Broadcast Motion 2:2  (slice14; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 12.0 rows x 2 workers at destination.  Max 12 rows (seg0) with 0.099 ms to first row, 0.130 ms to end, start offset by 620 ms.
@@ -1700,7 +1700,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 112.5 rows x 2 workers.  Max 135 rows (seg0) with 0.057 ms to first row, 0.087 ms to end of 15 scans, start offset by 627 ms.
                                                ->  Broadcast Motion 2:2  (slice15; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 9.0 rows x 2 workers at destination.  Max 9 rows (seg0) with 0.019 ms to first row, 0.045 ms to end, start offset by 620 ms.
@@ -1721,7 +1721,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=0.00..0.01 rows=1 width=4)
+                                         ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice16; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1730,7 +1730,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 40.0 rows x 2 workers.  Max 40 rows (seg0) with 0.291 ms to first row, 0.420 ms to end of 10 scans, start offset by 632 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 200.0 rows x 2 workers.  Max 240 rows (seg1) with 0.378 ms to first row, 0.441 ms to end of 15 scans, start offset by 638 ms.
                                                ->  Broadcast Motion 2:2  (slice17; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 16.0 rows x 2 workers at destination.  Max 16 rows (seg0) with 0.186 ms to first row, 0.244 ms to end, start offset by 627 ms.
@@ -1739,7 +1739,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 32.5 rows x 2 workers.  Max 50 rows (seg1) with 0.127 ms to first row, 0.268 ms to end of 15 scans, start offset by 638 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 162.5 rows x 2 workers.  Max 195 rows (seg1) with 0.122 ms to first row, 0.178 ms to end of 15 scans, start offset by 638 ms.
                                                ->  Broadcast Motion 2:2  (slice18; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 13.0 rows x 2 workers at destination.  Max 13 rows (seg0) with 0.019 ms to first row, 0.076 ms to end, start offset by 628 ms.
@@ -1748,7 +1748,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 30.0 rows x 2 workers.  Max 30 rows (seg0) with 0.064 ms to first row, 0.160 ms to end of 10 scans, start offset by 632 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 150.0 rows x 2 workers.  Max 180 rows (seg1) with 0.118 ms to first row, 0.206 ms to end of 15 scans, start offset by 638 ms.
                                                ->  Broadcast Motion 2:2  (slice19; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 12.0 rows x 2 workers at destination.  Max 12 rows (seg0) with 0.022 ms to first row, 0.049 ms to end, start offset by 628 ms.
@@ -1757,7 +1757,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  Avg 22.5 rows x 2 workers.  Max 30 rows (seg1) with 0.863 ms to first row, 0.951 ms to end of 15 scans, start offset by 638 ms.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 112.5 rows x 2 workers.  Max 135 rows (seg1) with 0.855 ms to first row, 0.890 ms to end of 15 scans, start offset by 638 ms.
                                                ->  Broadcast Motion 2:2  (slice20; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 9.0 rows x 2 workers at destination.  Max 9 rows (seg0) with 0.019 ms to first row, 0.042 ms to end, start offset by 628 ms.
@@ -1778,7 +1778,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=0.00..0.01 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=0.00..0.01 rows=1 width=4)
+                                         ->  Materialize  (cost=0.00..0.01 rows=1 width=4)
                                                Rows out:  0 rows (seg0) with 0 ms to end.
                                                ->  Broadcast Motion 2:2  (slice21; segments: 2)  (cost=0.00..0.00 rows=1 width=4)
                                                      Rows out:  0 rows at destination (seg0) with 0 ms to end.
@@ -1787,7 +1787,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 200.0 rows x 2 workers.  Max 240 rows (seg0) with 0.196 ms to first row, 0.267 ms to end of 15 scans, start offset by 641 ms.
                                                ->  Broadcast Motion 2:2  (slice22; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 16.0 rows x 2 workers at destination.  Max 16 rows (seg0) with 0.055 ms to first row, 0.162 ms to end, start offset by 633 ms.
@@ -1796,7 +1796,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 162.5 rows x 2 workers.  Max 195 rows (seg0) with 0.161 ms to first row, 0.216 ms to end of 15 scans, start offset by 641 ms.
                                                ->  Broadcast Motion 2:2  (slice23; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 13.0 rows x 2 workers at destination.  Max 13 rows (seg0) with 0.087 ms to first row, 0.148 ms to end, start offset by 633 ms.
@@ -1805,7 +1805,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 150.0 rows x 2 workers.  Max 180 rows (seg0) with 0.164 ms to first row, 0.208 ms to end of 15 scans, start offset by 641 ms.
                                                ->  Broadcast Motion 2:2  (slice24; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 12.0 rows x 2 workers at destination.  Max 12 rows (seg0) with 0.052 ms to first row, 0.132 ms to end, start offset by 633 ms.
@@ -1814,7 +1814,7 @@ explain analyze select * from smallt_part where i < any (select count(*) from sm
                                    ->  Result  (cost=6.84..6.85 rows=1 width=4)
                                          Filter: $0 = public.smallt2_part.i
                                          Rows out:  0 rows (seg0) with 0 ms to end.
-                                         ->  Materialize for deadlock safety  (cost=6.84..6.85 rows=1 width=4)
+                                         ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                                Rows out:  Avg 112.5 rows x 2 workers.  Max 135 rows (seg0) with 0.081 ms to first row, 0.110 ms to end of 15 scans, start offset by 641 ms.
                                                ->  Broadcast Motion 2:2  (slice25; segments: 2)  (cost=0.00..6.84 rows=1 width=4)
                                                      Rows out:  Avg 9.0 rows x 2 workers at destination.  Max 9 rows (seg0) with 0.029 ms to first row, 0.070 ms to end, start offset by 633 ms.
