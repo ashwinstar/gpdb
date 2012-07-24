@@ -115,9 +115,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	oldcontext = MemoryContextSwitchTo(MessageContext);
 
 	QueryContext = CurrentMemoryContext;
-	
-	/* dispatch copy command to both primary and mirror writer gangs */
-	
+
 	/*
 	 * Let's parse the copy command into a query tree, serialize it, and
 	 * send it down to the QE or DA.
@@ -131,13 +129,11 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	/*
 	 * parse it to a raw parsetree 
 	 */
-	
 	parsetree_list = pg_parse_query(copyCmd);
 	
 	/*
 	 * Assume it will be one statement node, not multiple ones.
 	 */
-
 	parsetree = (Node *) linitial(parsetree_list);
 	Assert(nodeTag(parsetree) == T_CopyStmt);
 	
@@ -150,7 +146,6 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * statement has a "select" statement embedded, this
 	 * is essential.
 	 */
-	
 	querytree_list = pg_analyze_and_rewrite(parsetree, copyCmd,
 													NULL, 0);
 	

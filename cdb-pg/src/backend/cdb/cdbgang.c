@@ -77,7 +77,7 @@ typedef enum GangCleanupFailReason
 
 static GangCleanupFailReason cleanupGang(Gang * gp);
 
-extern void resetSessionForPrimaryGangLoss(void);
+extern void resetSessionForWriterGangLoss(void);
 
 /*
  * Points to the result of getCdbComponentDatabases()
@@ -116,7 +116,7 @@ typedef struct DoConnectParms
 	 * The pthread_t thread handle.
 	 */
 	pthread_t	thread;
-}	DoConnectParms;
+} DoConnectParms;
 
 /*
  * AddSegDBToConnThreadPool
@@ -137,25 +137,25 @@ static bool
 segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
 {
 	char *fatal=NULL, *message=NULL, *ptr=NULL;
-	int fatal_len=0;
+	int fatal_len = 0;
 
-	if (segdbDesc == NULL)
+	if (!segdbDesc)
 		return false;
 
 	message = segdbDesc->error_message.data;
 
-	if (message == NULL)
+	if (!message)
 		return false;
 
 	fatal = _("FATAL");
-	if (fatal == NULL)
+	if (!fatal)
 		return false;
 
 	fatal_len = strlen(fatal);
 
 	/*
-	 * it would be nice if we could check errcode for ERRCODE_CANNOT_CONNECT_NOW, instead
-	 * we wind up looking for at the strings.
+	 * it would be nice if we could check errcode for ERRCODE_CANNOT_CONNECT_NOW,
+	 * instead we wind up looking for at the strings.
 	 *
 	 * And because if LC_MESSAGES gets set to something which changes
 	 * the strings a lot we have to take extreme care with looking at
@@ -179,20 +179,20 @@ segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
 }
 
 /*
- * Every gang created must have a unique identifier, so the QD and Dispatch Agents can agree
- * about what they are talking about.
+ * Every gang created must have a unique identifier
  *
- * Since there can only be one primary writer gang, and only one mirror writer gang, we
- * use id 1 and 2 for those two (helps in debugging).
+ * Since there can only be one writer gang we use id 1 for it
+ * (helps in debugging).
  *
- * Reader gang ids start at 3
+ * Reader gang ids start at 2
  */
-#define PRIMARY_WRITER_GANG_ID 1
+#define WRITER_GANG_ID 1
 static int	gang_id_counter = 2;
 
 /*
- * creates a new gang by logging on a session to each segDB involved
+ * createGang
  *
+ * creates a new gang by logging on a session to each segDB involved.
  */
 static Gang *
 createGang(GangType type, int gang_id, int size, int content, char *portal_name)
@@ -222,31 +222,25 @@ create_gang_retry:
 	doConnectParmsAr = NULL;
 	successful_connections = 0;
 	threadCount = 0;
-	connectAsSuperUser = false;
+	connectAsSuperUser = superuser_arg(MyProc->roleId);
 	in_recovery_mode_count = 0;
 
+	/* we support a 1-gang or N-gang only */
 	Assert(size == 1 || size == getgpsegmentCount());
-
-	/*
-	 * We can't allocate more segments than we know about
-	 */
-	Assert(size <= getgpsegmentCount());
 
 	Assert(CurrentResourceOwner != NULL);
 
-	if (portal_name != 0)
+	if (portal_name)
 	{
 		/* Using a named portal */
 		portal = GetPortalByName(portal_name);
 		Assert(portal);
 	}
 
-	connectAsSuperUser = superuser_arg(MyProc->roleId);
-
 	/*
 	 * MemoryContexts used in this routine.
 	 */
-	if (GangContext == NULL)
+	if (!GangContext)
 	{
 		GangContext = AllocSetContextCreate(TopMemoryContext,
 											"Gang Context",
@@ -259,7 +253,7 @@ create_gang_retry:
 
 	newGangDefinition = buildGangDefinition(type, gang_id, size, content, portal_name);
 
-	Assert(newGangDefinition != NULL);
+	Assert(newGangDefinition);
 
 	/*
 	 * Loop through the segment_database_descriptors items inside newGangDefinition.
@@ -269,8 +263,8 @@ create_gang_retry:
 	 * If no database serving a segindex is available, fail the user's connection request.
 	 */
 	elog(DEBUG1, "createGang type = %d, gang_id %d, size %d", type, gang_id, size);
-	if (type == GANGTYPE_PRIMARY_WRITER)
-		Assert(gang_id == PRIMARY_WRITER_GANG_ID);
+	if (type == GANGTYPE_WRITER)
+		Assert(gang_id == WRITER_GANG_ID);
 
 	segdb_count = newGangDefinition->size;
 
@@ -535,10 +529,10 @@ create_gang_retry:
 					 * disconnectAndDestroyGang()) so let's pretend
 					 * that this is a reader-gang.
 					 */
-					if (newGangDefinition->type == GANGTYPE_PRIMARY_WRITER)
+					if (newGangDefinition->type == GANGTYPE_WRITER)
 					{
 						disconnectAndDestroyAllReaderGangs(true);
-						newGangDefinition->type = GANGTYPE_PRIMARY_READER;
+						newGangDefinition->type = GANGTYPE_SEGDB_READER;
 					}
 
 					disconnectAndDestroyGang(newGangDefinition); /* free up connections */
@@ -618,9 +612,9 @@ create_gang_retry:
 }
 
 /*
- *	buildGangDefinition: reads the GP catalog tables and build a CdbComponentDatabases structure.
- *	It then converts this to a Gang structure and initializes
- *	all the non-connection related fields.
+ *	buildGangDefinition: reads the GP catalog tables and build a
+ *	CdbComponentDatabases structure. It then converts this to a Gang
+ *	structure and initializes all the non-connection related fields.
  */
 static Gang *
 buildGangDefinition(GangType type, int gang_id, int size, int content, char *portal_name)
@@ -667,15 +661,15 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 
 		switch (type)
 		{
-			case GANGTYPE_PRIMARY_WRITER:
-				elog(LOG, "Starting %d qExec processes for primary writer gang%s%s%s",
+			case GANGTYPE_WRITER:
+				elog(LOG, "Starting %d qExec processes for writer gang%s%s%s",
 					 size, pn1, pn2, pn3);
 				break;
-			case GANGTYPE_ENTRYDB_READER:
+			case GANGTYPE_MASTERDB_READER:
 				elog(LOG, "Starting 1 qExec process for entry db reader gang%s%s%s",
 					 pn1, pn2, pn3);
 				break;
-			case GANGTYPE_PRIMARY_READER:
+			case GANGTYPE_SEGDB_READER:
 				/* Must be size 1 or size numsegments */
 				if (size == 1)
 					elog(LOG, "Starting 1 qExec process for seg%d reader gang%s%s%s",
@@ -709,7 +703,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	}
 
 	/* 1-gang on entry db? */
-	if (type == GANGTYPE_ENTRYDB_READER)
+	if (type == GANGTYPE_MASTERDB_READER)
 	{
 		CdbComponentDatabaseInfo *cdbinfo = &cdb_component_dbs->entry_db_info[0];
 
@@ -731,7 +725,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		return newGangDefinition;
 	}
 
-	/* if mirroring is not configured */
+	/* if mirroring is not configured, disable FTS */
 	if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
 	{
 		elog(DEBUG2, "building Gang: mirroring not configured");
@@ -753,7 +747,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	{
 		p = &cdb_component_dbs->segment_db_info[i];
 
-		if (type == GANGTYPE_PRIMARY_READER && size == 1) /* handle singleton readers separately */
+		if (type == GANGTYPE_SEGDB_READER && size == 1) /* handle singleton readers separately */
 		{
 			if (size == 1) /* singleton reader */
 			{
@@ -767,7 +761,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 				break;
 			}
 		}
-		else /* GANGTYPE_PRIMARY_WRITER or (GANGTYPE_PRIMARY_READER AND N-READER) */
+		else /* GANGTYPE_WRITER or (GANGTYPE_SEGDB_READER AND N-READER) */
 		{
 			if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 			{
@@ -1123,7 +1117,7 @@ thread_DoConnect(void *arg)
 		build_gpqeid_params(&buffer);
 
 		err = addOptions(&buffer,
-						 (pParms->type == GANGTYPE_PRIMARY_WRITER),
+						 (pParms->type == GANGTYPE_WRITER),
 						 q->segindex, pParms->i_am_superuser);
 
 		if (err <= 0)
@@ -1307,17 +1301,12 @@ bad:
 /*
  * This is where we keep track of all the gangs that exist for this session.
  * On a QD, gangs can either be "available" (not currently in use), or "allocated".
- *
- * On a Dispatch Agent, we just store them in the "available" lists, as the DA doesn't
- * keep track of allocations (it assumes the QD will keep track of what is allocated or not).
- *
  */
-
 static List *allocatedReaderGangsN = NIL;
 static List *availableReaderGangsN = NIL;
 static List *allocatedReaderGangs1 = NIL;
 static List *availableReaderGangs1 = NIL;
-static Gang *primaryWriterGang = NULL;
+static Gang *globalWriterGang = NULL;
 
 List *
 getAllReaderGangs()
@@ -1375,7 +1364,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	if (type == GANGTYPE_PRIMARY_WRITER)
+	if (type == GANGTYPE_WRITER)
 		return allocateWriterGang();
 
 	insist_log(IsTransactionOrTransactionBlock(), "cannot allocate segworker group outside of transaction");
@@ -1403,15 +1392,15 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	switch (type)
 	{
 
-		case GANGTYPE_PRIMARY_READER:
-		case GANGTYPE_ENTRYDB_READER:
+		case GANGTYPE_SEGDB_READER:
+		case GANGTYPE_MASTERDB_READER:
 			/*
 			 * Must be size 1 or size numsegments
 			 * If size 1, then content tells us which segment we want
 			 */
 			if (size != 1)
 			{
-				Assert(type == GANGTYPE_PRIMARY_READER);
+				Assert(type == GANGTYPE_SEGDB_READER);
 				if (availableReaderGangsN != NIL)		/* There are gangs
 														 * already created */
 				{
@@ -1538,7 +1527,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 			}
 			break;
 
-		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_WRITER:
 		case GANGTYPE_UNALLOCATED:
 		default:
 			Assert(false);
@@ -1568,29 +1557,29 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	return gp;
 }
 
+/*
+ * First, we look for an unallocated but created gang of the right type
+ * if it exists, we return it.
+ * Else, we create a new gang
+ */
 Gang *
 allocateWriterGang()
 {
-	Gang	   *writer_gang = NULL;
-	MemoryContext oldContext;
+	Gang			*writer_gang = globalWriterGang;
+	MemoryContext	oldContext;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	writer_gang = primaryWriterGang;
-
-	/*
-	 * First, we look for an unallocated but created gang of the right type
-	 * if it exists, we return it.
-	 * Else, we create a new gang
-	 */
-	if (writer_gang == NULL)
+	if (!writer_gang)
 	{
+		/* no writer gang allocated. allocate one now */
+		
 		int			nsegdb;
 
 		insist_log(IsTransactionOrTransactionBlock(),
 				"cannot allocate segworker group outside of transaction");
 
-		if (GangContext == NULL)
+		if (!GangContext)
 		{
 			GangContext = AllocSetContextCreate(TopMemoryContext,
 												"Gang Context",
@@ -1598,19 +1587,20 @@ allocateWriterGang()
 												ALLOCSET_DEFAULT_INITSIZE,
 												ALLOCSET_DEFAULT_MAXSIZE);
 		}
-		Assert(GangContext != NULL);
+		Assert(GangContext);
 
 		oldContext = MemoryContextSwitchTo(GangContext);
-
+		
+		/* the writer gang is always an N-Gang */
 		nsegdb = getgpsegmentCount();
 
+		/* create the gang. try few times (guc settable) if creation fails */
 		for (int attempts = 0; (attempts < gp_gang_creation_retry_count && writer_gang == NULL); attempts++)
 		{
 			writer_gang =
-				createGang(GANGTYPE_PRIMARY_WRITER, PRIMARY_WRITER_GANG_ID, nsegdb, -1, NULL);
+				createGang(GANGTYPE_WRITER, WRITER_GANG_ID, nsegdb, -1, NULL);
 
-			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG
-					&& writer_gang == NULL)
+			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG && !writer_gang)
 			{
 				elog(LOG, "Could not create writer gang. Retry count = %d", (attempts + 1));
 			}
@@ -1622,48 +1612,41 @@ allocateWriterGang()
 	else
 	{
 		if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-			elog(DEBUG4, "Reusing an existing primary writer gang");
+			elog(DEBUG4, "Reusing an existing writer gang");
 	}
 
+	/* make sure we either reused a writer gang or managed to create one */
 	insist_log(writer_gang != NULL, "no primary segworker group allocated");
-
+	
 	writer_gang->allocated = true;
 
 	/* sanity check the gang */
-
 	if (!gangOK(writer_gang))
 	{
 		elog(ERROR, "could not temporarily connect to one or more segments");
 	}
 
-	primaryWriterGang = writer_gang;
+	globalWriterGang = writer_gang;
 
 	return writer_gang;
 }
 
 /*
- * When we are the dispatch agent, we get told which gang to use by its "gang_id"
- * We need to find the gang in our lists.
- *
- * keeping the gangs in the "available" lists on the Dispatch Agent is a hack,
- * as the dispatch agent doesn't differentiate allocated from available, or 1 gangs
- * from n-gangs.  It assumes the QD keeps track of all that.
+ * findGangById()
  *
  * It might be nice to pass gang type and size to this routine as safety checks.
- *
  */
-
 Gang *
 findGangById(int gang_id)
 {
-	Assert(gang_id >= PRIMARY_WRITER_GANG_ID);
+	Assert(gang_id >= WRITER_GANG_ID);
 
-	if (primaryWriterGang && primaryWriterGang->gang_id == gang_id)
-		return primaryWriterGang;
+	if (globalWriterGang && globalWriterGang->gang_id == gang_id)
+		return globalWriterGang;
 
-	if (gang_id == PRIMARY_WRITER_GANG_ID)
+	if (gang_id == WRITER_GANG_ID)
 	{
-		elog(LOG, "findGangById: primary writer didn't exist when we expected it to");
+		elog(LOG, "findGangById: writer didn't exist when we expected it to");
 		return allocateWriterGang();
 	}
 
@@ -1716,27 +1699,16 @@ findGangById(int gang_id)
 		}
 	}
 
-	/*
-	 * 1-gangs can exist on some dispatch agents, and not on others.
-	 *
-	 * so, we can't tell if not finding the gang is an error or not.
-	 *
-	 * It would be good if we knew if this was a 1-gang on not.
-	 *
-	 * The writer gangs are always n-gangs.
-	 *
-	 */
-
 	if (gang_id <= 2)
 	{
 		insist_log(false, "could not find segworker group %d", gang_id);
 	}
 	else
+	{
 		elog(DEBUG1, "could not find segworker group %d", gang_id);
+	}
 
 	return NULL;
-
-
 }
 
 struct SegmentDatabaseDescriptor *
@@ -1760,6 +1732,8 @@ getSegmentDescriptorFromGang(const Gang *gp, int seg)
 }
 
 /**
+ * Create and return a list of CdbProcess's for a given gang.
+ *
  * @param directDispatch may be null
  */
 List *
@@ -1775,11 +1749,12 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 		elog(DEBUG3, "getCdbProcessList slice%d gangtype=%d gangsize=%d",
 			 sliceIndex, gang->type, gang->size);
 
-	if (gang != NULL && gang->type != GANGTYPE_UNALLOCATED)
+	if (gang->type != GANGTYPE_UNALLOCATED)
 	{
 		CdbComponentDatabaseInfo *qeinfo;
 		int			listsize = 0;
 
+		/* for each segdb process in the gang... */
 		for (i = 0; i < gang->size; i++)
 		{
 			CdbProcess *process;
@@ -1787,6 +1762,11 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			bool includeThisProcess = true;
 
 			segdbDesc = &gang->db_descriptors[i];
+			
+			/* 
+			 * if using direct dispatch, check if we intend to dispatch to this 
+			 * segdb process. If not, set includeThisProcess to false to be ignored.
+			 */
 			if (directDispatch != NULL && directDispatch->isDirectDispatch)
 			{
 				ListCell *cell;
@@ -1809,12 +1789,9 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			 * But the gang structure element n is not necessarily the guy who handles content n,
 			 * so we need to skip some slots.
 			 *
-			 *
 			 * We don't do this for reader 1-gangs
-			 *
 			 */
-			if (gang->size > 1 ||
-				gang->type == GANGTYPE_PRIMARY_WRITER)
+			if (gang->size > 1 || gang->type == GANGTYPE_WRITER)
 			{
 				while (segdbDesc->segindex > listsize)
 				{
@@ -1863,14 +1840,13 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 
 			list = lappend(list, process);
 			listsize++;
-		}
+		} /* end for loop */
 
-		insist_log( ! (gang->type == GANGTYPE_PRIMARY_WRITER &&
-			listsize < getgpsegmentCount()),
-			"master segworker group smaller than number of segments");
+		insist_log (!(gang->type == GANGTYPE_WRITER && listsize < getgpsegmentCount()),
+					"writer segworker group size is smaller than total number of segments");
 
-		if (gang->size > 1 ||
-			gang->type == GANGTYPE_PRIMARY_WRITER)
+		/* TODO: given the insist_log above, this block is redundant for a writer gang */
+		if (gang->size > 1 || gang->type == GANGTYPE_WRITER)
 		{
 			while (listsize < getgpsegmentCount())
 			{
@@ -1891,7 +1867,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
  * NOTE: Does not support multiple (mirrored) QDs.
  */
 List *
-getCdbProcessesForQD(int isPrimary)
+getCdbProcessesForQD()
 {
 	List	   *list = NIL;
 
@@ -1899,11 +1875,6 @@ getCdbProcessesForQD(int isPrimary)
 	CdbProcess *proc;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
-
-	if (!isPrimary)
-	{
-		elog(FATAL, "unsupported request for master mirror process");
-	}
 
 	if (cdb_component_dbs == NULL)
 	{
@@ -1948,7 +1919,7 @@ getCdbProcessesForQD(int isPrimary)
  * gang has been disconnected (and so should not be put back onto the
  * available list).
  *
- * A return code of GANGCLEANUP_CANCELED means that one of the QEs got cancled so we
+ * A return code of GANGCLEANUP_CANCELED means that one of the QEs got canceled so we
  * disconnected the whole gang because we were not certain it cleaned up completely
  */
 GangCleanupFailReason
@@ -2024,7 +1995,8 @@ cleanupGang(Gang *gp)
 				retry++;
 				if (retry > 20)
 				{
-					elog(LOG, "cleanup called when a segworker is still busy, waiting didn't help, trying to destroy the segworker group");
+					elog(LOG, "cleanup called when a segworker is still busy, "
+							  "waiting didn't help, trying to destroy the segworker group");
 					disconnectAndDestroyGang(gp);
 					gp = NULL;
 					Insist(false);
@@ -2064,6 +2036,7 @@ cleanupGang(Gang *gp)
 	}
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG5, "cleanupGang done");
+
 	return GANGCLEANUP_OK;
 }
 
@@ -2149,10 +2122,11 @@ cleanupAllIdleGangs(void)
 		if (!TempNamespaceOidIsValid())
 		{
 			/*
-			 * Get rid of ALL gangs... Readers, mirror writer, and primary writer.  After this, we have no
+			 * Get rid of ALL gangs... Readers and writer. After this, we have no
 			 * resources being consumed on the segDBs at all.
 			 */
 			disconnectAndDestroyAllGangs();
+
 			/*
 			 * Our session wasn't destroyed due to an fatal error or FTS action, so we don't need to
 			 * do anything special.  Specifically, we DON'T want to act like we are now in a new session,
@@ -2262,7 +2236,6 @@ cleanupPortalGangs(Portal portal)
 		elog(DEBUG3, "cleanupPortalGangs (unamed portal)");
 	}
 
-
 	if (GangContext)
 		oldContext = MemoryContextSwitchTo(GangContext);
 	else
@@ -2285,7 +2258,7 @@ disconnectAndDestroyGang(Gang *gp)
 {
 	int			i;
 
-	if (gp == NULL)
+	if (!gp)
 		return;
 
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
@@ -2318,8 +2291,7 @@ disconnectAndDestroyGang(Gang *gp)
 		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
 
-			PGTransactionStatusType status =
-			PQtransactionStatus(segdbDesc->conn);
+			PGTransactionStatusType status = PQtransactionStatus(segdbDesc->conn);
 
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "disconnectAndDestroyGang: got QEDistributedTransactionId = %u, QECommandId = %u, and QEDirty = %s",
@@ -2365,9 +2337,8 @@ disconnectAndDestroyGang(Gang *gp)
 					elog(LOG, "Calling PQcancel for %s", segdbDesc->whoami);
 
 				if (PQcancel(cn, errbuf, 256) == 0)
-				{
 					elog(LOG, "Unable to cancel %s: %s", segdbDesc->whoami, errbuf);
-				}
+
 				PQfreeCancel(cn);
 			}
 
@@ -2381,15 +2352,14 @@ disconnectAndDestroyGang(Gang *gp)
 	}
 
 	/*
-	 * when we get rid of the primary writer gang we MUST also get rid of the reader
+	 * when we get rid of the writer gang we MUST also get rid of the reader
 	 * gangs due to the shared local snapshot code that is shared between
 	 * readers and writers.
 	 */
-	if (gp->type == GANGTYPE_PRIMARY_WRITER)
+	if (gp->type == GANGTYPE_WRITER)
 	{
 		disconnectAndDestroyAllReaderGangs(true);
-
-		resetSessionForPrimaryGangLoss();
+		resetSessionForWriterGangLoss();
 	}
 
 	/*
@@ -2437,16 +2407,16 @@ freeGangsForPortal(char *portal_name)
 			 list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
 
 	/*
-	 * the primary and mirror writer gangs "belong" to the unnamed portal --
+	 * the writer gang "belongs" to the unnamed portal --
 	 * if we have multiple active portals trying to release, we can't just
-	 * release and re-release the writers each time !
+	 * release and re-release the writer gang each time!
 	 */
 	if (!portal_name)
 	{
-		reason = cleanupGang(primaryWriterGang);
+		reason = cleanupGang(globalWriterGang);
 		if (reason != GANGCLEANUP_OK)
 		{
-			primaryWriterGang = NULL;	/* cleanupGang called
+			globalWriterGang = NULL;	/* cleanupGang called
 										 * disconnectAndDestroyGang() already */
 			disconnectAndDestroyAllGangs();
 
@@ -2566,6 +2536,33 @@ freeGangsForPortal(char *portal_name)
 }
 
 /*
+ * Given a reader gang list, destroy all gangs in it if requested by
+ * 'destroygang' and remove them from the list. Used by
+ * disconnectAndDestroyAllReaderGangs only.
+ */
+static void
+disconnectAndDestroyAllReaderGangs_int(List *ganglist, bool destroygang)
+{
+	Gang	   *gp;
+
+	if (ganglist != NIL && destroygang)
+	{
+		gp = linitial(ganglist);
+
+		while (gp != NULL)
+		{
+			disconnectAndDestroyGang(gp);
+			ganglist = list_delete_first(ganglist);
+
+			if (ganglist != NIL)
+				gp = linitial(ganglist);
+			else
+				gp = NULL;
+		}
+	}
+}
+
+/*
  * disconnectAndDestroyAllReaderGangs
  *
  * Here we destroy all reader gangs regardless of the portal they belong to.
@@ -2577,60 +2574,11 @@ freeGangsForPortal(char *portal_name)
 static void
 disconnectAndDestroyAllReaderGangs(bool destroyAllocated)
 {
-	Gang	   *gp;
+	disconnectAndDestroyAllReaderGangs_int(allocatedReaderGangsN, destroyAllocated);
+	disconnectAndDestroyAllReaderGangs_int(availableReaderGangsN, true);
+	disconnectAndDestroyAllReaderGangs_int(allocatedReaderGangs1, destroyAllocated);
+	disconnectAndDestroyAllReaderGangs_int(availableReaderGangs1, true);
 
-	if (allocatedReaderGangsN != NIL && destroyAllocated)
-	{
-		gp = linitial(allocatedReaderGangsN);
-		while (gp != NULL)
-		{
-			disconnectAndDestroyGang(gp);
-			allocatedReaderGangsN = list_delete_first(allocatedReaderGangsN);
-			if (allocatedReaderGangsN != NIL)
-				gp = linitial(allocatedReaderGangsN);
-			else
-				gp = NULL;
-		}
-	}
-	if (availableReaderGangsN != NIL)
-	{
-		gp = linitial(availableReaderGangsN);
-		while (gp != NULL)
-		{
-			disconnectAndDestroyGang(gp);
-			availableReaderGangsN = list_delete_first(availableReaderGangsN);
-			if (availableReaderGangsN != NIL)
-				gp = linitial(availableReaderGangsN);
-			else
-				gp = NULL;
-		}
-	}
-	if (allocatedReaderGangs1 != NIL && destroyAllocated)
-	{
-		gp = linitial(allocatedReaderGangs1);
-		while (gp != NULL)
-		{
-			disconnectAndDestroyGang(gp);
-			allocatedReaderGangs1 = list_delete_first(allocatedReaderGangs1);
-			if (allocatedReaderGangs1 != NIL)
-				gp = linitial(allocatedReaderGangs1);
-			else
-				gp = NULL;
-		}
-	}
-	if (availableReaderGangs1 != NIL)
-	{
-		gp = linitial(availableReaderGangs1);
-		while (gp != NULL)
-		{
-			disconnectAndDestroyGang(gp);
-			availableReaderGangs1 = list_delete_first(availableReaderGangs1);
-			if (availableReaderGangs1 != NIL)
-				gp = linitial(availableReaderGangs1);
-			else
-				gp = NULL;
-		}
-	}
 	if (destroyAllocated)
 		allocatedReaderGangsN = NIL;
 	availableReaderGangsN = NIL;
@@ -2639,6 +2587,7 @@ disconnectAndDestroyAllReaderGangs(bool destroyAllocated)
 		allocatedReaderGangs1 = NIL;
 	availableReaderGangs1 = NIL;
 }
+
 
 
 /*
@@ -2719,7 +2668,7 @@ CheckForResetSession(void)
 }
 
 extern void
-resetSessionForPrimaryGangLoss(void)
+resetSessionForWriterGangLoss(void)
 {
 	if (ProcCanSetMppSessionId())
 	{
@@ -2769,8 +2718,8 @@ disconnectAndDestroyAllGangs(void)
 	/* for now, destroy all readers, regardless of the portal that owns them */
 	disconnectAndDestroyAllReaderGangs(true);
 
-	disconnectAndDestroyGang(primaryWriterGang);
-	primaryWriterGang = NULL;
+	disconnectAndDestroyGang(globalWriterGang);
+	globalWriterGang = NULL;
 
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "disconnectAndDestroyAllGangs done");
@@ -2786,10 +2735,6 @@ gangOK(Gang *gp)
 
 	if (gp->gang_id < 1 || gp->gang_id > 100000000 || gp->type > 10 || gp->size > 100000)
 		return false;
-
-	/*
-	 * Gang is direct-connect (no agents).
-	 */
 
 	for (i = 0; i < gp->size; i++)
 	{
@@ -2815,11 +2760,11 @@ detectFailedConnections(void)
 	/*
 	 * check primary gang
 	 */
-	if (primaryWriterGang != NULL)
+	if (globalWriterGang != NULL)
 	{
-		for (i = 0; i < primaryWriterGang->size; i++)
+		for (i = 0; i < globalWriterGang->size; i++)
 		{
-			segInfo = primaryWriterGang->db_descriptors[i].segment_database_info;
+			segInfo = globalWriterGang->db_descriptors[i].segment_database_info;
 
 			/*
 			 * Note: the probe process is responsible for doing the
@@ -2841,7 +2786,7 @@ getComponentDatabases(void)
 bool
 gangsExist(void)
 {
-	return (primaryWriterGang != NULL ||
+	return (globalWriterGang != NULL ||
 			allocatedReaderGangsN != NIL ||
 			availableReaderGangsN != NIL ||
 			allocatedReaderGangs1 != NIL ||

@@ -155,7 +155,7 @@ static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfN
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
 static DistributedTransactionId determineSegmentMaxDistributedXid(void);
 
-extern void resetSessionForPrimaryGangLoss(void);
+extern void resetSessionForWriterGangLoss(void);
 extern void CheckForResetSession(void);
 
 /**
@@ -2987,7 +2987,7 @@ cdbtm_performDeferredRecovery(void)
 			*shmDtmRecoveryDeferred = false;
 			elog(NOTICE, "Releasing segworker groups for deferred recovery.");
 			disconnectAndDestroyAllGangs();
-			resetSessionForPrimaryGangLoss();
+			resetSessionForWriterGangLoss();
 		}
 		releaseTmLock();
 		CheckForResetSession();
@@ -3190,12 +3190,8 @@ determineSegmentMaxDistributedXid(void)
 			}
 			else
 			{
-				/*
-				 * Due to funkyness in the current dispatch agent code, instead of 1 result
-				 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
-				 * one row per QE controlled by that agent.
-				 */
 				int j;
+
 				for (j = 0; j < PQntuples(results[i]); j++)
 				{
 					DistributedTransactionId temp = 0;

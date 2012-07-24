@@ -378,12 +378,6 @@ CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool needTwoP
 /*--------------------------------------------------------------------*/
 struct SliceTable;
 
-void
-cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
-				  bool cancelOnError,
-				  struct SliceTable *sliceTbl,
-				  struct CdbDispatcherState *ds); /* OUT: fields filled in */
-
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.
  *

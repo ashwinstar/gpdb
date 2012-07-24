@@ -3932,7 +3932,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 
 	volatile int disp_phase=0;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH); //Maybe dispatch agent? 	
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(vacstmt);
 	Assert(vacstmt->vacuum);
 	Assert(!vacstmt->analyze);

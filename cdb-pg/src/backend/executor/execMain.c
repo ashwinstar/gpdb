@@ -5356,7 +5356,7 @@ SetupRNG(QueryDesc *queryDesc)
 				 * Slice::gangSize is bogus.
 				 * Look at actual process list.
 				 */
-				num_proc += list_length(s->primaryProcesses);
+				num_proc += list_length(s->workerProcesses);
 			}
 		}
 		else

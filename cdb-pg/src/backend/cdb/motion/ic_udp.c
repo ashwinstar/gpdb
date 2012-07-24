@@ -2841,7 +2841,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
 									   recvSlice,
-									   list_length(recvSlice->primaryProcesses));
+									   list_length(recvSlice->workerProcesses));
 
 	Assert(pEntry && pEntry->valid);
 	/*
@@ -2852,7 +2852,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	conn = pEntry->conns;
 
 	i = 0;
-	foreach(cell, recvSlice->primaryProcesses)
+	foreach(cell, recvSlice->workerProcesses)
 	{
 		cdbProc = (CdbProcess *)lfirst(cell);
 		if (cdbProc)
@@ -3226,7 +3226,7 @@ SetupUDPInterconnect_Internal(EState *estate)
 		int numValidProcs = 0;
 
 		aSlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, childId);
-		numProcs = list_length(aSlice->primaryProcesses);
+		numProcs = list_length(aSlice->workerProcesses);
 
     	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
     		elog(DEBUG1, "Setup recving connections: my slice %d, childId %d",
@@ -3240,7 +3240,7 @@ SetupUDPInterconnect_Internal(EState *estate)
 		for (i=0; i < pEntry->numConns; i++)
 		{
 			conn = &pEntry->conns[i];
-			conn->cdbProc = list_nth(aSlice->primaryProcesses, i);
+			conn->cdbProc = list_nth(aSlice->workerProcesses, i);
 
 			if (conn->cdbProc)
 			{
@@ -3524,19 +3524,18 @@ TeardownUDPInterconnect_Internal(ChunkTransportState *transportStates,
     	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
     			elog(DEBUG1, "Interconnect seg%d slice%d closing connections to slice%d (%d peers)",
     					Gp_segment, mySlice->sliceIndex, mySlice->parentIndex,
-    					list_length(parentSlice->primaryProcesses));
+    					list_length(parentSlice->workerProcesses));
 
     	/*
     	 * In the olden days, we required that the error case
     	 * successfully transmit and end-of-stream message here. But
     	 * the introduction of cdbdisp_check_estate_for_cancel()
     	 * alleviates for the QD case, and the cross-connection of
-    	 * primary/mirror writer gangs in the dispatcher (propagation
-    	 * of cancel between them) fixes the I-S case.
+    	 * writer gangs in the dispatcher (propagation of cancel
+    	 * between them) fixes the I-S case.
     	 *
     	 * So the call to forceEosToPeers() is no longer required.
     	 */
-
     	if(chunkTransportStateEntryInitialized(transportStates, mySlice->sliceIndex))
     	{
     		/* now it is safe to remove. */

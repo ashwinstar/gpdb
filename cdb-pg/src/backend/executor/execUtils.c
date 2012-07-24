@@ -1467,11 +1467,11 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->numGangMembersToBeActive = 0;
 		slice->directDispatch.isDirectDispatch = false;
 		slice->directDispatch.contentIds = NIL;
-		slice->primaryGang = NULL;
-		slice->primary_gang_id = 0;
+		slice->gang = NULL;
+		slice->gangId = 0;
 		slice->parentIndex = -1;
 		slice->children = NIL;
-		slice->primaryProcesses = NIL;
+		slice->workerProcesses = NIL;
 
 		table->slices = lappend(table->slices, slice);
 	}
@@ -1529,13 +1529,13 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
 		case GANGTYPE_UNALLOCATED:
 			return 0; /* does not send */
 
-		case GANGTYPE_ENTRYDB_READER:
+		case GANGTYPE_MASTERDB_READER:
 			return 1; /* on master */
 
-		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_WRITER:
 			return 0; /* writers don't send */
 
-		case GANGTYPE_PRIMARY_READER:
+		case GANGTYPE_SEGDB_READER:
 			if ( is1GangSlice(slice))
 				return 1;
 			else if ( slice->directDispatch.isDirectDispatch)
@@ -1559,10 +1559,9 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
  * SELECT,	but will run on QE(s) in case it's an INSERT, UPDATE, or
  * DELETE. Because we restrict UPDATE and DELETE to have no motions
  * (i.e., one slice) and because INSERT must always route tuples,
- * the assigment for these will be primary and mirror writer gangs,
- * which we represent as
+ * the assignment for these will be the writer gang, which we represent as
  *
- *	  (gangType, gangSize) =  <GANGTYPE_PRIMARY_WRITER, N>
+ *	  (gangType, gangSize) =  <GANGTYPE_WRITER, N>
  */
 void
 InitRootSlices(QueryDesc *queryDesc)
@@ -1586,7 +1585,7 @@ InitRootSlices(QueryDesc *queryDesc)
 					Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
 					if (queryDesc->plannedstmt->intoClause != NULL)
 					{
-						slice->gangType = GANGTYPE_PRIMARY_WRITER;
+						slice->gangType = GANGTYPE_WRITER;
 						slice->gangSize = getgpsegmentCount();
 						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
 					}
@@ -1604,7 +1603,7 @@ InitRootSlices(QueryDesc *queryDesc)
 					Oid reloid = getrelid(idx, queryDesc->plannedstmt->rtable);
 					if (!isMasterOnly(reloid))
 					{
-						slice->gangType = GANGTYPE_PRIMARY_WRITER;
+						slice->gangType = GANGTYPE_WRITER;
 						slice->gangSize = getgpsegmentCount();
 						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
 			        }
@@ -1673,8 +1672,8 @@ static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceR
  *		there are no cases of the planner specifying a fixed Motion to a
  *		QE, so we don't know the case works.
  *
- * On successful exit, the CDBProcess lists (primaryProcesses, mirrorProcesses)
- * and the Gang pointers (primaryGang, mirrorGang) are set correctly in each
+ * On successful exit, the CDBProcess lists (workerProcesses, mirrorProcesses)
+ * and the Gang pointers (gang, mirrorGang) are set correctly in each
  * slice in the slice table.
  */
 void
@@ -1735,7 +1734,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 			}
 			else
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_READER, getgpsegmentCount(), 0, queryDesc->portal_name);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_SEGDB_READER, getgpsegmentCount(), 0, queryDesc->portal_name);
 			}
 		}
 	}
@@ -1744,7 +1743,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		inv.vec1gangs_primary_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_primary_reader);
 		for (i = 0; i < inv.num1gangs_primary_reader; i++)
 		{
-			inv.vec1gangs_primary_reader[i] = allocateGang(GANGTYPE_PRIMARY_READER, 1, utility_segment_index, queryDesc->portal_name);
+			inv.vec1gangs_primary_reader[i] = allocateGang(GANGTYPE_SEGDB_READER, 1, utility_segment_index, queryDesc->portal_name);
 		}
 	}
 	if (inv.num1gangs_entrydb_reader > 0)
@@ -1752,7 +1751,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		inv.vec1gangs_entrydb_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_entrydb_reader);
 		for (i = 0; i < inv.num1gangs_entrydb_reader; i++)
 		{
-			inv.vec1gangs_entrydb_reader[i] = allocateGang(GANGTYPE_ENTRYDB_READER, 1, -1, queryDesc->portal_name);
+			inv.vec1gangs_entrydb_reader[i] = allocateGang(GANGTYPE_MASTERDB_READER, 1, -1, queryDesc->portal_name);
 		}
 	}
 
@@ -1831,15 +1830,15 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			/* Roots that run on the  QD don't need a gang. */
 			break;
 
-		case GANGTYPE_ENTRYDB_READER:
+		case GANGTYPE_MASTERDB_READER:
             Assert(slice->gangSize == 1);
 			req->num1gangs_entrydb_reader++;
 			break;
 
-		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_WRITER:
 			req->writer = TRUE;
 			/* fall through */
-		case GANGTYPE_PRIMARY_READER:
+		case GANGTYPE_SEGDB_READER:
 			if (is1GangSlice(slice))
 			{
 				req->num1gangs_primary_reader++;
@@ -1892,53 +1891,53 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 		case GANGTYPE_UNALLOCATED:
 			/* Roots that run on the  QD don't need a gang. */
 
-			slice->primaryGang = NULL;
-			slice->primaryProcesses = getCdbProcessesForQD(true);
+			slice->gang = NULL;
+			slice->workerProcesses = getCdbProcessesForQD();
 			break;
 
-		case GANGTYPE_ENTRYDB_READER:
-			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
-			Assert(slice->primaryGang != NULL);
-			slice->primary_gang_id = slice->primaryGang->gang_id;
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+		case GANGTYPE_MASTERDB_READER:
+			slice->gang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
+			Assert(slice->gang != NULL);
+			slice->gangId = slice->gang->gang_id;
+			slice->workerProcesses = getCdbProcessList(slice->gang,
                                                         slice->sliceIndex,
 														NULL);
 			req->nxt1gang_entrydb_reader++;
 
-			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
+			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->workerProcesses));
 			break;
 
-		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_WRITER:
 			Assert(slice->gangSize == getgpsegmentCount());
 			Assert(req->numNgangs > 0 && req->nxtNgang == 0 && req->writer);
 			Assert(req->vecNgangs[0] != NULL);
 
-			slice->primaryGang = req->vecNgangs[req->nxtNgang];
-			Assert(slice->primaryGang != NULL);
-			slice->primary_gang_id = slice->primaryGang->gang_id;
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang, slice->sliceIndex, &slice->directDispatch);
+			slice->gang = req->vecNgangs[req->nxtNgang];
+			Assert(slice->gang != NULL);
+			slice->gangId = slice->gang->gang_id;
+			slice->workerProcesses = getCdbProcessList(slice->gang, slice->sliceIndex, &slice->directDispatch);
 
 			req->nxtNgang++;
 			break;
 
-		case GANGTYPE_PRIMARY_READER:
+		case GANGTYPE_SEGDB_READER:
 			if (is1GangSlice(slice))
 			{
-				slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
+				slice->gang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
 				req->nxt1gang_primary_reader++;
 			}
 			else
 			{
 				Assert(slice->gangSize == getgpsegmentCount());
-				slice->primaryGang = req->vecNgangs[req->nxtNgang];
+				slice->gang = req->vecNgangs[req->nxtNgang];
 				req->nxtNgang++;
 			}
-			Assert(slice->primaryGang != NULL);
-			slice->primary_gang_id = slice->primaryGang->gang_id;
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+			Assert(slice->gang != NULL);
+			slice->gangId = slice->gang->gang_id;
+			slice->workerProcesses = getCdbProcessList(slice->gang,
                                                         slice->sliceIndex,
                                                         &slice->directDispatch);
-			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
+			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->workerProcesses));
 			break;
 	}
 

@@ -556,7 +556,7 @@ static bool motion_mkhp_read(void *vpctxt, MKEntry *a)
 		Assert(sendSlice->sliceIndex == motion->motionID);
 
     	readerIndex = 0;
-    	foreach_with_count(lcProcess, sendSlice->primaryProcesses, routeIndex)
+    	foreach_with_count(lcProcess, sendSlice->workerProcesses, routeIndex)
     	{
     		if ( lfirst(lcProcess) != NULL)
     		{
@@ -848,7 +848,7 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 	/*
 	 * We need to get a tuple from every sender, and stick it into the heap.
 	 */
-	foreach_with_count(lcProcess, sendSlice->primaryProcesses, iSegIdx)
+	foreach_with_count(lcProcess, sendSlice->workerProcesses, iSegIdx)
 	{
 		if ( lfirst(lcProcess) == NULL)
 			continue; /* skip this one: we are not receiving from it */
@@ -979,7 +979,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
         sendSlice->rootIndex = recvSlice->rootIndex;
 
 		/* The gang beneath a Motion will be a reader. */
-		sendSlice->gangType = GANGTYPE_PRIMARY_READER;
+		sendSlice->gangType = GANGTYPE_SEGDB_READER;
 
 	    /* How many sending processes in the dispatcher array? Note that targeted dispatch may reduce this number in practice */
 		sendSlice->gangSize = 1;
@@ -989,7 +989,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
         /* Does sending slice need 1-gang with read-only access to entry db? */
         if (sendFlow->flotype == FLOW_SINGLETON &&
             sendFlow->segindex == -1)
-            sendSlice->gangType = GANGTYPE_ENTRYDB_READER;
+            sendSlice->gangType = GANGTYPE_MASTERDB_READER;
 
         sendSlice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(sendSlice, getgpsegmentCount());
 
@@ -1006,9 +1006,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 			{
 				Assert(recvSlice->gangSize == 1);
 				Assert(node->outputSegIdx[0] >= 0
-					   ? (recvSlice->gangType == GANGTYPE_PRIMARY_READER || 
-						  recvSlice->gangType == GANGTYPE_ENTRYDB_READER)
-					   : recvSlice->gangType == GANGTYPE_ENTRYDB_READER);
+					   ? (recvSlice->gangType == GANGTYPE_SEGDB_READER || 
+						  recvSlice->gangType == GANGTYPE_MASTERDB_READER)
+					   : recvSlice->gangType == GANGTYPE_MASTERDB_READER);
 			}
 		}
 

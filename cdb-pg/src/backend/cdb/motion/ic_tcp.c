@@ -564,7 +564,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
 									   recvSlice,
-									   list_length(recvSlice->primaryProcesses));
+									   list_length(recvSlice->workerProcesses));
 
 	/*
 	 * Setup a MotionConn entry for each of our outbound connections.
@@ -573,7 +573,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 	 */
     conn = pEntry->conns;
 
-    foreach(cell, recvSlice->primaryProcesses)
+    foreach(cell, recvSlice->workerProcesses)
 	{
         cdbProc = (CdbProcess *)lfirst(cell);
         if (cdbProc)
@@ -1121,12 +1121,12 @@ readRegisterMessage(ChunkTransportState *transportStates,
     /*
      * Find and verify the CdbProcess node for the sending process.
      */
-    if (list_length(pEntry->sendSlice->primaryProcesses) == 1)
+    if (list_length(pEntry->sendSlice->workerProcesses) == 1)
         iconn = 0;
     else
         iconn = msg.srcContentId;
 
-    cdbproc = (CdbProcess *)list_nth(pEntry->sendSlice->primaryProcesses, iconn);
+    cdbproc = (CdbProcess *)list_nth(pEntry->sendSlice->workerProcesses, iconn);
 
     if (msg.srcContentId != cdbproc->contentid ||
         msg.srcListenerPort != cdbproc->listenerPort ||
@@ -1434,12 +1434,12 @@ SetupTCPInterconnect(EState *estate)
 		 * primary-process entries, so we count the entries.
 		 */
 		activeNumProcs = 0;
-		totalNumProcs = list_length(aSlice->primaryProcesses);
+		totalNumProcs = list_length(aSlice->workerProcesses);
 		for (i=0; i < totalNumProcs; i++)
 		{
 			CdbProcess *cdbProc;
 
-			cdbProc = list_nth(aSlice->primaryProcesses, i);
+			cdbProc = list_nth(aSlice->workerProcesses, i);
 			if (cdbProc)
 				activeNumProcs++;
 		}

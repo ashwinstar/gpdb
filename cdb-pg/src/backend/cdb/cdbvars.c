@@ -56,7 +56,7 @@ char       *gp_qd_callback_info;	/* info for QE to call back to QD */
 
 bool 		gp_is_callback;		/* are we executing a callback query? */
 
-bool		gp_use_dispatch_agent;	/* Use experimental code for Query Dispatch Agent */
+bool		gp_use_dispatch_agent;	/* Deprecated, has no effect */
 
 unsigned long gp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
 

@@ -179,6 +179,7 @@ extern bool gp_is_callback;
 
 /*
  * Use query dispatch agents?
+ * NOTE: DEPRECATED GUC.
  */
 extern bool gp_use_dispatch_agent;
 

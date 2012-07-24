@@ -752,12 +752,12 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 	switch (slice->gangType)
 	{
 		case GANGTYPE_UNALLOCATED:
-		case GANGTYPE_ENTRYDB_READER:
+		case GANGTYPE_MASTERDB_READER:
 			appendStringInfo(str, "  (slice%d)", sliceId);
 			break;
 
-		case GANGTYPE_PRIMARY_WRITER:
-		case GANGTYPE_PRIMARY_READER:
+		case GANGTYPE_WRITER:
+		case GANGTYPE_SEGDB_READER:
 		{
 			int numSegments;
 			appendStringInfo(str, "  (slice%d;", sliceId);

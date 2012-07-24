@@ -1000,13 +1000,6 @@ cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex)
     if (sliceIndex < 0)
         return &results->resultArray[0];
     
-    /*
-     * If we are using dispatch agents, the DA handled the slicing,
-     * so we only get one final result
-     */
-    if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
-    	return &results->resultArray[0];
-
     si = &results->sliceMap[sliceIndex];
 
     Assert(sliceIndex < results->sliceCapacity &&

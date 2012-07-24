@@ -777,7 +777,6 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 
 			return usesegno;
 
-		/* fix this for dispatch agent. for now it's broken anyway. */
 		default:
 			Assert(false);
 			return InvalidFileSegNumber;

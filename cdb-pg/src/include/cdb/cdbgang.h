@@ -22,10 +22,12 @@ struct QueryDesc;               /* #include "executor/execdesc.h" */
  */
 typedef enum GangType
 {
-	GANGTYPE_UNALLOCATED,       /* a root slice executed by the qDisp */
-	GANGTYPE_ENTRYDB_READER,    /* a 1-gang with read access to the entry db */
-	GANGTYPE_PRIMARY_READER,    /* a 1-gang or N-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_WRITER    /* the N-gang that can update the segment dbs */
+	GANGTYPE_UNALLOCATED,		/* a root slice executed by the qDisp */
+	GANGTYPE_MASTERDB_READER,	/* a 1-gang with read access to the entry db */
+	GANGTYPE_SEGDB_READER,		/* a 1-gang or N-gang to read the segment dbs */
+	GANGTYPE_WRITER				/* the N-gang that can update the segment dbs
+								   and sets the shared snapshot for the reader
+								   gangs */
 } GangType;
 
 /*
@@ -59,32 +61,19 @@ typedef struct Gang
 
 extern Gang *allocateGang(GangType type, int size, int content, char *portal_name);
 extern Gang *allocateWriterGang(void);
-
 struct DirectDispatchInfo;
 extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
-
 extern bool gangOK(Gang *gp);
-
-extern List *getCdbProcessesForQD(int isPrimary);
-
+extern List *getCdbProcessesForQD(void);
 extern void freeGangsForPortal(char *portal_name);
-
 extern void disconnectAndDestroyAllGangs(void);
-
 extern void CheckForResetSession(void);
-
 extern List * getAllReaderGangs(void);
-
 extern void detectFailedConnections(void);
-
 extern CdbComponentDatabases *getComponentDatabases(void);
-
 extern bool gangsExist(void);
-
 struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
-
 extern Gang *findGangById(int gang_id);
-
 
 /*
  * cleanupIdleReaderGangs() and cleanupAllIdleGangs().
@@ -95,14 +84,11 @@ extern Gang *findGangById(int gang_id);
  * Only call these from an idle session.
  */
 extern void cleanupIdleReaderGangs(void);
-
 extern void cleanupAllIdleGangs(void);
-
 extern void cleanupPortalGangs(Portal portal);
-
 extern int largestGangsize(void);
-
 extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
+
 /*
  * cdbgang_parse_gpqeid_params
  *
@@ -123,7 +109,7 @@ void
 cdbgang_parse_gpdaid_params(struct Port *port, const char* gpdaid_value);
 
 /* ----------------
- * MPP Worker Process information
+ * GPDB Worker Process information
  *
  * This structure represents the global information about a worker process.
  * It is constructed on the entry process (QD) and transmitted as part of
@@ -142,20 +128,14 @@ typedef struct CdbProcess
 	 * QE.  It needs to be explicitly transmitted to QE's,  however,
 	 */
 
-	char *listenerAddr; /* Interconnect listener IPv4 address, a C-string */
-
-	int listenerPort; /* Interconnect listener port */
-	int pid; /* Backend PID of the process. */
-
-	/* Unclear about why we need these, however, it is no trouble to carry
-	 * them.
-	 */
-
-	int contentid;
+	char 	*listenerAddr; /* Interconnect listener IPv4 address, a C-string */
+	int 	listenerPort; /* Interconnect listener port */
+	int		pid; /* Backend PID of the process. */
+	int		contentid;
 } CdbProcess;
 
 /* ----------------
- * MPP Plan Slice information
+ * GPDB Plan Slice information
  *
  * These structures summarize how a plan tree is sliced up into separate
  * units of execution or slices. A slice will execute on a each worker within
@@ -221,10 +201,10 @@ typedef struct Slice
 	 */
 	DirectDispatchInfo directDispatch;
 
-	struct Gang *primaryGang;
+	struct Gang *gang;
 
 	/* tell dispatch agents which gang we're talking about.*/
-	int          primary_gang_id;
+	int          gangId;
 
 
 	/*
@@ -233,7 +213,7 @@ typedef struct Slice
 	 * this plan slice.
 	 *
 	 * The number of processes must agree with the
-	 * the plan slice to be implemented.  In MPP 2
+	 * the plan slice to be implemented.  In GPDB
 	 * the possibilities are 1 for a slice that
 	 * operates on a single stream of tuples (e.g.,
 	 * the receiver of a fixed motion, a 1-gang), or
@@ -246,7 +226,7 @@ typedef struct Slice
 	 * an input tuple to this slice will direct it to
 	 * the H+1st process in the list.
 	 */
-	List *primaryProcesses;
+	List *workerProcesses;
 } Slice;
 
 /*

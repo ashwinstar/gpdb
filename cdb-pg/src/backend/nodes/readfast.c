@@ -3411,16 +3411,16 @@ _readSlice(const char ** str)
 	READ_INT_FIELD(sliceIndex);
 	READ_INT_FIELD(rootIndex);
 	READ_ENUM_FIELD(gangType, GangType);
-	Assert(local_node->gangType <= GANGTYPE_PRIMARY_WRITER);
+	Assert(local_node->gangType <= GANGTYPE_WRITER);
 	READ_INT_FIELD(gangSize);
 	READ_INT_FIELD(numGangMembersToBeActive);
 	READ_BOOL_FIELD(directDispatch.isDirectDispatch);
 	READ_NODE_FIELD(directDispatch.contentIds); /* List of int index */
-	READ_DUMMY_FIELD(primaryGang, NULL);
-	READ_INT_FIELD(primary_gang_id);
+	READ_DUMMY_FIELD(gang, NULL);
+	READ_INT_FIELD(gangId);
 	READ_INT_FIELD(parentIndex); /* List of int index */
 	READ_NODE_FIELD(children); /* List of int index */
-	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
+	READ_NODE_FIELD(workerProcesses); /* List of (CDBProcess *) */
 
 	READ_DONE();
 }

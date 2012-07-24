@@ -3912,11 +3912,11 @@ _copySlice(const Slice *from)
 	COPY_SCALAR_FIELD(directDispatch.isDirectDispatch);
 	COPY_NODE_FIELD(directDispatch.contentIds);
 
-	newnode->primaryGang = from->primaryGang;
-	COPY_SCALAR_FIELD(primary_gang_id);
+	newnode->gang = from->gang;
+	COPY_SCALAR_FIELD(gangId);
 	COPY_SCALAR_FIELD(parentIndex);
 	COPY_NODE_FIELD(children);
-	COPY_NODE_FIELD(primaryProcesses);
+	COPY_NODE_FIELD(workerProcesses);
 
 	return newnode;
 }
