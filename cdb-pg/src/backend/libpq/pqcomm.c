@@ -1250,10 +1250,10 @@ pq_flush(void)
 	int			res;
 
 	/* No-op if reentrant call */
-	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
 	res = internal_flush();
-	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return res;
 }
@@ -1352,7 +1352,7 @@ int
 pq_putmessage(char msgtype, const char *s, size_t len)
 {
     int ret = EOF;
-	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
 
     if (DoingCopyOut)
@@ -1379,13 +1379,13 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 	if (internal_putbytes(s, len))
 		goto fail;
 
-	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 
 	return 0;
 
 fail:
-	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
+	if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return EOF;
 }

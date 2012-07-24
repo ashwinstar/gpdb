@@ -3418,8 +3418,6 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
         pts = "Master process";
     else if (Gp_role == GP_ROLE_EXECUTE)
         pts = "Segment process";
-    else if (Gp_role == GP_ROLE_DISPATCHAGENT)
-    	pts = "DA process";
     else
         pts = "Process";
 
@@ -3581,7 +3579,7 @@ ProcessInterrupts(void)
 		 * to call CdbCheckDispatchResult(). Also we're about to
 		 * yank the carpet out from under any dispatched threads!
 		 */
-		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			if (gp_enable_gpperfmon)
 			{
@@ -3609,15 +3607,14 @@ ProcessInterrupts(void)
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
 
-		if ((Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
-				&& QueryCancelErrorless)
+		if (Gp_role == GP_ROLE_EXECUTE && QueryCancelErrorless)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_OPERATION_CANCELED_ERRORLESS),
 					 errmsg("Errorless Cancel")));
 
 		}
-		else if (Gp_role == GP_ROLE_EXECUTE || Gp_role == GP_ROLE_DISPATCHAGENT)
+		else if (Gp_role == GP_ROLE_EXECUTE)
 		{
 		    ereport(ERROR,
 			    	(errcode(ERRCODE_GP_OPERATION_CANCELED),

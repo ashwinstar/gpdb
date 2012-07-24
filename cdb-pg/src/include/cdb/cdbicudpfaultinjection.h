@@ -85,7 +85,7 @@ typedef enum {
 static inline void
 testmode_check_interrupts(const char *caller_name, bool teardownActive)
 {
-	if (Gp_role != GP_ROLE_DISPATCH && Gp_role != GP_ROLE_DISPATCHAGENT)
+	if (Gp_role != GP_ROLE_DISPATCH)
 	{
 		ML_CHECK_FOR_INTERRUPTS(teardownActive);
 		return;

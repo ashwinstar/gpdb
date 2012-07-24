@@ -85,9 +85,7 @@ static void thread_DispatchWaitSingle(DispatchCommandParms		*pParms);
 
 static void
 CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
-						  struct SegmentDatabaseDescriptor   ***failedSegDB,
-                          int          *numOfFailed,
-                          bool          cancelUnfinishedWork);
+                          bool	cancelUnfinishedWork);
 
 static bool
 shouldStillDispatchCommand(DispatchCommandParms *pParms,
@@ -866,7 +864,7 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 {
 	PG_TRY();
 	{
-		CdbCheckDispatchResultInt(ds, NULL, NULL, cancelUnfinishedWork);
+		CdbCheckDispatchResultInt(ds, cancelUnfinishedWork);
 	}
 	PG_CATCH();
 	{
@@ -896,23 +894,15 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 
 static void
 CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
-						  struct SegmentDatabaseDescriptor *** failedSegDB,
-						  int *numOfFailed,
 						  bool cancelUnfinishedWork)
 {
 	int			i;
 	int			j;
-	int			nFailed = 0;
 	DispatchCommandParms *pParms;
 	CdbDispatchResult *dispatchResult;
 	SegmentDatabaseDescriptor *segdbDesc;
 
 	Assert(ds != NULL);
-
-	if (failedSegDB)
-		*failedSegDB = NULL;
-	if (numOfFailed)
-		*numOfFailed = 0;
 
 	/* No-op if no work was dispatched since the last time we were called.	*/
 	if (!ds->dispatchThreads || ds->dispatchThreads->threadCount == 0)
@@ -994,23 +984,6 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 			/* Log the result */
 			if (DEBUG2 >= log_min_messages)
 				cdbdisp_debugDispatchResult(dispatchResult, DEBUG2, DEBUG3);
-
-			/* Notify FTS to reconnect if connection lost or never connected. */
-			if (failedSegDB &&
-				PQstatus(segdbDesc->conn) == CONNECTION_BAD)
-			{
-				/* Allocate storage.  Caller should pfree() it. */
-				if (!*failedSegDB)
-					*failedSegDB = palloc(sizeof(**failedSegDB) *
-										  (2 * getgpsegmentCount() + 1));
-
-				/* Append to broken connection list. */
-				(*failedSegDB)[nFailed++] = segdbDesc;
-				(*failedSegDB)[nFailed] = NULL;
-
-				if (numOfFailed)
-					*numOfFailed = nFailed;
-			}
 
 			/*
 			 * Zap our SegmentDatabaseDescriptor ptr because it may be
