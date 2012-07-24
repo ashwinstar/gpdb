@@ -7,17 +7,20 @@ import shutil
 import hashlib
 import signal
 
+from gppylib.commands.gp import GpStop, GpStart, get_local_db_mode 
+from gppylib.commands.unix import Ping
 from gppylib.db import dbconn, catalog
 from gppylib.db.dbconn import UnexpectedRowsError
 from gppylib import gplog
-from gppylib.commands.gp import GpStop, GpStart, get_local_db_mode 
-from gppylib.commands.unix import Ping
+from gppylib.gparray import GpArray
+from gppylib.mainUtils import SimpleMainLock
 from gppylib.operations import Operation
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
 from gppylib.operations.unix import CheckFile, CheckDir, ListFiles
-from gppylib.gparray import GpArray
 
 logger = gplog.get_default_logger()
+
+GP_FILESPACE_LOCKFILE = "gpfilespace.pid" 
 
 GP_TRANSACTION_FILES_FILESPACE = 'gp_transaction_files_filespace'
 GP_TEMPORARY_FILES_FILESPACE = 'gp_temporary_files_filespace'
@@ -964,11 +967,30 @@ class MoveFilespace(Operation):
 
         return False
 
+    def acquire_simple_main_lock(self):
+        main_opt = {'pidfilename': GP_FILESPACE_LOCKFILE}
+        lock = SimpleMainLock(main_opt)
+        pid = lock.acquire()
+        if pid is not None:
+            raise MoveFilespaceError('Another instance of gpfilespace is already running!')
+
+        return lock
+
+    def release_simple_main_lock(self, lock):
+        if lock:
+            lock.release()
+ 
     def execute(self):
+
+        lock = None
 
         try:
             #Disable Ctrl+C
             signal.signal(signal.SIGINT,signal.SIG_IGN)
+
+            #Acquire a SimpleMainLock to prevent concurrent invocations of gpfilespace
+            #when moving the transaction and temporary files
+            lock = self.acquire_simple_main_lock()
     
             #StopGPDB - Check for GPDB connections first and fail if connections exist
             if not self.check_database_stopped():
@@ -1061,5 +1083,7 @@ class MoveFilespace(Operation):
             self.start_database()
 
         finally:
+            self.release_simple_main_lock(lock)
+
             #Enable Ctrl+C
             signal.signal(signal.SIGINT,signal.default_int_handler)
