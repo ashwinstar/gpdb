@@ -116,6 +116,12 @@ static pthread_mutex_t MyMutex2 = PTHREAD_MUTEX_INITIALIZER;
 static bool g_b_SendCancelMessage = false;
 static const char *pszAgent = "gp_dump_agent";
 
+static const char *partitionFileName = NULL;
+static const char *partitionExcludeFileName = NULL;
+static const char *fileName = NULL;
+static const char *excludeFileName = NULL;
+static FILE* partitionTableFile;
+static FILE* partitionExcludeTableFile;
 
 #ifdef USE_DDBOOST
 #include "ddp_api.h"
@@ -165,6 +171,18 @@ main(int argc, char **argv)
 	mpp_msg(logInfo, progname, "Reading Greenplum Database configuration info from master database.\n");
 	if (!GetDumpSegmentDatabaseArray(master_db_conn, remote_version, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly))
 		goto cleanup;
+    
+    inputOpts.pszKey = GenerateTimestampKey();
+    partitionFileName = MakeString("/tmp/tablePartitionList_%s", inputOpts.pszKey);
+    partitionExcludeFileName = MakeString("/tmp/excludeTablePartitionList_%s", inputOpts.pszKey);
+    if (fileName != NULL)
+    {
+        system(MakeString("cp -f %s %s", fileName, partitionFileName));
+    }
+    if (excludeFileName != NULL)
+    {
+        system(MakeString("cp -f %s %s", excludeFileName, partitionExcludeFileName));
+    }
 
 	/*
 	 * Process the schema and table include/exclude lists and determine the
@@ -218,6 +236,16 @@ cleanup:
 	pthread_cond_destroy(&MyCondVar);
 	pthread_mutex_destroy(&MyMutex2);
 	pthread_cond_destroy(&MyCondVar2);
+    
+    
+    if (partitionFileName != NULL)
+    {
+        system(MakeString("rm -rf %s", partitionFileName));
+    }
+    if (partitionExcludeTableFile != NULL)
+    {
+        system(MakeString("rm -rf %s", partitionExcludeFileName));
+    }
 
 	if (master_db_conn != NULL)
 		PQfinish(master_db_conn);
@@ -362,14 +390,23 @@ addChildrenToPassThrough(InputOptions *pInputOpts, char opt, SimpleOidList list)
 	PQExpBuffer query = createPQExpBuffer();
 	PGresult   *res;
 	SimpleOidListCell *cell;
-	int			i;
-
-	/* if table oids were found, add children for all parent tables */
+	int     i;
+    
+    /* if table oids were found, add children for all parent tables */
 	if (list.head != NULL)
-	{
+    {
+        if (opt == 't')
+        {
+            partitionTableFile = fopen(partitionFileName , "a");
+        }
+        if (opt == 'T')
+        {
+            partitionExcludeTableFile = fopen(partitionExcludeFileName , "a");
+        }
+        
 		for (cell = list.head; cell; cell = cell->next)
 		{
-			appendPQExpBuffer(query, "SELECT p.partitiontablename "
+			appendPQExpBuffer(query, "SELECT p.partitiontablename, n.nspname "
 						  "FROM pg_partitions p, pg_class c, pg_namespace n "
 							  "WHERE p.partitionschemaname = n.nspname "
 							  "AND n.oid = c.relnamespace "
@@ -379,19 +416,66 @@ addChildrenToPassThrough(InputOptions *pInputOpts, char opt, SimpleOidList list)
 			res = PQexec(g_conn, query->data);
 			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
 
-			for (i = 0; i < PQntuples(res); i++)
-			{
-				char	   *childname = PQgetvalue(res, i, 0);
-
-				pInputOpts->pszPassThroughParms = addPassThroughParm(opt, childname, pInputOpts->pszPassThroughParms);
-			}
-
-			PQclear(res);
-			resetPQExpBuffer(query);
-		}
-	}
-
+            for (i = 0; i < PQntuples(res); i++)
+            {
+                char    *nspname = PQgetvalue(res, i, 1);
+                char    *childname = PQgetvalue(res, i, 0);
+            
+                if (opt == 't')
+                {
+                    if (partitionTableFile == NULL)
+                    {
+                        mpp_err_msg(logError, progname, "Cannot open include partiton tables file %s for writing.\n", partitionFileName);
+                    }  
+                    else
+                    {
+                        fprintf(partitionTableFile, "%s.%s\n", nspname, childname);  
+                    }
+                }
+                
+                if (opt == 'T')
+                {
+                    if (partitionExcludeTableFile == NULL)
+                    {
+                        mpp_err_msg(logError, progname, "Cannot open exclude partiton tables file %s for writing.\n", partitionExcludeFileName);
+                    }
+                    else
+                    {
+                        fprintf(partitionExcludeTableFile, "%s.%s\n", nspname, childname);
+                    }
+                }
+            }
+        
+            PQclear(res);
+            resetPQExpBuffer(query);
+        }   
+        
+        if (opt == 't')
+        {
+            open_file_and_append_to_list(partitionFileName, &table_include_patterns, "include tables list", false);
+            pInputOpts->pszPassThroughParms = addPassThroughLongParm("table-file", partitionFileName, pInputOpts->pszPassThroughParms);
+        }
+        else //opt=='T'
+        {
+            open_file_and_append_to_list(partitionExcludeFileName, &table_exclude_patterns, "exclude tables list", false);
+            pInputOpts->pszPassThroughParms = addPassThroughLongParm("exclude-table-file", partitionExcludeFileName, pInputOpts->pszPassThroughParms);
+        }
+    }
+ 
 	destroyPQExpBuffer(query);
+    
+    if (partitionTableFile != NULL)
+    {
+        tableFileName = Safe_strdup(partitionFileName);
+        fclose(partitionTableFile);
+        partitionTableFile = 0; 
+    }
+    if (partitionExcludeTableFile != NULL)
+    {
+        excludeTableFileName = Safe_strdup(partitionExcludeFileName);
+        fclose(partitionExcludeTableFile);
+        partitionExcludeTableFile = 0;
+    }
 }
 
 /*
@@ -433,9 +517,8 @@ static bool
 copyFilesToSegments(InputOptions *pInputOpts, SegmentDatabaseArray *segDBAr)
 {
 
-
-	if ((tableFileName == NULL) && (excludeTableFileName == NULL))
-		return true; /* nothing to do */
+    if ((tableFileName == NULL) && (excludeTableFileName == NULL))
+        return true; /* nothing to do */
 
 	/* get destination list */
 	const char *hostfile_name = "/tmp/gp_dump_hostfilelist.txt";
@@ -471,7 +554,7 @@ copyFilesToSegments(InputOptions *pInputOpts, SegmentDatabaseArray *segDBAr)
 	/* This execs a shell that runs the gpscp program */
 	int result = system(cmdLine);
 
-	mpp_msg(logInfo, progname, "Finished running gpscp cmd");
+	mpp_msg(logInfo, progname, "Finished running gpscp cmd\n");
 
 	/* delete hostfile name */
 	unlink(hostfile_name);
@@ -758,15 +841,24 @@ char* getRelativeFileName(char* longFileName)
 void addFileNameParam(const char* flag, char* file_name, InputOptions* pInputOpts)
 {
 	static char* short_file_name = NULL;
-	static char* tmp_name = NULL;
 	static char* directory_name = "/tmp/";
-
+    static char* tmp_name = NULL;
+    
+    if (strcmp(flag, "table-file") == 0)
+    {
+      fileName = file_name;  
+    }
+    else 
+    {
+     excludeFileName = file_name;   
+    }
+    
 	short_file_name = getRelativeFileName(file_name);
 	tmp_name = MakeString("%s%s", directory_name, short_file_name);
-	pInputOpts->pszPassThroughParms =
-			addPassThroughLongParm(flag, tmp_name, pInputOpts->pszPassThroughParms);
+//	pInputOpts->pszPassThroughParms =
+//			addPassThroughLongParm(flag, tmp_name, pInputOpts->pszPassThroughParms);
 	tableFileName = Safe_strdup(file_name);
-	free(tmp_name);
+    free(tmp_name);
 }
 
 /*
@@ -856,6 +948,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 #endif
 		{"table-file", required_argument, NULL, 7},
 		{"exclude-table-file", required_argument, NULL, 8},
+		{"max-query-elements", required_argument, NULL, 9},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -1179,7 +1272,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 					goto cleanup;
 				}
 
-				if (!open_file_and_append_to_list(optarg, &table_include_patterns, "include tables list"))
+				if (!open_file_and_append_to_list(optarg, &table_include_patterns, "include tables list", g_verbose))
 				{
 					mpp_err_msg_cache(logError, progname, "can't open file %s. Invalid --table-file parameter\n",
 							          optarg);
@@ -1199,7 +1292,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 					goto cleanup;
 				}
 
-				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list"))
+				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list", g_verbose))
 				{
 					mpp_err_msg_cache(logError, progname, "can't open file %s. Invalid --exclude-table-file parameter\n",
 							          optarg);
@@ -1209,6 +1302,18 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				/* extract file name without path, and add it to passed params */
 				addFileNameParam("exclude-table-file", optarg, pInputOpts);
 
+				break;
+			case 9:
+				/* max-query-elements option */
+				g_gp_max_query_elements = atoi(optarg);
+				if (g_gp_max_query_elements <= 0)
+				{
+					mpp_err_msg_cache(logError, progname, "invalid --max-query-elements option -- %s, must be a positive integer.\n",
+									  optarg);
+					goto cleanup;
+				}
+				pInputOpts->pszPassThroughParms =
+						addPassThroughLongParm("max-query-elements", optarg, pInputOpts->pszPassThroughParms);
 				break;
 
 			default:
@@ -1785,7 +1890,6 @@ spinOffThreads(PGconn *pConn,
 	pthread_cond_init(&MyCondVar2, NULL);
 	pthread_mutex_init(&MyMutex2, NULL);
 
-	pInputOpts->pszKey = GenerateTimestampKey();
 
 	/*
 	 * Create a thread and have it work on executing the dump on the
@@ -1933,7 +2037,7 @@ threadProc(void *arg)
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = MakeString("Connection to dbid %d  on host %s failed: %s",
 										pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost"), PQerrorMessage(pConn));
-		mpp_err_msg_cache(logError, progname, pParm->pszErrorMsg);
+		mpp_err_msg_cache(logError, progname,"%s", pParm->pszErrorMsg);
 		PQfinish(pConn);
 		decrementFinishedLaunchCount();
 		return NULL;
@@ -1983,7 +2087,7 @@ threadProc(void *arg)
 	{
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = MakeString("could not start Greenplum Database backup: %s", PQerrorMessage(pConn));
-		mpp_err_msg_cache(logFatal, progname, pParm->pszErrorMsg);
+		mpp_err_msg_cache(logFatal, progname,"%s", pParm->pszErrorMsg);
 		PQfinish(pConn);
 		decrementFinishedLaunchCount();
 		decrementedLunchCount = true;
@@ -2007,7 +2111,7 @@ threadProc(void *arg)
 	{
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = "error allocating memory for Greenplum Database backup";
-		mpp_err_msg_cache(logError, progname, pParm->pszErrorMsg);
+		mpp_err_msg_cache(logError, progname, "%s", pParm->pszErrorMsg);
 		PQfinish(pConn);
 		decrementFinishedLaunchCount();
 		decrementedLunchCount = true;

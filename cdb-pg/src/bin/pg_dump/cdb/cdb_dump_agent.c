@@ -458,6 +458,7 @@ main(int argc, char **argv)
 		 */
 		{"pre-data-schema-only", no_argument, &preDataSchemaOnly, 1},
 		{"post-data-schema-only", no_argument, &postDataSchemaOnly, 1},
+		{"max-query-elements", required_argument, NULL, 5},
 		/* END MPP ADDITION */
 
 #ifdef USE_DDBOOST
@@ -664,7 +665,7 @@ main(int argc, char **argv)
 				break;
 
 			case 3: 			/*	--table-file */
-				if (!open_file_and_append_to_list(optarg, &table_include_patterns, "include tables list"))
+				if (!open_file_and_append_to_list(optarg, &table_include_patterns, "include tables list", true))
 				{
 					fprintf(stderr,
 							_("%s: invalid --table-file option -- can't open file %s\n"),
@@ -675,10 +676,20 @@ main(int argc, char **argv)
 				break;
 
 			case 4: 			/*	--exclude-table-file */
-				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list"))
+				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list", true))
 				{
 					fprintf(stderr,
 							_("%s: invalid --exclude-table-file option -- can't open file %s\n"),
+							progname, optarg);
+					exit(1);
+				}
+				break;
+			case 5: 			/*	--max-query-elements */
+				g_gp_max_query_elements = atoi(optarg);
+				if (g_gp_max_query_elements <= 0)
+				{
+					fprintf(stderr,
+							_("%s: invalid --max-query-elements option -- %s, must be a positive integer.\n"),
 							progname, optarg);
 					exit(1);
 				}

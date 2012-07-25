@@ -94,6 +94,7 @@ bool		aclsSkip;
 /* START MPP ADDITION */
 bool		dumpPolicy;
 bool		isGPbackend;
+int 		g_gp_max_query_elements;
 int			preDataSchemaOnly;	/* int because getopt_long() */
 int			postDataSchemaOnly;
 
@@ -390,6 +391,9 @@ main(int argc, char **argv)
 		 */
 		{"gp-syntax", no_argument, NULL, 1},
 		{"no-gp-syntax", no_argument, NULL, 2},
+	    {"table-file", required_argument, NULL, 3},
+		{"exclude-table-file", required_argument, NULL, 4},
+		{"max-query-elements", required_argument, NULL, 5},
 		{"pre-data-schema-only", no_argument, &preDataSchemaOnly, 1},
 		{"post-data-schema-only", no_argument, &postDataSchemaOnly, 1},
 		/* END MPP ADDITION */
@@ -407,6 +411,7 @@ main(int argc, char **argv)
 
 	dataOnly = schemaOnly = dump_inserts = column_inserts = false;
 	preDataSchemaOnly = postDataSchemaOnly = false;
+	g_gp_max_query_elements = MAX_QUERY_ELEMENTS_DEFAULT;
 
 	progname = get_progname(argv[0]);
 
@@ -590,6 +595,36 @@ main(int argc, char **argv)
 					exit(1);
 				}
 				gp_syntax_option = GPS_DISABLED;
+				break;
+			case 3: 			/*	--table-file */
+				if (!open_file_and_append_to_list(optarg, &table_include_patterns, "include tables list", true))
+				{
+					fprintf(stderr,
+							_("%s: invalid --table-file option -- can't open file %s\n"),
+							progname, optarg);
+					exit(1);
+				}
+				include_everything = false;
+				break;
+
+			case 4: 			/*	--exclude-table-file */
+				if (!open_file_and_append_to_list(optarg, &table_exclude_patterns, "exclude tables list", true))
+				{
+					fprintf(stderr,
+							_("%s: invalid --exclude-table-file option -- can't open file %s\n"),
+							progname, optarg);
+					exit(1);
+				}
+				break;
+			case 5: 			/*	--max-query-elements */
+				g_gp_max_query_elements = atoi(optarg);
+				if (g_gp_max_query_elements <= 0)
+				{
+					fprintf(stderr,
+							_("%s: invalid --max-query-elements option -- %s, must be a positive integer.\n"),
+							progname, optarg);
+					exit(1);
+				}
 				break;
 
 			default:
@@ -979,6 +1014,12 @@ expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	PGresult   *res;
 	SimpleStringListCell *cell;
 	int			i;
+	/*
+	 * When the number of patterns (schemas) is too high
+	 * max_stack_depth might be breached, so the query
+	 * must be broken down to several queries.
+	 */
+	int query_element_count = 0;
 
 	if (patterns->head == NULL)
 		return;					/* nothing to do */
@@ -992,25 +1033,38 @@ expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 
 	for (cell = patterns->head; cell; cell = cell->next)
 	{
-		if (cell != patterns->head)
+		if (query_element_count != 0)
 			appendPQExpBuffer(query, "UNION ALL\n");
 		appendPQExpBuffer(query,
 						  "SELECT oid FROM pg_catalog.pg_namespace n\n");
 		processSQLNamePattern(g_conn, query, cell->val, false, false,
 							  NULL, "n.nspname", NULL,
 							  NULL);
+		query_element_count++;
+		if ((cell->next == NULL) || (query_element_count >= g_gp_max_query_elements))
+		{
+			if (g_verbose)
+				write_msg(NULL, "query with %d union elements\n", query_element_count);
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			for (i = 0; i < PQntuples(res); i++)
+			{
+				simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+			}
+
+			PQclear(res);
+			destroyPQExpBuffer(query);
+
+			/* restart new query */
+			if (cell->next)
+			{
+				query = createPQExpBuffer();
+				query_element_count = 0;
+			}
+		}
 	}
 
-	res = PQexec(g_conn, query->data);
-	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-	for (i = 0; i < PQntuples(res); i++)
-	{
-		simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
-	}
-
-	PQclear(res);
-	destroyPQExpBuffer(query);
 }
 
 /*
@@ -1024,6 +1078,12 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	PGresult   *res;
 	SimpleStringListCell *cell;
 	int			i;
+	/*
+	 * When the number of patterns (tables) is too high
+	 * max_stack_depth might be breached, so the query
+	 * must be broken down to several queries.
+	 */
+	int query_element_count = 0;
 
 	if (patterns->head == NULL)
 		return;					/* nothing to do */
@@ -1037,7 +1097,7 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 
 	for (cell = patterns->head; cell; cell = cell->next)
 	{
-		if (cell != patterns->head)
+		if (query_element_count != 0)
 			appendPQExpBuffer(query, "UNION ALL\n");
 		appendPQExpBuffer(query,
 						  "SELECT c.oid"
@@ -1048,18 +1108,31 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 		processSQLNamePattern(g_conn, query, cell->val, true, false,
 							  "n.nspname", "c.relname", NULL,
 							  "pg_catalog.pg_table_is_visible(c.oid)");
+		query_element_count++;
+		if ((cell->next == NULL) || (query_element_count >= g_gp_max_query_elements))
+		{
+			if (g_verbose)
+				write_msg(NULL, "query with %d union elements\n", query_element_count);
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			for (i = 0; i < PQntuples(res); i++)
+			{
+				simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+			}
+
+			PQclear(res);
+			destroyPQExpBuffer(query);
+
+			/* restart new query */
+			if (cell->next)
+			{
+				query = createPQExpBuffer();
+				query_element_count = 0;
+			}
+		}
 	}
 
-	res = PQexec(g_conn, query->data);
-	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-	for (i = 0; i < PQntuples(res); i++)
-	{
-		simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
-	}
-
-	PQclear(res);
-	destroyPQExpBuffer(query);
 }
 
 /*
@@ -7575,8 +7648,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	int			actual_atts;	/* number of attrs in this CREATE statment */
 	char	   *reltypename;
 	char	   *storage;
-	int			j,
-				k;
+	int			j;
 
 	/* Make sure we are in proper schema */
 	selectSourceSchema(tbinfo->dobj.namespace->dobj.name);
@@ -8058,28 +8130,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 
 		appendPQExpBuffer(q, "\n)");
-
-		/*
-		 * Emit the INHERITS clause if this table has parents.
-		 */
-		if (numParents > 0)
-		{
-			appendPQExpBuffer(q, "\nINHERITS (");
-			for (k = 0; k < numParents; k++)
-			{
-				TableInfo  *parentRel = parents[k];
-
-				if (k > 0)
-					appendPQExpBuffer(q, ", ");
-				if (parentRel->dobj.namespace != tbinfo->dobj.namespace)
-					appendPQExpBuffer(q, "%s.",
-								fmtId(parentRel->dobj.namespace->dobj.name));
-				appendPQExpBuffer(q, "%s",
-								  fmtId(parentRel->dobj.name));
-			}
-			appendPQExpBuffer(q, ")");
-		}
-
 
 		if (tbinfo->reloptions && strlen(tbinfo->reloptions) > 0)
 			appendPQExpBuffer(q, "\nWITH (%s)", tbinfo->reloptions);

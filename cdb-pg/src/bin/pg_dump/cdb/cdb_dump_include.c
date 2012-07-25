@@ -75,6 +75,7 @@ static const char *logInfo = "INFO";
 static const char *logWarn = "WARN";
 static const char *logError = "ERROR";
 
+int g_gp_max_query_elements = MAX_QUERY_ELEMENTS_DEFAULT;
 
 /*
  * Object inclusion/exclusion lists
@@ -91,6 +92,7 @@ SimpleStringList table_include_patterns = {NULL, NULL};
 SimpleOidList table_include_oids = {NULL, NULL};
 SimpleStringList table_exclude_patterns = {NULL, NULL};
 SimpleOidList table_exclude_oids = {NULL, NULL};
+
 
 
 /* these are to avoid passing around info for findNamespace() */
@@ -440,10 +442,10 @@ selectSourceSchema(const char *schemaName)
 	curSchemaName = strdup(schemaName);
 }
 
-
 /*
  * Find the OIDs of all schemas matching the given list of patterns,
  * and append them to the given OID list.
+ * Query for OIDS is done in max_query_elements chunks.
  */
 static void
 expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
@@ -452,6 +454,12 @@ expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	PGresult   *res;
 	SimpleStringListCell *cell;
 	int			i;
+	/*
+	 * When the number of patterns (schemas) is too high
+	 * max_stack_depth might be breached, so the query
+	 * must be broken down to several queries.
+	 */
+	int query_element_count = 0;
 
 	if (patterns->head == NULL)
 		return;					/* nothing to do */
@@ -465,31 +473,44 @@ expand_schema_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 
 	for (cell = patterns->head; cell; cell = cell->next)
 	{
-		if (cell != patterns->head)
+		if (query_element_count != 0)
 			appendPQExpBuffer(query, "UNION ALL\n");
 		appendPQExpBuffer(query,
 						  "SELECT oid FROM pg_catalog.pg_namespace n\n");
 		processSQLNamePattern(g_conn, query, cell->val, false, false,
 							  NULL, "n.nspname", NULL,
 							  NULL);
+		query_element_count++;
+		if ((cell->next == NULL) || (query_element_count >= g_gp_max_query_elements))
+		{
+			if (g_verbose)
+				mpp_err_msg(logInfo, progname, "query with %d union elements\n", query_element_count);
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			for (i = 0; i < PQntuples(res); i++)
+			{
+				simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+			}
+
+			PQclear(res);
+			destroyPQExpBuffer(query);
+
+			/* restart new query */
+			if (cell->next)
+			{
+				query = createPQExpBuffer();
+				query_element_count = 0;
+			}
+		}
 	}
 
-	res = PQexec(g_conn, query->data);
-	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-	for (i = 0; i < PQntuples(res); i++)
-	{
-		simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
-	}
-
-	PQclear(res);
-	destroyPQExpBuffer(query);
 }
-
 
 /*
  * Find the OIDs of all tables matching the given list of patterns,
  * and append them to the given OID list.
+ * Query for OIDS is done in max_query_elements chunks.
  */
 static void
 expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
@@ -498,6 +519,12 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 	PGresult   *res;
 	SimpleStringListCell *cell;
 	int			i;
+	/*
+	 * When the number of patterns (tables) is too high
+	 * max_stack_depth might be breached, so the query
+	 * must be broken down to several queries.
+	 */
+	int query_element_count = 0;
 
 	if (patterns->head == NULL)
 		return;					/* nothing to do */
@@ -511,7 +538,7 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 
 	for (cell = patterns->head; cell; cell = cell->next)
 	{
-		if (cell != patterns->head)
+		if (query_element_count != 0)
 			appendPQExpBuffer(query, "UNION ALL\n");
 		appendPQExpBuffer(query,
 						  "SELECT c.oid"
@@ -522,18 +549,31 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 		processSQLNamePattern(g_conn, query, cell->val, true, false,
 							  "n.nspname", "c.relname", NULL,
 							  "pg_catalog.pg_table_is_visible(c.oid)");
+		query_element_count++;
+		if ((cell->next == NULL) || (query_element_count >= g_gp_max_query_elements))
+		{
+			if (g_verbose)
+				mpp_err_msg(logInfo, progname, "query with %d union elements\n", query_element_count);
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			for (i = 0; i < PQntuples(res); i++)
+			{
+				simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
+			}
+
+			PQclear(res);
+			destroyPQExpBuffer(query);
+
+			/* restart new query */
+			if (cell->next)
+			{
+				query = createPQExpBuffer();
+				query_element_count = 0;
+			}
+		}
 	}
 
-	res = PQexec(g_conn, query->data);
-	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-	for (i = 0; i < PQntuples(res); i++)
-	{
-		simple_oid_list_append(oids, atooid(PQgetvalue(res, i, 0)));
-	}
-
-	PQclear(res);
-	destroyPQExpBuffer(query);
 }
 
 
