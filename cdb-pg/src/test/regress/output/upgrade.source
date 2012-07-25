@@ -826,10 +826,20 @@ select stmt from (
     except
     select stmt from catdump.DDL where ver = '5.0'
 ) extra order by md5(stmt);
-                                                                      stmt
--------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                           stmt                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE FUNCTION pg_catalog.wm_var_samp(pg_catalog.float8, pg_catalog._float8, pg_catalog.int4) RETURNS pg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_var_samp(pg_catalog."numeric", pg_catalog._numeric, pg_catalog.int4) RETURNS pg_catalog."numeric" LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_var_pop(pg_catalog."numeric", pg_catalog._numeric, pg_catalog.int4) RETURNS pg_catalog."numeric" LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_stddev_pop(pg_catalog."numeric", pg_catalog._numeric, pg_catalog.int4) RETURNS pg_catalog."numeric" LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
  CREATE FUNCTION pg_catalog."convert"(pg_catalog.text, pg_catalog.name) RETURNS pg_catalog.text LANGUAGE internal STABLE STRICT AS 'pg_convert';
-(1 row)
+ CREATE FUNCTION pg_catalog.wm_stddev_samp(pg_catalog."numeric", pg_catalog._numeric, pg_catalog.int4) RETURNS pg_catalog."numeric" LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_stddev_pop(pg_catalog.float8, pg_catalog._float8, pg_catalog.int4) RETURNS pg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_avg(pg_catalog.float8, pg_catalog._float8, pg_catalog.int4) RETURNS pg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_var_pop(pg_catalog.float8, pg_catalog._float8, pg_catalog.int4) RETURNS pg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_stddev_samp(pg_catalog.float8, pg_catalog._float8, pg_catalog.int4) RETURNS pg_catalog.float8 LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+ CREATE FUNCTION pg_catalog.wm_avg(pg_catalog."numeric", pg_catalog._numeric, pg_catalog.int4) RETURNS pg_catalog."numeric" LANGUAGE internal IMMUTABLE STRICT AS 'window_dummy';
+(11 rows)
 
 select stmt from (
     select stmt from catdump.DDL where ver = '5.0'

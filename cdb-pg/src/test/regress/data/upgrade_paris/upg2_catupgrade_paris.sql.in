@@ -577,8 +577,6 @@ CREATE FUNCTION @gpupgradeschemaname@.lead_lag_frame_maker(internal) RETURNS int
 CREATE FUNCTION @gpupgradeschemaname@.wm_frame_maker(internal) RETURNS internal LANGUAGE internal VOLATILE STRICT
 	AS 'wm_frame_maker' WITH (OID=5082);
 
-/*
- MPP-17916: we have to deal with upgrade for these.  Comment out for now.
 CREATE FUNCTION @gpupgradeschemaname@.wm_avg(float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
 	AS 'window_dummy' WITH (OID=7184);
 
@@ -608,7 +606,6 @@ CREATE FUNCTION @gpupgradeschemaname@.wm_stddev_pop(numeric, _numeric, int4) RET
 
 CREATE FUNCTION @gpupgradeschemaname@.wm_stddev_samp(numeric, _numeric, int4) RETURNS numeric LANGUAGE internal IMMUTABLE STRICT
 	AS 'window_dummy' WITH (OID=7193);
-*/
 
 CREATE FUNCTION @gpupgradeschemaname@.float8_wm_avg(internal, float8, _float8, int4) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT
 	AS 'float8_wm_avg' WITH (OID=7194);
@@ -755,3 +752,23 @@ SELECT catDML(
 );
 ALTER TABLE @gpupgradeschemaname@.pg_window
     ALTER COLUMN winframemakerfunc SET NOT NULL;
+
+-- MPP-17916: new window functions.
+SELECT catDML(
+'INSERT INTO @gpupgradeschemaname@.pg_window VALUES
+( 7184,  ''t'', ''f'', ''f'', ''f'', 7194,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7189,  ''t'', ''f'', ''f'', ''f'', 7199,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7185,  ''t'', ''f'', ''f'', ''f'', 7195,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7186,  ''t'', ''f'', ''f'', ''f'', 7196,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7190,  ''t'', ''f'', ''f'', ''f'', 7200,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7191,  ''t'', ''f'', ''f'', ''f'', 7201,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7187,  ''t'', ''f'', ''f'', ''f'', 7197,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7188,  ''t'', ''f'', ''f'', ''f'', 7198,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7192,  ''t'', ''f'', ''f'', ''f'', 7202,		0,		0,		0,	''d'',	''f'',	5082 ),
+( 7193,  ''t'', ''f'', ''f'', ''f'', 7203,		0,		0,		0,	''d'',	''f'',	5082 )
+'
+);
+SELECT catDML(
+'UPDATE @gpupgradeschemaname@.pg_proc SET proiswin = ''t''
+ WHERE oid BETWEEN 7184 AND 7193'
+);
