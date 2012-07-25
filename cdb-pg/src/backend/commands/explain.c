@@ -417,7 +417,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
         /* Wait for completion of all qExec processes. */
         PG_TRY();
         {
-            if (estate->dispatcherState && estate->dispatcherState->primaryResults)
+            if (estate->dispatcherState && estate->dispatcherState->results)
 			{
                 CdbCheckDispatchResult(estate->dispatcherState, false); 
 			}
@@ -437,9 +437,9 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
             cdbexplain_localExecStats(queryDesc->planstate, es->showstatctx);
 
         /* Fill in the plan's Instrumentation with stats from qExecs. */
-        if (estate->dispatcherState && estate->dispatcherState->primaryResults)
+        if (estate->dispatcherState && estate->dispatcherState->results)
             cdbexplain_recvExecStats(queryDesc->planstate,
-                                     estate->dispatcherState->primaryResults,
+                                     estate->dispatcherState->results,
                                      LocallyExecutingSliceIndex(estate),
                                      es->showstatctx);
 	}

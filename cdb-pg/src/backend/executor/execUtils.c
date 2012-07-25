@@ -2024,9 +2024,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/*
 	 * If QD, wait for QEs to finish and check their results.
 	 */
-	if (estate->dispatcherState->primaryResults)
+	if (estate->dispatcherState->results)
 	{
-		CdbDispatchResults *pr = estate->dispatcherState->primaryResults;
+		CdbDispatchResults *pr = estate->dispatcherState->results;
 		HTAB 			   *aopartcounts = NULL;
 
 		/*
@@ -2170,7 +2170,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	 * Wait for them to finish and clean up the dispatching structures.
 	 * Replace current error info with QE error info if more interesting.
 	 */
-	if (estate->dispatcherState && estate->dispatcherState->primaryResults)
+	if (estate->dispatcherState && estate->dispatcherState->results)
 	{
 		/*
 		 * If we are finishing a query before all the tuples of the query

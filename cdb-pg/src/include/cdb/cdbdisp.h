@@ -70,7 +70,7 @@ typedef struct DispatchCommandQueryParms
 	/*
 	 * Used by dispatch agent if NOT using sliced execution
 	 */
-	int			primary_gang_id;
+	int			writer_gang_id;
 
 } DispatchCommandQueryParms;
 
@@ -84,7 +84,7 @@ typedef struct DispatchCommandDtxProtocolParms
 	char*						dtxProtocolCommandLoggingStr;
 	char						gid[TMGIDSIZE];
 	DistributedTransactionId	gxid;
-	int							primary_gang_id;
+	int							writer_gang_id;
 	char *argument;
 	int argumentLength;
 } DispatchCommandDtxProtocolParms;
@@ -178,7 +178,7 @@ extern CdbDispatchDirectDesc default_dispatch_direct_desc;
 
 typedef struct CdbDispatcherState
 {
-	struct CdbDispatchResults    *primaryResults;
+	struct CdbDispatchResults    *results;
 	struct CdbDispatchCmdThreads *dispatchThreads;
 } CdbDispatcherState;
 
@@ -239,7 +239,7 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds, bool cancelUnfinishedWork)
 /*--------------------------------------------------------------------*/
 
 struct pg_result **
-cdbdisp_returnResults(struct CdbDispatchResults *primaryResults,
+cdbdisp_returnResults(struct CdbDispatchResults *results,
 						StringInfo errmsgbuf,
 						int *numresults);
 /*
@@ -304,7 +304,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand		dtxProtocolCommand,
  * be dispatched should be done inside of a global transaction or not.
  *
  * The CdbDispatchResults objects allocated for the command
- * are returned in *pPrimaryResults
+ * exist in ds->results.
  * The caller, after calling CdbCheckDispatchResult(), can
  * examine the CdbDispatchResults objects, can keep them as
  * long as needed, and ultimately must free them with
@@ -335,7 +335,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
  */
 void
 cdbdisp_finishCommand(struct CdbDispatcherState *ds,
-					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults, void *ctx),
+					  void (*handle_results_callback)(struct CdbDispatchResults *results, void *ctx),
 					  void *ctx);
 
 /*
@@ -382,7 +382,7 @@ struct SliceTable;
  * within a complete parallel plan.
  *
  * The CdbDispatchResults objects allocated for the plan are
- * returned in *pPrimaryResults
+ * returned in ds->results.
  * The caller, after calling CdbCheckDispatchResult(), can
  * examine the CdbDispatchResults objects, can keep them as
  * long as needed, and ultimately must free them with

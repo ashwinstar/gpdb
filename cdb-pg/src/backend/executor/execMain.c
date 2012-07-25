@@ -905,17 +905,6 @@ ExecutorRun(QueryDesc *queryDesc,
 								 count,
 								 direction,
 								 dest);
-			
-			/*
-             * It's alright to cancel any QEs that are still running after
-             * the root slice returns end-of-stream.  We don't need any
-             * more data from them to answer the query.  Squelch messages
-             * must have been sent already, but they aren't received
-             * asynchronously at present, and some QEs might not have
-             * noticed them due to long-running operations.  (MPP-16671)
-             */
-            if (result == NULL)
-				estate->cancelUnfinished = true;
 		}
 		else
 		{

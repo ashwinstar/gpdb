@@ -4032,7 +4032,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * Handle errors/cancels here: we may catch *either* of the
 		 * two dispatch operations above.
 		 */
-		if (dispatch_inflight && ds.primaryResults)
+		if (dispatch_inflight && ds.results)
 			cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
 		PG_RE_THROW();

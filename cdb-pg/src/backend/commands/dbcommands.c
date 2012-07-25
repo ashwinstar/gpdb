@@ -612,7 +612,7 @@ createdb(CreatedbStmt *stmt)
 	PG_CATCH();
 	{
 		/* If dispatched, stop QEs and clean up after them. */
-		if (ds.primaryResults)
+		if (ds.results)
 			cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
 		PG_RE_THROW();

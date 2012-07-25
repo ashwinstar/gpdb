@@ -406,7 +406,7 @@ DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
-        if (ds.primaryResults)
+        if (ds.results)
             cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
         /* Carry on with error handling. */
@@ -1241,7 +1241,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
-        if (ds.primaryResults)
+        if (ds.results)
             cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
         /* Carry on with error handling. */
@@ -1349,7 +1349,7 @@ DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
-        if (ds.primaryResults)
+        if (ds.results)
             cdbdisp_handleError(&ds);
 
         /* Carry on with error handling. */

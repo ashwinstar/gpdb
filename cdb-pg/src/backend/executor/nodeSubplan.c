@@ -1265,7 +1265,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         if (shouldDispatch && 
 			queryDesc && queryDesc->estate &&
 			queryDesc->estate->dispatcherState &&
-			queryDesc->estate->dispatcherState->primaryResults)
+			queryDesc->estate->dispatcherState->results)
         {
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
             if (planstate->instrument)
@@ -1283,7 +1283,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 /* Jam stats into subplan's Instrumentation nodes. */
                 explainRecvStats = true;
                 cdbexplain_recvExecStats(planstate,
-                                         queryDesc->estate->dispatcherState->primaryResults,
+                                         queryDesc->estate->dispatcherState->results,
                                          LocallyExecutingSliceIndex(queryDesc->estate),
                                          econtext->ecxt_estate->showstatctx);
             }
@@ -1326,7 +1326,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 CdbCheckDispatchResult(queryDesc->estate->dispatcherState, true);
 
                 cdbexplain_recvExecStats(planstate,
-                                         queryDesc->estate->dispatcherState->primaryResults,
+                                         queryDesc->estate->dispatcherState->results,
                                          LocallyExecutingSliceIndex(queryDesc->estate),
                                          econtext->ecxt_estate->showstatctx);
             }
@@ -1340,7 +1340,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * Wait for them to finish and clean up the dispatching structures.
          * Replace current error info with QE error info if more interesting.
 		 */
-        if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->primaryResults)
+        if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->results)
 			cdbdisp_handleError(queryDesc->estate->dispatcherState);
 		
 		/* teardown the sequence server */
