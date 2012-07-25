@@ -11,6 +11,7 @@ Usage: gpssh [--version] [-?v] [-h host] [-f hostfile] [cmd]
           -e        : echo commands as they are executed
           -h host   : the host to connect to (multiple -h is okay)
           -f file   : a file listing all hosts to connect to
+          -u username: the username to use to connect to host
           -D        : do not filter multi-homed hosts 
           cmd       : the command to execute. If not present, 
                       go into interactive mode
@@ -207,6 +208,9 @@ try:
     return_code = sessionCleanup()
     sys.exit(return_code)
 
+except ssh_utils.HostNameError, e:
+    print "ERROR: %s" % e
+    sys.exit(1) 
 except KeyboardInterrupt:
     sessionCleanup()
     sys.exit('\nInterrupted...')

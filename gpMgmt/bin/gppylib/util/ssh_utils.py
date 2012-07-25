@@ -52,16 +52,16 @@ class HostList():
     def add(self, host, lineno=0):
         '''Add a host to the hostlist.'''
 
-        # we don't allow the user@ syntax here
+        #we don't allow the user@ syntax here
         if host.find('@') >= 0:
-            raise HostNameError(host, lineno)
+            raise HostNameError("'@' is not allowed in hostname ("+host+")")
 
         # MPP-13617 - check for ipv6
         if host.find(':') >= 0:
             try:
                 socket.inet_pton(socket.AF_INET6, host)
             except socket.error, e:
-                raise HostNameError(str(e), lineno)
+                raise HostNameError("illegal IPv6 address specified in ("+host+")")
 
         # MPP-13617 - check for ipv4
         if host.find('.') >= 0:
@@ -70,7 +70,7 @@ class HostList():
                 try:
                     socket.inet_pton(socket.AF_INET, host)
                 except socket.error, e:
-                    raise HostNameError(str(e), lineno)
+                    raise HostNameError("illegal IPv4 address specified in ("+host+")")
 
         self.list.append(host)
         return self.list
