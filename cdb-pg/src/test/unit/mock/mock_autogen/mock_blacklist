@@ -1,0 +1,35 @@
+#
+# Blacklisted source files to which no mock file can be generated automatically
+# (even when there are listed in mock_source).
+# 
+# Either there is currently no mock file available for these source files or 
+# a mock file has been manually created.
+#
+port							# No not generate mocks for files in port directory
+lib
+libgppc
+libpq
+main
+regex
+mb
+
+elog.c							# Manually overwritten, no mocking
+cdbfilerepmirror.c 				# Re-check
+ic_common.c						# Re-check
+ic_udp.c						# Re-check
+ic_tcp.c						# Re-check
+predtest.c						# Test file
+gram.c							# Re-check later, includes another c file, bad
+keywords.c						# Re-check
+backoff.c						# Re-check
+postmaster.c					# Re-check
+sendalert.c						# Re-check
+rewriteHandler.c				# Re-check
+xml.c							# Re-check, Invalid headers
+ps_status.c						# Re-check, Invalid headers
+netcheck.c						# Re-check, parse error
+heaptuple.c						# Due to header inconsistency, it needs to be considered as part of heapam.c d
+gistutil.c						# header inconsistence. Is part of gist_mock.c
+datumstreamblock.c
+fd.c
+aocssegfiles.c					# Error generating double pointer returns

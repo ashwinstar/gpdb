@@ -271,7 +271,7 @@ extern TransactionId GetLastTransactionIdFromSnapshot(DistributedTransactionId d
 
 void ShowSubtransactionsForSharedSnapshot(void);
 void GetSubXidsInXidBuffer(void);
-void UpdateSubtransactionsInSharedSnapshot(DistributedTransactionId);
+void UpdateSubtransactionsInSharedSnapshot(DistributedTransactionId dxid);
 
 extern void ClearTransactionFromPgProc_UnderLock(void);
 
