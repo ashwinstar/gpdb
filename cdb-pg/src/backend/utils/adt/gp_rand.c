@@ -123,7 +123,6 @@ gp_srand48(long seed)
 #include "postgres.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
-#include "utils/gp_rand.h"
 
 /*
  * Our random() function is based on leap-frogging approach to

@@ -18,6 +18,7 @@
 #include "fmgr.h"
 #include "nodes/parsenodes.h"
 #include "executor/executor.h" /* for AttrMap */
+#include "utils/guc.h"
 
 /*
  *		Defined in adt/
@@ -1245,5 +1246,13 @@ extern Datum gp_get_part_constraints(PG_FUNCTION_ARGS);
 extern Datum gp_get_parts_index_relid(PG_FUNCTION_ARGS);
 extern Datum gp_get_parts_index_info_function(PG_FUNCTION_ARGS);
 extern Datum gp_partition_inverse(PG_FUNCTION_ARGS);
+
+/* gp_rand.c */
+extern Datum drandom(PG_FUNCTION_ARGS);
+extern Datum setseed(PG_FUNCTION_ARGS);
+extern uint32 get_seed_per_query(void);
+extern void set_seed_per_query(unsigned int seed, int init_pos, int leap_width);
+extern bool assign_random_seed(double value, bool doit, GucSource source);
+extern const char *show_random_seed(void);
 
 #endif   /* BUILTINS_H */
