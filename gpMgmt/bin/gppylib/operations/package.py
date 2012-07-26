@@ -438,7 +438,34 @@ class ValidateInstallPackage(Operation):
         os_string += major_release
     
         return os_string
-        
+
+    def check_permissions(self, path):
+        """
+            Checks if the given directory has appropriate permissions
+            to create a file.
+        """      
+
+        #If the intermeditate directories do no exist, 
+        #we want to try to create them to see if the parent
+        #directories have the appropriate permissions.
+        if not os.path.exists(path):
+            try:
+                os.makedirs(path)
+            except (IOError, OSError), e:
+                return False
+
+        tempfile = os.path.join(path, 'tempfile')
+        try:
+            with open(tempfile, 'w') as file:
+                pass
+        except (IOError, OSError), e:
+            return False
+        finally:
+            if tempfile is not None:
+                os.remove(tempfile)
+
+        return True
+
     def execute(self):
         #Check the GPDB requirements
         if not IsVersionCompatible(self.gppkg).run():
@@ -452,6 +479,10 @@ class ValidateInstallPackage(Operation):
         if self.gppkg.architecture.lower() !=  platform.machine().lower():
             raise ArchCompatibilityError(self.gppkg.architecture, platform.machine().lower())
 
+        #Check for permissions in share/packages directory
+        if not self.check_permissions(RPM_DATABASE):
+            raise Exception('Directory %s does not have permissions to write files.' % RPM_DATABASE)
+ 
         rpm_set = set([self.gppkg.main_rpm] + self.gppkg.dependencies)
         rpm_install_string = ' '.join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set])
         if self.is_update:
