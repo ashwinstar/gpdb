@@ -23,6 +23,7 @@
 #include "utils/datumstream.h"
 #include "utils/guc.h"
 #include "catalog/pg_compression.h"
+#include "utils/faultinjector.h"
 
 typedef enum AOCSBK
 {
@@ -1123,7 +1124,15 @@ datumstreamread_block_content(DatumStreamRead *acc)
                 oldCtxt = MemoryContextSwitchTo(acc->memctxt);
 
                 if (acc->large_object_buffer)
+				{
                     pfree(acc->large_object_buffer);
+#ifdef FAULT_INJECTOR
+					FaultInjector_InjectFaultIfSet(MallocFailure,
+													DDLNotSpecified,
+													"",    //databaseName
+													""); // tableName
+#endif
+				}
 
                 acc->large_object_buffer_size = acc->getBlockInfo.contentLen;
                 acc->large_object_buffer = palloc(acc->getBlockInfo.contentLen);

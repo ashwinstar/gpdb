@@ -369,6 +369,7 @@ class GpInjectFaultProgram:
 			      "sync_persistent_table (inject fault to sync persistent table to disk), " \
 			      "xlog_insert (inject fault to skip insert record into xlog), " \
 			      "local_tm_record_transaction_commit (inject fault for local transactions after transaction commit is recorded and flushed in xlog ), " \
+			      "malloc_failure (inject fault to simulate memory allocation failure), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

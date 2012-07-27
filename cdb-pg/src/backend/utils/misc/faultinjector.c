@@ -233,6 +233,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault to skip insert record into xlog  */
 	_("local_tm_record_transaction_commit"),
 		/* inject fault after recording transaction commit for local transaction  */
+	_("malloc_failure"),
+		/* inject fault to simulate memory allocation failure  */
 	_("not recognized"),
 };
 
