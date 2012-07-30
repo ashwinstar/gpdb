@@ -852,13 +852,24 @@ class SegmentTemplate:
         try:
             fp = open(self.tempDir + '/pg_hba.conf', 'a')
             try:
+                new_host_set = set()
                 for newSeg in self.gparray.getExpansionSegDbList():
                     address = newSeg.getSegmentAddress()
+                    host = newSeg.getSegmentHostName()
+                    new_host_set.add(host)
                     addrinfo = socket.getaddrinfo(address, None)
                     ipaddrlist = list(set([ (ai[0], ai[4][0]) for ai in addrinfo]))
                     fp.write('# %s\n' % address)
                     for addr in ipaddrlist:
                         fp.write('host\tall\tall\t%s/%s\ttrust\n' % (addr[1], '32' if addr[0] == socket.AF_INET else '128'))
+
+                for new_host in new_host_set:
+                    addrinfo = socket.getaddrinfo(new_host, None)
+                    ipaddrlist = list(set([ (ai[0], ai[4][0]) for ai in addrinfo]))
+                    fp.write('# %s\n' % new_host)
+                    for addr in ipaddrlist:
+                        fp.write('host\tall\tall\t%s/%s\ttrust\n' % (addr[1], '32' if addr[0] == socket.AF_INET else '128'))
+
             finally:
                 fp.close()
         except IOError, msg:
