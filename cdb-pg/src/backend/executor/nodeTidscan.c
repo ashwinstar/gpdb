@@ -226,8 +226,7 @@ static void
 CreateHeapTidScanInfo(TidScanState *node)
 {
 	Assert(node != NULL);
-	Relation currentRelation = node->ss.ss_currentRelation;
-	Assert(RelationIsHeap(currentRelation));
+	Assert(RelationIsHeap(node->ss.ss_currentRelation));
 	
 	node->additionalInfo = palloc0(sizeof(HeapTidScanInfo));
 }
