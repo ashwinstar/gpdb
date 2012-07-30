@@ -134,6 +134,7 @@ typedef struct AOCSFetchDescData
 
 	int64	skipBlockCount;
 
+	bool onlyVisibilityCheck;
 } AOCSFetchDescData;
 
 typedef AOCSFetchDescData *AOCSFetchDesc;
@@ -168,5 +169,12 @@ extern bool aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 					   AOTupleId *aoTupleId,
 					   TupleTableSlot *slot);
 extern void aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc);
-
+extern bool is_aocs_tuple_visible(IndexScanDesc scan, ItemPointer tid);
+extern AOCSFetchDesc aocs_visibilitycheck_init(Relation relation,
+									 Snapshot snapshot,
+									 bool *proj);
+extern bool aocs_visibilitycheck(AOCSFetchDesc aocsFetchDesc,
+					   AOTupleId *aoTupleId,
+					   TupleTableSlot *slot);
+extern void aocs_visibilitycheck_finish(AOCSFetchDesc aocsFetchDesc);
 #endif   /* AOCSAM_H */

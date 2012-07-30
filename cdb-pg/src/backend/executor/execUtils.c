@@ -2240,6 +2240,7 @@ void (*initGpmonPktFuncs[])(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 	&initGpmonPktForTableScan, /* T_TableScan */
 	&initGpmonPktForDynamicTableScan, /* reserved for T_DynamicTableScan */
 	&initGpmonPktForIndexScan, /* T_IndexScan */
+	&initGpmonPktForIndexOnlyScan, /* T_IndexOnlyScan */
 	&initGpmonPktForBitmapIndexScan, /* T_BitmapIndexScan */
 	&initGpmonPktForBitmapHeapScan, /* T_BitmapHeapScan */
 	&initGpmonPktForBitmapAppendOnlyScan, /* T_BitmapAppendOnlyScan */
@@ -2368,6 +2369,7 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		case T_DynamicTableScan:
 		case T_ExternalScan:
 		case T_IndexScan:
+		case T_IndexOnlyScan:
 		case T_BitmapIndexScan:
 		case T_TidScan:
 		case T_FunctionScan:

@@ -614,3 +614,17 @@ select distinct (case when b='13' then 'replacement' else d end) as d from aocs_
  something to keep
 (2 rows)
 
+-- TidScan
+drop table if exists aocs;
+create table aocs(i int, j int) with(appendonly=true);
+insert into aocs select 0, i from generate_series(0, 999) i;
+create index aocs_i on aocs(i);
+set enable_seqscan=off;
+select * from aocs where ctid = '(33554432,32769)';
+NOTICE:  SELECT uses system-defined column "aocs.ctid" without the necessary companion column "aocs.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+ i | j 
+---+---
+ 0 | 0
+(1 row)
+

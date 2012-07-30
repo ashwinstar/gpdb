@@ -654,7 +654,7 @@ bool		gp_opt_print_optimization_stats;
 bool		gp_opt_parallel;
 bool		gp_opt_local;
 int 		gp_opt_retries;
-
+bool  		gp_opt_xforms[GPOPT_XFORMS] = {[0 ... GPOPT_XFORMS - 1] = false}; /* array of xforms disable flags */
 char	   *gp_idf_deduplicate_str;
 
 /* Security */
@@ -5219,13 +5219,18 @@ static struct config_int ConfigureNamesInt[] =
         10, 0, 300, NULL, NULL
     },
 
+	/*
+	 * This GUC potentially creates a 'lossy' block directory, which can not be used
+	 * for checking visibility of a given tuple id. To support covering indexes,
+	 * we defunct this GUC.
+	 */
 	{
-		{"gp_blockdirectory_entry_min_range", PGC_USERSET, GP_ARRAY_TUNING,
+		{"gp_blockdirectory_entry_min_range", PGC_USERSET, DEFUNCT_OPTIONS,
 		 gettext_noop("Minimal range in bytes one block directory entry covers."),
 		 gettext_noop("Used to reduce the size of a block directory."),
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
-		&gp_blockdirectory_entry_min_range,
+		&defunct_int,
 		0, 0, INT_MAX, NULL, NULL
 	},
 

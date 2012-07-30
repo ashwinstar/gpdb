@@ -332,6 +332,23 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 			
+		case T_IndexOnlyScan:
+			{
+				IndexOnlyScan  *idxscan = (IndexOnlyScan *) node;
+				IndexOnlyScan  *newidxscan;
+
+				FLATCOPY(newidxscan, idxscan, IndexOnlyScan);
+				SCANMUTATE(newidxscan, idxscan);
+				newidxscan->indexid = idxscan->indexid;
+				MUTATE(newidxscan->indexqual, idxscan->indexqual, List *);
+				MUTATE(newidxscan->indexqualorig, idxscan->indexqualorig, List *);
+				MUTATE(newidxscan->indexstrategy, idxscan->indexstrategy, List *);
+				MUTATE(newidxscan->indexsubtype, idxscan->indexsubtype, List *);
+
+				return (Node *) newidxscan;
+			}
+			break;
+
 		case T_BitmapIndexScan:
 			{
 				BitmapIndexScan  *idxscan = (BitmapIndexScan *) node;

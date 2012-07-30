@@ -27,7 +27,7 @@
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeBitmapIndexscan.h"
-#include "executor/nodeIndexscan.h"
+#include "executor/execIndexScan.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"

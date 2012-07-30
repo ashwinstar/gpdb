@@ -283,6 +283,7 @@ typedef struct AppendOnlyFetchDescData
 
 	int64	skipBlockCount;
 
+	bool		onlyVisibilityCheck;
 }	AppendOnlyFetchDescData;
 
 typedef AppendOnlyFetchDescData *AppendOnlyFetchDesc;
@@ -320,5 +321,13 @@ extern void appendonly_insert(
 		AOTupleId *aoTupleId);
 extern void appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc);
 extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
-
+extern bool is_appendonly_tuple_visible(IndexScanDesc scan, ItemPointer tid);
+extern AppendOnlyFetchDesc appendonly_visibilitycheck_init(
+	Relation 	relation,
+	Snapshot 	appendOnlyMetaDataSnapshot);
+extern bool appendonly_visibilitycheck(
+	AppendOnlyFetchDesc aoFetchDesc,
+	AOTupleId *aoTid,
+	TupleTableSlot *slot);
+extern void appendonly_visibilitycheck_finish(AppendOnlyFetchDesc aoFetchDesc);
 #endif   /* APPENDONLYAM_H */

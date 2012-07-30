@@ -1064,6 +1064,27 @@ get_func_signature(Oid funcid, Oid **argtypes, int *nargs)
 }
 
 /*
+ * pfree_ptr_array
+ * 		Free an array of pointers, after freeing each individual element
+ */
+void
+pfree_ptr_array(char **ptrarray, int nelements)
+{
+	int i;
+	if (NULL == ptrarray)
+		return;
+
+	for (i = 0; i < nelements; i++)
+	{
+		if (NULL != ptrarray[i])
+		{
+			pfree(ptrarray[i]);
+		}
+	}
+	pfree(ptrarray);
+}
+
+/*
  * get_func_output_arg_types
  *		Given procedure id, return the function's output argument types
  */
@@ -1075,7 +1096,7 @@ get_func_output_arg_types(Oid funcid)
 	Oid		*argtypes = NULL;
 	char	**argnames = NULL;
 	char	*argmodes = NULL;
-	List	*l_argtypes = NULL;
+	List	*l_argtypes = NIL;
 	int		i;
 
 	tp = SearchSysCache(PROCOID,
@@ -1089,7 +1110,7 @@ get_func_output_arg_types(Oid funcid)
 
 	if (NULL == argmodes)
 	{
-		Assert(NULL == argnames);
+		pfree_ptr_array(argnames, numargs);
 		if (NULL != argtypes)
 		{
 			pfree(argtypes);
@@ -1103,15 +1124,14 @@ get_func_output_arg_types(Oid funcid)
 		Oid argtype = argtypes[i];
 		char argmode = argmodes[i];
 
-		if (PROARGMODE_INOUT == argmode || PROARGMODE_OUT == argmode)
+		if (PROARGMODE_INOUT == argmode || PROARGMODE_OUT == argmode || PROARGMODE_TABLE == argmode)
 		{
 			l_argtypes = lappend_oid(l_argtypes, argtype);
 		}
-		pfree(argnames[i]);
 	}
 
+	pfree_ptr_array(argnames, numargs);
 	pfree(argtypes);
-	pfree(argnames);
 	pfree(argmodes);
 
 	ReleaseSysCache(tp);

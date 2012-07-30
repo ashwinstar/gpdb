@@ -27,6 +27,7 @@
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
 #include "executor/nodeIndexscan.h"
+#include "executor/nodeIndexOnlyScan.h"
 #include "executor/nodeLimit.h"
 #include "executor/nodeMaterial.h"
 #include "executor/nodeMergejoin.h"
@@ -129,6 +130,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 
 		case T_IndexScanState:
 			ExecIndexReScan((IndexScanState *) node, exprCtxt);
+			break;
+			
+		case T_IndexOnlyScanState:
+			ExecIndexOnlyReScan((IndexOnlyScanState *) node, exprCtxt);
 			break;
 			
 		case T_ExternalScanState:
@@ -267,6 +272,10 @@ ExecMarkPos(PlanState *node)
 			ExecIndexMarkPos((IndexScanState *) node);
 			break;
 			
+		case T_IndexOnlyScanState:
+			ExecIndexOnlyMarkPos((IndexOnlyScanState *) node);
+			break;
+			
 		case T_ExternalScanState:
 			elog(ERROR, "Marking scan position for external relation is not supported");
 			break;			
@@ -346,6 +355,10 @@ ExecRestrPos(PlanState *node)
 			ExecIndexRestrPos((IndexScanState *) node);
 			break;
 			
+		case T_IndexOnlyScanState:
+			ExecIndexOnlyRestrPos((IndexOnlyScanState *) node);
+			break;
+			
 		case T_ExternalScanState:
 			elog(ERROR, "Restoring scan position is not yet supported for external relation scan");
 			break;			
@@ -406,6 +419,7 @@ ExecSupportsMarkRestore(NodeTag plantype)
 	{
 		case T_SeqScan:
 		case T_IndexScan:
+		case T_IndexOnlyScan:
 		case T_TidScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
@@ -467,6 +481,7 @@ ExecSupportsBackwardScan(Plan *node)
 
 		case T_SeqScan:
 		case T_IndexScan:
+		case T_IndexOnlyScan:
 		case T_TidScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
@@ -521,6 +536,7 @@ ExecMayReturnRawTuples(PlanState *node)
 		case T_TableScanState:
 		case T_DynamicTableScanState:
 		case T_IndexScanState:
+		case T_IndexOnlyScanState:
 		case T_BitmapHeapScanState:
 		case T_TidScanState:
 		case T_SubqueryScanState:
@@ -607,6 +623,10 @@ ExecEagerFree(PlanState *node)
 			
 		case T_IndexScanState:
 			ExecEagerFreeIndexScan((IndexScanState *)node);
+			break;
+			
+		case T_IndexOnlyScanState:
+			ExecEagerFreeIndexOnlyScan((IndexOnlyScanState *)node);
 			break;
 			
 		case T_BitmapHeapScanState:
@@ -749,6 +769,7 @@ ExecEagerFreeChildNodes(PlanState *node, bool subplanDone)
 		case T_DynamicTableScanState:
 		case T_ExternalScanState:
 		case T_IndexScanState:
+		case T_IndexOnlyScanState:
 		case T_BitmapHeapScanState:
 		case T_BitmapAppendOnlyScanState:
 		case T_FunctionScanState:

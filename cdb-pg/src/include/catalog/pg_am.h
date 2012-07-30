@@ -52,7 +52,8 @@
    ambulkdelete     regproc, 
    amvacuumcleanup  regproc, 
    amcostestimate   regproc, 
-   amoptions        regproc
+   amoptions        regproc,
+   amcanreturn      boolean
     );
 
 	create unique index on pg_am(amname) with (indexid=2651, CamelCase=AmName);
@@ -115,6 +116,7 @@ CATALOG(pg_am,2601)
 	regproc		amvacuumcleanup;	/* post-VACUUM cleanup function */
 	regproc		amcostestimate; /* estimate cost of an indexscan */
 	regproc		amoptions;		/* parse AM-specific parameters */
+	bool		amcanreturn;    /* whether this AM can return index attribute values */
 } FormData_pg_am;
 
 /* ----------------
@@ -128,7 +130,7 @@ typedef FormData_pg_am *Form_pg_am;
  *		compiler constants for pg_am
  * ----------------
  */
-#define Natts_pg_am						24
+#define Natts_pg_am						25
 #define Anum_pg_am_amname				1
 #define Anum_pg_am_amstrategies			2
 #define Anum_pg_am_amsupport			3
@@ -153,25 +155,26 @@ typedef FormData_pg_am *Form_pg_am;
 #define Anum_pg_am_amvacuumcleanup		22
 #define Anum_pg_am_amcostestimate		23
 #define Anum_pg_am_amoptions			24
+#define Anum_pg_am_amcanreturn			25
 
 /* ----------------
  *		initial contents of pg_am
  * ----------------
  */
 
-DATA(insert OID = 403 (  btree	5 1 1 t t t t f t t btinsert btbeginscan btgettuple btgetmulti btrescan btendscan btmarkpos btrestrpos btbuild btbulkdelete btvacuumcleanup btcostestimate btoptions ));
+DATA(insert OID = 403 (  btree	5 1 1 t t t t f t t btinsert btbeginscan btgettuple btgetmulti btrescan btendscan btmarkpos btrestrpos btbuild btbulkdelete btvacuumcleanup btcostestimate btoptions t ));
 DESCR("b-tree index access method");
 #define BTREE_AM_OID 403
-DATA(insert OID = 405 (  hash	1 1 0 f f f f f f t hashinsert hashbeginscan hashgettuple hashgetmulti hashrescan hashendscan hashmarkpos hashrestrpos hashbuild hashbulkdelete hashvacuumcleanup hashcostestimate hashoptions ));
+DATA(insert OID = 405 (  hash	1 1 0 f f f f f f t hashinsert hashbeginscan hashgettuple hashgetmulti hashrescan hashendscan hashmarkpos hashrestrpos hashbuild hashbulkdelete hashvacuumcleanup hashcostestimate hashoptions f ));
 DESCR("hash index access method");
 #define HASH_AM_OID 405
-DATA(insert OID = 783 (  gist	100 7 0 f t t t t t t gistinsert gistbeginscan gistgettuple gistgetmulti gistrescan gistendscan gistmarkpos gistrestrpos gistbuild gistbulkdelete gistvacuumcleanup gistcostestimate gistoptions ));
+DATA(insert OID = 783 (  gist	100 7 0 f t t t t t t gistinsert gistbeginscan gistgettuple gistgetmulti gistrescan gistendscan gistmarkpos gistrestrpos gistbuild gistbulkdelete gistvacuumcleanup gistcostestimate gistoptions f ));
 DESCR("GiST index access method");
 #define GIST_AM_OID 783
-DATA(insert OID = 2742 (  gin	100 4 0 f f f f t f t gininsert ginbeginscan gingettuple gingetmulti ginrescan ginendscan ginmarkpos ginrestrpos ginbuild ginbulkdelete ginvacuumcleanup gincostestimate ginoptions ));
+DATA(insert OID = 2742 (  gin	100 4 0 f f f f t f t gininsert ginbeginscan gingettuple gingetmulti ginrescan ginendscan ginmarkpos ginrestrpos ginbuild ginbulkdelete ginvacuumcleanup gincostestimate ginoptions f ));
 DESCR("GIN index access method");
 #define GIN_AM_OID 2742
-DATA(insert OID = 3013 (  bitmap	5 1 0 f t t t f f f bminsert bmbeginscan bmgettuple bmgetmulti bmrescan bmendscan bmmarkpos bmrestrpos bmbuild bmbulkdelete bmvacuumcleanup bmcostestimate bmoptions ));
+DATA(insert OID = 3013 (  bitmap	5 1 0 f t t t f f f bminsert bmbeginscan bmgettuple bmgetmulti bmrescan bmendscan bmmarkpos bmrestrpos bmbuild bmbulkdelete bmvacuumcleanup bmcostestimate bmoptions t ));
 DESCR("bitmap index access method");
 #define BITMAP_AM_OID 3013
 
@@ -179,7 +182,7 @@ DESCR("bitmap index access method");
  * Am_btree AM values for FormData_pg_am.
  */
 #define Am_btree \
-  {"btree"}, 5, 1, 1, true, true, true, true, false, true, true, BTINSERT_OID, BTBEGINSCAN_OID, BTGETTUPLE_OID, BTGETMULTI_OID, BTRESCAN_OID, BTENDSCAN_OID, BTMARKPOS_OID, BTRESTRPOS_OID, BTBUILD_OID, BTBULKDELETE_OID, BTVACUUMCLEANUP_OID, BTCOSTESTIMATE_OID, BTOPTIONS_OID
+	{"btree"}, 5, 1, 1, true, true, true, true, false, true, true, BTINSERT_OID, BTBEGINSCAN_OID, BTGETTUPLE_OID, BTGETMULTI_OID, BTRESCAN_OID, BTENDSCAN_OID, BTMARKPOS_OID, BTRESTRPOS_OID, BTBUILD_OID, BTBULKDELETE_OID, BTVACUUMCLEANUP_OID, BTCOSTESTIMATE_OID, BTOPTIONS_OID, true
 
 
 #endif   /* PG_AM_H */

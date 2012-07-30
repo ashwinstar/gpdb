@@ -366,9 +366,18 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 * paths because they are processed in TID order.  The appendonlyam.c module will
 	 * optimize fetches in TID order by keeping the last decompressed block between fetch
 	 * calls.
+	 *
+	 * In Paris, IndexScan on AO indexes is enabled. However, there is no plan to
+	 * change the costing model for AO indexes in the old planner, since the new
+	 * optimizer will do btter job on that. So to preserve the prior behavior in the
+	 * old planner, IndexScan is chosen only when the following three conditions are true:
+	 *    enable_seqscan=off
+	 *    enable_bitmapscan=off
+	 *    enable_indexscan=on
 	 */
-	if (relstorage == RELSTORAGE_AOROWS ||
-		relstorage == RELSTORAGE_AOCOLS)
+	if ((relstorage == RELSTORAGE_AOROWS ||
+		 relstorage == RELSTORAGE_AOCOLS) &&
+		!(!enable_seqscan && !enable_bitmapscan && enable_indexscan))
 		indexpathlist = NIL;
 
     if (indexpathlist && root->config->enable_indexscan)
@@ -378,12 +387,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 	/* Consider TID scans */
     create_tidscan_paths(root, rel, &tidpathlist);
-    
-    /* AO and CO tables do not currently support TidScans. Disable TidScan path for such tables */
-	if (relstorage == RELSTORAGE_AOROWS ||
-		relstorage == RELSTORAGE_AOCOLS)
-		tidpathlist = NIL;
-    
+
     if (tidpathlist && root->config->enable_tidscan)
         pathlist = list_concat(pathlist, tidpathlist);
 

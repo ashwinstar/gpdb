@@ -5421,3 +5421,11 @@ heap2_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 	else
 		appendStringInfo(buf, "UNKNOWN");
 }
+
+bool 
+is_heap_tuple_visible(IndexScanDesc relation, ItemPointerData tid)
+{
+	/* Currently index only scans is not supported on heap tuples */
+	elog(ERROR, "Index only scan not supported for Heap relation");	
+	return false;
+}

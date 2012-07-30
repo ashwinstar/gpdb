@@ -344,6 +344,12 @@ _bitmap_findvalue(Relation lovHeap, Relation lovIndex,
 		found = true;
 		heapTupDesc = RelationGetDescr(lovHeap);
 
+		/*
+		 * Bitmap index internally uses a heap and a b-tree index on this heap 
+		 * If scanDesc->xs_want_itup is set, then the above index_getnext call 
+		 * will get the index tuple, along with the tuple		       
+		 */	
+
 		d = heap_getattr(tuple, tupDesc->natts + 1, heapTupDesc, blockNull);
 		*lovBlock =	DatumGetInt32(d);
 		d = heap_getattr(tuple, tupDesc->natts + 2, heapTupDesc, offsetNull);

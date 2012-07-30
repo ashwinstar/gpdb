@@ -1545,6 +1545,7 @@
          "amstrategies" : "int2",
          "amsupport" : "int2",
          "amvacuumcleanup" : "regproc",
+         "amcanreturn" : "bool",
          "oid" : "Oid"
       },
       "cols" : [
@@ -1668,6 +1669,11 @@
             "colname" : "amoptions",
             "ctype" : "regproc",
             "sqltype" : "regproc"
+         },
+         {
+            "colname" : "amcanreturn",
+            "ctype" : "bool",
+            "sqltype" : "boolean"
          }
       ],
       "filename" : "pg_am.h",

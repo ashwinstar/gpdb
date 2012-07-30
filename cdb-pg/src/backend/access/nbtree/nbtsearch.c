@@ -24,13 +24,12 @@
 #include "utils/lsyscache.h"
 #include "cdb/cdbfilerepprimary.h"
 
-
 static bool _bt_readpage(IndexScanDesc scan, ScanDirection dir,
 			 OffsetNumber offnum);
 static bool _bt_steppage(IndexScanDesc scan, ScanDirection dir);
 static Buffer _bt_walk_left(Relation rel, Buffer buf);
 static bool _bt_endpoint(IndexScanDesc scan, ScanDirection dir);
-
+static void _bt_get_index_tuple(IndexScanDesc scan);
 
 /*
  *	_bt_search() -- Search the tree for a particular scankey,
@@ -916,6 +915,12 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	/* OK, itemIndex says what to return */
 	scan->xs_ctup.t_self = so->currPos.items[so->currPos.itemIndex].heapTid;
 
+	/* Need to read the entire index tuple */
+	if (scan->xs_want_itup)
+	{
+		_bt_get_index_tuple(scan);
+	}
+
 	return true;
 }
 
@@ -990,6 +995,12 @@ _bt_next(IndexScanDesc scan, ScanDirection dir)
 	
 	/* OK, itemIndex says what to return */
 	scan->xs_ctup.t_self = so->currPos.items[so->currPos.itemIndex].heapTid;
+
+	/* Need to read the entire index tuple */
+        if (scan->xs_want_itup)
+        {
+		_bt_get_index_tuple(scan);
+        }
 
 	return true;
 }
@@ -1552,5 +1563,26 @@ _bt_endpoint(IndexScanDesc scan, ScanDirection dir)
 	/* OK, itemIndex says what to return */
 	scan->xs_ctup.t_self = so->currPos.items[so->currPos.itemIndex].heapTid;
 
+	/* Need to read the entire index tuple */
+        if (scan->xs_want_itup)
+        {
+		_bt_get_index_tuple(scan);
+        }
+
 	return true;
+}
+
+void
+_bt_get_index_tuple(IndexScanDesc scan)
+{
+	BTScanOpaque so = (BTScanOpaque) scan->opaque;
+
+	/* Need to read the entire index tuple */
+        if (scan->xs_want_itup)
+        {
+                Page page = BufferGetPage(so->currPos.buf);
+                ItemId idxId = PageGetItemId(page, so->currPos.items[so->currPos.itemIndex].indexOffset);
+                IndexTuple itup = (IndexTuple)PageGetItem(page, idxId);
+                scan->xs_itup = itup;
+        }
 }

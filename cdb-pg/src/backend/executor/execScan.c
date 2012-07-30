@@ -88,7 +88,7 @@ getScanMethod(int tableType)
 }
 
 
-static bool tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc);
+static bool tlist_matches_tupdesc(PlanState *ps, List *tlist, TupleDesc tupdesc);
 
 
 /* ----------------------------------------------------------------
@@ -224,7 +224,6 @@ ExecAssignScanProjectionInfo(ScanState *node)
 
 	if (tlist_matches_tupdesc(&node->ps,
 							  scan->plan.targetlist,
-							  scan->scanrelid,
 							  node->ss_ScanTupleSlot->tts_tupleDescriptor))
 		node->ps.ps_ProjInfo = NULL;
 	else
@@ -233,7 +232,7 @@ ExecAssignScanProjectionInfo(ScanState *node)
 }
 
 static bool
-tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc)
+tlist_matches_tupdesc(PlanState *ps, List *tlist, TupleDesc tupdesc)
 {
 	int			numattrs = tupdesc->natts;
 	int			attrno;

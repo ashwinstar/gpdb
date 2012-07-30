@@ -650,3 +650,17 @@ DROP TABLE tenk_ao3;
 DROP TABLE tenk_ao4;
 DROP TABLE tenk_ao5;
 DROP TABLE aowithoids;
+-- TidScan
+drop table if exists ao;
+create table ao(i int, j int) with(appendonly=true);
+insert into ao select 0, i from generate_series(0, 999) i;
+create index ao_i on ao(i);
+set enable_seqscan=off;
+select * from ao where ctid = '(33554432,32769)';
+NOTICE:  SELECT uses system-defined column "ao.ctid" without the necessary companion column "ao.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+ i | j 
+---+---
+ 0 | 0
+(1 row)
+

@@ -62,6 +62,7 @@ extern RegProcedure get_oprrest(Oid opno);
 extern RegProcedure get_oprjoin(Oid opno);
 extern char *get_func_name(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
+extern void pfree_ptr_array(char **ptrarray, int nelements);
 extern List *get_func_output_arg_types(Oid funcid);
 extern int	get_func_nargs(Oid funcid);
 extern Oid	get_func_signature(Oid funcid, Oid **argtypes, int *nargs);

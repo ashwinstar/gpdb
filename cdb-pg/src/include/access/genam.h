@@ -107,6 +107,7 @@ extern IndexScanDesc index_beginscan_multi(Relation indexRelation,
 					  int nkeys, ScanKey key);
 extern void index_rescan(IndexScanDesc scan, ScanKey key);
 extern void index_endscan(IndexScanDesc scan);
+extern void index_endscan_ext(IndexScanDesc scan);
 extern void index_markpos(IndexScanDesc scan);
 extern void index_restrpos(IndexScanDesc scan);
 extern HeapTuple index_getnext(IndexScanDesc scan, ScanDirection direction);
@@ -152,4 +153,10 @@ extern HeapTuple systable_getnext_ordered(SysScanDesc sysscan,
 						 ScanDirection direction);
 extern void systable_endscan_ordered(SysScanDesc sysscan);
 
+extern IndexScanDesc indexonly_beginscan(Relation tableRelation,
+				Relation indexRelation,
+				Snapshot snapshot,
+				int nkeys, ScanKey key);
+extern IndexTuple indexonly_getnext(IndexScanDesc scan, ScanDirection direction);
+extern void indexonly_endscan(IndexScanDesc scan);
 #endif   /* GENAM_H */

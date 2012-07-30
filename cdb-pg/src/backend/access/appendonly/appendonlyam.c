@@ -60,6 +60,7 @@
 #include "catalog/gp_fastsequence.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbappendonlyam.h"
+#include "nodes/tidbitmap.h"
 #include "pgstat.h"
 #include "storage/procarray.h"
 #include "storage/gp_compress.h"
@@ -118,7 +119,10 @@ static void
 AppendOnlyExecutorReadBlock_ResetCounts(
 	AppendOnlyExecutorReadBlock		*executorReadBlock);
 
-
+static AppendOnlyFetchDesc
+appendonly_fetch_init_internal(
+        Relation        relation,
+        Snapshot        appendOnlyMetaDataSnapshot);
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
  * ----------------
@@ -1891,38 +1895,14 @@ appendonly_fetch_init(
 	Snapshot 	appendOnlyMetaDataSnapshot)
 {
 	AppendOnlyFetchDesc	aoFetchDesc;
-	AppendOnlyEntry		*aoentry;
 
 	AppendOnlyStorageAttributes *attr;
 
-	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
 	PGFunction *fns = NULL;
 
 	StringInfoData titleBuf;
 
-	/*
-	 * increment relation ref count while scanning relation
-	 *
-	 * This is just to make really sure the relcache entry won't go away while
-	 * the scan has a pointer to it.  Caller should be holding the rel open
-	 * anyway, so this is redundant in all normal scenarios...
-	 */
-	RelationIncrementReferenceCount(relation);
-
-	/*
-	 * allocate scan descriptor
-	 */
-	aoFetchDesc = (AppendOnlyFetchDesc) palloc0(sizeof(AppendOnlyFetchDescData));
-
-	aoFetchDesc->relation = relation;
-	aoFetchDesc->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
-
-	aoFetchDesc->initContext = CurrentMemoryContext;
-
-	aoFetchDesc->segmentFileNameMaxLen = AOSegmentFilePathNameLen(relation) + 1;
-	aoFetchDesc->segmentFileName =
-						(char*)palloc(aoFetchDesc->segmentFileNameMaxLen);
-	aoFetchDesc->segmentFileName[0] = '\0';
+	aoFetchDesc = appendonly_fetch_init_internal(relation, appendOnlyMetaDataSnapshot);
 
 	initStringInfo(&titleBuf);
 	appendStringInfo(&titleBuf, "Fetch of Append-Only Row-Oriented relation '%s'",
@@ -1930,21 +1910,17 @@ appendonly_fetch_init(
 	aoFetchDesc->title = titleBuf.data;
 
 	/*
-	 * Get the pg_appendonly information for this table
-	 */
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
-
-	aoFetchDesc->aoEntry = aoentry;
-
-	/*
-	 * Fill in Append-Only Storage layer attributes.
-	 */
+ 	 * Fill in Append-Only Storage layer attributes.
+ 	 */
 	attr = &aoFetchDesc->storageAttributes;
 
 	/*
-	 * These attributes describe the AppendOnly format to be scanned.
-	 */
-  if (aoentry->compresstype == NULL || pg_strcasecmp(aoentry->compresstype, "none") == 0)
+ 	 * These attributes describe the AppendOnly format to be scanned.
+ 	 */
+
+	AppendOnlyEntry *aoentry = aoFetchDesc->aoEntry;
+
+	if (aoentry->compresstype == NULL || pg_strcasecmp(aoentry->compresstype, "none") == 0)
 		attr->compress = false;
 	else
 		attr->compress = true;
@@ -1960,26 +1936,15 @@ appendonly_fetch_init(
 	AORelationVersion_CheckValid(attr->version);
 
 	aoFetchDesc->usableBlockSize =
-				AppendOnlyStorage_GetUsableBlockSize(aoentry->blocksize);
-
-	/*
-	 * Get information about all the file segments we need to scan
-	 */
-	aoFetchDesc->segmentFileInfo =
-						GetAllFileSegInfo(
-									relation,
-									aoentry,
-									appendOnlyMetaDataSnapshot,
-									&aoFetchDesc->totalSegfiles);
+			AppendOnlyStorage_GetUsableBlockSize(aoentry->blocksize);
 
 	AppendOnlyStorageRead_Init(
-						&aoFetchDesc->storageRead,
-						aoFetchDesc->initContext,
-						aoFetchDesc->usableBlockSize,
-						NameStr(aoFetchDesc->relation->rd_rel->relname),
-						aoFetchDesc->title,
-						&aoFetchDesc->storageAttributes);
-
+					&aoFetchDesc->storageRead,
+					aoFetchDesc->initContext,
+					aoFetchDesc->usableBlockSize,
+					NameStr(aoFetchDesc->relation->rd_rel->relname),
+					aoFetchDesc->title,
+					&aoFetchDesc->storageAttributes);
 
 	fns = RelationGetRelationCompressionFuncs(relation);
 	aoFetchDesc->storageRead.compression_functions = fns;
@@ -1994,29 +1959,20 @@ appendonly_fetch_init(
 		sa.complevel = aoentry->compresslevel;
 		sa.blocksize = aoentry->blocksize;
 
-
 		cs = callCompressionConstructor(cons, RelationGetDescr(relation),
-										&sa,
-										false /* decompress */);
+							&sa,
+							false /* decompress */);
 		aoFetchDesc->storageRead.compressionState = cs;
 	}
 
 	AppendOnlyExecutorReadBlock_Init(
-						&aoFetchDesc->executorReadBlock,
-						aoFetchDesc->relation,
-						aoFetchDesc->initContext,
-						&aoFetchDesc->storageRead,
-						aoFetchDesc->usableBlockSize);
+					&aoFetchDesc->executorReadBlock,
+					aoFetchDesc->relation,
+					aoFetchDesc->initContext,
+					&aoFetchDesc->storageRead,
+					aoFetchDesc->usableBlockSize);
 
-	AppendOnlyBlockDirectory_Init_forSearch(
-						&aoFetchDesc->blockDirectory,
-						aoentry,
-						appendOnlyMetaDataSnapshot,
-						aoFetchDesc->segmentFileInfo,
-						aoFetchDesc->totalSegfiles,
-						aoFetchDesc->relation,
-						1,
-						false);
+	aoFetchDesc->onlyVisibilityCheck = false;
 
 	return aoFetchDesc;
 
@@ -2032,8 +1988,8 @@ appendonly_fetch_init(
 bool
 appendonly_fetch(
 	AppendOnlyFetchDesc 	aoFetchDesc,
-	AOTupleId 				*aoTupleId,
-	TupleTableSlot 			*slot)
+	AOTupleId 		*aoTupleId,
+	TupleTableSlot 		*slot)
 {
 	int		segmentFileNum = AOTupleIdGet_segmentFileNum(aoTupleId);
 	int64 	rowNum = AOTupleIdGet_rowNum(aoTupleId);
@@ -2220,8 +2176,9 @@ appendonly_fetch_finish(AppendOnlyFetchDesc aoFetchDesc)
 
 	pfree(aoFetchDesc->segmentFileName);
 	aoFetchDesc->segmentFileName = NULL;
-
+	
 	pfree(aoFetchDesc->title);
+	
 }
 
 /*
@@ -2755,4 +2712,133 @@ RelationGuessNumberOfBlocks(double totalbytes)
 {
 	/* for now it's very simple */
 	return (BlockNumber)(totalbytes/BLCKSZ) + 1;
+}
+
+bool 
+is_appendonly_tuple_visible(IndexScanDesc scan, ItemPointer tid)
+{
+	AppendOnlyFetchDesc aoFetchDesc = scan->aoFetchDesc;
+	/* Do only visiblity check */
+	aoFetchDesc->onlyVisibilityCheck = true;
+
+	AOTupleId aoTid;
+	tbm_convert_appendonly_tid_out(tid, &aoTid);
+
+	return appendonly_visibilitycheck(scan->aoFetchDesc, &aoTid, NULL /* slot */);
+                
+}
+
+AppendOnlyFetchDesc
+appendonly_fetch_init_internal(
+	Relation 	relation,
+	Snapshot 	appendOnlyMetaDataSnapshot)
+{
+	AppendOnlyFetchDesc	aoFetchDesc;
+	AppendOnlyEntry		*aoentry;
+
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
+
+	/*
+	 * increment relation ref count while scanning relation
+	 *
+	 * This is just to make really sure the relcache entry won't go away while
+	 * the scan has a pointer to it.  Caller should be holding the rel open
+	 * anyway, so this is redundant in all normal scenarios...
+	 */
+	RelationIncrementReferenceCount(relation);
+
+	/*
+	 * allocate scan descriptor
+	 */
+	aoFetchDesc = (AppendOnlyFetchDesc) palloc0(sizeof(AppendOnlyFetchDescData));
+
+	aoFetchDesc->relation = relation;
+	aoFetchDesc->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
+
+	aoFetchDesc->initContext = CurrentMemoryContext;
+
+	aoFetchDesc->segmentFileNameMaxLen = AOSegmentFilePathNameLen(relation) + 1;
+	aoFetchDesc->segmentFileName =
+						(char*)palloc(aoFetchDesc->segmentFileNameMaxLen);
+	aoFetchDesc->segmentFileName[0] = '\0';
+
+	/*
+	 * Get the pg_appendonly information for this table
+	 */
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
+
+	aoFetchDesc->aoEntry = aoentry;
+
+	/*
+	 * Get information about all the file segments we need to scan
+	 */
+	aoFetchDesc->segmentFileInfo =
+						GetAllFileSegInfo(
+									relation,
+									aoentry,
+									appendOnlyMetaDataSnapshot,
+									&aoFetchDesc->totalSegfiles);
+
+	AppendOnlyBlockDirectory_Init_forSearch(
+						&aoFetchDesc->blockDirectory,
+						aoentry,
+						appendOnlyMetaDataSnapshot,
+						aoFetchDesc->segmentFileInfo,
+						aoFetchDesc->totalSegfiles,
+						aoFetchDesc->relation,
+						1,
+                                                false);
+
+        return aoFetchDesc;
+
+}
+
+AppendOnlyFetchDesc
+appendonly_visibilitycheck_init(
+	Relation        relation,
+	Snapshot        appendOnlyMetaDataSnapshot)
+{
+	return appendonly_fetch_init_internal(relation, appendOnlyMetaDataSnapshot);	
+}
+
+bool
+appendonly_visibilitycheck(
+	AppendOnlyFetchDesc 	aoFetchDesc,
+	AOTupleId 		*aoTupleId,
+	TupleTableSlot 		*slot)
+{
+	if (!AppendOnlyBlockDirectory_GetEntry(
+		&aoFetchDesc->blockDirectory,
+		aoTupleId,
+		0,
+		&aoFetchDesc->currentBlock.blockDirectoryEntry))
+    	{
+		/*
+		 *  Row not represented in Block Directory.
+		 *  Must be aborted or deleted and reclaimed.
+		 */
+               	return false;   
+       	}
+	return true;
+}
+
+void
+appendonly_visibilitycheck_finish(AppendOnlyFetchDesc aoFetchDesc)
+{
+	RelationDecrementReferenceCount(aoFetchDesc->relation);
+
+	AppendOnlyBlockDirectory_End_forSearch(&aoFetchDesc->blockDirectory);
+
+	if (aoFetchDesc->segmentFileInfo)
+	{
+		FreeAllSegFileInfo(aoFetchDesc->segmentFileInfo, aoFetchDesc->totalSegfiles);
+		pfree(aoFetchDesc->segmentFileInfo);
+		aoFetchDesc->segmentFileInfo = NULL;
+	}
+
+	pfree(aoFetchDesc->aoEntry);
+	aoFetchDesc->aoEntry = NULL;
+
+	pfree(aoFetchDesc->segmentFileName);
+	aoFetchDesc->segmentFileName = NULL;
 }

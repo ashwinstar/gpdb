@@ -417,6 +417,7 @@ typedef enum PerfmonNodeType
     PMNT_HashUniqueOuterJoin,
     PMNT_HashUniqueInnerJoin,
     PMNT_IndexScan,
+	PMNT_IndexOnlyScan,
     PMNT_Limit,
     PMNT_Materialize,
     PMNT_MergeJoin,

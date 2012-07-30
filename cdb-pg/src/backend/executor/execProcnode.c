@@ -96,6 +96,7 @@
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
+#include "executor/nodeIndexOnlyScan.h"
 #include "executor/nodeIndexscan.h"
 #include "executor/nodeLimit.h"
 #include "executor/nodeMaterial.h"
@@ -266,6 +267,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_IndexScan:
 			result = (PlanState *) ExecInitIndexScan((IndexScan *) node,
 													 estate, eflags);
+			break;
+
+		case T_IndexOnlyScan:
+			result = (PlanState *) ExecInitIndexOnlyScan((IndexOnlyScan *) node,
+														 estate, eflags);
 			break;
 
 		case T_BitmapIndexScan:
@@ -597,7 +603,7 @@ Exec_Jmp_IndexScan:
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_IndexOnlyScan:
-	// result = ExecIndexOnlyScan((IndexOnlyScanState *) node);
+	result = ExecIndexOnlyScan((IndexOnlyScanState *) node);
 	goto Exec_Jmp_Done;
 
 	/* BitmapIndexScanState does not yield tuples */
@@ -735,6 +741,10 @@ Exec_Jmp_Done:
 
 		case T_IndexScanState:
 			result = ExecIndexScan((IndexScanState *) node);
+			break;
+
+		case T_IndexOnlyScanState:
+			result = ExecIndexOnlyScan((IndexOnlyScanState *) node);
 			break;
 
 		case T_ExternalScanState:
@@ -977,6 +987,9 @@ ExecCountSlotsNode(Plan *node)
 
 		case T_IndexScan:
 			return ExecCountSlotsIndexScan((IndexScan *) node);
+
+		case T_IndexOnlyScan:
+			return ExecCountSlotsIndexOnlyScan((IndexOnlyScan *) node);
 
 		case T_BitmapIndexScan:
 			return ExecCountSlotsBitmapIndexScan((BitmapIndexScan *) node);
@@ -1228,6 +1241,10 @@ ExecEndNode(PlanState *node)
 			ExecEndIndexScan((IndexScanState *) node);
 			break;
 
+		case T_IndexOnlyScanState:
+			ExecEndIndexOnlyScan((IndexOnlyScanState *) node);
+			break;
+
 		case T_ExternalScanState:
 			ExecEndExternalScan((ExternalScanState *) node);
 			break;
@@ -1402,6 +1419,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 
 		case T_IndexScanState:
 			nameTag = "IndexScan";
+			break;
+
+		case T_IndexOnlyScanState:
+			nameTag = "IndexOnlyScan";
 			break;
 
 		case T_BitmapIndexScanState:

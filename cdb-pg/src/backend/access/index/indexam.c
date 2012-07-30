@@ -69,12 +69,16 @@
 #include "access/heapam.h"
 #include "access/relscan.h"
 #include "access/transam.h"
+#include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
+#include "executor/tuptable.h"
+#include "nodes/tidbitmap.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "utils/relcache.h"
 #include "cdb/cdbfilerepprimary.h"
-
+#include "catalog/index.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
@@ -117,8 +121,13 @@ do { \
 	} \
 } while(0)
 
-static IndexScanDesc index_beginscan_internal(Relation indexRelation,
-						 int nkeys, ScanKey key);
+static IndexScanDesc index_beginscan_internal(	Relation heapRelation, 
+						Relation indexRelation,
+						int nkeys, ScanKey key,
+						Snapshot snapshot);
+
+static void
+index_endscan_internal(IndexScanDesc scan);
 
 
 /* ----------------------------------------------------------------
@@ -222,6 +231,114 @@ index_insert(Relation indexRelation,
 }
 
 /*
+ * fetchHeapTuple
+ *   Attempt to fetch a heap tuple for a given tuple id stored
+ * in scan->xs_ctup. If the tuple is not visible, this function
+ * returns NULL. Otherwise, this function returns the HeapTuple
+ * stored in scan->xs_ctup.
+ */
+static HeapTuple
+fetchHeapTuple(IndexScanDesc scan)
+{
+	Assert(scan != NULL);
+	Assert(RelationIsHeap(scan->heapRelation));
+	HeapTuple heapTuple = &scan->xs_ctup;
+	
+	/*
+	 * Fetch the heap tuple and see if it matches the snapshot.
+	 */
+	if (heap_release_fetch(scan->heapRelation, scan->xs_snapshot,
+						   heapTuple, &scan->xs_cbuf, true,
+						   scan->indexRelation))
+	{
+		return &scan->xs_ctup;
+	}
+	
+	/* Skip if no undeleted tuple at this location */
+	if (heapTuple->t_data == NULL)
+	{
+		return NULL;
+	}
+	
+	/*
+	 * If we can't see it, maybe no one else can either.  Check to see if
+	 * the tuple is dead to all transactions.  If so, signal the index AM
+	 * to not return it on future indexscans.
+	 *
+	 * We told heap_release_fetch to keep a pin on the buffer, so we can
+	 * re-access the tuple here.  But we must re-lock the buffer first.
+	 */
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
+	LockBuffer(scan->xs_cbuf, BUFFER_LOCK_SHARE);
+	
+	if (HeapTupleSatisfiesVacuum(scan->heapRelation, &heapTuple->t_self, heapTuple->t_data, RecentGlobalXmin,
+								 scan->xs_cbuf, true, "index_getnext") == HEAPTUPLE_DEAD)
+		scan->kill_prior_tuple = true;
+	
+	LockBuffer(scan->xs_cbuf, BUFFER_LOCK_UNLOCK);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+
+	return NULL;
+}
+
+/*
+ * fetchAOTuple
+ *   Attempt to fetch a AppendOnly Row tuple for a given tuple id stored
+ * in scan->xs_ctup. If the tuple is not visible, this function returns
+ * NULL. Otherwise, this function returns the tuple that is stored in
+ * scan->slot.
+ */
+static HeapTuple
+fetchAOTuple(IndexScanDesc scan)
+{
+	Assert(scan != NULL);
+	Assert(RelationIsAoRows(scan->heapRelation));
+	HeapTuple heapTuple = &scan->xs_ctup;
+
+	AOTupleId aoTupleId;
+	tbm_convert_appendonly_tid_out(&(heapTuple->t_self), &aoTupleId);
+	
+	if (appendonly_fetch((AppendOnlyFetchDesc)scan->aoFetchDesc, &aoTupleId, scan->slot))
+	{
+		return (HeapTuple)ExecFetchSlotMemTuple(scan->slot, false);
+	}
+
+	return NULL;
+}
+
+/*
+ * fetchAOCSTuple
+ *  Attempt to fetch a AppendOnly Columnar tuple for a given tuple id stored
+ * in scan->xs_ctup. If the tuple is not visible, this function returns
+ * NULL. Otherwise, this function returns the tuple that is stored in
+ * scan->slot.
+ */
+static HeapTuple
+fetchAOCSTuple(IndexScanDesc scan)
+{
+	Assert(scan != NULL);
+	Assert(RelationIsAoCols(scan->heapRelation));
+	HeapTuple heapTuple = &scan->xs_ctup;
+
+	AOTupleId aoTupleId;
+	tbm_convert_appendonly_tid_out(&(heapTuple->t_self), &aoTupleId);
+	
+	if (aocs_fetch((AOCSFetchDesc)scan->aoFetchDesc, &aoTupleId, scan->slot))
+	{
+		return (HeapTuple)ExecFetchSlotGenericTuple(scan->slot, true);
+	}
+	
+	return NULL;
+}
+
+/*
  * index_beginscan - start a scan of an index with amgettuple
  *
  * Caller must be holding suitable locks on the heap and the index.
@@ -235,9 +352,10 @@ index_insert(Relation indexRelation,
  */
 IndexScanDesc
 index_beginscan(Relation heapRelation,
-				Relation indexRelation,
-				Snapshot snapshot,
-				int nkeys, ScanKey key)
+                                Relation indexRelation,
+                                Snapshot snapshot,
+                                int nkeys,
+                                ScanKey key)
 {
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
 
@@ -245,15 +363,27 @@ index_beginscan(Relation heapRelation,
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
-	scan = index_beginscan_internal(indexRelation, nkeys, key);
+	scan = index_beginscan_internal(heapRelation, indexRelation, nkeys, key, snapshot);
 
-	/*
-	 * Save additional parameters into the scandesc.  Everything else was set
-	 * up by RelationGetIndexScan.
-	 */
-	scan->is_multiscan = false;
-	scan->heapRelation = heapRelation;
-	scan->xs_snapshot = snapshot;
+	scan->fetchFunc = fetchHeapTuple;
+
+	if (RelationIsAoRows(heapRelation))
+	{
+		scan->aoFetchDesc = appendonly_fetch_init(heapRelation, snapshot);
+		scan->slot = MakeSingleTupleTableSlot(RelationGetDescr(scan->heapRelation));
+		scan->fetchFunc = fetchAOTuple;
+		scan->isTupleVisible = is_appendonly_tuple_visible;
+	}
+	else if (RelationIsAoCols(heapRelation))
+	{
+		bool *proj = (bool *)palloc(sizeof(bool) * RelationGetNumberOfAttributes(heapRelation));
+		MemSet(proj, true, sizeof(bool) * RelationGetNumberOfAttributes(heapRelation));
+		
+		scan->aoFetchDesc = aocs_fetch_init(heapRelation, snapshot, proj);
+		scan->slot = MakeSingleTupleTableSlot(RelationGetDescr(scan->heapRelation));
+		scan->fetchFunc = fetchAOCSTuple;
+		scan->isTupleVisible = is_aocs_tuple_visible;
+	}
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 
@@ -278,15 +408,13 @@ index_beginscan_multi(Relation indexRelation,
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
-	scan = index_beginscan_internal(indexRelation, nkeys, key);
+	scan = index_beginscan_internal(NULL, indexRelation, nkeys, key, snapshot);
 
 	/*
 	 * Save additional parameters into the scandesc.  Everything else was
 	 * set up by RelationGetIndexScan.
 	 */
 	scan->is_multiscan = true;
-	scan->xs_snapshot = snapshot;
-
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 
 	return scan;
@@ -297,8 +425,12 @@ index_beginscan_multi(Relation indexRelation,
  * index_beginscan_internal --- common code for index_beginscan variants
  */
 static IndexScanDesc
-index_beginscan_internal(Relation indexRelation,
-						 int nkeys, ScanKey key)
+index_beginscan_internal(
+			Relation relation, 
+			Relation indexRelation,
+		 	int nkeys, 
+			ScanKey key,
+			Snapshot snapshot)
 {
 	IndexScanDesc scan;
 	FmgrInfo   *procedure;
@@ -319,6 +451,22 @@ index_beginscan_internal(Relation indexRelation,
 									  PointerGetDatum(indexRelation),
 									  Int32GetDatum(nkeys),
 									  PointerGetDatum(key)));
+	
+	/*
+	 * Save additional parameters into the scandesc.  Everything else was set
+	 * up by RelationGetIndexScan.
+	 */
+	scan->is_multiscan = false;
+	scan->heapRelation = relation;
+	scan->xs_snapshot = snapshot;
+	
+	scan->aoFetchDesc = NULL;
+	scan->slot = NULL;
+	scan->isTupleVisible = NULL;
+	scan->fetchFunc = NULL;
+
+	scan->xs_itup = NULL;
+	scan->xs_want_itup = false;
 
 	return scan;
 }
@@ -364,10 +512,7 @@ index_rescan(IndexScanDesc scan, ScanKey key)
 void
 index_endscan(IndexScanDesc scan)
 {
-	FmgrInfo   *procedure;
-
 	SCAN_CHECKS;
-	GET_SCAN_PROCEDURE(amendscan);
 
 	/* Release any held pin on a heap page */
 	if (BufferIsValid(scan->xs_cbuf))
@@ -376,14 +521,21 @@ index_endscan(IndexScanDesc scan)
 		scan->xs_cbuf = InvalidBuffer;
 	}
 
-	/* End the AM's scan */
-	FunctionCall1(procedure, PointerGetDatum(scan));
+	if (scan->aoFetchDesc != NULL)
+	{
+		if (RelationIsAoRows(scan->heapRelation))
+		{
+			appendonly_fetch_finish((AppendOnlyFetchDesc)scan->aoFetchDesc);
+			ExecDropSingleTupleTableSlot(scan->slot);
+		}
+		else if (RelationIsAoCols(scan->heapRelation))
+		{
+			aocs_fetch_finish((AOCSFetchDesc)scan->aoFetchDesc);
+			ExecDropSingleTupleTableSlot(scan->slot);
+		}
+	}
 
-	/* Release index refcount acquired by index_beginscan */
-	RelationDecrementReferenceCount(scan->indexRelation);
-
-	/* Release the scan data structure itself */
-	IndexScanEnd(scan);
+	index_endscan_internal(scan);
 }
 
 /* ----------------
@@ -434,9 +586,7 @@ index_restrpos(IndexScanDesc scan)
 HeapTuple
 index_getnext(IndexScanDesc scan, ScanDirection direction)
 {
-	MIRROREDLOCK_BUFMGR_DECLARE;
-
-	HeapTuple	heapTuple = &scan->xs_ctup;
+	HeapTuple	heapTuple = NULL;
 	FmgrInfo   *procedure;
 
 	SCAN_CHECKS;
@@ -447,7 +597,7 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 
 	for (;;)
 	{
-		bool		found;
+		bool		found = false;
 
 		/*
 		 * The AM's gettuple proc finds the next tuple matching the scan keys.
@@ -472,41 +622,12 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 
 		pgstat_count_index_tuples(scan->indexRelation, 1);
 
-		/*
-		 * Fetch the heap tuple and see if it matches the snapshot.
-		 */
-		if (heap_release_fetch(scan->heapRelation, scan->xs_snapshot,
-							   heapTuple, &scan->xs_cbuf, true,
-							   scan->indexRelation))
+		heapTuple = scan->fetchFunc(scan);
+
+		if (heapTuple != NULL)
+		{
 			break;
-
-		/* Skip if no undeleted tuple at this location */
-		if (heapTuple->t_data == NULL)
-			continue;
-
-		/*
-		 * If we can't see it, maybe no one else can either.  Check to see if
-		 * the tuple is dead to all transactions.  If so, signal the index AM
-		 * to not return it on future indexscans.
-		 *
-		 * We told heap_release_fetch to keep a pin on the buffer, so we can
-		 * re-access the tuple here.  But we must re-lock the buffer first.
-		 */
-
-		// -------- MirroredLock ----------
-		MIRROREDLOCK_BUFMGR_LOCK;
-
-		LockBuffer(scan->xs_cbuf, BUFFER_LOCK_SHARE);
-
-		if (HeapTupleSatisfiesVacuum(scan->heapRelation, &heapTuple->t_self, heapTuple->t_data, RecentGlobalXmin,
-									 scan->xs_cbuf, true, "index_getnext") == HEAPTUPLE_DEAD)
-			scan->kill_prior_tuple = true;
-
-		LockBuffer(scan->xs_cbuf, BUFFER_LOCK_UNLOCK);
-		
-		MIRROREDLOCK_BUFMGR_UNLOCK;
-		// -------- MirroredLock ----------
-		
+		}
 	}
 
 	/* Success exit */
@@ -729,4 +850,125 @@ index_getprocinfo(Relation irel,
 	}
 
 	return locinfo;
+}
+
+IndexScanDesc
+indexonly_beginscan(Relation tableRelation,
+                                Relation indexRelation,
+                                Snapshot snapshot,
+                                int nkeys,
+                                ScanKey key)
+{
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
+	IndexScanDesc scan;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
+
+	Assert(RelationIsAoRows(tableRelation) || RelationIsAoCols(tableRelation));
+
+	scan = index_beginscan_internal(tableRelation, indexRelation, nkeys, key, snapshot);
+	scan->xs_want_itup = true;
+
+	if (RelationIsAoRows(tableRelation))
+	{
+		scan->aoFetchDesc = appendonly_visibilitycheck_init(tableRelation, snapshot);
+		scan->isTupleVisible = is_appendonly_tuple_visible;
+	}
+	else if (RelationIsAoCols(tableRelation))
+	{
+		bool *proj = (bool *)palloc(sizeof(bool) * RelationGetNumberOfAttributes(tableRelation));
+		MemSet(proj, true, sizeof(bool) * RelationGetNumberOfAttributes(tableRelation));
+		
+		scan->aoFetchDesc = aocs_visibilitycheck_init(tableRelation, snapshot, proj);
+		scan->isTupleVisible = is_aocs_tuple_visible;
+	}
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
+	return scan;
+}
+
+IndexTuple
+indexonly_getnext(IndexScanDesc scan, ScanDirection direction)
+{
+	IndexTuple	indexTuple = NULL;
+	FmgrInfo   *procedure;
+
+	SCAN_CHECKS;
+	GET_SCAN_PROCEDURE(amgettuple);
+
+	/* just make sure this is false... */
+	scan->kill_prior_tuple = false;
+
+	for (;;)
+	{
+		bool		found = false;
+
+		/*
+		 * The AM's gettuple proc finds the next tuple matching the scan keys.
+		 */
+		found = DatumGetBool(FunctionCall2(procedure,
+										   PointerGetDatum(scan),
+										   Int32GetDatum(direction)));
+
+		/* Reset kill flag immediately for safety */
+		scan->kill_prior_tuple = false;
+
+		pgstat_count_index_tuples(scan->indexRelation, 1);
+
+		if (!found)
+		{
+			break;
+		}
+
+		if (scan->isTupleVisible(scan, &scan->xs_ctup.t_self))
+		{
+			indexTuple = scan->xs_itup;
+			break;
+		}
+	}
+	
+	/* Success exit */
+	return indexTuple;
+}
+
+/* ----------------
+ *		indexonly_endscan - end a scan
+ * ----------------
+ */
+void
+indexonly_endscan(IndexScanDesc scan)
+{
+	if (scan->aoFetchDesc != NULL)
+	{
+		if (RelationIsAoRows(scan->heapRelation))
+		{
+			appendonly_visibilitycheck_finish((AppendOnlyFetchDesc)scan->aoFetchDesc);
+		}
+		else if (RelationIsAoCols(scan->heapRelation))
+		{
+			aocs_visibilitycheck_finish((AOCSFetchDesc)scan->aoFetchDesc);
+		}
+	}
+
+	index_endscan_internal(scan);
+}
+
+void
+index_endscan_internal(IndexScanDesc scan)
+{
+	FmgrInfo   *procedure;
+
+        SCAN_CHECKS;
+        GET_SCAN_PROCEDURE(amendscan);
+
+        /* End the AM's scan */
+        FunctionCall1(procedure, PointerGetDatum(scan));
+
+        /* Release index refcount acquired by index_beginscan */
+        RelationDecrementReferenceCount(scan->indexRelation);
+
+        /* Release the scan data structure itself */
+        IndexScanEnd(scan);
 }

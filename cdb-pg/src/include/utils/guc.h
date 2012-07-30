@@ -310,6 +310,9 @@ extern int  WalSendClientTimeout;
 
 extern char  *data_directory;
 
+/* ORCA related definitions */
+#define GPOPT_XFORMS 150 /* number of transformation rules */
+
 // ORCA-related gucs
 extern bool gp_opt_minidump;
 extern bool gp_opt_print_query;
@@ -327,6 +330,7 @@ extern bool gp_opt_print_optimization_stats;
 extern bool	gp_opt_parallel;
 extern bool	gp_opt_local;
 extern int  gp_opt_retries;
+extern bool  gp_opt_xforms[GPOPT_XFORMS];
 
 #if USE_EMAIL
 extern char  *gp_email_smtp_server;

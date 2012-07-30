@@ -329,4 +329,5 @@ extern void heap_freetuple(HeapTuple htup);
 extern HeapTuple heap_addheader(int natts, bool withoid,
 			   Size structlen, void *structure);
 
+extern bool is_heap_tuple_visible(IndexScanDesc scan, ItemPointerData tid);
 #endif   /* HEAPAM_H */

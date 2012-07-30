@@ -1378,33 +1378,39 @@ typedef struct
         bool           *elem_nulls;                /* array of num_elems is-null flags */
 } IndexArrayKeyInfo;
 
-/* ----------------
- *         IndexScanState information
- *
- *                indexqualorig           execution state for indexqualorig expressions
- *                ScanKeys                   Skey structures to scan index rel
- *                NumScanKeys                   number of Skey structs
- *                RuntimeKeys                   info about Skeys that must be evaluated at runtime
- *                NumRuntimeKeys           number of RuntimeKeys structs
- *                RuntimeKeysReady   true if runtime Skeys have been computed
- *                RuntimeContext           expr context for evaling runtime Skeys
- *                RelationDesc           index relation descriptor
- *                ScanDesc                   index scan descriptor
- * ----------------
+/*
+ * IndexScanState information
+ *    Defines the state that is needed to execute IndexScan node.
  */
 typedef struct IndexScanState
 {
-        ScanState        ss;                                /* its first field is NodeTag */
-        List           *indexqualorig;
-        ScanKey                iss_ScanKeys;
-        int                        iss_NumScanKeys;
-        IndexRuntimeKeyInfo *iss_RuntimeKeys;
-        int                        iss_NumRuntimeKeys;
-        bool                iss_RuntimeKeysReady;
-        ExprContext *iss_RuntimeContext;
-        Relation        iss_RelationDesc;
-        struct IndexScanDescData *iss_ScanDesc;
+	ScanState ss;
+
+	/* Execution state for indexqualorig expressions. */
+	List           *indexqualorig;
+
+	/* ScanKeys to scan the index relation. */
+	ScanKey iss_ScanKeys;
+	int iss_NumScanKeys;
+
+	/* ScanKeys that must be evaluated at runtime. */
+	IndexRuntimeKeyInfo *iss_RuntimeKeys;
+	int iss_NumRuntimeKeys;
+	bool iss_RuntimeKeysReady;
+	ExprContext *iss_RuntimeContext;
+
+	/* The index relation and its scan descriptor */
+	Relation        iss_RelationDesc;
+	struct IndexScanDescData *iss_ScanDesc;
 } IndexScanState;
+
+/*
+ * IndexOnlyScanState
+ *   Defines the state that is needed to execute IndexOnlyScan node.
+ *
+ * Currently, it is the same as IndexScanState.
+ */
+typedef IndexScanState IndexOnlyScanState;
 
 /* ----------------
  *         BitmapIndexScanState information
@@ -1479,6 +1485,37 @@ typedef struct BitmapAppendOnlyScanState
 	bool        isAORow; /* If this is for AO Row tables. */
 } BitmapAppendOnlyScanState;
 
+/*
+ * HeapTidScanInfo
+ *   Additional info that are needed to support tidscan on a Heap table.
+ */
+typedef struct HeapTidScanInfo
+{
+	HeapTupleData tss_htup;
+} HeapTidScanInfo;
+
+struct AppendOnlyFetchDescData;
+
+/*
+ * AOTidScanInfo
+ *  Additional info that are needed to support tidscan on an AO table.
+ */
+typedef struct AOTidScanInfo
+{
+	struct AppendOnlyFetchDescData *aoFetchDesc;
+} AOTidScanInfo;
+
+struct AOCSFetchDescData;
+
+/*
+ * AOCSTidScanInfo
+ *  Additional info that are needed to support tidscan on an AOCS table.
+ */
+typedef struct AOCSTidScanInfo
+{
+	struct AOCSFetchDescData *aocsFetchDesc;
+} AOCSTidScanInfo;
+
 /* ----------------
  *         TidScanState information
  *
@@ -1487,16 +1524,36 @@ typedef struct BitmapAppendOnlyScanState
  *                TidList                   evaluated item pointers (array of size NumTids)
  * ----------------
  */
-typedef struct TidScanState
+typedef struct TidScanState TidScanState;
+struct TidScanState
 {
-        ScanState        ss;                                /* its first field is NodeTag */
-        List           *tss_tidquals;        /* list of ExprState nodes */
-        int                        tss_NumTids;
-        int                        tss_TidPtr;
-        int                        tss_MarkTidPtr;
-        ItemPointerData *tss_TidList;
-        HeapTupleData tss_htup;
-} TidScanState;
+	ScanState ss;
+	
+	/* List of tid quals */
+	List *tss_tidquals;
+
+	/* Number of tids in this scan */
+	int tss_NumTids;
+
+	/* index of the currently fetched tid */
+	int tss_TidPtr;
+	
+	/* index of marked tid */
+	int tss_MarkTidPtr;
+
+	/* evaluated item pointers (array of size NumTids) */
+	ItemPointerData *tss_TidList;
+
+	/* additional info that are needed for various table type */
+	void *additionalInfo;
+
+	/* create and free functions to create additional info for various table type */
+	void (*createAdditionalInfo)(TidScanState *node);
+	void (*freeAdditionalInfo)(TidScanState *node);
+
+	/* fetch function for various table type */
+	bool (*fetchTupleByTid)(TidScanState *node, ItemPointer tid);
+};
 
 /* ----------------
  *         SubqueryScanState information
@@ -2195,6 +2252,7 @@ extern void initGpmonPktForTableScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, 
 extern void initGpmonPktForDynamicTableScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
+extern void initGpmonPktForIndexOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapHeapScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);
 extern void initGpmonPktForBitmapAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);

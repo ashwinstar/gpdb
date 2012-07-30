@@ -32,6 +32,7 @@
 #include "cdb/cdbaocsam.h"
 #include "cdb/cdbappendonlyam.h"
 #include "miscadmin.h"
+#include "nodes/tidbitmap.h"
 #include "pgstat.h"
 #include "storage/procarray.h"
 #include "utils/inval.h"
@@ -45,6 +46,9 @@
 #include "utils/guc.h"
 
 #include "utils/debugbreak.h"
+
+static AOCSFetchDesc
+aocs_fetch_init_internal(Relation relation, Snapshot appendOnlyMetaDataSnapshot, bool *proj);
 
 /*
  * Open the segment file for a specified column
@@ -1058,67 +1062,18 @@ aocs_fetch_init(Relation relation,
 				Snapshot appendOnlyMetaDataSnapshot,
 				bool *proj)
 {
-	AOCSFetchDesc aocsFetchDesc;
 	int colno;
-	AppendOnlyEntry *aoentry;
-	char *basePath = relpath(relation->rd_node);
 	TupleDesc tupleDesc = RelationGetDescr(relation);
 	StdRdOptions 	**opts = RelationGetAttributeOptions(relation);	
+	AOCSFetchDesc aocsFetchDesc = aocs_fetch_init_internal(relation, appendOnlyMetaDataSnapshot, proj);
 	
-	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
-
-
-	/*
-	 * increment relation ref count while scanning relation
-	 *
-	 * This is just to make really sure the relcache entry won't go away while
-	 * the scan has a pointer to it.  Caller should be holding the rel open
-	 * anyway, so this is redundant in all normal scenarios...
-	 */
-	RelationIncrementReferenceCount(relation);
-
-	aocsFetchDesc = (AOCSFetchDesc) palloc0(sizeof(AOCSFetchDescData));
-	aocsFetchDesc->relation = relation;
-	
-	aocsFetchDesc->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
-	
-
-	aocsFetchDesc->initContext = CurrentMemoryContext;
-
-	aocsFetchDesc->segmentFileNameMaxLen = AOSegmentFilePathNameLen(relation) + 1;
-	aocsFetchDesc->segmentFileName =
-						(char*)palloc(aocsFetchDesc->segmentFileNameMaxLen);
-	aocsFetchDesc->segmentFileName[0] = '\0';
-	aocsFetchDesc->basepath = basePath;
-
-	Assert(proj);
-	aocsFetchDesc->proj = proj;
-
-	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
-    Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
-	aocsFetchDesc->aoEntry = aoentry;
-
-	aocsFetchDesc->segmentFileInfo =
-		GetAllAOCSFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot, &aocsFetchDesc->totalSegfiles);
-
-	AppendOnlyBlockDirectory_Init_forSearch(
-		&aocsFetchDesc->blockDirectory,
-		aoentry,
-		appendOnlyMetaDataSnapshot,
-		(FileSegInfo **)aocsFetchDesc->segmentFileInfo,
-		aocsFetchDesc->totalSegfiles,
-		aocsFetchDesc->relation,
-		relation->rd_att->natts,
-		true);
-
 	Assert(relation->rd_att != NULL);
 
 	aocsFetchDesc->datumStreamFetchDesc = (DatumStreamFetchDesc*)
-		palloc0(relation->rd_att->natts * sizeof(DatumStreamFetchDesc));
+	palloc0(relation->rd_att->natts * sizeof(DatumStreamFetchDesc));
 
 	for (colno = 0; colno < relation->rd_att->natts; colno++)
-	{
-
+	{	
 		aocsFetchDesc->datumStreamFetchDesc[colno] = NULL;
 		if (proj[colno])
 		{
@@ -1130,10 +1085,10 @@ aocs_fetch_init(Relation relation,
 			StringInfoData titleBuf;
 
 			/*
-			 * If the column has column specific encoding, we use those. Note
-			 * that even if the user specified no encoding for this column,
-			 * we will have represented that as compresstype=none.
-			 */
+		 	* If the column has column specific encoding, we use those. Note
+		 	* that even if the user specified no encoding for this column,
+		 	* we will have represented that as compresstype=none.
+		 	*/
 			if (opts[colno])
 			{
 				ct = opts[colno]->compresstype;
@@ -1152,26 +1107,29 @@ aocs_fetch_init(Relation relation,
 			// UNDONE: Need to track and dispose of this storage...
 			initStringInfo(&titleBuf);
 			appendStringInfo(&titleBuf, "Fetch from Append-Only Column-Oriented relation '%s', column #%d '%s'",
-							 RelationGetRelationName(relation),
-							 colno + 1,
-							 NameStr(tupleDesc->attrs[colno]->attname));
+					 RelationGetRelationName(relation),
+					 colno + 1,
+			 NameStr(tupleDesc->attrs[colno]->attname));
 
 			aocsFetchDesc->datumStreamFetchDesc[colno] = (DatumStreamFetchDesc)
-				palloc0(sizeof(DatumStreamFetchDescData));
+			palloc0(sizeof(DatumStreamFetchDescData));
 
 			aocsFetchDesc->datumStreamFetchDesc[colno]->datumStream =
-				create_datumstreamread(
-								   ct,
-								   clvl,
-								   checksum,
-									/* safeFSWriteSize */ false,	// UNDONE: Need to wire down pg_appendonly column
-								   blksz,
-								   aoentry->version,
-								   tupleDesc->attrs[colno],
-								   relation->rd_rel->relname.data,
-								   /* title */ titleBuf.data);
+			create_datumstreamread(
+						   ct,
+						   clvl,
+						   checksum,
+						/* safeFSWriteSize */ false,	// UNDONE: Need to wire down pg_appendonly column
+						   blksz,
+						   aocsFetchDesc->aoEntry->version,
+						   tupleDesc->attrs[colno],
+						   relation->rd_rel->relname.data,
+						   /* title */ titleBuf.data);
 
 		}
+	
+		aocsFetchDesc->onlyVisibilityCheck = false;
+
 	}
 
 	return aocsFetchDesc;
@@ -1359,6 +1317,146 @@ aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc)
 		}
 	}
 	pfree(aocsFetchDesc->datumStreamFetchDesc);
+
+	AppendOnlyBlockDirectory_End_forSearch(&aocsFetchDesc->blockDirectory);
+
+	if (aocsFetchDesc->segmentFileInfo)
+	{
+		FreeAllAOCSSegFileInfo(aocsFetchDesc->segmentFileInfo, aocsFetchDesc->totalSegfiles);
+		pfree(aocsFetchDesc->segmentFileInfo);
+		aocsFetchDesc->segmentFileInfo = NULL;
+	}
+
+	RelationDecrementReferenceCount(aocsFetchDesc->relation);
+
+	pfree(aocsFetchDesc->segmentFileName);
+	pfree(aocsFetchDesc->basepath);
+
+	pfree(aocsFetchDesc->aoEntry);
+}
+
+bool
+is_aocs_tuple_visible(IndexScanDesc scan, ItemPointer tid)
+{
+	AOCSFetchDesc aocsFetchDesc = scan->aoFetchDesc;
+
+	/* Do only visibility check */
+	aocsFetchDesc->onlyVisibilityCheck = true;
+
+	AOTupleId aoTid;
+	tbm_convert_appendonly_tid_out(tid, &aoTid);
+
+	return aocs_visibilitycheck(aocsFetchDesc, &aoTid, NULL /* slot */);
+}
+
+/*
+ * Initialize the fetch descriptor.
+ */
+AOCSFetchDesc
+aocs_fetch_init_internal(Relation relation,
+				Snapshot appendOnlyMetaDataSnapshot,
+				bool *proj)
+{
+	AOCSFetchDesc aocsFetchDesc;
+	AppendOnlyEntry *aoentry;
+	char *basePath = relpath(relation->rd_node);
+	
+	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
+
+	/*
+	 * increment relation ref count while scanning relation
+	 *
+	 * This is just to make really sure the relcache entry won't go away while
+	 * the scan has a pointer to it.  Caller should be holding the rel open
+	 * anyway, so this is redundant in all normal scenarios...
+	 */
+	RelationIncrementReferenceCount(relation);
+
+	aocsFetchDesc = (AOCSFetchDesc) palloc0(sizeof(AOCSFetchDescData));
+	aocsFetchDesc->relation = relation;
+	
+	aocsFetchDesc->appendOnlyMetaDataSnapshot = appendOnlyMetaDataSnapshot;
+	
+
+	aocsFetchDesc->initContext = CurrentMemoryContext;
+
+	aocsFetchDesc->segmentFileNameMaxLen = AOSegmentFilePathNameLen(relation) + 1;
+	aocsFetchDesc->segmentFileName =
+						(char*)palloc(aocsFetchDesc->segmentFileNameMaxLen);
+	aocsFetchDesc->segmentFileName[0] = '\0';
+	aocsFetchDesc->basepath = basePath;
+
+	Assert(proj);
+	aocsFetchDesc->proj = proj;
+
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation), appendOnlyMetaDataSnapshot);
+    	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+	aocsFetchDesc->aoEntry = aoentry;
+
+	aocsFetchDesc->segmentFileInfo =
+		GetAllAOCSFileSegInfo(relation, aoentry, appendOnlyMetaDataSnapshot, &aocsFetchDesc->totalSegfiles);
+
+	AppendOnlyBlockDirectory_Init_forSearch(
+		&aocsFetchDesc->blockDirectory,
+		aoentry,
+		appendOnlyMetaDataSnapshot,
+		(FileSegInfo **)aocsFetchDesc->segmentFileInfo,
+		aocsFetchDesc->totalSegfiles,
+		aocsFetchDesc->relation,
+		relation->rd_att->natts,
+		true);
+
+	return aocsFetchDesc;
+}
+
+
+AOCSFetchDesc
+aocs_visibilitycheck_init(Relation relation,
+				Snapshot appendOnlyMetaDataSnapshot,
+				bool *proj)
+{
+	return aocs_fetch_init_internal(relation, appendOnlyMetaDataSnapshot, proj);	
+}
+
+/*
+ * Fetch the tuple based on the given tuple id.
+ *
+ * If the 'slot' is not NULL, the tuple will be assigned to the slot.
+ *
+ * Return true if the tuple is found. Otherwise, return false.
+ */
+bool
+aocs_visibilitycheck(AOCSFetchDesc aocsFetchDesc,
+		   AOTupleId *aoTupleId,
+		   TupleTableSlot *slot)
+{
+	int numCols = aocsFetchDesc->relation->rd_att->natts;
+	int colno;
+
+	Assert(numCols > 0);
+
+	/* If it is only visibility check then rely on Block Directory */
+	for (colno = 0; colno<numCols; colno++)
+	{
+		AppendOnlyBlockDirectoryEntry blockDirectoryEntry;
+
+		if (!AppendOnlyBlockDirectory_GetEntry(
+			&aocsFetchDesc->blockDirectory,
+			aoTupleId,
+			colno,
+			&blockDirectoryEntry))
+		{
+                 	return false;  // Row not represented in Block Directory.
+					// Must be aborted or deleted and reclaimed.
+            	}
+	}
+		
+	return true;
+}
+
+void
+aocs_visibilitycheck_finish(AOCSFetchDesc aocsFetchDesc)
+{
 
 	AppendOnlyBlockDirectory_End_forSearch(&aocsFetchDesc->blockDirectory);
 
