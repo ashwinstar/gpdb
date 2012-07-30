@@ -12,6 +12,13 @@ struct bfz_zlib_freeable_stuff
 
 /* This file implements bfz compression algorithm "zlib". */
 
+/*
+ * bfz_zlib_close_ex
+ *  Close a file and freeing up descriptor, buffers etc.
+ *
+ *  This is also called from an xact end callback, hence it should
+ *  not contain any elog(ERROR) calls.
+ */
 static void
 bfz_zlib_close_ex(bfz_t * thiz)
 {
@@ -19,11 +26,9 @@ bfz_zlib_close_ex(bfz_t * thiz)
 
 	if (fs->f)
 	{
-		if ((thiz->fd = dup(thiz->fd)) == -1)
-			ereport(ERROR,
-					(errcode(ERRCODE_IO_ERROR),
-					errmsg("could not duplicate file descriptor: %m")));
+		/* gzclose also closes thiz->fd */
 		gzclose(fs->f);
+		thiz->fd = -1;
 	}
 	pfree(fs);
 	thiz->freeable_stuff = NULL;
