@@ -70,12 +70,7 @@ typedef struct bfz
 
 /* These functions are internal to bfz. */
 extern void bfz_nothing_init(bfz_t * thiz);
-extern void bfz_threaded_nothing_init(bfz_t * thiz);
 extern void bfz_zlib_init(bfz_t * thiz);
-extern void bfz_threaded_zlib_init(bfz_t * thiz);
-extern void bfz_lzop_init(bfz_t * thiz);
-extern void bfz_threaded_lzop_init(bfz_t * thiz);
-extern void bfz_threaded_init(bfz_t * thiz, void *(*compress) (void *), void *(*uncompress) (void *));
 extern void bfz_write_ex(bfz_t * thiz, const char *buffer, int size);
 extern int	bfz_read_ex(bfz_t * thiz, char *buffer, int size);
 
