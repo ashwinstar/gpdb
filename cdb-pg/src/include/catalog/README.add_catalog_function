@@ -14,7 +14,7 @@ followed if adding a new type.
 2. Add the new function definition in cdb-pg/src/include/catalog/pg_proc.sql.
    An example function definition: 
    	CREATE FUNCTION fn_sql(int4, int4) RETURNS bool LANGUAGE 
-  		internal VOLATILE AS 'fn_be' 
+  		internal VOLATILE NO SQL AS 'fn_be' 
 		WITH (OID=5075, DESCRIPTION="Description of the function");
    If adding a new type, the type definition needs to be added to pg_type.sql.
 

@@ -339,6 +339,7 @@ sub get_fnoptlist
 		'returns\s+null\s+on\s+null\s+input|strict|immutable|stable|volatile|'.
 		'external\s+security\s+definer|external\s+security\s+invoker|' .
 		'security\s+definer|security\s+invoker|' .
+		'no\s+sql|contains\s+sql|reads\s+sql\s+data|modifies\s+sql\s+data|' .
 		'language\s+\S+|' .
 		'as\s+\\\'\S+\\\'(?:\s*,\s*\\\'\S+\\\')*';
 
@@ -378,6 +379,7 @@ sub make_opt
 	my $provolatile;
 	my $proisstrict = 0;
 	my $prosecdef	= 0;
+	my $prodataaccess;
 	my $prosrc;
 	my $func_as;
 
@@ -401,6 +403,7 @@ sub make_opt
 				$provolatile = lc(substr($opt, 0, 1));
 			}
 
+
 			if ($opt =~ m/^language\s+(internal|c|sql|plpgsql)$/i)
 			{
 				die ("conflicting or redundant options: $opt") 
@@ -410,6 +413,16 @@ sub make_opt
 				$l1 =~ s/^language\s+//;
 
 				$prolang = $plh->{$l1};
+			}
+
+			if ($opt =~ m/^(no\s+sql|contains\s+sql|reads\s+sql\s+data|modifies\s+sql\s+data)/i)
+			{
+				die ("conflicting or redundant options: $opt") 
+					if (defined($prodataaccess));
+				
+				# prodataaccess is first char of option ([n]o sql, [c]ontains sql,
+				# [r]eads sql data, [m]odifies sql data).
+				$prodataaccess = lc(substr($opt, 0, 1));
 			}
 
 			if ($opt =~ m/^AS\s+\'.*\'$/)
@@ -452,11 +465,12 @@ sub make_opt
 			provolatile	 => $provolatile,
 #			pronargs
 #			prorettype
-			proiswin	 => 0
+			proiswin	 => 0,
 #			proargtypes
 #			proallargtypes
 #			proargmodes
 #			proargnames
+			prodataaccess	=> $prodataaccess
 		};
 
 		if (defined($func_as) && defined($prolang))
@@ -492,7 +506,40 @@ sub make_opt
 			{
 				die ("bad lang: $prolang");
 			}
+		} 
+
+		if (!defined($prodataaccess)) 
+		{ 
+			if (14 == $prolang) # SQL 
+			{ 
+				$prodataaccess = 'c';
+			} 
+			else 
+			{ 
+				$prodataaccess = 'n'; 
+			} 
+
+			$tdef->{prodataaccess} = $prodataaccess;
 		}
+
+		# check for conflicting prodataaccess options
+		if (14 == $prolang && ('n' eq $prodataaccess))
+		{
+			die ("conflicting options: A SQL function cannot specify NO SQL");
+		}
+
+		if (defined($provolatile) && ('i' eq $provolatile))
+		{
+			if ('r' eq $prodataaccess) 
+			{
+				die ("conflicting options: IMMUTABLE conflicts with READS SQL DATA");
+			}
+			if ('m' eq $prodataaccess) 
+			{
+				die ("conflicting options: IMMUTABLE conflicts with MODIFIES SQL DATA");
+			}
+		}
+		 
 
 	} # end if exists
 
@@ -1127,7 +1174,7 @@ sub printfndef
 		($tup->{provariadic} ? $tup->{provariadic} : 0) . " " .
 		($tup->{pronargdefaults} ? $tup->{pronargdefaults} : 0) . " " .
 		($tup->{proargdefault} ? $tup->{proargdefaults} : "_null_") . " " .
-		($tup->{prodataaccess} ? $tup->{prodataaccess} : prodataaccess(($fndef->{with}->{oid}), ($tup->{prolang}))) . " " .
+		$tup->{prodataaccess} . " " .
 		"));\n";
 	$bigstr .= "DESCR(" . $fndef->{with}->{description} . ");\n"
 		if (exists($fndef->{with}->{description}));
@@ -1136,43 +1183,6 @@ sub printfndef
 
 	return $bigstr;
 } # end printfndef
-
-#
-# set the prodataaccess modifier
-#
-sub prodataaccess
-{
-	my ($oid, $lang) = @_;
-
-	# RI_FKey* functions 
-	# gp_update_ao_master_stats are set to MODIFIES SQL DATA
-	if (($oid >= 1644 and $oid <=1655) or $oid == 7173 or $oid == 7174) 
-	{
-		return  ("m");
-	}
-
-	# pg_lock_status, pg_tablespace_size, pg_database_size, pg_relation_size, 
-	# get_ao_distribution, get_ao_compression_ratio are set to READS SQL DATA
-	elsif (($oid == 1371) or 
-		($oid >= 2322 and $oid <= 2325) or 
-		($oid == 2168) or 
-		($oid >= 2286 and $oid <= 2289) or 
-		($oid == 6023) or 
-		($oid >= 7169 and $oid <= 7172))
-	{
-		return  ("r");
-	}
-	# SQL language function are set to CONTAINS SQL
-	elsif ($lang == 14)
-	{
-		return  ("c");
-	}
-	# rest are set to NO SQL
-	else
-	{
-		return  ("n");
-	}
-}
 
 # MAIN routine for pg_proc generation
 sub doprocs()

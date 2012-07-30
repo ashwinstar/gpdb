@@ -2125,6 +2125,9 @@ GetFuncSQLDataAccess(Oid prooid)
 	proDataAccess = DatumGetChar(heap_getattr(procTuple, Anum_pg_proc_prodataaccess,
 				RelationGetDescr(procRelation), &isnull));
 
+	heap_freetuple(procTuple);
+	heap_close(procRelation, AccessShareLock);
+
 	/* 
 	 * in upgrade mode, allow prodataaccess to be NULL, to handle the case where 
 	 * prodataaccess column has not been added to pg_proc yet. This is specifically
@@ -2134,9 +2137,6 @@ GetFuncSQLDataAccess(Oid prooid)
 		return SDA_NO_SQL; 
 
 	Assert(!isnull);
-
-	heap_freetuple(procTuple);
-	heap_close(procRelation, AccessShareLock);
 
 	if (proDataAccess == PRODATAACCESS_NONE)
 		result = SDA_NO_SQL; 
