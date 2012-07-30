@@ -79,7 +79,8 @@ int gfile_open_flags(int writing, int usesync);
 #define GFILE_OPEN_FOR_WRITE_NOSYNC 1
 #define GFILE_OPEN_FOR_WRITE_SYNC   2
 
-int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, const char** response_string, struct gpfxdist_t* transform);
+int gfile_open(gfile_t* fd, const char* fpath, int flags, struct gpfxdist_t* transform, const int file_permissions,
+			   int* response_code, const char** response_string);
 int gfile_close(gfile_t*fd);
 off_t gfile_get_compressed_size(gfile_t*fd);
 off_t gfile_get_compressed_position(gfile_t*fd);

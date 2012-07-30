@@ -672,7 +672,8 @@ gfile_open_flags(int writing, int usesync)
 }
 
 
-int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, const char** response_string, struct gpfxdist_t* transform)
+int gfile_open(gfile_t* fd, const char* fpath, int flags, struct gpfxdist_t* transform, const int file_permissions,
+			   int* response_code, const char** response_string)
 {
 	const char* s = strrchr(fpath, '.');
 	bool_t is_win_pipe = FALSE;
@@ -846,7 +847,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 			}
 #endif
 			if (flags != GFILE_OPEN_FOR_READ)
-				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND | syncFlag, S_IRUSR | S_IWUSR);
+				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND | syncFlag, file_permissions);
 			else
 				fd->fd.filefd = open(fpath, O_RDONLY | O_BINARY);
 		}

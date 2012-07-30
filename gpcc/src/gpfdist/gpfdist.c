@@ -6,6 +6,7 @@
 #endif
 #endif
 
+#include <sys/stat.h>       /* S_IRUSR, S_IWUSR */
 #include <apr_getopt.h>
 #include <apr_env.h>
 #include <apr_file_info.h>
@@ -75,6 +76,14 @@ struct block_t
 };
 
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
+
+/* This is the default file permissions for WET file created by the gpfdist (if WET is used) */
+#define DEFAULT_WET_FILE_PERMISSIONS	(S_IRUSR | S_IWUSR)
+#define WET_FILE_PERMISSIONS_MAX_VALUE	(777)
+#define WET_FILE_PERMISSIONS_LENGTH		(3)
+#define MAXIMAL_OCTAL_CHAR				('7')
+#define MINIMAL_OCTAL_CHAR				('0')
+
 
 int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
@@ -164,12 +173,13 @@ static struct
 	const char *b; /* IP address to bind (internal, not documented) */
 	int			m; /* max data line len */
 	int			S; /* use O_SYNC when opening files for write  */
-	int			z; /* listen queue size (hidden option currently for debuging) */
+	int			z; /* listen queue size (hidden option currently for debugging) */
 	const char* c; /* config file */
 	struct transform* trlist; /* transforms from config file */
-	const char* ssl; /* path to certificates in case we use gpfdist with ssl */
-	int 		sslclean; /* Defines the time to wait [sec] untill cleanup the SSL resources (internal, not documented) */
-} opt = { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 5 };
+	const char* ssl; 		/* path to certificates in case we use gpfdist with ssl */
+	int 		sslclean; 	/* Defines the time to wait [sec] until cleanup the SSL resources (internal, not documented) */
+	int			fp;			/* The file permissions of the created file. Applicable to Writable External Table only	*/
+} opt = { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 5, DEFAULT_WET_FILE_PERMISSIONS};
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -357,6 +367,7 @@ static int request_set_transform(request_t *r);
 #endif
 static void handle_post_request(request_t *r, int header_end);
 static void handle_get_request(request_t *r);
+static int validate_file_permissions(const char *arg);
 
 static int gpfdist_socket_send(const request_t *r, const void *buf, const size_t buflen);
 static int gpfdist_SSL_send(const request_t *r, const void *buf, const size_t buflen);
@@ -399,7 +410,7 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [--ssl <certificates_directory>] [-d <directory>] [-p <http(s)_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>]"
+						"usage: gpfdist [--ssl <certificates_directory>] [-d <directory>] [-p <http(s)_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>] [--fp <WET_file_permissions>] "
 #ifdef GPFXDIST
 					    "[-c file]"
 #endif
@@ -414,6 +425,7 @@ static void usage_error(const char* msg, int print_usage)
 						"        -t tm      : timeout in seconds \n"
 						"        -m maxlen  : max data row length expected, in bytes. default is 32768\n"
 						"        --ssl dir  : start HTTPS server. Use the certificates from the specified directory\n"
+						"        --fp mode  : specifies the file permissions for the Writable External Table file created by the gpfdist (if WET is used). default is 600\n"
 #ifdef GPFXDIST
 					    "        -c file    : configuration file for transformations\n"
 #endif
@@ -474,7 +486,8 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 'S', 0, "use O_SYNC when opening files for write" },
 	{ NULL, 'z', 1, "internal - queue size for listen call" },
 	{ "ssl", 257, 1, "ssl - certificates files under this directory" },
-	{ "sslclean", 258, 1, "Defines the time to wait [sec] untill cleanup the SSL resources" },
+	{ "sslclean", 258, 1, "Defines the time to wait [sec] until cleanup the SSL resources" },
+	{ "fp", 259, 1, "The file permissions of the created file. Applicable to Writable External Table only"},
 #ifdef GPFXDIST
 	{ NULL, 'c', 1, "transform configuration file" },
 #endif
@@ -550,6 +563,17 @@ static void parse_command_line(int argc, const char* const argv[],
 			break;
 		case 258:
 			opt.sslclean = atoi(arg);
+			break;
+		case 259:
+			/* The specified file permissions are represented as decimal, whereas we actually need it as octal number 	*/
+			/* We must verify the input here, since after the strtoul(,,8), we won't be able to verify the input.		*/
+			/* e.g. arg = "888" => strtoul("888", NULL, 8) = 0. which are a legal file permissions						*/
+			if (validate_file_permissions(arg) != 0 )
+			{
+				usage_error(apr_psprintf(pool,"Error: --fp should be between 000 and %d. The valid digits are %c through %c (default value is %o)",
+											   WET_FILE_PERMISSIONS_MAX_VALUE, MINIMAL_OCTAL_CHAR, MAXIMAL_OCTAL_CHAR, DEFAULT_WET_FILE_PERMISSIONS), 0);
+			}
+			opt.fp = (int)strtoul(arg, NULL, 8);
 			break;
 		case 256:
 			print_version();
@@ -682,9 +706,9 @@ static void parse_command_line(int argc, const char* const argv[],
 		opt.ssl = p;
 	}
 
-	/* Validate opt.sslclean*/
+	/* Validate opt.sslclean */
 	if ( (opt.sslclean < 0) || (opt.sslclean > 300) )
-		usage_error("Error: -sslclean timeout must be between 0 and 300 [sec] (default is 5[sec])", 0);
+		usage_error("Error: --sslclean timeout must be between 0 and 300 [sec] (default is 5[sec])", 0);
 
 #ifdef GPFXDIST
     /* validate opt.c */
@@ -1236,6 +1260,7 @@ static int session_attach(request_t* r)
 		memset(&fstream_options, 0, sizeof fstream_options);
 		fstream_options.verbose = opt.v;
 		fstream_options.bufsize = opt.m;
+		fstream_options.file_permissions = opt.fp;
 
 		{
 			int quote = 0;
@@ -1254,6 +1279,7 @@ static int session_attach(request_t* r)
 		{
 			fstream_options.forwrite = 1; /* PUT request */
 			fstream_options.usesync = opt.S;
+			gprint("File permissions are: %o\n", opt.fp);
 		}
 
 #ifdef GPFXDIST
@@ -3587,4 +3613,35 @@ static void request_cleanup_and_free_SSL_resources(int fd, short event, void* ar
 
 	/* Release SSL related memory */
 	free_SSL_resources(r);
+}
+
+
+/*
+ * validate_file_permissions
+ *
+ * The file permission should be between 0 and 777 (octal)
+ * Each digit should be between 0 and 7
+ */
+static int validate_file_permissions(const char *arg)
+{
+	int i;
+	int len = strlen(arg);
+
+	/* validate the boundaries */
+	if (len > WET_FILE_PERMISSIONS_LENGTH)
+	{
+		return -1;
+	}
+
+	/* validate that each digit is less than 7 */
+	for(i=0; i<len; i++ )
+	{
+		if ((arg[i] > MAXIMAL_OCTAL_CHAR) ||
+			(arg[i] < MINIMAL_OCTAL_CHAR))
+		{
+			return -1;
+		}
+	}
+
+	return 0;
 }

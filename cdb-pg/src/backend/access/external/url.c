@@ -861,6 +861,9 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		fo.escape = pstate->escape ? *pstate->escape : 0;
 		fo.header = pstate->header_line;
 		fo.bufsize = 32 * 1024;
+		/* The file permissions are used only for WRITABLE protocols.	*/
+		/* file:// is a readable protocol.								*/
+		fo.file_permissions = 0;
 		pstate->header_line = 0;
 
 		/*

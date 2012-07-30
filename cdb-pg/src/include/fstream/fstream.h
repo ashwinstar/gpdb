@@ -21,6 +21,7 @@ struct fstream_options{
     int bufsize;
     int forwrite;   /* true for write, false for read */
 	int usesync;    /* true if writes use O_SYNC */
+	int file_permissions;
     struct gpfxdist_t* transform;	/* for gpfxdist transformations */
 };
 

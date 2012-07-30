@@ -542,7 +542,7 @@ fstream_open(const char *path, const struct fstream_options *options,
 		gfile_close(&fs->fd);
 
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], gfile_open_flags(options->forwrite, options->usesync),
-					   response_code, response_string, transform))
+				 transform, options->file_permissions, response_code, response_string))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 					fs->glob.gl_pathv[i]);
@@ -585,7 +585,10 @@ static void updateCurFileState(fstream_t* fs,
  */
 static int nextFile(fstream_t*fs)
 {
-	int response_code;
+	/* The file permissions are in use only when opening the file for write */
+	/* Since here we open the file for read, this has no significance		*/
+	int 		file_permissions = 0;
+	int 		response_code;
 	const char	*response_string;
 	struct gpfxdist_t* transform = fs->options.transform;
 
@@ -600,7 +603,7 @@ static int nextFile(fstream_t*fs)
 		fs->skip_header_line = fs->options.header;
 
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], GFILE_OPEN_FOR_READ, 
-					   &response_code, &response_string, transform))
+				transform, file_permissions, &response_code, &response_string))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 											fs->glob.gl_pathv[fs->fidx]);
@@ -1002,6 +1005,9 @@ int64_t fstream_get_compressed_position(fstream_t *fs)
  */
 int fstream_rewind(fstream_t *fs)
 {
+	/* The file permissions are in use only when opening the file for write 	*/
+	/* Since here we open the file for read, this variable has no significance	*/
+	int 		file_permissions = 0;
 	int 		response_code;
 	const char*	response_string;
 	struct gpfxdist_t* transform = fs->options.transform;
@@ -1017,7 +1023,7 @@ int fstream_rewind(fstream_t *fs)
 	gfile_close(&fs->fd);
 
 	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], GFILE_OPEN_FOR_READ,
-				   &response_code, &response_string, transform))
+			transform, file_permissions, &response_code, &response_string))
 	{
 		gfile_printf_then_putc_newline("fstream unable to open file %s",
 				fs->glob.gl_pathv[0]);
