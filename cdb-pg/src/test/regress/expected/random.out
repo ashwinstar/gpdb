@@ -63,7 +63,10 @@ SELECT * FROM RANDOM_TBL_Y;
 --------
 (0 rows)
 
--- setseed() is now disallowd.
+-- setseed()
 SELECT setseed(0.1);
-ERROR:  setseed() is deprecated
-HINT:  Use SET seed.
+ setseed 
+---------
+       0
+(1 row)
+

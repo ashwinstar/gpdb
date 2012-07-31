@@ -122,6 +122,7 @@ gp_srand48(long seed)
  *--------------------------------------------------------------------*/
 #include "postgres.h"
 #include "fmgr.h"
+#include "cdb/cdbvars.h"
 #include "utils/builtins.h"
 
 /*
@@ -179,17 +180,27 @@ drandom(PG_FUNCTION_ARGS)
 
 
 /*
- * setseed		- deprecated.
+ * setseed		- sets the seed.  Simple alias for the SET seed command.
  */
 Datum
 setseed(PG_FUNCTION_ARGS)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("setseed() is deprecated"),
-			 errhint("Use SET seed.")));
+	/*
+	 * The GPDB's RNG architecture stores the seed in the master, and
+	 * segments assume it is dispatched from the master in every query,
+	 * so that they can return random numbers that are not correlated in the
+	 * cluster.  Although this function is marked as "MODIFIES SQL DATA",
+	 * we make sure it doesn't work in any case.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("setseed() is not callable in the segments"),
+				 errhint("Use SET seed command, or call it in the master.")));
 
-	PG_RETURN_VOID();   /* keep compiler quiet */
+	assign_random_seed(PG_GETARG_FLOAT8(0), true, PGC_S_INTERACTIVE);
+
+	PG_RETURN_VOID();
 }
 
 /*

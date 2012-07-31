@@ -53,5 +53,5 @@ SELECT * FROM RANDOM_TBL_X
 EXCEPT ALL
 SELECT * FROM RANDOM_TBL_Y;
 
--- setseed() is now disallowd.
+-- setseed()
 SELECT setseed(0.1);

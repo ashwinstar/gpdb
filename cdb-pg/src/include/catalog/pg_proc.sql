@@ -1946,7 +1946,7 @@
 
  CREATE FUNCTION random() RETURNS float8 LANGUAGE internal VOLATILE STRICT AS 'drandom' WITH (OID=1598, DESCRIPTION="random value");
 
- CREATE FUNCTION setseed(float8) RETURNS int4 LANGUAGE internal VOLATILE STRICT AS 'setseed' WITH (OID=1599, DESCRIPTION="set random seed");
+ CREATE FUNCTION setseed(float8) RETURNS int4 LANGUAGE internal VOLATILE STRICT MODIFIES SQL DATA AS 'setseed' WITH (OID=1599, DESCRIPTION="set random seed");
 
 -- OIDS 1600 - 1699
 
