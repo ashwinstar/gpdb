@@ -375,6 +375,9 @@ bool		log_statement_stats = false;		/* this is sort of all three
 bool 		log_dispatch_stats = false;
 bool		log_btree_build_stats = false;
 
+bool		log_performance_counters = false;
+bool		log_performance_counters_clock_time = true;
+
 bool		check_function_bodies = true;
 bool		default_with_oids = false;
 bool		SQL_inheritance = true;
@@ -1305,7 +1308,24 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 #endif
-
+	{
+		{"log_performance_counters", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Collects performance information."),
+			NULL,
+			GUC_GPDB_ADDOPT
+		},
+		&log_performance_counters,
+		false, NULL, NULL
+	},
+	{
+		{"log_performance_counters_clock_time", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Collects performance clock time usage."),
+			NULL,
+			GUC_GPDB_ADDOPT
+		},
+		&log_performance_counters_clock_time,
+		true, NULL, NULL
+	},
 	{
 		{"explain_pretty_print", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Uses the indented output format for EXPLAIN VERBOSE."),
@@ -2045,7 +2065,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_heap_require_relhasoids_match,
 		true, NULL, NULL
 	},
-	
+
 	{
 		{"gp_suppress_distributed_tx_vacuum", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Do not use a distributed transaction for VACUUM."),
@@ -2055,7 +2075,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_suppress_distributed_tx_vacuum,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"gp_new_reindex_database", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Make REINDEX SYSTEM|DATABASE work for the cluster.  Make it determine the OIDs in the Master and ditribute them down to the segments."),
@@ -2065,7 +2085,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_new_reindex_database,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_appendonly_rezero_quicklz_compress_scratch", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Zero the QuickLZ scratch buffer before each append-only block that is being compressed."),
@@ -2527,7 +2547,7 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
-	
+
 	{
 		{"debug_gp_relation_node_fetch_wait_for_debugging", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Wait for debugger attach for MPP-16395 RelationFetchGpRelationNodeForXLog issue."),
@@ -2537,7 +2557,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_gp_relation_node_fetch_wait_for_debugging,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"Debug_delay_before_persistent_init_scan", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Delay before doing the persistent init scan."),
@@ -2547,7 +2567,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_delay_before_persistent_init_scan,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_xlog_insert_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print XLOG Insert record debugging information."),
@@ -2617,7 +2637,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_appendonly_commit_count_print,
 		true, NULL, NULL
 	},
-	
+
 	{
 		{"debug_cancel_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print cancel detail information."),
@@ -2627,7 +2647,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_cancel_print,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_datumstream_write_print_small_varlena_info", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print datum stream write small varlena information."),
@@ -2637,7 +2657,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_datumstream_write_print_small_varlena_info,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_datumstream_write_print_large_varlena_info", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print datum stream write large varlena information."),
@@ -2647,7 +2667,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_datumstream_write_print_large_varlena_info,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_datumstream_read_check_large_varlena_integrity", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Check datum stream large object integrity."),
@@ -2657,7 +2677,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_datumstream_read_check_large_varlena_integrity,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_datumstream_block_read_check_integrity", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Check datum stream block read integrity."),
@@ -2667,7 +2687,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_datumstream_block_read_check_integrity,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_datumstream_block_write_check_integrity", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Check datum stream block write integrity."),
@@ -2677,7 +2697,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_datumstream_block_write_check_integrity,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_datumstream_read_print_varlena_info", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print datum stream read varlena information."),
@@ -2687,7 +2707,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_datumstream_read_print_varlena_info,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_datumstream_write_use_small_initial_buffers", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Use small datum stream write buffers to stress growing logic."),
@@ -2697,7 +2717,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_datumstream_write_use_small_initial_buffers,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_database_command_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print database command debugging information."),
@@ -2777,7 +2797,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_print_xlog_relation_change_info_backtrace_skip_issues,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_check_for_invalid_persistent_tid", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Check for invalid persistent TID"),
@@ -2787,7 +2807,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_check_for_invalid_persistent_tid,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"test_appendonly_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the appendonly create table option."),
@@ -3054,7 +3074,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_persistent_repair_global_sequence,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"filerep_crc_on", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("enable adler 32 crc in filerep"),
@@ -3173,7 +3193,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_crash_recovery_suppress_ao_eof,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"gp_watch_visibility_in_action", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Trace detailed information about heap tuple visibility"),
@@ -3193,7 +3213,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_unlink_print,
 		false, NULL, NULL
 	},
-			
 	{
 		{"gp_encoding_check_locale_compatibility", PGC_POSTMASTER, CLIENT_CONN_LOCALE,
 					gettext_noop("Enable check for compatibility of encoding and locale in createdb"),
@@ -3435,7 +3454,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_opt_print_plan,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"gp_opt_print_xform", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Prints optimizer transformation information."),
@@ -3525,7 +3544,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_opt_print_optimization_context,
 		false, NULL, NULL
 	},
-	
 	{
 		{"gp_opt_print_optimization_stats", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Print optimization stats."),
@@ -3535,7 +3553,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_opt_print_optimization_stats,
 		false, NULL, NULL
 	},
-	
 	{
 		{"gp_opt_parallel", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Enable using threads in optimization engine."),
@@ -3569,8 +3586,8 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_plpgsql_clear_cache_always", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Controls caching of plpgsql plans in session"), 
-		 NULL, 
+		 gettext_noop("Controls caching of plpgsql plans in session"),
+		 NULL,
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_plpgsql_clear_cache_always,
@@ -3580,7 +3597,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"gp_enable_inheritance", PGC_USERSET, UNGROUPED,
 		 gettext_noop("Enable inheritance only when GUC is true"),
-		 NULL, 
+		 NULL,
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_enable_inheritance,
@@ -4474,7 +4491,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_S
 		},
 		&gp_filerep_tcp_keepalives_idle,
-		60, 0, INT_MAX, NULL, NULL 
+		60, 0, INT_MAX, NULL, NULL
 	},
 
 	{
@@ -5324,7 +5341,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL,
 			GUC_SUPERUSER_ONLY| GUC_NOT_IN_SAMPLE
 		},
-		&gp_email_connect_timeout, 
+		&gp_email_connect_timeout,
 		15, 10, 120, NULL, NULL
 	},
 	{

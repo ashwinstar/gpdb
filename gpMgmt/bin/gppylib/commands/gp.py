@@ -400,7 +400,7 @@ class SegmentStart(Command):
 
 
 #-----------------------------------------------
-class SendFilerepTransitionMessage(Command):
+class SendSegmentTransitionMessage(Command):
 
     # see gpmirrortransition.c and primary_mirror_transition_client.h
     TRANSITION_ERRCODE_SUCCESS                             = 0
@@ -427,7 +427,7 @@ class SendFilerepTransitionMessage(Command):
 
     @staticmethod
     def local(name,inputFile,port=None,remoteHost=None):
-        cmd=SendFilerepTransitionMessage(name, inputFile, port, LOCAL, remoteHost)
+        cmd=SendSegmentTransitionMessage(name, inputFile, port, LOCAL, remoteHost)
         cmd.run(validateAfter=True)
         return cmd
 
@@ -458,7 +458,7 @@ class SendFilerepTransitionMessage(Command):
         inputFile = os.path.join( dir, "gp_pmtransition_args" )
         writeLinesToFile(inputFile, argsArr)
 
-        return SendFilerepTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port, dataDir=dir)
+        return SendSegmentTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port, dataDir=dir)
 
 class SendFilerepTransitionStatusMessage(Command):
     def __init__(self, name, msg, dataDir=None, port=None,ctxt=LOCAL, remoteHost=None):

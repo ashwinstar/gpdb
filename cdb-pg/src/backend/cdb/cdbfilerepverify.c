@@ -204,12 +204,12 @@
  */
 
 
-/* Important entry points 
+/* Important entry points
 
    processVerifyRequest - drops off a new request with the primary
 
    FileRepPrimary_StartVerification - run on primary when it first starts up
-                 contains main loop on the primary - 
+                 contains main loop on the primary -
                  waits to see new requests dropped off and actually starts them
 				 calls FileRepPrimary_EstimateVerificationRequest and
 				       FileRepPrimary_ExecuteVerificationRequest
@@ -218,7 +218,7 @@
 
    FileRepMirror_ExecuteVerificationRequest - called for each message sent
       from primary to mirror
-   
+
  */
 #define VERIFYDIR				"pg_verify"
 #define INPROGRESS_TOKEN_FILE	"inprogress_token"
@@ -1480,11 +1480,11 @@ FileRepPrimary_StartVerification(void)
 	FileRepVerifyRequest_s	*request = &gFileRepVerifyShmem->request;
 
 	/* we start out with stateTransition true because we are starting up the
-	 * the process, that equals a state transition and as with other 
+	 * the process, that equals a state transition and as with other
 	 * state transitions it is possible that we have an old request that
 	 * was suspended on shutdown that should be automatically resumed
 	 */
-	bool					stateTransition = true;   
+	bool					stateTransition = true;
 	bool					started = false;
 	uint32					count = 0;
 	char					token[FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN];
@@ -1506,8 +1506,8 @@ FileRepPrimary_StartVerification(void)
 		{
 
 			/* During the running of the primary verificaion process we
-			 * experienced a state transition that could have aborted an 
-			 * in process request; Regardless after a state transition 
+			 * experienced a state transition that could have aborted an
+			 * in process request; Regardless after a state transition
 			 * there is no verification request currently in progress
 			 */
 			stateTransition = true;
@@ -1553,10 +1553,10 @@ FileRepPrimary_StartVerification(void)
 		}
 
 		/* If we just had a state transition ( either starting up for the first
-		 * time or a state transition while we are running) then we need check 
+		 * time or a state transition while we are running) then we need check
 		 * if we have an inprogress token file indicating there was
 		 * an inprocess token that was suspended (but not by a user, just because
-		 * of the state transition) - if so that request should be automatically 
+		 * of the state transition) - if so that request should be automatically
 		 * resumed
 		 */
 		if (stateTransition)
@@ -1572,7 +1572,7 @@ FileRepPrimary_StartVerification(void)
 				Assert(! gFileRepVerifyShmem->isVerificationInProgress);
 
 				/* if any new requests have arrived abort those
-				 * because the suspended request gets first 
+				 * because the suspended request gets first
 				 * priority and we don't allow multiple in progress
 				 */
 				if (gFileRepVerifyShmem->isNewRequestWaiting)
@@ -1650,7 +1650,7 @@ FileRepPrimary_StartVerification(void)
 						 * synchronously
 						 */
 						gFileRepVerifyShmem->signalSynchronousRequests = true;
-				
+
 
 
 
@@ -1821,7 +1821,7 @@ writeFailedResultFile(char *token)
 		return;
 	}
 
-	snprintf(result, 
+	snprintf(result,
 			 MAX_RESULT,
 			 "FAILED\nEND_TIME: %s\nDATA_VERIFIED: %0.2f GB",
 			 timestamptz_to_str(GetCurrentTimestamp()),
@@ -1872,7 +1872,7 @@ FileRepPrimary_StartRequest(
 					  "RestoreVerificationRequest failed %d",
 					  status);
 
-		
+
 			goto FileRepPrimary_StartRequest_Return;
 		}
 
@@ -1885,7 +1885,7 @@ FileRepPrimary_StartRequest(
 					  LOG,
 					  "numAutoRestarts exceeded; retry number %d",
 					  request->numAutoRestarts);
-			
+
 			ereport(WARNING,
 					(errmsg("verification failure, "
 							"could not resume verification token '%s' retry number '%d' "
@@ -1898,7 +1898,7 @@ FileRepPrimary_StartRequest(
 		}
 
 		status = FileRep_OpenOutputFiles(&(request->logControl), true);
-		
+
 		if (status != STATUS_OK)
 		{
 			return status;
@@ -2075,7 +2075,7 @@ FileRepPrimary_StartRequest_Return:
 
 		request->endTime = GetCurrentTimestamp();
 
-		snprintf(result, 
+		snprintf(result,
 				 MAX_RESULT,
 				 "FAILED\nEND_TIME: %s\nDATA_VERIFIED: %0.2f GB",
 				 timestamptz_to_str(request->endTime),
@@ -2083,19 +2083,19 @@ FileRepPrimary_StartRequest_Return:
 			);
 
 		success = false;
-	} 
-	else 
+	}
+	else
 	{
 
 
 		if (request->state == FileRepVerifyRequestState_RUNNING ||
 			request->compareStats.estimateTotalCompares == 0)
 		{
-			
+
 			verifyLog(request->logControl,
 					  LOG,
 					  "REQUEST_COMPLETE");
-			
+
 			request->endTime = GetCurrentTimestamp();
 			TimestampDifference(
 				request->startTime,
@@ -2111,7 +2111,7 @@ FileRepPrimary_StartRequest_Return:
 					  LOG,
 					  "END_TIME %s",
 					  timestamptz_to_str(request->endTime));
-			
+
 			verifyLog(request->logControl,
 					  LOG,
 					  "DATA_VERIFIED: %0.2f GB",
@@ -2120,8 +2120,8 @@ FileRepPrimary_StartRequest_Return:
 
 			if (request->isFailed)
 			{
-				
-				snprintf(result, 
+
+				snprintf(result,
 						 MAX_RESULT,
 						 "FAILED\nEND_TIME: %s\nDATA_VERIFIED: %0.2f GB",
 						 timestamptz_to_str(request->endTime),
@@ -2133,7 +2133,7 @@ FileRepPrimary_StartRequest_Return:
 			else
 			{
 
-				snprintf(result, 
+				snprintf(result,
 						 MAX_RESULT,
 						 "SUCCESS\nEND_TIME: %s\nDATA_VERIFIED: %0.2f GB",
 						 timestamptz_to_str(request->endTime),
@@ -2151,7 +2151,7 @@ FileRepPrimary_StartRequest_Return:
 			verifyLog(request->logControl,
 					  LOG,
 					  "REQUEST_ABORTED");
-			
+
 			request->endTime = GetCurrentTimestamp();
 			TimestampDifference(
 				request->startTime,
@@ -2171,30 +2171,30 @@ FileRepPrimary_StartRequest_Return:
 					  LOG,
 					  "DATA_VERIFIED: %0.2f GB",
 					  (float)(request->compareStats.totalBytesVerified)/(1024.0*1024.0*1024.0));
-			
+
 			verifyLog(request->logControl,
 					  LOG,
 					  "DATA_TO_VERIFY: %0.2f GB",
 					  (float)(request->compareStats.totalBytesToVerify)/(1024.0*1024.0*1024.0));
-			
-			snprintf(result, 
+
+			snprintf(result,
 					 MAX_RESULT,
 					 "ABORT\nEND_TIME: %s\nDATA_VERIFIED: %0.2f GB",
 					 timestamptz_to_str(request->endTime),
 					 (float)(request->compareStats.totalBytesVerified)/(1024.0*1024.0*1024.0)
 				);
-			
+
 			FileRepVerify_EmptyInProgressTokenFile();
 			/* SYNCHRONOUSABORTSUSPEND
 			 * signal the waiter for the current request to finish
 			 * synchronously
 			 */
 			gFileRepVerifyShmem->signalSynchronousRequests = true;
-			
+
 		}
 		else if (request->state == FileRepVerifyRequestState_SUSPENDED)
 		{
-			
+
 			verifyLog(request->logControl,
 					  LOG,
 					  "REQUEST_SUSPENDED");
@@ -2202,27 +2202,27 @@ FileRepPrimary_StartRequest_Return:
 					  LOG,
 					  "DATA_VERIFIED: %0.2f GB",
 					  (float)(request->compareStats.totalBytesVerified)/(1024.0*1024.0*1024.0));
-			
+
 			verifyLog(request->logControl,
 					  LOG,
 					  "DATA_TO_VERIFY: %0.2f GB",
 					  (float)(request->compareStats.totalBytesToVerify)/(1024.0*1024.0*1024.0));
-			
 
-			snprintf(result, 
+
+			snprintf(result,
 					 MAX_RESULT,
 					 "SUSPEND\nSUSPEND_TIME: %s\nDATA_VERIFIED: %0.2f GB",
 					 timestamptz_to_str(request->endTime),
 					 (float)(request->compareStats.totalBytesVerified)/(1024.0*1024.0*1024.0)
 				);
 
-			
+
 			/* SYNCHRONOUSABORTSUSPEND
 			 * signal the waiter for the current request to finish
 			 * synchronously
 			 */
 			gFileRepVerifyShmem->signalSynchronousRequests = true;
-			
+
 		}
 		else if (request->state == FileRepVerifyRequestState_FAILED)
 		{
@@ -2233,14 +2233,14 @@ FileRepPrimary_StartRequest_Return:
 					  LOG,
 					  "DATA_VERIFIED: %0.2f GB",
 					  (float)(request->compareStats.totalBytesVerified)/(1024.0*1024.0*1024.0));
-			
+
 			verifyLog(request->logControl,
 					  LOG,
 					  "DATA_TO_VERIFY: %0.2f GB",
 					  (float)(request->compareStats.totalBytesToVerify)/(1024.0*1024.0*1024.0));
-			
-			snprintf(result, 
-					 MAX_RESULT,		
+
+			snprintf(result,
+					 MAX_RESULT,
 					 "FAILED\nEND_TIME: %s\nDATA_VERIFIED: %0.2f GB",
 					 timestamptz_to_str(request->endTime),
 					 (float)(request->compareStats.totalBytesVerified)/(1024.0*1024.0*1024.0)
@@ -2248,9 +2248,9 @@ FileRepPrimary_StartRequest_Return:
 
 		}
 	}
-	
+
 	errno = 0;
-	
+
 	if (!request->logControl.filesAreOpen || (request->logControl.resultsFile <= 0))
 	{
 		success = FALSE;
@@ -2819,7 +2819,7 @@ FileRepPrimary_VerifyUserFilespaces(
 			}
 
 			FileRepPrimary_SetCheckpointInfo(
-				request, 
+				request,
 				FileRepVerify_RestartPoint_USERFILESPACES,
 				persistentSerialNum);
 
@@ -2841,7 +2841,7 @@ FileRepPrimary_VerifyUserFilespaces(
 	/* User level file spaces is complete - change checkpoint info
 	   to say we are doing System Filespace */
 	FileRepPrimary_SetCheckpointInfo(
-		request, 
+		request,
 		FileRepVerify_RestartPoint_SYSTEMFILESPACE,
 		INVALID_PERSISTENT_SERIAL_NUM);
 
@@ -2906,7 +2906,7 @@ FileRepPrimary_EstimateDirectory(
 		{
 			Assert(request->savedDirectoryStack[i].dir == NULL);
 		}
-		
+
 		request->compareStats.estimateTotalCompares += toCompareThisDirectory;
 	}
 
@@ -2958,7 +2958,7 @@ FileRepPrimary_VerifyDirectory(
 				  "Resuming - restart verification of primaryBaseDir %s mirrorBaseDir %s",
 				  primaryBaseDir, mirrorBaseDir);
 
-	
+
 	}
 	maxSummaryItemsPerSend =
 		FILEREP_MESSAGEBODY_LEN/sizeof(FileRepVerifySummaryItem_s);
@@ -3217,7 +3217,7 @@ FileRepPrimary_VerifyDirectory(
 							request->logControl.logOptions.token,
 							"FileRepVerifyEnhancedFileCompareRequired",
 							fileRepPrimaryHostAddress,
-							primaryFilename, 
+							primaryFilename,
 							fileRepMirrorHostAddress,
 							mirrorFilename,
 							-1,	-1,		-1, -1, -1,
@@ -3328,7 +3328,7 @@ FileRepPrimary_VerifyDirectory(
 							request->logControl.logOptions.token,
 							"FileRepVerifyEnhancedDirectoryCompareRequired",
 							fileRepPrimaryHostAddress,
-							primaryDirectory, 
+							primaryDirectory,
 							fileRepMirrorHostAddress,
 							fileRepIdentifier.fileRepFlatFileIdentifier.directorySimpleName,
 							-1,	-1,		-1, -1, -1,
@@ -3389,11 +3389,11 @@ FileRepPrimary_VerifyDirectory(
 							return status;
 						}
 
-					
+
 
 						if (numChildrenAddedOnMirror)
 						{
-							
+
 							verifyLog(request->logControl,
 									  LOG,
 									  "!!MISMATCH:	%s (%d of %d) numChildrenAddedOnMirror %d ",
@@ -3835,16 +3835,16 @@ isRelBufKindOkForHeapException(PersistentFileSysRelBufpoolKind kind)
         case PersistentFileSysRelBufpoolKind_Toast:
 		case PersistentFileSysRelBufpoolKind_UncatalogedHeap:
 			return TRUE;
-	
+
 		case PersistentFileSysRelBufpoolKind_None:
 		case PersistentFileSysRelBufpoolKind_Btree:
 		case PersistentFileSysRelBufpoolKind_UnknownRelStorage:
 		case PersistentFileSysRelBufpoolKind_UnknownIndex:
 	    case PersistentFileSysRelBufpoolKind_UnknownRelKind:
 			return FALSE;
-		
+
 		default:
- 
+
 			Assert (0);
 			break;
 
@@ -4305,8 +4305,8 @@ FileRepPrimary_VerifyAllRelFileNodes(
 					{
 						numSegments = FileRepVerify_NumHeapSegments(relfilenodeTable[numThisSend].relFileNode);
 
-					} 
-					else 
+					}
+					else
 					{
 						numSegments = 1;
 					}
@@ -4772,7 +4772,7 @@ FileRepPrimary_SetCheckpointInfo(
 			Assert(0);
 			break;
 	}
-			
+
 }
 
 
@@ -5573,8 +5573,8 @@ FileRepPrimary_EstimateVerificationRequest(FileRepVerifyRequest_s *request)
 			request->logControl, DEBUG1,
 			"requestType DIRECTORY verifyItem %s",
 			request->verifyItem);
-	} 
-	else 
+	}
+	else
 	{
 		verifyLog(
 			request->logControl,DEBUG1,
@@ -5768,34 +5768,34 @@ FileRepPrimary_ExchangeRequestParameters(FileRepVerifyRequest_s *request)
 
 	/* This is the first request that is sent after a request is resumed
 	 * It is possible that there are old responses from old requets to mirror
-	 * left in the pipeline - this while loop will clear those out and get 
-	 * us to the reponse to the ExchangeRequestParameters request 
+	 * left in the pipeline - this while loop will clear those out and get
+	 * us to the reponse to the ExchangeRequestParameters request
 	 */
 	while(responseDesc.verify.type != FileRepOpVerifyType_RequestParameters)
 	{
 
 		status = FileRepAckPrimary_RunConsumerVerification(
-			&responseData, 
-			&responseDataLength, 
+			&responseData,
+			&responseDataLength,
 			&responseDesc);
-		
-		
-		if (status != STATUS_OK && 
+
+
+		if (status != STATUS_OK &&
 			dataState != DataStateInChangeTracking &&
 			! primaryMirrorIsIOSuspended())
 		{
 			ereport(WARNING,
 					(errmsg("mirror failure, "
 							"could not complete operation on mirror, "
-							"failover requested"), 
+							"failover requested"),
 					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail(fileRepIdentifier,
 									   fileRepRelationType,
 									   FileRepOperationVerify,
-									   FILEREP_UNDEFINED), 
+									   FILEREP_UNDEFINED),
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));				
+					 FileRep_errcontext()));
 		}
 
 
@@ -6090,13 +6090,13 @@ int FileRepMirror_CompareSummaryItem(
 		if (pItem->summary.fileSummary.missingOnPrimary)
 		{
 			/* this file (or at least one of the segment files)
-			 * didn't turn out to be there by the time we 
-			 * went to fill the summary item - count that as an 
+			 * didn't turn out to be there by the time we
+			 * went to fill the summary item - count that as an
 			 * mismatch so we go on to compare under a lock
 			 */
 			*mismatch = true;
 			return STATUS_OK;
-			
+
 		}
 
 		for (seg = 0; seg < numSegments; seg++)
@@ -6302,8 +6302,8 @@ int FileRepMirror_CompareSummaryItem(
 						strlen(de->d_name));
 				}
 
-			} 
-			else 
+			}
+			else
 			{
 				verifyLog(logControl, DEBUG3,
 						  "FileRepMirror_CompareDirectoryContents 1: Skipping %s because excluded",
@@ -6459,8 +6459,8 @@ FileRepMirror_CompareAllSummaryItems(
 						  DEBUG3,
 						  "FileRepMirror_CompareAllSummaryItems *response %p",
 						  *response);
-			} 
-			else 
+			}
+			else
 			{
 				Assert(FILEREP_MESSAGEBODY_LEN >= numMismatches*sizeof(FileRepVerifySummaryItem_s));
 			}
@@ -6927,12 +6927,12 @@ FileRepMirror_CompareDirectoryContents(
 	char * childrenList;
 	bool firstBatch = false;
 	bool bufferFull = false;
-	
-	/* 
+
+	/*
 	 * Note: we get extra_p files just fine without this directory contents
 	 * comparison  - this is looking for extra_m files
 	 * primary asks mirror to send a chunk of its directory listing - until
-	 * mirror says it is the finalBatch - 
+	 * mirror says it is the finalBatch -
 	 * with this primary can find the extra_m files and mirror doesn't have
 	 * to generate fix files at all
 	 */
@@ -6945,14 +6945,14 @@ FileRepMirror_CompareDirectoryContents(
 
 	directoryName = FileRep_GetFileName(fileRepIdentifier, fileRepRelationType);
 
-	verifyLog(logControl, 
-			  DEBUG1, 
-			  "FileRepMirror_CompareDirectoryContents mirrorDirectory %s firstBatch %d", 
+	verifyLog(logControl,
+			  DEBUG1,
+			  "FileRepMirror_CompareDirectoryContents mirrorDirectory %s firstBatch %d",
 			  directoryName, firstBatch);
-	
-	
+
+
 	/* Check that this directory on the mirror exists */
-	if (stat(directoryName, &mirrorDir_st) != 0) 
+	if (stat(directoryName, &mirrorDir_st) != 0)
 	{
 	/* directory does not even exist */
 		verifyLog(
@@ -6983,18 +6983,18 @@ FileRepMirror_CompareDirectoryContents(
 						"verification aborted",
 						logControl.logOptions.token),
 				 errhint("run gpverify")));
-		
+
 		pfree(directoryName);
 		return STATUS_ERROR;
 	}
 
 
-	/* Allocate the directory 
+	/* Allocate the directory
 	*  SAVE AND USE DIR FROM LAST TIME!
 	* gMirrorRequestParams.compareDir
 	*/
 	if(firstBatch)
-	{ 
+	{
 		if (gMirrorRequestParams.compareDir != NULL)
 		{
 			verifyLog(logControl,
@@ -7020,7 +7020,7 @@ FileRepMirror_CompareDirectoryContents(
 				  "FileRepMirror_CompareDirectoryContents: calling AllocateDir on %s",
 				  directoryName
 			);
-		
+
 		if ((gMirrorRequestParams.compareDir = AllocateDir(directoryName)) == NULL)
 		{
 			ereport(WARNING,
@@ -7037,7 +7037,7 @@ FileRepMirror_CompareDirectoryContents(
 
 		strncpy(gMirrorRequestParams.compareDir_Name, directoryName, MAXPGPATH);
 
-	} 
+	}
 	else
 	{
 		//string compare on directoryName and compareDir_Name - if not the same ERROR!
@@ -7056,18 +7056,18 @@ FileRepMirror_CompareDirectoryContents(
 			DEBUG5,
 			"Child %d: name %s len %d (SAVED FROM LAST TIME)",
 			numThisSend, gMirrorRequestParams.compareDir_NextChild, thisLen);
-		
+
 		memcpy(childrenList+ currOffset, &thisLen, sizeof(int));
 		currOffset+=sizeof(int);
 		numThisSend++;
-				
+
 		memcpy(childrenList+ currOffset, gMirrorRequestParams.compareDir_NextChild, thisLen);
 		currOffset+=thisLen;
-		
+
 	}
 	dir = gMirrorRequestParams.compareDir;
 
-	
+
 	/* Look over the mirror directory - copying each child into the response buffer
 	 * while we have room
 	 */
@@ -7125,7 +7125,7 @@ FileRepMirror_CompareDirectoryContents(
 			if (currOffset + thisLen + sizeof(int) >= FILEREP_MESSAGEBODY_LEN)
 			{
 
-				/* The current message is too full to include this last piece 
+				/* The current message is too full to include this last piece
 				 *  Send the current message and then start fresh with this child
 				 */
 
@@ -7136,12 +7136,12 @@ FileRepMirror_CompareDirectoryContents(
 					DEBUG5,
 					"Child: name %s len %d (SAVING FOR NEXT TIME)",
 					gMirrorRequestParams.compareDir_NextChild, thisLen);
-	
-				
-			} 
-			else 
+
+
+			}
+			else
 			{
-				
+
 				/* Copy this item into place */
 				verifyLog(
 					logControl,
@@ -7152,18 +7152,18 @@ FileRepMirror_CompareDirectoryContents(
 				memcpy(childrenList+ currOffset, &thisLen, sizeof(int));
 				currOffset+=sizeof(int);
 				numThisSend++;
-				
+
 				memcpy(childrenList+ currOffset, de->d_name, thisLen);
 				currOffset+=thisLen;
 			}
-		} 
-		else 
+		}
+		else
 		{
 			verifyLog(logControl, DEBUG3,
 					  "FileRepMirror_CompareDirectoryContents 4: Skipping %s because excluded",
 					  de->d_name);
 		}
-	
+
 	}
 
 	/* FORMAT RESPONSE */
@@ -7203,7 +7203,7 @@ FileRepMirror_ExchangeRequestParameters(
 
 	/* safer and cheaper to just once at the beginning and not again? */
 	getcwd(gMirrorBaseDir, MAXPGPATH+1);
-	
+
 	*responseSizeBytes = MAXPGPATH+1;
 
 	/* response gets freed in FileRepMirror_RunConsumer */
@@ -7216,11 +7216,11 @@ FileRepMirror_ExchangeRequestParameters(
 						"verification aborted",
 						logControl.logOptions.token),
 				 errhint("run gpverify")));
-		
+
 		return STATUS_ERROR;
 	}
 	strncpy((char*) *response, gMirrorBaseDir, MAXPGPATH+1);
-	verifyLog(logControl, LOG, "FileRepMirror_ExchangeRequestParameters START gMirrorBaseDir %s response %s responseSizeBytes %d", 
+	verifyLog(logControl, LOG, "FileRepMirror_ExchangeRequestParameters START gMirrorBaseDir %s response %s responseSizeBytes %d",
 			  gMirrorBaseDir,
 			  (char *) *response,
 			  *responseSizeBytes
@@ -7358,10 +7358,10 @@ FileRepMirror_ExchangeRequestParameters(
 
 
 		gMirrorRequestParams.valid = true;
-	} 
+	}
 
 
-	verifyLog(logControl, LOG, "FileRepMirror_ExchangeRequestParameters END gMirrorBaseDir %s response %s responseSizeBytes %d", 
+	verifyLog(logControl, LOG, "FileRepMirror_ExchangeRequestParameters END gMirrorBaseDir %s response %s responseSizeBytes %d",
 			  gMirrorBaseDir,
 			  (char *) *response,
 			  *responseSizeBytes
@@ -7417,7 +7417,7 @@ FileRepVerify_ProcessHeapPage(
 		HeapTupleHeader htup;
 
 		itemId = PageGetItemId(page, whichItem);
-		
+
 		if (ItemIdIsUsed(itemId))
 		{
 			htup = (HeapTupleHeader)(PageGetItem((Page)page, itemId));
@@ -7561,7 +7561,7 @@ int FileRepPrimary_CompareDirectoryListing(
 		primaryDirectoryName,
 		mirrorDirectoryName);
 
-	
+
 	*numChildrenAddedOnMirror = 0;
 
 	/* we are going to request that mirror send us a chunk of directory listing
@@ -7570,7 +7570,7 @@ int FileRepPrimary_CompareDirectoryListing(
 	fileRepOperationDescription.verify.type = FileRepOpVerifyType_DirectoryContents;
 	fileRepOperationDescription.verify.logOptions = logControl.logOptions;
 
-	do 
+	do
 	{
 
 		fileRepOperationDescription.verify.desc.dirContents.firstBatch =
@@ -7587,7 +7587,7 @@ int FileRepPrimary_CompareDirectoryListing(
 			&responseData,
 			&responseDataLength,
 			&responseDesc);
-		
+
 		if (dataToMirror != NULL)
 		{
 			pfree(dataToMirror);
@@ -7613,7 +7613,7 @@ int FileRepPrimary_CompareDirectoryListing(
 				primaryDirectoryName,
 				fileRepMirrorHostAddress,
 				mirrorDirectoryName);
-			
+
 			writeDiffTableRecord(
 				logControl,
 				logControl.logOptions.token,
@@ -7624,7 +7624,7 @@ int FileRepPrimary_CompareDirectoryListing(
 				mirrorDirectoryName,
 				-1, -1, -1, -1, -1,
 				NULL); /* Not applicable for directories */
-		
+
 			gFileRepVerifyShmem->request.isFailed = true;
 
 		}
@@ -7632,7 +7632,7 @@ int FileRepPrimary_CompareDirectoryListing(
 		if (startOver)
 		{
 			numStartOvers++;
-			
+
 /* if mirror does not find a valid dir pointer it will start over
  * only allow that to happen so many times to avoid infinite loop
 */
@@ -7652,7 +7652,7 @@ int FileRepPrimary_CompareDirectoryListing(
 			}
 		}
 		firstBatch =    false;
-		
+
 		verifyLog(
 			request->logControl,
 			DEBUG1,
@@ -7663,7 +7663,7 @@ int FileRepPrimary_CompareDirectoryListing(
 			numStartOvers,
 			responseDataLength,
 			directoryExists);
-	  
+
 		if (numChildrenInBatch > 0)
 		{
 			Assert(responseData != NULL);
@@ -7673,15 +7673,15 @@ int FileRepPrimary_CompareDirectoryListing(
 		 * then generate an extra_m record  and increment
 		 * numChildrenAddedOnMirror
 		 *
-		 * Note the lastChild in this batch so we can send it to 
+		 * Note the lastChild in this batch so we can send it to
 		 * mirror with the next request - so mirror knows where
-		 * to start the next buffer 
+		 * to start the next buffer
 		 */
 		child = 0;
 		currOffset = 0;
 		while (child < numChildrenInBatch)
 		{
-			
+
 			memcpy(&lastChildLen, (char* )responseData+currOffset, sizeof(int));
 
 			Assert(lastChildLen > 1);
@@ -7694,7 +7694,7 @@ int FileRepPrimary_CompareDirectoryListing(
 					  lastChild,
 					  lastChildLen,
 					  currOffset);
-			
+
 			snprintf(primary_child_path,
 					 MAXPGPATH+1,
 					 "%s/%s",
@@ -7706,27 +7706,27 @@ int FileRepPrimary_CompareDirectoryListing(
 					 "%s/%s",
 					 mirrorDirectoryName,
 					 lastChild);
-			
+
 			if (stat(primary_child_path, &child_st) != 0)
 			{
 				(*numChildrenAddedOnMirror)++;
 				verifyLog(logControl,
 						  LOG,
 						  "VERIFICATION_ERROR_REPORT MIRROR NEW1 Directory %s on mirror contains child %s len %d that is not found in the primary directory %s \n",
-						  
+
 						  mirrorDirectoryName,
 						  lastChild,
 						  lastChildLen,
 						  primaryDirectoryName);
 
-				writeFixFileRecord(logControl, 
+				writeFixFileRecord(logControl,
 								   "extra_m",
 								   fileRepMirrorHostAddress,
 								   mirror_child_path,
 								   fileRepPrimaryHostAddress,
 								   primary_child_path
 					);
-				
+
 				writeDiffTableRecord(
 					logControl,
 					logControl.logOptions.token,
@@ -7737,8 +7737,8 @@ int FileRepPrimary_CompareDirectoryListing(
 					mirror_child_path,
 					-1, -1, -1, -1, -1,
 					NULL /* if file isn't on primary then it doesn't have a relnode */);
-				
-				
+
+
 			}
 
 			/* advance the child */
@@ -7746,14 +7746,14 @@ int FileRepPrimary_CompareDirectoryListing(
 			currOffset += sizeof(int);
 			currOffset += lastChildLen;
 		}
-		
+
 		if (responseData != NULL)
 		{
 			pfree(responseData);
 			responseData = NULL;
 		}
 
-		
+
 	} while (!finalBatch && directoryExists);
 
 	if (responseData != NULL)
@@ -7764,7 +7764,7 @@ int FileRepPrimary_CompareDirectoryListing(
 
 
 	return STATUS_OK;
-	
+
 }
 
 /* this should change to sending a data block full of hash values?
@@ -8469,8 +8469,8 @@ FileRepPrimary_SendEnhancedBlockHashes(
 				if (blkno == numBlocks-1)
 				{
 					fileRepOperationDescription.verify.desc.enhancedBlockHash.lastBlock = true;
-				} 
-				else 
+				}
+				else
 				{
 					fileRepOperationDescription.verify.desc.enhancedBlockHash.lastBlock = false;
 				}
@@ -8574,7 +8574,7 @@ FileRepPrimary_SendEnhancedBlockHashes(
 #endif
 //						Assert(primaryFilename[0] == '\\');
 //						Assert(mirrorFilename[0] == '\\');
-						
+
 						writeFixFileRecord(
 										   logControl,
 										   getCompareExceptionString(relinfo),
@@ -8783,7 +8783,7 @@ FileRepMirror_ExecuteVerificationRequest(
 					fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.finalBatch,
 					fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.startOver
 					);
-			
+
 			}
 			break;
 
@@ -8924,7 +8924,7 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 			relfilenodeTable[row].exception;
 		summaryItemArray[row].summary.fileSummary.AO_logicalEof =
 			relfilenodeTable[row].AO_logicalEof;
-		
+
 		if ( summaryItemArray[row].summary.fileSummary.exception ==
 			FileRepVerifyCompareException_HeapRelation)
 		{
@@ -8971,7 +8971,7 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 				}
 				else
 				{
-					snprintf(	
+					snprintf(
 						segmentFileName,
 						MAXPGPATH+1,
 						"%s.%d",
@@ -9018,7 +9018,7 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 			/* careful to compute real file name based on segmentFileNum */
 			if (stat(segmentFileName, &info) != 0)
 			{
-				/* the file is missing on the primary by the time we get around to looking at it - 
+				/* the file is missing on the primary by the time we get around to looking at it -
 				 * that can happen because we are not locking at this point
 				 * Can't return STATUS_ERROR here because this can happen
 				 */
@@ -9030,9 +9030,9 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 								"verification aborted",
 								relpath(relfilenodeTable[row].relFileNode)),
 						errhint("run gpverify")));
-				
-			} 
-			else 
+
+			}
+			else
 			{
 
 				if (includeFileSizeInfo && (seg == numSegments-1))
@@ -9105,6 +9105,7 @@ isExcludedFile(
 	 * pg_fsm.cache		 HANDLED EXCLUDED FILE pg_fsm.cache
 	 * pgstat			 HANDLED EXCLUDED FILE pgstat.stat
 	 * pgsql_tmp			 HANDLED EXCLUDED DIRECTORY pgsql_tmp
+	 * gp_performance_counters		HANDLED EXCLUDED DIRECTORY gp_performance_counters
 	 * pg_changetracking	 HANDLED EXCLUDED DIRECTORY pg_changetracking
 	 * gp_dbid			 HANDLED EXCLUDED FILE gp_dbid
 	 * core				 HANDLED EXCLUDED FILE core
@@ -9283,6 +9284,10 @@ isExcludedDirectory(
 	 * correct
 	 */
 	if (strcmp(directoryName, "pgsql_tmp") == 0)
+	{
+		return 1;
+	}
+	if (strcmp(directoryName, "gp_performance_counters") == 0)
 	{
 		return 1;
 	}
@@ -9508,7 +9513,7 @@ FillBufferWithDirectoryTreeListing(
 	bool doDirectoryHash = false;
 	bool keepChild = false;
 	bool sendDirectory = false;
-	
+
 	if (mirrBaseDirectory != NULL)
 	{
 		verifyLog(
@@ -9557,7 +9562,7 @@ FillBufferWithDirectoryTreeListing(
 
 	errno = 0;
 
-	
+
 	if (strlen(fromBasePath) == 0)
 	{
 		snprintf(currentDirectoryName,
@@ -9572,12 +9577,12 @@ FillBufferWithDirectoryTreeListing(
 				 "%s/%s",
 				 priBaseDirectory, fromBasePath);
 	}
-	
+
 	verifyLog(request->logControl,
 			  DEBUG1,
 			  "FillBufferWithDirectoryTreeListing: currentDirectoryName %s",
 			  currentDirectoryName);
-	
+
 	Assert(startDepth <= *currDepth);
 
 	if (startDepth >=MAX_DIRECTORY_DEPTH)
@@ -9593,13 +9598,13 @@ FillBufferWithDirectoryTreeListing(
 			request->logControl.logOptions.token,
 			"FileRepVerifyDirectoryTreeUnverifiedDepthExceeded",
 			fileRepPrimaryHostAddress,
-			currentDirectoryName, 
+			currentDirectoryName,
 			fileRepMirrorHostAddress,
 			mirrBaseDirectory,
 			-1,	-1,		-1, -1, -1,
 			NULL);
 		gFileRepVerifyShmem->request.isFailed = true;
-		
+
 		verifyLog(request->logControl,
 				  LOG,
 				  "UNEXPECTED ERROR in VERIFICATION: FillBufferWithDirectoryTreeListing directory depth %d exceeded max of  %d",
@@ -9609,7 +9614,7 @@ FillBufferWithDirectoryTreeListing(
 		(*currDepth)--;
 		*complete = true;
 		return STATUS_OK;
-		
+
 	}
 	else if (startDepth < 0)
 	{
@@ -9619,13 +9624,13 @@ FillBufferWithDirectoryTreeListing(
 				  startDepth);
 		Assert(0);
 		return STATUS_ERROR;
-		
+
 	}
-	
-	if (request->savedDirectoryStack[startDepth].dir == NULL) 
+
+	if (request->savedDirectoryStack[startDepth].dir == NULL)
 	{
 
-		
+
 		if ((dir = AllocateDir(currentDirectoryName)) == NULL)
 		{
 			/* VERIFICATION_ERROR_INTERNAL */
@@ -9636,12 +9641,12 @@ FillBufferWithDirectoryTreeListing(
 							"verification aborted",
 							currentDirectoryName),
 					 errhint("run gpverify")));
-			
+
 			verifyLog(request->logControl,
 					  DEBUG1,
 					  "FillBufferWithDirectoryTreeListing: Unable to AllocateDir %s",
 					  currentDirectoryName);
-			
+
 			return STATUS_ERROR;
 		}
 		request->savedDirectoryStack[startDepth].dir = dir;
@@ -9654,26 +9659,26 @@ FillBufferWithDirectoryTreeListing(
 				  startDepth,
 				  currentDirectoryName,
 				  dir);
-				  
+
 		if (doDirectoryHash)
 		{
 			//NEW_HASH
 			request->savedDirectoryStack[startDepth].hash = crc32cInit();
-			
+
 		}
 
-	} 
+	}
 
 
-	do 
+	do
 	{
 
 		Assert(!(*currDepth >=MAX_DIRECTORY_DEPTH) || (*currDepth < 0));
 		Assert(request->savedDirectoryStack[*currDepth].dir != NULL);
-		
+
 		dir = request->savedDirectoryStack[*currDepth].dir;
 
-		
+
 		/* build the currentDirectoryName from this depth's base path*/
 		strcpy(currentFromBasePath, request->savedDirectoryStack[*currDepth].fromBasePath);
 		if (strlen(currentFromBasePath) == 0)
@@ -9701,7 +9706,7 @@ FillBufferWithDirectoryTreeListing(
 
 		while ((de = ReadDir(dir, currentDirectoryName)) != NULL)
 		{
-			
+
 			/*
 			  verifyLog(
 			  request->logControl,
@@ -9724,7 +9729,7 @@ FillBufferWithDirectoryTreeListing(
 				//verifyLog(request->logControl, DEBUG5, "continuing");
 				continue;
 			}
-			
+
 			snprintf(child_path,
 					 MAXPGPATH+1,
 					 "%s/%s",
@@ -9751,7 +9756,7 @@ FillBufferWithDirectoryTreeListing(
 								child_path,
 								de->d_name),
 						 errhint("run gpverify")));
-				
+
 				verifyLog(request->logControl,
 						  DEBUG1,
 						  "FillBufferWithDirectoryTreeListing: Unable to stat %s",
@@ -9768,7 +9773,7 @@ FillBufferWithDirectoryTreeListing(
 						 S_ISREG(child_st.st_mode),
 						 request->verifyItem,
 						 request->requestType);
-			
+
 			if (!keepChild)
 			{
 				verifyLog(request->logControl,
@@ -9784,8 +9789,8 @@ FillBufferWithDirectoryTreeListing(
 						  "Keeping CHILD %s",
 						  child_path);
 			}
-			
-			
+
+
 			if (S_ISDIR(child_st.st_mode) &&
 				isExcludedDirectory(
 					de->d_name,
@@ -9818,20 +9823,20 @@ FillBufferWithDirectoryTreeListing(
 			{
 				bool subDirComplete = false;
 				int subDirDepth = *currDepth+1;
-				
+
 				request->savedDirectoryStack[*currDepth].numImmediateChildrenFound++;
 				if (doDirectoryHash)
 				{
-					
+
 					//NEW_HASH
 					request->savedDirectoryStack[*currDepth].hash =
 						crc32c(
 							request->savedDirectoryStack[*currDepth].hash,
 							de->d_name,
 							strlen(de->d_name));
-					
+
 				}
-				
+
 				/* JUST PASS IN '\0' to start out fromBasePath rather than NULL
 				 * WOULD GET RID OF THIS SPECIAL CASE?
 				 */
@@ -9848,7 +9853,7 @@ FillBufferWithDirectoryTreeListing(
 							 MAXPGPATH+1,
 							 "%s/%s",
 							 currentFromBasePath, de->d_name);
-					
+
 				}
 				(*currDepth)++;
 				status = FillBufferWithDirectoryTreeListing(
@@ -9864,7 +9869,7 @@ FillBufferWithDirectoryTreeListing(
 					&subDirComplete,
 					subDirDepth,
 					currDepth);
-				
+
 				if (status != STATUS_OK)
 				{
 					ereport(WARNING,
@@ -9873,17 +9878,17 @@ FillBufferWithDirectoryTreeListing(
 									"verification aborted",
 									child_path),
 							 errhint("run gpverify")));
-					
+
 					return status;
-				} 
-				
-				if ((!subDirComplete) || 
-					(!justCount && 
-					 (bufferSizeBytes < 
+				}
+
+				if ((!subDirComplete) ||
+					(!justCount &&
+					 (bufferSizeBytes <
 					  (*used_len + sizeof(FileRepVerifySummaryItem_s) ))))
 				{
 					return STATUS_OK;
-				} 
+				}
 
 			}
 			else if (
@@ -9893,20 +9898,20 @@ FillBufferWithDirectoryTreeListing(
 					request->numIgnoreFilePatterns,
 					request->ignoreFiles))
 			{
-				
+
 				request->savedDirectoryStack[*currDepth].numImmediateChildrenFound++;
 				if (doDirectoryHash)
 				{
-					
+
 					//NEW_HASH
-					request->savedDirectoryStack[*currDepth].hash = 
+					request->savedDirectoryStack[*currDepth].hash =
 						crc32c(
 							request->savedDirectoryStack[*currDepth].hash,
 							de->d_name,
 							strlen(de->d_name));
-					
+
 				}
-				
+
 				/* TODO -disable this check to see that the database version
 				 * is really finding everything it needs to!!!
 				 */
@@ -9933,26 +9938,26 @@ FillBufferWithDirectoryTreeListing(
 						de->d_name,
 						request->skipRelFiles);
 				}
-				
+
 				if (justCount)
 				{
 					FileRepVerify_AddToTotalBlocksToVerify(child_st.st_size);
-				
-				} 
-				else 
+
+				}
+				else
 				{
 					/* add to bytes verified ? not really verified at this point */
 					FileRepVerify_AddToTotalBlocksVerified(child_st.st_size);
-				   
+
 				}
-				
+
 				verifyLog(
 					request->logControl,
 					DEBUG3,
 					"FillBufferWithDirectoryTreeListing FILE de->d_name: |%s| num_entries %d",
 					de->d_name,
 					*num_entries);
-				
+
 				/* TODO: Is there really any point of sending a
 				 * summaryItem.isFile = true entry if we don't compare the size
 				 *  or the contents?
@@ -9962,16 +9967,16 @@ FillBufferWithDirectoryTreeListing(
 				 *  be a flat file - shouldn't we be comparing the size and
 				 *  contents of those?
 				 */
-				
+
 				(*num_entries)++;
-				
+
 				if (!justCount)
 				{
 					memset(&summaryItem, 0,
 						   sizeof(FileRepVerifySummaryItem_s));
 					summaryItem.isFile = true;
 					summaryItem.summary.fileSummary.missingOnPrimary = false;
-					
+
 					/* WHEN WE PLACE ITEMS in the buffer -
 					 * we just leave off the baseDir portion
 					 * It has to be put back on on the mirror
@@ -9980,7 +9985,7 @@ FillBufferWithDirectoryTreeListing(
 					strncpy(summaryItem.baseDir,
 							mirrBaseDirectory,
 							MAXPGPATH+1);
-					
+
 					if (strlen(currentFromBasePath) != 0)
 					{
 						strncpy(summaryItem.fromBasePath,
@@ -9994,16 +9999,16 @@ FillBufferWithDirectoryTreeListing(
 					strncpy(summaryItem.filename,
 							de->d_name,
 							strlen(de->d_name)+1);
-					
-					
+
+
 					/*summaryItem.identifier.fileRepFlatFileIdentifier.blockId =
 					  FILEREPFLATFILEID_WHOLE_FILE;*/
-					
+
 					if (request->includeFileSizeInfo)
 					{
 						summaryItem.summary.fileSummary.fileSize =
 							child_st.st_size;
-						
+
 					}
 					else
 					{
@@ -10024,7 +10029,7 @@ FillBufferWithDirectoryTreeListing(
 								 mirrBaseDirectory,
 								 summaryItem.fromBasePath,
 								 summaryItem.filename);
-						
+
 						FileRepVerify_ComputeFileHash(
 							primaryFileName,
 							&summaryItem.summary.fileSummary.fileContentsHashcode,
@@ -10037,15 +10042,15 @@ FillBufferWithDirectoryTreeListing(
 					{
 						summaryItem.summary.fileSummary.fileContentsHashcode = 0;
 					}
-					
-					
-					
+
+
+
 					pItem = (FileRepVerifySummaryItem_s *)(buf + *used_len);
-					memcpy((void *)pItem, (void *) (&(summaryItem)), 
+					memcpy((void *)pItem, (void *) (&(summaryItem)),
 						   sizeof(	FileRepVerifySummaryItem_s));
-					
+
 					*used_len+=sizeof(	FileRepVerifySummaryItem_s);
-					if(bufferSizeBytes < 
+					if(bufferSizeBytes <
 					   (*used_len + sizeof(FileRepVerifySummaryItem_s)))
 					{
 						/* there won't be room for another item...
@@ -10058,27 +10063,27 @@ FillBufferWithDirectoryTreeListing(
 							child_path,
 							*currDepth);
 						return STATUS_OK;
-						
+
 					}
 
 				}
-				
+
 			}
 		} //ReadDir
 
-		
+
 		if (doDirectoryHash)
 		{
-			
+
 			//NEW_HASH
-			request->savedDirectoryStack[*currDepth].hash = 
+			request->savedDirectoryStack[*currDepth].hash =
 				crc32cFinish( request->savedDirectoryStack[*currDepth].hash);
 		}
-		
-		
+
+
 		Assert(strlen("\0") == 0);
-		
-		
+
+
 		if (request->requestType ==
 			FileRepVerifyRequestType_FILE )
 		{
@@ -10125,11 +10130,11 @@ FillBufferWithDirectoryTreeListing(
 			{
 				memset(&summaryItem, 0, sizeof(FileRepVerifySummaryItem_s));
 				summaryItem.isFile = false;
-				
+
 				strncpy(summaryItem.baseDir,
 						mirrBaseDirectory,
 						MAXPGPATH+1);
-				
+
 				/* WHEN WE PLACE ITEMS in the buffer -
 				 * we just leave off the baseDir portion
 				 * It has to be put back on on the mirror
@@ -10145,13 +10150,13 @@ FillBufferWithDirectoryTreeListing(
 				{
 					summaryItem.fromBasePath[0] = '\0';
 				}
-				
+
 				summaryItem.filename[0] = '\0';
 
 				summaryItem.summary.dirSummary.numImmediateChildren =
 					request->savedDirectoryStack[*currDepth].numImmediateChildrenFound;
-				
-				
+
+
 				if (doDirectoryHash)
 				{
 					summaryItem.summary.dirSummary.childrenListHashcode =
@@ -10164,14 +10169,14 @@ FillBufferWithDirectoryTreeListing(
 				}
 
 				pItem = (FileRepVerifySummaryItem_s *)(buf + *used_len);
-				memcpy((void *)pItem, (void *) (&(summaryItem)), 
+				memcpy((void *)pItem, (void *) (&(summaryItem)),
 					   sizeof(	FileRepVerifySummaryItem_s));
 				*used_len+=sizeof(	FileRepVerifySummaryItem_s);
-				if(bufferSizeBytes < 
+				if(bufferSizeBytes <
 				   ( *used_len + sizeof(FileRepVerifySummaryItem_s)))
 				{
 
-					/* there won't be room for another item 
+					/* there won't be room for another item
 					 * return now
 					 */
 					verifyLog(
@@ -10182,10 +10187,10 @@ FillBufferWithDirectoryTreeListing(
 						startDepth,
 						*currDepth);
 
-					/*we are done with this directory - 
+					/*we are done with this directory -
 					 * free it and change depth before we return
 					 */
-					if (*currDepth == startDepth) 
+					if (*currDepth == startDepth)
 					{
 						//this sub dir is complete
 						*complete = true;
@@ -10195,9 +10200,9 @@ FillBufferWithDirectoryTreeListing(
 					request->savedDirectoryStack[*currDepth].dir = NULL;
 
 					(*currDepth)--;
-					
+
 					return STATUS_OK;
-					
+
 				}
 
 
@@ -10205,7 +10210,7 @@ FillBufferWithDirectoryTreeListing(
 
 		}
 
-		if ((*currDepth > -1) && 
+		if ((*currDepth > -1) &&
 			(request->savedDirectoryStack[*currDepth].dir != NULL))
 		{
 
@@ -10214,8 +10219,8 @@ FillBufferWithDirectoryTreeListing(
 			(*currDepth)--;
 
 		}
-		
-		
+
+
 	}while ((*currDepth) >= startDepth);
 
 	*complete = true;
@@ -10246,7 +10251,7 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 	struct stat	 dir_st;
 	uint32	used_len = 0;
 
-	
+
 	verifyLog(request->logControl,
 			  DEBUG1,
 			  "FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing: primary %s",
@@ -10328,7 +10333,7 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 		}
 
 		return status;
-	} 
+	}
 
 	verifyLog(request->logControl,
 			  DEBUG1,
@@ -10747,8 +10752,8 @@ checkDirectoryExists(char * dir)
 	if (stat(dir, &st) < 0)
 	{
 		return false;
-	} 
-	else 
+	}
+	else
 	{
 		return true;
 	}
@@ -10880,15 +10885,15 @@ processVerifyRequest(
 				{
 					status = STATUS_ERROR;
 					/* there is another abort or suspend that hasn't been picked up
-					 * fail this one 
+					 * fail this one
 					 */
 					strncpy(responseMsg,
 							"Failure: another abort/suspend still in progress\n",
 							responseMsgLen);
 					elog(LOG, "%s", responseMsg);
-					
-				} 
-				else 
+
+				}
+				else
 				{
 
 					waitForCompletion = true;
@@ -10906,15 +10911,15 @@ processVerifyRequest(
 				{
 					status = STATUS_ERROR;
 					/* there is another abort or suspend that hasn't been picked up
-					 * fail this one 
+					 * fail this one
 					 */
 					strncpy(responseMsg,
 							"Failure: another abort/suspend still in progress\n",
 							responseMsgLen);
 					elog(LOG, "%s", responseMsg);
-					
-				} 
-				else 
+
+				}
+				else
 				{
 					waitForCompletion = true;
 					elog(LOG,
@@ -10922,8 +10927,8 @@ processVerifyRequest(
 						 request->logControl.logOptions.token);
 					request->suspendRequested = true;
 				}
-				
-				   
+
+
 			}
 			else
 			{
@@ -10974,8 +10979,8 @@ processVerifyRequest(
 					gFileRepVerifyShmem->resume = true;
 					gFileRepVerifyShmem->isNewRequestWaiting = true;
 
-					/* We are not reading the checkpoint file here because current 
-					 * request structure already reflects this one 
+					/* We are not reading the checkpoint file here because current
+					 * request structure already reflects this one
 					 */
 				}
 				else
@@ -11146,10 +11151,10 @@ processVerifyRequest(
 	 * saying that abort or suspend is requested
 	 * The following snippet of code allows some requests (specifically
 	 * suspend and abort because those are not long running) to be
-	 * synchronous - they will wait here until the primary thread 
+	 * synchronous - they will wait here until the primary thread
 	 * sees that a suspend or abort has been requested and sets the
 	 * signalSynchronousRequests field to release requests that are
-	 * waiting for the request to finish 
+	 * waiting for the request to finish
 	 */
  	if (waitForCompletion)
 	{
@@ -11168,19 +11173,19 @@ processVerifyRequest(
 			}
 
 			FileRepVerify_LockAcquire();
-			
-			if (gFileRepVerifyShmem->signalSynchronousRequests) 
+
+			if (gFileRepVerifyShmem->signalSynchronousRequests)
 			{
 				gFileRepVerifyShmem->signalSynchronousRequests = false;
 				FileRepVerify_LockRelease();
 				break;
 			}
 			FileRepVerify_LockRelease();
-			
+
 			pg_usleep(50000L); /* 50 ms */
 
 		}
-	} 
+	}
 
 	return status;
 }

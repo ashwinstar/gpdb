@@ -232,6 +232,9 @@ extern bool log_statement_stats;
 extern bool log_dispatch_stats;
 extern bool log_btree_build_stats;
 
+extern bool log_performance_counters;
+extern bool log_performance_counters_clock_time;
+
 extern PGDLLIMPORT bool check_function_bodies;
 extern bool default_with_oids;
 extern bool SQL_inheritance;
@@ -340,7 +343,7 @@ extern char  *gp_email_from;
 extern char  *gp_email_to;
 extern int   gp_email_connect_timeout;
 extern int   gp_email_connect_failures;
-extern int   gp_email_connect_avoid_duration; 
+extern int   gp_email_connect_avoid_duration;
 #endif
 
 #if USE_SNMP

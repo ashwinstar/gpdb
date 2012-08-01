@@ -77,6 +77,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 
+#include "utils/performancecounter.h"
 
 #ifdef HAVE_LIBZ
 #include <zlib.h>
@@ -1408,6 +1409,7 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 
 	Assert(aoInsertDesc->nonCompressedData == NULL);
 	Assert(!AppendOnlyStorageWrite_IsBufferAllocated(&aoInsertDesc->storageWrite));
+
 }
 
 /* ----------------------------------------------------------------
@@ -1429,7 +1431,7 @@ appendonly_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, int
 	int					complevel;*/
 
 	AppendOnlyStorageAttributes *attr;
-	
+
 	StringInfoData titleBuf;
 
 	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
@@ -2426,6 +2428,8 @@ appendonly_insert_init(Relation rel, int segno)
 	bool			need_toast;
 	bool			isLargeContent;
 
+	START_PERFORMANCE_COUNTER(performance_counter_AO_table_IO);
+
 	Assert(aoInsertDesc->usableBlockSize > 0 && aoInsertDesc->tempSpaceLen > 0);
 	Assert(aoInsertDesc->toast_tuple_threshold > 0 && aoInsertDesc->toast_tuple_target > 0);
 
@@ -2670,6 +2674,9 @@ appendonly_insert_init(Relation rel, int segno)
 
 	if(tup != instup)
 		pfree(tup);
+
+        END_PERFORMANCE_COUNTER(performance_counter_AO_table_IO);
+
 }
 
 /*
@@ -2681,6 +2688,9 @@ appendonly_insert_init(Relation rel, int segno)
 void
 appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 {
+
+       START_PERFORMANCE_COUNTER(performance_counter_AO_table_IO);
+
 	/*
 	 * Finish up that last varblock.
 	 */
@@ -2695,6 +2705,8 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 	pfree(aoInsertDesc->aoEntry);
 	pfree(aoInsertDesc->title);
 	pfree(aoInsertDesc);
+
+        END_PERFORMANCE_COUNTER(performance_counter_AO_table_IO);
 }
 
 /*

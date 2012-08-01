@@ -31,6 +31,8 @@
 #include "storage/proc.h"
 #include "storage/spin.h"
 
+#include "utils/guc.h"
+#include "utils/performancecounter.h"
 
 /* We use the ShmemLock spinlock to protect LWLockAssign */
 extern slock_t *ShmemLock;
@@ -179,10 +181,10 @@ NumLWLocks(void)
 
 	/* subtrans.c needs one per SubTrans buffer */
 	numLocks += NUM_SUBTRANS_BUFFERS;
-    
+
     /* cdbtm.c needs one lock */
     numLocks++;
-    
+
     /* cdbfts.c needs one lock */
     numLocks++;
 
@@ -191,7 +193,7 @@ NumLWLocks(void)
 
 	/* cdbdistributedlog.c needs one per DistributedLog buffer */
 	numLocks += NUM_DISTRIBUTEDLOG_BUFFERS;
-    
+
 	/*
 	 * Add any requested by loadable modules; for backwards-compatibility
 	 * reasons, allocate at least NUM_USER_DEFINED_LWLOCKS of them even if
@@ -322,14 +324,14 @@ LWLockAssign(void)
 
 static void
 LWLockTryLockWaiting(
-		PGPROC	   *proc, 
-		LWLockId lockid, 
+		PGPROC	   *proc,
+		LWLockId lockid,
 		LWLockMode mode)
 {
 	volatile LWLock *lock = &(LWLockArray[lockid].lock);
 	int 			milliseconds = 0;
 	int				exclusivePid;
-	
+
 	while(true)
 	{
 		pg_usleep(5000L);
@@ -348,31 +350,31 @@ LWLockTryLockWaiting(
 			char buffer[200];
 
 			SpinLockAcquire(&lock->mutex);
-			
+
 			if (lock->exclusive > 0)
 				exclusivePid = lock->exclusivePid;
 			else
 				exclusivePid = 0;
-			
+
 			SpinLockRelease(&lock->mutex);
 
 			memcpy(buffer, "none", 5);
-			
+
 			for (l = 0; l < num_held_lwlocks; l++)
 			{
 				if (l == 0)
 					count += sprintf(&buffer[count],"(");
 				else
 					count += sprintf(&buffer[count],", ");
-				
+
 				count += sprintf(&buffer[count],
 							    "lockid %d",
 							    held_lwlocks[l]);
 			}
 			if (num_held_lwlocks > 0)
 				count += sprintf(&buffer[count],")");
-				
-			elog(LOG, "Waited .75 seconds on lockid %d with no success. Exclusive pid %d. Already held: %s", 
+
+			elog(LOG, "Waited .75 seconds on lockid %d with no success. Exclusive pid %d. Already held: %s",
 				 lockid, exclusivePid, buffer);
 
 		}
@@ -398,8 +400,9 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 	PGPROC	   *proc = MyProc;
 	bool		retry = false;
 	int			extraWaits = 0;
-
 	PRINT_LWDEBUG("LWLockAcquire", lockid, lock);
+
+	START_PERFORMANCE_COUNTER(performance_counter_LWLOCK_Acquire);
 
 #ifdef LWLOCK_STATS
 	/* Set up local count state first time through in a given process */
@@ -519,7 +522,7 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 		else
 			lock->tail->lwWaitLink = proc;
 		lock->tail = proc;
-		
+
 		/* Can release the mutex now */
 		SpinLockRelease(&lock->mutex);
 
@@ -586,8 +589,8 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 
 #ifdef LWLOCK_TRACE_MIRROREDLOCK
 	if (lockid == MirroredLock)
-		elog(LOG, "LWLockAcquire: MirroredLock by PID %u in held_lwlocks[%d] %s", 
-			 MyProcPid, 
+		elog(LOG, "LWLockAcquire: MirroredLock by PID %u in held_lwlocks[%d] %s",
+			 MyProcPid,
 			 num_held_lwlocks,
 			 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
 #endif
@@ -607,6 +610,9 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 	 */
 	while (extraWaits-- > 0)
 		PGSemaphoreUnlock(&proc->sem);
+
+	END_PERFORMANCE_COUNTER(performance_counter_LWLOCK_Acquire);
+
 }
 
 /*
@@ -675,8 +681,8 @@ LWLockConditionalAcquire(LWLockId lockid, LWLockMode mode)
 	{
 #ifdef LWLOCK_TRACE_MIRROREDLOCK
 		if (lockid == MirroredLock)
-			elog(LOG, "LWLockConditionalAcquire: MirroredLock by PID %u in held_lwlocks[%d] %s", 
-				 MyProcPid, 
+			elog(LOG, "LWLockConditionalAcquire: MirroredLock by PID %u in held_lwlocks[%d] %s",
+				 MyProcPid,
 				 num_held_lwlocks,
 				 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
 #endif
@@ -724,20 +730,20 @@ LWLockRelease(LWLockId lockid)
 
 	saveExclusive = held_lwlocks_exclusive[i];
 	if (InterruptHoldoffCount <= 0)
-		elog(PANIC, "upon entering lock release, the interrupt holdoff count is bad (%d) for release of lock %d (%s)", 
+		elog(PANIC, "upon entering lock release, the interrupt holdoff count is bad (%d) for release of lock %d (%s)",
 			 InterruptHoldoffCount,
 			 (int)lockid,
 			 (saveExclusive ? "Exclusive" : "Shared"));
 
 #ifdef LWLOCK_TRACE_MIRROREDLOCK
 	if (lockid == MirroredLock)
-		elog(LOG, 
-			 "LWLockRelease: release for MirroredLock by PID %u in held_lwlocks[%d] %s", 
-			 MyProcPid, 
+		elog(LOG,
+			 "LWLockRelease: release for MirroredLock by PID %u in held_lwlocks[%d] %s",
+			 MyProcPid,
 			 i,
 			 (held_lwlocks_exclusive[i] ? "Exclusive" : "Shared"));
 #endif
-	
+
 	num_held_lwlocks--;
 	for (; i < num_held_lwlocks; i++)
 	{
@@ -804,13 +810,13 @@ LWLockRelease(LWLockId lockid)
 					if (proc->pid != 0)
 					{
 						lock->releaseOK = false;
-					}					
+					}
 				}
 			}
 			/* proc is now the last PGPROC to be released */
 			lock->head = proc->lwWaitLink;
 			proc->lwWaitLink = NULL;
-			
+
 			/* proc->pid can be 0 if process exited while waiting for lock */
 			if (proc->pid != 0)
 			{
@@ -851,7 +857,7 @@ LWLockRelease(LWLockId lockid)
 	 * Now okay to allow cancel/die interrupts.
 	 */
 	if (InterruptHoldoffCount <= 0)
-		elog(PANIC, "upon exiting lock release, the interrupt holdoff count is bad (%d) for release of lock %d (%s)", 
+		elog(PANIC, "upon exiting lock release, the interrupt holdoff count is bad (%d) for release of lock %d (%s)",
 			 InterruptHoldoffCount,
 			 (int)lockid,
 			 (saveExclusive ? "Exclusive" : "Shared"));

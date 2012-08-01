@@ -267,19 +267,19 @@ do { \
 			if (fprintf(cmdfd, fmt, arg1, arg2, arg3) < 0 || fflush(cmdfd) < 0) \
 				output_failed = true, output_errno = errno; \
 		} while (0)
-		
+
 #define PG_CMD_PRINTF4(fmt, arg1, arg2, arg3, arg4) \
 	do { \
 		if (fprintf(cmdfd, fmt, arg1, arg2, arg3, arg4) < 0 || fflush(cmdfd) < 0) \
 			output_failed = true, output_errno = errno; \
 	} while (0)
-	
+
 #define PG_CMD_PRINTF5(fmt, arg1, arg2, arg3, arg4, arg5) \
 			do { \
 				if (fprintf(cmdfd, fmt, arg1, arg2, arg3, arg4, arg5) < 0 || fflush(cmdfd) < 0) \
 					output_failed = true, output_errno = errno; \
 			} while (0)
-			
+
 #ifndef WIN32
 #define QUOTE_PATH	""
 #define DIR_SEP "/"
@@ -2148,7 +2148,7 @@ setup_gp_persistent_tables(void)
 {
 	PG_CMD_DECL;
 
-	fprintf(stdout, _("loading file-system persistent tables for template1 (mirrored = %s) ... \n"), 
+	fprintf(stdout, _("loading file-system persistent tables for template1 (mirrored = %s) ... \n"),
 		    (gIsFileRepMirrored  ? "true" : "false"));
 	fflush(stdout);
 
@@ -2158,7 +2158,7 @@ setup_gp_persistent_tables(void)
 			 backend_output);
 
 	PG_CMD_OPEN;
-	
+
 	PG_CMD_PRINTF1("SELECT gp_persistent_build_db(%s);\n",
 				   (gIsFileRepMirrored  ? "true" : "false"));
 
@@ -2831,6 +2831,7 @@ main(int argc, char *argv[])
 		"pg_distributedxidmap",		// Old directory.
 		"pg_distributedlog",		// New directory.
 		"pg_utilitymodedtmredo",
+		"gp_performance_counters",
 		"base",
 		"base/1",
 		"pg_tblspc",

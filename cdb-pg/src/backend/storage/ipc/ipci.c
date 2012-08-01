@@ -55,6 +55,7 @@
 #include "storage/procarray.h"
 #include "storage/sinval.h"
 #include "storage/spin.h"
+#include "utils/performancecounter.h"
 #include "utils/resscheduler.h"
 #include "utils/faultinjector.h"
 #include "utils/simex.h"
@@ -138,11 +139,11 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			size = add_size(size, AppendOnlyWriterShmemSize());
-			
+
 			if(ResourceScheduler)
 			{
 				size = add_size(size, ResSchedulerShmemSize());
-				size = add_size(size, ResPortalIncrementShmemSize());				
+				size = add_size(size, ResPortalIncrementShmemSize());
 			}
 		}
 		size = add_size(size, ProcGlobalShmemSize());
@@ -179,17 +180,18 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			size = add_size(size, FileRep_ShmemSize());
 			size = add_size(size, FileRepAck_ShmemSize());
 			size = add_size(size, FileRepAckPrimary_ShmemSize());
-			size = add_size(size, FileRepResync_ShmemSize()); 
+			size = add_size(size, FileRepResync_ShmemSize());
 			size = add_size(size, FileRepIpc_ShmemSize());
 			size = add_size(size, FileRepLog_ShmemSize());
 			size = add_size(size, FileRepStats_ShmemSize());
 			size = add_size(size, FileRepVerifyShmemSize());
 		}
-		
+
 #ifdef FAULT_INJECTOR
 		size = add_size(size, FaultInjector_ShmemSize());
-#endif			
-		
+#endif
+
+
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -209,6 +211,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 		size = add_size(size, BgWriterShmemSize());
 		size = add_size(size, CheckpointShmemSize());
+
+		size = add_size(size, PerformanceCounter_ShmemSize());
 
 		/* freeze the addin request size and include it */
 		addin_request_allowed = false;
@@ -232,14 +236,14 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 		numSemas += MemProtSemas(); /* memory protection */
 
-		if (GPAreFileReplicationStructuresRequired()) 
+		if (GPAreFileReplicationStructuresRequired())
 		{
 			numSemas += FileRepSemas();
 		}
-		
+
 		elog(DEBUG3,"reserving %d semaphores",numSemas);
 		PGReserveSemaphores(numSemas, port);
-		
+
 	}
 	else
 	{
@@ -329,16 +333,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	CreateSharedProcArray();
 	LocalDistribXact_ShmemCreate();
 	CreateSharedBackendStatus();
-	
+
 	/*
 	 * Set up Shared snapshot slots
 	 *
-	 * TODO: only need to do this if we aren't the QD. for now we are just 
-	 *		 doing it all the time and wasting shemem on the QD.  This is 
+	 * TODO: only need to do this if we aren't the QD. for now we are just
+	 *		 doing it all the time and wasting shemem on the QD.  This is
 	 *		 because this happens at postmaster startup time when we don't
-	 *		 know who we are.  
+	 *		 know who we are.
 	 */
-	CreateSharedSnapshotArray(); 
+	CreateSharedSnapshotArray();
 
 	/*
 	 * Set up shared-inval messaging
@@ -356,13 +360,14 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	PMSignalShmemInit();
 	BgWriterShmemInit();
 	CheckpointShmemInit();
+	PerformanceCounter_ShmemInit();
 	//AutoVacuumShmemInit();
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
 
 	if (GPAreFileReplicationStructuresRequired()) {
-	
+
 		FileRep_ShmemInit();
 		FileRepAck_ShmemInit();
 		FileRepAckPrimary_ShmemInit();
@@ -372,7 +377,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		FileRepStats_ShmemInit();
 		FileRepVerifyShmemInit();
 	}
-	
+
 #ifdef FAULT_INJECTOR
 	FaultInjector_ShmemInit();
 #endif
@@ -401,12 +406,12 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 #endif
 
 	BackoffStateInit();
-	
+
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
 		SPI_InitMemoryReservation();
 	}
-	
+
 	/*
 	 * Now give loadable modules a chance to set up their shmem allocations
 	 */

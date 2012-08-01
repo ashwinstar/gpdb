@@ -172,7 +172,7 @@ class GpInjectFaultProgram:
         for segment in segments :
             logger.info("Injecting fault on %s", segment)
             # if there is an error then an exception is raised by command execution
-            cmd = gp.SendFilerepTransitionMessage("Fault Injector", inputFile.name, \
+            cmd = gp.SendSegmentTransitionMessage("Fault Injector", inputFile.name, \
                                         segment.getSegmentPort(), base.LOCAL, segment.getSegmentHostName())
             cmd.run(validateAfter=False)
 
@@ -202,7 +202,7 @@ class GpInjectFaultProgram:
             segmentsForNextPass = []
             for segment in segments:
                 logger.info("Checking for fault completion on %s", segment)
-                cmd = gp.SendFilerepTransitionMessage.local("Fault Injector Status Check", inputFile.name, \
+                cmd = gp.SendSegmentTransitionMessage.local("Fault Injector Status Check", inputFile.name, \
                                                             segment.getSegmentPort(), segment.getSegmentHostName())
                 resultStr = cmd.results.stderr.strip()
                 if resultStr == "Success: waitMore":

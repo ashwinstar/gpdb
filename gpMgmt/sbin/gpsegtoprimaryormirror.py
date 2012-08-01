@@ -95,7 +95,7 @@ class GpSegToPrimaryMirror():
             
         logger.info("Changing segments...")
         for dir, port in dirportmap.iteritems():
-            cmd = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData, dir, port)
+            cmd = gp.SendSegmentTransitionMessage.buildTransitionMessageCommand(transitionData, dir, port)
             self.pool.addCommand(cmd)
               
         self.pool.join()

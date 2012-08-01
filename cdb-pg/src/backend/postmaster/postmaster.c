@@ -147,6 +147,7 @@
 #include "utils/datetime.h"
 #include "utils/faultinjector.h"
 #include "utils/memutils.h"
+#include "utils/performancecounter.h"
 #include "utils/ps_status.h"
 #include "utils/resscheduler.h"
 
@@ -1848,7 +1849,7 @@ static void checkPgDir2(const char *dir)
 		{
 			elog(LOG, "System file or directory missing (%s), shutting down segment", path);
 		}
-		
+
 		pfree(path);
 		/* quit all processes and exit */
 		pmdie(SIGQUIT);
@@ -2257,7 +2258,7 @@ ServerLoop(void)
 										   DDLNotSpecified,
 										   "",	//databaseName
 										   ""); // tableName
-#endif											
+#endif
         }
         else
         {
@@ -2282,7 +2283,7 @@ ServerLoop(void)
 			checkPgDir2("pg_clog");
 			checkPgDir2("pg_multixact/members");
 			checkPgDir2("pg_multixact/offsets");
-			checkPgDir2("pg_xlog/archive_status");	
+			checkPgDir2("pg_xlog/archive_status");
 		}
 
 #ifdef USE_TEST_UTILS
@@ -3112,8 +3113,8 @@ processTransitionRequest_getMirrorStatus(void)
 							  "verificationCompletedCount:%0.2f\n"
 							  "estimatedCompletionVerificationTimeSecondsSinceEpoch:" INT64_FORMAT "\n"
 							  "verificationToken:%s\n",
-			 getMirrorModeLabel(pm_mode), 
-			 getSegmentStateLabel(s_state), 
+			 getMirrorModeLabel(pm_mode),
+			 getSegmentStateLabel(s_state),
 			 getDataStateLabel(d_state),
 			 getFaultTypeLabel(f_type),
 			 databaseStatus,
@@ -3293,11 +3294,51 @@ exit:
 
 }
 
+
+static void
+processTransitionRequest_performanceCounterAction(void * inputBuf, int *offsetPtr, int length)
+{
+	bool  wasRead;
+	char *PerformanceCounterName = readNextStringFromString(inputBuf, offsetPtr, length);
+	char *type                   = readNextStringFromString(inputBuf, offsetPtr, length);
+	int   sleepTimeSeconds       = readIntFromString(inputBuf, offsetPtr, length, &wasRead);
+	const int bufLen             = 1000;
+	char  buf[bufLen];
+
+	init_ps_display("performance counter inject process", "", "", "");
+
+	if ( ! wasRead)
+	{
+		sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("invalid performance counter packet (missing some data values)")));
+		snprintf(buf, sizeof(buf), "Failure: invalid performance counter packet (missing some data values)");
+	}
+	else
+	{
+		if (sleepTimeSeconds < 0 || sleepTimeSeconds > 7200)
+		{
+			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+					errmsg("invalid sleep time, allowed range [0, 7200 sec]")));
+			snprintf(buf, sizeof(buf), "Failure: invalid sleep time, allowed range [0, 7200 sec]");
+		}
+		else
+		{
+			elog(DEBUG1, "PERFORMANCE COUNTER: Name %s Type %s, SleepTime %d", PerformanceCounterName, type, sleepTimeSeconds );
+
+			PerformanceCounter_TakeAction(PerformanceCounterName, type, sleepTimeSeconds, buf, bufLen);
+		}
+	}
+
+	sendPrimaryMirrorTransitionResult(buf);
+}
+
+
 /**
  * Send a verification request.
  * No validation of request is performed here.
- * The check to verify if this is a valid request is done in the verification thread.	
- * 
+ * The check to verify if this is a valid request is done in the verification thread.
+ *
  * TODO: Remove the logs after verification
  */
 static void
@@ -3342,7 +3383,7 @@ processFilerepVerifyRequest(void * inputBuf, int *offsetPtr, int length)
 		args->fullVerify = true;
 	}
 
-	if (!(file == NULL || (strlen(file) == 0))) 
+	if (!(file == NULL || (strlen(file) == 0)))
 	{
 		strncpy(args->compareFile, file, strlen(file)+1);
 	}
@@ -3394,23 +3435,23 @@ processFilerepVerifyRequest(void * inputBuf, int *offsetPtr, int length)
 	{
 		if (strlen(ignorePattern)+1 >  IGNORE_PATTERN_LENGTH)
 		{
-			snprintf(statusBuf, RESPONSE_LEN+50, 
-					 "Failure: ignore file list exceeds max length of %d chars\n", 
+			snprintf(statusBuf, RESPONSE_LEN+50,
+					 "Failure: ignore file list exceeds max length of %d chars\n",
 					 IGNORE_PATTERN_LENGTH);
 			sendPrimaryMirrorTransitionResult(responseMsg);
 			return;
 
 		}
 		strncpy(args->ignorePattern, ignorePattern, strlen(ignorePattern)+1);
-	
+
 	}
 
 	if (!(dirIgnorePath == NULL || (strlen(dirIgnorePath) == 0)))
 	{
 		if (strlen(dirIgnorePath)+1 >  DIR_IGNOREPATH_LENGTH )
 		{
-			snprintf(statusBuf, RESPONSE_LEN+50, 
-					 "Failure: ignore directory list exceeds max length of %d chars\n", 
+			snprintf(statusBuf, RESPONSE_LEN+50,
+					 "Failure: ignore directory list exceeds max length of %d chars\n",
 					 DIR_IGNOREPATH_LENGTH );
 			sendPrimaryMirrorTransitionResult(responseMsg);
 			return;
@@ -3428,7 +3469,7 @@ processFilerepVerifyRequest(void * inputBuf, int *offsetPtr, int length)
 	{
 	  snprintf(statusBuf, RESPONSE_LEN+50, "Success: %s\n", responseMsg);
 	  sendPrimaryMirrorTransitionResult("Success:\n");
-	} 
+	}
 	else
 	{
 	  snprintf(statusBuf, RESPONSE_LEN+50, "Failure: %s\n", responseMsg);
@@ -3519,6 +3560,14 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 	{
 		processTransitionRequest_faultInject(buf, &offset, length);
 	}
+	else if (strcmp("getPerformanceCounterStatus", targetModeStr ) == 0)
+	{
+		processTransitionRequest_performanceCounterAction(buf, &offset, length);
+	}
+	else if (strcmp("PerformanceCounterAction", targetModeStr) == 0)
+	{
+		processTransitionRequest_performanceCounterAction(buf, &offset, length);
+	}
 	else if(strcmp("gp_verify", targetModeStr) == 0)
 	{
 		processFilerepVerifyRequest(buf, &offset, length);
@@ -3579,12 +3628,12 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
              */
             args->dataState = DataStateInResync;
 			args->forceFullResync = TRUE;
-			
-			/* 
+
+			/*
 			 * The system may have been configured to use a new filespace for transaction files
 			 * when this segment was down. Now when the segment comes up, we need to make sure
 			 * to reload all the info abt the location of txn files from the flat files and hence
-			 * make sure that the mirror starts using the logs at the right location 
+			 * make sure that the mirror starts using the logs at the right location
 			 */
 			primaryMirrorPopulateFilespaceInfo();
         }
@@ -4738,7 +4787,7 @@ static void do_reaper()
 
 				if (ServiceStartable(subProc))
 				{
-					if (StartupPidsAllZero() && 
+					if (StartupPidsAllZero() &&
 						!FatalError && Shutdown == NoShutdown)
 					{
 						/*
@@ -5346,7 +5395,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 (int) StartupPass3PID)));
 		signal_child(StartupPass3PID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
-	
+
 	/* Take care of the startup process too */
 	if (pid == StartupPass4PID)
 		StartupPass4PID = 0;
@@ -5755,7 +5804,7 @@ static PMState StateMachineCheck_WaitPreBgWriter(void)
     Assert(pmState == PM_CHILD_STOP_WAIT_PREBGWRITER );
 
     /* waiting for pre-bgwriter services to exit */
-    bool moveToNextState = 
+    bool moveToNextState =
     		(!ServiceProcessesExist(/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER) &&
     		 CheckpointPID == 0);
     return moveToNextState ? (pmState+1) : pmState;
@@ -6077,7 +6126,7 @@ PostmasterStateMachine(void)
         {
             if ( DO_STATE_MACHINE_LOGGING )
                 elog(LOG, "Postmaster State Machine: no change from %s", gPmStateLabels[pmState]);
-                
+
             /* current state was not completed ... quit and wait to be called again */
             break;
         }
@@ -7048,7 +7097,7 @@ internal_forkexec(int argc, char *argv[], Port *port)
 /* This should really be in a header file */
 NON_EXEC_STATIC void
 PerfmonMain(int argc, char *argv[]);
-#endif 
+#endif
 
 /*
  * SubPostmasterMain -- Get the fork/exec'd process into a state equivalent

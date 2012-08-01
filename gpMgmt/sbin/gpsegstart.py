@@ -281,7 +281,7 @@ class GpSegStart:
             # (look for the protocol message type PRIMARY_MIRROR_TRANSITION_REQUEST_CODE )
             #
             port = seg.getSegmentPort()
-            cmd  = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData, datadir, port)
+            cmd  = gp.SendSegmentTransitionMessage.buildTransitionMessageCommand(transitionData, datadir, port)
 
             self.pool.addCommand(cmd)
         self.pool.join()
@@ -305,7 +305,7 @@ class GpSegStart:
             stderrFromFailure = res.stderr.replace("\n", " ").strip()
             shouldStop = False
 
-            if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
+            if res.rc == gp.SendSegmentTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
                 msg        = "Segment did not respond to startup request; check segment logfile"
                 reasoncode = gp.SEGSTART_ERROR_SERVER_DID_NOT_RESPOND
 
@@ -332,7 +332,7 @@ class GpSegStart:
                 reasoncode = gp.SEGSTART_ERROR_SERVER_IS_IN_SHUTDOWN
 
             else:
-                if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SOCKET:
+                if res.rc == gp.SendSegmentTransitionMessage.TRANSITION_ERRCODE_ERROR_SOCKET:
 
                     # Couldn't connect to server to do transition or got another problem
                     # communicating, must make sure it's halted!

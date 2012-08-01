@@ -317,6 +317,7 @@ BEGIN {
 
 	push @{$glob_dirignore}, "pgsql_tmp"; # this directory only on primaries
 	push @{$glob_dirignore}, "pg_verify"; # this directory may be just on primary
+    push @{$glob_dirignore}, "gp_performance_counters"; # this directory not same on primary as mirror
 
 	$glob_content = \@content;
 
@@ -489,6 +490,7 @@ sub ignore_list
 	my @m1 = qw(
 		pg_stat
 		pg_verify
+        gp_performance_counters
 		pg_log
 		pg_internal
 		pg_fsm.cache

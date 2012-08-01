@@ -444,4 +444,26 @@ extern void qsort_arg(void *base, size_t nel, size_t elsize,
 /* port/chklocale.c */
 extern int	pg_get_encoding_from_locale(const char *ctype);
 
+
+
+#if (defined(__X86__) || defined(__x86_64__) || defined(__x86_64) || (defined(__APPLE__) && defined(i386)))
+/*
+ * x86 64-bit way to get cpu ticks.
+ */
+static unsigned long long inline get_rdtsc(void)
+{
+  unsigned hi, lo;
+  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+  return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
+#else
+/*
+ * Not supported for non x86 64-bit platforms for now. We could add it later.
+ */
+static unsigned long long inline get_rdtsc(void)
+{
+	return 0;
+}
+#endif
+
 #endif   /* PG_PORT_H */
