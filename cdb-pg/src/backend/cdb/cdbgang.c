@@ -2358,6 +2358,7 @@ disconnectAndDestroyGang(Gang *gp)
 	 */
 	if (gp->type == GANGTYPE_WRITER)
 	{
+		globalWriterGang = NULL;
 		disconnectAndDestroyAllReaderGangs(true);
 		resetSessionForWriterGangLoss();
 	}
