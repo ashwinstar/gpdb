@@ -56,3 +56,15 @@ INSERT INTO iportaltest (i, d, p)
 
 INSERT INTO iportaltest (i, d, p)
    VALUES (2, 89.05, '(4.0,2.0),(3.0,1.0)'::polygon);
+
+-- check cdb-hashable type vs CREATE TABLE
+CREATE TABLE point_dist(p point) DISTRIBUTED BY (p);
+CREATE TABLE pointarr_dist(pa point[]) DISTRIBUTED BY (pa);
+CREATE DOMAIN pd AS point[];
+CREATE TABLE pd_dist(pa pd) DISTRIBUTED BY (pa);
+DROP TABLE pointarr_dist;
+DROP TABLE pd_dist;
+CREATE TABLE pointarr_dist(pa point[]);
+INSERT INTO pointarr_dist VALUES(ARRAY[point(1,1)]);
+CREATE TABLE pd_dist(pa pd);
+INSERT INTO pd_dist VALUES(ARRAY[point(1,1)]);

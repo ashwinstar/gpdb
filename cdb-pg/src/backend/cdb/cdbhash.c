@@ -756,15 +756,19 @@ typeIsArrayType(Oid typeoid)
 
 bool isGreenplumDbHashable(Oid typid)
 {
-	/* we can hash all arrays */
-	if (typeIsArrayType(typid))
-		return true;
 	/*
 	 * if this type is a domain type, get its base type.
 	 */
 	if (get_typtype(typid) == 'd')
 		typid = getBaseType(typid);
-	
+
+	/*
+	 * if this type is an array type, get its element type.
+	 * Currently we don't support array type of domain.
+	 */
+	if (typeIsArrayType(typid))
+		typid = get_element_type(typid);
+
 	switch(typid)
 	{
 		case INT2OID:		
@@ -803,7 +807,6 @@ bool isGreenplumDbHashable(Oid typid)
 		case VARBITOID:
 		case BOOLOID:			
 		case ACLITEMOID:
-		case ANYARRAYOID:	
 		case INT2VECTOROID:
 		case OIDVECTOROID:	
 		case CASHOID: 
