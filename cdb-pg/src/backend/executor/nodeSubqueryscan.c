@@ -113,6 +113,7 @@ SubqueryNext(SubqueryScanState *node)
     }
     if (!TupIsNull(slot))
     {
+		Gpmon_M_Incr(GpmonPktFromSubqueryScanState(node), GPMON_QEXEC_M_ROWSIN);
         Gpmon_M_Incr_Rows_Out(GpmonPktFromSubqueryScanState(node));
         CheckSendPlanStateGpmonPkt(&node->ss.ps);
     }

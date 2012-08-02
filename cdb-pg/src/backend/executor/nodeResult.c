@@ -84,6 +84,8 @@ static TupleTableSlot *NextInputSlot(ResultState *node)
 			break;
 		}
 
+		Gpmon_M_Incr(GpmonPktFromResultState(node), GPMON_QEXEC_M_ROWSIN);
+
 		ExprContext *econtext = node->ps.ps_ExprContext;
 
 		/*

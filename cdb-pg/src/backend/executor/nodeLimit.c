@@ -101,6 +101,9 @@ ExecLimit(LimitState *node)
 					node->lstate = LIMIT_EMPTY;
 					return NULL;
 				}
+
+				Gpmon_M_Incr(GpmonPktFromLimitState(node), GPMON_QEXEC_M_ROWSIN);
+
 				node->subSlot = slot;
 				if (++node->position > node->offset)
 					break;
@@ -147,6 +150,9 @@ ExecLimit(LimitState *node)
 					node->lstate = LIMIT_SUBPLANEOF;
 					return NULL;
 				}
+
+				Gpmon_M_Incr(GpmonPktFromLimitState(node), GPMON_QEXEC_M_ROWSIN);
+
 				node->subSlot = slot;
 				node->position++;
 			}
@@ -168,6 +174,9 @@ ExecLimit(LimitState *node)
 				 */
 				slot = ExecProcNode(outerPlan);
 				insist_log(!TupIsNull(slot), "LIMIT subplan failed to run backwards");
+
+				Gpmon_M_Incr(GpmonPktFromLimitState(node), GPMON_QEXEC_M_ROWSIN);
+
 				node->subSlot = slot;
 				node->position--;
 			}
@@ -183,6 +192,9 @@ ExecLimit(LimitState *node)
 			 */
 			slot = ExecProcNode(outerPlan);
 			insist_log(!TupIsNull(slot), "LIMIT subplan failed to run backwards");
+
+			Gpmon_M_Incr(GpmonPktFromLimitState(node), GPMON_QEXEC_M_ROWSIN);
+
 			node->subSlot = slot;
 			node->lstate = LIMIT_INWINDOW;
 			/* position does not change 'cause we didn't advance it before */

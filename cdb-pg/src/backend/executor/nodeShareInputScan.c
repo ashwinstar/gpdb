@@ -188,6 +188,7 @@ ShareInputNext(ShareInputScanState *node)
 		if(!gotOK)
 			return NULL;
 
+		Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_QEXEC_M_ROWSIN);
 		Gpmon_M_Incr_Rows_Out(GpmonPktFromShareInputState(node)); 
 		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
