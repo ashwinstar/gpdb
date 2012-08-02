@@ -93,6 +93,9 @@
 #include "utils/performancecounter.h"
 #include "cdb/cdbfilerep.h"
 #include "postmaster/primary_mirror_mode.h"
+#include "catalog/catalog.h"
+#include "catalog/namespace.h"
+#include "utils/syscache.h"
 
 extern int	optind;
 extern char *optarg;
@@ -1469,7 +1472,6 @@ CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag)
 	return result;
 }
 
-
 /*
  * exec_simple_query
  *
@@ -1612,22 +1614,6 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 				 Debug_dtm_action, commandTag);
 		}
 
-		if (gp_new_reindex_database)
-		{
-			if (IsA(parsetree, ReindexStmt))
-			{
-				LockDatabaseMaintenance(MyDatabaseId, AccessExclusiveLock);
-			}
-			else
-			{
-				/*
-				 * Make sure regular SQL and other DDL is not run concurrently with
-				 * Database Maintenance (e.g. REINDEX).
-				 */
-				LockDatabaseMaintenance(MyDatabaseId, AccessShareLock);
-			}
-		}
-
 		/*
 		 * If are connected in utility mode, disallow PREPARE TRANSACTION statements.
 		 */
@@ -1661,6 +1647,12 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 
 		/* If we got a cancel signal in parsing or prior command, quit */
 		CHECK_FOR_INTERRUPTS();
+		
+		/*
+                 * Lock before we do major access to the system catalog (e.g. analyze).
+		 * We dont release the lock during the transaction	
+                 */
+		LockForCatalogMaintenance(parsetree);
 		/*
 		 * Set up a snapshot if parse analysis/planning will need one.
 		 */
@@ -2003,6 +1995,12 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		 */
 		if (log_parser_stats)
 			ResetUsage();
+
+		/*
+	 	 * Lock before we do major access to the system catalog (e.g. analyze).
+	 	 * We dont release the lock during the transaction
+	 	 */
+		LockForCatalogMaintenance(parsetree);
 
 		querytree_list = parse_analyze_varparams(parsetree,
 												 query_string,
@@ -2548,6 +2546,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	bool		execute_is_fetch = false;
 	bool		was_logged = false;
 	char		msec_str[32];
+	ListCell   	*stmt_item;
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
@@ -2583,6 +2582,14 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 		NullCommand(dest);
 		return;
 	}
+
+	/* Check for any concurrent Reindex commands running */
+	foreach(stmt_item, portal->stmts)
+        {
+                Node       *stmt = (Node *) lfirst(stmt_item);
+		LockForCatalogMaintenance(stmt);
+        }
+
 
 	/* Does the portal contain a transaction command? */
 	is_xact_command = IsTransactionStmtList(portal->stmts);

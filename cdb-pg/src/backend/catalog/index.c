@@ -2722,8 +2722,8 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
  * If it is false but *oidmap is valid and we're on a QE, use the
  * new relfilenode specified in the map.
  */
-static bool
-reindex_relation_internal(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
+bool
+reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 				 List **oidmap, bool build_map, bool ignoreNonExistent)
 {
 	Relation	rel;
@@ -2865,11 +2865,15 @@ reindex_relation_internal(Oid relid, bool toast_too, bool aoseg_too, bool aoblkd
 	result = (indexIds != NIL);
 
 	/*
+	 * NOTE: We don't pass ignoreNonExistent down since it will mess up the oidmap.
+	 */
+
+	/*
 	 * If the relation has a secondary toast rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation_internal(toast_relid, false, false, false, oidmap, build_map, ignoreNonExistent);
+		result |= reindex_relation(toast_relid, false, false, false, oidmap, build_map, /* ignoreNonExistent */ false);
 
 	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
 	if ((aoseg_too || aoblkdir_too) && relIsAO)
@@ -2881,34 +2885,14 @@ reindex_relation_internal(Oid relid, bool toast_too, bool aoseg_too, bool aoblkd
 	 * still hold the lock on the master table.
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
-		result |= reindex_relation_internal(aoseg_relid, false, false, false, oidmap, build_map, ignoreNonExistent);
+		result |= reindex_relation(aoseg_relid, false, false, false, oidmap, build_map, /* ignoreNonExistent */ false);
 
 	/*
 	 * If an AO rel has a secondary block directory rel, reindex that too while we
 	 * still hold the lock on the master table.
 	 */
 	if (aoblkdir_too && OidIsValid(aoblkdir_relid))
-		result |= reindex_relation_internal(aoblkdir_relid, false, false, false, oidmap, build_map, ignoreNonExistent);
+		result |= reindex_relation(aoblkdir_relid, false, false, false, oidmap, build_map, /* ignoreNonExistent */ false);
 
 	return result;
 }
-
-bool
-reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
-				 List **oidmap, bool build_map)
-{
-	return reindex_relation_internal(
-						relid, toast_too, aoseg_too, aoblkdir_too,
-						oidmap, build_map, /* ignoreNonExistent */ false);
-}
-
-bool
-reindex_relation_ignore_nonexist(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
-				 List **oidmap, bool build_map)
-{
-	return reindex_relation_internal(
-						relid, toast_too, aoseg_too, aoblkdir_too,
-						oidmap, build_map, /* ignoreNonExistent */ true);
-}
-
-

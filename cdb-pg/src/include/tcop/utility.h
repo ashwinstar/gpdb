@@ -41,4 +41,5 @@ extern bool CommandIsReadOnly(Node *parsetree);
 
 extern void CheckRelationOwnership(RangeVar *rel, bool noCatalogs);
 
+extern void LockForCatalogMaintenance(Node *parsetree);
 #endif   /* UTILITY_H */

@@ -1581,7 +1581,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ReindexStmt:
-		if (gp_new_reindex_database)
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 
@@ -1598,7 +1597,7 @@ ProcessUtility(Node *parsetree,
 						 * REINDEX DATABASE will execute/dispatch REINDEX TABLE on
 						 * each table found in pg_class.
 						 */
-						ReindexDatabaseNew(stmt);
+						ReindexDatabase(stmt);
 						break;
 					default:
 						elog(ERROR, "unrecognized object type: %d",
@@ -1610,53 +1609,6 @@ ProcessUtility(Node *parsetree,
 					Gp_role == GP_ROLE_DISPATCH)
 				{
 					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
-				}
-			}
-		else
-			{
-				ReindexStmt *stmt = (ReindexStmt *) parsetree;
-
-				switch (stmt->kind)
-				{
-					case OBJECT_INDEX:
-						ReindexIndex(stmt);
-						break;
-					case OBJECT_TABLE:
-						ReindexTable(stmt);
-						break;
-					case OBJECT_DATABASE:
-						ReindexDatabase(stmt);
-						break;
-					default:
-						elog(ERROR, "unrecognized object type: %d",
-							 (int) stmt->kind);
-						break;
-				}
-
-				if (Gp_role == GP_ROLE_DISPATCH)
-				{
-					if (stmt->kind != OBJECT_DATABASE)
-						CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
-					else
-					{
-						/*
-						 * REINDEX DATABASE must be dispatched different, because it can't
-						 * be in a user transaction
-						 */
-						StringInfoData buffer;
-
-						initStringInfo(&buffer);
-
-						/* MPP-1832: REINDEX SYSTEM generates sets
-						 * kind to OBJECT_DATABASE, but sets do_user
-						 * to false */
-						if (!stmt->do_user)
-							appendStringInfo(&buffer, "REINDEX SYSTEM \"%s\"", stmt->name);
-						else
-							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
-
-						CdbDoCommand(buffer.data, false, /*no txn*/ false);
-					}
 				}
 			}
 			break;
@@ -2990,4 +2942,199 @@ GetPlannedStmtLogLevel(PlannedStmt * stmt)
 	}
 	
 	return lev;
+}
+
+/*
+ * Lock before we do any major access to system catalog (e.g analyze)
+ * For REINDEXING a database, we need exclusive locking of the database at the
+ * transaction level, whenever we are reindexing system catalog tables.
+ * This is to prevent catalog inconsistencies when concurrent operations are
+ * running along with REINDEX DATABASE or REINDEX TABLE
+ * Note that this Lock is not released during the transaction.
+ */
+void
+LockForCatalogMaintenance(Node *parsetree)
+{
+        LOCKMODE lockmode;
+
+        switch (nodeTag(parsetree))
+        {
+                case T_Query:
+                case T_InsertStmt:
+                case T_DeleteStmt:
+                case T_UpdateStmt:
+                case T_SelectStmt:
+                case T_DeclareCursorStmt:
+                case T_PlannedStmt:
+                case T_ClosePortalStmt:
+                case T_FetchStmt:
+                case T_CopyStmt:
+                case T_ExecuteStmt:
+                case T_DeallocateStmt:
+                case T_LockStmt:
+                case T_PrepareStmt:
+                        /*
+                         * DML commands.
+                         */
+                        lockmode = AccessShareLock;
+                        break;
+
+                case T_CommentStmt:
+                case T_NotifyStmt:
+                case T_ListenStmt:
+                case T_UnlistenStmt:
+                case T_VariableSetStmt:
+                case T_VariableShowStmt:
+                case T_VariableResetStmt:
+                case T_TransactionStmt:
+                        /*
+                         * Non-DML and Non-DDL commands.
+                         */
+                        lockmode = NoLock;
+                        break;
+
+                case T_CreateSchemaStmt:
+                case T_CreateStmt:
+                case T_CreateExternalStmt:
+                case T_CreateForeignStmt:
+                case T_CreateFileSpaceStmt:
+                case T_CreateTableSpaceStmt:
+                case T_CreateFdwStmt:
+                case T_AlterFdwStmt:
+                case T_DropFdwStmt:
+                case T_CreateForeignServerStmt:
+                case T_AlterForeignServerStmt:
+                case T_DropForeignServerStmt:
+                case T_CreateUserMappingStmt:
+                case T_AlterUserMappingStmt:
+                case T_DropUserMappingStmt:
+                case T_DropStmt:
+                case T_TruncateStmt:
+                case T_RenameStmt:
+                case T_AlterObjectSchemaStmt:
+                case T_AlterOwnerStmt:
+                case T_AlterTableStmt:
+                case T_AlterDomainStmt:
+                case T_GrantStmt:
+                case T_GrantRoleStmt:
+                case T_DefineStmt:
+                case T_CompositeTypeStmt:
+                case T_ViewStmt:
+                case T_CreateFunctionStmt:
+                case T_AlterFunctionStmt:
+                case T_IndexStmt:
+                case T_RuleStmt:
+                case T_CreateSeqStmt:
+                case T_AlterSeqStmt:
+                case T_RemoveFuncStmt:
+                case T_CreatedbStmt:
+                case T_AlterDatabaseStmt:
+                case T_AlterDatabaseSetStmt:
+                case T_DropdbStmt:
+                case T_LoadStmt:
+                case T_ClusterStmt:
+                case T_VacuumStmt:
+                case T_ExplainStmt:
+                case T_CreateTrigStmt:
+                case T_DropPropertyStmt:
+                case T_CreatePLangStmt:
+                case T_DropPLangStmt:
+                case T_CreateDomainStmt:
+                case T_CreateQueueStmt:
+                case T_AlterQueueStmt:
+                case T_DropQueueStmt:
+                case T_CreateRoleStmt:
+                case T_AlterRoleStmt:
+                case T_AlterRoleSetStmt:
+                case T_DropRoleStmt:
+                case T_DropOwnedStmt:
+                case T_ReassignOwnedStmt:
+                case T_ConstraintsSetStmt:
+                case T_CheckPointStmt:
+                case T_CreateConversionStmt:
+                case T_CreateCastStmt:
+                case T_DropCastStmt:
+                case T_CreateOpClassStmt:
+                case T_RemoveOpClassStmt:
+                case T_AlterTypeStmt:
+                        /*
+                         * DDL commands except REINDEX.
+                         */
+                        lockmode = AccessShareLock;
+                        break;
+
+                case T_ReindexStmt:
+                        {
+                                ReindexStmt *stmt = (ReindexStmt *) parsetree;
+                                Oid relationId = InvalidOid;
+                                HeapTuple tuple = NULL;
+                                Form_pg_class classform = NULL;
+
+                                switch (stmt->kind)
+                                {
+                                        case OBJECT_INDEX:
+                                        case OBJECT_TABLE:
+                                                Assert(stmt->relation);
+                                                relationId = RangeVarGetRelid(stmt->relation, false);
+                                                tuple = SearchSysCache(RELOID,
+                                                   ObjectIdGetDatum(relationId),
+                                                   0, 0, 0);
+
+                                                if (!HeapTupleIsValid(tuple))
+                                                {
+                                                        if (!stmt->missing_ok)
+                                                        {
+                                                                elog(ERROR, "Relation with Id %u does not exist", relationId);
+                                                        }
+                                                        return;
+                                                }
+
+                                                classform = (Form_pg_class) GETSTRUCT(tuple);
+
+                                                if (IsSystemClass(classform))
+                                                {
+                                                        /*
+                                                         * For system catalog tables, only allow one REINDEX TABLE at a time.
+                                                         */
+                                                        lockmode = AccessExclusiveLock;
+                                                }
+                                                else
+                                                {
+                                                        lockmode = AccessShareLock;
+                                                }
+
+                                                ReleaseSysCache(tuple);
+                                                break;
+
+                                        case OBJECT_DATABASE:
+                                                /*
+                                                 * This command issues REINDEX {INDEX|TABLE} commands which
+                                                 * will do their own locking, so don't lock here.
+                                                 */
+                                                lockmode = NoLock;
+                                                break;
+                                        default:
+                                                elog(ERROR, "unrecognized object type: %d",
+                                                         (int) stmt->kind);
+                                                lockmode = NoLock;      // Quiet the compiler.
+                                                break;
+                                }
+
+                        }
+                        break;
+
+
+                default:
+                        elog(ERROR, "unrecognized node type: %d",
+                                 (int) nodeTag(parsetree));
+
+                        lockmode = NoLock;      // Quiet the compiler.
+                        break;
+        }
+
+        if (lockmode != NoLock)
+        {
+                Insist((lockmode == AccessShareLock) || (lockmode == AccessExclusiveLock));
+                LockDatabaseMaintenance(MyDatabaseId, lockmode);
+        }
 }
