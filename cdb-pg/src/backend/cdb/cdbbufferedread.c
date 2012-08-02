@@ -264,19 +264,12 @@ static uint8 *BufferedReadUseBeforeBuffer(
 
 	remainingFileLen = inEffectFileLen - 
 	                   nextPosition;
-
-	Assert(inEffectFileLen > nextPosition);
-	Assert(remainingFileLen > 0);
-	Assert(bufferedRead->maxLargeReadLen > 0);
-
 	if (remainingFileLen > bufferedRead->maxLargeReadLen)
 		nextReadLen = bufferedRead->maxLargeReadLen;
 	else
 		nextReadLen = (int32)remainingFileLen;
-
-	elog(LOG, "nextReadLen %d remainingFileLen " INT64_FORMAT, nextReadLen, remainingFileLen); 
-		
-	Assert(nextReadLen > 0);
+	
+	Assert(nextReadLen >= 0);
 
 	beforeLen = bufferedRead->maxLargeReadLen - bufferedRead->bufferOffset;
 	beforeOffset = bufferedRead->maxBufferLen - beforeLen;

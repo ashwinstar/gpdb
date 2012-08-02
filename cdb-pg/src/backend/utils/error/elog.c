@@ -174,8 +174,6 @@ static int	errordata_stack_depth = -1; /* index of topmost active frame */
 
 static int	recursion_depth = 0;	/* to detect actual recursion */
 
-#define BACKTRACE_LIMIT 40
-
 /* buffers for formatted timestamps that might be used by both
  * log_line_prefix and csv logs.
  */
@@ -467,7 +465,7 @@ errstart(int elevel, const char *filename, int lineno,
     edata->saved_errno = errno;
 
 #ifndef WIN32
-    edata->stacktracesize = backtrace(edata->stacktracearray, BACKTRACE_LIMIT);
+    edata->stacktracesize = backtrace(edata->stacktracearray, 30);
 #else
     edata->stacktracesize = 0;
 #endif
@@ -4245,9 +4243,9 @@ debug_backtrace(void)
 {
 #ifndef WIN32
 	int 		stacktracesize;
-	void	   *stacktracearray[BACKTRACE_LIMIT];
+	void	   *stacktracearray[30];
 
-	stacktracesize = backtrace(stacktracearray, BACKTRACE_LIMIT);
+	stacktracesize = backtrace(stacktracearray, 30);
 
 	append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, stacktracearray, stacktracesize,
 					 false/*amsyslogger*/);

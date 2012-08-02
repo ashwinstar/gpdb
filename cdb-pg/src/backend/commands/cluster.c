@@ -668,7 +668,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	 * because reindex_relation does it.
 	 */
 	reindex_relation(tableOid, false, false, false, &stmt->new_ind_oids,
-					 Gp_role == GP_ROLE_DISPATCH, /* ignoreNonExistent */ false);
+					 Gp_role == GP_ROLE_DISPATCH);
 }
 
 /*

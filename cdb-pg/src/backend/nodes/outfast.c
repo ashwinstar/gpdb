@@ -2041,7 +2041,6 @@ _outReindexStmt(StringInfo str, ReindexStmt *node)
 	WRITE_STRING_FIELD(name);
 	WRITE_BOOL_FIELD(do_system);
 	WRITE_BOOL_FIELD(do_user);
-	WRITE_BOOL_FIELD(missing_ok);
 	WRITE_NODE_FIELD(new_ind_oids);
 }
 
