@@ -3,7 +3,7 @@ import os
 from gppylib import gplog
 from gppylib.commands.base import Command, WorkerPool, REMOTE
 from gppylib.commands.gp import get_masterdatadir, SendFilerepVerifyMessage
-from gppylib.commands.unix import Scp
+from gppylib.commands.unix import Scp, PathIsDirectory
 from gppylib.db import dbconn
 from gppylib.db.dbconn import UnexpectedRowsError
 from gppylib.gparray import GpArray, FAULT_STRATEGY_LABELS, FAULT_STRATEGY_FILE_REPLICATION
@@ -333,6 +333,29 @@ class GatherResults(Operation):
         logger.info('Gathering results of verification %s...' % self.token)
         to_gather = ValidateVerification(content = self.content,
                                          primaries_only = False).run()
+
+        #maps a segment data directory to a segment
+        seg_datadir_map = {}
+        for seg in to_gather:
+            seg_datadir_map[seg.getSegmentDataDirectory()] = seg 
+    
+        #A mirror segment might not have the pg_verify directory. In such 
+        #cases we just ignore the mirror segment and depend only on the primary
+        #to deduce the results of the verification.
+        pool = WorkerPool(min(len(to_gather), self.batch_default))
+        for seg in to_gather:
+            if seg.isSegmentMirror():
+                cmd = PathIsDirectory('Check pg_verify directory on mirror',
+                                       os.path.join(seg.getSegmentDataDirectory(), 'pg_verify'),
+                                       ctxt=REMOTE,
+                                       remoteHost=seg.getSegmentHostName())
+                pool.addCommand(cmd)
+        pool.join()
+        pool.haltWork()
+
+        for cmd in pool.getCompletedItems():
+            if cmd.get_results().stdout.strip() == 'False':
+                to_gather.remove(seg_datadir_map[os.path.dirname(cmd.directory)])
 
         dest_base = os.path.join(self.master_datadir, 'pg_verify', self.token)
         if CheckDir(dest_base).run():
