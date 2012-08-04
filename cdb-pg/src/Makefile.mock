@@ -1,0 +1,41 @@
+
+include $(top_builddir)/src/Makefile.global
+
+CMOKERY_DIR=$(top_builddir)/src/test/unit/cmockery
+MOCK_DIR=$(top_builddir)/src/test/unit/mock
+CMOCKERY_OBJS=$(CMOKERY_DIR)/cmockery.o
+override CFLAGS+= -w
+override CPPFLAGS+= -I. -I$(CMOKERY_DIR)
+
+# OBJS = test case, mock objects, real objects, cmockery.o
+$(foreach target,$(TARGETS), \
+	$(eval $(target)_OBJS=$(target)_test.o $($(target)_MOCK_OBJS) \
+		$($(target)_REAL_OBJS) $(CMOCKERY_OBJS)))
+
+$(abs_top_srcdir)/src/%.c:
+# do nothing but record the dependency
+
+$(MOCK_DIR)/%_mock.c: $(abs_top_srcdir)/src/%.c
+	(cd $(MOCK_DIR)/mock_autogen; $(PYTHON) generate_mocks.py $<)
+
+all: $(patsubst %,%.t,$(TARGETS))
+
+# The test target depends on $($(testname)_OBJ) which includes $($(testname)_MOCK_OBJ) etc.
+.SECONDEXPANSION:
+%.t: $$($$*_OBJS) ../%.o
+	$(CC) -o $@ $($*_OBJS) ../$*.o
+
+check: $(patsubst %,%-check,$(TARGETS))
+
+%-check: %.t
+	./$*.t
+
+clean: $(patsubst %,%-clean,$(TARGETS))
+
+%-clean:
+	rm -f $*.t $($*_OBJS)
+
+clean-mock: $(patsubst %,%-clean-mock,$(TARGETS))
+
+%-clean-mock:
+	rm -f $(patsubst %.o,%.c,$($*_MOCK_OBJS))

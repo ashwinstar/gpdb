@@ -551,6 +551,15 @@ def extract_includes(filename):
 def get_mock_filename(filename, options, deep=False):
     """ Get the filename of the mock source file for a given file
     """
+    abs_filename = os.path.abspath(filename)
+    abs_cdb2_src = os.path.abspath(os.path.join(options.cdb2_src_dir, 'cdb-pg/src'))
+    relpath = os.path.relpath(abs_filename, abs_cdb2_src)
+    (stem, ext) = os.path.splitext(os.path.basename(relpath))
+    out_dir = os.path.join(options.out_dir, os.path.dirname(relpath))
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    return os.path.join(out_dir, "%s_mock.c" % (stem))
+
     basename = os.path.basename(filename)
     basepartitions = basename.rpartition(".")
     
@@ -787,33 +796,39 @@ if __name__ == "__main__":
         # mock info file doesn't exists
         mock_info_map = {"functions": {}, "globals": {}} 
     original_mock_info_map = copy.deepcopy(mock_info_map)
-    
-    for arg in args:
-        filename = arg
 
-        if filename.endswith('.c'):
-            if not os.path.exists(filename):
-                logging.info("Skipping %s (File Not Found)", os.path.basename(filename))
-            elif not options.ignore_blacklist and os.path.basename(filename) in source_blacklist:
+    def try_manual(filename, mack_info_map, options):
+        (stem, ext) = os.path.splitext(os.path.basename(filename))
+        manual_filename = os.path.join('manual_mock', "%s_mock.c" % (stem))
+        if os.path.exists(manual_filename):
+            mock_filename = get_mock_filename(filename, options)
+            shutil.copy(manual_filename, mock_filename)
+            logging.info("Copy manual mock: %s" % manual_filename)
+            return True
+        return False
+
+    def per_file(filename, mock_info_map, options):
+        if not os.path.exists(filename):
+            logging.info("Skipping %s (File Not Found)", os.path.basename(filename))
+        elif not options.ignore_blacklist and os.path.basename(filename) in source_blacklist:
+            if not try_manual(filename, mock_info_map, options):
                 logging.info("Skipping %s (Known Issue Or Known Manual File)", os.path.basename(filename))
-            else:    
-                process_source_file(filename, mock_info_map, options)
-        elif os.path.isdir(filename):
-            for root, dirs, files in os.walk(filename):
+        else:
+            process_source_file(filename, mock_info_map, options)
+
+    for arg in args:
+        if arg.endswith('.c'):
+            per_file(arg, mock_info_map, options)
+        elif os.path.isdir(arg):
+            for root, dirs, files in os.walk(arg):
                 for f in files:
-                    if not options.ignore_mock_source_file and not f in source_mock_file_list:
-                        continue
-                    if not options.ignore_blacklist and f in source_blacklist:
-                        logging.info("Skipping %s (Known Issue Or Known Manual File)", f)
-                        continue    
-                    if not f.endswith(".c"):
-                        continue
-                    process_source_file(os.path.join(root, f), mock_info_map, options)
+                    per_file(os.path.join(root, f), mock_info_map, options)
         else:
             logging.error("Skipping %s", arg)
             
     # Write out the updated information
-    if mock_info_map != original_mock_info_map:
-        if os.path.exists(mock_info_json_filename):
-            set_perforce_edit_state(mock_info_json_filename)
-        json.dump(mock_info_map, open(mock_info_json_filename, "w"), sort_keys=True, indent=4)
+    # TODO: revisit
+#    if mock_info_map != original_mock_info_map:
+#        if os.path.exists(mock_info_json_filename):
+#            set_perforce_edit_state(mock_info_json_filename)
+#        json.dump(mock_info_map, open(mock_info_json_filename, "w"), sort_keys=True, indent=4)

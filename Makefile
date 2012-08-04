@@ -1521,3 +1521,7 @@ create_orca_installer:
 	rm -rf $(BLD_TOP)/orca_tmp
 
 ## ----------------------------------------------------------------------
+
+.PHONY : unittest-check
+unittest-check:
+	$(MAKE) -C cdb-pg/src/backend unittest-check

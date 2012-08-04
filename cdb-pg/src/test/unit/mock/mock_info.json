@@ -3565,6 +3565,12 @@
             ], 
             "return": "bool"
         }, 
+        "IsCommitInProgress": {
+            "filename": "cdb-pg/src/backend/access/transam/xact.c", 
+            "header filename": "cdb-pg/src/include/access/xact.h", 
+            "parameter": [], 
+            "return": "bool"
+        }, 
         "IsInTransactionChain": {
             "filename": "cdb-pg/src/backend/access/transam/xact.c", 
             "header filename": "cdb-pg/src/include/access/xact.h", 
@@ -12735,8 +12741,8 @@
             "header filename": "cdb-pg/src/include/utils/guc.h"
         }, 
         "CritSectionCount": {
-            "filename": "cdb-pg/src/backend/utils/misc/testutils.c", 
-            "header filename": "cdb-pg/src/include/utils/testutils.h"
+            "filename": "cdb-pg/src/backend/tcop/postgres.c", 
+            "header filename": "cdb-pg/src/include/miscadmin.h"
         }, 
         "CurTransactionContext": {
             "filename": "cdb-pg/src/backend/utils/mmgr/aset.c", 
@@ -13191,8 +13197,8 @@
             "header filename": "cdb-pg/src/include/access/xlog.h"
         }, 
         "InterruptHoldoffCount": {
-            "filename": "cdb-pg/src/backend/utils/misc/testutils.c", 
-            "header filename": "cdb-pg/src/include/utils/testutils.h"
+            "filename": "cdb-pg/src/backend/tcop/postgres.c", 
+            "header filename": "cdb-pg/src/include/miscadmin.h"
         }, 
         "InterruptPending": {
             "filename": "cdb-pg/src/backend/tcop/postgres.c", 
