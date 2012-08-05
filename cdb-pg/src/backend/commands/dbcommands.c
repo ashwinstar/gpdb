@@ -1425,7 +1425,7 @@ dropdb(const char *dbname, bool missing_ok)
 		/*
 		 * Do the DROP DATABASE as part of a distributed transaction.
 		 */
-		CdbDoCommand(buffer.data, true, true);
+		CdbDoCommand(buffer.data, true, true, GANGSCOPE_WRITER);
 	}
 
 	/*
@@ -1823,7 +1823,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" CONNECTION LIMIT %d", stmt->dbname, connlimit);
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true, GANGSCOPE_WRITER);
 	}
 
 	/*
@@ -2006,7 +2006,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 		}
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true, GANGSCOPE_WRITER);
 	}
 
 	/*

@@ -726,7 +726,7 @@ doNotifyingCommitPrepared(void)
 		 * at the top in PostgresMain.
 		 */
 		elog(NOTICE, "Releasing segworker group to retry broadcast.");
-		disconnectAndDestroyAllGangs();
+		disconnectGangsByScope(GANGSCOPE_ALL);
 
 		/*
 		 * This call will at a minimum change the session id so we will
@@ -811,7 +811,7 @@ doNotifyingAbort(void)
 				 * Reset the dispatch logic and disconnect from any segment that didn't respond to our abort.
 				 */
 				elog(NOTICE, "Releasing segworker groups to finish aborting the transaction.");
-				disconnectAndDestroyAllGangs();
+				disconnectGangsByScope(GANGSCOPE_ALL);
 
 				/*
 				 * This call will at a minimum change the session id so we will
@@ -870,7 +870,7 @@ doNotifyingAbort(void)
 			 * Reset the dispatch logic (i.e. deallocate gang) so we can attempt a retry.
 			 */
 			elog(NOTICE, "Releasing segworker groups to retry broadcast.");
-			disconnectAndDestroyAllGangs();
+			disconnectGangsByScope(GANGSCOPE_ALL);
 
 			/*
 			 * This call will at a minimum change the session id so we will
@@ -1181,7 +1181,7 @@ rollbackDtxTransaction(void)
 			 * segments.  What's left are possibily prepared transactions.
 			 */
 			elog(WARNING, "Releasing segworker groups since one or more segment connections failed.  This will abort the transactions in the segments that did not get prepared.");
-			disconnectAndDestroyAllGangs();
+			disconnectGangsByScope(GANGSCOPE_ALL);
 
 			/*
 			 * This call will at a minimum change the session id so we will
@@ -1206,7 +1206,7 @@ rollbackDtxTransaction(void)
 		 * segments.
 		 */
 		elog(NOTICE, "Releasing segworker groups to finish aborting the transaction.");
-		disconnectAndDestroyAllGangs();
+		disconnectGangsByScope(GANGSCOPE_ALL);
 
 		/*
 		 * This call will at a minimum change the session id so we will
@@ -1274,7 +1274,7 @@ rollbackDtxTransaction(void)
 		 * segment instances.  And, we will abort the transactions in the
 		 * segments.
 		 */
-		disconnectAndDestroyAllGangs();
+		disconnectGangsByScope(GANGSCOPE_ALL);
 
 		/*
 		 * This call will at a minimum change the session id so we will
@@ -1485,7 +1485,7 @@ initTM(void)
 
 		RestoreToUser(olduser);
 
-		freeGangsForPortal(NULL);
+		deallocatePortalGangs(NULL);
 	}
 }
 
@@ -2986,7 +2986,7 @@ cdbtm_performDeferredRecovery(void)
 
 			*shmDtmRecoveryDeferred = false;
 			elog(NOTICE, "Releasing segworker groups for deferred recovery.");
-			disconnectAndDestroyAllGangs();
+			disconnectGangsByScope(GANGSCOPE_ALL);
 			resetSessionForWriterGangLoss();
 		}
 		releaseTmLock();
@@ -3463,7 +3463,7 @@ void verify_shared_snapshot_ready(void)
 {
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDoCommand("set gp_write_shared_snapshot=true", true, true);
+		CdbDoCommand("set gp_write_shared_snapshot=true", true, true, GANGSCOPE_WRITER);
 
 		dumpSharedLocalSnapshot_forCursor();
 

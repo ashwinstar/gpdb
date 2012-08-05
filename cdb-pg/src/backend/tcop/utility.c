@@ -1364,7 +1364,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false, GANGSCOPE_WRITER);
 				}
 			}
 			break;
@@ -1456,7 +1456,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "RESET %s", n->name);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false, GANGSCOPE_WRITER);
 				}
 			}
 			break;
@@ -1575,7 +1575,7 @@ ProcessUtility(Node *parsetree,
 						 errmsg("must be superuser to do CHECKPOINT")));
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDoCommand("CHECKPOINT", false, false);
+				CdbDoCommand("CHECKPOINT", false, false, false);
 			}
 			RequestCheckpoint(true, false);
 			break;
@@ -1655,7 +1655,7 @@ ProcessUtility(Node *parsetree,
 						else
 							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 
-						CdbDoCommand(buffer.data, false, /*no txn*/ false);
+						CdbDoCommand(buffer.data, false, /*no txn*/ false, false);
 					}
 				}
 			}

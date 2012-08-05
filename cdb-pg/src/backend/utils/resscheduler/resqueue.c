@@ -410,7 +410,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		 */
 		if (ResourceCleanupIdleGangs)
 		{
-			cleanupIdleReaderGangs();
+	        elog(DEBUG3, "ResLockAcquire: destroying all available reader gangs");
+			disconnectGangsByScope(GANGSCOPE_AVAILABLE_READERS);
 		}
 
 		/*

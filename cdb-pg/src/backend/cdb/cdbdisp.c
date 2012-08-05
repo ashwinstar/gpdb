@@ -132,16 +132,6 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 							 CdbDispatchResult     *dispatchResult);
 
 static void
-cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
-						char					*serializedQuerytree,
-						int						serializedQuerytreelen,
-						char					*serializedPlantree,
-						int						serializedPlantreelen,
-                        bool					cancelOnError,
-                        bool					needTwoPhase,
-                        struct CdbDispatcherState *ds);
-
-static void
 bindCurrentOfParams(char *cursor_name, 
 					Oid target_relid, 
 					ItemPointer ctid, 
@@ -1015,14 +1005,18 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
  * when I thought I might need it in a third place.
  * 
  * Not sure if this makes things cleaner or not
+ *
+ * TODO: needs cleanup. This function (as indicated above) was refactored
+ * for a special purpose command dispatching (to the writer gang only). It
+ * doesn't look very multi purpose and the name is confusing.
  */
 struct pg_result **
 cdbdisp_returnResults(CdbDispatchResults *results,
 					  StringInfo errmsgbuf,
 					  int *numresults)
 {
-	CdbDispatchResults *gangResults;
-	CdbDispatchResult *dispatchResult;
+	CdbDispatchResults	*gangResults;	/* results from all gang's workers 	*/
+	CdbDispatchResult	*qeResult;		/* result from a single worker		*/
 	PGresult  **resultSets = NULL;
 	int			nslots;
 	int			nresults = 0;
@@ -1035,7 +1029,7 @@ cdbdisp_returnResults(CdbDispatchResults *results,
 	 * last entry. The caller must PQclear() each PGresult and free() the
 	 * array.
 	 */
-	nslots = 2 * largestGangsize() + 1;
+	nslots = largestGangsize() + 1; /* TODO: not safe. better pass in exact size */
 	resultSets = (struct pg_result **)calloc(nslots, sizeof(*resultSets));
 
 	if (!resultSets)
@@ -1050,13 +1044,13 @@ cdbdisp_returnResults(CdbDispatchResults *results,
 
 		for (i = 0; i < gangResults->resultCount; ++i)
 		{
-			dispatchResult = &gangResults->resultArray[i];
+			qeResult = &gangResults->resultArray[i];
 
 			/* Append error messages to caller's buffer. */
-			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
+			cdbdisp_dumpDispatchResult(qeResult, false, errmsgbuf);
 
 			/* Take ownership of this QE's PGresult object(s). */
-			nresults += cdbdisp_snatchPGresults(dispatchResult,
+			nresults += cdbdisp_snatchPGresults(qeResult,
 												resultSets + nresults,
 												nslots - nresults - 1);
 		}
@@ -1108,6 +1102,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 		cdbdisp_dispatchCommand(strCommand, NULL, 0,
 								/* cancelOnError */false,
 								needTwoPhase, withSnapshot,
+								GANGSCOPE_WRITER,
 								(struct CdbDispatcherState *)&ds);
 
 		/* Wait for all QEs to finish.	Don't cancel. */
@@ -1261,12 +1256,23 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
                         bool                        cancelOnError,
                         bool						needTwoPhase,
                         bool						withSnapshot,
-						CdbDispatcherState		*ds)
+                        GangScope					dispatchTo,
+						CdbDispatcherState		   *ds)
 {
-	DispatchCommandQueryParms queryParms;
-	Gang	*writerGang;
-	int		nsegdb = getgpsegmentCount();
+	bool		disptchToReaders = (dispatchTo == GANGSCOPE_ALL ||
+									dispatchTo == GANGSCOPE_ALL_READERS);
+	Gang		*writerGang = allocateWriterGang();
+    List		*readerGangs = (disptchToReaders ? getAllReaderGangs() : NIL);
+    ListCell	*le;
+    int			gangCount = 1 + list_length(readerGangs);
+	int			nsegdb = getgpsegmentCount();
+
 	CdbComponentDatabaseInfo *qdinfo;
+	DispatchCommandQueryParms queryParms;
+
+	/* commands must always be dispatched to the writer gang */
+	Assert(dispatchTo == GANGSCOPE_WRITER || dispatchTo == GANGSCOPE_ALL);
+    Assert(writerGang);
 	
 	if (log_dispatch_stats)
 		ResetUsage();
@@ -1285,17 +1291,15 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	queryParms.strCommand = strCommand;
 	queryParms.serializedQuerytree = serializedQuerytree;
 	queryParms.serializedQuerytreelen = serializedQuerytreelen;
-
-	/*
-	 * Allocate a QE for every available primary segDB in the system.
-	 */
-	writerGang = allocateWriterGang();
-	Assert(writerGang);
 	queryParms.writer_gang_id = writerGang->gang_id;
 	
 	/* Serialize a version of our DTX Context Info */
 	queryParms.serializedDtxContextInfo = 
-		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, false, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,
+								  withSnapshot,
+								  false,
+								  generateTxnOptions(needTwoPhase),
+								  "cdbdisp_dispatchCommand");
 
 	/* sequence server info */
 	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
@@ -1304,16 +1308,29 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	queryParms.seqServerHostlen = strlen(qdinfo->hostip) + 1;
 	queryParms.seqServerPort = seqServerCtl->seqServerPort;
 
-	/*
-	 * Dispatch the command.
-	 */
-	ds->results = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+	/* create dispatch results */
+	ds->results = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
 	ds->results->writer_gang = writerGang;
 
+	/* dispatch to writer */
 	cdbdisp_dispatchToGang(ds,
 						   GP_DISPATCH_COMMAND_TYPE_QUERY,
 						   &queryParms,
-						   writerGang, -1, 1, DEFAULT_DISP_DIRECT);
+						   writerGang, -1, gangCount, DEFAULT_DISP_DIRECT);
+
+	/* dispatch to the rest, if requested */
+	if (disptchToReaders)
+	{
+		foreach(le, readerGangs)
+		{
+			Gang  *rg = lfirst(le);
+			cdbdisp_dispatchToGang(ds,
+								   GP_DISPATCH_COMMAND_TYPE_QUERY,
+								   &queryParms,
+								   rg, -1, gangCount, DEFAULT_DISP_DIRECT);
+		}
+
+	}
 
 	/*
 	 * don't pfree serializedShapshot here, it will be pfree'd when
@@ -1503,75 +1520,8 @@ cdbdisp_check_estate_for_cancel(struct EState *estate)
 	return false;
 }
 
-static void
-cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
-								  char			*serializedQuerytree,
-								  int			serializedQuerytreelen,
-								  char			*serializedPlantree,
-								  int			serializedPlantreelen,
-								  bool			cancelOnError,
-								  bool			needTwoPhase,
-								  struct CdbDispatcherState *ds)
-{
-	DispatchCommandQueryParms queryParms;
-	
-	Gang		*writerGang;
-    List		*readerGangs;
-    ListCell	*le;
-
-    int			nsegdb = getgpsegmentCount();
-	int			gangCount;
-	
-    ds->results = NULL;	
-	ds->dispatchThreads = NULL;
-
-	MemSet(&queryParms, 0, sizeof(queryParms));
-	queryParms.strCommand = strCommand;
-	queryParms.serializedQuerytree = serializedQuerytree;
-	queryParms.serializedQuerytreelen = serializedQuerytreelen;
-	queryParms.serializedPlantree = serializedPlantree;
-	queryParms.serializedPlantreelen = serializedPlantreelen;
-	
-	/*
-	 * Allocate a QE for every available primary segDB in the system.
-	 */
-	writerGang = allocateWriterGang();
-
-	Assert(writerGang);
-	
-	queryParms.writer_gang_id = writerGang->gang_id;
-
-	/* serialized a version of our snapshot */
-	queryParms.serializedDtxContextInfo = 
-		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, false /* cursor*/,
-								  generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommandToAllGangs");
-	
-	readerGangs = getAllReaderGangs();
-	
-	/*
-	 * Dispatch the command.
-	 */
-	gangCount = 1 + list_length(readerGangs);
-	ds->results = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
-
-	ds->results->writer_gang = writerGang;
-	cdbdisp_dispatchToGang(ds,
-						   GP_DISPATCH_COMMAND_TYPE_QUERY,
-						   &queryParms,
-						   writerGang, -1, gangCount, DEFAULT_DISP_DIRECT);
-
-	foreach(le, readerGangs)
-	{
-		Gang  *rg = lfirst(le);
-		cdbdisp_dispatchToGang(ds,
-							   GP_DISPATCH_COMMAND_TYPE_QUERY,
-							   &queryParms,
-							   rg, -1, gangCount, DEFAULT_DISP_DIRECT);
-	}
-}	/* cdbdisp_dispatchCommandToAllGangs */
 
 /*--------------------------------------------------------------------*/
-
 
 static bool  
 thread_DispatchOut(DispatchCommandParms *pParms)
@@ -2815,18 +2765,23 @@ connection_error:
 
 
 /*
- * CdbDoCommandNoTxn:
+ * CdbDoCommand:
  * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
  *
  * needTwoPhase specifies a desire to include global transaction control
- *  before dispatch.
+ * before dispatch.
+ *
+ * 'dispatchTo' specified whether to dispatch to all gangs (readers as
+ * well). In most cases we want to dispatch to the writer gang only,
+ * besides one case currently - setting GUC values.
  */
 void
 CdbDoCommand(const char *strCommand,
 			 bool cancelOnError,
-			 bool needTwoPhase)
+			 bool needTwoPhase,
+			 GangScope dispatchTo)
 {
 	CdbDispatcherState ds = {NULL, NULL};
 	const bool withSnapshot = true;
@@ -2836,39 +2791,22 @@ CdbDoCommand(const char *strCommand,
 
 	dtmPreCommand("CdbDoCommand", strCommand, NULL, needTwoPhase, withSnapshot, false /* inCursor */);
 
-	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase, 
-							/* withSnapshot */true, &ds);
-
-	/*
-	 * Wait for all QEs to finish. If not all of our QEs were successful,
-	 * report the error and throw up.
-	 */
-	cdbdisp_finishCommand(&ds, NULL, NULL);
-}	/* CdbDoCommandNoTxn */
-
-
-void
-CdbDoCommandOnAllGangs(const char *strCommand,
-					   bool cancelOnError,
-					   bool needTwoPhase)
-{
-	volatile CdbDispatcherState ds = {NULL, NULL};
-	const bool withSnapshot = true;
-
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', needTwoPhase = %s",
-		 strCommand, (needTwoPhase ? "true" : "false"));
-
-	dtmPreCommand("CdbDoCommandOnAllGangs", strCommand, NULL, needTwoPhase, withSnapshot, false /* inCursor */ );
-
 	PG_TRY();
 	{
-		cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase, (struct CdbDispatcherState *)&ds);
+		cdbdisp_dispatchCommand(strCommand,
+								NULL,
+								0,
+								cancelOnError,
+								needTwoPhase,
+								true  /* withSnapshot */,
+								dispatchTo,
+								&ds);
 
 		/*
 		 * Wait for all QEs to finish. If not all of our QEs were successful,
 		 * report the error and throw up.
 		 */
-		cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
+		cdbdisp_finishCommand(&ds, NULL, NULL);
 	}
 	PG_CATCH();
 	{
@@ -2882,11 +2820,11 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 		/* not reached */
 	}
 	PG_END_TRY();
-}	
+
+}	/* CdbDoCommand */
+
 
 /*--------------------------------------------------------------------*/
-
-
 
 /*
  * Let's evaluate all STABLE functions that have constant args before dispatch, so we get a consistent
@@ -4013,6 +3951,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 							cancelOnError,
 							needTwoPhase,
 							withSnapshot,
+							GANGSCOPE_WRITER,
 							ds);
 
 }	/* cdbdisp_dispatchUtilityStatement */

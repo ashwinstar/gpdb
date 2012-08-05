@@ -188,6 +188,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 								false 		/* cancelonError */, 
 								c->copy_in 	/* need2phase */, 
 								true 		/* withSnapshot */,
+								GANGSCOPE_WRITER,
 								&ds);
 
 	/*  MPP-3017: insert a call like this to expand the timing, and

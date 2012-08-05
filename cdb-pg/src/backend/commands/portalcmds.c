@@ -316,8 +316,8 @@ PortalCleanup(Portal portal)
 		if (cleanupstate < 1 && Gp_role == GP_ROLE_DISPATCH)
 		{
 			cleanupstate = 1;
-			freeGangsForPortal((char *)portal->name);
-			cleanupPortalGangs(portal);
+			deallocatePortalGangs((char *)portal->name);
+			AtPortalDrop_CleanupIdleGangs(portal);
 		}
 
 		/* Sorry, can't dismiss this error. */
@@ -370,7 +370,7 @@ PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 	if (*cleanupstate < 1 && Gp_role == GP_ROLE_DISPATCH)
 	{
 		*cleanupstate = 1;
-		cleanupPortalGangs(portal);
+		AtPortalDrop_CleanupIdleGangs(portal);
 	}
 
 	/* 

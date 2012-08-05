@@ -383,16 +383,15 @@ InitProcess(bool isQueryProc)
      * its gp_session_id down to all of its qExecs.  If this is a qExec,
      * we have already received the gp_session_id from the qDisp.
      */
-    elog(DEBUG1,"InitProcess(): gp_session_id %d, gp_is_callback %d",gp_session_id,gp_is_callback);
-    Assert(gp_session_id > 0 || !gp_is_callback);
+    elog(DEBUG1,"InitProcess(): gp_session_id %d", gp_session_id);
     if (Gp_role == GP_ROLE_DISPATCH && gp_session_id == -1)
         gp_session_id = mppLocalProcessSerial;
+
     MyProc->mppSessionId = gp_session_id;
-    
     MyProc->mppIsWriter = Gp_is_writer;
     
     if (Gp_role == GP_ROLE_DISPATCH)
-    	MyProc->mppIsWriter = !gp_is_callback;
+    	MyProc->mppIsWriter = true;
 
 
 	/*
@@ -1420,26 +1419,30 @@ disable_sig_alarm(bool is_statement_timeout)
 
 /*
  * We get here when a session has been idle for a while (waiting for the
- * client to send us SQL to execute).  The idea is to consume less resources while sitting idle,
- * so we can support more sessions being logged on.
+ * client to send us SQL to execute).  The idea is to consume less resources
+ * while sitting idle, so we can support more sessions being logged on.
  *
- * The expectation is that if the session is logged on, but nobody is sending us work to do,
- * we want to free up whatever resources we can.  Usually it means there is a human being at the
- * other end of the connection, and that person has walked away from their terminal, or just hasn't
- * decided what to do next.  We could be idle for a very long time (many hours).
+ * The expectation is that if the session is logged on, but nobody is sending
+ * us work to do, we want to free up whatever resources we can.  Usually it
+ * means there is a human being at the other end of the connection, and that
+ * person has walked away from their terminal, or just hasn't decided what to
+ * do next.  We could be idle for a very long time (many hours).
  *
- * Of course, freeing gangs means that the next time the user does send in an SQL statement,
- * we need to allocate gangs (at least the writer gang) to do anything.  This entails extra work,
- * so we don't want to do this if we don't think the session has gone idle.
+ * Of course, freeing gangs means that the next time the user does send in an
+ * SQL statement, we need to allocate gangs (at least the writer gang) to do
+ * anything.  This entails extra work, so we don't want to do this if we don't
+ * think the session has gone idle.
  *
- * We can call cleanupIdleReaderGangs() to just free some resources, or cleanupAllIdleGangs() to
- * free up everything possible on the segDB side.  At the moment, I can't find a reason to
- * use cleanupIdleReaderGangs(), but it we wanted to, we would have two timeouts:  The first
- * when we free the reader gangs, and the second later time free the writer gang.
- * My current thinking is that it is better to free all the gangs as soon as we decide
+ * We can call cleanupIdleReaderGangs() to just free some resources, or
+ * disconnectAllIdleGangs() to free up everything possible on the segDB side.
+ * At the moment, I can't find a reason to use cleanupIdleReaderGangs(), but
+ * if we wanted to, we would have two timeouts:  The first when we free the
+ * reader gangs, and the second later time free the writer gang. My current
+ * thinking is that it is better to free all the gangs as soon as we decide
  * the session is idle.
  *
- * P.s:  Is there anything we can free up on the master (QD) side?  I can't think of anything.
+ * P.s:  Is there anything we can free up on the master (QD) side?  I can't
+ * think of anything.
  *
  */
 static void
@@ -1455,7 +1458,7 @@ HandleClientWaitTimeout(void)
 	 */
 	if (gangsExist())
 	{
-		cleanupAllIdleGangs();
+		disconnectAllIdleGangs();
 	}
 
 }

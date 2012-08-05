@@ -15,6 +15,7 @@
 
 #include "cdb/cdbselect.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbgang.h"
 #include <pthread.h>
 
 #define CDB_MOTION_LOST_CONTACT_STRING "Interconnect error master lost contact with segment."
@@ -324,6 +325,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
                         bool                        cancelOnError,
                         bool						needTwoPhase,
                         bool						withSnapshot,
+                        GangScope					dispatchTo,
 						struct CdbDispatcherState *ds); /* OUT */
 
 /* Wait for all QEs to finish, then report any errors from the given
@@ -362,18 +364,15 @@ cdbdisp_handleError(struct CdbDispatcherState *ds);
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
  *
- * needTwoPhase specifies whether to dispatch within a distributed 
+ * 'needTwoPhase' specifies whether to dispatch within a distributed
  * transaction or not.
+ *
+ * 'dispatchTo' specified whether to dispatch to all gangs (readers as
+ * well). In most cases we want to dispatch to the writer gang only,
+ * besides one case currently - setting GUC values.
  */
 void
-CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase);
-
-/*
- * Special for sending SET commands that change GUC variables, so they go to all
- * gangs, both reader and writer
- */
-void
-CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool needTwoPhase);
+CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase, GangScope dispatchTo);
 
 /*--------------------------------------------------------------------*/
 struct SliceTable;

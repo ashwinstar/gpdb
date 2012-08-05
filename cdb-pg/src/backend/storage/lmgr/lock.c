@@ -586,7 +586,7 @@ LockAcquire(const LOCKTAG *locktag,
 	
 	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION)
 	{
-		if (Gp_role == GP_ROLE_EXECUTE && (gp_is_callback || !Gp_is_writer))
+		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
 		{	
 			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
 			{
@@ -779,10 +779,7 @@ LockAcquire(const LOCKTAG *locktag,
 							}
 							
 							LWLockRelease(partitionLock);
-							if (gp_is_callback)
-								elog(ERROR,"Session has deadlocked itself due to function callback");
-							else
-								elog(ERROR,"Session has deadlocked itself");
+							elog(ERROR,"Session has deadlocked itself");
 						}
 					}
 				}

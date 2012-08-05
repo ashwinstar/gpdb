@@ -247,7 +247,7 @@ FtsReConfigureMPP(bool create_new_gangs)
 
 	ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"),
 			errSendAlert(true)));
-	disconnectAndDestroyAllGangs();
+	disconnectGangsByScope(GANGSCOPE_ALL);
 
 	/* Caller should throw an error. */
 	return;
@@ -1145,7 +1145,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	if (gangsExist())
 	{
 		reportError = true;
-		disconnectAndDestroyAllGangs();
+		disconnectGangsByScope(GANGSCOPE_ALL);
 	}
 
 	/*

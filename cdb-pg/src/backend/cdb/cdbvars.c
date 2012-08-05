@@ -54,7 +54,7 @@ char		*qdHostname;		/*QD hostname */
 int			qdPostmasterPort;	/*Master Segment Postmaster port. */
 char       *gp_qd_callback_info;	/* info for QE to call back to QD */
 
-bool 		gp_is_callback;		/* are we executing a callback query? */
+bool 		gp_is_callback;		/* DEPRECATED. are we executing a callback query? */
 
 bool		gp_use_dispatch_agent;	/* Deprecated, has no effect */
 
@@ -647,7 +647,7 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source __attribut
 		 * will wipe them out.
 		 */
 		if (newval != gp_use_dispatch_agent && Gp_role != GP_ROLE_UTILITY)
-			disconnectAndDestroyAllGangs();
+			disconnectGangsByScope(GANGSCOPE_ALL);
 		gp_use_dispatch_agent = newval;
 	}
 

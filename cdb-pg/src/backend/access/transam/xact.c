@@ -3701,7 +3701,7 @@ CommitTransaction(void)
 
 	Assert(LocalDistribXactRef_IsNil(&localDistribXactRef));
 
-	freeGangsForPortal(NULL);
+	deallocatePortalGangs(NULL);
 
 }
 
@@ -4212,20 +4212,22 @@ AbortTransaction(void)
 
 	Assert(LocalDistribXactRef_IsNil(&localDistribXactRef));
 
-	freeGangsForPortal(NULL);
+	deallocatePortalGangs(NULL);
 
-	/* If a query was cancelled, then cleanup reader gangs. */
+	/* If a query was canceled, then cleanup reader gangs. */
 	if (QueryCancelCleanup)
 	{
 		QueryCancelCleanup = false;
-		cleanupIdleReaderGangs();
+		elog(DEBUG3, "AbortTransaction disconnecting all available reader gangs"
+					 " as a part of query cancel cleanup");
+		disconnectGangsByScope(GANGSCOPE_AVAILABLE_READERS);
 	}
 
 	/* If memprot decides to kill process, make sure we destroy all processes
 	 * so that all mem/resource will be freed
 	 */
 	if(elog_geterrcode() == ERRCODE_GP_MEMPROT_KILL)
-		disconnectAndDestroyAllGangs();
+		disconnectGangsByScope(GANGSCOPE_ALL);
 }
 
 /*

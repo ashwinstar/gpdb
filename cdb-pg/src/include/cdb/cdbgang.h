@@ -30,6 +30,20 @@ typedef enum GangType
 								   gangs */
 } GangType;
 
+/* GangScope enumeration is used in several structures related operation
+ * on a set of gangs. e.g., In some cases we want free all reader gangs on
+ * dispatch something any to the writer gang, etc.
+ */
+typedef enum GangScope
+{
+	GANGSCOPE_WRITER,
+	GANGSCOPE_ALL_READERS,
+	GANGSCOPE_ALLOCATED_READERS,
+	GANGSCOPE_AVAILABLE_READERS,
+	GANGSCOPE_ALL,
+
+} GangScope;
+
 /*
  * A gang represents a single worker on each connected segDB
  *
@@ -65,8 +79,8 @@ struct DirectDispatchInfo;
 extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
 extern bool gangOK(Gang *gp);
 extern List *getCdbProcessesForQD(void);
-extern void freeGangsForPortal(char *portal_name);
-extern void disconnectAndDestroyAllGangs(void);
+extern void deallocatePortalGangs(char *portal_name);
+extern void disconnectGangsByScope(GangScope scope);
 extern void CheckForResetSession(void);
 extern List * getAllReaderGangs(void);
 extern void detectFailedConnections(void);
@@ -76,7 +90,7 @@ struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, i
 extern Gang *findGangById(int gang_id);
 
 /*
- * cleanupIdleReaderGangs() and cleanupAllIdleGangs().
+ * cleanupIdleReaderGangs() and disconnectAllIdleGangs().
  *
  * These two routines are used when a session has been idle for a while (waiting for the
  * client to send us SQL to execute).  The idea is to consume less resources while sitting idle.
@@ -84,8 +98,8 @@ extern Gang *findGangById(int gang_id);
  * Only call these from an idle session.
  */
 extern void cleanupIdleReaderGangs(void);
-extern void cleanupAllIdleGangs(void);
-extern void cleanupPortalGangs(Portal portal);
+extern void disconnectAllIdleGangs(void);
+extern void AtPortalDrop_CleanupIdleGangs(Portal portal);
 extern int largestGangsize(void);
 extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 
@@ -94,19 +108,9 @@ extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), 
  *
  * Called very early in backend initialization, to interpret the "gpqeid"
  * parameter value that a qExec receives from its qDisp.
- *
- * At this point, client authentication has not been done; the backend
- * command line options have not been processed; GUCs have the settings
- * inherited from the postmaster; etc; so don't try to do too much in here.
  */
 void
 cdbgang_parse_gpqeid_params(struct Port *port, const char* gpqeid_value);
-
-void
-cdbgang_parse_gpqdid_params(struct Port *port, const char* gpqdid_value);
-
-void
-cdbgang_parse_gpdaid_params(struct Port *port, const char* gpdaid_value);
 
 /* ----------------
  * GPDB Worker Process information

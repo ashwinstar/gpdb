@@ -3980,6 +3980,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 									 true /* cancelOnError */, 
 									 false /* needTwoPhase */,
 									 false /* withSnapshot */,
+									 GANGSCOPE_WRITER,
 									 (struct CdbDispatcherState *)&ds);
 		}
 		else
@@ -3991,6 +3992,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 			cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
 									 true /* cancelOnError */, true /* needTwoPhase */,
 									 true /* withSnapshot */,
+									 GANGSCOPE_WRITER,
 									 (struct CdbDispatcherState *)&ds);
 		}
 

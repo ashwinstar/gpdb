@@ -1023,9 +1023,6 @@ cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex)
     if (sliceIndex < 0)
         return &results->resultArray[results->resultCount];
     
-    if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
-       	return &results->resultArray[results->resultCount];
-
     si = &results->sliceMap[sliceIndex];
 
     return &results->resultArray[si->resultEnd];

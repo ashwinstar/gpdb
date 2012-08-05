@@ -1786,7 +1786,7 @@ ReleaseGangs(QueryDesc *queryDesc)
 {
 	Assert(queryDesc != NULL);
 
-	freeGangsForPortal(queryDesc->portal_name);
+	deallocatePortalGangs(queryDesc->portal_name);
 }
 
 

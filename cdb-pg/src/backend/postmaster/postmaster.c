@@ -2800,16 +2800,16 @@ retry1:
      * CDB: Process "gpqeid" parameter string for qExec startup.
      */
     if (gpqeid)
+    {
         cdbgang_parse_gpqeid_params(port, gpqeid);
-    else if (gpqdid)
-    	cdbgang_parse_gpqdid_params(port, gpqdid);
-    else if (gpdaid)
+    }
+    else if (gpdaid || gpqdid)
 	{
 		ereport(FATAL,
 				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 				 errSendAlert(true),
 				 errOmitLocation(true),
-				 errmsg("GPAgent deprecated.")));
+				 errmsg("GPAgent and QD callbacks are deprecated.")));
 	}
 
 	/*
