@@ -967,6 +967,12 @@ CreateQueue(CreateQueueStmt *stmt)
 				AlterResqueueCapabilityEntry(stmt->optids,
 											 queueid, pWithList, true);
 
+	/* 
+	 * We must bump the command counter to make the new entry 
+	 * in the pg_resqueuecapability table visible 
+	 */
+	CommandCounterIncrement();
+
 	/*
 	 * Create the in-memory resource queue, if resource scheduling is on,
 	 * otherwise don't - and gripe a little about it.
