@@ -1627,6 +1627,7 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
 				 errmsg("deadlock detected, locking against self"),
+				 errhint("It is likely that a query is waiting on itself for resources. Check resource queue limits."), 
 						   errOmitLocation(true)));
 	}
 
