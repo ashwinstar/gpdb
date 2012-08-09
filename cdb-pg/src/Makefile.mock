@@ -23,7 +23,7 @@ all: $(patsubst %,%.t,$(TARGETS))
 # The test target depends on $($(testname)_OBJ) which includes $($(testname)_MOCK_OBJ) etc.
 .SECONDEXPANSION:
 %.t: $$($$*_OBJS) ../%.o
-	$(CC) -o $@ $($*_OBJS) ../$*.o
+	$(CC) $(CFLAGS) -o $@ $($*_OBJS) ../$*.o
 
 check: $(patsubst %,%-check,$(TARGETS))
 
