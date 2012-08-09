@@ -571,15 +571,12 @@ static UnackQueueRing unack_queue_ring = {0, 0, 0};
  */
 typedef struct AckSendParam
 {
-	/* connection we send ack for */
-	MotionConn *conn;
+	/* header for the ack */
+	icpkthdr msg;
 
-	/* the ack flag */
-	int32 flags;
-
-	/* the seqs of the ack */
-	uint32 seq;
-	uint32 extraSeq;
+	/* peer address for the ack */
+	struct sockaddr_storage peer;
+	socklen_t peer_len;
 } AckSendParam;
 
 /*
@@ -1767,10 +1764,13 @@ sendControlMessage(icpkthdr *pkt, int fd, struct sockaddr *addr, socklen_t peerL
 static inline void
 setAckSendParam(AckSendParam *param, MotionConn *conn, int32 flags, uint32 seq, uint32 extraSeq)
 {
-	param->conn = conn;
-	param->flags = flags;
-	param->seq = seq;
-	param->extraSeq = extraSeq;
+	memcpy(&param->msg, (char *)&conn->conn_info, sizeof(icpkthdr));
+	param->msg.flags = flags;
+	param->msg.seq = seq;
+	param->msg.extraSeq = extraSeq;
+	param->msg.len = sizeof(icpkthdr);
+	param->peer = conn->peer;
+	param->peer_len = conn->peer_len;
 }
 
 /*
@@ -1780,7 +1780,7 @@ setAckSendParam(AckSendParam *param, MotionConn *conn, int32 flags, uint32 seq, 
 static inline void
 sendAckWithParam(AckSendParam *param)
 {
-	sendAck(param->conn, param->flags, param->seq, param->extraSeq);
+	sendControlMessage(&param->msg, UDP_listenerFd, (struct sockaddr *)&param->peer, param->peer_len);
 }
 
 /*
@@ -1949,7 +1949,8 @@ MlPutRxBuffer(ChunkTransportState *transportStates, int motNodeID, int route)
 
 	pthread_mutex_unlock(&ic_control_info.lock);
 
-	if(param.conn != NULL)
+	/* real ack sending is after lock release to decrease the lock holding time. */
+	if(param.msg.len != 0)
 		sendAckWithParam(&param);
 }
 
@@ -6103,7 +6104,8 @@ rxThreadFunc(void *arg)
 			}
 			pthread_mutex_unlock(&ic_control_info.lock);
 
-			if(param.conn != NULL)
+			/* real ack sending is after lock release to decrease the lock holding time. */
+			if(param.msg.len != 0)
 				sendAckWithParam(&param);
 		}
 
