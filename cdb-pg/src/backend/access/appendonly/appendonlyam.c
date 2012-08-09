@@ -2002,7 +2002,8 @@ appendonly_fetch(
 	 */
 	if (aoFetchDesc->currentBlock.have)
 	{
-		if (segmentFileNum == aoFetchDesc->currentSegmentFile.num)
+		if (segmentFileNum == aoFetchDesc->currentSegmentFile.num &&
+			segmentFileNum == aoFetchDesc->blockDirectory.currentSegmentFileNum)
 		{
 			if (rowNum >= aoFetchDesc->currentBlock.firstRowNum &&
 				rowNum <= aoFetchDesc->currentBlock.lastRowNum)
@@ -2109,9 +2110,11 @@ appendonly_fetch(
 									&aoFetchDesc->currentBlock.blockDirectoryEntry))
 	{
 		if (slot != NULL)
+		{
 			ExecClearTuple(slot);
-		return false;	// Row not represented in Block Directory.
-						// Must be aborted or deleted and reclaimed.
+		}
+		return false;	/* Row not represented in Block Directory. */
+						/* Must be aborted or deleted and reclaimed. */
 	}
 
 	/*

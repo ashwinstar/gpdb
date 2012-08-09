@@ -136,6 +136,8 @@ extern bool Debug_appendonly_print_blockdirectory;
 extern bool Debug_appendonly_print_read_block;
 extern bool Debug_appendonly_print_append_block;
 extern bool Debug_appendonly_print_segfile_choice;
+extern int  Debug_appendonly_bad_header_print_level;
+extern bool Debug_appendonly_print_datumstream;
 extern bool Debug_gp_relation_node_fetch_wait_for_debugging;
 extern bool Debug_delay_before_persistent_init_scan;
 extern bool gp_crash_recovery_abort_suppress_fatal;
