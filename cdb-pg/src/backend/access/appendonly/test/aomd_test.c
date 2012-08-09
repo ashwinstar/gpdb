@@ -6,17 +6,15 @@
 #include "c.h"
 #include "postgres.h"
 #include "access/aomd.h"
-#include "access/appendonlytid.h"
-#include "cdb/cdbappendonlystorage.h"
-#include "cdb/cdbmirroredappendonly.h"
+
+#include "../aomd.c"
+
 
 void test_aomd_AOSegmentFilePathNameLen(void **state) {
 	RelationData reldata;
 	char* basepath = "base/21381/123";
 
-	expect_any(relpath, rnode.spcNode);
-	expect_any(relpath, rnode.dbNode);
-	expect_any(relpath, rnode.relNode);
+	expect_any(relpath, &rnode);
 	will_return(relpath, strdup(basepath));
 
 	int r = AOSegmentFilePathNameLen(&reldata);
@@ -62,9 +60,7 @@ void test_aomd_MakeAOSegmentFileName(void **state) {
 	char filepathname[256];
 	RelationData reldata;
 
-	expect_any_count(relpath, rnode.spcNode, -1);
-	expect_any_count(relpath, rnode.dbNode, -1);
-	expect_any_count(relpath, rnode.relNode, -1);
+	expect_any_count(relpath, &rnode, -1);
 
 	// seg 0, no columns
 	will_return(relpath, strdup(basepath));

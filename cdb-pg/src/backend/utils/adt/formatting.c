@@ -1653,14 +1653,14 @@ str_initcap(const char *buff, size_t nbytes)
 		result = pnstrdup(buff, nbytes);
 
 		for (p = result; *p; p++)
-	{
+		{
 			if (wasalnum)
 				*p = pg_tolower((unsigned char) *p);
 			else
 				*p = pg_toupper((unsigned char) *p);
 			wasalnum = isalnum((unsigned char) *p);
+		}
 	}
-}
 
 	return result;
 }
