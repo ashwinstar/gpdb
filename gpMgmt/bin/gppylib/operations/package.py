@@ -526,7 +526,7 @@ class ValidateInstallPackage(Operation):
                     #the architecture portion of the rpm. So we append it
                     #with the correct architecture
                     if not package_name.endswith(platform.machine()):
-                        package_name += platform.machine()
+                        package_name += '.' + platform.machine()
                     rpm_name = "%s.rpm" % package_name
                     rpm_set.remove(rpm_name)
                 else:
@@ -602,11 +602,6 @@ class ValidateUninstallPackage(Operation):
                 for line in lines:
                     if 'not installed' in line.lower():
                         package_name = line.split()[2]
-                        #In case of suse, the error message will leave out 
-                        #the architecture portion of the rpm. So we append it
-                        #with the correct architecture
-                        if not package_name.endswith(platform.machine()):
-                            package_name += platform.machine()
                         rpm_set.remove(package_name)
                     else:
                         # This is unexpected, so bubble up the ExecutionError.
