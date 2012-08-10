@@ -1881,6 +1881,15 @@ scanToFetchTuple(
 		 * Update information to get next block.
 		 */
 		Assert(!aoFetchDesc->currentBlock.gotContents);
+
+		/* MPP-17061: reach the end of range covered by block directory entry */
+		if ((aoFetchDesc->currentBlock.fileOffset +
+			aoFetchDesc->currentBlock.overallBlockLen) >=
+			aoFetchDesc->scanAfterFileOffset)
+		{
+			return false;
+		}
+
 		AppendOnlyExecutionReadBlock_FinishedScanBlock(
 									&aoFetchDesc->executorReadBlock);
 
