@@ -8,6 +8,7 @@ import tarfile
  
 from gppylib.db import dbconn
 from gppylib.gparray import GpArray
+from gppylib.gpversion import MAIN_VERSION
 from contextlib import closing
 from gppylib.commands import gp
 from gppylib.commands.unix import Scp
@@ -17,7 +18,21 @@ from gppylib.operations.unix import CheckFile, CheckRemoteFile, RemoveRemoteFile
 from gppylib.operations.package import dereference_symlink, GpScp
 from gppylib.commands.base import Command, REMOTE
 
-OS = platform.system()
+def get_os():
+    dist, release, _ = platform.dist()
+    major_release = release.partition('.')[0]
+
+    os_string = ''
+    if dist.lower() == 'redhat':
+        os_string += 'rhel'
+    elif dist.lower() == 'suse':
+        os_string += 'suse'
+
+    os_string += major_release
+    
+    return os_string
+
+OS = get_os()
 ARCH = platform.machine()
 
 # AK: use dereference_symlink when mucking with RPM database for the same reason 
@@ -28,7 +43,7 @@ ARCHIVE_PATH = os.path.join(GPHOME, 'share/packages/archive')
 RPM_DATABASE = os.path.join(GPHOME, 'share/packages/database') 
 GPPKG_EXTENSION = ".gppkg"
 SCRATCH_SPACE = os.path.join(tempfile.gettempdir(), getpass.getuser())
-GPDB_VERSION = "4.2"
+GPDB_VERSION = '.'.join([str(n) for n in MAIN_VERSION[:2]]) 
 MASTER_PORT = os.getenv("PGPORT")
 
 def skipIfNoStandby():
@@ -38,8 +53,16 @@ def skipIfNoStandby():
     """
     standby = get_host_list()[0]
     if standby is None:
-        return unittest.skip("requires standby") 
+        return unittest.skip('requires standby') 
     return lambda o: o 
+
+def skipIfSingleNode():
+    """
+    Skip a test if its a single node install.
+    """
+    if len(get_host_list()[1]) == 0:
+        return unittest.skip('requires multiple nodes')
+    return lambda o: o
 
 def get_host_list():
     """
@@ -53,18 +76,23 @@ def get_host_list():
     gparr = GpArray.initFromCatalog(dbconn.DbURL(port = MASTER_PORT), utility = True)
     segs = gparr.getDbList()
 
+    master = None
     standby_host = None
     segment_host_list = []
 
     for seg in segs:
-        if seg.isSegmentStandby(current_role = True):
+        if seg.isSegmentStandby(current_role=True):
             standby_host = seg.getSegmentHostName()
-        elif not seg.isSegmentMaster(current_role = True):
+        elif not seg.isSegmentMaster(current_role=True):
             segment_host_list.append(seg.getSegmentHostName())
+        elif seg.isSegmentMaster(current_role=True):
+            master = seg.getSegmentHostName()
 
     #Deduplicate the hosts so that we 
     #dont install multiple times on the same host
     segment_host_list = list(set(segment_host_list))
+    if master in segment_host_list:
+        segment_host_list.remove(master)
 
     return (standby_host, segment_host_list)
 
@@ -327,7 +355,7 @@ class GppkgTestCase(unittest.TestCase):
         @rtype: string
         """
         gppkg_file = BuildGppkg(gppkg_spec, rpm_spec, dep_rpm_specs).run()
-        assert self._check_build(gppkg_file, gppkg_spec)
+        self.assertTrue(self._check_build(gppkg_file, gppkg_spec))
         self.extra_clean.add(gppkg_file)
         return gppkg_file
         
@@ -350,7 +378,7 @@ class GppkgTestCase(unittest.TestCase):
         @type gppkg_filename: str
         """
         run_command("gppkg --install %s" % gppkg_filename)
-        assert self.check_install(gppkg_filename)
+        self.assertTrue(self.check_install(gppkg_filename))
       
     def check_install(self, gppkg_filename):
         """
@@ -378,7 +406,7 @@ class GppkgTestCase(unittest.TestCase):
         """
         gppkg_package_name = gppkg_filename.split('-')[0] + '-' + gppkg_filename.split('-')[1]
         run_command("gppkg --remove %s" % gppkg_package_name)
-        assert not self.check_install(gppkg_filename)
+        self.assertFalse(self.check_install(gppkg_filename))
 
     def update(self, gppkg_filename):
         """
@@ -389,7 +417,7 @@ class GppkgTestCase(unittest.TestCase):
         @type gppkg_filename: str
         """
         run_command("gppkg --update %s" % gppkg_filename)
-        assert self.check_install(gppkg_filename)
+        self.assertTrue(self.check_install(gppkg_filename))
 
     def remove_timestamp(self, result):
         """
@@ -423,7 +451,7 @@ class GppkgTestCase(unittest.TestCase):
         @type rpm_package_name: str
         """
         results = run_command("rpm -q %s --dbpath %s" % (rpm_package_name, RPM_DATABASE))
-        assert results == rpm_package_name
+        self.assertEqual(results, rpm_package_name)
 
     def check_rpm_uninstall(self, rpm_package_name):
         """
@@ -445,7 +473,7 @@ class GppkgTestCase(unittest.TestCase):
         @type host: str
         """
         results = run_remote_command("rpm -q %s --dbpath %s" % (rpm_package_name, RPM_DATABASE), host)
-        assert results == rpm_package_name
+        self.assertEqual(results, rpm_package_name)
 
     def check_remote_rpm_uninstall(self, rpm_package_name, host):
         """

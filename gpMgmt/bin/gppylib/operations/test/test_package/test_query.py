@@ -5,7 +5,7 @@ import tarfile
 
 from contextlib import closing
 from gppylib.commands.base import ExecutionError
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, RPMSpec, GppkgSpec, run_command
+from gppylib.operations.test.test_package import GppkgTestCase, unittest, RPMSpec, GppkgSpec, run_command, OS, GPDB_VERSION
 
 class QueryTestCase(GppkgTestCase):
     """Test the query option of gppkg"""
@@ -16,7 +16,7 @@ class QueryTestCase(GppkgTestCase):
         self.B_spec = RPMSpec("B", "1", "1")
         self.beta_spec = GppkgSpec("beta", "1.0")
 
-        self.alpha_info = ['Name alpha', 'Version 1.0', 'Architecture x86_64', 'OS Linux', 'GPDBVersion main build dev', 'Description Temporary Test Package']
+        self.alpha_info = ['Name alpha', 'Version 1.0', 'Architecture x86_64', 'OS %s' % OS, 'GPDBVersion %s' % GPDB_VERSION, 'Description Temporary Test Package']
 
     def tearDown(self):
         """
@@ -27,14 +27,14 @@ class QueryTestCase(GppkgTestCase):
         pass
 
     def check_info_results(self, output, expected_info_result):
-        assert len(output.split('\n')) > 1
+        self.assertTrue(len(output.split('\n')) > 1)
         output = self.remove_timestamp(output)
-        assert output == expected_info_result
+        self.assertTrue(output == expected_info_result)
 
     def check_list_results(self, output, expected_list_result):
-        assert len(output.split('\n')) > 1
+        self.assertTrue(len(output.split('\n')) > 1)
         output = output.split('\n')[self.start_output:self.end_output]
-        assert output == expected_list_result
+        self.assertTrue(output == expected_list_result)
   
     def get_file_list(self, gppkg_filename):
         file_list = []
@@ -52,10 +52,10 @@ class QueryTestCase(GppkgTestCase):
     def test01_query_all(self):
         
         results = run_command("gppkg -q --all")
-        assert results.split('\n')[self.start_output:self.end_output] == [self.alpha_spec.get_package_name(), self.beta_spec.get_package_name()]
+        self.assertTrue(results.split('\n')[self.start_output:self.end_output].sort() == [self.alpha_spec.get_package_name(), self.beta_spec.get_package_name()].sort())
 
         results = run_command("gppkg --all -q")
-        assert results.split('\n')[self.start_output:self.end_output], [self.alpha_spec.get_package_name(), self.beta_spec.get_package_name()]
+        self.assertTrue(results.split('\n')[self.start_output:self.end_output].sort() == [self.alpha_spec.get_package_name(), self.beta_spec.get_package_name()].sort())
 
         self.assertRaises(ExecutionError, run_command, "gppkg -qall")
 
@@ -101,14 +101,14 @@ class QueryTestCase(GppkgTestCase):
    
     def test06_query_package(self):
         results = run_command("gppkg -q %s" % self.alpha_spec.get_filename())
-        assert "%s is installed" % self.alpha_spec.get_filename().split('-')[0] in results
+        self.assertTrue("%s is installed" % self.alpha_spec.get_filename().split('-')[0] in results)
 
         results = run_command("gppkg --query %s" % self.alpha_spec.get_filename())
-        assert "%s is installed" % self.alpha_spec.get_filename().split('-')[0] in results
+        self.assertTrue("%s is installed" % self.alpha_spec.get_filename().split('-')[0] in results)
 
         self.remove(self.alpha_spec.get_filename())
         results = run_command("gppkg --query %s" % self.alpha_spec.get_filename())
-        assert "%s is not installed" % self.alpha_spec.get_filename().split('-')[0] in results
+        self.assertTrue("%s is not installed" % self.alpha_spec.get_filename().split('-')[0] in results)
 
         with self.assertRaises(ExecutionError):
             run_command("gppkg --query abcde")

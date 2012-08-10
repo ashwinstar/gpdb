@@ -7,14 +7,14 @@ from gppylib.commands.base import ExecutionError
 from gppylib.operations.test.test_package import GppkgTestCase, unittest, GppkgSpec, RPMSpec, ARCH, OS, GPDB_VERSION
 
 class SimpleNegativeTestCase(GppkgTestCase):
-    @unittest.expectedFailure
+#    @unittest.expectedFailure
     def test00_wrong_os(self):
         os = "abcde"
         A_spec = self.A_spec 
         alpha_spec = GppkgSpec("alpha", "1.0", GPDB_VERSION, os)
         gppkg_file = self.build(alpha_spec, A_spec) 
 
-        with self.assertRaisesRegexp(ExecutionError , "%s os required. %s os found" % (os, OS)):
+        with self.assertRaisesRegexp(ExecutionError , "%s OS required. %s OS found" % (os, OS)):
             self.install(gppkg_file)
        
     def test01_wrong_arch(self):

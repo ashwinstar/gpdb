@@ -3,8 +3,7 @@
 import os
 
 from gppylib.commands.base import ExecutionError
-from gppylib.operations.test.test_package import GppkgTestCase, skipIfNoStandby, unittest, GppkgSpec, RPMSpec, ARCHIVE_PATH, RPM_DATABASE
-from gppylib.test import run_command
+from gppylib.operations.test.test_package import GppkgTestCase, skipIfNoStandby, unittest, GppkgSpec, RPMSpec, ARCHIVE_PATH, RPM_DATABASE, run_command
 
 class SharedDependenciesTestCase(GppkgTestCase):
     """Covers install/update/remove of gppkgs which have a shared dependency"""
@@ -23,6 +22,10 @@ class SharedDependenciesTestCase(GppkgTestCase):
 
     def tearDown(self):
         self.cleanup()
+        results = run_command('rpm -qa --dbpath %s' % RPM_DATABASE)
+        rpms = results.split()
+        for rpm in rpms:
+            run_command('rpm -e %s --dbpath %s' % (rpm, RPM_DATABASE))
  
     def test00_build(self):
         self.build(self.alpha_spec, self.A_spec, [self.B_spec, self.shared_dep_spec])
@@ -159,7 +162,8 @@ class SharedDependenciesTestCase(GppkgTestCase):
         self.remove(update_gppkg_spec.get_filename()) 
 
         results = run_command("rpm -qa --dbpath %s" % RPM_DATABASE)
-        assert results == ""
+
+        self.assertEqual(results, "")
 
 if __name__ == "__main__":
     unittest.main()

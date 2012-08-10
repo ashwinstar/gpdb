@@ -2,9 +2,8 @@
 
 import os
 
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, skipIfNoStandby, get_host_list, ARCHIVE_PATH
+from gppylib.operations.test.test_package import GppkgTestCase, unittest, skipIfNoStandby, get_host_list, ARCHIVE_PATH, run_command, skipIfSingleNode
 from gppylib.operations.unix import RemoveRemoteFile, CheckRemoteFile
-from gppylib.test import run_command
 
 class CleanGppkgTestCase(GppkgTestCase):
     def setUp(self):
@@ -32,7 +31,7 @@ class CleanGppkgTestCase(GppkgTestCase):
         for host in cluster_host_list:
             if host is not None:
                 self.check_remote_rpm_uninstall(self.A_spec.get_package_name(), host)
-                assert not CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
+                self.assertFalse(CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run())
 
     def test03_no_package_on_master(self):
         """
@@ -53,8 +52,9 @@ class CleanGppkgTestCase(GppkgTestCase):
         for host in cluster_host_list:
             if host is not None:
                 self.check_remote_rpm_uninstall(self.A_spec.get_package_name(), host)
-                assert not CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
+                self.assertFalse(CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run())
 
+    @skipIfSingleNode()
     def test04_no_package_on_segment(self):
         """
         This test covers the case when there is no
@@ -64,7 +64,7 @@ class CleanGppkgTestCase(GppkgTestCase):
         self.install(self.alpha_spec.get_filename())
        
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0
+        self.assertTrue(len(segment_host_list) > 0)
         host = segment_host_list[0]       
  
         RemoveRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
@@ -74,7 +74,7 @@ class CleanGppkgTestCase(GppkgTestCase):
         run_command(self.clean_command)
 
         self.check_remote_rpm_install(self.A_spec.get_package_name(), host)
-        assert CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
+        self.assertTrue(CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run())
 
     @unittest.expectedFailure
     def test05_no_rpm_on_master(self):
@@ -90,8 +90,9 @@ class CleanGppkgTestCase(GppkgTestCase):
         run_command(self.clean_command)
 
         self.check_rpm_install(self.A_spec.get_package_name())
-        assert os.path.exists(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()))
+        self.assertTrue(os.path.exists(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename())))
 
+    @skipIfSingleNode()
     @unittest.expectedFailure
     def test06_no_rpm_on_segment(self):
         """
@@ -103,14 +104,14 @@ class CleanGppkgTestCase(GppkgTestCase):
         self.install(self.alpha_spec.get_filename())
         
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0
+        self.assertTrue(len(segment_host_list) > 0)
         host = segment_host_list[0]
 
         self.uninstall_rpm_remotely(self.A_spec.get_filename(), host)
         run_command(self.clean_command)
 
         self.check_remote_rpm_install(self.A_spec.get_package_name(), host)
-        assert CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run()
+        self.assertTrue(CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), host).run())
 
     @skipIfNoStandby()
     def test07_no_package_on_standby(self):
@@ -129,7 +130,7 @@ class CleanGppkgTestCase(GppkgTestCase):
         run_command(self.clean_command)
     
         self.check_remote_rpm_install(self.A_spec.get_package_name(), standby)
-        assert CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), standby).run()
+        self.assertTrue(CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), standby).run())
         
     @skipIfNoStandby()
     @unittest.expectedFailure
@@ -148,7 +149,7 @@ class CleanGppkgTestCase(GppkgTestCase):
         run_command(self.clean_command)
 
         self.check_remote_rpm_install(self.A_spec.get_package_name(), standby)
-        assert CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), standby).run()
+        self.assertTrue(CheckRemoteFile(os.path.join(ARCHIVE_PATH, self.alpha_spec.get_filename()), standby).run())
 
 if __name__ == "__main__":
     unittest.main()

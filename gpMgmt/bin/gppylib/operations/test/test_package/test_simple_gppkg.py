@@ -2,8 +2,7 @@
 
 import unittest2 as unittest
 
-from gppylib.operations.test.test_package import GppkgTestCase, GppkgSpec, BuildGppkg, RPMSpec, BuildRPM
-from gppylib.test import run_command, run_remote_command
+from gppylib.operations.test.test_package import GppkgTestCase, GppkgSpec, BuildGppkg, RPMSpec, BuildRPM, run_command, run_remote_command
 
 class SimpleGppkgTestCase(GppkgTestCase):
     """Covers simple build/install/remove/update test cases"""
@@ -22,7 +21,7 @@ class SimpleGppkgTestCase(GppkgTestCase):
         self.install(gppkg_file)
 
         update_rpm_spec = RPMSpec("A", "1", "2")
-        update_gppkg_spec = GppkgSpec("beta", "1.1")
+        update_gppkg_spec = GppkgSpec("alpha", "1.1")
         update_gppkg_file = self.build(update_gppkg_spec, update_rpm_spec)
    
         self.update(update_gppkg_file)
@@ -39,18 +38,18 @@ class SimpleGppkgTestCase(GppkgTestCase):
         results = run_command("gppkg -q --all")
         results = results.split('\n')[self.start_output:self.end_output]
         
-        assert results == []
+        self.assertEqual(results, [])
        
     def test04_help(self):
         help_options = ["--help", "-h", "-?"] 
 
         for opt in help_options:
             results = run_command("gppkg " + opt)
-            assert results != ""
+            self.assertNotEqual(results, "")
 
     def test05_version(self):
         results = run_command("gppkg --version")
-        assert results != ""
+        self.assertNotEqual(results, "")
 
 if __name__ == "__main__":
     unittest.main()

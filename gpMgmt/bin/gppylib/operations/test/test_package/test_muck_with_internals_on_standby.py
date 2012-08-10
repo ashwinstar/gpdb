@@ -7,9 +7,8 @@ from contextlib import closing
 from gppylib.commands.base import ExecutionError
 from gppylib.commands.unix import Scp
 from gppylib.operations.package import GpScp
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, skipIfNoStandby, get_host_list, ARCHIVE_PATH
+from gppylib.operations.test.test_package import GppkgTestCase, unittest, skipIfNoStandby, get_host_list, ARCHIVE_PATH, run_command
 from gppylib.operations.unix import RemoveRemoteFile
-from gppylib.test import run_command
 
 @skipIfNoStandby()
 class MuckWithInternalsOnStandby(GppkgTestCase):            

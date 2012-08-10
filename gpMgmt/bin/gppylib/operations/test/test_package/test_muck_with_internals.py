@@ -9,8 +9,7 @@ from gppylib.commands.unix import Scp
 from gppylib.commands.base import ExecutionError
 from gppylib.operations.package import GpScp
 from gppylib.operations.unix import RemoveRemoteFile
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, get_host_list, ARCHIVE_PATH, RPM_DATABASE
-from gppylib.test import run_command
+from gppylib.operations.test.test_package import GppkgTestCase, unittest, get_host_list, ARCHIVE_PATH, RPM_DATABASE, run_command, skipIfSingleNode
 
 class MuckWithInternalsTestCase(GppkgTestCase):
     """
@@ -113,6 +112,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
             os.remove(self.A_spec.get_filename())
             self.fail("ExecutionError %s" % e)
 
+    @skipIfSingleNode()
     @unittest.expectedFailure
     def test06_delete_package_from_archive_on_segment_and_install(self):
         """
@@ -125,7 +125,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
 
         #Remove package from archive
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0
+        self.assertTrue(len(segment_host_list) > 0)
         host = segment_host_list[0]
         RemoveRemoteFile(archive_file ,host).run()
 
@@ -139,6 +139,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
                 dstHost = host).run(validateAfter = True)
             self.fail("ExecutionError %s" % e)
            
+    @skipIfSingleNode()
     @unittest.expectedFailure 
     def test07_delete_package_from_archive_on_segment_and_uninstall(self):
         """
@@ -151,7 +152,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
 
         #Remove package from archive
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0
+        self.assertTrue(len(segment_host_list) > 0)
         host = segment_host_list[0]
         RemoveRemoteFile(archive_file ,host).run()
 
@@ -163,6 +164,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
                   host_list = segment_host_list).run()
             self.fail("ExecutionError %s" % str(e))
 
+    @skipIfSingleNode()
     @unittest.expectedFailure
     def test08_uninstall_rpm_on_segments_and_install(self):
         """
@@ -174,7 +176,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
         self.install(gppkg_file)
    
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0
+        self.assertTrue(len(segment_host_list) > 0)
         host = segment_host_list[0]
  
         self.uninstall_rpm_remotely(self.A_spec.get_filename(), host)
@@ -195,6 +197,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
             RemoveRemoteFile(self.A_spec.get_filename(), host).run()
             self.fail("ExecutionError %s" % e)
 
+    @skipIfSingleNode()
     def test09_uninstall_rpm_on_segments_and_uninstall(self):
         """
         Try to uninstall a gppkg when the rpm has already been 
@@ -205,12 +208,13 @@ class MuckWithInternalsTestCase(GppkgTestCase):
         self.install(gppkg_file)
    
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0 
+        self.assertTrue(len(segment_host_list) > 0) 
         host = segment_host_list[0]
  
         self.uninstall_rpm_remotely(self.A_spec.get_filename(), host)
         self.remove(gppkg_file) 
 
+    @skipIfSingleNode()
     def test10_install_rpm_on_segments_and_install(self):
         """
         Try to install a gppkg when an rpm has already been 
@@ -219,7 +223,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
         gppkg_file = self.alpha_spec.get_filename()
  
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0
+        self.assertTrue(len(segment_host_list) > 0)
         host = segment_host_list[0]
  
         #Install the rpm 
@@ -234,6 +238,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
         self.install_rpm_remotely(self.A_spec.get_filename(), host)
         self.install(gppkg_file) 
 
+    @skipIfSingleNode()
     @unittest.expectedFailure
     def test11_install_rpm_on_segments_and_uninstall(self):
         """
@@ -244,7 +249,7 @@ class MuckWithInternalsTestCase(GppkgTestCase):
         gppkg_file = self.alpha_spec.get_filename()
         
         segment_host_list = get_host_list()[1]
-        assert len(segment_host_list) > 0
+        self.assertTrue(len(segment_host_list) > 0)
         host = segment_host_list[0]
 
         #Install the rpm

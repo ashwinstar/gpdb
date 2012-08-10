@@ -3,8 +3,7 @@
 import os
 
 from gppylib.commands.base import ExecutionError
-from gppylib.operations.test.test_package import GppkgTestCase, GppkgSpec, RPMSpec, unittest
-from gppylib.test import run_command
+from gppylib.operations.test.test_package import GppkgTestCase, GppkgSpec, RPMSpec, unittest, run_command
 
 class SingleDependenciesTestCase(GppkgTestCase):
     """Covers install/update/remove tests of gppkgs which have a single dependency"""
