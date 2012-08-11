@@ -938,7 +938,6 @@ fetchFromCurrentBlock(AOCSFetchDesc aocsFetchDesc,
 	DatumStreamFetchDesc datumStreamFetchDesc =
 		aocsFetchDesc->datumStreamFetchDesc[colno];
 	DatumStreamRead *datumStream = datumStreamFetchDesc->datumStream;
-	int status;
 	Datum value;
 	bool null;
 
@@ -966,14 +965,12 @@ fetchFromCurrentBlock(AOCSFetchDesc aocsFetchDesc,
 		Datum *values = slot_get_values(slot);
 		bool *nulls = slot_get_isnull(slot);
 
-		status = datumstreamread_get(datumStream, &(values[colno]), &(nulls[colno]));
+		datumstreamread_get(datumStream, &(values[colno]), &(nulls[colno]));
 	}
 	else
 	{
-		status = datumstreamread_get(datumStream, &value, &null);
+		datumstreamread_get(datumStream, &value, &null);
 	}
-
-	Assert(status == 0);
 }
 
 static bool

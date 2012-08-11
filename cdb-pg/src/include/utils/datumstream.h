@@ -168,19 +168,19 @@ typedef struct DatumStreamFetchDescData
 typedef DatumStreamFetchDescData *DatumStreamFetchDesc;
 
 /* Stream access method */
-extern int datumstreamread_getlarge(DatumStreamRead *ds, Datum *datum, bool *null);
-inline static int datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool *null)
+extern void datumstreamread_getlarge(DatumStreamRead *ds, Datum *datum, bool *null);
+inline static void datumstreamread_get(DatumStreamRead *acc, Datum *datum, bool *null)
 {
 	if (acc->largeObjectState == DatumStreamLargeObjectState_None)
 	{
 		/*
 		 * Small objects are handled by the DatumStreamBlockRead module.
 		 */
-		return DatumStreamBlockRead_Get(&acc->blockRead, datum, null);
+		DatumStreamBlockRead_Get(&acc->blockRead, datum, null);
 	}
 	else
 	{
-		return datumstreamread_getlarge(acc, datum, null);
+		datumstreamread_getlarge(acc, datum, null);
 	}
 }
 	
