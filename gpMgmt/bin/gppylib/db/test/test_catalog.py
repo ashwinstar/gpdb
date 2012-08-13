@@ -30,23 +30,6 @@ class catalogTestCase(unittest.TestCase):
         self.conn.close()
         pass
 
-    def test_versionatinitdb(self):
-        logger.info("test_versionatinitdb")
-        orig_table = catalog.GpVersionAtInitdbTable(self.conn)
-        test_table = catalog.GpVersionAtInitdbTable(self.conn)
-        
-        test_table.schemaversion=11
-        test_table.productversion="Awesome Vaporware"
-        test_table.update_db(self.conn)
-        
-        new_table = catalog.GpVersionAtInitdbTable(self.conn)
-        
-        self.validate_versionatinitdb_table(test_table,new_table)
-        orig_table.update_db(self.conn)
-        
-        new_table = catalog.GpVersionAtInitdbTable(self.conn)        
-        self.validate_versionatinitdb_table(orig_table,new_table)
-    
     def test_vacuumcatalog(self):
         logger.info("test_vacuumcatalog")
         catalog.vacuum_catalog(self.dburl,self.conn)
