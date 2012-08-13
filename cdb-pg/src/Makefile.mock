@@ -5,7 +5,7 @@ include $(top_builddir)/src/Makefile.port
 CMOCKERY_DIR=$(top_builddir)/src/test/unit/cmockery
 MOCK_DIR=$(top_builddir)/src/test/unit/mock
 CMOCKERY_OBJS=$(CMOCKERY_DIR)/cmockery.o
-override CFLAGS+= -w
+override CFLAGS+= -w $(PTHREAD_CFLAGS)
 override CPPFLAGS+= -I$(top_srcdir)/src/backend/libpq \
 					-I$(top_srcdir)/src/backend/gp_libpq_fe \
 					-I$(top_srcdir)/src/backend/postmaster \
