@@ -8781,6 +8781,13 @@ alter table at
 ERROR:  PRIMARY KEY constraint must contain all columns in the partition key of relation "at".
 HINT:  Include the partition key or create a part-wise UNIQUE index instead.
 -- MPP-14471 end
+-- MPP-17606 (using table "at" from above)
+alter table at
+    alter column b
+	type numeric;
+ERROR:  cannot alter type of a column used in a partitioning key
+	
+-- MPP-17606 end
 -- MPP-17707 start
 create table mpp17707
 ( d int, p int ,x text)

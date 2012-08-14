@@ -209,6 +209,54 @@ rel_is_partitioned(Oid relid)
 						ObjectIdGetDatum(relid))) > 0));
 }
 
+/* 
+ * Return an integer list of the attribute numbers of the partitioning
+ * key of the partitioned table identified by the argument or NIL.
+ *
+ * This is similar to get_partition_attrs but is driven by OID and 
+ * the partition catalog, not by a PartitionNode.
+ *
+ * Note: Only returns a non-empty list of keys for partitioned table
+ *       as a whole.  Returns empty for non-partitioned tables or for
+ *       parts of partitioned tables.  Key attributes are attribute
+ *       numbers in the partitioned table.
+ */
+List *
+rel_partition_key_attrs(Oid relid)
+{
+	cqContext	*pcqCtx;
+	HeapTuple tuple;
+	List *pkeys = NIL;
+	
+	/* Table pg_partition is only populated on the entry database, 
+	 * however, we disable calls from outside dispatch to foil use
+	 * of utility mode.  (Full UCS may may this test obsolete.)
+	 */
+	if (Gp_session_role != GP_ROLE_DISPATCH )
+		elog(ERROR, "mode not dispatch");
+	
+	pcqCtx = caql_beginscan(
+							NULL,
+							cql("SELECT * FROM pg_partition "
+								" WHERE parrelid = :1 ",
+								ObjectIdGetDatum(relid)));
+	
+	while ( HeapTupleIsValid( tuple = caql_getnext(pcqCtx)) ) 
+	{
+		Index i;
+		Form_pg_partition p = (Form_pg_partition) GETSTRUCT(tuple);
+		
+		for ( i = 0; i < p->parnatts; i++ )
+		{
+			pkeys = lappend_int(pkeys, (Oid)p->paratts.values[i]);
+		}
+	}
+	
+	caql_endscan(pcqCtx);
+	
+	return pkeys;
+}
+
 /*
  * Is relid a child in a partitioning hierarchy? 
  *

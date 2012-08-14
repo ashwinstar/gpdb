@@ -9398,20 +9398,33 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED &&
 		!hashCompatible)
 	{
-		int			ia = 0;
-
-		if (cdbRelSize(RelationGetRelid(rel)) != 0)
+		if (Gp_role != GP_ROLE_EXECUTE)
 		{
-			for (ia = 0; ia < policy->nattrs; ia++)
+			int			ia = 0;
+			ListCell   *lc;
+			List	   *partkeys;
+			
+			partkeys = rel_partition_key_attrs(rel->rd_id);
+			foreach (lc, partkeys)
 			{
-				if (attnum == policy->attrs[ia])
-				{
-					if (Gp_role != GP_ROLE_EXECUTE)
-						ereport(ERROR,
+				if ( attnum == lfirst_int(lc) )
+					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot alter type of a column used in "
-									"a distribution policy"),
-											   errOmitLocation(true)));
+									"a partitioning key"),
+							 errOmitLocation(true)));
+			}
+
+			if (cdbRelSize(RelationGetRelid(rel)) != 0)
+			{
+				for (ia = 0; ia < policy->nattrs; ia++)
+				{
+					if (attnum == policy->attrs[ia])
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("cannot alter type of a column used in "
+										"a distribution policy"),
+								 errOmitLocation(true)));
 				}
 			}
 		}

@@ -4315,7 +4315,13 @@ alter table at
     add primary key (a);
 
 -- MPP-14471 end
+-- MPP-17606 (using table "at" from above)
 
+alter table at
+    alter column b
+	type numeric;
+	
+-- MPP-17606 end
 -- MPP-17707 start
 create table mpp17707
 ( d int, p int ,x text)
@@ -4333,3 +4339,4 @@ create index idx_abc on mpp17707(upper(x));
 alter table mpp17707 split partition for (0) at (1)
 	into (partition x1, partition x2);
 -- MPP-17707 end
+
