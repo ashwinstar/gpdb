@@ -2628,11 +2628,13 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 
 	/*
 	 * If this is a really long message, it does not really
-	 * make lots of sense to print them all.  Truncate it.
+	 * make lots of sense to print them all.  Truncate it to half the
+	 * number of chunks the syslogger buffers. This will make it more likely
+	 * for the syslogger to be able to receive and reassemble this message.
 	 */
-	if (len >= PIPE_MAX_PAYLOAD * 20)
+	if (len >= PIPE_MAX_PAYLOAD * (CHUNK_SLOTS / 2))
 	{
-		len = PIPE_MAX_PAYLOAD * 20 - 1;
+		len = PIPE_MAX_PAYLOAD * (CHUNK_SLOTS / 2) - 1;
 	}
 
     char *data = buffer->data + buffer->hdr.len;

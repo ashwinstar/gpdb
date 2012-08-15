@@ -1226,7 +1226,7 @@ static void syslogger_handle_chunk(PipeProtoChunk *chunk)
     else if(chunk->hdr.chunk_no != 0)
     {
         /* A chunk without prev, drop it on the floor */
-        elog(LOG, "Out of order or dangling chunks from pid %d", chunk->hdr.pid);
+        elog(LOG, "Out of order log message fragments from pid %d, log message might be truncated", chunk->hdr.pid);
 
         /* remember to free this chunk */
         chunk->hdr.pid = 0;

@@ -70,7 +70,7 @@ typedef struct
 #define PIPE_HEADER_SIZE  sizeof(PipeProtoHeader)
 #define PIPE_MAX_PAYLOAD  ((int) (PIPE_CHUNK_SIZE - PIPE_HEADER_SIZE))
 
-#define CHUNK_SLOTS 20
+#define CHUNK_SLOTS 40
 
 typedef struct 
 {
