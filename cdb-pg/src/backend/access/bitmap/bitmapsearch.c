@@ -497,16 +497,19 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir  __attribute__((unused
 			scanPos->nvec++;
 		}
 
-		scanPos->posvecs =
-			(BMVector)palloc0(sizeof(BMVectorData) * scanPos->nvec);
-		vectorNo = 0;
-		foreach(cell, lovItemPoss)
+		if (scanPos->nvec > 0)
 		{
-			ItemPos		*itemPos = (ItemPos*)lfirst(cell);
+			scanPos->posvecs =
+					(BMVector)palloc0(sizeof(BMVectorData) * scanPos->nvec);
+			vectorNo = 0;
+			foreach(cell, lovItemPoss)
+			{
+				ItemPos		*itemPos = (ItemPos*)lfirst(cell);
 
-			BMVector bmScanPos = &(scanPos->posvecs[vectorNo]);
-			init_scanpos(scan, bmScanPos, itemPos->blockNo, itemPos->offset);
-			vectorNo++;
+				BMVector bmScanPos = &(scanPos->posvecs[vectorNo]);
+				init_scanpos(scan, bmScanPos, itemPos->blockNo, itemPos->offset);
+				vectorNo++;
+			}
 		}
 
 		list_free_deep(lovItemPoss);
@@ -524,6 +527,7 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir  __attribute__((unused
 	if (scanPos->nvec == 0)
 	{
 		scanPos->done = true;
+		Assert(NULL == scanPos->posvecs);
 		return;
 	}
 

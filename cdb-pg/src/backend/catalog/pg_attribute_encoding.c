@@ -271,6 +271,8 @@ RelationGetRelationCompressionFuncs(Relation rel)
 
 	compFuncs =	get_funcs_for_compression(comptype);
 
+	pfree(aoentry);
+
 	return compFuncs;
 
 }
