@@ -6234,6 +6234,7 @@ validate_list_partition(partValidationState *vstate)
 				else
 					llc2 = list_head(coltypes); /* circular */
 			}
+			Assert(list_length(tvals) == nvals);
 
 			/*
 			 * Check for duplicate keys
@@ -6246,14 +6247,16 @@ validate_list_partition(partValidationState *vstate)
 				foreach(lc2, already)
 				{
 					List *item = lfirst(lc2);
-					List *diff;
+					
+					Assert( IsA(item, List) && list_length(item) == nvals );
 
 					/*
-					 * See the difference between the two lists -- yes, this is
-					 * starting to look like Lisp.
+					 * Re MPP-17814
+					 * The lists tvals and item each represent a tuple of nvals
+					 * attribute values.  If they are equal, the new value (tvals)
+					 * is in vstate->allListVals, i.e., tvals has been seen before.
 					 */
-					diff = list_difference(tvals, item);
-					if (list_length(diff) == 0)
+					if ( equal(tvals, item) )
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),

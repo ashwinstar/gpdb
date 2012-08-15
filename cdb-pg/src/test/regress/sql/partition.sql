@@ -4340,3 +4340,36 @@ alter table mpp17707 split partition for (0) at (1)
 	into (partition x1, partition x2);
 -- MPP-17707 end
 
+-- MPP-17814 start
+drop table if exists plst2 cascade;
+-- positive; bug was that it failed whereas it should succeed
+create table plst2
+    (            
+        a integer not null,
+        b integer not null,
+        c integer
+    )                                                                                                                   
+    distributed by (b) 
+    partition by list (a,c)
+    (
+        partition p1 values ( (1, 2), (3, 4) ),
+        partition p2 values ( (5, 6) ),
+        partition p3 values ( (2, 1) )
+    );
+drop table if exists plst2 cascade;
+--negative; test legitimate failure
+create table plst2
+    (            
+        a integer not null,
+        b integer not null,
+        c integer
+    )                                                                                                                   
+    distributed by (b) 
+    partition by list (a,c)
+    (
+        partition p1 values ( (1, 2), (3, 4) ),
+        partition p2 values ( (5, 6) ),
+        partition p3 values ( (1, 2) )
+    );
+-- MPP-17814 end
+
