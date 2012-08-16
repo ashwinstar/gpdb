@@ -112,6 +112,8 @@ specify multiple tables, use multiple table arguments, eg:
 Some people try to plot out graphs and find it a hassle --
 this does not happen with pablo p catso...
 
+pablopcatso generates .dot file output on stdout.
+
 =head1 CAVEATS
 
 	Well the girls would turn the color
@@ -359,31 +361,59 @@ sub dograph
 			push @{$filh->{$vv->{filename}}}, $kk;
 		}
 
-		next unless (exists($vv->{foreign_keys}));
+		next unless (exists($vv->{fk_list}));
 
-		for my $fkdef (@{$vv->{foreign_keys}})
+		for my $fkdef (@{$vv->{fk_list}})
 		{
-			my $fk1 = $fkdef->[0];
-			my $t1  = $fkdef->[1];
-			my $pk1 = $fkdef->[2];
+			my $fk1	  = $fkdef->{fkcols};
+			my $t1	  = $fkdef->{pktable};
+			my $pk1	  = $fkdef->{pkcols};
+			my $fktyp = $fkdef->{type}; # vector or scalar
 
 			# save the fk
 			$refcols->{$kk} = {} unless (exists($refcols->{$kk}));
-			$refcols->{$kk}->{$fk1->[0]} = 1 
-				unless (exists($refcols->{$kk}->{$fk1->[0]}));
 
+			my $fkcols = $fk1->[0];
+
+			if (exists($refcols->{$kk}->{$fkcols}))
+			{
+				$refcols->{$kk}->{$fkcols} = 
+					$refcols->{$kk}->{$fkcols} & 
+					(($fktyp =~ m/scalar/i) ? 1 : 2);
+			}
+			else
+			{
+				$refcols->{$kk}->{$fkcols} = 
+					(($fktyp =~ m/scalar/i) ? 1 : 2);				
+			}
+
+			my $fktnum = $refcols->{$kk}->{$fkcols};
+			
 			# save the pk
 			$refcols->{$t1} = {} unless (exists($refcols->{$t1}));
-			$refcols->{$t1}->{$pk1->[0]} = 1 
-				unless (exists($refcols->{$t1}->{$pk1->[0]}));
+
+			my $pkcols = $pk1->[0];
+
+			if (exists($refcols->{$t1}->{$pkcols}))
+			{
+				$refcols->{$t1}->{$pkcols} = 
+					$refcols->{$t1}->{$pkcols} & 
+					(($fktyp =~ m/scalar/i) ? 1 : 2);
+			}
+			else
+			{
+				$refcols->{$t1}->{$pkcols} = 
+					(($fktyp =~ m/scalar/i) ? 1 : 2);				
+			}
+
+			my $pktnum = $refcols->{$t1}->{$pkcols};
 
 			# save the table reference
 			$reftabs->{$kk} = {} unless (exists($reftabs->{$kk}));
-			$reftabs->{$kk}->{$t1} = 1 
-				unless (exists($reftabs->{$kk}->{$t1}));
+			$reftabs->{$kk}->{$t1} = $fktnum;
+
 			$revreftabs->{$t1} = {} unless (exists($revreftabs->{$t1}));
-			$revreftabs->{$t1}->{$kk} = 1 
-				unless (exists($revreftabs->{$t1}->{$kk}));
+			$revreftabs->{$t1}->{$kk} = $pktnum;
 		}
 
 	} # end for my kk
@@ -542,7 +572,7 @@ pg_tablespace
 		{
 			my $vv = $tabh->{$kk};
 
-			next unless (exists($vv->{foreign_keys}));
+			next unless (exists($vv->{fk_list}));
 
 			if ($glob_tabs)
 			{
@@ -556,41 +586,61 @@ pg_tablespace
 				{
 					for my $t1 (keys(%{$reftabs->{$kk}}))
 					{
-						my $colspec;
+						my $colspec = "";
+						my @csa;
 
-						if (!exists($tabhue->{$t1}))
+						if (exists($tabhue->{$t1}))
 						{
-							$colspec = "";
+							push @csa, $tabhue->{$t1} ;
 						}
-						else
+
+						if ($reftabs->{$kk}->{$t1} > 1)
 						{
-							$colspec = "[ " . $tabhue->{$t1} . " ] ";
+							if ($reftabs->{$kk}->{$t1} == 3)
+							{
+								push @csa, "arrowhead=normalodiamondnormal";
+								push @csa, "arrowtail=odiamondnormal";
+							}
+							else
+							{
+								push @csa, "arrowhead=normalodiamond";
+								push @csa, "arrowtail=odiamond";
+							}
 						}
+
+						$colspec = "[ " . join(" ", @csa) . " ] "
+							if (scalar(@csa));
 
 						push @alledges,  '"' . $kk . '" -> "' . 
 							$t1 . '"' . " $colspec ;\n";
 					}
-				}
-				
+				}				
 			}
 			else
 			{
-				for my $fkdef (@{$vv->{foreign_keys}})
+				for my $fkdef (@{$vv->{fk_list}})
 				{
-					my $fk1 = shift @{$fkdef};
-					my $t1  = shift @{$fkdef};
-					my $pk1 = shift @{$fkdef};
+					my $fk1	  = $fkdef->{fkcols};
+					my $t1	  = $fkdef->{pktable};
+					my $pk1	  = $fkdef->{pkcols};
+					my $fktyp = $fkdef->{type}; # vector or scalar
 
-					my $colspec;
-					
-					if (!exists($tabhue->{$t1}))
+					my $colspec = "";
+					my @csa;
+
+					if (exists($tabhue->{$t1}))
 					{
-						$colspec = "";
+						push @csa, $tabhue->{$t1} ;
 					}
-					else
+
+					if ($fktyp !~ m/scalar/i)
 					{
-						$colspec = "[ " . $tabhue->{$t1} . " ] ";
+						push @csa, "arrowhead=normalodiamond";
+						push @csa, "arrowtail=odiamond";
 					}
+
+					$colspec = "[ " . join(" ", @csa) . " ] "
+						if (scalar(@csa));
 
 					push @alledges, '"' . $kk . '":' . $fk1->[0] . ' -> "' . 
 						$t1 . '":' . $pk1->[0] . " $colspec ;\n";

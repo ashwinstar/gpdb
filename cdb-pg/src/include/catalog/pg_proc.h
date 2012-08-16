@@ -65,6 +65,8 @@
    alter table pg_proc add fk proowner on pg_authid(oid);
    alter table pg_proc add fk prolang on pg_language(oid);
    alter table pg_proc add fk prorettype on pg_type(oid);
+   alter table pg_proc add vector_fk proargtypes on pg_type(oid);
+   alter table pg_proc add vector_fk proallargtypes on pg_type(oid);
 
    TIDYCAT_ENDFAKEDEF
 */

@@ -44,6 +44,7 @@
 
    alter table pg_index add fk indexrelid on pg_class(oid);
    alter table pg_index add fk indrelid on pg_class(oid);
+   alter table pg_index add vector_fk indclass on pg_opclass(oid);
 
    TIDYCAT_ENDFAKEDEF
 */

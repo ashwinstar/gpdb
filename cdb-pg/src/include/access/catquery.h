@@ -31,6 +31,7 @@ typedef struct cqListData
 
 typedef struct cqContextData
 {
+	int			cq_basequery_code; /* corresponding base query */
 	bool		cq_free;		/* if true, free this ctx at endscan */
 	bool		cq_freeScan;	/* if true, free scan at endscan */
 	Oid			cq_relationId;	/* relation id */
