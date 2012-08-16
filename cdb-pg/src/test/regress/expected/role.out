@@ -4,8 +4,8 @@
 -- MPP-15479: ALTER ROLE SET statement
 DROP ROLE IF EXISTS role_112911;
 NOTICE:  role "role_112911" does not exist, skipping
-NOTICE:  role "role_112911" does not exist, skipping  (seg0 localhost:12001 pid=20806)
-NOTICE:  role "role_112911" does not exist, skipping  (seg1 localhost:12002 pid=20807)
+NOTICE:  role "role_112911" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
+NOTICE:  role "role_112911" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
 CREATE ROLE role_112911 WITH LOGIN;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 CREATE SCHEMA common_schema;
@@ -84,3 +84,187 @@ NOTICE:  resource queue required -- using default resource queue "pg_default"
 -- OpenSSL SHA2 returning a different SHA2 to RSA BSAFE!
 --select rolname, rolpassword from pg_authid where rolname = 'sha256';
 drop role sha256;
+/* Create role createdb, createuser, createrole */
+SET password_encryption=off;
+DROP ROLE IF EXISTS role_18122;
+NOTICE:  role "role_18122" does not exist, skipping
+NOTICE:  role "role_18122" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
+NOTICE:  role "role_18122" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+CREATE ROLE role_18122 WITH LOGIN PASSWORD 'pass_18122' createrole createuser createdb;
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolpassword, rolcreaterole, rolcreatedb
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
+ gp_segment_id |  rolname   | rolpassword | rolcreaterole | rolcreatedb 
+---------------+------------+-------------+---------------+-------------
+             0 | role_18122 | pass_18122  | t             | t
+(1 row)
+
+/* Create Role nocreateuser, nocreatedb */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH LOGIN PASSWORD 'pass_18122' nocreateuser nocreatedb;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolpassword, rolcreaterole, rolcreatedb
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
+ gp_segment_id |  rolname   | rolpassword | rolcreaterole | rolcreatedb 
+---------------+------------+-------------+---------------+-------------
+             0 | role_18122 | pass_18122  | f             | f
+(1 row)
+
+/* Create Role encrypted password */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH LOGIN ENCRYPTED PASSWORD 'pass_18122';
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SELECT DISTINCT 0 as gp_segment_id, rolname 
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122' and rolpassword='pass_18122';
+ gp_segment_id | rolname 
+---------------+---------
+(0 rows)
+
+/* Create Role unencrypted password */
+SET password_encryption=on;
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH LOGIN UNENCRYPTED PASSWORD 'pass_18122';
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolpassword
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
+ gp_segment_id |  rolname   | rolpassword 
+---------------+------------+-------------
+             0 | role_18122 | pass_18122
+(1 row)
+
+/* Create role password NULL */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH LOGIN PASSWORD NULL;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolpassword
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
+ gp_segment_id |  rolname   | rolpassword 
+---------------+------------+-------------
+             0 | role_18122 | 
+(1 row)
+
+reset password_encryption;
+/* Create role with superuser */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH SUPERUSER;
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolsuper
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
+ gp_segment_id |  rolname   | rolsuper 
+---------------+------------+----------
+             0 | role_18122 | t
+(1 row)
+
+/* Create role with inherit */
+DROP ROLE IF EXISTS role_18122_inherit;
+NOTICE:  role "role_18122_inherit" does not exist, skipping
+NOTICE:  role "role_18122_inherit" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
+NOTICE:  role "role_18122_inherit" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+CREATE ROLE role_18122_inherit WITH createrole createdb; 
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+create table test_18122(a int, b int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+grant insert on test_18122 to role_18122_inherit; 
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH INHERIT IN ROLE role_18122_inherit; 
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SET ROLE role_18122; 
+INSERT INTO test_18122 values(1, 2);
+RESET ROLE;
+/* Ceate role with noinherit */
+DROP ROLE IF EXISTS role_18122_1;
+NOTICE:  role "role_18122_1" does not exist, skipping
+NOTICE:  role "role_18122_1" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
+NOTICE:  role "role_18122_1" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+CREATE ROLE role_18122_1 WITH NOINHERIT IN ROLE role_18122_inherit; 
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SET ROLE role_18122_1; 
+INSERT INTO test_18122 values(1, 2);
+ERROR:  permission denied for relation test_18122
+RESET ROLE;
+DROP TABLE test_18122;
+DROP ROLE role_18122_1;
+DROP ROLE role_18122;
+DROP ROLE role_18122_inherit;
+/* Create role with nologin */
+DROP RESOURCE QUEUE rq_18122; 
+ERROR:  resource queue "rq_18122" does not exist
+CREATE RESOURCE QUEUE rq_18122 WITH (MEMORY_LIMIT='1GB', ACTIVE_STATEMENTS=4);
+DROP ROLE IF EXISTS role_18122;
+NOTICE:  role "role_18122" does not exist, skipping
+NOTICE:  role "role_18122" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
+NOTICE:  role "role_18122" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+CREATE ROLE role_18122 WITH NOLOGIN CONNECTION LIMIT 10 RESOURCE QUEUE rq_18122 valid until '2013-08-11 11:40:02.969081-07';
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolconnlimit, rolvaliduntil
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
+ gp_segment_id |  rolname   | rolconnlimit |            rolvaliduntil            
+---------------+------------+--------------+-------------------------------------
+             0 | role_18122 |           10 | Sun Aug 11 11:40:02.969081 2013 PDT
+(1 row)
+
+/* Create role with nocreaterole */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH NOLOGIN NOCREATEROLE; 
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SET ROLE role_18122; 
+CREATE ROLE another_role WITH NOLOGIN;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+ERROR:  permission denied to create role
+RESET ROLE;
+/* Create role with admin name_list */
+DROP ROLE IF EXISTS test_role;
+NOTICE:  role "test_role" does not exist, skipping
+NOTICE:  role "test_role" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
+NOTICE:  role "test_role" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+CREATE ROLE test_role WITH NOLOGIN NOCREATEROLE; 
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+/* test_role is a member of role_18122 with admin privileges */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH ADMIN test_role;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+select m.rolname as membername, g.rolname as groupname, admin_option 
+from pg_auth_members, pg_roles m, pg_roles g 
+where g.oid = roleid and m.oid=member;
+ membername | groupname  | admin_option 
+------------+------------+--------------
+ test_role  | role_18122 | t
+(1 row)
+
+ALTER GROUP role_18122 drop USER test_role;
+select m.rolname as membername, g.rolname as groupname, admin_option 
+from pg_auth_members, pg_roles m, pg_roles g 
+where g.oid = roleid and m.oid=member;
+ membername | groupname | admin_option 
+------------+-----------+--------------
+(0 rows)
+
+/* Create role with role name_list */
+DROP ROLE IF EXISTS test_role; 
+CREATE ROLE test_role WITH NOLOGIN NOCREATEROLE; 
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+/* test_role is added as a member of role_18122 */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH ROLE test_role;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+select m.rolname as membername, g.rolname as groupname, admin_option 
+from pg_auth_members, pg_roles m, pg_roles g 
+where g.oid = roleid and m.oid=member;
+ membername | groupname  | admin_option 
+------------+------------+--------------
+ test_role  | role_18122 | f
+(1 row)
+
+/* Create role with createexttable exttable_auth_list */
+DROP ROLE IF EXISTS role_18122;
+CREATE ROLE role_18122 WITH login createexttable (type='writable', protocol='gpfdist');
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SELECT DISTINCT 0 as gp_segment_id, rolname, rolcreaterextgpfd, rolcreaterexthttp, 
+rolcreatewextgpfd, rolcreaterexthdfs
+  FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
+ gp_segment_id |  rolname   | rolcreaterextgpfd | rolcreaterexthttp | rolcreatewextgpfd | rolcreaterexthdfs 
+---------------+------------+-------------------+-------------------+-------------------+-------------------
+             0 | role_18122 | f                 | f                 | t                 | f
+(1 row)
+
+DROP ROLE role_18122; 
+DROP ROLE test_role; 
+DROP RESOURCE QUEUE rq_18122; 

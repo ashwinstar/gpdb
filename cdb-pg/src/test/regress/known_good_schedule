@@ -178,6 +178,7 @@ test: timeseries
 test: uuid
 test: caql
 test: icudp_no_fault_injection
+test: parser
 ignore: icudp_full
 #
 # gpcheckmirrorseg should be last to check mirror integrity
