@@ -4,8 +4,8 @@
 -- MPP-15479: ALTER ROLE SET statement
 DROP ROLE IF EXISTS role_112911;
 NOTICE:  role "role_112911" does not exist, skipping
-NOTICE:  role "role_112911" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
-NOTICE:  role "role_112911" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+NOTICE:  role "role_112911" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=57858)
+NOTICE:  role "role_112911" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=57857)
 CREATE ROLE role_112911 WITH LOGIN;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 CREATE SCHEMA common_schema;
@@ -88,8 +88,8 @@ drop role sha256;
 SET password_encryption=off;
 DROP ROLE IF EXISTS role_18122;
 NOTICE:  role "role_18122" does not exist, skipping
-NOTICE:  role "role_18122" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
-NOTICE:  role "role_18122" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+NOTICE:  role "role_18122" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=57857)
+NOTICE:  role "role_18122" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=57858)
 CREATE ROLE role_18122 WITH LOGIN PASSWORD 'pass_18122' createrole createuser createdb;
 SELECT DISTINCT 0 as gp_segment_id, rolname, rolpassword, rolcreaterole, rolcreatedb
   FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
@@ -156,8 +156,8 @@ SELECT DISTINCT 0 as gp_segment_id, rolname, rolsuper
 /* Create role with inherit */
 DROP ROLE IF EXISTS role_18122_inherit;
 NOTICE:  role "role_18122_inherit" does not exist, skipping
-NOTICE:  role "role_18122_inherit" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
-NOTICE:  role "role_18122_inherit" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+NOTICE:  role "role_18122_inherit" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=57857)
+NOTICE:  role "role_18122_inherit" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=57858)
 CREATE ROLE role_18122_inherit WITH createrole createdb; 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 create table test_18122(a int, b int);
@@ -173,8 +173,8 @@ RESET ROLE;
 /* Ceate role with noinherit */
 DROP ROLE IF EXISTS role_18122_1;
 NOTICE:  role "role_18122_1" does not exist, skipping
-NOTICE:  role "role_18122_1" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
-NOTICE:  role "role_18122_1" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+NOTICE:  role "role_18122_1" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=57858)
+NOTICE:  role "role_18122_1" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=57857)
 CREATE ROLE role_18122_1 WITH NOINHERIT IN ROLE role_18122_inherit; 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 SET ROLE role_18122_1; 
@@ -191,14 +191,14 @@ ERROR:  resource queue "rq_18122" does not exist
 CREATE RESOURCE QUEUE rq_18122 WITH (MEMORY_LIMIT='1GB', ACTIVE_STATEMENTS=4);
 DROP ROLE IF EXISTS role_18122;
 NOTICE:  role "role_18122" does not exist, skipping
-NOTICE:  role "role_18122" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
-NOTICE:  role "role_18122" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
-CREATE ROLE role_18122 WITH NOLOGIN CONNECTION LIMIT 10 RESOURCE QUEUE rq_18122 valid until '2013-08-11 11:40:02.969081-07';
+NOTICE:  role "role_18122" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=57857)
+NOTICE:  role "role_18122" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=57858)
+CREATE ROLE role_18122 WITH NOLOGIN CONNECTION LIMIT 10 RESOURCE QUEUE rq_18122 valid until '2011-08-11';
 SELECT DISTINCT 0 as gp_segment_id, rolname, rolconnlimit, rolvaliduntil
   FROM gp_dist_random('pg_authid') WHERE rolname='role_18122';
- gp_segment_id |  rolname   | rolconnlimit |            rolvaliduntil            
----------------+------------+--------------+-------------------------------------
-             0 | role_18122 |           10 | Sun Aug 11 11:40:02.969081 2013 PDT
+ gp_segment_id |  rolname   | rolconnlimit |        rolvaliduntil         
+---------------+------------+--------------+------------------------------
+             0 | role_18122 |           10 | Thu Aug 11 00:00:00 2011 PDT
 (1 row)
 
 /* Create role with nocreaterole */
@@ -213,8 +213,8 @@ RESET ROLE;
 /* Create role with admin name_list */
 DROP ROLE IF EXISTS test_role;
 NOTICE:  role "test_role" does not exist, skipping
-NOTICE:  role "test_role" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=14715)
-NOTICE:  role "test_role" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=14716)
+NOTICE:  role "test_role" does not exist, skipping  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=57857)
+NOTICE:  role "test_role" does not exist, skipping  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=57858)
 CREATE ROLE test_role WITH NOLOGIN NOCREATEROLE; 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 /* test_role is a member of role_18122 with admin privileges */
