@@ -854,6 +854,14 @@ select proname, prodataaccess from pg_proc where proname = 'func1';
  func1   | c
 (1 row)
 
+-- check prodataaccess in pg_attribute
+select relname, attname, attlen from pg_class c, pg_attribute 
+where attname = 'prodataaccess' and attrelid = c.oid and c.relname = 'pg_proc';
+ relname |    attname    | attlen 
+---------+---------------+--------
+ pg_proc | prodataaccess |      1
+(1 row)
+
 create function func2(a anyelement, b anyelement = null, flag bool = true) 
 returns anyelement as
 $$

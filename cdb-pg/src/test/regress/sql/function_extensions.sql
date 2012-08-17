@@ -384,6 +384,10 @@ $$ language sql immutable contains sql;
 -- check prodataaccess column in pg_proc 
 select proname, prodataaccess from pg_proc where proname = 'func1';
 
+-- check prodataaccess in pg_attribute
+select relname, attname, attlen from pg_class c, pg_attribute 
+where attname = 'prodataaccess' and attrelid = c.oid and c.relname = 'pg_proc';
+
 create function func2(a anyelement, b anyelement = null, flag bool = true) 
 returns anyelement as
 $$
