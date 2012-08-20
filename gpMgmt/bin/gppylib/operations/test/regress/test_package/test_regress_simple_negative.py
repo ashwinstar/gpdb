@@ -4,7 +4,7 @@ import os
 import tarfile
 
 from gppylib.commands.base import ExecutionError
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, GppkgSpec, RPMSpec, ARCH, OS, GPDB_VERSION
+from gppylib.operations.test.regress.test_package import GppkgTestCase, unittest, GppkgSpec, RPMSpec, ARCH, OS, GPDB_VERSION
 
 class SimpleNegativeTestCase(GppkgTestCase):
 #    @unittest.expectedFailure

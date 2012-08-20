@@ -3,7 +3,7 @@
 import os
 
 from gppylib.commands.base import ExecutionError
-from gppylib.operations.test.test_package import GppkgTestCase, skipIfNoStandby, unittest, GppkgSpec, RPMSpec, ARCHIVE_PATH, RPM_DATABASE, run_command
+from gppylib.operations.test.regress.test_package import GppkgTestCase, skipIfNoStandby, unittest, GppkgSpec, RPMSpec, ARCHIVE_PATH, RPM_DATABASE, run_command
 
 class SharedDependenciesTestCase(GppkgTestCase):
     """Covers install/update/remove of gppkgs which have a shared dependency"""

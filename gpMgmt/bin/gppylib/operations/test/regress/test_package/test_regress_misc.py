@@ -3,7 +3,7 @@
 import os
 import shutil
 
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, run_command, GPHOME
+from gppylib.operations.test.regress.test_package import GppkgTestCase, unittest, run_command, GPHOME
 
 class MiscTestCase(GppkgTestCase):
     """Covers all test cases which do not fall under any specific category"""

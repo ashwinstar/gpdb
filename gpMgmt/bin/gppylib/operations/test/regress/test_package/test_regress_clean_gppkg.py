@@ -2,7 +2,7 @@
 
 import os
 
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, skipIfNoStandby, get_host_list, ARCHIVE_PATH, run_command, skipIfSingleNode
+from gppylib.operations.test.regress.test_package import GppkgTestCase, unittest, skipIfNoStandby, get_host_list, ARCHIVE_PATH, run_command, skipIfSingleNode
 from gppylib.operations.unix import RemoveRemoteFile, CheckRemoteFile
 
 class CleanGppkgTestCase(GppkgTestCase):

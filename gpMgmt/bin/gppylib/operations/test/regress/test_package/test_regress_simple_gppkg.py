@@ -2,7 +2,7 @@
 
 import unittest2 as unittest
 
-from gppylib.operations.test.test_package import GppkgTestCase, GppkgSpec, BuildGppkg, RPMSpec, BuildRPM, run_command, run_remote_command
+from gppylib.operations.test.regress.test_package import GppkgTestCase, GppkgSpec, BuildGppkg, RPMSpec, BuildRPM, run_command, run_remote_command
 
 class SimpleGppkgTestCase(GppkgTestCase):
     """Covers simple build/install/remove/update test cases"""

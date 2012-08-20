@@ -5,7 +5,7 @@ import tarfile
 
 from contextlib import closing
 from gppylib.commands.base import ExecutionError
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, RPMSpec, GppkgSpec, run_command, OS, GPDB_VERSION
+from gppylib.operations.test.regress.test_package import GppkgTestCase, unittest, RPMSpec, GppkgSpec, run_command, OS, GPDB_VERSION
 
 class QueryTestCase(GppkgTestCase):
     """Test the query option of gppkg"""

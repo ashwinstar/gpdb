@@ -9,7 +9,7 @@ from gppylib.commands.unix import Scp
 from gppylib.commands.base import ExecutionError
 from gppylib.operations.package import GpScp
 from gppylib.operations.unix import RemoveRemoteFile
-from gppylib.operations.test.test_package import GppkgTestCase, unittest, get_host_list, ARCHIVE_PATH, RPM_DATABASE, run_command, skipIfSingleNode
+from gppylib.operations.test.regress.test_package import GppkgTestCase, unittest, get_host_list, ARCHIVE_PATH, RPM_DATABASE, run_command, skipIfSingleNode
 
 class MuckWithInternalsTestCase(GppkgTestCase):
     """
