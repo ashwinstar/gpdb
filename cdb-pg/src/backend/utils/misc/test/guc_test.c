@@ -9,6 +9,8 @@
 #define assert_null(c) assert_true(c == NULL)
 #define assert_not_null(c) assert_true(c != NULL)
 
+#define VARLEN(d) VARSIZE(d)-VARHDRSZ
+
 /* Values for text datum */
 #define TEXT_TYPLEN		-1	
 #define TEXT_TYPBYVAL	false
@@ -103,19 +105,22 @@ test__GUCArrayReset__all_non_userset_guc(void **state)
 	i = 1;
 	d = array_ref(out, 1, &i, -1, TEXT_TYPLEN, TEXT_TYPBYVAL, TEXT_TYPALIGN, &isnull);
 	assert_false(isnull);
-	assert_string_equal(VARDATA(d), "log_error_verbosity=terse");
+	assert_int_equal(strlen("log_error_verbosity=terse"), VARLEN(d));
+	assert_memory_equal(VARDATA(d), "log_error_verbosity=terse", VARLEN(d));
 
 	/* check element 2 */
 	i = 2;
 	d = array_ref(out, 1, &i, -1, TEXT_TYPLEN, TEXT_TYPBYVAL, TEXT_TYPALIGN, &isnull);
 	assert_false(isnull);
-	assert_string_equal(VARDATA(d), "gp_log_format=csv");
+	assert_int_equal(strlen("gp_log_format=csv"), VARLEN(d));
+	assert_memory_equal(VARDATA(d), "gp_log_format=csv", VARLEN(d));
 
 	/* check element 3 */
 	i = 3;
 	d = array_ref(out, 1, &i, -1, TEXT_TYPLEN, TEXT_TYPBYVAL, TEXT_TYPALIGN, &isnull);
 	assert_false(isnull);
-	assert_string_equal(VARDATA(d), "upgrade_mode=true");
+	assert_int_equal(strlen("upgrade_mode=true"), VARLEN(d));
+	assert_memory_equal(VARDATA(d), "upgrade_mode=true", VARLEN(d));
 
 	list_free(guc_list);
 	pfree(in);
@@ -131,6 +136,7 @@ test__GUCArrayReset__mix_guc(void **state)
 {
 	ArrayType  *in;
 	ArrayType  *out;
+	Datum		d;
 	List	   *guc_list;
 	int			elems;
 
@@ -145,7 +151,9 @@ test__GUCArrayReset__mix_guc(void **state)
 	out = GUCArrayReset(in);
 	assert_not_null(out);
 	assert_int_equal(ARR_DIMS(out)[0], 1);
-	assert_string_equal(VARDATA(PointerGetDatum(ARR_DATA_PTR(out))), "log_error_verbosity=verbose");
+	d = PointerGetDatum(ARR_DATA_PTR(out));
+	assert_int_equal(strlen("log_error_verbosity=verbose"), VARLEN(d));
+	assert_memory_equal(VARDATA(d), "log_error_verbosity=verbose", VARLEN(d));
 
 	list_free(guc_list);
 	pfree(in);
@@ -161,6 +169,7 @@ test__GUCArrayReset__invalid_guc(void **state)
 {
 	ArrayType  *in;
 	ArrayType  *out;
+	Datum		d;
 	List       *guc_list;
 	int         elems;
 
@@ -175,7 +184,10 @@ test__GUCArrayReset__invalid_guc(void **state)
 	out = GUCArrayReset(in);
 	assert_not_null(out);
 	assert_int_equal(ARR_DIMS(out)[0], 1);
-	assert_string_equal(VARDATA(PointerGetDatum(ARR_DATA_PTR(out))), "gp_log_format=text");
+
+	d = PointerGetDatum(ARR_DATA_PTR(out));
+	assert_int_equal(strlen("gp_log_format=text"), VARLEN(d));
+	assert_memory_equal(VARDATA(d), "gp_log_format=text", VARLEN(d));
 
 	list_free(guc_list);
 	pfree(in);
