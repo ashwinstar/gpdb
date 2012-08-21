@@ -29,17 +29,20 @@ class GpsshTestCase(unittest.TestCase):
         """Verify that gppsh handles sighup 
            and terminates cleanly.
         """
-        cmd = Command(name='run ssh', cmdStr='gpssh -h localhost -e sleep %s' % self.SECONDS_TO_SLEEP)
+        cmd = Command(name='run ssh', cmdStr='gpssh -h localhost', stdin='sleep %s' % self.SECONDS_TO_SLEEP)
 
         pool = WorkerPool()
         pool.addCommand(cmd)
 
         pid = self.getpid(cmd.cmdStr)
         self.assertNotEqual(pid, None) 
-        self.assertNotEqual(None, self.SSH_COMMAND) 
-
+        #Wait for ssh process to get spawned
+        time.sleep(2)
+        self.assertNotEqual(None, self.getpid(self.SSH_COMMAND))
         os.kill(int(pid), signal.SIGHUP)
 
+        #Wait for the gpssh process to complete
+        time.sleep(self.SECONDS_TO_SLEEP)
         self.assertEqual(None, self.getpid(self.SSH_COMMAND))
 
 if __name__ == "__main__":
