@@ -17,7 +17,7 @@ class ConcurrentFilespaceMoveTestCase(unittest.TestCase):
         self.pool = None
         self.pool = WorkerPool()
 
-    def cleanUp(self):
+    def tearDown(self):
         if self.pool:
             self.pool.haltWork()
             self.pool.joinWorkers()
