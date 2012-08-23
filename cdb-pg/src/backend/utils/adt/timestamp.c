@@ -74,8 +74,6 @@ static ArrayType *interval_amalg_demalg(ArrayType  *aTransArray,
 										ArrayType  *bTransArray,
 										bool is_amalg);
 static inline int interval_cmp_internal(const Interval *interval1, const Interval *interval2);
-static bool interval_div_internal(Interval *interval1, Interval *interval2, 
-								  float8 *quo, Interval *rem);
 static inline Timestamp timestamp_offset_internal(Timestamp timestamp, Interval *span);
 static inline Timestamp timestamp_offset_multiple(Timestamp base, Interval *step, int64 count);
 static inline TimestampTz timestamptz_offset_internal(TimestampTz timestamp, Interval *span);
@@ -2320,7 +2318,7 @@ interval_cmp_internal(const Interval *interval1, const Interval *interval2)
  * The result indicates success or failure.  The caller should avoid calls that
  * might fail, but he we take precautions anyway.
  */
-static bool
+bool
 interval_div_internal(Interval *interval1, Interval *interval2, float8 *quo, Interval *rem)
 {
 	TimeOffset	span1 = interval_cmp_value(interval1);
@@ -3140,23 +3138,23 @@ interval_mi(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INTERVAL_P(result);
 }
-
-Datum
-interval_mul(PG_FUNCTION_ARGS)
+/* 
+ * Common code to multiply a float8 by an Interval.
+ */
+Interval *
+interval_mul_internal(float8 factor, Interval *span)
 {
-	Interval   *span = PG_GETARG_INTERVAL_P(0);
-	float8		factor = PG_GETARG_FLOAT8(1);
 	double		month_remainder_days,
-				sec_remainder;
+	sec_remainder;
 	int32		orig_month = span->month,
-				orig_day = span->day;
+	orig_day = span->day;
 	Interval   *result;
-
+	
 	result = (Interval *) palloc(sizeof(Interval));
-
+	
 	result->month = (int32) (span->month * factor);
 	result->day = (int32) (span->day * factor);
-
+	
 	/*
 	 * The above correctly handles the whole-number part of the month and day
 	 * products, but we have to do something with any fractional part
@@ -3166,7 +3164,7 @@ interval_mul(PG_FUNCTION_ARGS)
 	 * so by the representation.  The user can choose to cascade up later,
 	 * using justify_hours and/or justify_days.
 	 */
-
+	
 	/*
 	 * Fractional months full days into days.
 	 *
@@ -3178,9 +3176,9 @@ interval_mul(PG_FUNCTION_ARGS)
 	month_remainder_days = (orig_month * factor - result->month) * DAYS_PER_MONTH;
 	month_remainder_days = TSROUND(month_remainder_days);
 	sec_remainder = (orig_day * factor - result->day +
-		   month_remainder_days - (int) month_remainder_days) * SECS_PER_DAY;
+					 month_remainder_days - (int) month_remainder_days) * SECS_PER_DAY;
 	sec_remainder = TSROUND(sec_remainder);
-
+	
 	/*
 	 * Might have 24:00:00 hours due to rounding, or >24 hours because of time
 	 * cascade from months and days.  It might still be >24 if the combination
@@ -3191,7 +3189,7 @@ interval_mul(PG_FUNCTION_ARGS)
 		result->day += (int) (sec_remainder / SECS_PER_DAY);
 		sec_remainder -= (int) (sec_remainder / SECS_PER_DAY) * SECS_PER_DAY;
 	}
-
+	
 	/* cascade units down */
 	result->day += (int32) month_remainder_days;
 #ifdef HAVE_INT64_TIMESTAMP
@@ -3199,7 +3197,19 @@ interval_mul(PG_FUNCTION_ARGS)
 #else
 	result->time = span->time * factor + sec_remainder;
 #endif
+	
+	return result;
+}
 
+Datum
+interval_mul(PG_FUNCTION_ARGS)
+{
+	Interval   *span = PG_GETARG_INTERVAL_P(0);
+	float8		factor = PG_GETARG_FLOAT8(1);
+	Interval   *result;
+	
+	result = interval_mul_internal(factor, span);
+	
 	PG_RETURN_INTERVAL_P(result);
 }
 
@@ -3211,6 +3221,67 @@ mul_d_interval(PG_FUNCTION_ARGS)
 	Datum		span = PG_GETARG_DATUM(1);
 
 	return DirectFunctionCall2(interval_mul, span, factor);
+}
+
+/*
+ * interval_li_fraction
+ *
+ * What fraction of interval <x0, x1> does <x0, x> represent?
+ */
+float8
+interval_li_fraction(Interval *x, Interval *x0, Interval *x1, bool *notnull)
+{
+	float8 result;
+	Interval diffx;
+	Interval diffx1;
+	bool nn = true;
+	
+	diffx.month = x->month - x0->month;
+	diffx.day = x->day - x0->day;
+	diffx.time = x->time - x0->time;
+	
+	diffx1.month = x1->month - x0->month;
+	diffx1.day = x1->day - x0->day;
+	diffx1.time = x1->time - x0->time;
+	
+	if ( ! interval_div_internal(&diffx, &diffx1, &result, NULL) )
+	{
+		nn = false;
+		result = NAN;
+	}
+	
+	if ( notnull )
+		*notnull = nn;
+	return result;
+}
+
+/*
+ * interval_li_value
+ *
+ * What interval value lies fraction <f> of the way into interval
+ * <y0, y1>? 
+ * 
+ * Note
+ *		li_value(0.0, y0, y1) --> y0
+ *		li_value(1.0, y0, y1) --> y1
+ */
+Interval *
+interval_li_value(float8 f, Interval *y0, Interval *y1)
+{
+	Interval diffy;
+	Interval *y;
+	
+	diffy.month = y1->month - y0->month;
+	diffy.day = y1->day - y0->day;
+	diffy.time = y1->time - y0->time;
+	
+	y = interval_mul_internal(f, &diffy);
+	
+	y->month += y0->month;
+	y->day += y0->day;
+	y->time += y0->time;
+	
+	return y;
 }
 
 Datum
@@ -3698,6 +3769,99 @@ timestamptz_age(PG_FUNCTION_ARGS)
 	PG_RETURN_INTERVAL_P(result);
 }
 
+/*
+ * timestamp_li_fraction
+ *
+ * What fraction of interval <x0, x1> does <x0, x> represent?
+ */
+float8
+timestamp_li_fraction(Timestamp x, Timestamp x0, Timestamp x1, bool *notnull)
+{
+	float8 result;
+	Interval diffx;
+	Interval diffx1;
+	bool nn = true;
+	
+	if (TIMESTAMP_NOT_FINITE(x) || TIMESTAMP_NOT_FINITE(x0) || TIMESTAMP_NOT_FINITE(x1) )
+		nn = false;
+	
+	/* We do it this way to conserve precision and semantics. */
+	
+	diffx.time = x - x0;
+	diffx.month = 0;
+	diffx.day = 0;
+	
+	diffx1.time = x1 - x0;
+	diffx1.month = 0;
+	diffx1.day = 0;
+	
+	if ( ! interval_div_internal(&diffx, &diffx1, &result, NULL) )
+	{
+		nn = false;
+		result = NAN;
+	}
+	
+	if ( notnull )
+		*notnull = nn;
+	return result;
+}
+
+/*
+ * timestamp_li_value
+ *
+ * What interval value lies fraction <f> of the way into interval
+ * <y0, y1>? 
+ * 
+ * Note
+ *		li_value(0.0, y0, y1) --> y0
+ *		li_value(1.0, y0, y1) --> y1
+ */
+Timestamp
+timestamp_li_value(float8 f, Timestamp y0, Timestamp y1)
+{
+	Timestamp y;
+	Interval diffy;
+	Interval *offset;
+	
+	diffy.month = 0;
+	diffy.day = 0;
+	diffy.time = y1 - y0;
+	
+	offset = interval_mul_internal(f, &diffy);
+	y = timestamp_offset_internal(y0, offset);
+	pfree(offset);
+	
+	return y;
+}
+
+/*
+ * timestamptz_li_fraction
+ *
+ * What fraction of interval <x0, x1> does <x0, x> represent?
+ */
+float8
+timestamptz_li_fraction(TimestampTz x, TimestampTz x0, TimestampTz x1, bool *notnull)
+{
+	/* Internally identical to Timestamp */
+	return timestamp_li_fraction(x, x0, x1, notnull);
+}
+
+/*
+ * timestamptz_li_value
+ *
+ * What interval value lies fraction <f> of the way into interval
+ * <y0, y1>? 
+ * 
+ * Note
+ *		li_value(0.0, y0, y1) --> y0
+ *		li_value(1.0, y0, y1) --> y1
+ */
+Timestamp
+timestamptz_li_value(float8 f, TimestampTz y0, TimestampTz y1)
+{
+	/* Internally identical to Timestamp */
+	return timestamp_li_value(f, y0, y1);
+}
 
 /*----------------------------------------------------------
  *	Conversion operators.
