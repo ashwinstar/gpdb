@@ -190,12 +190,12 @@ checkcode: pylint
 check-regress:
 	@echo "Running regression tests..."
 	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
-	gppylib/unit2 discover --verbose -s gppylib -p "test_regress*.py" 2> $(SRC)/../gpMgmt_testregress_results.log 1> $(SRC)/../gpMgmt_testregress_output.log
+	gppylib/gpunit discover --verbose -s gppylib -p "test_regress*.py" 2> $(SRC)/../gpMgmt_testregress_results.log 1> $(SRC)/../gpMgmt_testregress_output.log
 
 check:
 	@echo "Running unit tests..."
 	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
-	gppylib/unit2 discover --verbose -s gppylib -p "test_unit*.py" 2> $(SRC)/../gpMgmt_testunit_results.log 1> $(SRC)/../gpMgmt_testunit_output.log
+	gppylib/gpunit discover --verbose -s gppylib -p "test_unit*.py" 2> $(SRC)/../gpMgmt_testunit_results.log 1> $(SRC)/../gpMgmt_testunit_output.log
 
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \
