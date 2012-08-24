@@ -302,7 +302,8 @@ class GpInjectFaultProgram:
 			      "skip (inject skip i.e. skip checkpoint), " \
 			      "memory_full (all memory is consumed when injected), " \
 			      "reset (remove fault injection), status (report fault injection status), " \
-			      "panic_suppress (inject suppressed PANIC in critical section) ")
+			      "panic_suppress (inject suppressed PANIC in critical section), "
+			      "segv (inject a SEGV) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
                             help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default." \
