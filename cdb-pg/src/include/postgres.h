@@ -509,7 +509,6 @@ extern int ExceptionalCondition(const char *conditionName,
 					 
 extern int SyncAgentMain(int argc, char **argv, const char *username);
 extern void CdbProgramErrorHandler(SIGNAL_ARGS);
-extern void StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS);
 extern void gp_set_thread_sigmasks(void);
 
 

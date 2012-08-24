@@ -565,6 +565,9 @@ static char *gp_test_deadlock_hazard_report_level_str;
 bool gp_cancel_query_print_log;
 int gp_cancel_query_delay_time;
 
+/* Enable the SEGV/BUS/ILL signal handler that are async safe. */
+bool gp_crash_handler_async = false;
+
 /* partitioning GUC */
 bool gp_partitioning_dynamic_selection_log;
 
@@ -3612,6 +3615,16 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_enable_inheritance,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_crash_handler_async", PGC_USERSET, UNGROUPED,
+		 gettext_noop("Enable async-safe SEGV/BUS/ILL signal handler"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_crash_handler_async,
 		false, NULL, NULL
 	},
 

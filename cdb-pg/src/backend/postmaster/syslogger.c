@@ -50,6 +50,9 @@
 
 #define READ_BUF_SIZE (2 * PIPE_CHUNK_SIZE)
 
+/* The maximum bytes for error message */
+#define ERROR_MESSAGE_MAX_SIZE 200
+
 extern bool Gp_entry_postmaster;
 
 /*
@@ -1051,6 +1054,240 @@ syslogger_write_int32(bool test0, const char *prefix, int32 i, bool amsyslogger,
 	}
 }
 
+/*
+ * setErrorDataFromSegvChunk
+ *   Fill in the given error data with the chunk that contains the message
+ * sent in a SEGV/BUS/ILL handler.
+ */
+static void
+fillinErrorDataFromSegvChunk(GpErrorData *errorData, PipeProtoChunk *chunk)
+{
+	Assert(chunk != NULL &&
+		   chunk->hdr.is_segv_msg == 't' &&
+		   chunk->hdr.is_last == 't');
+
+	GpSegvErrorData *segvData = (GpSegvErrorData *)chunk->data;
+	
+	errorData->fix_fields.session_start_time = segvData->session_start_time;
+	errorData->fix_fields.send_alert = 't';
+	errorData->fix_fields.omit_location = 'f';
+
+	/* This field is always true now. We should remove this eventually. */
+	errorData->fix_fields.gp_is_primary = 't';
+	errorData->fix_fields.gp_session_id = segvData->gp_session_id;
+	errorData->fix_fields.gp_command_count = segvData->gp_command_count;
+	errorData->fix_fields.gp_segment_id = segvData->gp_segment_id;
+	errorData->fix_fields.slice_id = segvData->slice_id;
+	errorData->fix_fields.error_cursor_pos = 0;
+	errorData->fix_fields.internal_query_pos = 0;
+	errorData->fix_fields.error_fileline = 0;
+	errorData->fix_fields.top_trans_id = 0;
+	errorData->fix_fields.dist_trans_id = 0;
+	errorData->fix_fields.local_trans_id = 0;
+	errorData->fix_fields.subtrans_id = 0;
+
+	errorData->username = NULL;
+	errorData->databasename = NULL;
+	errorData->remote_host = NULL;
+	errorData->remote_port = NULL;
+	errorData->error_severity = "PANIC";
+	errorData->sql_state = "XX000";
+	errorData->error_message = palloc0(ERROR_MESSAGE_MAX_SIZE);
+
+	const char *signalName = SegvBusIllName(segvData->signal_num);
+	Assert(signalName != NULL);
+	snprintf(errorData->error_message, ERROR_MESSAGE_MAX_SIZE,
+			 "Unexpected internal error: %s received signal %s",
+			 (Gp_entry_postmaster && Gp_role == GP_ROLE_DISPATCH) ? "Master process" : "Segment process",
+			 signalName);
+	
+	errorData->error_detail = NULL;
+	errorData->error_hint = NULL;
+	errorData->internal_query = NULL;
+	errorData->error_context = NULL;
+	errorData->debug_query_string = NULL;
+	errorData->error_func_name = NULL;
+	errorData->error_filename = NULL;
+	errorData->stacktrace = NULL;
+	
+	if (segvData->frame_depth > 0)
+	{
+		void *stackAddressArray = (chunk->data + MAXALIGN(sizeof(GpSegvErrorData)));
+		void **stackAddresses = stackAddressArray;
+		errorData->stacktrace = gp_stacktrace(stackAddresses, segvData->frame_depth);
+	}
+}
+
+/*
+ * freeErrorDataFields
+ *   Free the palloc'ed fields inside GpErrorData.
+ *
+ * This is the counterpart for fillinErrorDataFromSegvChunk. Currently, only error message and
+ * stacktrace need to be freed.
+ */
+static void
+freeErrorDataFields(GpErrorData *errorData)
+{
+	pfree(errorData->error_message);
+	
+	if (errorData->stacktrace != NULL)
+	{
+		pfree(errorData->stacktrace);
+	}
+}
+
+/*
+ * syslogger_write_str_with_comma
+ *   Write the given string to the log. A comma is appended after the given string.
+ *
+ * If csv is true, double quotes are added around the string.
+ */
+static void
+syslogger_write_str_with_comma(const char *data, bool amsyslogger, bool csv)
+{
+	if (data != NULL)
+	{
+		if (csv)
+		{
+			write_syslogger_file_binary("\"", 1);
+		}
+
+		syslogger_write_str(data, strlen(data), amsyslogger, csv);
+
+		if (csv)
+		{
+			write_syslogger_file_binary("\"", 1);
+		}
+	}
+	
+	write_syslogger_file_binary(",", 1);
+}
+
+/*
+ * syslogger_write_errordata
+ *   Write the GpErrorData to the log.
+ */
+static void
+syslogger_write_errordata(PipeProtoHeader *chunkHeader, GpErrorData *errorData, bool csv)
+{
+	syslogger_append_current_timestamp(true);
+	
+	/* username */
+	syslogger_write_str_with_comma(errorData->username, true, csv);
+	
+	/* databasename */
+	syslogger_write_str_with_comma(errorData->databasename, true, csv);
+	
+	/* Process id, thread id */
+	syslogger_write_int32(false, "p", chunkHeader->pid, true, true);
+	syslogger_write_int32(false, "th", chunkHeader->thid, true, true);
+	
+	/* Remote host */
+	syslogger_write_str_with_comma(errorData->remote_host, true, csv);
+	/* Remote port */
+	syslogger_write_str_with_comma(errorData->remote_port, true, csv);
+	
+	/* session start timestamp */
+	syslogger_append_timestamp(errorData->fix_fields.session_start_time, true, true);
+	
+	/* Transaction id */
+	syslogger_write_int32(false, "", errorData->fix_fields.top_trans_id, true, true);
+	
+	/* GPDB specific options. */
+	syslogger_write_int32(true, "con", errorData->fix_fields.gp_session_id, true, true); 
+	syslogger_write_int32(true, "cmd", errorData->fix_fields.gp_command_count, true, true); 
+	syslogger_write_int32(false, errorData->fix_fields.gp_is_primary == 't'? "seg" : "mir", errorData->fix_fields.gp_segment_id,
+						  true, true); 
+	syslogger_write_int32(true, "slice", errorData->fix_fields.slice_id, true, true); 
+	syslogger_write_int32(true, "dx", errorData->fix_fields.dist_trans_id, true, true);
+	syslogger_write_int32(true, "x", errorData->fix_fields.local_trans_id, true, true); 
+	syslogger_write_int32(true, "sx", errorData->fix_fields.subtrans_id, true, true); 
+	
+	/* error severity */
+	syslogger_write_str_with_comma(errorData->error_severity, true, csv);
+	/* sql state code */
+	syslogger_write_str_with_comma(errorData->sql_state, true, csv);
+	/* errmsg */
+	syslogger_write_str_with_comma(errorData->error_message, true, csv);
+	/* errdetail */
+	syslogger_write_str_with_comma(errorData->error_detail, true, csv);
+	/* errhint */
+	syslogger_write_str_with_comma(errorData->error_hint, true, csv);
+	/* internal query */
+	syslogger_write_str_with_comma(errorData->internal_query, true, csv);
+	/* internal query pos */
+	syslogger_write_int32(true, "", errorData->fix_fields.internal_query_pos, true, true);
+	/* err ctxt */
+	syslogger_write_str_with_comma(errorData->error_context, true, csv);
+	/* user query */
+	syslogger_write_str_with_comma(errorData->debug_query_string, true, csv);
+	/* cursor pos */
+	syslogger_write_int32(false, "", errorData->fix_fields.error_cursor_pos, true, true); 
+	/* func name */
+	syslogger_write_str_with_comma(errorData->error_func_name, true, csv);
+	/* file name */
+	syslogger_write_str_with_comma(errorData->error_filename, true, csv);
+	/* line number */
+	syslogger_write_int32(true, "", errorData->fix_fields.error_fileline, true, true);
+	/* stack trace */
+	if (errorData->stacktrace != NULL)
+	{
+		if (csv)
+		{
+			write_syslogger_file_binary("\"", 1);
+		}
+		
+		syslogger_write_str(errorData->stacktrace, strlen(errorData->stacktrace), true, csv);
+
+		if (csv)
+		{
+			write_syslogger_file_binary("\"", 1);
+		}
+	}
+	
+	/* EOL */
+	write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+	
+#if USE_EMAIL
+	/*
+	 * Send alerts when needed. The alerts are sent only by the master.
+	 * If the alert is failed for whatever reason, log a message and continue.
+	 */
+	if (errorData->fix_fields.send_alert == 't' &&
+		Gp_entry_postmaster && Gp_role == GP_ROLE_DISPATCH)
+	{
+		PG_TRY();
+		{
+			send_alert(errorData);
+		}
+		PG_CATCH();
+		{
+			elog(LOG,"Failed to send alert.");
+		}
+		PG_END_TRY();
+	}
+#endif	
+}
+
+/*
+ * syslogger_log_segv_chunk
+ *   Write the chunk for the message sent inside a SEGV/BUS/ILL handler to the log.
+ */
+static void
+syslogger_log_segv_chunk(PipeProtoChunk *chunk)
+{
+	Assert(chunk->hdr.is_segv_msg == 't' && chunk->hdr.is_last == 't');
+	Assert(chunk->hdr.thid == FIXED_THREAD_ID);
+
+	/* Reset the thread id */
+	chunk->hdr.thid = 0;
+
+	GpErrorData errorData;
+	fillinErrorDataFromSegvChunk(&errorData, chunk);
+	syslogger_write_errordata(&chunk->hdr, &errorData, chunk->hdr.log_format == 'c');
+	freeErrorDataFields(&errorData);
+}
+
 void syslogger_log_chunk_list(PipeProtoChunk *chunk)
 {
     GpErrorDataFixFields *pfixed = (GpErrorDataFixFields *) (chunk->data);
@@ -1239,7 +1476,16 @@ static void syslogger_handle_chunk(PipeProtoChunk *chunk)
     }
 
     if(chunk->hdr.is_last == 't')
-        syslogger_log_chunk_list(first);
+	{
+		if (chunk->hdr.is_segv_msg == 't')
+		{
+			syslogger_log_segv_chunk(first);
+		}
+		else
+		{
+			syslogger_log_chunk_list(first);
+		}
+	}
 }
 
 
