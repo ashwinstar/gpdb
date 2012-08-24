@@ -965,6 +965,102 @@ ExecutorRun(QueryDesc *queryDesc,
 	return result;
 }
 
+/*
+ * AggregateNodeMemoryWalker
+ *   Aggregate the given node's memory quota to totalMemory.
+ */
+static CdbVisitOpt
+AggregateNodeMemoryWalker(PlanState *node, void *totalMemory)
+{
+	if (node == NULL)
+	{
+		return CdbVisit_Walk;
+	}
+	
+	Assert(node->plan != NULL);
+	*((uint64*)totalMemory) += GetOperatorMemoryLimit(node->plan);
+
+	/*
+	 * Stop at MotionState node, since the current slice is over.
+	 */
+	if (IsA(node, MotionState))
+	{
+		return CdbVisit_Skip;
+	}
+
+	return CdbVisit_Walk;
+}
+
+/*
+ * ComputeExpectedMemoryLimit
+ *   Compute expected memory limit (in bytes) from the plan tree for the current slice.
+ */
+static uint64
+ComputeExpectedMemoryLimit(PlanState *planstate)
+{
+	uint64 totalMemory = 0;
+
+	if (IsA(planstate, MotionState))
+	{
+		Assert(planstate->plan != NULL);
+		totalMemory += GetOperatorMemoryLimit(planstate->plan);
+
+		/*
+		 * Go to the child PlanState. If this is running on the dispatch,
+		 * we are done.
+		 */
+		planstate = planstate->lefttree;
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			planstate = NULL;
+		}
+	}
+	
+	planstate_walk_node(planstate, AggregateNodeMemoryWalker, &totalMemory);
+	
+	return totalMemory;
+}
+
+/*
+ * VerifyMemoryUsage
+ *   Verify that the memory usage is within the expected limit in the current slice.
+ */
+static void
+VerifyMemoryUsage(PlanState *planstate, EState *estate)
+{
+	Assert(planstate != NULL && estate != NULL);
+
+	/*
+	 * Find the root PlanState for the current slice, and then compute
+	 * the expected memory limit for the slice.
+	 */
+	PlanState *rootPlanState = planstate;
+	if (LocallyExecutingSliceIndex(estate) != RootSliceIndex(estate))
+	{
+		rootPlanState = (PlanState *)getMotionState(planstate, LocallyExecutingSliceIndex(estate));
+	}
+
+	uint64 expectedMemory = ComputeExpectedMemoryLimit(rootPlanState);
+
+	MemoryContext context = estate->es_query_cxt;
+	Assert(context!= NULL);
+	uint64 maxMemoryUsed = context->maxRequestedBytesHeld;
+	elog(LOG, "Check memory: at Slice %d, Expected memory limit is " UINT64_FORMAT
+		 ", Max memory used is " UINT64_FORMAT ", InitNodes memory is " UINT64_FORMAT ".",
+		 LocallyExecutingSliceIndex(estate),
+		 expectedMemory,
+		 maxMemoryUsed,
+		 estate->memoryForInitNodes);
+
+	/*
+	 * The maximum memory that is used during execution should not exceed 
+	 * the summation of the expected memory (assigned through memory quota)
+	 * and the memory used by ExecInitNode() (mostly used by the planstate
+	 * tree).
+	 */
+	Assert(expectedMemory + estate->memoryForInitNodes >= maxMemoryUsed);
+}
+
 /* ----------------------------------------------------------------
  *		ExecutorEnd
  *
@@ -1050,6 +1146,11 @@ ExecutorEnd(QueryDesc *queryDesc)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	if (gp_verify_memory_usage)
+	{
+		VerifyMemoryUsage(queryDesc->planstate, estate);
+	}
 
     /*
      * If normal termination, let each operator clean itself up.
@@ -1767,8 +1868,10 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	planstate = ExecInitNode(plannedstmt->planTree, estate, eflags);
 
 	queryDesc->planstate = planstate;
-
 	Assert(queryDesc->planstate);
+
+	Assert(estate->es_query_cxt != NULL);
+	estate->memoryForInitNodes = estate->es_query_cxt->maxRequestedBytesHeld;
 
 	if (RootSliceIndex(estate) != LocallyExecutingSliceIndex(estate))
 		return;
@@ -2284,6 +2387,7 @@ SendAOTupCounts(EState *estate)
 	}
 
 }
+
 /* ----------------------------------------------------------------
  *		ExecEndPlan
  *

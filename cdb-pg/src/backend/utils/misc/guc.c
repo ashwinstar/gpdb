@@ -565,6 +565,9 @@ static char *gp_test_deadlock_hazard_report_level_str;
 bool gp_cancel_query_print_log;
 int gp_cancel_query_delay_time;
 
+/* GUC to enable the check of memory usage */
+bool gp_verify_memory_usage = false;
+
 /* Enable the SEGV/BUS/ILL signal handler that are async safe. */
 bool gp_crash_handler_async = false;
 
@@ -3359,7 +3362,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-
 		{"gp_log_resqueue_memory", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Prints out messages related to resource queue's memory management."),
 			NULL,
@@ -3377,6 +3379,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_resqueue_print_operator_memory_limits,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_verify_memory_usage", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Verify actual memory usage with the assigned memory quota"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_verify_memory_usage,
 		false, NULL, NULL
 	},
 

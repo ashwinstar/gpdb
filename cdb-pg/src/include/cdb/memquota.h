@@ -59,4 +59,6 @@ extern uint64 PolicyAutoStatementMemForNoSpillKB(PlannedStmt *stmt, uint64 minOp
  */
 extern bool IsResultMemoryIntesive(Result *res);
 
+extern uint64 GetOperatorMemoryLimit(Plan *node);
+
 #endif /* MEMQUOTA_H_ */

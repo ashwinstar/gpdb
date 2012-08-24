@@ -65,6 +65,11 @@ typedef struct MemoryContextData
     uint64      allBytesFreed;  /* bytes returned to lower level mem mgr */
     Size        maxBytesHeld;   /* high-water mark for total bytes held */
     Size        localMinHeld;   /* low-water mark since last increase in hwm */
+
+	uint64 requestedBytesAlloc; /* all bytes that are requested */
+	uint64 requestedBytesFreed; /* all requested bytes that are freed */
+	uint64 maxRequestedBytesHeld; /* maximum number of requested bytes held */
+	
 #ifdef CDB_PALLOC_CALLER_ID
     const char *callerFile;     /* __FILE__ of most recent caller */
     int         callerLine;     /* __LINE__ of most recent caller */

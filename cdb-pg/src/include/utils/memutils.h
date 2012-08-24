@@ -58,10 +58,8 @@ typedef struct StandardChunkHeader
 {
 	MemoryContext context;		/* owning context */
 	Size		size;			/* size of data space allocated in chunk */
-#ifdef MEMORY_CONTEXT_CHECKING
-	/* when debugging memory usage, also store actual requested size */
+	/* actual requested size */
 	Size		requested_size;
-#endif
 #ifdef CDB_PALLOC_TAGS
 	const char *alloc_tag;
 	int 		alloc_n;

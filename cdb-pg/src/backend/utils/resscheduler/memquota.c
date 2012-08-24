@@ -1104,4 +1104,31 @@ uint64 ResourceQueueGetSuperuserQueryMemoryLimit(void)
 	return (uint64) statement_mem * 1024L;
 }
 
-
+/*
+ * GetOperatorMemoryLimit
+ *    Return the memory limit (in bytes) for the given operator.
+ *
+ * If the query does not go through resource queue, each operator
+ * does not have memory assigned to it. In this case, for
+ * memory intensive ones, this function returns work_mem. For
+ * non-memory intensive ones, this function returns
+ * gp_resqueue_memory_policy_auto_fixed_mem.
+ */
+uint64
+GetOperatorMemoryLimit(Plan *node)
+{
+	Assert(is_plan_node((Node *)node));
+	
+	uint64 memoryKB = node->operatorMemKB;
+	if (memoryKB == 0)
+	{
+		memoryKB = gp_resqueue_memory_policy_auto_fixed_mem;
+		if (IsMemoryIntensiveOperator((Node *)node))
+		{
+			memoryKB = work_mem;
+		}
+	}
+	
+	Assert(memoryKB > 0);
+	return memoryKB * 1024;
+}
