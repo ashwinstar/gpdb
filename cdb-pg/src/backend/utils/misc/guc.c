@@ -587,12 +587,12 @@ static char *allow_system_table_mods_str;
 /* ignore EXCLUDE clauses in window spec for backwards compatibility */
 bool gp_ignore_window_exclude = false;
 
-const char *
+static const char *
 assign_allow_system_table_mods(const char *newval,
 							   bool doit,
-							   GucSource source __attribute__((unused)) );
+							   GucSource source);
 
-const char *
+static const char *
 show_allow_system_table_mods(void);
 
 /* Hadoop Integration GUCs */
@@ -11920,10 +11920,10 @@ assign_application_name(const char *newval, bool doit, GucSource source)
  * 		- upgrade_mode GUC set
  * 		- in single user mode
  */
-const char *
+static const char *
 assign_allow_system_table_mods(const char *newval,
 							   bool doit,
-							   GucSource source __attribute__((unused)) )
+							   GucSource source)
 {
 	bool valueDDL = false;
 	bool valueDML = false;
@@ -11942,9 +11942,15 @@ assign_allow_system_table_mods(const char *newval,
 		valueDDL = true;
 	}
 	else
-		elog(ERROR,
-			"Unknown system table modification policy. (Current policy: '%s')",
-			show_allow_system_table_mods());
+	{
+		if (source >= PGC_S_INTERACTIVE)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unknown system table modification policy. (Current policy: '%s')",
+						show_allow_system_table_mods())));
+
+		return NULL;
+	}
 
 	if (doit)
 	{
@@ -11955,7 +11961,7 @@ assign_allow_system_table_mods(const char *newval,
 	return newval;
 }
 
-const char *
+static const char *
 show_allow_system_table_mods(void)
 {
 	if (allowSystemTableModsDML && allowSystemTableModsDDL)
