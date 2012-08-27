@@ -1201,6 +1201,30 @@ func_volatile(Oid funcid)
 	return result;
 }
 
+/*
+ * func_data_access
+ *		Given procedure id, return the function's data access flag.
+ */
+char
+func_data_access(Oid funcid)
+{
+	SQLDataAccess sda = GetFuncSQLDataAccess(funcid);
+	switch (sda)
+	{
+		case SDA_NO_SQL:
+			return PRODATAACCESS_NONE;
+		case SDA_CONTAINS_SQL:
+			return PRODATAACCESS_CONTAINS;
+		case SDA_READS_SQL:
+			return PRODATAACCESS_READS;
+		case SDA_MODIFIES_SQL:
+			return PRODATAACCESS_MODIFIES;
+		default:
+			elog(ERROR, "cache lookup failed for function %u", funcid);
+			return '\0';
+	}
+}
+
 /*				---------- RELATION CACHE ----------					 */
 
 /*
