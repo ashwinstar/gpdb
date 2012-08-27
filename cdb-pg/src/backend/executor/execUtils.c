@@ -311,8 +311,6 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->subplanLevel = 0;
 	estate->rootSliceId = 0;
 
-	estate->memoryForInitNodes = 0;
-
 	/*
 	 * Return the executor state structure
 	 */

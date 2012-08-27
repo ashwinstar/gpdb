@@ -517,8 +517,6 @@ typedef struct EState
 	 */
 	DynamicTableScanInfo *dynamicTableScanInfo;
 
-	/* Memory used in ExecInitNode() calls */
-	uint64 memoryForInitNodes;
 } EState;
 
 struct PlanState;

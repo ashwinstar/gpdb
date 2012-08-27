@@ -73,52 +73,6 @@ MemoryContext CurTransactionContext = NULL;
 MemoryContext QueryContext = NULL;
 MemoryContext PortalContext = NULL;
 
-/*
- * MemoryContextNoteRequestedAlloc
- *   Update the cumulative statistics on requested bytes allocated.
- */
-static void
-MemoryContextNoteRequestedAlloc(MemoryContext context, Size nbytes)
-{
-    AssertArg(MemoryContextIsValid(context));
-    AssertArg(AllocSizeIsValid(nbytes));
-
-	while (context != NULL)
-	{
-		Assert(context->requestedBytesAlloc >= context->requestedBytesFreed);
-		Assert(context->requestedBytesAlloc - context->requestedBytesFreed < SIZE_MAX - nbytes);
-
-		context->requestedBytesAlloc += nbytes;
-		
-		uint64 held = context->requestedBytesAlloc - context->requestedBytesFreed;
-		if (context->maxRequestedBytesHeld < held)
-		{
-			context->maxRequestedBytesHeld = held;
-		}
-
-		context = context->parent;
-	}
-}
-
-/*
- * MemoryContextNoteRequestedFree
- *   Update the cumulative statistics on requested bytes freed.
- */
-static void
-MemoryContextNoteRequestedFree(MemoryContext context, Size nbytes)
-{
-    AssertArg(MemoryContextIsValid(context));
-    AssertArg(AllocSizeIsValid(nbytes));
-
-	while (context != NULL)
-	{
-		Assert(context->requestedBytesAlloc >= context->requestedBytesFreed);
-		Assert(context->requestedBytesFreed + nbytes >= context->requestedBytesFreed);
-
-		context->requestedBytesFreed += nbytes;
-		context = context->parent;
-	}
-}
 
 /*****************************************************************************
  *	  EXPORTED ROUTINES														 *
@@ -196,10 +150,6 @@ MemoryContextReset(MemoryContext context)
 		MemoryContextResetChildren(context);
 
 	(*context->methods.reset) (context);
-
-	uint64 bytesFreed = context->requestedBytesAlloc - context->requestedBytesFreed;
-	MemoryContextNoteRequestedFree(context, bytesFreed);
-	Assert(context->requestedBytesAlloc == context->requestedBytesFreed);
 }
 
 /*
@@ -845,8 +795,6 @@ MemoryContextAllocImpl(MemoryContext context, Size size, const char* sfile, cons
 	PG_TRACE5(memctxt__alloc, size, header->size, 0, 0, (long) context->name);
 #endif
 
-	MemoryContextNoteRequestedAlloc(context, size);
-
 	return ret;
 }
 
@@ -887,8 +835,6 @@ MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char* sfile, 
 		((char *) ret - STANDARDCHUNKHEADERSIZE);
 	PG_TRACE5(memctxt__alloc, size, header->size, 0, 0, (long) context->name);
 #endif
-
-	MemoryContextNoteRequestedAlloc(context, size);
 
 	return ret;
 }
@@ -932,8 +878,6 @@ MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size, const char* 
 	PG_TRACE5(memctxt__alloc, size, header->size, 0, 0, (long) context->name);
 #endif
 
-	MemoryContextNoteRequestedAlloc(context, size);
-
 	return ret;
 }
 
@@ -964,7 +908,11 @@ MemoryContextFreeImpl(void *pointer, const char *sfile, const char *sfunc, int s
 
 #ifdef PGTRACE_ENABLED
 	PG_TRACE5(memctxt__free, 0, 0, 
+#ifdef MEMORY_CONTEXT_CHECKING
 		header->requested_size, header->size,
+#else
+		0, header->size, 
+#endif
 		(long) header->context->name); 
 #endif
 
@@ -972,8 +920,6 @@ MemoryContextFreeImpl(void *pointer, const char *sfile, const char *sfunc, int s
 	header->context->callerFile = sfile;
 	header->context->callerLine = sline;
 #endif
-
-	MemoryContextNoteRequestedFree(header->context, header->requested_size);
 
 	if (header->context->methods.free_p)
 		(*header->context->methods.free_p) (header->context, pointer);
@@ -991,6 +937,11 @@ MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char
 	StandardChunkHeader *header;
 	void *ret;
 
+#ifdef PGTRACE_ENABLED 
+	long old_reqsize;
+	long old_size;
+#endif
+
 	/*
 	 * Try to detect bogus pointers handed to us, poorly though we can.
 	 * Presumably, a pointer that isn't MAXALIGNED isn't pointing at an
@@ -1007,9 +958,13 @@ MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char
 
 	AssertArg(MemoryContextIsValid(header->context));
 
-	long old_reqsize = header->requested_size;
 #ifdef PGTRACE_ENABLED
-	long old_size = header->size;
+#ifdef MEMORY_CONTEXT_CHECKING
+	old_reqsize = header->requested_size;
+#else
+	old_reqsize = 0;
+#endif
+	old_size = header->size;
 #endif
 
 #ifdef CDB_PALLOC_CALLER_ID
@@ -1022,15 +977,6 @@ MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char
 				header->context, CDB_MCXT_WHERE(header->context),
 				"invalid memory alloc request size %lu",
 				(unsigned long)size);
-
-	if (size >= old_reqsize)
-	{
-		MemoryContextNoteRequestedAlloc(header->context, size - old_reqsize);
-	}
-	else
-	{
-		MemoryContextNoteRequestedFree(header->context, old_reqsize - size);
-	}
 
 	ret = (*header->context->methods.realloc) (header->context, pointer, size);
 

@@ -253,8 +253,6 @@ extern int ddboost_buf_size;
 extern bool gp_cancel_query_print_log;
 extern int gp_cancel_query_delay_time;
 
-extern bool gp_verify_memory_usage;
-
 extern bool gp_crash_handler_async;
 
 extern bool gp_perfmon_print_packet_info;
