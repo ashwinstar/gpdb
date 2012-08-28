@@ -25,10 +25,12 @@
  *
  * Author: Patrick Macdonald <patrickm@redhat.com>
  *         Gavin Sherry <gsherry@greenplum.com>
- *
+ *         Raghav Tulshibagwale <raghav.tulshibagwale@emc.com>
  */
 
 #include "gp_filedump.h"
+#include "gp_aoblkdir_dump.h"
+#include "gp_clog_operations.h"
 
 bool            assert_enabled = true;
 /* Global variables for ease of use mostly */
@@ -642,7 +644,7 @@ DisplayOptions(unsigned int validOptions)
 		("\nVersion 3.1 (based on Postgres 8.2) Copyright (c) 2002-2007 Red Hat, Inc.\n");
 
 	printf
-		("\nUsage: gp_filedump [-abcdfhixy] [-R startblock [endblock]] [-S blocksize] file\n\n"
+		("\nUsage: gp_filedump [-abcdfhixy] [-\"aoblkdir\"] [-\"dmpclog\"] [-R startblock [endblock]] [-S blocksize] file\n\n"
 		 "Display formatted contents of a PostgreSQL heap/index/control file\n"
 		 " Defaults are: relative addressing, range of the entire file, block\n"
 		 "               size as listed on block 0 in the file\n\n"
@@ -669,8 +671,19 @@ DisplayOptions(unsigned int validOptions)
 		 "The following options are valid for control files:\n"
 		 "  -c  Interpret the file listed as a control file\n"
 	  "  -f  Display formatted content dump along with interpretation\n"
-		 "  -S  Force block size to [blocksize]\n"
-		 "\nReport bugs to <rhdb@sources.redhat.com>\n");
+		 "  -S  Force block size to [blocksize]\n\n"
+		"The following options are valid for AO Block directory files\n"
+		"  -aoblkdir\n"
+		"      Display formatted content dump of input AO Block directory file\n"
+    "  Note :- There is no way for the system to know if an input file is not\n \
+       a block directory file. In case of wrong format input files results are\n \
+       undefined and/or may result into system faults.\n\n"
+		"The following options are valid for CLOG files\n"
+		"  -dmpclog\n"
+		"      Display formatted content dump of input CLOG file\n"
+
+		 "\nReport bugs to <rhdb@sources.redhat.com>"
+		 "\nReport bugs related to block directory file or clog file options to <raghav.tulshibagwale@emc.com>\n\n");
 }
 
 /* Iterate through the provided options and set the option flags. */
@@ -784,7 +797,7 @@ ConsumeOptions(int numOptions, char **options)
 		 * the header of block 0 is corrupt and gives a garbage block
 		 * size
 		 */
-		else if ((optionStringLength == 2)
+    else if ((optionStringLength == 2)
 			 && (strcmp(optionString, "-S") == 0))
 		{
 			int             localBlockSize;
@@ -826,7 +839,7 @@ ConsumeOptions(int numOptions, char **options)
 			 */
 			if (optionString[0] != '-')
 			{
-				fp = fopen(optionString, "rb");
+				fp = fopen(optionString, "rb+");
 				if (fp)
 					fileName = options[x];
 				else
@@ -857,6 +870,36 @@ ConsumeOptions(int numOptions, char **options)
 				}
 				break;
 			}
+		}
+		/*Dump AO Block directory*/
+    else if(optionStringLength == 9 && (strcmp(optionString, "-aoblkdir") == 0))
+		{
+			/*Check if there are no other options/switches supplied by the user*/
+			if(numOptions > 3)
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error : -aoblkdir option can not be applied with any other option.\n");
+				break;
+			}
+
+			/*Set options we'll need later to make functionality work*/
+			SET_OPTION(itemOptions, DEPARSE_HEAP, 'p');
+			/*Setting 'd' here is un-needed. But its done sake of macro signature.*/
+			SET_OPTION(itemOptions, DUMP_AOBLKDIR, 'd');
+		}
+		else if (optionStringLength == 8 && (strcmp(optionString, "-dmpclog") == 0))
+		{
+			/*clog option is not allowed with any other options*/
+			if(numOptions > 3)
+			{
+				rc = OPT_RC_INVALID;
+				printf("Error : -dmpclog option can not be applied with any other option.\n");
+				break;
+			}
+
+			/*Set options we'll need later to make functionality work.
+			 * Setting d is just for the sake of macro signature.*/
+			SET_OPTION(itemOptions, DUMP_CLOG, 'd');
 		}
 		else
 		{
@@ -1035,6 +1078,7 @@ build_tupdesc(void)
 	int             segno = 0;
 	AttrNumber      maxattno = 0;
 
+	/*This is a limitation :- A table with Max 100 columns can deparsed */
 	attrs = malloc(sizeof(Form_pg_attribute) * 100);
 	/* loop over each segno */
 	do
@@ -1109,7 +1153,6 @@ build_tupdesc(void)
 	tupdesc->natts = maxattno;
 	tupdesc->attrs = attrs;
 }
-
 
 
 /* Given the index into the parameter list, convert and return the  */
@@ -1319,7 +1362,6 @@ FormatHeader(Page page)
 	unsigned int    headerBytes;
 	PageHeader      pageHeader = (PageHeader) page;
 
-	printf("<Header> -----\n");
 
 	/*
 	 * Only attempt to format the header if the entire header (minus the
@@ -1333,6 +1375,9 @@ FormatHeader(Page page)
 	}
 	else
 	{
+		if (!(itemOptions & DUMP_AOBLKDIR))
+			printf("<Header> -----\n");
+
 		XLogRecPtr      pageLSN = PageGetLSN(page);
 		int             maxOffset = PageGetMaxOffsetNumber(page);
 		headerBytes = offsetof(PageHeaderData, pd_linp[0]);
@@ -1355,7 +1400,9 @@ FormatHeader(Page page)
 				headerBytes += itemsLength;
 		}
 		/* Interpret the content of the header */
-		printf
+
+		if (!(itemOptions & DUMP_AOBLKDIR))
+			printf
 			(" Block Offset: 0x%08x         Offsets: Lower    %4u (0x%04hx)\n"
 			 " Block: Size %4d  Version %4u            Upper    %4u (0x%04hx)\n"
 			 " LSN:  logid %6d recoff 0x%08x      Special  %4u (0x%04hx)\n"
@@ -1372,7 +1419,7 @@ FormatHeader(Page page)
 		 * If it's a btree meta page, print the contents of the meta
 		 * block.
 		 */
-		if (IsBtreeMetaPage(page))
+		if (IsBtreeMetaPage(page) && (!(itemOptions & DUMP_AOBLKDIR)))
 		{
 			BTMetaPageData *btpMeta = BTPageGetMeta(buffer);
 			printf(" BTree Meta Data:  Magic (0x%08x)   Version (%u)\n"
@@ -1517,7 +1564,8 @@ FormatItemBlock(Page page)
 	if (IsBtreeMetaPage(page))
 		return;
 
-	printf("<Data> ------ \n");
+	if(!(itemOptions & DUMP_AOBLKDIR))
+		printf("<Data> ------ \n");
 
 	/* Loop through the items on the block.  Check if the block is */
 	/* empty and has a sensible item array listed before running  */
@@ -1564,9 +1612,10 @@ FormatItemBlock(Page page)
 			else
 				sprintf(textFlags, "0x%02x", itemFlags);
 
-			printf(" Item %3u -- Length: %4u  Offset: %4u (0x%04x)"
-			"  Flags: %s\n", x, itemSize, itemOffset, itemOffset,
-			       textFlags);
+			if(!(itemOptions & DUMP_AOBLKDIR))
+				printf(" Item %3u -- Length: %4u  Offset: %4u (0x%04x)"
+						"  Flags: %s\n", x, itemSize, itemOffset, itemOffset,
+						textFlags);
 
 			/*
 			 * Make sure the item can physically fit on this
@@ -1586,7 +1635,7 @@ FormatItemBlock(Page page)
 				 * interpreted as
 				 */
 				/* heap or index items...      */
-				if (itemOptions & ITEM_DETAIL)
+				if (itemOptions & ITEM_DETAIL || itemOptions & DUMP_AOBLKDIR)
 					FormatItem(itemSize, itemOffset, formatAs,
 						   (itemOptions & DEPARSE_HEAP) == DEPARSE_HEAP);
 
@@ -1640,6 +1689,13 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 			if (numBytes)
 				printf("  Error: This item does not look like a heap item.\n");
 		}
+
+		if (itemOptions & DUMP_AOBLKDIR)
+		{
+			printf("\n      SegNo        ColumnGroupNo       FirstRowNo                              MiniPage");
+			printf("\n-----------------------------------------------------------------------------------------------------------------------------\n");
+			gp_aoblkdir_dump(&buffer[startIndex], tupdesc);
+		}
 		else
 		{
 			char            flagString[256];
@@ -1654,6 +1710,7 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 			unsigned int    localBitOffset;
 
 			HeapTupleHeader htup = (HeapTupleHeader) (&buffer[startIndex]);
+
 
 			infoMask = htup->t_infomask;
 			localBits = &(htup->t_bits[0]);
@@ -1898,7 +1955,7 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 									elog(ERROR, "could not format int8");
 
 								strcat(deparsed, buf);
-
+								break;
 							}
 						case INT2OID:
 							{
@@ -2158,10 +2215,11 @@ FormatBlock()
 		return;
 	}
 
-	printf("\nBlock %4u **%s***************************************\n",
-	       currentBlock,
-	       (bytesToFormat ==
-		blockSize) ? "***************" : " PARTIAL BLOCK ");
+	if(!(itemOptions & DUMP_AOBLKDIR))
+		printf("\nBlock %4u **%s***************************************\n",
+				currentBlock,
+				(bytesToFormat ==
+						blockSize) ? "***************" : " PARTIAL BLOCK ");
 
 	/* Either dump out the entire block in hex+acsii fashion or */
 	/* interpret the data based on block structure  */
@@ -2480,6 +2538,8 @@ main(int argv, char **argc)
 {
 	/* If there is a parameter list, validate the options  */
 	unsigned int    validOptions;
+  int i=0;
+
 	validOptions = (argv < 2) ? OPT_RC_COPYRIGHT : ConsumeOptions(argv, argc);
 
 	/*
@@ -2488,9 +2548,21 @@ main(int argv, char **argc)
 	 */
 	if (validOptions != OPT_RC_VALID)
 		DisplayOptions(validOptions);
+	else if(itemOptions & DUMP_CLOG)
+	{
+		gp_clog_validate_clog_filename(fileName);
+		gp_clog_print_all_commit_status(fp);
+	}
 	else
 	{
-		if (itemOptions & DEPARSE_HEAP)
+		if (itemOptions & DUMP_AOBLKDIR)
+		{
+			/* We create the ao blk dir tuple desc instead of creating it dynamically
+			 * using pg_attribute (done in normal tuple de-parse case)*/
+			tupdesc = gp_aoblkdir_dump_build_tupdesc();
+			Assert(tupdesc);
+		}
+		else if (itemOptions & DEPARSE_HEAP)
 		{
 			file_set_dirs(fileName);
 			build_tupdesc();
@@ -2526,12 +2598,25 @@ main(int argv, char **argc)
 		}
 	}
 
-	/* Close out the file and get rid of the allocated block buffer */
+	/* Cleanup */
 	if (fp)
 		fclose(fp);
 
 	if (buffer)
 		free(buffer);
+
+  if (tupdesc)
+  {
+      if (tupdesc->attrs)
+      {
+          if (tupdesc->natts > 0)
+            for (i=0;i<tupdesc->natts;i++)
+                free(tupdesc->attrs[i]);
+          free(tupdesc->attrs);
+      }
+      free(tupdesc);
+      tupdesc = NULL;
+  }
 
 	exit(0);
 }

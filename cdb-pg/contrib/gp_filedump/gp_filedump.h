@@ -66,11 +66,14 @@ static int blockEnd = -1;	// -R [end]: Block range end
 static unsigned int itemOptions = 0;
 typedef enum
 {
-  ITEM_DETAIL	= 0x00000001,	// -i: Display interpreted items    
-  ITEM_HEAP		= 0x00000002,	// -x: Blocks contain heap items
-  ITEM_INDEX	= 0x00000004,	// -y: Blocks contain heap items
-  DEPARSE_HEAP	= 0x00000008,	// -p: deparse block
-  ITEM_CHECKSUM	= 0x00000010	// -M: checksum for mirror files
+  ITEM_DETAIL	  = 0x00000001,	// -i: Display interpreted items
+  ITEM_HEAP		  = 0x00000002,	// -x: Blocks contain heap items
+  ITEM_INDEX	  = 0x00000004,	// -y: Blocks contain heap items
+  DEPARSE_HEAP	  = 0x00000008,	// -p: deparse block
+  ITEM_CHECKSUM	  = 0x00000010,	// -M: checksum for mirror files
+  DUMP_AOBLKDIR   = 0x00000020, // -aoblkdir : Dump input block directory file
+  DUMP_CLOG       = 0x00000040, // -clogdump : CLOG file dump
+  UPDATE_CLOG     = 0x00000080  // -clogupd  : update CLOG commit status
 }
 itemSwitches;
 

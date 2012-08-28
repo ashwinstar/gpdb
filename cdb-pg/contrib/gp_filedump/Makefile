@@ -1,5 +1,5 @@
 PROGRAM = gp_filedump
-OBJS	= gp_filedump.o pg_crc.o crc32c.o numutils.o heaptuple.o
+OBJS	= gp_filedump.o gp_aoblkdir_dump.o gp_clog_operations.o pg_crc.o crc32c.o numutils.o heaptuple.o 
 
 EXTRA_CLEAN = pg_crc.c crc32c.c
 #PG_CPPFLAGS = -msse4.2

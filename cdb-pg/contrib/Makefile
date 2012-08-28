@@ -7,6 +7,7 @@ include $(top_builddir)/src/Makefile.global
 WANTED_DIRS = \
 		fuzzystrmatch \
 		gp_filedump \
+		gp_clog_manipulator \
 		xlogdump \
 		pgbench \
 		orafce \
