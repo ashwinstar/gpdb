@@ -145,6 +145,14 @@ from ( values
         (timestamptz '1776-07-04 12:34:56', interval '1 month', timestamptz '2012-04-01 00:00:00 UTC', 1)
     ) r(v,w,r,s);
 
+-- Test limits
+select linear_interpolate(3, 0, 0::bigint, 1, (2^62)::bigint);
+select linear_interpolate(3, 0, 0::bigint, 1, (-2^62)::bigint);
+select linear_interpolate(3, 0, 0::integer, 1, (2^30)::integer);
+select linear_interpolate(3, 0, 0::integer, 1, (-2^30)::integer);
+select linear_interpolate(3, 0, 0::smallint, 1, (2^14)::smallint);
+select linear_interpolate(3, 0, 0::smallint, 1, (-2^14)::smallint);
+
 -- A "generic" unsupported type.
 
 select linear_interpolate('x'::text, 'x0'::text, 0, 'x1'::text, 1000);

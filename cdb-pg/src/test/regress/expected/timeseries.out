@@ -315,9 +315,22 @@ from ( values
  Thu Jul 04 12:34:56 1776 LMT    | @ 1 mon    | Sat Mar 31 17:00:00 2012 PDT    |  1 | Sun Jun 30 16:00:00 1776 LMT | Wed Jul 31 16:00:00 1776 LMT | Wed Jul 31 17:00:00 1776 LMT
 (5 rows)
 
+-- Test limits
+select linear_interpolate(3, 0, 0::bigint, 1, (2^62)::bigint);
+ERROR:  value "13835058055282163712.000000" is out of range for type bigint
+select linear_interpolate(3, 0, 0::bigint, 1, (-2^62)::bigint);
+ERROR:  value "13835058055282163712.000000" is out of range for type bigint
+select linear_interpolate(3, 0, 0::integer, 1, (2^30)::integer);
+ERROR:  value "3221225472.000000" is out of range for type integer
+select linear_interpolate(3, 0, 0::integer, 1, (-2^30)::integer);
+ERROR:  value "3221225472.000000" is out of range for type integer
+select linear_interpolate(3, 0, 0::smallint, 1, (2^14)::smallint);
+ERROR:  value "49152.000000" is out of range for type smallint
+select linear_interpolate(3, 0, 0::smallint, 1, (-2^14)::smallint);
+ERROR:  value "49152.000000" is out of range for type smallint
 -- A "generic" unsupported type.
 select linear_interpolate('x'::text, 'x0'::text, 0, 'x1'::text, 1000);
-ERROR:  abscissa type not supported (interpolate.c:208)
+ERROR:  abscissa type not supported (interpolate.c:200)
 select linear_interpolate(5, 0, 'y0'::text, 100, 'y1'::text);
 ERROR:  function linear_interpolate(integer, integer, text, integer, text) does not exist
 LINE 1: select linear_interpolate(5, 0, 'y0'::text, 100, 'y1'::text)...

@@ -257,6 +257,7 @@ linterp_int64(PG_FUNCTION_ARGS)
 	float8 y0;
 	float8 y1;
 	float8 p;
+	float8 r;
 	int64 result;
 	bool nn = true;
 	
@@ -269,7 +270,14 @@ linterp_int64(PG_FUNCTION_ARGS)
 	y0 = (float8)PG_GETARG_INT64(2);
 	y1 = (float8)PG_GETARG_INT64(4);
 	
-	result = (int64)(y0+p*(y1-y0));
+	r = round(y0+p*(y1-y0));
+	if ( r < LONG_MIN || r > LONG_MAX )
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("value \"%f\" is out of range for type bigint", r),
+				 errOmitLocation(true)));
+	
+	result = (int64)r;
 	
 	PG_RETURN_INT64(result);
 }
@@ -281,6 +289,7 @@ linterp_int32(PG_FUNCTION_ARGS)
 	float8 y0;
 	float8 y1;
 	float8 p;
+	float8 r;
 	int32 result;
 	bool nn = true;
 	
@@ -293,7 +302,14 @@ linterp_int32(PG_FUNCTION_ARGS)
 	y0 = (float8)PG_GETARG_INT32(2);
 	y1 = (float8)PG_GETARG_INT32(4);
 	
-	result = (int32)(y0+p*(y1-y0));
+	r = round(y0+p*(y1-y0));
+	if ( r < INT_MIN || r > INT_MAX )
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("value \"%f\" is out of range for type integer", r),
+				 errOmitLocation(true)));
+	
+	result = (int32)r;
 	
 	PG_RETURN_INT32(result);
 }
@@ -305,6 +321,7 @@ linterp_int16(PG_FUNCTION_ARGS)
 	float8 y0;
 	float8 y1;
 	float8 p;
+	float8 r;
 	int16 result;
 	bool nn = true;
 	
@@ -317,7 +334,14 @@ linterp_int16(PG_FUNCTION_ARGS)
 	y0 = (float8)PG_GETARG_INT16(2);
 	y1 = (float8)PG_GETARG_INT16(4);
 	
-	result = (int16)(y0+p*(y1-y0));
+	r = round(y0+p*(y1-y0));
+	if ( r < SHRT_MIN || r > SHRT_MAX )
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("value \"%f\" is out of range for type smallint", r),
+				 errOmitLocation(true)));
+	
+	result = (int16)r;
 	
 	PG_RETURN_INT16(result);
 }
