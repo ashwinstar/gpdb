@@ -13,6 +13,8 @@
 #ifndef _PGTIME_H
 #define _PGTIME_H
 
+#include <sys/time.h>
+
 #define USECS_PER_SECOND 1000000
 #define MSECS_PER_SECOND 1000
 
