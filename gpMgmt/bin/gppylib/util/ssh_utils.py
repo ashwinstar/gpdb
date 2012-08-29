@@ -190,18 +190,18 @@ class Session(cmd.Cmd):
         if origTERM:
             os.putenv('TERM', origTERM)
 
-	errorOccur = False
+        errorOccur = False
         for p in self.pxssh:
             if self.verbose: print '[INFO] login %s' % p.x_peer
             if not p.loginWait(set_term_dumb=True):
                 errorOccur = True
                 print '[ERROR] unable to login to %s' % p.x_peer
 
-   	if errorOccur:
+        if errorOccur:
             print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
 
-	#delete closed sessions	
-	self.pxssh[:] = [p for p in self.pxssh if not p.closed]
+        #delete closed sessions 
+        self.pxssh[:] = [p for p in self.pxssh if not p.closed]
 
     def close(self):
         return self.clean()
