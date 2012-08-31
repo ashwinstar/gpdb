@@ -386,3 +386,28 @@ SELECT nullvalue(dotproduct(ARRAY[COMPLEX(1,3),COMPLEX(5,7)], ARRAY[COMPLEX(2,4)
 SELECT dotproduct(ARRAY[COMPLEX(1,3),COMPLEX(5,7)], ARRAY[COMPLEX(2,4),COMPLEX(6,8), COMPLEX(10,12)]);
 
 SELECT dotproduct(ARRAY[COMPLEX(1,3),COMPLEX(5,7)], ARRAY[ARRAY[COMPLEX(2,4)],ARRAY[COMPLEX(6,8)]]);
+
+--- coerce
+SELECT ln(NULL);
+
+SELECT ln(5.0);
+
+SELECT ln(5.0::numeric);
+
+SELECT ln(5.0::float8);
+
+SELECT ln(5.0::complex);
+
+SELECT 5::float8 UNION SELECT '5+1i'::complex;
+
+SELECT 5 UNION SELECT '5+1i'::complex;
+
+SELECT CASE 5.0 WHEN '5+1i'::complex THEN TRUE END;
+
+SELECT CASE 5.0::float8 WHEN '5+1i'::complex THEN TRUE END;
+
+SELECT CASE 5.0::float8 WHEN '5+1i'::complex THEN TRUE ELSE FALSE END;
+
+SELECT CASE '5+1i'::complex WHEN '5+1i'::complex THEN TRUE ELSE FALSE END;
+
+SELECT CASE '5+1i'::complex WHEN 5.0 THEN TRUE ELSE FALSE END;
