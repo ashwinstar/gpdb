@@ -5488,12 +5488,19 @@ DefineDispatchSavepoint(char *name)
 
 		if (name != NULL)
 		{
-			cmd = palloc(sizeof("SAVEPOINT ") + strlen(name));
+			char	   *qname;
+			size_t		cmdsize;
+
+			qname = (char *) quote_identifier(name);
+			cmdsize = sizeof("SAVEPOINT ") + strlen(qname);
+			cmd = palloc(cmdsize);
 			Assert(cmd != NULL);
 			if (cmd == NULL)
-				elog(ERROR, "Can't define savepoint name too long (%s)", name);
-			sprintf(cmd, "SAVEPOINT %s", name);
+				elog(ERROR, "Can't define savepoint name too long (%s)", qname);
+			snprintf(cmd, cmdsize, "SAVEPOINT %s", qname);
 			freecmd = true;
+			if (qname != name)
+				pfree(qname);
 		}
 		else
 		{
@@ -5640,12 +5647,19 @@ ReleaseSavepoint(List *options)
 
 		if (name != NULL)
 		{
-			cmd = palloc(sizeof("RELEASE SAVEPOINT ") + strlen(name));
+			char	   *qname;
+			size_t		cmdsize;
+
+			qname = (char *) quote_identifier(name);
+			cmdsize = sizeof("RELEASE SAVEPOINT ") + strlen(qname);
+			cmd = palloc(cmdsize);
 			Assert(cmd != NULL);
 			if (cmd == NULL)
-				elog(ERROR, "Can't release savepoint name too long (%s)", name);
-			sprintf(cmd, "RELEASE SAVEPOINT %s", name);
+				elog(ERROR, "Can't release savepoint name too long (%s)", qname);
+			snprintf(cmd, cmdsize, "RELEASE SAVEPOINT %s", qname);
 			freecmd = true;
+			if (qname != name)
+				pfree(qname);
 		}
 		else
 		{
@@ -5821,12 +5835,19 @@ DispatchRollbackToSavepoint(char *name)
 
 	if (name != NULL)
 	{
-		cmd = palloc(sizeof("ROLLBACK TO SAVEPOINT ") + strlen(name));
+		char	   *qname;
+		size_t		cmdsize;
+
+		qname = (char *) quote_identifier(name);
+		cmdsize = sizeof("ROLLBACK TO SAVEPOINT ") + strlen(qname);
+		cmd = palloc(cmdsize);
 		Assert(cmd != NULL);
 		if (cmd == NULL)
-			elog(ERROR, "Can't rollback to savepoint, name too long (%s)", name);
-		sprintf(cmd, "ROLLBACK TO SAVEPOINT %s", name);
+			elog(ERROR, "Can't rollback to savepoint, name too long (%s)", qname);
+		snprintf(cmd, cmdsize, "ROLLBACK TO SAVEPOINT %s", qname);
 		freecmd = true;
+		if (qname != name)
+			pfree(qname);
 	}
 	else
 	{
