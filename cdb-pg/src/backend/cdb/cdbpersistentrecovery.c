@@ -1992,17 +1992,17 @@ PersistentRecovery_Drop(void)
 	PersistentFsObjType fsObjType;
 
 	if (Debug_persistent_recovery_print)
-		elog(PersistentRecovery_DebugPrintLevel(), 
-		     "Entering PersistentRecovery_Scan");
+		elog(PersistentRecovery_DebugPrintLevel(),
+			 "Entering PersistentRecovery_Drop");
 
-	for (fsObjType = PersistentFsObjType_First; 
+	for (fsObjType = PersistentFsObjType_First;
 		 fsObjType <= PersistentFsObjType_Last;
 		 fsObjType++)
-	 	PersistentRecovery_DropType(fsObjType);
+		PersistentRecovery_DropType(fsObjType);
 
 	if (Debug_persistent_recovery_print)
-		elog(PersistentRecovery_DebugPrintLevel(), 
-		     "Exiting PersistentRecovery_Scan");
+		elog(PersistentRecovery_DebugPrintLevel(),
+			 "Exiting PersistentRecovery_Drop");
 }
 
 void
