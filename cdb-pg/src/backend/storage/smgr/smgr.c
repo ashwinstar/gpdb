@@ -2555,6 +2555,14 @@ smgrSubTransAbort(void)
 	HASH_SEQ_STATUS iterateStatus;
 	AppendOnlyMirrorResyncEofs *entry;
 
+	/*
+	 * We need to complete this work, or let Crash Recovery complete it.
+	 * Unlike AtEOXact_smgr, we need to start critical section here
+	 * because after reorganizing the list we end up forgetting the
+	 * subTransList if the code errors out.
+	 */
+	START_CRIT_SECTION();
+
 	subTransList = NULL;
 	subTransCount = 0;
 	prev = NULL;
@@ -2624,6 +2632,7 @@ smgrSubTransAbort(void)
 		}
 	}
 
+	END_CRIT_SECTION();
 }
 
 /*
