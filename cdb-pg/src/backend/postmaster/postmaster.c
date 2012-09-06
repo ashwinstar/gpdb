@@ -2090,6 +2090,13 @@ BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 	 */
 	Save_DtxStartTime = getDtxStartTime();
 
+#ifdef USE_TEST_UTILS
+		if (gp_simex_init)
+		{
+			simex_save_sync_bitvector_container();
+		}
+#endif
+
 	/*
 	 * reset shared memory and semaphores;
 	 * this happens before forking the filerep peer reset process;
@@ -2097,6 +2104,13 @@ BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 	 */
 	shmem_exit(0 /*code*/);
 	reset_shared(PostPortNumber, true /*isReset*/);
+
+#ifdef USE_TEST_UTILS
+		if (gp_simex_init)
+		{
+			simex_restore_sync_bitvector_container();
+		}
+#endif
 
 	if (primaryMirrorPostmasterResetShouldRestartPeer())
 	{

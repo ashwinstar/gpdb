@@ -84,6 +84,8 @@ static inline void SimExESSubClass_CheckValid(int subclass)
 /* interface */
 extern void simex_init(void);
 extern void simex_set_sync_bitvector_container(SyncBitvectorContainer container);
+extern void simex_save_sync_bitvector_container(void);
+extern void simex_restore_sync_bitvector_container(void);
 extern int32 simex_get_subclass_count(void);
 extern SimExESSubClass simex_check(const char *file, int32 line);
 
