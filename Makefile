@@ -1154,6 +1154,7 @@ endif
 	echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 	rm -rf $(INSTLOC)/bin/gppylib
+	find $(INSTLOC)/lib/python/gppylib -name test -type d | xargs rm -rf
 
 BLD_LDD=ldd
 osx104_x86_LDD=otool -L
