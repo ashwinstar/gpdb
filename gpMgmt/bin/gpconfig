@@ -41,6 +41,7 @@ def parseargs():
     parser.add_option('-l', '--list', action='store_true')
     parser.add_option('-P', '--primaryvalue', type='string')
     parser.add_option('-M', '--mirrorvalue', type='string')
+    parser.add_option('-o', '--onlysegment', type='int')
     (options, args) = parser.parse_args()
 
     USER=os.getenv('USER')
@@ -52,6 +53,18 @@ def parseargs():
         doList(options.skipvalidation)
         parser.exit()
 
+    if not options.onlysegment is None and options.onlysegment < 0: 
+        logger.error('--onlysegment takes a positive integer argument')
+        parser.exit()
+
+    if not options.onlysegment is None and not (options.primaryvalue or options.mirrorvalue):
+        logger.error('--onlysegment must be specified with --primaryvalue or --mirrorvalue')
+        parser.exit()
+
+    if not options.onlysegment is None and (options.mastervalue or options.masteronly):
+        logger.error('--onlysegment cannot be specified with --mastervalue or --masteronly')
+        parser.exit()
+        
     if options.show:
 
         if options.skipvalidation:
@@ -62,7 +75,7 @@ def parseargs():
             doShow(options.show, longform=False)
 
         parser.exit()
-
+        
     if options.change and options.remove:
         logger.error("Multiple actions specified.  See the --help info.")
         parser.exit()
@@ -315,8 +328,21 @@ if len(failedPings):
     userConfirm()
 
 try:
+    # do one segment only
+    if not options.onlysegment is None:
+        for h in hostCache.get_hosts(): 
+            for seg in h.dbs:
+                if seg.content == int(options.onlysegment):
+                    if seg.isSegmentPrimary() and options.primaryvalue:
+                        logger.info('found specified segment on host: ' + h.hostname +  ' datadir=' + seg.datadir)
+                        doAddConfigScript(pool, h.hostname, [ seg ], options.primaryvalue)
+
+                    if seg.isSegmentMirror() and options.mirrorvalue:
+                        logger.info('found specified segment on host: ' + h.hostname +  ' datadir=' + seg.datadir)
+                        doAddConfigScript(pool, h.hostname, [ seg ], options.mirrorvalue)
+    
     # do the segments
-    if not options.masteronly:
+    if not options.masteronly and options.onlysegment is None:
         for h in hostCache.get_hosts():
             directory_string = None
             
@@ -344,6 +370,8 @@ try:
     pool.join()
     items = pool.getCompletedItems()
     failure = False
+    if not items:
+        failure = True
     for i in items:
         if not i.was_successful():
             logger.error('failed updating the postgresql.conf files on host: ' + i.remoteHost)
