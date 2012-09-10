@@ -19,17 +19,26 @@ EXCL_OBJS=src/backend/bootstrap/bootparse.o \
 			src/backend/regex/regcomp.o \
 			src/backend/regex/regexec.o \
 			src/backend/utils/adt/like.o \
-			src/backend/utils/misc/guc.o
+			src/backend/utils/misc/guc.o \
+			src/timezone/%.o \
+			src/backend/main/%.o
 
 OBJFILES=$(top_srcdir)/src/backend/objfiles.txt
 ALL_OBJS=$(addprefix $(top_srcdir)/, \
-			$(filter-out $(EXCL_OBJS) src/timezone/%.o src/backend/main/%.o, \
+			$(filter-out $(EXCL_OBJS), \
 				$(shell test -f $(OBJFILES) && cat $(OBJFILES))))
 
-# A function that generates TARGET_OBJS = test case, mock objects, real objects, cmockery.o
+SUT_OBJ=$(top_srcdir)/$(subdir)/$(1).o
+# A function that generates TARGET_OBJS = test case, mock objects, real objects,
+# and cmockery.o. $(OBJFILES) contains %/objfiles.txt, because
+# src/backend/Makefile will create it with rule=objfiles.txt, which is not
+# expected in postgres rule.  It actually uses expand_subsys to obtain the .o
+# file list.  But here we don't include common.mk so just clear out
+# objfiles.txt from the list for $(TARGET_OBJS)
 TARGET_OBJS=$(shell echo $(1)_test.o $(CMOCKERY_OBJS) $($(1)_REAL_OBJS) \
 		$(patsubst $(top_srcdir)/src/%.o,$(MOCK_DIR)/%_mock.o,\
-			$(filter-out $(top_srcdir)/$(subdir)/$(1).o $($(1)_REAL_OBJS),$(ALL_OBJS))))
+			$(filter-out $(SUT_OBJ) $($(1)_REAL_OBJS) %/objfiles.txt, \
+				$(ALL_OBJS))))
 
 
 $(abs_top_srcdir)/src/%.c:
@@ -54,7 +63,7 @@ all: $(patsubst %,%.t,$(TARGETS))
 # but this makes sure a simple make works fine in this directory any time.
 # With PARTIAL_LINKING it will generate objfiles.txt
 $(OBJFILES): $(ALL_OBJS)
-	$(MAKE) PARTIAL_LINKING= -C $(top_srcdir)/src
+	$(MAKE) -C $(top_srcdir)/src
 	$(MAKE) PARTIAL_LINKING= -C $(top_srcdir)/src/backend objfiles.txt
 
 # Need to separate make, as it's using the output of another make.
