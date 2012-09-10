@@ -238,6 +238,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault to simulate memory allocation failure  */
 	_("transaction_abort_failure"),
 		/* inject fault to simulate transaction abort failure  */
+	_("ntuplestore_create_accessor"),
+	/* inject fault at beginning of ntuplestore_create_accessor  */
 	_("not recognized"),
 };
 
@@ -908,6 +910,7 @@ FaultInjector_NewHashEntry(
 		case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
 		case TwoPhaseTransactionCommitPrepared:
 		case TwoPhaseTransactionAbortPrepared:
+		case NtuplestoreCreateAccessor:
 		
 //		case SubtransactionFlushToFile:
 //		case SubtransactionReadFromFile:

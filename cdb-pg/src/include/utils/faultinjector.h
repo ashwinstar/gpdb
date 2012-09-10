@@ -156,6 +156,8 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	AbortTransactionFail,
 
+	NtuplestoreCreateAccessor,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

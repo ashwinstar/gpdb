@@ -8,6 +8,7 @@
 #include "executor/instrument.h"
 #include "storage/buffile.h"
 #include "utils/tuplestorenew.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbvars.h"                /* currentSliceId */
 
@@ -798,6 +799,14 @@ ntuplestore_destroy(NTupleStore *ts)
 NTupleStoreAccessor* 
 ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
 {
+
+#ifdef FAULT_INJECTOR
+					FaultInjector_InjectFaultIfSet(NtuplestoreCreateAccessor,
+													DDLNotSpecified,
+													"" /* databaseName */,
+													"" /* tableName */);
+#endif
+
 	NTupleStoreAccessor *acc = (NTupleStoreAccessor *) palloc(sizeof(NTupleStoreAccessor));
 
 	acc->store = ts;
