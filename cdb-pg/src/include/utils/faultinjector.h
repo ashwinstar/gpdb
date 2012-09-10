@@ -152,7 +152,7 @@ typedef enum FaultInjectorIdentifier_e {
 	XLOGInsert,
 	LocalTmRecordTransactionCommit,
 
-	MallocFailure,
+	DatumStreamMallocFailure,
 	
 	AbortTransactionFail,
 

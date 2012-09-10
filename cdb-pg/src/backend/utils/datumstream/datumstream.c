@@ -1137,7 +1137,7 @@ datumstreamread_block_content(DatumStreamRead *acc)
                     pfree(acc->large_object_buffer);
 					acc->large_object_buffer = NULL;
 #ifdef FAULT_INJECTOR
-					FaultInjector_InjectFaultIfSet(MallocFailure,
+					FaultInjector_InjectFaultIfSet(DatumStreamMallocFailure,
 													DDLNotSpecified,
 													"",    //databaseName
 													""); // tableName

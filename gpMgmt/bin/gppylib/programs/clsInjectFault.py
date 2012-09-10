@@ -370,7 +370,7 @@ class GpInjectFaultProgram:
 			      "sync_persistent_table (inject fault to sync persistent table to disk), " \
 			      "xlog_insert (inject fault to skip insert record into xlog), " \
 			      "local_tm_record_transaction_commit (inject fault for local transactions after transaction commit is recorded and flushed in xlog ), " \
-			      "malloc_failure (inject fault to simulate memory allocation failure), " \
+                  "datumstream_malloc_failure (inject fault to simulate memory allocation failure during datumstream read), " \
                   "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
                   "ntuplestore_create_accessor (inject fault after entering ntuplestore_create_accessor),"
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 

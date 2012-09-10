@@ -234,8 +234,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault to skip insert record into xlog  */
 	_("local_tm_record_transaction_commit"),
 		/* inject fault after recording transaction commit for local transaction  */
-	_("malloc_failure"),
-		/* inject fault to simulate memory allocation failure  */
+	_("datumstream_malloc_failure"),
+		/* inject fault to simulate memory allocation failure during datumstream read */
 	_("transaction_abort_failure"),
 		/* inject fault to simulate transaction abort failure  */
 	_("ntuplestore_create_accessor"),
@@ -918,6 +918,7 @@ FaultInjector_NewHashEntry(
 //		case SubtransactionRollback:
 		/* Ashwin */
 		case FileRepChangeTrackingCompacting:
+		case DatumStreamMallocFailure:
 			
 			if (fileRepRole != FileRepPrimaryRole)
 			{
