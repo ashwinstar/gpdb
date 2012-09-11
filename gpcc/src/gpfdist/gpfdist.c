@@ -139,7 +139,6 @@ struct gnet_request_t
 static gnet_request_t* gnet_parse_request(const char* buf, int* len,
 										  apr_pool_t* pool);
 static char* gstring_trim(char* s);
-static void percent_encoding_to_char(char* p, char* pp, char* path);
 
 #ifndef GP_VERSION
 #define GP_VERSION unknown
@@ -1676,9 +1675,6 @@ static void do_read_request(int fd, short event, void* arg)
 	/* make a copy of the path */
 	path = apr_pstrdup(r->pool, r->in.req->argv[1]);
 
-	/* decode %xx to char */
-	percent_encoding_to_char(p, pp, path);
-
 	/*
 	 * This is a debug hook. We'll get here By creating an external table with
 	 * name(a text) location('gpfdist://<host>:<port>/gpfdist/status').
@@ -2382,55 +2378,6 @@ void *gfile_malloc(size_t size)
 void gfile_free(void *a)
 {
 	free(a);
-}
-
-/*
- * percent_encoding_to_char
- *
- * decode any percent encoded characters that may be included in the http
- * request into normal characters ascii characters.
- */
-void percent_encoding_to_char(char* p, char* pp, char* path)
-{
-	/*   - decode %xx to char */
-	for (p = pp = path; *pp; p++, pp++)
-	{
-		if ('%' == (*p = *pp))
-		{
-			if (pp[1] && pp[2])
-			{
-				int x = pp[1];
-				int y = pp[2];
-
-				if ('0' <= x && x <= '9')
-					x -= '0';
-				else if ('a' <= x && x <= 'f')
-					x = x - 'a' + 10;
-				else if ('A' <= x && x <= 'F')
-					x = x - 'A' + 10;
-				else
-					x = -1;
-
-				if ('0' <= y && y <= '9')
-					y -= '0';
-				else if ('a' <= y && y <= 'f')
-					y = y - 'a' + 10;
-				else if ('A' <= y && y <= 'F')
-					y = y - 'A' + 10;
-				else
-					y = -1;
-
-				if (x >= 0 && y >= 0)
-				{
-					x = (x << 4) + y;
-					*p = (char) x;
-					pp++, pp++;
-				}
-			}
-		}
-	}
-
-	*p = 0;
 }
 
 static void handle_get_request(request_t *r)

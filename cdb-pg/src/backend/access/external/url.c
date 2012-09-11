@@ -109,9 +109,64 @@ static int32  InvokeExtProtocol(void		*ptr,
 								bool		last_call);
 void extract_http_domain(char* i_path, char* o_domain, int dlen);
 
-
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
+
+static inline char* encode_percent_url(char* url)
+{
+	char 	*ptr;
+	char 	*encoded_url;
+	int 	 i, count;
+
+	if (!url)			/* if url is null there is no encoding to do */
+		return url;
+
+	/* count number of characters to encode */
+	count = 0;
+
+	for (i = 0; url[i]; i++)
+	{
+		/* The only two characters we encode are space and percent
+		 * (unlike a standard browser which encodes many more characters) */
+		if ('%' == url[i] || ' ' == url[i])
+			count++;
+	}
+
+	if (!count)		/* No encoding needed */
+		return url;
+
+	/* Allocate memory.
+	 * Each encoded character needs an additional 2 characters,
+	 * and one more character for the null-terminator */
+	ptr = encoded_url = palloc(strlen(url) + 2*count + 1);
+
+
+	/* copy data into encoded_url */
+	for (i = 0; url[i] != '\0'; i++)
+	{
+		switch (url[i])
+		{
+			case ' ':	/* Swap space with %20 */
+				strcpy(ptr, "%20");
+				ptr += 3;
+				break;
+
+			case '%': /* swap % with %25 */
+				strcpy(ptr, "%25");
+				ptr += 3;
+				break;
+
+			/* add other cases here */
+
+			default:
+				*ptr = url[i];
+				++ptr;
+		} /* end switch */
+
+	}	/* end for */
+	*ptr = '\0';
+	return encoded_url;
+}
 
 /*
  * header_callback
@@ -812,6 +867,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 	URL_FILE*	file;
 	int 		e;
 	int         ip_mode;
+	char		*encoded_url;
 
 	/*
 	 * if 'url' starts with "execute:" then it's a command to execute and
@@ -826,7 +882,16 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		return url_execute_fopen(url, cmd, forwrite, ev);
 	}
 
-	if (!(file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
+	/* encode the urls of the following protocols to percent format */
+	if (IS_FILE_URI(url) 	|| IS_GPFDISTS_URI(url)
+							|| IS_GPFDIST_URI(url) || IS_HTTP_URI(url))
+	{
+		encoded_url = encode_percent_url(url);
+	}
+	else
+		encoded_url = url;
+
+	if (!(file = (URL_FILE *) malloc(sizeof(URL_FILE) + strlen(encoded_url) + 1)))
 	{
 		elog(ERROR, "out of memory");
 	}
@@ -834,14 +899,14 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
     memset(file, 0, sizeof(URL_FILE));
 
 	file->url = ((char *) file) + sizeof(URL_FILE);
-	strcpy(file->url, url);
+	strcpy(file->url, encoded_url);
 
 	/* Reset curl_Error_Buffer */
 	curl_Error_Buffer[0] = '\0';
 
     if (IS_FILE_URI(url))
     {
-		char*	path = strchr(url + strlen(PROTOCOL_FILE), '/');
+		char*	path = strchr(file->url + strlen(PROTOCOL_FILE), '/');
 		struct fstream_options fo;
 
 		Insist(!forwrite);

@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>		/* needed for url percent decoding */
 
 #ifdef GPFXDIST
 #include <gpfxdist.h>
@@ -46,6 +47,48 @@ struct fstream_t
 	const char*		ferror; 		 /* error string */
 	struct fstream_options options;
 };
+
+/*
+ * converts a hexadecimal char digit to a decimal integer .
+ */
+#define BASE16_TO_10(x) (((x) >= '0' && (x) <= '9') ? ((x) - '0') : \
+                             (toupper((x)) - 'A' + 10))
+
+static inline char *decode_percent_url(char *url);
+
+
+
+/*
+ * percent-decodes the url.
+ *
+ * @param 	url - encoded url to be decoded.
+ * @return 	a pointer to the decoded URL (which is actually the same pointer to url)
+ */
+static inline char *decode_percent_url(char *url) {
+	char	*ptr;
+	char	*c;
+
+	if ( ! url )
+		return NULL;
+
+	ptr = url;
+	for (c = url;  *c; ++ptr) {
+		if (*c != '%') /* regular character no encoding needed */
+		{
+			*ptr = *c;
+			c++;
+		}
+		else
+		{
+			*ptr = (BASE16_TO_10(c[1]) * 16) + (BASE16_TO_10(c[2]));	/* convert 2 character encodings to one char */
+			c += 3;
+		}
+	}
+	*ptr = '\0';	/* add null-terminator */
+	return url;
+}
+
+
 
 /*
  * Returns a pointer to the end of the last delimiter occurrence,
@@ -540,6 +583,8 @@ fstream_open(const char *path, const struct fstream_options *options,
 		struct gpfxdist_t* transform = (i == 0) ? options->transform : NULL;
 
 		gfile_close(&fs->fd);
+
+		fs->glob.gl_pathv[i] = decode_percent_url(fs->glob.gl_pathv[i]); /* MPP-17933 fix */
 
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], gfile_open_flags(options->forwrite, options->usesync),
 				 transform, options->file_permissions, response_code, response_string))
