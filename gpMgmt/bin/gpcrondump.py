@@ -24,7 +24,7 @@ try:
     from gppylib.gpddboostmanager import *
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.operations import Operation
-    from gppylib.operations.dump import DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
+    from gppylib.operations.dump import ValidateDatabaseExists, ValidateSchemaExists, DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS    
     from gppylib.db import dbconn
 
@@ -406,6 +406,13 @@ class GpCronDump(Operation):
                 raise ExceptionNoStackTraceNeeded("Cannot exclude specific tables if multiple database dumps are requested")
             logger.info("Configuring for multiple database dump")
             
+        for dump_database in self.dump_databases:              
+            ValidateDatabaseExists(database = dump_database, master_port = self.master_port).run()
+                               
+        if self.dump_schema is not None:
+            ValidateSchemaExists(database = self.dump_databases[0], schema = self.dump_schema,
+                                 master_port = self.master_port).run() 
+    
     def _validate_run_program(self):
         #Check to see if the file exists
         cmd = Command('Seeking post script', "which %s" % self.post_script)

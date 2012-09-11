@@ -642,7 +642,7 @@ class ValidateSchemaExists(Operation):
         try:
             dburl = dbconn.DbURL(port = self.master_port, dbname = self.database)
             conn = dbconn.connect(dburl)
-            count = execSQLForSingleton(conn, "select count(*) from pg_database where datname='%s';" % self.database)
+            count = execSQLForSingleton(conn, "select count(*) from pg_namespace where nspname='%s';" % self.schema)
             if count == 0:
                 raise ExceptionNoStackTraceNeeded("Schema %s does not exist in database %s." % (self.schema, self.database))
         finally:
