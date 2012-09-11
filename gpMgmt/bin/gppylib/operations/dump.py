@@ -164,7 +164,7 @@ class PostDumpDatabase(Operation):
 
         # Check master dumps
         path = self.backup_dir if self.backup_dir is not None else self.master_datadir
-        path = os.path.join(path, DUMP_DIR, timestamp[0:8])
+        path = os.path.join(path, DUMP_DIR, DUMP_DATE)
         status_file = os.path.join(path, "%s%s" % (MASTER_STATUS_PREFIX, timestamp))
         dump_file = os.path.join(path, "%s%s" % (MASTER_DBDUMP_PREFIX, timestamp))
         if self.compress: dump_file += ".gz"
@@ -189,7 +189,7 @@ class PostDumpDatabase(Operation):
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in segs:
             path = self.backup_dir if self.backup_dir is not None else seg.getSegmentDataDirectory()
-            path = os.path.join(path, DUMP_DIR, timestamp[0:8])
+            path = os.path.join(path, DUMP_DIR, DUMP_DATE)
             status_file = os.path.join(path, "%s%d_%s" % (SEG_STATUS_PREFIX, seg.getSegmentDbId(), timestamp))
             dump_file = os.path.join(path, "%s%d_%s" % (SEG_DBDUMP_PREFIX, seg.getSegmentDbId(), timestamp))   
             if self.compress: dump_file += ".gz"
@@ -743,14 +743,14 @@ class DumpGlobal(Operation):
     def execute(self):
         logger.info("Commencing pg_catalog dump")
         if self.backup_dir is not None:
-            global_file = os.path.join(self.backup_dir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            global_file = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         else:
-            global_file = os.path.join(self.master_datadir, DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            global_file = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
         Command('Dump global objects', 
                 "pg_dumpall -g --gp-syntax > %s" % global_file).run(validateAfter=True)
         if self.ddboost:       
             abspath = global_file
-            relpath = os.path.join(DUMP_DIR, self.timestamp[0:8], "%s%s" % (GLOBAL_PREFIX, self.timestamp))
+            relpath = os.path.join(DUMP_DIR, DUMP_DATE, "%s%s" % (GLOBAL_PREFIX, self.timestamp))
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath, 
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
@@ -832,7 +832,7 @@ class DeleteCurrentDump(Operation):
                 logger.warn("Error encountered during deletion of %s on %s" % (self.timestamp, seg.getSegmentHostName()))
 
         if self.ddboost:
-            relpath = os.path.join(DUMP_DIR, self.timestamp[0:8])
+            relpath = os.path.join(DUMP_DIR, DUMP_DATE)
             logger.debug('Listing %s on DDBoost to locate dump files with timestamp %s' % (relpath, self.timestamp))
             cmd = Command('DDBoost list dump files',
                           'gpddboost --listDirectory --dir=%s' % relpath)
@@ -854,8 +854,7 @@ class DeleteCurrentSegDump(Operation):
         self.timestamp = timestamp
         self.datadir = datadir
     def execute(self):
-        dump_date = self.timestamp[0:8]
-        path = os.path.join(self.datadir, DUMP_DIR, dump_date)
+        path = os.path.join(self.datadir, DUMP_DIR, DUMP_DATE)
         filenames = ListFilesByPattern(path, "*%s*" % self.timestamp).run()
         for filename in filenames:
             RemoveFile(os.path.join(path, filename)).run()
