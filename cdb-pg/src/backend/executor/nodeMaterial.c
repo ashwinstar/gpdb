@@ -471,7 +471,10 @@ DestroyTupleStore(MaterialState *node)
 	Assert(node);
 
 	ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
-	ntuplestore_destroy((NTupleStore *) node->ts_state);
+	if (node->ts_state)
+	{
+		ntuplestore_destroy((NTupleStore *) node->ts_state);
+	}
 	if(node->ts_markpos)
 	{
 		pfree(node->ts_markpos);

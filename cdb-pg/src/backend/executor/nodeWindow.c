@@ -747,7 +747,10 @@ freeFrameBuffer(WindowFrameBuffer buffer)
 	ntuplestore_destroy_accessor(buffer->reader);
 	ntuplestore_destroy_accessor(buffer->current_row_reader);
 
-	ntuplestore_destroy(buffer->tuplestore);
+	if (buffer->tuplestore)
+	{
+		ntuplestore_destroy(buffer->tuplestore);
+	}
 
 	pfree(buffer);
 }
@@ -3104,7 +3107,10 @@ freeInputBuffer(WindowState *wstate)
 {
 	ntuplestore_destroy_accessor(wstate->input_buffer->writer);
 	ntuplestore_destroy_accessor(wstate->input_buffer->current_row_reader);
-	ntuplestore_destroy(wstate->input_buffer->tuplestore);
+	if (wstate->input_buffer->tuplestore)
+	{
+		ntuplestore_destroy(wstate->input_buffer->tuplestore);
+	}
 
 	pfree(wstate->input_buffer);
 	wstate->input_buffer = NULL;

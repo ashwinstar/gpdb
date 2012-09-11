@@ -792,6 +792,14 @@ ntuplestore_flush(NTupleStore *ts)
 void 
 ntuplestore_destroy(NTupleStore *ts)
 {
+	/*
+	 * If segment got an Out-of-Memory error during ntuplestore_create, this
+	 * pointer can be NULL when this function is called during clean-up.
+	 */
+	if (NULL == ts)
+	{
+		return;
+	}
 	ntuplestore_cleanup(ts, true);
 	UnregisterXactCallbackOnce(XCallBack_NTS, (void *) ts);
 }
@@ -831,6 +839,15 @@ ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
 	
 void ntuplestore_destroy_accessor(NTupleStoreAccessor *acc)
 {
+	/*
+	 * If segment got an Out-of-Memory error during ntuplestore_create_accessor,
+	 * this pointer can be NULL when this function is called during clean-up.
+	 */
+	if (NULL == acc)
+	{
+		return;
+	}
+
 	if(!acc->store)
 	{
 		Assert(!acc->page);
