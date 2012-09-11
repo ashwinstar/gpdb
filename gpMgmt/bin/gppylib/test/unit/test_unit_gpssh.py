@@ -6,10 +6,11 @@ import psi.process, subprocess
 
 class GpsshTestCase(unittest.TestCase):
 
-    # return true if any processes remaining
+    # return count of stranded ssh processes 
     def searchForProcessOrChildren(self):
 
         euid = os.getuid()
+        count = 0
 
         for p in psi.process.ProcessTable().values():
             if p.euid != euid:
@@ -19,13 +20,17 @@ class GpsshTestCase(unittest.TestCase):
             if p.ppid != 1:
                 continue
 
-            return p.pid
+            count += 1
+
+        return count
 
 
     def test00_gpssh_sighup(self):
         """Verify that gppsh handles sighup 
            and terminates cleanly.
         """
+
+        before_count = self.searchForProcessOrChildren()
 
         p = subprocess.Popen("gpssh -h localhost", shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         pid = p.pid
@@ -39,10 +44,11 @@ class GpsshTestCase(unittest.TestCase):
 
         max_attempts = 6
         for i in range(max_attempts):
-            pid = self.searchForProcessOrChildren()
-            if pid:
+            after_count = self.searchForProcessOrChildren()
+            error_count = after_count - before_count
+            if error_count:
                 if (i + 1) == max_attempts:
-                    self.fail("Found stranded gpssh process %s after issuing sig HUP" % pid)
+                    self.fail("Found %d new stranded gpssh processes after issuing sig HUP" % error_count)
                 time.sleep(.5)
  
 if __name__ == "__main__":
