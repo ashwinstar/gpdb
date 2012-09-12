@@ -108,7 +108,7 @@ gp_aoblkdir_dump(char *buffer, TupleDesc tupDesc)
 					break;
 
 				case INT8OID:
-					printf("%20lld  ",DatumGetInt64(datum));
+					printf("%20lld  ",(long long int)DatumGetInt64(datum));
 					break;
 
 				case VARBITOID:
@@ -141,9 +141,10 @@ gp_aoblkdir_dump(char *buffer, TupleDesc tupDesc)
 					for (idx=0;idx<miniPageInfo->numMinipageEntries;idx++)
 					{
 						printf("%57s"," ");
-						printf("%3d] %020lld,%020lld,%020lld\n",idx + 1,miniPageInfo->minipage->entry[idx].fileOffset,
-								  miniPageInfo->minipage->entry[idx].firstRowNum,
-								  miniPageInfo->minipage->entry[idx].rowCount  );
+						printf("%3d] %020lld,%020lld,%020lld\n",idx + 1,
+								  (long long int)miniPageInfo->minipage->entry[idx].fileOffset,
+								  (long long int)miniPageInfo->minipage->entry[idx].firstRowNum,
+								  (long long int)miniPageInfo->minipage->entry[idx].rowCount  );
 					}
 
 					printf("\n");
