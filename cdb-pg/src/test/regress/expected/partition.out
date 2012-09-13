@@ -8845,4 +8845,51 @@ create table plst2
 ERROR:  duplicate VALUES in partition "p3"
 LINE 12:         partition p3 values ( (1, 2) )
                               ^
+-- postive; make sure inner part duplicates are accepted and quietly removed.
+drop table if exists plst2;
+NOTICE:  table "plst2" does not exist, skipping
+create table plst2
+    ( a int, b int)
+    distributed by (a)
+    partition by list (a, b) 
+        (
+            partition p0 values ((1,2), (3,4)),
+            partition p1 values ((4,3), (2,1)),
+            partition p2 values ((4,4),(5,5),(4,4),(5,5),(4,4),(5,5)),
+            partition p3 values ((4,5),(5,6))
+        );
+NOTICE:  CREATE TABLE will create partition "plst2_1_prt_p0" for table "plst2"
+NOTICE:  CREATE TABLE will create partition "plst2_1_prt_p1" for table "plst2"
+NOTICE:  CREATE TABLE will create partition "plst2_1_prt_p2" for table "plst2"
+NOTICE:  CREATE TABLE will create partition "plst2_1_prt_p3" for table "plst2"
+-- positive; make sure legitimate alters work.
+alter table plst2 add partition p4 values ((5,4),(6,5));
+NOTICE:  CREATE TABLE will create partition "plst2_1_prt_p4" for table "plst2"
+alter table plst2 add partition p5 values ((7,8),(7,8));
+NOTICE:  CREATE TABLE will create partition "plst2_1_prt_p5" for table "plst2"
+select conrelid::regclass, consrc  
+from pg_constraint 
+where conrelid in (
+    select parchildrelid::regclass
+    from pg_partition_rule
+    where paroid in (
+        select oid 
+        from pg_partition 
+        where parrelid = 'plst2'::regclass
+        )
+    );
+    conrelid    |                      consrc                      
+----------------+--------------------------------------------------
+ plst2_1_prt_p0 | (((a = 1) AND (b = 2)) OR ((a = 3) AND (b = 4)))
+ plst2_1_prt_p1 | (((a = 4) AND (b = 3)) OR ((a = 2) AND (b = 1)))
+ plst2_1_prt_p2 | (((a = 4) AND (b = 4)) OR ((a = 5) AND (b = 5)))
+ plst2_1_prt_p3 | (((a = 4) AND (b = 5)) OR ((a = 5) AND (b = 6)))
+ plst2_1_prt_p4 | (((a = 5) AND (b = 4)) OR ((a = 6) AND (b = 5)))
+ plst2_1_prt_p5 | ((a = 7) AND (b = 8))
+(6 rows)
+
+-- negative; make sure conflicting alters fail.
+alter table plst2 add partition p6 values ((7,8),(2,1));
+ERROR:  new partition definition overlaps existing partition "p5" of relation "plst2"
+drop table if exists plst2;
 -- MPP-17814 end

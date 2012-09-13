@@ -6249,45 +6249,10 @@ validate_list_partition(partValidationState *vstate)
 					}
 				}
 			}
-			newvals = lappend(newvals, tvals);
+			newvals = list_append_unique(newvals, tvals);
 		}
 		vstate->allListVals = lappend(vstate->allListVals, newvals);
 		spec->partValues = newvals;
-
-		{ /* check for dups in same spec */
-			ListCell		*lc_val  = NULL;
-			foreach(lc_val, newvals)
-			{
-				List *already = lfirst(lc_val);
-				ListCell *rest;
-
-				for_each_cell(rest, lnext(lc_val))
-				{
-					List  *restdef = lfirst(rest);
-					List *diff;
-
-					/*
-					 * See the difference between the two lists -- yes, this is
-					 * starting to look like Lisp.
-					 */
-					diff = list_difference(already, restdef);
-
-					if (list_length(diff) == 0)
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("duplicate VALUES "
-										"in partition%s%s",
-										vstate->namBuf,
-										vstate->at_depth),
-												errOmitLocation(true),
-							 parser_errposition(vstate->pstate, spec->location)));
-					}
-				}
-			}
-
-		}
-
 	} /* end if spec partvalues */
 } /* end validate_list_partition */
 

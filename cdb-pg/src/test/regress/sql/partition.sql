@@ -4371,5 +4371,42 @@ create table plst2
         partition p2 values ( (5, 6) ),
         partition p3 values ( (1, 2) )
     );
+
+-- postive; make sure inner part duplicates are accepted and quietly removed.
+drop table if exists plst2;
+
+create table plst2
+    ( a int, b int)
+    distributed by (a)
+    partition by list (a, b) 
+        (
+            partition p0 values ((1,2), (3,4)),
+            partition p1 values ((4,3), (2,1)),
+            partition p2 values ((4,4),(5,5),(4,4),(5,5),(4,4),(5,5)),
+            partition p3 values ((4,5),(5,6))
+        );
+
+-- positive; make sure legitimate alters work.
+alter table plst2 add partition p4 values ((5,4),(6,5));
+alter table plst2 add partition p5 values ((7,8),(7,8));
+
+select conrelid::regclass, consrc  
+from pg_constraint 
+where conrelid in (
+    select parchildrelid::regclass
+    from pg_partition_rule
+    where paroid in (
+        select oid 
+        from pg_partition 
+        where parrelid = 'plst2'::regclass
+        )
+    );
+
+-- negative; make sure conflicting alters fail.
+alter table plst2 add partition p6 values ((7,8),(2,1));
+
+drop table if exists plst2;
+
+
 -- MPP-17814 end
 
