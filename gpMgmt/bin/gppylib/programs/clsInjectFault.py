@@ -370,9 +370,10 @@ class GpInjectFaultProgram:
 			      "sync_persistent_table (inject fault to sync persistent table to disk), " \
 			      "xlog_insert (inject fault to skip insert record into xlog), " \
 			      "local_tm_record_transaction_commit (inject fault for local transactions after transaction commit is recorded and flushed in xlog ), " \
-                  "datumstream_malloc_failure (inject fault to simulate memory allocation failure during datumstream read), " \
-                  "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
-                  "ntuplestore_create_accessor (inject fault after entering ntuplestore_create_accessor),"
+			      "datumstream_malloc_failure (inject fault to simulate memory allocation failure during datumstream read), " \
+			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
+			      "ntuplestore_create_accessor (inject fault after entering ntuplestore_create_accessor),"
+			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

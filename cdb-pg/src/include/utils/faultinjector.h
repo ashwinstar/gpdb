@@ -151,12 +151,11 @@ typedef enum FaultInjectorIdentifier_e {
 	SyncPersistentTable,
 	XLOGInsert,
 	LocalTmRecordTransactionCommit,
-
 	DatumStreamMallocFailure,
-	
 	AbortTransactionFail,
 
 	NtuplestoreCreateAccessor,
+	UpdateCommittedEofInPersistentTable,
 
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
