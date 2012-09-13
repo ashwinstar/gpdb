@@ -167,7 +167,8 @@ def main(argv):
 	if(config_values['EnableDirectIO']=='1'):
 		# Check that we are running on RHEL. Otherwise disable directIO
 		RHEL_file_exist = os.path.isfile('/etc/redhat-release')
-		if (not RHEL_file_exist):
+		SUSE_file_exist = os.path.isfile('/etc/SuSE-release')
+		if (not RHEL_file_exist and not SUSE_file_exist):
 			config_values['EnableDirectIO']='0'
 	
 	backup_file_handle = BackupFileHandle(backup_file_name, config_values, log_file_handle)
