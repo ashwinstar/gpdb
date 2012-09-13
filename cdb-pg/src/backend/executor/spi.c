@@ -1137,7 +1137,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	/*
 	 * Greenplum Database needs this
 	 */
-	portal->is_cursor = true;
+	portal->is_extended_query = true;
 
 	/*
 	 * Set up the snapshot to use.	(PortalStart will do CopySnapshot, so we

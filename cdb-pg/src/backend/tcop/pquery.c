@@ -104,7 +104,7 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->estate = NULL;
 	qd->planstate = NULL;
 
-	qd->cursor_query = false; /* default value */
+	qd->extended_query = false; /* default value */
 	qd->portal_name = NULL;
 
 	qd->gpmon_pkt = NULL;
@@ -157,7 +157,7 @@ CreateUtilityQueryDesc(Node *utilitystmt,
 	qd->estate = NULL;
 	qd->planstate = NULL;
 
-	qd->cursor_query = false; /* default value */
+	qd->extended_query = false; /* default value */
 	qd->portal_name = NULL;
 
 	return qd;
@@ -775,12 +775,13 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				}
 
 				/*
-				 * let queryDesc know that it is servicing a cursor so that
-				 * it could do the right cleanup in ExecutorEnd.
+				 * let queryDesc know that it is running a query in stages
+				 * (cursor or bind/execute path ) so that it could do the right
+				 * cleanup in ExecutorEnd.
 				 */
-				if (portal->is_cursor)
+				if (portal->is_extended_query)
 				{
-					queryDesc->cursor_query = true;
+					queryDesc->extended_query = true;
 					queryDesc->portal_name = (portal->name ? pstrdup(portal->name) : (char *) NULL);
 				}
 

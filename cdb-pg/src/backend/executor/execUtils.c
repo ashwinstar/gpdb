@@ -1719,14 +1719,14 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	 * Get the gangs we'll use.
 	 *
 	 * As a general rule the first gang is a writer and the rest are readers.
-	 * If this happens to be a cursor query then all gangs are readers.
+	 * If this happens to be an extended query protocol then all gangs are readers.
 	 */
 	if (inv.numNgangs > 0)
 	{
 		inv.vecNgangs = (Gang **) palloc(sizeof(Gang *) * inv.numNgangs);
 		for (i = 0; i < inv.numNgangs; i++)
 		{
-			if (i == 0 && !queryDesc->cursor_query)
+			if (i == 0 && !queryDesc->extended_query)
 			{
 				inv.vecNgangs[i] = allocateWriterGang();
 

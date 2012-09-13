@@ -366,17 +366,18 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL) 
 	{
 		/*
-         * If this is a cursor query - before starting the portal, we need to
-		 * make sure that the shared snapshot is already set by a writer gang,
-		 * or the cursor query readers will timeout waiting for one that may not
-		 * exist (in some cases). Therefore we insert a small hack here and
-		 * dispatch a SET query that will do it for us. (This is also done in
-		 * performOpenCursor() for the simple query protocol).
+         * If this is an extended query (normally cursor or bind/exec) - before
+         * starting the portal, we need to make sure that the shared snapshot is
+         * already set by a writer gang, or the cursor query readers will
+         * timeout waiting for one that may not exist (in some cases). Therefore
+         * we insert a small hack here and dispatch a SET query that will do it
+         * for us. (This is also done in performOpenCursor() for the simple
+         * query protocol).
 		 *
 		 * MPP-7504/MPP-7448: We also call this down inside the dispatcher after
 		 * the pre-dispatch evaluator has run.
 		 */
-		if (queryDesc->cursor_query)
+		if (queryDesc->extended_query)
 		{
 			verify_shared_snapshot_ready();
 		}
@@ -630,7 +631,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 */
 			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
 			dtmPreCommand("ExecutorStart", "(none)", queryDesc->plannedstmt,
-					needDtxTwoPhase, true /* wantSnapshot */, queryDesc->cursor_query );
+					needDtxTwoPhase, true /* wantSnapshot */, queryDesc->extended_query );
 
 			/*
 			 * First, see whether we need to pre-execute any initPlan subplans.

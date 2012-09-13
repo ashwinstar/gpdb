@@ -1080,8 +1080,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
 		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
 		queryDesc->estate->motionlayer_context = gbl_queryDesc->estate->motionlayer_context;
-
-		queryDesc->cursor_query = gbl_queryDesc->cursor_query;
+		queryDesc->extended_query = gbl_queryDesc->extended_query;
 	}
 
 	/*
@@ -1118,7 +1117,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 * may mess up our snapshot-sync mechanism. So we've
 			 * called verify_shared_snapshot() down in the dispatcher.
 			 */
-			if (queryDesc->cursor_query)
+			if (queryDesc->extended_query)
 			{
 				/*
 				 * We rewind the segmateSync value since the InitPlan can
