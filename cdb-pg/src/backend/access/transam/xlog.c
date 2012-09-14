@@ -218,7 +218,7 @@ TimeLineID	ThisTimeLineID = 0;
 
 /* Are we doing recovery from XLOG? */
 bool		InRecovery = false;
-
+bool		bypassRedoFlag = false;
 /* Can we emit xlog records? */
 bool		CanEmitXLogRecords = true;
 
@@ -6344,7 +6344,27 @@ ApplyStartupRedo(
 
 /*
  * This must be called ONCE during postmaster or standalone-backend startup
- */
+
+How Recovery works ?
+-------------------------------------------------------------------------
+|   	Clean Shutdown case    	| 	Not Clean Shutdown  case        |
+|	(InRecovery = false)	|	(InRecovery = true)		|
+-------------------------------------------------------------------------
+|				|		   |			|	
+|				|record after	   |record after	|	
+|				|checkpoint =	   |checkpoint = 	|	
+|				|NULL		   |NOT NULL		|	
+|				|(byPassRedoFlag   |(byPassRedoFlag	|	
+|				| = TRUE)	   | = FALSE		|	
+-------------------------------------------------------------------------
+|				|		   |			|	
+|	No Redo			|No Redo	   |Redo done		|	
+|	No Recovery Passes	|Recovery Pass done|Recovery Pass done	|	
+-------------------------------------------------------------------------
+*/
+
+
+
 void
 StartupXLOG(void)
 {
@@ -6485,7 +6505,6 @@ StartupXLOG(void)
 		 * to pg_control is broken, try the next-to-last one.
 		 */
 		checkPointLoc = ControlFile->checkPoint;
-
 		record = ReadCheckpointRecord(checkPointLoc, 1);
 		if (record != NULL)
 		{
@@ -6654,7 +6673,6 @@ StartupXLOG(void)
 				(errmsg("Forcing Crash Recovery for Master Standby takeover")));
 		InRecovery = true;
 	}
-
 	/*
 	 * We need to create the pg_distributedlog directory if we are
 	 * upgrading from before 3.1.1.4 patch.
@@ -6761,7 +6779,21 @@ StartupXLOG(void)
 			record = XLogReadRecord(NULL, LOG);
 		}
 
-		if (record != NULL)
+		/*
+		 *	AP: To handle case where its not a clean shutdown but it doesnt have a record following the checkpoint record.
+		 *	In such case, just proceed with the Pass 2, 3, 4 to clear any inconsistent enteries in Persistent Tables without 
+		 *	doing the whole redo loop below.
+		 */
+		if (record == NULL)	
+		{
+			if (InRecovery)
+			{
+				bypassRedoFlag = true;
+				ereport(LOG,
+						(errmsg("No record for redo after checkpoint, skip redo and proceed for recovery pass")));
+			}
+		}
+		if (record != NULL || bypassRedoFlag)
 		{
 			bool		recoveryContinue = true;
 			bool		recoveryApply = true;
@@ -6778,40 +6810,42 @@ StartupXLOG(void)
 			/*
 			 * main redo apply loop
 			 */
-			do
+			if (!bypassRedoFlag)
 			{
-				ErrorContextCallback errcontext;
+				do
+				{	
+					ErrorContextCallback errcontext;
 
-				/*
-				 * Have we reached our recovery target?
-				 */
-				if (recoveryStopsHere(record, &recoveryApply))
-				{
-					reachedStopPoint = true;		/* see below */
-					recoveryContinue = false;
-					if (!recoveryApply)
-						break;
-				}
+					/*
+					 * Have we reached our recovery target?
+					 */
+					if (recoveryStopsHere(record, &recoveryApply))
+					{
+						reachedStopPoint = true;		/* see below */
+						recoveryContinue = false;
+						if (!recoveryApply)
+							break;
+					}
 
-				/* Setup error traceback support for ereport() */
-				errcontext.callback = StartupXLOG_RedoPass1Context;
-				errcontext.arg = (void *) record;
-				errcontext.previous = error_context_stack;
-				error_context_stack = &errcontext;
+					/* Setup error traceback support for ereport() */
+					errcontext.callback = StartupXLOG_RedoPass1Context;
+					errcontext.arg = (void *) record;
+					errcontext.previous = error_context_stack;
+					error_context_stack = &errcontext;
 
-				if (PersistentRecovery_ShouldHandlePass1XLogRec(&ReadRecPtr, &EndRecPtr, record))
-				{
-					ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
-				}
+					if (PersistentRecovery_ShouldHandlePass1XLogRec(&ReadRecPtr, &EndRecPtr, record))
+					{
+						ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
+					}
 
-				/* Pop the error context stack */
-				error_context_stack = errcontext.previous;
+					/* Pop the error context stack */
+					error_context_stack = errcontext.previous;
 
-				LastRec = ReadRecPtr;
+					LastRec = ReadRecPtr;
 
-				record = XLogReadRecord(NULL, LOG);
-			} while (record != NULL && recoveryContinue);
-
+					record = XLogReadRecord(NULL, LOG);
+				} while (record != NULL && recoveryContinue);
+			}
 			CurrentResourceOwner = NULL;
 			/*
 			 * end of main redo apply loop
