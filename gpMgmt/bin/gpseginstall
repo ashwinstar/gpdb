@@ -24,6 +24,7 @@ sys.path.append(sys.path[0] + '/lib')
 
 try:
     import paramiko, getpass, pexpect
+    import gppylib.userinput
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
@@ -81,7 +82,6 @@ class UniqueHost:
     
     def debugStr(self):
         return "address %s hostname %s userExists %s" % (self.address, self.hostname, self.userExists)
-    
 
 def cli_help():
     help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', EXECNAME + '_help')
@@ -110,7 +110,7 @@ def parseargs():
     parser.add_option('-f', '--file', type='string')
     parser.add_option('-u', '--user', type='string', default='gpadmin')
     parser.add_option('-g', '--group', type='string')
-    parser.add_option('-p', '--password', action='store_true')
+    parser.add_option('-p', '--password', type='string')
     parser.add_option('-c', '--commands', type='string')
     parser.add_option('--verbose', action='store_true')
     (options, args) = parser.parse_args()
@@ -419,8 +419,9 @@ def  getLocalSoftwareVersion():
     return False
 
 # True is an error
-def  simpleLocalCommand(cmdStr, checkError=True):
-    logger.info(cmdStr)
+def  simpleLocalCommand(cmdStr, checkError=True, verbose=True):
+    if verbose:
+        logger.info(cmdStr)
     try:
         cmd = Command("simpleLocalCommand", cmdStr)
         pool.addCommand(cmd)
@@ -439,10 +440,11 @@ def  simpleLocalCommand(cmdStr, checkError=True):
     return False
 
 # True is an error
-def  simpleRemoteCommand(cmdStr, checkError=True):
+def  simpleRemoteCommand(cmdStr, checkError=True, verbose=True):
 
     failures = set()
-    logger.info("remote command: %s" % cmdStr)
+    if verbose:
+        logger.info("remote command: %s" % cmdStr)
 
     try:
         for k in uniqueseghosts.keys():
@@ -483,20 +485,27 @@ def chownMasterSoftware():
     cmdStr = "chown -R %s:%s %s" % (options.user, options.group, installation_info.install_binary_path)
     if (simpleLocalCommand(cmdStr, True)):
         return True
- 
+
 
 # True is an error
 def changeUserPassword():
 
-    password = getpass.getpass('Please enter a password')
+    if not options.password:
+        password = gppylib.userinput.ask_create_password()
+        if not password:
+            logger.error("error obtaining password from user")
+            return True
+    else:
+        password = options.password
     cmd = "%s/sbin/gpchangeuserpassword --user %s --password %s" % (gphome, options.user, password)
 
-    if (simpleLocalCommand(cmd, False)):
+    logger.info("Changing system passwords ...")
+    if (simpleLocalCommand(cmd, False, verbose=False)):
         return True
 
     cmdStr = ". %s/greenplum_path.sh; %s" % (gphome, cmd)
 
-    if (simpleRemoteCommand(cmdStr, True)):
+    if (simpleRemoteCommand(cmdStr, True, verbose=False)):
         return True
 
 def md5Command():
