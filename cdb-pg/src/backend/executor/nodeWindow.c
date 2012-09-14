@@ -198,12 +198,14 @@ typedef struct WindowStatePerLevelData
 	 * This is used, together with range_edge_zero, to check whether
 	 * a delayed RANGE frame edge is negative.
 	 */
-	Oid range_edge_ordering_oper;
+	Oid trail_range_edge_ordering_oper;
+	Oid lead_range_edge_ordering_oper;
 
 	/*
 	 * The datum to represent the RANGE edge value "0"
 	 */
-	Datum range_edge_zero;
+	Datum trail_range_edge_zero;
+	Datum lead_range_edge_zero;
 
 	/* The frame buffer to buffer the intermediate results for
 	 * the functions in this level key.
@@ -4338,6 +4340,8 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 							 Datum *p_request_value,
 							 bool is_lead_edge)
 {
+	Oid edge_ordering_oper;
+	Datum edge_zero;
 	WindowFrameBuffer frame_buffer = level_state->frame_buffer;
 	NTupleStorePos pos;
 	bool found;
@@ -4346,10 +4350,20 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 	Assert(EDGE_IS_DELAYED(edge));
 	Assert(level_state->numSortCols == 1);
 
+	if (is_lead_edge)
+	{
+		edge_ordering_oper = level_state->lead_range_edge_ordering_oper;
+		edge_zero = level_state->lead_range_edge_zero;
+	}
+	else
+	{
+		edge_ordering_oper = level_state->trail_range_edge_ordering_oper;
+		edge_zero = level_state->trail_range_edge_zero;
+	}
 	/* Compute the new edge value */
 	*p_request_value = 
-		get_delay_range_edge(edge, edge_expr, level_state->range_edge_ordering_oper,
-							 level_state->range_edge_zero, wstate);
+		get_delay_range_edge(edge, edge_expr, edge_ordering_oper,
+							 edge_zero, wstate);
 
 	/* Set the edge to current_row */
 	found = ntuplestore_acc_tell(frame_buffer->current_row_reader, &pos);
@@ -5232,7 +5246,7 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 						   WindowStatePerLevel level_state,
 						   WindowState *wstate)
 {
-	ExprState *n;
+	ExprState *exprstate;
 	Expr *expr;
 	Expr *varexpr;
 	Oid exprrestype;
@@ -5243,7 +5257,7 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	char *oprname;
 	Form_pg_operator opr;
 	int32 vartypmod = desc->attrs[attnum - 1]->atttypmod;
-	
+
 	Insist(EDGE_IS_BOUND(edge));
 
 	ltype = desc->attrs[attnum - 1]->atttypid;
@@ -5254,49 +5268,27 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	expr = (Expr *)edge->val;
 
 	/*
-	 * Set trailing or leading expression state. If one of such expression
-	 * exist, we coerce the other one to the same type.
+	 * Set trailing or leading expression state.
 	 */
 	if (is_trail)
 	{
-		if (level_state->lead_expr != NULL)
- 		{
-  			expr = coerceType(expr, exprType((Node *)(level_state->lead_expr->expr)));
- 			if ( expr == NULL )
- 				ereport(ERROR,
- 						(errcode(ERRCODE_DATA_EXCEPTION),
- 						 errmsg("can't coerce trailing frame bound to type of leading frame bound"),
- 						 errhint("specify the leading and trailing frame bounds as the same type"),
- 								   errOmitLocation(true)));
- 		}
+		exprstate = ExecInitExpr(expr, (PlanState *) wstate);
 
-		n = ExecInitExpr(expr, (PlanState *) wstate);
-		
-		level_state->trail_expr = n;
+		level_state->trail_expr = exprstate;
 		if (!EDGE_IS_DELAYED(edge))
-			level_state->trail_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+			level_state->trail_range = ExecEvalExpr(exprstate, econtext,
+													&isNull, NULL);
 	}
-	
 	else
 	{
-		if (level_state->trail_expr != NULL)
- 		{
-  			expr = coerceType(expr, exprType((Node *)(level_state->trail_expr->expr)));
- 			if ( expr == NULL )
- 				ereport(ERROR,
- 						(errcode(ERRCODE_DATA_EXCEPTION),
- 						 errmsg("can't coerce leading frame bound to type of trailing frame bound"),
- 						 errhint("specify the leading and trailing frame bounds as the same type"),
- 								   errOmitLocation(true)));
- 		}
+		exprstate = ExecInitExpr((Expr *)expr, (PlanState *) wstate);
 
-		n = ExecInitExpr((Expr *)expr, (PlanState *) wstate);
-
-		level_state->lead_expr = n;
+		level_state->lead_expr = exprstate;
 		if (!EDGE_IS_DELAYED(edge))
-			level_state->lead_range = ExecEvalExpr(n, econtext, &isNull, NULL);
+			level_state->lead_range = ExecEvalExpr(exprstate, econtext,
+												   &isNull, NULL);
 	}
-	
+
 	if ((EDGE_IS_BOUND_PRECEDING(edge) && 
 		 level_state->col_sort_asc[0]) ||
 		(EDGE_IS_BOUND_FOLLOWING(edge) &&
@@ -5327,13 +5319,10 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	{
 		List *oprlist = lappend(NIL, makeString(oprname));
 
-		tup = oper(NULL, oprlist, ltype, rtype, true, -1);
+		tup = oper(NULL, oprlist, ltype, rtype, false, -1);
 
 		list_free_deep(oprlist);
 
-		/* We have to find it now */
-		Insist(HeapTupleIsValid(tup));
-		
 		opr = (Form_pg_operator) GETSTRUCT(tup);
 
 		/* this is why we're here */
@@ -5373,12 +5362,12 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 
 	Insist(PointerIsValid(expr));
 
-	n = ExecInitExpr(expr, (PlanState *) wstate);
-	
+	exprstate = ExecInitExpr(expr, (PlanState *) wstate);
+
 	if (is_trail)
-		level_state->trail_range_expr = n;
+		level_state->trail_range_expr = exprstate;
 	else
-		level_state->lead_range_expr = n;
+		level_state->lead_range_expr = exprstate;
 
 	/*
 	 * Construct immediate clause like:
@@ -5390,25 +5379,39 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	 * The created expression is used to determine if the frame
 	 * edge is on the current row or not. 
 	 */
-	n = make_eq_exprstate(wstate, expr, varexpr);
+	exprstate = make_eq_exprstate(wstate, expr, varexpr);
 	if (is_trail)
-		level_state->trail_range_eq_expr = n;
+		level_state->trail_range_eq_expr = exprstate;
 	else
-		level_state->lead_range_eq_expr = n;
+		level_state->lead_range_eq_expr = exprstate;
 
 	/*
 	 * Find the function oid of the ordering operator for
 	 * the RANGE edge, and create the datum that represents
-	 * the "0" value.
+	 * the "0" value.  These are necessary only for delayed edges.
 	 */
-	Operator edge_ordering = ordering_oper(rtype, false /* noError */);
-	level_state->range_edge_ordering_oper = oprfuncid(edge_ordering);
-	
-	Type edge_type = typeidType(rtype);
-	level_state->range_edge_zero = stringTypeDatum(edge_type, "0", exprTypmod(edge->val));
+	if (EDGE_IS_DELAYED(edge))
+	{
+		Operator	edge_ordering;
+		Type		edge_type;
+		Datum		edge_zero;
 
-	ReleaseSysCache(edge_ordering);
-	ReleaseSysCache(edge_type);
+		edge_ordering = ordering_oper(rtype, false /* noError */);
+		if (is_trail)
+			level_state->trail_range_edge_ordering_oper = oprfuncid(edge_ordering);
+		else
+			level_state->lead_range_edge_ordering_oper = oprfuncid(edge_ordering);
+
+		edge_type = typeidType(rtype);
+		edge_zero = stringTypeDatum(edge_type, "0", exprTypmod(edge->val));
+		if (is_trail)
+			level_state->trail_range_edge_zero = edge_zero;
+		else
+			level_state->lead_range_edge_zero = edge_zero;
+
+		ReleaseSysCache(edge_ordering);
+		ReleaseSysCache(edge_type);
+	}
 }
 
 /*

@@ -1595,3 +1595,8 @@ select wm_avg(pn, '{0.1,0.2}'::float[], ofs) over (order by pn)
 from sale, (values(3)) s(ofs);
 select wm_var_pop(pn, array[0.1, 0.9], 0) over
     (order by pn rows between 1 preceding and current row) from sale;
+
+-- MPP-18124
+select i, count(*) over (order by i range between 3 preceding and interval '3 days' following) from (select i::date, i j from generate_series('2010-10-10'::timestamp, '2010-10-20'::timestamp, interval '1 day')i)t1;
+select i, count(*) over (order by i range between floor(i-10) preceding and i following) from generate_series(0, 9)i;
+-- End of MPP-18124

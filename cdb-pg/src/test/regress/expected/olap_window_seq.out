@@ -8295,3 +8295,23 @@ select wm_var_pop(pn, array[0.1, 0.9], 0) over
 ERROR:  window function "wm_var_pop" cannot be used with a framed window specification
 LINE 1: select wm_var_pop(pn, array[0.1, 0.9], 0) over
                ^
+-- MPP-18124
+select i, count(*) over (order by i range between 3 preceding and interval '3 days' following) from (select i::date, i j from generate_series('2010-10-10'::timestamp, '2010-10-20'::timestamp, interval '1 day')i)t1;
+     i      | count 
+------------+-------
+ 10-10-2010 |     4
+ 10-11-2010 |     5
+ 10-12-2010 |     6
+ 10-13-2010 |     7
+ 10-14-2010 |     7
+ 10-15-2010 |     7
+ 10-16-2010 |     7
+ 10-17-2010 |     7
+ 10-18-2010 |     6
+ 10-19-2010 |     5
+ 10-20-2010 |     4
+(11 rows)
+
+select i, count(*) over (order by i range between floor(i-10) preceding and i following) from generate_series(0, 9)i;
+ERROR:  RANGE parameter cannot be negative
+-- End of MPP-18124
