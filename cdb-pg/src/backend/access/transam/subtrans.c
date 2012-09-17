@@ -65,6 +65,10 @@ static SlruCtlData SubTransCtlData;
 static int	ZeroSUBTRANSPage(int pageno);
 static bool SubTransPagePrecedes(int page1, int page2);
 
+/*
+ * Function to fetch the subtransaction data from subtrans log.
+ * Subtransaction data stores Immediate and TopMost Parent for the XID.
+ */
 static void
 SubTransGetData(TransactionId xid, SubTransData* subData)
 {
