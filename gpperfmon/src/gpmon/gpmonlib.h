@@ -196,6 +196,7 @@ typedef struct host_t
 	unsigned char is_hdm; 
 	unsigned char is_hdw; 
 	unsigned char is_hbw; 
+	unsigned char is_hdc;
 	unsigned char is_etl; 
 	char ever_connected; /* set to non-zero after first connection attempt */
 } host_t;

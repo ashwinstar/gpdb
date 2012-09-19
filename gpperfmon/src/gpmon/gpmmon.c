@@ -1744,7 +1744,7 @@ static void gethostlist()
 		addressinfo_holder_t* addressinfo;
 		int counter = 0;
 
-		TR0(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d) (hdm %d) (hdw %d) (hbw %d) (dia %d)\n", 
+		TR0(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d) (hdm %d) (hdw %d) (hbw %d) (hdc %d) (dia %d)\n",
 			ax.hosttab[i].hostname, 
 			ax.hosttab[i].is_master,
 			ax.hosttab[i].data_dir,
@@ -1752,6 +1752,7 @@ static void gethostlist()
 			ax.hosttab[i].is_hdm,
 			ax.hosttab[i].is_hdw,
 			ax.hosttab[i].is_hbw,
+			ax.hosttab[i].is_hdc,
 			ax.hosttab[i].is_etl));
 
 		addressinfo = ax.hosttab[i].addressinfo_head;		

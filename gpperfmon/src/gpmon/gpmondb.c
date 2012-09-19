@@ -13,6 +13,7 @@
 #define GPMON_HOSTTTYPE_HDM 2
 #define GPMON_HOSTTTYPE_ETL 3
 #define GPMON_HOSTTTYPE_HBW 4
+#define GPMON_HOSTTTYPE_HDC 5
 
 #define GPDB_CONNECTION_STRING "dbname='" GPMON_DB "' user='" GPMON_DBUSER "' connect_timeout='30'"
 
@@ -187,6 +188,7 @@ struct hostinfo_holder_t
 	int is_hdm;
 	int is_hdw;
 	int is_hbw;
+	int is_hdc;
 	int is_etl;
 };
 
@@ -234,6 +236,9 @@ void initializeHostInfoDataFromDevicesEntry(apr_pool_t* tmp_pool, struct hostinf
 		break;
 		case GPMON_HOSTTTYPE_HBW:
 			holder->is_hbw = 1;
+		break;
+		case GPMON_HOSTTTYPE_HDC:
+			holder->is_hdc = 1;
 		break;
 	}
 
@@ -320,6 +325,31 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 	}
 
 	if (strcmp(device, "EtlHost") == 0) 
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_ETL;
+	}
+
+	//For V2
+	if (strcmp(device, "Locust0001") == 0)
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_HDW;
+	}
+
+	if (strcmp(device, "Locust0002") == 0)
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_HDM;
+	}
+
+	if (strcmp(device, "Locust0003") == 0)
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_HDC;
+	}
+
+	if (strcmp(device, "EtlHostV2") == 0)
 	{
 		monitored_device = 1;
 		hostType = GPMON_HOSTTTYPE_ETL;
@@ -520,6 +550,9 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 
 			if (hostinfo_holder->is_hbw)
 				hosts[hostcounter].is_hbw = 1;
+
+			if (hostinfo_holder->is_hdc)
+				hosts[hostcounter].is_hdc = 1;
 
 			apr_thread_mutex_create(&hosts[hostcounter].mutex, APR_THREAD_MUTEX_UNNESTED, global_pool); // use the global pool so the mutexes last beyond this function
 
