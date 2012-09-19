@@ -1313,6 +1313,7 @@ bool
 FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound)
 {
         MIRRORED_LOCK_DECLARE;
+	CHECKPOINT_START_LOCK_DECLARE;
 
         GlobalTransaction gxact;
         TransactionId xid;
@@ -1456,6 +1457,18 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
          */
         MIRRORED_LOCK;
 
+	/*
+	 * We have to lock out checkpoint start here when updating persistent relation information
+	 * like Appendonly segment's committed EOF. Otherwise there might be a window betwwen
+	 * the time some data is added to an appendonly segment file and its EOF updated in the
+	 * persistent relation tables. If there is a checkpoint before updating the peristent tables 
+	 * and the system crash after the checkpoint, then during crash recovery we would not resync 
+	 * to the right EOFs (MPP-18261).
+	 * When we use CheckpointStartLock, we make sure we already have the MirroredLock
+	 * first.
+	 */
+	CHECKPOINT_START_LOCK;
+
         /*
          * The order of operations here is critical: make the XLOG entry for
          * commit or abort, then mark the transaction committed or aborted in
@@ -1517,6 +1530,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
         remove_recover_post_checkpoint_prepared_transactions_map_entry(xid, "FinishPreparedTransaction");
 
         RemoveGXact(gxact);
+
+	CHECKPOINT_START_UNLOCK;
 
         MIRRORED_UNLOCK;
 
@@ -1921,10 +1936,6 @@ RecordTransactionCommitPrepared(TransactionId xid,
                                                                 TransactionId *children,
                                                                 PersistentEndXactRecObjects *persistentPrepareObjects)
 {
-        MIRRORED_LOCK_DECLARE;
-
-        CHECKPOINT_START_LOCK_DECLARE;
-
         int16   persistentCommitObjectCount;
         char    *persistentCommitBuffer = NULL;
 
@@ -1944,17 +1955,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
                                                                                 persistentPrepareObjects,
                                                                                 EndXactRecKind_Commit);
 
-        /* See notes in RecordTransactionCommit */
-
         /*
-         * When we use CheckpointStartLock, we make sure we already have the MirroredLock
-         * first.
-         *
-         * The lock order is: MirroredLock then CheckpointStartLock.
+         * Ensure the caller already has MirroredLock then CheckpointStartLock.
          */
-        MIRRORED_LOCK;
-
-        CHECKPOINT_START_LOCK;
 
         /* Emit the XLOG commit record */
         xlrec.xid = xid;
@@ -2054,11 +2057,6 @@ RecordTransactionCommitPrepared(TransactionId xid,
 
         /* to avoid race conditions, the parent must commit first */
         TransactionIdCommitTree(nchildren, children);
-
-        /* Checkpoint is allowed again */
-        CHECKPOINT_START_UNLOCK;
-
-        MIRRORED_UNLOCK;
 
         if (persistentCommitBuffer != NULL)
                 pfree(persistentCommitBuffer);
