@@ -13,8 +13,8 @@ class CFile(object):
 
     # multi-line comment
     m_comment_pat = re.compile(r'/\*.*?\*/', re.DOTALL)
-    # single-line comment
-    s_comment_pat = re.compile(r'//.*$', re.MULTILINE)
+    # single-line comment (not URLS, whose "//" is preceded by a colon)
+    s_comment_pat = re.compile(r'(?<!:)//.*$', re.MULTILINE)
     # __attribute__((XXX)): it gets difficult to match arguments.
     # Remove it as it's a noisy keyword for us.
     attribute_pat = re.compile(r'__attribute__\s*\(\((format\s*\([^\)]+\)\s*|format_arg\s*\(\d+\)\s*|.+?)\)\)')
