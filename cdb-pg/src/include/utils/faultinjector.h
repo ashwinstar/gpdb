@@ -157,6 +157,9 @@ typedef enum FaultInjectorIdentifier_e {
 	NtuplestoreCreateAccessor,
 	UpdateCommittedEofInPersistentTable,
 
+	SetGpTestSystemCacheFlushForcePlain,
+	SetGpTestSystemCacheFlushForceOff,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
@@ -197,7 +200,9 @@ typedef enum FaultInjectorType_e {
 	FaultInjectorTypePanicSuppress,
 
 	FaultInjectorTypeSegv,
-	
+
+	FaultInjectorTypeSetGuc,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorTypeMax,
 	

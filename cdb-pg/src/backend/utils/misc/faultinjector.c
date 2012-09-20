@@ -33,8 +33,11 @@
 #include "storage/shmem.h"
 #include "utils/faultinjector.h"
 #include "utils/hsearch.h"
+#include "utils/inval.h"
+
 
 #ifdef FAULT_INJECTOR
+
 
 /*
  * gettext() can't be used in a static initializer... This breaks nls builds.
@@ -92,6 +95,7 @@ FaultInjectorTypeEnumToString[] = {
 	_("status"),
 	_("panic_suppress"),
 	_("segv"),
+	_("set_guc"),
 	_("not recognized"),
 };
 
@@ -242,6 +246,11 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault at beginning of ntuplestore_create_accessor  */
 	_("update_committed_eof_in_persistent_table"),
 		/* inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files */
+		/* inject fault to before insertion of btree parent and after release of child buffers */
+	_("set_gp_test_system_cache_flush_force_plain"),
+	  /* set the GUC  gp_test_system_cache_flush_force to plain */
+	_("set_gp_test_system_cache_flush_force_off"),
+	  /* set the GUC  gp_test_system_cache_flush_force to off */
 	_("not recognized"),
 };
 
@@ -676,7 +685,35 @@ FaultInjector_InjectFaultIfSet(
 			*(int *) 0 = 1234;
 			break;
 		}
-		
+
+		case FaultInjectorTypeSetGuc:
+		{
+			switch (entryLocal->faultInjectorIdentifier)
+			{
+				case SetGpTestSystemCacheFlushForcePlain:
+				{
+					gp_test_system_cache_flush_force = SysCacheFlushForce_NonRecursive;
+					break;
+				}
+				case SetGpTestSystemCacheFlushForceOff:
+				{
+					gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
+					break;
+				}
+				default:
+				{
+					ereport(LOG,
+							(errmsg("unexpected error, fault triggered, fault name:'%s' fault type:'%s' ",
+									FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+									FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));
+
+					Assert(0);
+					break;
+				}
+			}
+			break;
+		}
+
 		default:
 			
 			ereport(LOG, 
@@ -992,7 +1029,8 @@ FaultInjector_NewHashEntry(
 		case Checkpoint:
 		case AbortTransactionFail:
 		case UpdateCommittedEofInPersistentTable:
-			
+		case SetGpTestSystemCacheFlushForcePlain:
+		case SetGpTestSystemCacheFlushForceOff:
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{
 				LockRelease();

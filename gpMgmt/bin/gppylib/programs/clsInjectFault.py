@@ -302,8 +302,9 @@ class GpInjectFaultProgram:
 			      "skip (inject skip i.e. skip checkpoint), " \
 			      "memory_full (all memory is consumed when injected), " \
 			      "reset (remove fault injection), status (report fault injection status), " \
-			      "panic_suppress (inject suppressed PANIC in critical section), "
-			      "segv (inject a SEGV) ")
+			      "panic_suppress (inject suppressed PANIC in critical section), " \
+			      "segv (inject a SEGV), " \
+                  "set_guc (set a GUC)" )
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
                             help="For 'sleep' faults, the amount of time for the sleep.  Defaults to %default." \
@@ -374,6 +375,8 @@ class GpInjectFaultProgram:
 			      "transaction_abort_failure (inject fault to simulate transaction abort failure), " \
 			      "ntuplestore_create_accessor (inject fault after entering ntuplestore_create_accessor),"
 			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
+                  "set_gp_test_system_cache_flush_force_plain (set the gp_test_system_cache_flush_force GUC to plain), " \
+                  "set_gp_test_system_cache_flush_force_off (set the gp_test_system_cache_flush_force GUC to off), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",
