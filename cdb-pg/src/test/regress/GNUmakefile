@@ -153,6 +153,9 @@ installcheck-parallel: all upg2-setup ugpart-setup
 installcheck-good: all ./current_good_schedule upg2-setup ugpart-setup
 	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule --srcdir=$(abs_srcdir)
 
+installcheck-gpfusion: all upg2-setup ugpart-setup
+	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./gpfusion_schedule --srcdir=$(abs_srcdir)
+
 installcheck-bugbuster: all ./bugbuster/current_good_schedule
 	@echo "================================"
 	@echo "BugBuster starting ... " 

@@ -362,6 +362,7 @@ extern char  *gp_hadoop_connector_jardir;  /* relative dir on $GPHOME of the Had
 extern char  *gp_hadoop_connector_version; /* connector version (internal use only) */
 extern char  *gp_hadoop_target_version; /* the target hadoop distro/version */
 extern char  *gp_hadoop_home;    /* $HADOOP_HOME on all segments */
+extern bool   gp_hadoop_enable_filter_pushdown; /* turn pushdown logic on/off */
 
 /* Time based authentication GUC */
 extern char  *gp_auth_time_override_str;

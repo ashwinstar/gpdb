@@ -126,7 +126,8 @@ static FILE *g_dataSource = NULL;
 FileScanDesc
 external_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 			   List *uriList, List *fmtOpts, char fmtType, bool isMasterOnly,
-			   int rejLimit, bool rejLimitInRows, Oid fmterrtbl, int encoding)
+			   int rejLimit, bool rejLimitInRows, Oid fmterrtbl, int encoding,
+			   List *scanquals)
 {
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
@@ -155,6 +156,7 @@ external_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	scan->fs_rd = relation;
 	scan->fs_scanrelid = scanrelid;
 	scan->fs_scancounter = scancounter;
+	scan->fs_scanquals = scanquals;
 	scan->fs_noop = false;
 	scan->fs_file = NULL;
 	scan->fs_formatter = NULL;
@@ -1642,6 +1644,7 @@ open_external_readable_source(FileScanDesc scan)
 									  false /* for read */,
 									  &extvar,
 									  scan->fs_pstate,
+									  scan->fs_scanquals,
 									  &response_code,
 									  &response_string);
 
@@ -1694,6 +1697,7 @@ open_external_writable_source(ExternalInsertDesc extInsertDesc)
 												true /* forwrite */,
 												&extvar,
 												extInsertDesc->ext_pstate,
+												NIL , /* no quals for write */
 												&response_code,
 												&response_string);
 

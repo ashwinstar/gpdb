@@ -25,12 +25,13 @@ typedef struct ExtProtocolData
 {
 	NodeTag			type;                 /* see T_ExtProtocolData */
 	Relation    	prot_relation;
-	char*			prot_url;
-	char*			prot_databuf;
+	char		   *prot_url;
+	char		   *prot_databuf;
 	int				prot_maxbytes;
-	void*			prot_user_ctx;
+	void		   *prot_user_ctx;
 	bool			prot_last_call;
-		
+	List		   *prot_scanquals;
+
 } ExtProtocolData;
 
 typedef ExtProtocolData *ExtProtocol;
@@ -42,6 +43,7 @@ typedef ExtProtocolData *ExtProtocol;
 #define EXTPROTOCOL_GET_RELATION(fcinfo)   (((ExtProtocolData*) fcinfo->context)->prot_relation)
 #define EXTPROTOCOL_GET_DATABUF(fcinfo)    (((ExtProtocolData*) fcinfo->context)->prot_databuf)
 #define EXTPROTOCOL_GET_DATALEN(fcinfo)    (((ExtProtocolData*) fcinfo->context)->prot_maxbytes)
+#define EXTPROTOCOL_GET_SCANQUALS(fcinfo)    (((ExtProtocolData*) fcinfo->context)->prot_scanquals)
 #define EXTPROTOCOL_GET_USER_CTX(fcinfo)   (((ExtProtocolData*) fcinfo->context)->prot_user_ctx)
 #define EXTPROTOCOL_IS_LAST_CALL(fcinfo)   (((ExtProtocolData*) fcinfo->context)->prot_last_call)
 

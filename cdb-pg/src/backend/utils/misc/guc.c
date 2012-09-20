@@ -600,6 +600,7 @@ char  *gp_hadoop_connector_jardir;
 char  *gp_hadoop_connector_version = ""; /* old GUC; now it's a global var. */
 char  *gp_hadoop_target_version;
 char  *gp_hadoop_home;
+bool   gp_hadoop_enable_filter_pushdown = true;
 
 /* Time based authentication GUC */
 char  *gp_auth_time_override_str = NULL;
@@ -3607,6 +3608,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_reject_internal_tcp_conn,
+		true, NULL, NULL
+	},
+
+	{
+		{"gp_hadoop_enable_filter_pushdown", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables hadoop's use of GP query scan quals."),
+			NULL,
+			GUC_GPDB_ADDOPT
+		},
+		&gp_hadoop_enable_filter_pushdown,
 		true, NULL, NULL
 	},
 

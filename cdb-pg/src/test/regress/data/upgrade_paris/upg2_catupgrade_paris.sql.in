@@ -685,7 +685,35 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyele
 CREATE FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Numeric' WITH (OID=6083, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
 COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) IS 'linear interpolation: x, x0,y0, x1,y1'; 
 
+-- GPFusion protocol/formatter upgrade
+--	1. create formatter/protocol functions
+--	2. create the protocol
+--
+CREATE FUNCTION @gpupgradeschemaname@.gpfusion_write() RETURNS integer
+AS '$libdir/gpfusion.so', 'gpfusionprotocol_export'
+LANGUAGE C STABLE;
 
+CREATE FUNCTION @gpupgradeschemaname@.gpfusion_read() RETURNS integer
+AS '$libdir/gpfusion.so', 'gpfusionprotocol_import'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION @gpupgradeschemaname@.gpfusion_validate() RETURNS void
+AS '$libdir/gpfusion.so', 'gpfusionprotocol_validate_urls'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION @gpupgradeschemaname@.gpfusionwritable_export(record) RETURNS bytea
+AS '$libdir/gpfusion.so', 'gpdbwritableformatter_export'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION @gpupgradeschemaname@.gpfusionwritable_import() RETURNS record
+AS '$libdir/gpfusion.so', 'gpdbwritableformatter_import'
+LANGUAGE C STABLE;
+
+CREATE TRUSTED PROTOCOL gpfusion (
+  writefunc		= gpfusion_write,
+  readfunc      = gpfusion_read,
+  validatorfunc = gpfusion_validate);
+ 
 -- Create Operator Class for UUID
 --		add entries to pg_opclass
 \set pg_opclass_datafile `echo "'$GPHOME/share/postgresql/upgrade/pg_opclass.data'"`

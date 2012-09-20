@@ -36,6 +36,34 @@ CREATE TRUSTED PROTOCOL gphdfs (
   readfunc      = gphdfs_read,
   validatorfunc = gphdfs_validate);
   
+------------------------------------------------------------------
+-- gpfusion
+------------------------------------------------------------------
+
+CREATE FUNCTION pg_catalog.gpfusion_write() RETURNS integer
+AS '$libdir/gpfusion.so', 'gpfusionprotocol_export'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION pg_catalog.gpfusion_read() RETURNS integer
+AS '$libdir/gpfusion.so', 'gpfusionprotocol_import'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION pg_catalog.gpfusion_validate() RETURNS void
+AS '$libdir/gpfusion.so', 'gpfusionprotocol_validate_urls'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION pg_catalog.gpfusionwritable_export(record) RETURNS bytea
+AS '$libdir/gpfusion.so', 'gpdbwritableformatter_export'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION pg_catalog.gpfusionwritable_import() RETURNS record
+AS '$libdir/gpfusion.so', 'gpdbwritableformatter_import'
+LANGUAGE C STABLE;
+
+CREATE TRUSTED PROTOCOL gpfusion (
+  writefunc		= gpfusion_write,
+  readfunc      = gpfusion_read,
+  validatorfunc = gpfusion_validate);
   
 ------------------------------------------------------------------
 -- fixedwidth Formatters

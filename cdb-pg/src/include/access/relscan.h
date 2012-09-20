@@ -120,7 +120,7 @@ struct IndexScanDescData
 };
 
 /*
- * used for scan of external relations with the file protocol
+ * used for scan of external relations
  */
 typedef struct FileScanDescData
 {
@@ -131,6 +131,7 @@ typedef struct FileScanDescData
 	char	   *fs_uri;			/* the URI string */
 	bool		fs_noop;		/* no op. this segdb has no file to scan */
 	uint32      fs_scancounter;	/* copied from struct ExternalScan in plan */
+	List	   *fs_scanquals;	/* referenced scan qualifier list */
 	
 	/* current file parse state */
 	struct CopyStateData *fs_pstate;

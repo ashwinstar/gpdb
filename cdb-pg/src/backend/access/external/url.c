@@ -859,7 +859,13 @@ is_file_exists(const char* filename)
  * which will internally call url_fclose().
  */
 URL_FILE *
-url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string)
+url_fopen(char *url,
+		  bool forwrite,
+		  extvar_t *ev,
+		  CopyState pstate,
+		  List *scanquals,
+		  int *response_code,
+		  const char **response_string)
 {
 
 	/* an EXECUTE string will always be prefixed like this */
@@ -1392,14 +1398,17 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		/* we found our function. set it in custom file handler */
 		fmgr_info(procOid, file->u.custom.protocol_udf);
 
+		/* have the custom file handler point at the qual list */
+		file->u.custom.scanquals = scanquals;
+
 		MemoryContextSwitchTo(oldcontext);
 		
 		file->u.custom.extprotocol->prot_user_ctx = NULL;
 		file->u.custom.extprotocol->prot_last_call = false;
 		file->u.custom.extprotocol->prot_url = NULL;
 		file->u.custom.extprotocol->prot_databuf = NULL;
-		
-		
+		file->u.custom.extprotocol->prot_scanquals = NIL;
+
 		pfree(prot_name);
     }
 	
@@ -2165,7 +2174,7 @@ url_rewind(URL_FILE *file, const char *relname)
 			url_fclose(file, true, relname);
 
 			/* most of these are null fo us. */
-			url_fopen(url, false, NULL, NULL, NULL, 0);
+			url_fopen(url, false, NULL, NULL, NIL, NULL, 0);
 			break;
 
 		case CFTYPE_CURL:
@@ -2549,8 +2558,8 @@ InvokeExtProtocol(void 	   		*ptr,
 				  bool			 last_call)
 {
 	FunctionCallInfoData	fcinfo;
-	ExtProtocolData*		extprotocol = file->u.custom.extprotocol;
-	FmgrInfo*				extprotocol_udf = file->u.custom.protocol_udf;
+	ExtProtocolData		   *extprotocol = file->u.custom.extprotocol;
+	FmgrInfo			   *extprotocol_udf = file->u.custom.protocol_udf;
 	Datum					d;
 	MemoryContext			oldcontext;
 	
@@ -2562,6 +2571,7 @@ InvokeExtProtocol(void 	   		*ptr,
 	extprotocol->prot_relation = (last_call ? NULL : pstate->rel);
 	extprotocol->prot_databuf  = (last_call ? NULL : (char *)ptr);
 	extprotocol->prot_maxbytes = nbytes;
+	extprotocol->prot_scanquals = file->u.custom.scanquals;
 	extprotocol->prot_last_call = last_call;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ fcinfo, 

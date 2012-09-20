@@ -21,6 +21,7 @@
 
 #include "miscadmin.h" /* work_mem */
 
+#include "access/hd_work_mgr.h"
 #include "catalog/pg_type.h"    /* INT8OID */
 #include "nodes/makefuncs.h"
 #include "executor/execHHashagg.h"
@@ -171,6 +172,7 @@ static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
 static List *flatten_grouping_list(List *groupcls);
+static bool is_gpfusion_protocol(Uri *uri);
 
 
 /*
@@ -1106,6 +1108,21 @@ create_aocsscan_plan(CreatePlanContext *ctx, Path *best_path,
 	return scan_plan;
 }
 
+/*
+ * is_gpfusion_protocol
+ * tests if the external table custom protocol is an HADOOP protocol - gpfusion
+ */
+static bool is_gpfusion_protocol(Uri *uri)
+{	
+	if (uri->protocol != URI_CUSTOM || uri->customprotocol == NULL)
+		return false;
+	
+	if (strcmp(uri->customprotocol, "gpfusion") == 0)
+		return true;
+	
+	return false;
+}
+
 
 /*
  * create_externalscan_plan
@@ -1150,6 +1167,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	List			*modifiedloclist = NIL;
 	ListCell		*c = NULL;
 	char			**segdb_file_map = NULL;
+	char			**segdb_work_map = NULL;
 	char			*first_uri_str = NULL;
 	bool			ismasteronly = false;
 	bool			islimitinrows = false;
@@ -1172,6 +1190,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	int			num_segs_participating = 0;
 	bool			*skip_map = NULL;
 	bool			should_skip_randomly = false;
+	bool            is_custom_hd = false;
 
 	/* it should be an external rel... */
 	Assert(scan_relid > 0);
@@ -1462,7 +1481,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 							"%d primary segments.",list_length(rel->locationlist),
 							num_segs_participating),
 									 errOmitLocation(true)));
-
+		
 		/* 
 		 * restart location list and fill in new list until number of
 		 * locations equals the number of segments participating in this
@@ -1494,6 +1513,14 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		if(should_skip_randomly)
 			skip_map = makeRandomSegMap(total_primaries, total_to_skip);
 
+		is_custom_hd = is_gpfusion_protocol(uri);
+		if (is_custom_hd)
+		{
+			segdb_work_map = map_hddata_2gp_segments((char *) strVal(linitial(rel->locationlist)), 
+													num_segs_participating);	
+			Assert(segdb_work_map != NULL);
+		}
+		
 		/* 
 		 * assign each URI from the new location list a primary segdb 
 		 */
@@ -1501,8 +1528,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		{
 			const char	*uri_str = (char *) strVal(lfirst(c));
 			uri = ParseExternalTableUri(uri_str);
-
-			found_candidate = false;
 			found_match = false;
 
 			/*
@@ -1533,22 +1558,43 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 							continue; /* skip it */					
 					}
 
-					/* a valid primary segdb exist on this host */
-					found_candidate = true;
-
-					if(segdb_file_map[segind] == NULL)
+					if (segdb_file_map[segind] == NULL) /* segment was not already activated */
 					{
-						/* segdb not taken yet. assign this URI to this segdb */
-						segdb_file_map[segind] = pstrdup(uri_str);
-						found_match = true;
+						if (!is_custom_hd) /* non-hadoop protocols */
+						{
+							/* segdb not taken yet. assign this URI to this segdb */
+							segdb_file_map[segind] = pstrdup(uri_str);	
+							found_match = true;
+						}
+						else if(segdb_work_map[segind] != NULL)
+						{
+							/* 
+							 * if in hadoop protocol we require a data-fragments allocation in
+							 * segdb_work_map for this segment in order to activate segment
+							 */
+							char opt_delim = '?';
+							StringInfoData seg_uri;
+							
+							initStringInfoOfSize(&seg_uri, 512);
+							appendStringInfoString(&seg_uri, uri_str);
+							/*if the segwork string is the first option we delimit it with '?' otherwise with '&'*/
+							if (strchr(uri_str, '?') != NULL) 
+								opt_delim = '&';
+							appendStringInfoChar(&seg_uri, opt_delim);
+							appendStringInfoString(&seg_uri, segdb_work_map[segind]);
+							segdb_file_map[segind] = seg_uri.data;	
+							found_match = true;
+						}
 					}
-
-					/* too bad. this segdb already has an external source assigned */
 				}
 			}
 
-			/* We failed to find a segdb for this gpfdist(s) URI */
-			if(!found_match)
+			/* 
+			 * We failed to find a segdb for this gpfdist(s) URI 
+			 * when is_custom_hd is true it means that the HD segment allocation algorithm
+			 * is activated and in this case in not necessay true that all segments are allocated 
+			 */
+			if(!found_match && !is_custom_hd)
 			{
 				/* should never happen */
 				elog(LOG, "external tables gpfdist(s) allocation error. "
@@ -1563,7 +1609,9 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 								" when trying to assign segments for gpfdist(s)")));
 			}		
 		}
-
+		
+		if (is_custom_hd)
+			free_hddata_2gp_segments(segdb_work_map, num_segs_participating);
 	}
 	/* (3) */
 	else if(using_execute)

@@ -112,6 +112,7 @@ typedef struct URL_FILE
 		struct {
 			FmgrInfo   *protocol_udf;
 			ExtProtocol extprotocol;
+			List	   *scanquals;
 			MemoryContext protcxt;
 		} custom;
 		
@@ -148,7 +149,7 @@ typedef struct extvar_t
 } extvar_t;
 
 /* exported functions */
-extern URL_FILE *url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string);
+extern URL_FILE *url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, List *quals, int *response_code, const char **response_string);
 extern int url_fclose(URL_FILE *file, bool failOnError, const char *relname);
 extern bool url_feof(URL_FILE *file, int bytesread);
 extern bool url_ferror(URL_FILE *file, int bytesread, char *ebuf, int ebuflen);

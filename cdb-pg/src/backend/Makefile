@@ -55,6 +55,9 @@ LIBS := $(LIBS) -L$(top_builddir)/src/backend/libpq/bsafe_wrapper \
 				-lbsafe_wrapper
 endif
 
+JSONLIB = -ljson
+LIBS := $(LIBS) $(JSONLIB)
+
 ##########################################################################
 
 all: submake-libpgport submake-libbsafe_wrapper submake-libgpla postgres $(POSTGRES_IMP)
