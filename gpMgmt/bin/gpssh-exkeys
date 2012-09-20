@@ -443,21 +443,6 @@ def readAuthorizedKeys(tab=None, keysFile=None):
         if f: f.close()
     return tab
 
-#merge authorized key into existing remote file
-def mergeAuthorizedKeysToRemote(tab=None, keysFile=None):
-    if keysFile is None: keysFile = GV.authorized_keys_fname
-    f = None
-    if tab is None: tab = {}
-    try:
-        f = open(keysFile, 'r')
-        for line in f:
-            IDKey = line.strip().split()
-            if not (len(IDKey) == 3 and line[0] != '#'): continue
-            if IDKey[2] not in tab: 
-                tab[IDKey[2]] = line
-    finally:
-        if f: f.close()
-    return tab
 
 def writeAuthorizedKeys(tab, keysFile=None):
     if not keysFile: keysFile = GV.authorized_keys_fname
@@ -481,23 +466,6 @@ def readKnownHosts(tab=None, hostsFile=None):
     try:
         f = open(hostsFile, 'r')
         for line in f: addKnownHost(tab, line)
-    finally:
-        if f: f.close()
-    return tab
-
-#merge known host into existing remote file
-def mergeKnownHostsToRemote(tab, hostsFile=None):
-    if hostsFile is None: hostsFile = GV.known_hosts_fname
-    f = None
-    if tab is None: tab = {}
-    try:
-        f = open(hostsFile, 'r')
-        for line in f:
-            key = line.strip().split()
-            if not (len(key) == 3 and line[0] != '#'): continue
-            if key[0] not in tab: 
-                tab[key[0]] = line
- 
     finally:
         if f: f.close()
     return tab
@@ -773,9 +741,10 @@ try:
     try:
         for h in GV.allHosts:
             print '  ... send to', h.host()
+            isExistingHost = ( h in GV.existingHosts )
             send_local_id = False
             try:
-                send_local_id = h.sendLocalID(localID, GV.passwd, tempDir)
+                send_local_id = h.sendLocalID(localID, GV.passwd, tempDir if isExistingHost else None)
             except socket.error, e:
                 errmsg = '[ERROR %s] %s' % (h.host(), e)
                 print >> sys.stderr, errmsg 
@@ -785,30 +754,31 @@ try:
                 errmsg = '[ERROR %s] unable to authorize current user' % h.host()
                 print >> sys.stderr, errmsg
             else:
-                # Now extract the .ssh files from the tarball into the
-                # host-specific directory
-                tarfileName = os.path.join(tempDir, '%s.tar' % h.host())
-                hostDir = os.path.join(tempDir, h.host())
-                os.mkdir(hostDir)
-                cmd = 'cd %s && tar xf %s' % (hostDir, tarfileName)
-                if GV.opt['-v']: print '[INFO %s]: %s' % (h.host(), cmd)
-                tarproc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                (tarout, tarerr) = tarproc.communicate()
-                if tarproc.returncode != 0:
-                    print >> sys.stderr, '[WARNING %s] cannot extract SSH files;' % h.host()
-                    for line in tarerr.splitlines():
-                        print >> sys.stderr, '    ', line
-                    print >> sys.stderr, '    One or more existing authentication files may be replaced on %s' % h.host()
+                if isExistingHost:
+                    # Now extract the .ssh files from the tarball into the
+                    # host-specific directory
+                    tarfileName = os.path.join(tempDir, '%s.tar' % h.host())
+                    hostDir = os.path.join(tempDir, h.host())
+                    os.mkdir(hostDir)
+                    cmd = 'cd %s && tar xf %s' % (hostDir, tarfileName)
+                    if GV.opt['-v']: print '[INFO %s]: %s' % (h.host(), cmd)
+                    tarproc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    (tarout, tarerr) = tarproc.communicate()
+                    if tarproc.returncode != 0:
+                        print >> sys.stderr, '[WARNING %s] cannot extract SSH files;' % h.host()
+                        for line in tarerr.splitlines():
+                            print >> sys.stderr, '    ', line
+                        print >> sys.stderr, '    One or more existing authentication files may be replaced on %s' % h.host()
 
-                hostId = os.path.join(hostDir, 'id_rsa.pub')
-                if os.path.exists(hostId) and not filecmp.cmp(GV.id_rsa_pub_fname, hostId):
-                   if not newKeys:
-                        newKeys = open(discovered_authorized_keys_file, 'w')
-                   print '  ...... appending %s ID to authorized_keys' % h.host()
-                   with open(hostId) as hostPub:
-                       for line in hostPub:
-                            newKeys.write(line)
-                       newKeys.flush()
+                    hostId = os.path.join(hostDir, 'id_rsa.pub')
+                    if os.path.exists(hostId) and not filecmp.cmp(GV.id_rsa_pub_fname, hostId):
+                        if not newKeys:
+                            newKeys = open(discovered_authorized_keys_file, 'w')
+                        print '  ...... appending %s ID to authorized_keys' % h.host()
+                        with open(hostId) as hostPub:
+                            for line in hostPub:
+                                newKeys.write(line)
+                            newKeys.flush()
                 
                 # Ensure the proper password-less access to the remote host.
                 if not testAccess(h.host()):
@@ -888,45 +858,57 @@ try:
             if ':' not in s: return s
             return '\[' + s + '\]'
 
-        localAuthKeys = readAuthorizedKeys()
-        localKnownHosts = readKnownHosts()
-
-        for h in GV.allHosts:
-
-            remoteAuthKeysFile = os.path.join(tempDir, h.host(), 'authorized_keys')
-            if os.path.exists(remoteAuthKeysFile) and os.path.getsize(remoteAuthKeysFile):
-                if GV.opt['-v']: print '  ... merging authorized_keys for %s' % h.host()
-                remoteAuthKeys = mergeAuthorizedKeysToRemote(localAuthKeys.copy(), remoteAuthKeysFile)
-                writeAuthorizedKeys(remoteAuthKeys, remoteAuthKeysFile)
-            else:
-                remoteAuthKeysFile = GV.authorized_keys_fname
-
-            remoteKnownHostsFile = os.path.join(tempDir, h.host(), 'known_hosts')
-            if os.path.exists(remoteKnownHostsFile) and os.path.getsize(remoteKnownHostsFile):
-                if GV.opt['-v']: print '  ... merging known_hosts for %s' % h.host()
-                remoteKnownHosts = mergeKnownHostsToRemote(localKnownHosts.copy(), remoteKnownHostsFile)
-                writeKnownHosts(remoteKnownHosts, remoteKnownHostsFile) 
-            else:
-                remoteKnownHostsFile = GV.known_hosts_fname
-
-            remoteIdentityPubFile = os.path.join(tempDir, h.host(), 'id_rsa.pub')
-            if os.path.exists(remoteIdentityPubFile):
-                if not filecmp.cmp(GV.id_rsa_pub_fname, remoteIdentityPubFile):
-                    print '  ... retaining identity from %s' % h.host()
-                remoteIdentity = ""
-                remoteIdentityPub = ""
-            else:
-                remoteIdentity = GV.id_rsa_fname
-                remoteIdentityPub = GV.id_rsa_pub_fname
+        for h in GV.newHosts:
 
             cmd = ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' + 
                    '%s %s %s %s %s:.ssh/ 2>&1' 
-                   % (remoteAuthKeysFile,
-                      remoteKnownHostsFile,
-                      remoteIdentity,
-                      remoteIdentityPub,
+                   % (GV.authorized_keys_fname, 
+                      GV.known_hosts_fname, 
+                      GV.id_rsa_fname, 
+                      GV.id_rsa_pub_fname, 
                       canonicalize( h.host() )))
             h.popen(cmd)
+    
+        if len(GV.existingHosts):
+            localAuthKeys = readAuthorizedKeys()
+            localKnownHosts = readKnownHosts()
+            
+            for h in GV.existingHosts:
+                
+                remoteAuthKeysFile = os.path.join(tempDir, h.host(), 'authorized_keys')
+                if os.path.exists(remoteAuthKeysFile) and os.path.getsize(remoteAuthKeysFile):
+                    if GV.opt['-v']: print '  ... merging authorized_keys for %s' % h.host()
+                    remoteAuthKeys = readAuthorizedKeys(localAuthKeys.copy(), remoteAuthKeysFile)
+                    writeAuthorizedKeys(remoteAuthKeys, remoteAuthKeysFile)
+                else:
+                    remoteAuthKeysFile = GV.authorized_keys_fname
+                
+                remoteKnownHostsFile = os.path.join(tempDir, h.host(), 'known_hosts')
+                if os.path.exists(remoteKnownHostsFile) and os.path.getsize(remoteKnownHostsFile):
+                    if GV.opt['-v']: print '  ... merging known_hosts for %s' % h.host()
+                    remoteKnownHosts = readKnownHosts(localKnownHosts.copy(), remoteKnownHostsFile)
+                    writeKnownHosts(remoteKnownHosts, remoteKnownHostsFile)
+                else:
+                    remoteKnownHostsFile = GV.known_hosts_fname
+                
+                remoteIdentityPubFile = os.path.join(tempDir, h.host(), 'id_rsa.pub')
+                if os.path.exists(remoteIdentityPubFile):
+                    if not filecmp.cmp(GV.id_rsa_pub_fname, remoteIdentityPubFile):
+                        print '  ... retaining identity from %s' % h.host()
+                    remoteIdentity = ""
+                    remoteIdentityPub = ""
+                else:
+                    remoteIdentity = GV.id_rsa_fname
+                    remoteIdentityPub = GV.id_rsa_pub_fname
+                
+                cmd = ('scp -q -o "BatchMode yes" -o "NumberOfPasswordPrompts 0" ' +
+                       '%s %s %s %s %s:.ssh/ 2>&1' 
+                       % (remoteAuthKeysFile, 
+                          remoteKnownHostsFile, 
+                          remoteIdentity, 
+                          remoteIdentityPub, 
+                          canonicalize( h.host() )))
+                h.popen(cmd)
                 
     except:
         errmsg = '[ERROR] cannot complete key exchange: %s' % sys.exc_info()[0]
