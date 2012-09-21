@@ -216,10 +216,9 @@ static int	open_sync_bit = DEFAULT_SYNC_FLAGBIT;
  */
 TimeLineID	ThisTimeLineID = 0;
 
-/* Are we doing recovery from XLOG? */
+/* Are we doing recovery from XLOG */
 bool		InRecovery = false;
-bool		bypassRedoFlag = false;
-/* Can we emit xlog records? */
+/* Can we emit xlog records */
 bool		CanEmitXLogRecords = true;
 
 /* Are we recovering using offline XLOG archives? */
@@ -6344,25 +6343,25 @@ ApplyStartupRedo(
 
 /*
  * This must be called ONCE during postmaster or standalone-backend startup
-
-How Recovery works ?
--------------------------------------------------------------------------
-|   	Clean Shutdown case    	| 	Not Clean Shutdown  case        |
-|	(InRecovery = false)	|	(InRecovery = true)		|
--------------------------------------------------------------------------
-|				|		   |			|	
-|				|record after	   |record after	|	
-|				|checkpoint =	   |checkpoint = 	|	
-|				|NULL		   |NOT NULL		|	
-|				|(byPassRedoFlag   |(byPassRedoFlag	|	
-|				| = TRUE)	   | = FALSE		|	
--------------------------------------------------------------------------
-|				|		   |			|	
-|	No Redo			|No Redo	   |Redo done		|	
-|	No Recovery Passes	|Recovery Pass done|Recovery Pass done	|	
--------------------------------------------------------------------------
-*/
-
+ *
+ *	How Recovery works ?
+ *---------------------------------------------------------------
+ *| Clean Shutdown case    	| 	Not Clean Shutdown  case|
+ *|(InRecovery = false)		|	(InRecovery = true)	|
+ *---------------------------------------------------------------
+ *|				|		   |		|
+ *|				|record after	   |record after|
+ *|				|checkpoint =	   |checkpoint =|
+ *|				|NULL		   |NOT NULL	|
+ *|				|(bypass Redo  	   |(dont bypass|
+ *|				|  	   	   |Redo	|
+ *---------------------------------------------------------------
+ *|				|		   |		|
+ *|	No Redo			|No Redo	   |Redo done	|
+ *|	No Recovery Passes	|Recovery Pass done|Recovery 	|
+ *|				|		   |Pass done	|
+ *---------------------------------------------------------------
+ */
 
 
 void
@@ -6695,7 +6694,7 @@ StartupXLOG(void)
 				(errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on")));
 	}
 
-	/* REDO */
+	/* Recovery from xlog */
 	if (InRecovery)
 	{
 		int			rmid;
@@ -6786,81 +6785,83 @@ StartupXLOG(void)
 		 */
 		if (record == NULL)	
 		{
-			if (InRecovery)
-			{
-				bypassRedoFlag = true;
-				ereport(LOG,
-						(errmsg("No record for redo after checkpoint, skip redo and proceed for recovery pass")));
-			}
+			/*
+			 * There are no WAL records following the checkpoint
+			 */
+			ereport(LOG,
+					(errmsg("no record for redo after checkpoint, skip redo and proceed for recovery pass")));
 		}
-		if (record != NULL || bypassRedoFlag)
+
+		XLogCtl->pass1StartLoc = ReadRecPtr;
+
+		/* 
+		 * MPP-11179
+		 * Recovery Passes will be done in both the cases:
+		 * 1. When record after checkpoint = NULL (No redo)
+		 * 2. When record after checkpoint != NULL (redo also)
+		 */
+		multipleRecoveryPassesNeeded = true;
+
+		/*
+		 * main redo apply loop, executed if we have record after checkpoint
+		 */
+		if (record != NULL)
 		{
 			bool		recoveryContinue = true;
 			bool		recoveryApply = true;
-
 			InRedo = true;
-			ereport(LOG,
-					(errmsg("redo starts at %X/%X",
-							ReadRecPtr.xlogid, ReadRecPtr.xrecoff)));
-
-			XLogCtl->pass1StartLoc = ReadRecPtr;
-			multipleRecoveryPassesNeeded = true;
-
 			CurrentResourceOwner = ResourceOwnerCreate(NULL, "xlog");
-			/*
-			 * main redo apply loop
-			 */
-			if (!bypassRedoFlag)
+
+			ereport(LOG,
+						(errmsg("redo starts at %X/%X",
+								ReadRecPtr.xlogid, ReadRecPtr.xrecoff)));
+			do
 			{
-				do
-				{	
-					ErrorContextCallback errcontext;
+				ErrorContextCallback errcontext;
 
-					/*
-					 * Have we reached our recovery target?
-					 */
-					if (recoveryStopsHere(record, &recoveryApply))
-					{
-						reachedStopPoint = true;		/* see below */
-						recoveryContinue = false;
-						if (!recoveryApply)
-							break;
-					}
+				/*
+				 * Have we reached our recovery target?
+				 */
+				if (recoveryStopsHere(record, &recoveryApply))
+				{
+					reachedStopPoint = true;		/* see below */
+					recoveryContinue = false;
+					if (!recoveryApply)
+						break;
+				}
 
-					/* Setup error traceback support for ereport() */
-					errcontext.callback = StartupXLOG_RedoPass1Context;
-					errcontext.arg = (void *) record;
-					errcontext.previous = error_context_stack;
-					error_context_stack = &errcontext;
+				/* Setup error traceback support for ereport() */
+				errcontext.callback = StartupXLOG_RedoPass1Context;
+				errcontext.arg = (void *) record;
+				errcontext.previous = error_context_stack;
+				error_context_stack = &errcontext;
 
-					if (PersistentRecovery_ShouldHandlePass1XLogRec(&ReadRecPtr, &EndRecPtr, record))
-					{
-						ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
-					}
+				if (PersistentRecovery_ShouldHandlePass1XLogRec(&ReadRecPtr, &EndRecPtr, record))
+				{
+					ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
+				}
 
-					/* Pop the error context stack */
-					error_context_stack = errcontext.previous;
+				/* Pop the error context stack */
+				error_context_stack = errcontext.previous;
 
-					LastRec = ReadRecPtr;
+				LastRec = ReadRecPtr;
 
-					record = XLogReadRecord(NULL, LOG);
-				} while (record != NULL && recoveryContinue);
-			}
-			CurrentResourceOwner = NULL;
-			/*
-			 * end of main redo apply loop
-			 */
+				record = XLogReadRecord(NULL, LOG);
+			} while (record != NULL && recoveryContinue);
+
 			ereport(LOG,
 					(errmsg("redo done at %X/%X",
 							ReadRecPtr.xlogid, ReadRecPtr.xrecoff)));
+
+			CurrentResourceOwner = NULL;
+
 			InRedo = false;
+
 		}
-		else
-		{
-			/* there are no WAL records following the checkpoint */
-			ereport(LOG,
-					(errmsg("redo is not required")));
-		}
+		/*
+		 * end of main redo apply loop
+		 */
+
 		CanEmitXLogRecords = true;
 	}
 
