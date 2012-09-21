@@ -327,3 +327,22 @@ select * from (select * from (select * from b) as b1 where b1.i = 1) AS FOO, (se
 --end_equivalent
 -- qual push down test
 explain with t as (select * from with_test1) select * from t where i = 10;
+
+-- MPP-17848
+drop table x;
+CREATE TABLE x(a int);
+insert into x values(1), (2);
+
+drop TABLE y;
+CREATE TABLE y (m integer NOT NULL, n smallint);
+insert into y values(10, 1);
+insert into y values(20, 1);
+
+with yy as (
+   select m
+   from y,
+        (select 1 as p) iv
+   where n = iv.p
+)
+select * from x, yy;
+-- End of MPP-17848
