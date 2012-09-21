@@ -8315,3 +8315,9 @@ select i, count(*) over (order by i range between 3 preceding and interval '3 da
 select i, count(*) over (order by i range between floor(i-10) preceding and i following) from generate_series(0, 9)i;
 ERROR:  RANGE parameter cannot be negative
 -- End of MPP-18124
+-- MPP-18404
+select sum(row_number()over());
+ERROR:  window functions may not be used as arguments to aggregates
+LINE 1: select sum(row_number()over());
+               ^
+-- End of MPP-18404

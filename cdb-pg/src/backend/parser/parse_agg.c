@@ -75,11 +75,19 @@ check_call(ParseState *pstate, Node *call)
 	if (is_agg)
 	{
 		find_minimum_maximum_var_level((Node *) ((Aggref *)call)->args, &min_varlevel, &max_varlevel);
+
+		/*
+		 * Currently, we don't support aggregates that refer to upper level
+		 * variables.  We could check if min_varlevel > 0, but it seems
+		 * the optimizer is not able to handle the mixture of different
+		 * level of variables.  This means, only min == max <= 0
+		 * are supported.
+		 */
 		if (max_varlevel > 0)
 		{
 			ereport(ERROR,
-						(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-						errmsg("aggregate functions referencing an outer query block are not supported")));
+					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+					errmsg("aggregate functions referencing an outer query block are not supported")));
 		}
 	}
 	else
@@ -97,31 +105,30 @@ check_call(ParseState *pstate, Node *call)
 					(errcode(ERRCODE_GROUPING_ERROR),
 					 errmsg("aggregate function calls may not be nested"),
 							 errOmitLocation(true)));
-		
-		if (checkExprHasWindFuncs((Node *)((Aggref *)call)->args))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("window functions may not be used as arguments to "
-							"aggregates"),
-									 errOmitLocation(true)));
-		}
 	}
 
 	/*
-	 * Window functions, on the other hand, may contain nested aggregates
-	 * but not nested window refs.
+	 * In both cases, nested window functions are not allowed regardless of
+	 * var reference level, including < 0, which is possible because we
+	 * don't treat WindowRef as if Var, as opposed to Aggref.
 	 */
-	if (min_varlevel == 0 && !is_agg)
+	if (is_agg)
 	{
-		if (checkExprHasWindFuncs((Node *)((WindowRef *)call)->args))
-		{
+		if (checkExprHasWindFuncs((Node *) ((Aggref *) call)->args))
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+				 errmsg("window functions may not be used as arguments to "
+						"aggregates"),
+								 errOmitLocation(true)));
+	}
+	else
+	{
+		if (checkExprHasWindFuncs((Node *) ((WindowRef *) call)->args))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 					 errmsg("cannot use window function as an argument "
 							"to another window function"),
 									 errOmitLocation(true)));
-		}
 	}
 
 	if (min_varlevel < 0)
