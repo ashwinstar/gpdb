@@ -36,7 +36,7 @@ test: optquery
 test: with_clause
 test: codecoverage
 test: gist_indexes
-test: failover
+ignore: failover
 test: partition
 test: launch_oid_inconsistency
 test: metadata_track
