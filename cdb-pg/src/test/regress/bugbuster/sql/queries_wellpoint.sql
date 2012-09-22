@@ -1173,9 +1173,7 @@ CREATE TABLE ZIP_CD_XREF (
 set gp_segments_for_planner=4;
 set gp_cost_hashjoin_chainwalk=on;
 
--- start_ignore
 
-EXPLAIN
 SELECT	/*qrynum:170; qryid:1180070*/ c3.groupby, c3.prod, c3.prod_typ,
 		c3.segment1, c3.segment2, c3.segment3, 
 		CASE
@@ -1442,13 +1440,10 @@ GROUP	BY 1,2,3,4,5,6,7 ) c3
 GROUP	BY 1,2,3,4,5,6,7 
 ;
 
-
 -- The following to GUC settingss should contribute to makeing explain  plans be identical on different database configuraitons.
 
 set gp_segments_for_planner=4;
 set gp_cost_hashjoin_chainwalk=on;
---force_explain
-EXPLAIN
  SELECT
 	L.high_claims_amt,
 	L.groupby,
@@ -1481,7 +1476,8 @@ FROM
 					bb.sub_dep,
 					SUM( 
 					CASE 
-						WHEN bb.prod = 'DRUG' 
+	
+					WHEN bb.prod = 'DRUG' 
 						THEN bb.pd_by_mem 
 						ELSE 0.00 
 					END )    AS drug_by_mem,
@@ -2486,13 +2482,9 @@ GROUP BY
 	1,
 	2 ;
 -- The following to GUC settingss should contribute to makeing explain  plans be identical on different database configuraitons.
-
 set gp_segments_for_planner=4;
 set gp_cost_hashjoin_chainwalk=on;
 
-
-
-EXPLAIN
 SELECT	/*qrynum:81; qryid:1039801*/ a4.prod, a4.prod_typ, a4.groupby,
 
 		--a4.hlth_serv_cd_desc, 
@@ -3754,13 +3746,10 @@ GROUP	BY 1,2,3
 
 ;
 
-
 -- The following to GUC settingss should contribute to makeing explain  plans be identical on different database configuraitons.
 
 set gp_segments_for_planner=4;
 set gp_cost_hashjoin_chainwalk=on;
---force_explain
-EXPLAIN
 SELECT
 	L.high_claims_amt,
 	L.groupby,
@@ -4805,4 +4794,3 @@ GROUP BY
 	1,
 	2 ;
 
--- end_ignore

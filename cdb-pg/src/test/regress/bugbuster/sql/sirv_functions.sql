@@ -63,8 +63,9 @@ begin
 end $$ language plpgsql volatile;
 
 --ctas with sirv in the select list
+--start_ignore
 explain create table sirv_test1_result1 as select sirv_test1() as res distributed by (res);
-
+--end_ignore
 
 --ctas with sirv in select list
 create table sirv_test1_result1 as select sirv_test1() as res distributed by (res);
@@ -121,8 +122,9 @@ $$
 
 
 --ctas with sirv in the from clause
+--start_ignore
 explain create table sirv_test2_result1 as select * from sirv_test2(2,1000,1000) as res distributed by(res);
-
+--end_ignore
 create table sirv_test2_result1 as select * from sirv_test2(2,1000,1000) as res distributed by(res);
 
 --workaround
@@ -181,8 +183,9 @@ create table sirv_test3_result2(id int, country_index text) distributed by(id);
 
 
 --insert with sirv in the select list
+--start_ignore
 explain insert into sirv_test3_result1 select 1,sirv_test3(2,1000,1000);
-
+--end_ignore
 insert into sirv_test3_result1 select 1,sirv_test3(2,1000,1000);
 
 --workaround
@@ -251,8 +254,9 @@ create table sirv_test4_result2(res float[]) distributed by(res);
 
 
 --insert with sirv in the from clause
+--start_ignore
 explain insert into sirv_test4_result1 select * from sirv_test4(20000,0);
-
+--end_ignore
 insert into sirv_test4_result1 select * from sirv_test4(20000,0);
 insert into sirv_test4_result1 select * from sirv_test4(25000,1);
 insert into sirv_test4_result1 select * from sirv_test4(30000,0);
@@ -451,12 +455,13 @@ $$ LANGUAGE plpgsql volatile;
 
 
 --select list
+--start_ignore
 explain create table sirv_test5_result1 as select 'sirv_test1:' || sirv_test5_fun1() as field1,
                                           'sirv_test5_fun2:' || substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                           1.5 * sirv_test5_fun3(2,1000,1000) as field3,
                                           ARRAY[1.0::float,2.0::float] || sirv_test5_fun4(20000,0) as field4
         distributed by (field1);
-
+--end_ignore
 create table sirv_test5_result1 as select 'sirv_test1:' || sirv_test5_fun1() as field1,
                                           'sirv_test5_fun2:' || substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                           1.5 * sirv_test5_fun3(2,1000,1000) as field3,
@@ -467,12 +472,13 @@ select * from sirv_test5_result1;
 
 
 --from clause
+--start_ignore
 explain  create table sirv_test5_result2  as select * from sirv_test5_fun1() as field1,
                                                            substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test5_fun3(2,1000,1000) as field3,
                                                            sirv_test5_fun4(20000,0) as field4
 distributed by (field1);
-
+--end_ignore
 create table sirv_test5_result2  as select * from sirv_test5_fun1() as field1,
                                                            substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test5_fun3(2,1000,1000) as field3,
@@ -667,11 +673,12 @@ $$ LANGUAGE plpgsql volatile;
 create table sirv_test6_result1 (field1 text, field2 text, field3 float, field4 float[]) distributed by (field1);
 create table sirv_test6_result2 (field1 text, field2 text, field3 float, field4 float[]) distributed by (field1);
 
-
+--start_ignore
 explain insert into sirv_test6_result1   select 'sirv_test6_fun1:' || sirv_test6_fun1() as field1,
                                           'sirv_test6_fun2:' || substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
                                           1.5 * sirv_test6_fun3(2,1000,1000) as field3,
                                           ARRAY[1.0::float,2.0::float] || sirv_test6_fun4(20000,0);
+--end_ignore
 
 insert into sirv_test6_result1   select 'sirv_test6_fun1:' || sirv_test6_fun1() as field1,
                                           'sirv_test6_fun2:' || substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
@@ -683,11 +690,12 @@ select * from sirv_test6_result1;
 
 
 --from clause
+--start_ignore
 explain insert into  sirv_test6_result2  select * from     sirv_test6_fun1() as field1,
                                                            substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test6_fun3(2,1000,1000) as field3,
                                                            sirv_test6_fun4(20000,0);
-
+--end_ignore
 insert into  sirv_test6_result2  select * from     sirv_test6_fun1() as field1,
                                                            substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test6_fun3(2,1000,1000) as field3,
@@ -744,10 +752,11 @@ $$
 
 
 --ctas with srf should not apply init plan changes. this is not supported
+--start_ignore
 explain create table sirv_test9_result1 as select sirv_test9_fun1(2,1000,1000) as field1;
 
 explain create table sirv_test9_result1 as select * from sirv_test9_fun1(2,1000,1000) as field1;
-
+--end_ignore
 --should fail
 --create table sirv_test9_result1 as select sirv_test9_fun1(2,1000,1000);
 
@@ -800,10 +809,11 @@ $$
 
 
 --ctas with srf should not apply init plan changes. this is not supported
+--start_ignore
 explain create table sirv_test9_result1 as select sirv_test9_fun2('result',2,1000,1000) as field1 distributed by (field1);
 
 explain create table sirv_test9_result1 as select * from sirv_test9_fun2('result',2,1000,1000) as field1 distributed by (field1);
-
+--end_ignore
 --should fail
 --create table sirv_test9_result1 as select sirv_test9_fun2('result',2,1000,1000);
 
@@ -858,10 +868,11 @@ $$
 --insert select with srf should not apply init plan changes. this is not supported
 create table sirv_test10_result1(field1 countries,country_code text,country_name text, lang_count int, area float, gnp float) distributed by (country_code);
 
+--start_ignore
 explain insert into sirv_test10_result1 select sirv_test10_srf1(2,1000,1000);
 
 explain insert into sirv_test10_result1 select sirv_test10_srf1 from sirv_test10_srf1(2,1000,1000);
-
+--end_ignore
 --should fail
 --ignore error messages
 --start_ignore 
@@ -921,10 +932,11 @@ $$
 create table sirv_test10_result2(res text) distributed by (res);
 
 --insert select with srf should not apply init plan changes. this is not supported
+--start_ignore
 explain insert into sirv_test10_result2 select sirv_test10_srf2('result',2,1000,1000);
 
 explain insert into sirv_test10_result2 select * from sirv_test10_srf2('result',2,1000,1000);
-
+--end_ignore
 --should fail
 --ignore error messages
 
@@ -982,10 +994,11 @@ create table sirv_test11_input as select trunc(0.5 * 5) as lang_count,surfaceare
 
 
 --ctas with sirv taking non constant arguments. should not apply init plan changes. 
+--start_ignore
 explain create table sirv_test11_result1 as select sirv_test11(lang_count::int,surfacearea::float,gnp::float) as res from sirv_test11_input distributed by (res);
 
 explain create table sirv_test11_result1 as select * from ( select sirv_test11(lang_count::int,surfacearea::float,gnp::float) as res from sirv_test11_input) FOO  distributed by (res);
-
+--end_ignore
 
 
 --start_ignore
@@ -1035,10 +1048,11 @@ create table sirv_test12_input as select trunc(0.5 * 5) as lang_count,surfaceare
 create table sirv_test12_result1 (res text) distributed by (res);
 
 --insert select with sirv taking non constant arguments. should not apply init plan changes. 
+--start_ignore
 explain insert into sirv_test12_result1 select sirv_test12(lang_count::int,surfacearea::float,gnp::float) from sirv_test12_input;
 
 explain insert into sirv_test12_result1 select * from (select sirv_test12(lang_count::int,surfacearea::float,gnp::float) from sirv_test12_input) FOO;
-
+--end_ignore
 
 --should fail
 --ignore error messages
@@ -1120,10 +1134,11 @@ $$ LANGUAGE plpythonu;
 
 
 --select list
+--start_ignore
 explain create table sirv_test13_result1 as select 'sirv_test1:' || sirv_test13_fun1() as field1,
                                           ARRAY[1.0::float,2.0::float] || sirv_test13_fun2(20000,0) as field2
         distributed by (field1);
-
+--end_ignore
 create table sirv_test13_result1 as select 'sirv_test1:' || sirv_test13_fun1() as field1,
                                           ARRAY[1.0::float,2.0::float] || sirv_test13_fun2(20000,0) as field2
 distributed by (field1);
@@ -1132,10 +1147,11 @@ select * from sirv_test13_result1;
 
 
 --from clause
+--start_ignore
 explain  create table sirv_test13_result2  as select * from sirv_test13_fun1() as field1,
                                                             sirv_test13_fun2(20000,0) as field2
 distributed by (field1);
-
+--end_ignore
 
 create table sirv_test13_result2  as select * from sirv_test13_fun1() as field1,
                                                             sirv_test13_fun2(20000,0) as field2
@@ -1214,9 +1230,10 @@ $$ LANGUAGE plpythonu;
 --select list
 create table sirv_test14_result1 (field1 text, field2 float[]) distributed by (field1);
 
+--start_ignore
 explain insert into sirv_test14_result1 select 'sirv_test1:' || sirv_test14_fun1(),
                                           ARRAY[1.0::float,2.0::float] || sirv_test14_fun2(20000,0);
-
+--end_ignore
 insert into sirv_test14_result1 select 'sirv_test1:' || sirv_test14_fun1(),
                                           ARRAY[1.0::float,2.0::float] || sirv_test14_fun2(20000,0);
 
@@ -1224,8 +1241,9 @@ select * from sirv_test14_result1;
 
 
 --from clause
+--start_ignore
 explain insert into sirv_test14_result1 select * from sirv_test14_fun1(),sirv_test14_fun2(20000,0);
-
+--end_ignore
 insert into sirv_test14_result1 select * from sirv_test14_fun1(),sirv_test14_fun2(20000,0);
 
 select * from sirv_test14_result1;
@@ -1278,9 +1296,6 @@ $$
 
 --should fail , not supported currently.
 
-explain create table sirv_test17_result1 as select sirv_test17_fun1(2,1000,1000); --explain fails with an error
-
-explain create table sirv_test17_result1 as select * from sirv_test17_fun1(2,1000,1000);
 
 
 
@@ -1322,8 +1337,6 @@ $$
 
 --should fail , not supported currently.
 
-explain create table sirv_test17_result1 as select sirv_test17_fun2(2,1000,1000); --explain fails with an error
 
-explain create table sirv_test17_result1 as select * from sirv_test17_fun2(2,1000,1000) as foo(c1 int, c2 float, c3 float);
 
 DROP TABLE countries_results;

@@ -478,7 +478,7 @@ CREATE TABLE table_like_parent4 (
     
    CREATE TABLE table_parent ( a int, b text) DISTRIBUTED BY (a);
    insert into table_parent values (generate_series(1,10),'test');
-\echo --start_ignore
+\echo -- start_ignore
    select count(*) from table_parent;
 
    CREATE TABLE table_child() INHERITS(table_parent);
@@ -487,7 +487,7 @@ CREATE TABLE table_like_parent4 (
 
    select * from table_parent;
    select * from table_child;
-   \echo --end_ignore 
+   \echo -- end_ignore 
 --on commit
     
     CREATE LOCAL TEMP TABLE on_commit (
@@ -748,9 +748,9 @@ create view ugtest3 as select * from pg_database limit 5;
 
 create view ugtest4 as select relname, length(relname) from pg_class
 where oid in (select distinct oid from pg_attribute);
-\echo --start_ignore
+\echo -- start_ignore
 create view ugtest5 as select array[ '100000000000000'::int8 ] as test;
-\echo --end_ignore
+\echo -- end_ignore
 create database ao_db;
 CREATE DATABASE db_test_bed;
 create database create_objects_db;
@@ -869,7 +869,7 @@ create database create_objects_db;
 \echo -- start_ignore
     create GROUP prachgrp; 
     --drop GROUP prachgrp;
-\echo --end_ignore
+\echo -- end_ignore
 --Create Domain
 
     create DOMAIN country_code1 char(2) NOT NULL;
@@ -1304,13 +1304,13 @@ CREATE WRITABLE EXTERNAL TABLE wet_ext_20081031095512_23244_11671 (
     numeric_col numeric
     ) WITH OIDS DISTRIBUTED RANDOMLY;
 
--- start_ignore
+\echo -- start_ignore
     insert into table_with_oid values ('0_zero', 0, '0_zero', 0);
     insert into table_with_oid values ('1_zero', 1, '1_zero', 1);
     insert into table_with_oid values ('2_zero', 2, '2_zero', 2);
     insert into table_with_oid select i||'_'||repeat('text',100),i,i||'_'||repeat('text',5),i from generate_series(1,100)i;
 
--- end_ignore
+\echo -- end_ignore
 
 --Tables with storage Parameters is covered in ao_tables
 
@@ -1573,13 +1573,13 @@ create database alter_table_db;
           char_vary_col character varying(30),
           numeric_col numeric
           ) WITH OIDS DISTRIBUTED RANDOMLY;
--- start_ignore
+\echo -- start_ignore
           insert into table_with_oid values ('0_zero', 0, '0_zero', 0);
           insert into table_with_oid values ('1_zero', 1, '1_zero', 1);
           insert into table_with_oid values ('2_zero', 2, '2_zero', 2);
           insert into table_with_oid select i||'_'||repeat('text',100),i,i||'_'||repeat('text',5),i from generate_series(3,100)i;
 
--- end_ignore
+\echo -- end_ignore
           ALTER TABLE table_with_oid SET WITHOUT OIDS;
 
 --SET & RESET ( storage_parameter = value , ... )
@@ -1680,9 +1680,9 @@ create database alter_table_db;
     ALTER TABLE test_drop_column DROP COLUMN non_toast_col ;
 
 --drop default
-\echo --start_ignore
+\echo -- start_ignore
     ALTER TABLE test_drop_column ALTER COLUMN col_with_default_text DROP DEFAULT;
-\echo --end_ignore
+\echo -- end_ignore
 --TODO - drop column from partitioned table
 \c ao_db
 
@@ -1700,9 +1700,9 @@ create database alter_table_db;
 
 --drop table if exists test;
 create table test (a int, b int, c int, d int) WITH (appendonly=true,compresslevel=3);
--- start_ignore
+\echo -- start_ignore
 \d test
--- end_ignore
+\echo -- end_ignore
 insert into test select i, i%1, i%2, i%3 from generate_series(1,100)i;
 
 -- vacuum analyze the table
@@ -1712,13 +1712,13 @@ vacuum analyze test;
 -- rename the table
 
 alter table test rename to new_test;
--- start_ignore
+\echo -- start_ignore
 \d new_test
--- end_ignore
+\echo -- end_ignore
 alter table new_test rename to test;
--- start_ignore
+\echo -- start_ignore
 \d test
--- end_ignore
+\echo -- end_ignore
 
 
 -- Negative Tests for AO Tables
@@ -1727,21 +1727,21 @@ create table foo_ao (a int) with (appendonly=true);
 create table bar_ao (a int);
 
 --invalid operations
--- start_ignore
+\echo -- start_ignore
 update foo_ao set a=5;
 delete from foo_ao;
--- end_ignore
+\echo -- end_ignore
 
 -- try and trick by setting rules
 create rule one as on insert to bar_ao do instead update foo_ao set a=1;
 create rule two as on insert to bar_ao do instead delete from foo_ao where a=1;
 
 -- create table with ao specification should fail
--- start_ignore
+\echo -- start_ignore
 create table mpp2865_ao_syntax_test (a int, b int) with (compresslevel=5);
 create table mpp2865_ao_syntax_test (a int, b int) with (blocksize=8192);
 create table mpp2865_ao_sytax_text(a int, b int) with (appendonly=false,blocksize=8192);
--- end_ignore
+\echo -- end_ignore
 
 --drop table foo_ao cascade;
 --drop table bar_ao cascade;
@@ -1844,10 +1844,6 @@ PARTITION BY RANGE (date)
 INSERT INTO sales1 SELECT * FROM sales; 
 
 -- Verifying Your Partition Strategy 
-
-EXPLAIN SELECT * FROM sales WHERE date='01-07-08' AND 
-region='usa';
-
 --Viewing Your Partition Design 
 
 SELECT partitionboundary, partitiontablename, partitionname, 
@@ -1971,10 +1967,6 @@ PARTITION BY RANGE (date)
 INSERT INTO sales_ao1 SELECT * FROM sales_ao; 
 
 -- Verifying Your Partition Strategy 
-
-EXPLAIN SELECT * FROM sales_ao WHERE date='01-07-08' AND 
-region='usa';
-
 --Viewing Your Partition Design 
 
 SELECT partitionboundary, partitiontablename, partitionname, 
@@ -2094,10 +2086,6 @@ PARTITION BY RANGE (date)
 INSERT INTO sales_hybrid1 SELECT * FROM sales_hybrid; 
 
 -- Verifying Your Partition Strategy 
-
-EXPLAIN SELECT * FROM sales_hybrid WHERE date='01-07-08' AND 
-region='usa';
-
 --Viewing Your Partition Design 
 
 SELECT partitionboundary, partitiontablename, partitionname, 
@@ -2287,13 +2275,13 @@ create table table2 (col1 int,col2 int) distributed randomly;
 insert into table2 values (generate_series(1,100),generate_series(1,100));
 
 create index clusterindex on table2(col1);
--- start_ignore
+\echo -- start_ignore
 select oid,relname, relfilenode from pg_class where relname = 'table2';
--- end_ignore
+\echo -- end_ignore
 CLUSTER clusterindex on table2;
--- start_ignore
+\echo -- start_ignore
 select oid, relname, relfilenode from pg_class where relname = 'table2';
--- end_ignore
+\echo -- end_ignore
 --RE-INDEXING: changes the relfilenode of the indexes
 
 create table bm_test (i int, j int);
@@ -2303,31 +2291,31 @@ delete from bm_test where j =1;
 insert into bm_test values (0, 0), (1,0);
 insert into bm_test values (generate_series(2,100),generate_series(2,100));
 
--- start_ignore
+\echo -- start_ignore
 select relname, relfilenode from pg_class where relname = 'bm_test';
--- end_ignore
+\echo -- end_ignore
 REINDEX index "public"."bm_test_j";
--- start_ignore
+\echo -- start_ignore
 select relname, relfilenode from pg_class where relname = 'bm_test';
--- end_ignore
+\echo -- end_ignore
 
 --The relfilenode should stay the same before and after the delete from tablename
 
 create table foo (a int, b text) distributed randomly;
 insert into foo values (1, '1_one'), (2, '2_two');
 insert into foo select i,i||'_'||repeat('text',100) from generate_series(3,100)i;
--- start_ignore
+\echo -- start_ignore
 select relname, relfilenode from pg_class where relname = 'foo';
--- end_ignore
+\echo -- end_ignore
 delete from foo where a = 1;
--- start_ignore
+\echo -- start_ignore
 select relname, relfilenode from pg_class where relname = 'foo';
--- end_ignore
+\echo -- end_ignore
 --the relfilenode should have stayed the same.
 delete from foo;
--- start_ignore
+\echo -- start_ignore
 select relname, relfilenode from pg_class where relname = 'foo';
--- end_ignore
+\echo -- end_ignore
 --the relfilenode should still have stayed the same.
 CREATE DATABASE cancel_trans;
 \c cancel_trans
@@ -2574,9 +2562,9 @@ ALTER DATABASE new_db_name1 RENAME TO db_name1;
 
 CREATE SCHEMA myschema;
 ALTER DATABASE db_name1 SET search_path TO myschema, public, pg_catalog;
--- start_ignore
+\echo -- start_ignore
 ALTER DATABASE db_name1 RESET search_path;
--- end_ignore
+\echo -- end_ignore
 \c db_test_bed
 CREATE USER db_user13;
 CREATE DATABASE db_schema_test owner db_user13;
@@ -2612,9 +2600,9 @@ CREATE OR REPLACE FUNCTION add(integer, integer) RETURNS integer
     LANGUAGE SQL 
     STABLE
     RETURNS NULL ON NULL INPUT; 
--- start_ignore
+\echo -- start_ignore
 CREATE LANGUAGE plpgsql;
--- end_ignore
+\echo -- end_ignore
 CREATE OR REPLACE FUNCTION increment(i integer) RETURNS 
 integer AS $$ 
         BEGIN 
@@ -2789,12 +2777,12 @@ CREATE TABLE err_table1 (cmdtime timestamp with time zone, relname text, filenam
     b_ts_with timestamp with time zone,
     date_column date,
     col_set_default numeric) WITH OIDS DISTRIBUTED RANDOMLY;
--- start_ignore
+\echo -- start_ignore
     insert into test_table2 values ('0_zero', 0, '0_zero', 0, 0, 0, '{0}', 0, 0, '2004-10-19 10:23:54', '2004-10-19 10:23:54+02', '1-1-2000',0);
     insert into test_table2 values ('1_zero', 1, '1_zero', 1, 1, 1, '{1}', 1, 1, '2005-10-19 10:23:54', '2005-10-19 10:23:54+02', '1-1-2001',1);
     insert into test_table2 values ('2_zero', 2, '2_zero', 2, 2, 2, '{2}', 2, 2, '2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002',2);
     insert into test_table2 select i||'_'||repeat('text',100),i,i||'_'||repeat('text',3),i,i,i,'{3}',i,i,'2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002',i from generate_series(3,100)i;
--- end_ignore
+\echo -- end_ignore
 COPY (select * from test_table) TO 'data/test1_file_copy' WITH DELIMITER AS ',' NULL AS 'null string' ESCAPE AS E'\n' CSV HEADER QUOTE AS '"' FORCE QUOTE char_vary_col;
 
 
@@ -3037,11 +3025,11 @@ SELECT CASE WHEN $1 THEN 1 ELSE 0 END;
 $BODY$
   LANGUAGE 'sql' IMMUTABLE;
 
--- start_ignore
+\echo -- start_ignore
 CREATE CAST (boolean AS int4) WITH FUNCTION int4(boolean) AS ASSIGNMENT;
 
 CREATE CAST (varchar AS text) WITHOUT FUNCTION AS IMPLICIT;
--- end_ignore
+\echo -- end_ignore
 \c ao_db
 
 -- Heap Table 
@@ -3371,9 +3359,9 @@ insert into CO_table_bitmap_index values ('2_zero', 2, '2_zero', 2, 2, 2, '{2}',
 insert into CO_table_bitmap_index select i||'_'||repeat('text',100),i,i||'_'||repeat('text',3),i,i,i,'{3}',i,i,i,'2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002' from generate_series(3,100)i;
 
 
--- start_ignore
+\echo -- start_ignore
 DROP TABLE IF EXISTS st_GistTable1;
--- end_ignore
+\echo -- end_ignore
 
 CREATE TABLE st_GistTable1 (
  id INTEGER,
@@ -4253,7 +4241,7 @@ Alter table co_compr_zlib_with Drop column a12;
 --Create a CTAS table 
 CREATE TABLE co_compr_zlib_with_ctas  WITH (appendonly=true, orientation=column) AS Select * from co_compr_zlib_with;
 
--- start_ignore
+\echo -- start_ignore
 drop table if exists csq_t1;
 drop table if exists csq_t2;
 drop table if exists csq_t3;
@@ -4275,7 +4263,7 @@ insert into csq_t3 values(1,'one');
 insert into csq_t3 values(3,'three');
 insert into csq_t3 values(5,'five');
 insert into csq_t3 values(7,'seven');
--- end_ignore
+\echo -- end_ignore
 
 -- CSQ 01: Basic query with where clause
 select a, (select y from csq_t2 where x=a) from csq_t1 where b < 8 order by a;
@@ -4301,7 +4289,7 @@ SELECT a, (SELECT d FROM csq_t3 WHERE a=c) FROM csq_t1 GROUP BY a order by a;
 
 -- CSQ Q8
 SELECT a, (SELECT (SELECT d FROM csq_t3 WHERE a=c)) FROM csq_t1 GROUP BY a order by a;
--- start_ignore
+\echo -- start_ignore
     drop table if exists t5;
     CREATE TABLE t5 (val int, period text);
     insert into t5 values(5, '2001-3');
@@ -4327,7 +4315,7 @@ SELECT a, (SELECT (SELECT d FROM csq_t3 WHERE a=c)) FROM csq_t1 GROUP BY a order
     insert into csq_emp values('h','adept',11200.00);
     insert into csq_emp values('i','bdept',11200.00);
     insert into csq_emp values('j','adept',11200.00);
--- end_ignore
+\echo -- end_ignore
 
 -- CSQ Q1
     select 
@@ -4386,14 +4374,14 @@ SELECT name, department, salary FROM csq_emp ea group by name, department,salary
   HAVING avg(salary) > ALL
     (SELECT salary FROM csq_emp eb WHERE eb.department = ea.department) order by name, department, salary;
 
---start_ignore
+\echo -- start_ignore
 DROP TABLE IF EXISTS city cascade;
 
 DROP TABLE IF EXISTS country cascade;
 
 DROP TABLE IF EXISTS countrylanguage cascade;
 
---end_ignore
+\echo -- end_ignore
 
 BEGIN;
 
@@ -4589,12 +4577,12 @@ where capitals.code = countrylanguage.countrycode and isofficial='true'
 
 select * from view_with_cte
 order by code,language;
---start_ignore
+\echo -- start_ignore
 DROP TABLE IF EXISTS foo1;
 
 DROP TABLE IF EXISTS foo2;
 
---end_ignore
+\echo -- end_ignore
 
 create table foo1 (i int, j varchar(10)) 
 partition by list(j)
@@ -4607,9 +4595,6 @@ insert into foo2 select i , i ||'' from generate_series(1,5) i;
 
 analyze foo1;
 analyze foo2;
-
-explain select count(*) from foo1,foo2 where foo1.j = foo2.j;
-
 select count(*) from foo1,foo2 where foo1.j = foo2.j;DROP USER IF EXISTS testuser;
 CREATE USER testuser WITH LOGIN DENY BETWEEN DAY 'Monday' TIME '01:00:00' AND DAY 'Monday' TIME '01:30:00';;
 
@@ -4706,12 +4691,12 @@ SELECT r.rolname, d.start_day, d.start_time, d.end_day, d.end_time
 FROM pg_auth_time_constraint d join pg_roles r ON (d.authid = r.oid)
 WHERE r.rolname = 'testuser'
 ORDER BY r.rolname, d.start_day, d.start_time, d.end_day, d.end_time;
---start_ignore
+\echo -- start_ignore
 drop view if exists relconstraint cascade;
 drop view if exists ptable cascade;
 drop view if exists part_closure cascade;
 drop view if exists anyconstraint cascade;
---end_ignore
+\echo -- end_ignore
 
 create view relconstraint
     (
@@ -4829,9 +4814,9 @@ create view anyconstraint
             left join 
         part_closure p
             on relid = partid;
---start_ignore
+\echo -- start_ignore
 drop table if exists mulpt_pk;
---end_ignore
+\echo -- end_ignore
 -- Create multi-level partitioned tables with CONSTRAINTS on distcol and ptcol
 create table mulpt_pk
 (
@@ -4852,9 +4837,9 @@ partition floor values ('A', 'B'),
 partition lower values ('100','110'),
 partition upper values ('200', '210', '220')
 );
---start_ignore
+\echo -- start_ignore
 drop table if exists mulpt_un;
---end_ignore
+\echo -- end_ignore
 create table mulpt_un
 (
 distcol int,
@@ -4880,9 +4865,9 @@ select tablename from pg_tables where tablename in ('mulpt_pk','mulpt_un') order
 
 -- create the tables with CONSTRAINTS on distcol,ptcol and subptcol, check that the tables are created.
 
---start_ignore
+\echo -- start_ignore
 drop table if exists mulpt_pk;
---end_ignore
+\echo -- end_ignore
 create table mulpt_pk
 (
 distcol int,
@@ -4903,9 +4888,9 @@ partition lower values ('100','110'),
 partition upper values ('200', '210', '220')
 );
 
---start_ignore
+\echo -- start_ignore
 drop table if exists mulpt_un;
---end_ignore
+\echo -- end_ignore
 create table mulpt_un
 (
 distcol int,
@@ -4937,22 +4922,22 @@ select conname,partid from anyconstraint where contype='u' and tableid='mulpt_un
 
 /* Note that roles are defined at the system-level and are valid
  * for all databases in your Greenplum Database system. */
-\echo '-- start_ignore'
+\echo -- start_ignore
 revoke all on protocol gphdfs from _hadoop_perm_test_role;
 DROP ROLE IF EXISTS _hadoop_perm_test_role;
 revoke all on protocol gphdfs from _hadoop_perm_test_role2;
 DROP ROLE IF EXISTS _hadoop_perm_test_role2;
-\echo '-- end_ignore'
+\echo -- end_ignore
 
 /* Now create a new role. Initially this role should NOT
  * be allowed to create an external hdfs table. */
 
---start_ignore
+\echo -- start_ignore
 DROP ROLE _hadoop_perm_test_role;
---end_ignore
---start_ignore
+\echo -- end_ignore
+\echo -- start_ignore
 DROP ROLE _hadoop_perm_test_role2; 
---end_ignore
+\echo -- end_ignore
 CREATE ROLE _hadoop_perm_test_role
 WITH CREATEEXTTABLE
 LOGIN;
@@ -5138,7 +5123,7 @@ $proc$ language plpgsql;
 
 select srf_vect();
 
--- start_ignore
+\echo -- start_ignore
 drop role "ISO";
 drop role "geography";
 drop role "ISO_ro_1";
@@ -5219,5 +5204,5 @@ DROP RESOURCE QUEUE db_resque1;
 DROP RESOURCE QUEUE resqueu3;
 DROP RESOURCE QUEUE resqueu4;
 DROP RESOURCE QUEUE grp_rsq1;
--- end_ignore
+\echo -- end_ignore
 

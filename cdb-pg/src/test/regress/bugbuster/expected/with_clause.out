@@ -7,11 +7,8 @@
 -- Modified to use it with GPDB
 --start_ignore
 DROP TABLE IF EXISTS city cascade;
-NOTICE:  table "city" does not exist, skipping
 DROP TABLE IF EXISTS country cascade;
-NOTICE:  table "country" does not exist, skipping
 DROP TABLE IF EXISTS countrylanguage cascade;
-NOTICE:  table "countrylanguage" does not exist, skipping
 --end_ignore
 BEGIN;
 --SET client_encoding = 'LATIN1';
@@ -68,6 +65,7 @@ ANALYZE city;
 ANALYZE country;
 ANALYZE countrylanguage;
 with capitals as  (select country.code,id,city.name from city,country where city.countrycode = country.code AND city.id = country.capital) 
+--start_ignore
 select * from capitals,countrylanguage where capitals.code = countrylanguage.countrycode and isofficial='true' order by capitals.code,countrylanguage.language;
  code |  id  |               name                | countrycode |     language     | isofficial | percentage 
 ------+------+-----------------------------------+-------------+------------------+------------+------------
@@ -310,9 +308,12 @@ select * from capitals,countrylanguage where capitals.code = countrylanguage.cou
  ZWE  | 4068 | Harare                            | ZWE         | English          | t          |        2.2
 (237 rows)
 
+--end_ignore
 --query2
+--start_ignore
 with lang_total as ( select count(*) as lang_count,country.code,countrylanguage.countrycode from country join countrylanguage on(country.code=countrylanguage.countrycode and governmentform='Federal Republic') group by country.code,countrylanguage.countrycode order by country.code)
- 
+--end_ignore 
+--start_ignore
 select lang_count,country.code,country.name,country.continent,country.region,country.population from country left outer join lang_total on (lang_total.code = country.code) where country.indepyear > 1970 and lang_total.lang_count >=1 and lang_total.lang_count >=1 order by lang_total.lang_count desc;
  lang_count | code |              name               | continent |     region      | population 
 ------------+------+---------------------------------+-----------+-----------------+------------
@@ -322,6 +323,7 @@ select lang_count,country.code,country.name,country.continent,country.region,cou
           1 | BIH  | Bosnia and Herzegovina          | Europe    | Southern Europe |    3972000
 (4 rows)
 
+--end_ignore
 -- Using CTE in the WHERE clause
 --query3
 with lang_total as ( select lang_count,countrycode from(
@@ -352,18 +354,18 @@ with diversecountries as
 select diversecountries.name,city.name,diversecountries.CNT from diversecountries,city where city.id = diversecountries.capital;
         name        |       name       | cnt 
 --------------------+------------------+-----
+ Australia          | Canberra         |   8
+ South Africa       | Pretoria         |  11
+ India              | New Delhi        |  12
+ Iran               | Teheran          |  10
  Italy              | Roma             |   8
  Austria            | Wien             |   8
- Russian Federation | Moscow           |  12
- South Africa       | Pretoria         |  11
  Canada             | Ottawa           |  12
  China              | Peking           |  12
  Myanmar            | Rangoon (Yangon) |   8
  Denmark            | Kobenhavn        |   7
+ Russian Federation | Moscow           |  12
  United States      | Washington       |  12
- Australia          | Canberra         |   8
- India              | New Delhi        |  12
- Iran               | Teheran          |  10
 (12 rows)
 
 --query5 -Using a CTE in the select list
@@ -393,16 +395,16 @@ from country,city where country.capital = city.id) FOO where FOO.CNT is not null
  cnt |      country       |     capital      
 -----+--------------------+------------------
    8 | Australia          | Canberra
+  11 | South Africa       | Pretoria
   12 | India              | New Delhi
   10 | Iran               | Teheran
    8 | Italy              | Roma
    8 | Austria            | Wien
-  12 | Russian Federation | Moscow
-  11 | South Africa       | Pretoria
   12 | Canada             | Ottawa
   12 | China              | Peking
    8 | Myanmar            | Rangoon (Yangon)
    7 | Denmark            | Kobenhavn
+  12 | Russian Federation | Moscow
   12 | United States      | Washington
 (12 rows)
 
@@ -766,169 +768,169 @@ select
  ?column? | code |          name          |     language     
 ----------+------+------------------------+------------------
        16 | AFG  | Afghanistan            | Pashto
+       16 | NLD  | Netherlands            | Dutch
+       16 | ANT  | Netherlands Antilles   | Papiamento
        16 | ALB  | Albania                | Albaniana
+       16 | DZA  | Algeria                | Arabic
+       16 | ARE  | United Arab Emirates   | Arabic
        16 | ARG  | Argentina              | Spanish
+       16 | ARM  | Armenia                | Armenian
        16 | AUS  | Australia              | English
+       16 | AZE  | Azerbaijan             | Azerbaijani
        16 | BHR  | Bahrain                | Arabic
        16 | BGD  | Bangladesh             | Bengali
        16 | BEL  | Belgium                | Dutch
+       16 | BMU  | Bermuda                | English
+       16 | BOL  | Bolivia                | Spanish
+       16 | BIH  | Bosnia and Herzegovina | Serbo-Croatian
+       16 | BRA  | Brazil                 | Portuguese
        16 | GBR  | United Kingdom         | English
        16 | BGR  | Bulgaria               | Bulgariana
        16 | CYM  | Cayman Islands         | English
-       16 | FJI  | Fiji Islands           | Fijian
-       16 | GEO  | Georgia                | Georgiana
-       16 | GUM  | Guam                   | English
-       16 | ISR  | Israel                 | Hebrew
-       16 | YEM  | Yemen                  | Arabic
-       16 | YUG  | Yugoslavia             | Serbo-Croatian
-       16 | KHM  | Cambodia               | Khmer
-       16 | CHN  | China                  | Chinese
-       16 | KGZ  | Kyrgyzstan             | Kirgiz
-       16 | PRK  | North Korea            | Korean
-       16 | GRC  | Greece                 | Greek
-       16 | CUB  | Cuba                   | Spanish
-       16 | KWT  | Kuwait                 | Arabic
-       16 | LAO  | Laos                   | Lao
-       16 | LVA  | Latvia                 | Latvian
-       16 | LBN  | Lebanon                | Arabic
-       16 | MLT  | Malta                  | Maltese
-       16 | MEX  | Mexico                 | Spanish
-       16 | MDA  | Moldova                | Romanian
-       16 | MMR  | Myanmar                | Burmese
-       16 | NPL  | Nepal                  | Nepali
-       16 | NOR  | Norway                 | Norwegian
-       16 | PER  | Peru                   | Spanish
-       16 | POL  | Poland                 | Polish
-       16 | FRA  | France                 | French
-       16 | SVN  | Slovenia               | Slovene
-       16 | LKA  | Sri Lanka              | Singali
-       16 | TJK  | Tajikistan             | Tadzhik
-       16 | DNK  | Denmark                | Danish
-       16 | THA  | Thailand               | Thai
-       16 | TKM  | Turkmenistan           | Turkmenian
-       16 | UKR  | Ukraine                | Ukrainian
-       16 | VEN  | Venezuela              | Spanish
-       16 | EST  | Estonia                | Estonian
-       16 | AND  | Andorra                | Catalan
-       16 | BOL  | Bolivia                | Ketdua
-       16 | ZAF  | South Africa           | Xhosa
-       16 | GLP  | Guadeloupe             | French
-       16 | CYP  | Cyprus                 | Turkish
-       16 | MAC  | Macao                  | Portuguese
-       16 | FIN  | Finland                | Swedish
-       16 | ANT  | Netherlands Antilles   | Dutch
-       16 | CHE  | Switzerland            | Italian
-       16 | ZWE  | Zimbabwe               | English
-       16 | BEL  | Belgium                | German
-       16 | PAK  | Pakistan               | Urdu
-       16 | ARM  | Armenia                | Armenian
-       16 | BMU  | Bermuda                | English
+       16 | CHL  | Chile                  | Spanish
        16 | CRI  | Costa Rica             | Spanish
+       16 | DOM  | Dominican Republic     | Spanish
        16 | ECU  | Ecuador                | Spanish
        16 | EGY  | Egypt                  | Arabic
+       16 | SLV  | El Salvador            | Spanish
+       16 | ESP  | Spain                  | Spanish
+       16 | ZAF  | South Africa           | Zulu
+       16 | FJI  | Fiji Islands           | Fijian
        16 | PHL  | Philippines            | Pilipino
+       16 | GEO  | Georgia                | Georgiana
+       16 | GUM  | Guam                   | English
        16 | GTM  | Guatemala              | Spanish
        16 | HND  | Honduras               | Spanish
        16 | IND  | India                  | Hindi
        16 | IRQ  | Iraq                   | Arabic
+       16 | IRN  | Iran                   | Persian
+       16 | IRL  | Ireland                | English
+       16 | ISL  | Iceland                | Icelandic
+       16 | ISR  | Israel                 | Hebrew
+       16 | ITA  | Italy                  | Italian
        16 | AUT  | Austria                | German
+       16 | JPN  | Japan                  | Japanese
+       16 | YEM  | Yemen                  | Arabic
+       16 | JOR  | Jordan                 | Arabic
+       16 | YUG  | Yugoslavia             | Serbo-Croatian
+       16 | KHM  | Cambodia               | Khmer
+       16 | CAN  | Canada                 | English
        16 | KAZ  | Kazakstan              | Kazakh
+       16 | CHN  | China                  | Chinese
+       16 | KGZ  | Kyrgyzstan             | Kirgiz
        16 | COL  | Colombia               | Spanish
+       16 | COM  | Comoros                | Comorian
+       16 | PRK  | North Korea            | Korean
        16 | KOR  | South Korea            | Korean
+       16 | GRC  | Greece                 | Greek
        16 | HRV  | Croatia                | Serbo-Croatian
+       16 | CUB  | Cuba                   | Spanish
+       16 | KWT  | Kuwait                 | Arabic
+       16 | CYP  | Cyprus                 | Greek
+       16 | LAO  | Laos                   | Lao
+       16 | LVA  | Latvia                 | Latvian
+       16 | LBN  | Lebanon                | Arabic
+       16 | LBY  | Libyan Arab Jamahiriya | Arabic
        16 | LIE  | Liechtenstein          | German
        16 | LTU  | Lithuania              | Lithuanian
+       16 | LUX  | Luxembourg             | Luxembourgish
+       16 | MDG  | Madagascar             | Malagasy
        16 | MKD  | Macedonia              | Macedonian
+       16 | MWI  | Malawi                 | Chichewa
+       16 | MYS  | Malaysia               | Malay
+       16 | MLT  | Malta                  | Maltese
+       16 | MAR  | Morocco                | Arabic
+       16 | MEX  | Mexico                 | Spanish
+       16 | MDA  | Moldova                | Romanian
+       16 | MMR  | Myanmar                | Burmese
+       16 | NPL  | Nepal                  | Nepali
        16 | NIC  | Nicaragua              | Spanish
+       16 | NOR  | Norway                 | Norwegian
        16 | PAN  | Panama                 | Spanish
+       16 | PRY  | Paraguay               | Spanish
+       16 | PER  | Peru                   | Spanish
+       16 | PRT  | Portugal               | Portuguese
+       16 | POL  | Poland                 | Polish
+       16 | FRA  | France                 | French
        16 | ROM  | Romania                | Romanian
+       16 | RWA  | Rwanda                 | Rwanda
+       16 | SWE  | Sweden                 | Swedish
+       16 | DEU  | Germany                | German
        16 | SEN  | Senegal                | Wolof
+       16 | SGP  | Singapore              | Chinese
        16 | SVK  | Slovakia               | Slovak
+       16 | SVN  | Slovenia               | Slovene
+       16 | LKA  | Sri Lanka              | Singali
        16 | SDN  | Sudan                  | Arabic
        16 | FIN  | Finland                | Finnish
        16 | CHE  | Switzerland            | German
        16 | SYR  | Syria                  | Arabic
+       16 | TJK  | Tajikistan             | Tadzhik
+       16 | DNK  | Denmark                | Danish
+       16 | THA  | Thailand               | Thai
+       16 | TGO  | Togo                   | Ewe
        16 | CZE  | Czech Republic         | Czech
+       16 | TUN  | Tunisia                | Arabic
        16 | TUR  | Turkey                 | Turkish
+       16 | TKM  | Turkmenistan           | Turkmenian
+       16 | UKR  | Ukraine                | Ukrainian
+       16 | HUN  | Hungary                | Hungarian
        16 | URY  | Uruguay                | Spanish
+       16 | NZL  | New Zealand            | English
+       16 | UZB  | Uzbekistan             | Uzbek
+       16 | BLR  | Belarus                | Belorussian
+       16 | VEN  | Venezuela              | Spanish
+       16 | RUS  | Russian Federation     | Russian
        16 | VNM  | Vietnam                | Vietnamese
+       16 | EST  | Estonia                | Estonian
+       16 | USA  | United States          | English
        16 | AFG  | Afghanistan            | Dari
+       16 | AND  | Andorra                | Catalan
        16 | BRB  | Barbados               | English
+       16 | BEL  | Belgium                | French
+       16 | BOL  | Bolivia                | Ketdua
+       16 | ZAF  | South Africa           | Xhosa
+       16 | GLP  | Guadeloupe             | French
        16 | GUM  | Guam                   | Chamorro
+       16 | HTI  | Haiti                  | French
+       16 | HKG  | Hong Kong              | English
+       16 | IRL  | Ireland                | Irish
        16 | ISR  | Israel                 | Arabic
+       16 | CAN  | Canada                 | French
+       16 | KGZ  | Kyrgyzstan             | Russian
+       16 | CYP  | Cyprus                 | Turkish
+       16 | MAC  | Macao                  | Portuguese
        16 | MDG  | Madagascar             | French
        16 | MLT  | Malta                  | English
        16 | MTQ  | Martinique             | French
        16 | PRY  | Paraguay               | Guarani
+       16 | PER  | Peru                   | Ketdua
        16 | RWA  | Rwanda                 | French
+       16 | SGP  | Singapore              | Malay
        16 | LKA  | Sri Lanka              | Tamil
+       16 | FIN  | Finland                | Swedish
+       16 | CHE  | Switzerland            | French
        16 | TWN  | Taiwan                 | Mandarin Chinese
        16 | TZA  | Tanzania               | Swahili
-       16 | NCL  | New Caledonia          | French
-       16 | ZAF  | South Africa           | Afrikaans
-       16 | IDN  | Indonesia              | Malay
-       16 | ROM  | Romania                | Romani
-       16 | SGP  | Singapore              | Tamil
-       16 | CHE  | Switzerland            | Romansh
-       16 | NLD  | Netherlands            | Dutch
-       16 | ANT  | Netherlands Antilles   | Papiamento
-       16 | DZA  | Algeria                | Arabic
-       16 | ARE  | United Arab Emirates   | Arabic
-       16 | AZE  | Azerbaijan             | Azerbaijani
-       16 | BOL  | Bolivia                | Spanish
-       16 | BIH  | Bosnia and Herzegovina | Serbo-Croatian
-       16 | BRA  | Brazil                 | Portuguese
-       16 | CHL  | Chile                  | Spanish
-       16 | DOM  | Dominican Republic     | Spanish
-       16 | SLV  | El Salvador            | Spanish
-       16 | ESP  | Spain                  | Spanish
-       16 | ZAF  | South Africa           | Zulu
-       16 | IRN  | Iran                   | Persian
-       16 | IRL  | Ireland                | English
-       16 | ISL  | Iceland                | Icelandic
-       16 | ITA  | Italy                  | Italian
-       16 | JPN  | Japan                  | Japanese
-       16 | JOR  | Jordan                 | Arabic
-       16 | CAN  | Canada                 | English
-       16 | COM  | Comoros                | Comorian
-       16 | CYP  | Cyprus                 | Greek
-       16 | LBY  | Libyan Arab Jamahiriya | Arabic
-       16 | LUX  | Luxembourg             | Luxembourgish
-       16 | MDG  | Madagascar             | Malagasy
-       16 | MWI  | Malawi                 | Chichewa
-       16 | MYS  | Malaysia               | Malay
-       16 | MAR  | Morocco                | Arabic
-       16 | PRY  | Paraguay               | Spanish
-       16 | PRT  | Portugal               | Portuguese
-       16 | RWA  | Rwanda                 | Rwanda
-       16 | SWE  | Sweden                 | Swedish
-       16 | DEU  | Germany                | German
-       16 | SGP  | Singapore              | Chinese
-       16 | TGO  | Togo                   | Ewe
-       16 | TUN  | Tunisia                | Arabic
-       16 | HUN  | Hungary                | Hungarian
-       16 | NZL  | New Zealand            | English
-       16 | UZB  | Uzbekistan             | Uzbek
-       16 | BLR  | Belarus                | Belorussian
-       16 | RUS  | Russian Federation     | Russian
-       16 | USA  | United States          | English
-       16 | BEL  | Belgium                | French
-       16 | HTI  | Haiti                  | French
-       16 | HKG  | Hong Kong              | English
-       16 | IRL  | Ireland                | Irish
-       16 | CAN  | Canada                 | French
-       16 | KGZ  | Kyrgyzstan             | Russian
-       16 | PER  | Peru                   | Ketdua
-       16 | SGP  | Singapore              | Malay
-       16 | CHE  | Switzerland            | French
        16 | TGO  | Togo                   | Kabye
        16 | TCD  | Chad                   | Arabic
+       16 | NCL  | New Caledonia          | French
        16 | BLR  | Belarus                | Russian
+       16 | ANT  | Netherlands Antilles   | Dutch
        16 | BOL  | Bolivia                | Aimara
+       16 | ZAF  | South Africa           | Afrikaans
+       16 | IDN  | Indonesia              | Malay
        16 | PER  | Peru                   | Aimara
+       16 | ROM  | Romania                | Romani
+       16 | SGP  | Singapore              | Tamil
+       16 | CHE  | Switzerland            | Italian
+       16 | ZWE  | Zimbabwe               | English
        16 | LUX  | Luxembourg             | French
+       16 | CHE  | Switzerland            | Romansh
+       16 | BEL  | Belgium                | German
        16 | ZAF  | South Africa           | English
        16 | LUX  | Luxembourg             | German
+       16 | PAK  | Pakistan               | Urdu
 (164 rows)
 
 --query 6 Use CTE in the main query and subqueries within the main query
@@ -1608,6 +1610,7 @@ limit 100;
 (100 rows)
 
 --query2
+--start_ignore
 with allcitystats as 
 ( select city.name CITY,city.id,country.name COUNTRY,city.district,city.population as CITY_POP
   from
@@ -1675,12 +1678,12 @@ order by FOO1.identifier,FOO1.city_cnt;
      8568 |      792 | Middle East
      1295 |      161 | Nordic Countries
     29161 |      616 | Southeast Asia
-    80388 |     1092 | Southern and Central Asia
     11880 |      450 | Southern Europe
+    80388 |     1092 | Southern and Central Asia
      9414 |      369 | Western Europe
 (10 rows)
 
-       
+--end_ignore      
 -- queries using column lists for CTEs
 -- query 1 use column list despite having no duplicate names
 with capitals("C","ID","CAP") as 
@@ -1696,21 +1699,21 @@ where capitals."C" = country.code
 and country.code = lang_total.cc;
               name               |  C  |  ID  |       CAP        | lc 
 ---------------------------------+-----+------+------------------+----
- Bosnia and Herzegovina          | BIH |  201 | Sarajevo         |  1
- Brazil                          | BRA |  211 | Brasilia         |  5
- Austria                         | AUT | 1523 | Wien             |  8
- Madagascar                      | MDG | 2455 | Antananarivo     |  2
- Mexico                          | MEX | 2515 | Ciudad de Mexico |  6
- Venezuela                       | VEN | 3539 | Caracas          |  3
- Russian Federation              | RUS | 3580 | Moscow           | 12
  Argentina                       | ARG |   69 | Buenos Aires     |  3
  Azerbaijan                      | AZE |  144 | Baku             |  4
- United States                   | USA | 3813 | Washington       | 12
+ Bosnia and Herzegovina          | BIH |  201 | Sarajevo         |  1
+ Brazil                          | BRA |  211 | Brasilia         |  5
  India                           | IND | 1109 | New Delhi        | 12
+ Austria                         | AUT | 1523 | Wien             |  8
  Yugoslavia                      | YUG | 1792 | Beograd          |  6
+ Madagascar                      | MDG | 2455 | Antananarivo     |  2
+ Mexico                          | MEX | 2515 | Ciudad de Mexico |  6
  Micronesia, Federated States of | FSM | 2689 | Palikir          |  6
  Nigeria                         | NGA | 2754 | Abuja            | 10
  Germany                         | DEU | 3068 | Berlin           |  6
+ Venezuela                       | VEN | 3539 | Caracas          |  3
+ Russian Federation              | RUS | 3580 | Moscow           | 12
+ United States                   | USA | 3813 | Washington       | 12
 (15 rows)
 
 -- query 3 use column list when there are duplicate names within the CTE
@@ -1770,51 +1773,51 @@ select (select min(GNP_IDX) from gnp_index_compare) MIN_COUNTRY_GNP_IDX, (select
   min_country_gnp_idx   |  max_reg_gnp_idx   |              capital              |            country            
 ------------------------+--------------------+-----------------------------------+-------------------------------
  0.39526143942847043283 | 1.2055929013175585 | Amsterdam                         | Netherlands
+ 0.39526143942847043283 | 1.2055929013175585 | Tirana                            | Albania
  0.39526143942847043283 | 1.2055929013175585 | Andorra la Vella                  | Andorra
  0.39526143942847043283 | 1.2055929013175585 | Bruxelles [Brussel]               | Belgium
  0.39526143942847043283 | 1.2055929013175585 | Sarajevo                          | Bosnia and Herzegovina
+ 0.39526143942847043283 | 1.2055929013175585 | London                            | United Kingdom
  0.39526143942847043283 | 1.2055929013175585 | Sofija                            | Bulgaria
  0.39526143942847043283 | 1.2055929013175585 | Madrid                            | Spain
  0.39526143942847043283 | 1.2055929013175585 | Torshavn                          | Faroe Islands
- 0.39526143942847043283 | 1.2055929013175585 | Dublin                            | Ireland
- 0.39526143942847043283 | 1.2055929013175585 | Reykjavik                         | Iceland
- 0.39526143942847043283 | 1.2055929013175585 | Vilnius                           | Lithuania
- 0.39526143942847043283 | 1.2055929013175585 | Chisinau                          | Moldova
- 0.39526143942847043283 | 1.2055929013175585 | Oslo                              | Norway
- 0.39526143942847043283 | 1.2055929013175585 | Lisboa                            | Portugal
- 0.39526143942847043283 | 1.2055929013175585 | Stockholm                         | Sweden
- 0.39526143942847043283 | 1.2055929013175585 | Berlin                            | Germany
- 0.39526143942847043283 | 1.2055929013175585 | Helsinki [Helsingfors]            | Finland
- 0.39526143942847043283 | 1.2055929013175585 | Kobenhavn                         | Denmark
- 0.39526143942847043283 | 1.2055929013175585 | Budapest                          | Hungary
- 0.39526143942847043283 | 1.2055929013175585 | Minsk                             | Belarus
  0.39526143942847043283 | 1.2055929013175585 | Gibraltar                         | Gibraltar
  0.39526143942847043283 | 1.2055929013175585 | Longyearbyen                      | Svalbard and Jan Mayen
- 0.39526143942847043283 | 1.2055929013175585 | Riga                              | Latvia
- 0.39526143942847043283 | 1.2055929013175585 | Vaduz                             | Liechtenstein
- 0.39526143942847043283 | 1.2055929013175585 | Valletta                          | Malta
- 0.39526143942847043283 | 1.2055929013175585 | Monaco-Ville                      | Monaco
- 0.39526143942847043283 | 1.2055929013175585 | Ljubljana                         | Slovenia
- 0.39526143942847043283 | 1.2055929013175585 | Kyiv                              | Ukraine
- 0.39526143942847043283 | 1.2055929013175585 | Tallinn                           | Estonia
- 0.39526143942847043283 | 1.2055929013175585 | Tirana                            | Albania
- 0.39526143942847043283 | 1.2055929013175585 | London                            | United Kingdom
+ 0.39526143942847043283 | 1.2055929013175585 | Dublin                            | Ireland
+ 0.39526143942847043283 | 1.2055929013175585 | Reykjavik                         | Iceland
  0.39526143942847043283 | 1.2055929013175585 | Roma                              | Italy
  0.39526143942847043283 | 1.2055929013175585 | Wien                              | Austria
  0.39526143942847043283 | 1.2055929013175585 | Beograd                           | Yugoslavia
  0.39526143942847043283 | 1.2055929013175585 | Athenai                           | Greece
  0.39526143942847043283 | 1.2055929013175585 | Zagreb                            | Croatia
+ 0.39526143942847043283 | 1.2055929013175585 | Riga                              | Latvia
+ 0.39526143942847043283 | 1.2055929013175585 | Vaduz                             | Liechtenstein
+ 0.39526143942847043283 | 1.2055929013175585 | Vilnius                           | Lithuania
  0.39526143942847043283 | 1.2055929013175585 | Luxembourg [Luxemburg/Letzebuerg] | Luxembourg
  0.39526143942847043283 | 1.2055929013175585 | Skopje                            | Macedonia
+ 0.39526143942847043283 | 1.2055929013175585 | Valletta                          | Malta
+ 0.39526143942847043283 | 1.2055929013175585 | Chisinau                          | Moldova
+ 0.39526143942847043283 | 1.2055929013175585 | Monaco-Ville                      | Monaco
+ 0.39526143942847043283 | 1.2055929013175585 | Oslo                              | Norway
+ 0.39526143942847043283 | 1.2055929013175585 | Lisboa                            | Portugal
  0.39526143942847043283 | 1.2055929013175585 | Warszawa                          | Poland
  0.39526143942847043283 | 1.2055929013175585 | Paris                             | France
  0.39526143942847043283 | 1.2055929013175585 | Bucuresti                         | Romania
+ 0.39526143942847043283 | 1.2055929013175585 | Stockholm                         | Sweden
+ 0.39526143942847043283 | 1.2055929013175585 | Berlin                            | Germany
  0.39526143942847043283 | 1.2055929013175585 | San Marino                        | San Marino
  0.39526143942847043283 | 1.2055929013175585 | Bratislava                        | Slovakia
+ 0.39526143942847043283 | 1.2055929013175585 | Ljubljana                         | Slovenia
+ 0.39526143942847043283 | 1.2055929013175585 | Helsinki [Helsingfors]            | Finland
  0.39526143942847043283 | 1.2055929013175585 | Bern                              | Switzerland
+ 0.39526143942847043283 | 1.2055929013175585 | Kobenhavn                         | Denmark
  0.39526143942847043283 | 1.2055929013175585 | Praha                             | Czech Republic
+ 0.39526143942847043283 | 1.2055929013175585 | Kyiv                              | Ukraine
+ 0.39526143942847043283 | 1.2055929013175585 | Budapest                          | Hungary
+ 0.39526143942847043283 | 1.2055929013175585 | Minsk                             | Belarus
  0.39526143942847043283 | 1.2055929013175585 | Citta del Vaticano                | Holy See (Vatican City State)
  0.39526143942847043283 | 1.2055929013175585 | Moscow                            | Russian Federation
+ 0.39526143942847043283 | 1.2055929013175585 | Tallinn                           | Estonia
 (46 rows)
 
 --query2 using the CTE in the where clause(initplan) of the main query. One CTE using another CTE in it's where clause as it's initplan
@@ -1841,40 +1844,40 @@ where FOO.LANG_CNT between (select min(CNT) from notdiversecountries) AND (selec
  lang_cnt |               name               
 ----------+----------------------------------
         4 | Aruba
+        1 | Cayman Islands
         2 | El Salvador
         1 | Saint Pierre and Miquelon
-        2 | Dominica
-        2 | Jamaica
-        6 | Panama
-        3 | Virgin Islands, U.S.
-        1 | Anguilla
-        4 | Belize
-        3 | Trinidad and Tobago
         6 | Mexico
+        2 | Dominica
+        2 | Bahamas
         4 | Costa Rica
+        2 | Dominican Republic
         1 | Turks and Caicos Islands
         2 | Puerto Rico
         1 | Virgin Islands, British
-        5 | Guatemala
-        1 | Cuba
-        1 | Bermuda
-        1 | Montserrat
-        2 | Barbados
-        2 | Haiti
-        1 | Grenada
-        2 | Guadeloupe
-        4 | Honduras
-        2 | Antigua and Barbuda
-        1 | Cayman Islands
-        2 | Bahamas
-        2 | Dominican Republic
         2 | Greenland
         2 | Martinique
         2 | Saint Vincent and the Grenadines
+        2 | Jamaica
+        5 | Guatemala
+        6 | Panama
+        1 | Cuba
         2 | Saint Kitts and Nevis
+        1 | Bermuda
         4 | Nicaragua
+        1 | Montserrat
+        2 | Barbados
+        3 | Virgin Islands, U.S.
         2 | Saint Lucia
+        2 | Haiti
+        1 | Anguilla
+        1 | Grenada
+        4 | Belize
+        2 | Guadeloupe
+        4 | Honduras
+        2 | Antigua and Barbuda
        12 | United States
+        3 | Trinidad and Tobago
        12 | Canada
         3 | Netherlands Antilles
 (37 rows)
@@ -2153,23 +2156,9 @@ order by OUTERMOST_FOO.region
 ) cm
 where bad_headofstates.region = 'Caribbean';
  
-select * from bad_headofstates order by region,headofstate;
+select * from bad_headofstates order by avg,region,headofstate;
        avg        |          region           |           headofstate            
 ------------------+---------------------------+----------------------------------
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          4550620 | Australia and New Zealand | Elisabeth II
-          7651000 | Central Africa            | Idriss Deby
-          7651000 | Central Africa            | Idriss Deby
-          2657500 | Central America           | Arnoldo Aleman Lacayo
-          2657500 | Central America           | Arnoldo Aleman Lacayo
  744388.888888889 | Central America           | Beatrix
  744388.888888889 | Central America           | Beatrix
  744388.888888889 | Central America           | Beatrix
@@ -2196,14 +2185,26 @@ select * from bad_headofstates order by region,headofstate;
  744388.888888889 | Central America           | Elisabeth II
  744388.888888889 | Central America           | Elisabeth II
  744388.888888889 | Central America           | Elisabeth II
-          2657500 | Central America           | Elisabeth II
-          2657500 | Central America           | Elisabeth II
  744388.888888889 | Central America           | Fidel Castro Ruz
  744388.888888889 | Central America           | Fidel Castro Ruz
  744388.888888889 | Central America           | George W. Bush
  744388.888888889 | Central America           | George W. Bush
  744388.888888889 | Central America           | Jacques Chirac
  744388.888888889 | Central America           | Jacques Chirac
+          2657500 | Central America           | Arnoldo Aleman Lacayo
+          2657500 | Central America           | Arnoldo Aleman Lacayo
+          2657500 | Central America           | Elisabeth II
+          2657500 | Central America           | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
+          4550620 | Australia and New Zealand | Elisabeth II
  5982809.52380952 | Eastern Africa            | Abdiqassim Salad Hassan
  5982809.52380952 | Eastern Africa            | Abdiqassim Salad Hassan
  5982809.52380952 | Eastern Africa            | Abdiqassim Salad Hassan
@@ -2230,6 +2231,8 @@ select * from bad_headofstates order by region,headofstate;
  5982809.52380952 | Eastern Africa            | Pierre Buyoya
  5982809.52380952 | Eastern Africa            | Robert G. Mugabe
  5982809.52380952 | Eastern Africa            | Robert G. Mugabe
+          7651000 | Central Africa            | Idriss Deby
+          7651000 | Central Africa            | Idriss Deby
          34288500 | Eastern Asia              | Akihito
          34288500 | Eastern Asia              | Akihito
          34288500 | Eastern Asia              | Chen Shui-bian

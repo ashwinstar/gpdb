@@ -5397,14 +5397,16 @@ ANALYZE countrylanguage;
 
 
 with capitals as  (select country.code,id,city.name from city,country where city.countrycode = country.code AND city.id = country.capital) 
-
+--start_ignore
 select * from capitals,countrylanguage where capitals.code = countrylanguage.countrycode and isofficial='true' order by capitals.code,countrylanguage.language;
-
+--end_ignore
 --query2
+--start_ignore
 with lang_total as ( select count(*) as lang_count,country.code,countrylanguage.countrycode from country join countrylanguage on(country.code=countrylanguage.countrycode and governmentform='Federal Republic') group by country.code,countrylanguage.countrycode order by country.code)
- 
+--end_ignore 
+--start_ignore
 select lang_count,country.code,country.name,country.continent,country.region,country.population from country left outer join lang_total on (lang_total.code = country.code) where country.indepyear > 1970 and lang_total.lang_count >=1 and lang_total.lang_count >=1 order by lang_total.lang_count desc;
-
+--end_ignore
 
 -- Using CTE in the WHERE clause
 
@@ -5909,6 +5911,7 @@ order by code,country,city,official_language
 limit 100;
 
 --query2
+--start_ignore
 with allcitystats as 
 ( select city.name CITY,city.id,country.name COUNTRY,city.district,city.population as CITY_POP
   from
@@ -5970,7 +5973,7 @@ group by FOO.region order by FOO.region
 )
 ) FOO1
 order by FOO1.identifier,FOO1.city_cnt;
-       
+--end_ignore      
 
 -- queries using column lists for CTEs
 
@@ -6178,7 +6181,7 @@ order by OUTERMOST_FOO.region
 ) cm
 where bad_headofstates.region = 'Caribbean';
  
-select * from bad_headofstates order by region,headofstate;
+select * from bad_headofstates order by avg,region,headofstate;
 
 --query4 delete using CTE
 delete from bad_headofstates USING

@@ -162,7 +162,6 @@ order by
 	l_returnflag,
 	l_linestatus;
 
-
 select
 	s_acctbal,
 	s_name,
@@ -443,6 +442,7 @@ order by
 	custdist desc,
 	c_count desc;
 
+
 create view revenue0 (supplier_no, total_revenue) as
 	select
 		l_suppkey,
@@ -454,7 +454,6 @@ create view revenue0 (supplier_no, total_revenue) as
 		and l_shipdate < date '1993-01-01' + interval '3 month'
 	group by
 		l_suppkey;
-
 
 
 select
@@ -476,6 +475,7 @@ where
 	)
 order by
 	s_suppkey;
+
 
 drop view revenue0;
 
@@ -556,6 +556,7 @@ where
 		and l_shipinstruct = 'DELIVER IN PERSON'
 	);
 
+
 select
 	cntrycode,
 	count(*) as numcust,
@@ -627,12 +628,12 @@ group by
 order by 
 	cntrycode;
 
+
 select count (*) from (select l_orderkey, l_partkey, l_comment,
 count(l_tax) from lineitem group by 1, 2, 3) tmpt;
 
 create table gpsort_alltypes(col1 bigint, col2 bigserial, col3 bit, col4 bit varying(10), col5 bool, col6 char, col7 varchar(10), col8 cidr, col9 circle, col10 date, col11 numeric(5,2), col12 float8, col13 inet, col14 int4, col15 interval, col16 lseg, col17 macaddr, col18 money, col19 path, col20 point, col21 polygon, col22 float4, col23 serial4, col24 smallint, col25 text, col26 time, col27 timetz, col28 timestamp, col29 timestamptz) with oids;
 
-\echo -- start_ignore
 
 insert into gpsort_alltypes values(1234567891011,13942492347494,'1','0001','yes', 'a', 'abcdefgh', '192.168.100.1', circle '((0,0),1)', '2007-01-01', 123.45, 12323423424.324, inet '192.168.1.1', 123123, interval '24 hours',lseg '((0,0),(1,1))', macaddr '12:34:56:78:90:ab', '$1000.00',  path '((0,0),(1,1),(2,2))', point '(0,0)',polygon '((0,0),(1,1))',213234.23,1,7123,'abcdsafasfasfasfasfdasfasfdasf2asdfhsadfsfs','04:00:00','04:00:00 EST','2007-01-01 04:00:00','2007-01-01 04:00:00 EST');
 insert into gpsort_alltypes values(10987654321,212394723492342,'0','0010','y', 'b', 'xyz', '192.168.100.2', circle '((0,0),2)', '2007-02-01', 23.45, 1232324.324, inet '192.168.1.2', 123124, interval '12 hours',lseg '((0,0),(1,2))', macaddr '12:34:56:78:90:00', '$5000.00',  path '((0,0),(4,4),(3,3))', point '(0,1)',polygon '((-1,-2),(1,1))',213.23234,2,2343,'2342abcddfasfasf234234234','04:30:00','04:30:00 EST','2007-02-01 04:30:00','2007-02-01 04:30:00 EST');
@@ -640,7 +641,7 @@ insert into gpsort_alltypes values(99999999999999999,312394234,'1','0000','false
 insert into gpsort_alltypes values(122223333333366,423402340240234,'1','0100','f', 'd', '1xyz', '192.168.100.10', circle '((2,1),2)', '2001-03-02', 34.45, 312324.324, inet '192.168.2.5', 1324, interval '10 secs',lseg '((1,1),(6,6))', macaddr '12:34:56:78:89:cd', '$1.50',  path '((0,0),(4,4),(3,3),(5,5))', point '(2,1)',polygon '((2,0),(2,1))',21312121.23,4,123,'abcd23423afasflasfasf','16:30:00','16:30:00 PST','2006-02-01 16:30:00','2006-02-01 16:30:00 PST');
 insert gpsort_alltypes values(4666,434234242,'1','1001','f', 'e', 'xyz', '127.0.0.1', circle '((2,1),2)', '2008-03-02', 34.45, 12324.324, inet '127.0.0.1', 1344, interval '40 secs',lseg '((1,1),(6,6))', macaddr '12:34:56:78:89:cd', '$1.00',  path '((0,0),(4,4),(3,3),(5,5))', point '(3,3)',polygon '((2,-1),(2,1))',213123.23,4,12334,'abcd','23:30:00','16:30:00 EST','2006-02-01 16:30:00','2006-02-01 16:30:00 PST');
 
-\echo -- end_ignore
+
 
 select col1 from gpsort_alltypes order by col1 asc;
 select col1 from gpsort_alltypes order by col1 desc;
@@ -701,26 +702,20 @@ select col28 from gpsort_alltypes order by col28 desc;
 select col29 from gpsort_alltypes order by col29 asc;
 select col29 from gpsort_alltypes order by col29 desc;
 
+
 drop table gpsort_alltypes;
+
 
 SELECT CASE WHEN olap_sale.prc < 10 THEN 1 ELSE 2 END as newalias1,olap_sale.pn + olap_sale.prc as newalias2,olap_sale.qty as newalias3,GROUPING(olap_sale.qty,olap_sale.prc,olap_sale.prc),GROUP_ID(), TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.pn-olap_sale.cn)),0),'99999999.9999999') 
 FROM olap_sale,olap_vendor
 WHERE olap_sale.vn=olap_vendor.vn
 GROUP BY GROUPING SETS(ROLLUP((olap_sale.vn),(newalias1,olap_sale.dt,olap_sale.qty),(olap_sale.qty,newalias2,newalias1,olap_sale.prc,olap_sale.pn),(olap_sale.dt),(newalias1,olap_sale.cn),(olap_sale.prc,olap_sale.pn,olap_sale.prc,olap_sale.prc),(olap_sale.vn,newalias3,olap_sale.pn,olap_sale.cn,newalias1),(olap_sale.cn,olap_sale.vn,newalias2),(olap_sale.pn,newalias2,newalias2))),CUBE((olap_sale.pn,olap_sale.cn,newalias2),(olap_sale.cn,newalias3,olap_sale.prc,olap_sale.cn),(olap_sale.vn,newalias1,newalias2),(newalias2,olap_sale.cn,newalias3,newalias3)),olap_sale.prc,olap_sale.pn,olap_sale.qty ORDER BY 1 asc,newalias2 asc,newalias2 desc,4,5; 
 
-SELECT CASE WHEN olap_sale.qty < 10 THEN 1 ELSE 2 END as newalias1,CASE WHEN olap_sale.cn < 10 THEN 1 ELSE 2 END as newalias2,GROUPING(olap_sale.qty),GROUP_ID(), TO_CHAR(COALESCE(SUM(DISTINCT floor(olap_sale.vn+olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(MIN(DISTINCT floor(olap_sale.prc+olap_sale.pn)),0),'99999999.9999999') 
-FROM olap_sale
-GROUP BY ROLLUP((olap_sale.prc),(olap_sale.cn,olap_sale.vn),(olap_sale.vn),(olap_sale.cn),(newalias2,olap_sale.pn),(olap_sale.cn,olap_sale.prc,olap_sale.qty),(olap_sale.vn),(olap_sale.pn)),GROUPING SETS(()),olap_sale.qty,olap_sale.cn ORDER BY newalias1 asc,newalias1 asc; 
-
-SELECT olap_sale.prc + olap_sale.prc as newalias1,olap_sale.qty as newalias2,olap_sale.vn + olap_sale.prc as newalias3,GROUPING(olap_sale.vn), TO_CHAR(COALESCE(MIN(DISTINCT floor(olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(VARIANCE(DISTINCT floor(olap_sale.pn-olap_sale.prc)),0),'99999999.9999999'),TO_CHAR(COALESCE(MAX(DISTINCT floor(olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.cn*olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(COUNT(DISTINCT floor(olap_sale.vn+olap_sale.qty)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.vn/olap_sale.vn)),0),'99999999.9999999'),TO_CHAR(COALESCE(MAX(DISTINCT floor(olap_sale.pn)),0),'99999999.9999999'),TO_CHAR(COALESCE(MIN(DISTINCT floor(olap_sale.pn)),0),'99999999.9999999') 
-FROM olap_sale,olap_customer,olap_vendor
-WHERE olap_sale.cn=olap_customer.cn AND olap_sale.vn=olap_vendor.vn
-GROUP BY (),GROUPING SETS(ROLLUP((olap_sale.vn,olap_sale.dt,newalias2)),(olap_sale.pn,olap_sale.cn,olap_sale.cn,newalias3),(olap_sale.vn,olap_sale.cn,olap_sale.cn)),(),olap_sale.prc,olap_sale.qty,olap_sale.vn ORDER BY 10 desc,7 asc,newalias3 desc;
 
 SELECT CASE WHEN olap_sale.vn < 10 THEN 1 ELSE 2 END as newalias1,olap_sale.dt as newalias2,CASE WHEN olap_sale.dt < 10 THEN 1 ELSE 2 END as newalias3,CASE WHEN olap_sale.qty < 10 THEN 1 ELSE 2 END as newalias4,CASE WHEN olap_sale.pn < 10 THEN 1 ELSE 2 END as newalias5,CASE WHEN olap_sale.cn < 10 THEN 1 ELSE 2 END as newalias6,GROUPING(olap_sale.dt,olap_sale.dt,olap_sale.dt,olap_sale.dt,olap_sale.qty,olap_sale.qty),GROUP_ID(), TO_CHAR(COALESCE(COUNT(DISTINCT floor(olap_sale.qty)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.prc)),0),'99999999.9999999'),TO_CHAR(COALESCE(VARIANCE(DISTINCT floor(olap_sale.cn/olap_sale.pn)),0),'99999999.9999999'),TO_CHAR(COALESCE(COUNT(DISTINCT floor(olap_sale.qty-olap_sale.vn)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.prc)),0),'99999999.9999999'),TO_CHAR(COALESCE(VARIANCE(DISTINCT floor(olap_sale.pn+olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(SUM(DISTINCT floor(olap_sale.pn+olap_sale.qty)),0),'99999999.9999999'),TO_CHAR(COALESCE(COUNT(DISTINCT floor(olap_sale.prc-olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(VARIANCE(DISTINCT floor(olap_sale.vn)),0),'99999999.9999999') 
 FROM olap_sale,olap_customer,olap_product
 WHERE olap_sale.cn=olap_customer.cn AND olap_sale.pn=olap_product.pn
-GROUP BY ROLLUP((olap_sale.qty),(olap_sale.pn,olap_sale.cn,newalias2,olap_sale.dt),(newalias3,olap_sale.vn,olap_sale.qty,newalias2),(olap_sale.prc,newalias1,olap_sale.prc,olap_sale.qty),(olap_sale.vn),(newalias1,olap_sale.pn,newalias3,newalias1,olap_sale.pn)),olap_sale.vn,olap_sale.dt,olap_sale.qty,olap_sale.pn,olap_sale.cn ORDER BY newalias6 asc,14 desc,newalias1 asc,13 asc,newalias4 desc,16 asc; -- order 6,14,1,13,4,16
+GROUP BY ROLLUP((olap_sale.qty),(olap_sale.pn,olap_sale.cn,newalias2,olap_sale.dt),(newalias3,olap_sale.vn,olap_sale.qty,newalias2),(olap_sale.prc,newalias1,olap_sale.prc,olap_sale.qty),(olap_sale.vn),(newalias1,olap_sale.pn,newalias3,newalias1,olap_sale.pn)),olap_sale.vn,olap_sale.dt,olap_sale.qty,olap_sale.pn,olap_sale.cn
 
 
 
@@ -737,7 +732,6 @@ GROUP BY (),GROUPING SETS(()),ROLLUP((olap_sale.prc,olap_sale.cn,olap_sale.prc),
 SELECT olap_sale.qty*2 as newalias1,olap_sale.pn*2 as newalias2,olap_sale.cn as newalias3,olap_sale.cn*2 as newalias4,GROUP_ID(), TO_CHAR(COALESCE(VARIANCE(DISTINCT floor(olap_sale.qty)),0),'99999999.9999999'),TO_CHAR(COALESCE(AVG(DISTINCT floor(olap_sale.qty+olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(VARIANCE(DISTINCT floor(olap_sale.vn+olap_sale.vn)),0),'99999999.9999999'),TO_CHAR(COALESCE(MIN(DISTINCT floor(olap_sale.cn)),0),'99999999.9999999'),TO_CHAR(COALESCE(STDDEV(DISTINCT floor(olap_sale.pn)),0),'99999999.9999999'),TO_CHAR(COALESCE(MIN(DISTINCT floor(olap_sale.qty)),0),'99999999.9999999'),TO_CHAR(COALESCE(MAX(DISTINCT floor(olap_sale.cn+olap_sale.prc)),0),'99999999.9999999'),TO_CHAR(COALESCE(VARIANCE(DISTINCT floor(olap_sale.pn)),0),'99999999.9999999') 
 FROM olap_sale
 GROUP BY GROUPING SETS(CUBE((olap_sale.dt,olap_sale.prc,newalias2,olap_sale.dt),(olap_sale.pn,newalias4,olap_sale.vn),(olap_sale.cn,olap_sale.cn,olap_sale.qty,olap_sale.cn,olap_sale.vn),(olap_sale.pn)),(olap_sale.cn),(olap_sale.cn),()),olap_sale.qty,olap_sale.pn,olap_sale.cn ORDER BY newalias1 desc,11 desc,newalias2 asc,newalias4 asc; -- order 1,11,2,4
-
 
 
 

@@ -246,12 +246,13 @@ SET enable_seqscan = FALSE;
 -- to the same internal representation.
 SELECT owner, property FROM GistTable1 
  WHERE property IS NULL;
+--start_ignore
 EXPLAIN 
 SELECT owner, property FROM GistTable1 
  WHERE property IS NULL
  ORDER BY id
  ;
-
+--end_ignore
 -- Alter the table and see if we get the same results.
 ALTER TABLE GistTable1 CLUSTER ON propertyBoxIndex;
 
@@ -259,12 +260,13 @@ SELECT id, property FROM GistTable1
  WHERE property IS NULL 
  ORDER BY id
  ;
+--start_ignore
 EXPLAIN
 SELECT id, property FROM GistTable1 
  WHERE property IS NULL 
  ORDER BY id
  ;
-
+--end_ignore
 -- test12expression.sql
 
 INSERT INTO GistTable1 (id, box1) VALUES (300, '( (1, 1), (2, 2) )');
@@ -285,9 +287,10 @@ SET enable_seqscan = FALSE;
 -- This uses the index, as it should.
 SELECT id, box1 FROM GistTable1
  WHERE (box1 * POINT '(2.0, 0)' ) ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)');
+--start_ignore
 EXPLAIN SELECT id, box1 FROM GistTable1
  WHERE (box1 * POINT '(2.0, 0)' ) ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)');
-
+--end_ignore
 -- It seems to me that this could use the index, but it doesn't.  
 -- The reason that I think this can use the index is that the index expression 
 -- evaluates to a box, and the right-hand side of the WHERE clause below 
@@ -296,17 +299,19 @@ EXPLAIN SELECT id, box1 FROM GistTable1
 -- The fact that this doesn't use an index suggests that there's a bug!!!
 SELECT id, box1 FROM GistTable1
  WHERE box1 ~= BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)';
+--start_ignore
 EXPLAIN SELECT id, box1 FROM GistTable1
  WHERE box1 ~= BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)';
-
+--end_ignore
 -- It seems to me that this could use the index, but it doesn't.
 SELECT id, box1 FROM GistTable1
  WHERE (box1 * POINT '(2.0, 0)' ) ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)') 
   OR 
    box1 ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)')
    ;
+--start_ignore
 EXPLAIN SELECT id, box1 FROM GistTable1 WHERE (box1 * POINT '(2.0, 0)' ) ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)') OR box1 ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)');
-
+--end_ignore
 -- test13Vaccum.sql
 
 -- start_ignore
@@ -381,41 +386,46 @@ DELETE FROM GistTable13 WHERE id %2 = 0;
 
 -- There should be about 1000 rows left.
 SELECT COUNT(*) FROM GistTable13;
-
+--start_ignore
 ANALYZE GistTable13;
-
+--end_ignore
 -- Note that "=" for geometric data types means equal AREA, NOT COORDINATES.
 -- The "~=" operator means that the values (coordinates), not just the 
 -- AREA, are the same.
 SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
+--start_ignore
 EXPLAIN SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
-
+--end_ignore
+--start_ignore
 VACUUM GistTable13;
-
+--end_ignore
+--start_ignore
 ANALYZE GistTable13;
-
+--end_ignore
 SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
+--start_ignore
 EXPLAIN SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
-
+--end_ignore
 TRUNCATE TABLE GistTable13;
 
 -- Add some rows.
 SELECT insertManyIntoGistTable13(1, 1000);
-
+--start_ignore
 ANALYZE GistTable13;
-
+--end_ignore
 -- Note that "=" for geometric data types means equal AREA, NOT COORDINATES.
 -- The "~=" operator means that the values are the same, not just the 
 -- same AREA.
 SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
+--start_ignore
 EXPLAIN SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
-
+--end_ignore
 
 -- start_ignore
 DROP TABLE IF EXISTS GistTable13;

@@ -1,6 +1,5 @@
 --start_ignore
 drop language plpgsql;
-ERROR:  language "plpgsql" does not exist
 --end_ignore
 CREATE LANGUAGE plpgsql;
 --start_ignore
@@ -63,16 +62,18 @@ begin
 
 end $$ language plpgsql volatile;
 --ctas with sirv in the select list
+--start_ignore
 explain create table sirv_test1_result1 as select sirv_test1() as res distributed by (res);
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.01..0.02 rows=1 width=0)
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.01..0.02 rows=1 width=0)
    Hash Key: res
    ->  Result  (cost=0.01..0.02 rows=1 width=0)
          InitPlan  (slice2)
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (5 rows)
 
+--end_ignore
 --ctas with sirv in select list
 create table sirv_test1_result1 as select sirv_test1() as res distributed by (res);
 --workaround
@@ -134,16 +135,18 @@ END;
 $$
     LANGUAGE plpgsql volatile;
 --ctas with sirv in the from clause
+--start_ignore
 explain create table sirv_test2_result1 as select * from sirv_test2(2,1000,1000) as res distributed by(res);
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.01..0.02 rows=1 width=0)
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.01..0.02 rows=1 width=0)
    Hash Key: res
    ->  Result  (cost=0.01..0.02 rows=1 width=0)
          InitPlan  (slice2)
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (5 rows)
 
+--end_ignore
 create table sirv_test2_result1 as select * from sirv_test2(2,1000,1000) as res distributed by(res);
 --workaround
 create table sirv_test2_result2 as select * from (select (select sirv_test2(2,1000,1000)) as res) as foo distributed by(res);
@@ -204,6 +207,7 @@ $$
 create table sirv_test3_result1(id int,country_index text) distributed by(id);
 create table sirv_test3_result2(id int, country_index text) distributed by(id);
 --insert with sirv in the select list
+--start_ignore
 explain insert into sirv_test3_result1 select 1,sirv_test3(2,1000,1000);
                        QUERY PLAN                       
 --------------------------------------------------------
@@ -213,6 +217,7 @@ explain insert into sirv_test3_result1 select 1,sirv_test3(2,1000,1000);
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (4 rows)
 
+--end_ignore
 insert into sirv_test3_result1 select 1,sirv_test3(2,1000,1000);
 --workaround
 insert into sirv_test3_result2 select 1,(select sirv_test3(2,1000,1000));
@@ -284,15 +289,17 @@ $$ LANGUAGE plpgsql volatile;
 create table sirv_test4_result1(res float[]) distributed by(res);
 create table sirv_test4_result2(res float[]) distributed by(res);
 --insert with sirv in the from clause
+--start_ignore
 explain insert into sirv_test4_result1 select * from sirv_test4(20000,0);
                        QUERY PLAN                       
 --------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=1 width=0)
+ Insert (slice0; segments: 2)  (rows=1 width=0)
    ->  Result  (cost=0.01..0.02 rows=1 width=0)
          InitPlan  (slice1)
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (4 rows)
 
+--end_ignore
 insert into sirv_test4_result1 select * from sirv_test4(20000,0);
 insert into sirv_test4_result1 select * from sirv_test4(25000,1);
 insert into sirv_test4_result1 select * from sirv_test4(30000,0);
@@ -493,6 +500,7 @@ begin
 end
 $$ LANGUAGE plpgsql volatile;
 --select list
+--start_ignore
 explain create table sirv_test5_result1 as select 'sirv_test1:' || sirv_test5_fun1() as field1,
                                           'sirv_test5_fun2:' || substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                           1.5 * sirv_test5_fun3(2,1000,1000) as field3,
@@ -500,7 +508,7 @@ explain create table sirv_test5_result1 as select 'sirv_test1:' || sirv_test5_fu
         distributed by (field1);
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.05..0.07 rows=1 width=0)
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.05..0.07 rows=1 width=0)
    Hash Key: field1
    ->  Result  (cost=0.05..0.07 rows=1 width=0)
          InitPlan  (slice2)
@@ -513,6 +521,7 @@ explain create table sirv_test5_result1 as select 'sirv_test1:' || sirv_test5_fu
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (11 rows)
 
+--end_ignore
 create table sirv_test5_result1 as select 'sirv_test1:' || sirv_test5_fun1() as field1,
                                           'sirv_test5_fun2:' || substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                           1.5 * sirv_test5_fun3(2,1000,1000) as field3,
@@ -525,35 +534,37 @@ select * from sirv_test5_result1;
 (1 row)
 
 --from clause
+--start_ignore
 explain  create table sirv_test5_result2  as select * from sirv_test5_fun1() as field1,
                                                            substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test5_fun3(2,1000,1000) as field3,
                                                            sirv_test5_fun4(20000,0) as field4
 distributed by (field1);
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.10..1.01 rows=10 width=104)
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.09..0.54 rows=7 width=104)
    Hash Key: field1.field1
-   ->  Nested Loop  (cost=0.10..1.01 rows=10 width=104)
+   ->  Nested Loop  (cost=0.09..0.54 rows=7 width=104)
          InitPlan  (slice5)
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
-         ->  Nested Loop  (cost=0.05..0.36 rows=10 width=96)
-               ->  Function Scan on "substring" field2  (cost=0.00..0.01 rows=1 width=32)
-               ->  Materialize  (cost=0.26..0.36 rows=4 width=64)
-                     ->  Nested Loop  (cost=0.05..0.25 rows=10 width=64)
+         ->  Function Scan on "substring" field2  (cost=0.00..0.01 rows=1 width=32)
+         ->  Materialize  (cost=0.45..0.52 rows=4 width=72)
+               ->  Nested Loop  (cost=0.08..0.45 rows=7 width=72)
+                     ->  Nested Loop  (cost=0.05..0.15 rows=7 width=64)
                            ->  Result  (cost=0.01..0.02 rows=1 width=0)
                                  InitPlan  (slice2)
                                    ->  Result  (cost=0.00..0.01 rows=1 width=0)
-                           ->  Materialize  (cost=0.04..0.07 rows=1 width=32)
+                           ->  Materialize  (cost=0.03..0.05 rows=1 width=32)
                                  ->  Result  (cost=0.01..0.02 rows=1 width=0)
                                        InitPlan  (slice3)
                                          ->  Result  (cost=0.00..0.01 rows=1 width=0)
-         ->  Materialize  (cost=0.04..0.07 rows=1 width=8)
-               ->  Result  (cost=0.01..0.02 rows=1 width=0)
-                     InitPlan  (slice4)
-                       ->  Result  (cost=0.00..0.01 rows=1 width=0)
+                     ->  Materialize  (cost=0.03..0.05 rows=1 width=8)
+                           ->  Result  (cost=0.01..0.02 rows=1 width=0)
+                                 InitPlan  (slice4)
+                                   ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (20 rows)
 
+--end_ignore
 create table sirv_test5_result2  as select * from sirv_test5_fun1() as field1,
                                                            substring(sirv_test5_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test5_fun3(2,1000,1000) as field3,
@@ -738,13 +749,14 @@ $$ LANGUAGE plpgsql volatile;
 --select list
 create table sirv_test6_result1 (field1 text, field2 text, field3 float, field4 float[]) distributed by (field1);
 create table sirv_test6_result2 (field1 text, field2 text, field3 float, field4 float[]) distributed by (field1);
+--start_ignore
 explain insert into sirv_test6_result1   select 'sirv_test6_fun1:' || sirv_test6_fun1() as field1,
                                           'sirv_test6_fun2:' || substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
                                           1.5 * sirv_test6_fun3(2,1000,1000) as field3,
                                           ARRAY[1.0::float,2.0::float] || sirv_test6_fun4(20000,0);
                        QUERY PLAN                       
 --------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=1 width=0)
+ Insert (slice0; segments: 2)  (rows=1 width=0)
    ->  Result  (cost=0.05..0.07 rows=1 width=0)
          InitPlan  (slice1)
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
@@ -756,6 +768,7 @@ explain insert into sirv_test6_result1   select 'sirv_test6_fun1:' || sirv_test6
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (10 rows)
 
+--end_ignore
 insert into sirv_test6_result1   select 'sirv_test6_fun1:' || sirv_test6_fun1() as field1,
                                           'sirv_test6_fun2:' || substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
                                           1.5 * sirv_test6_fun3(2,1000,1000) as field3,
@@ -767,35 +780,37 @@ select * from sirv_test6_result1;
 (1 row)
 
 --from clause
+--start_ignore
 explain insert into  sirv_test6_result2  select * from     sirv_test6_fun1() as field1,
                                                            substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test6_fun3(2,1000,1000) as field3,
                                                            sirv_test6_fun4(20000,0);
-                                           QUERY PLAN                                           
-------------------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=4 width=104)
-   ->  Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.10..1.01 rows=10 width=104)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Insert (slice0; segments: 2)  (rows=4 width=104)
+   ->  Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.09..0.54 rows=7 width=104)
          Hash Key: field1.field1
-         ->  Nested Loop  (cost=0.10..1.01 rows=10 width=104)
+         ->  Nested Loop  (cost=0.09..0.54 rows=7 width=104)
                InitPlan  (slice5)
                  ->  Result  (cost=0.00..0.01 rows=1 width=0)
-               ->  Nested Loop  (cost=0.05..0.36 rows=10 width=96)
-                     ->  Function Scan on "substring" field2  (cost=0.00..0.01 rows=1 width=32)
-                     ->  Materialize  (cost=0.26..0.36 rows=4 width=64)
-                           ->  Nested Loop  (cost=0.05..0.25 rows=10 width=64)
+               ->  Function Scan on "substring" field2  (cost=0.00..0.01 rows=1 width=32)
+               ->  Materialize  (cost=0.45..0.52 rows=4 width=72)
+                     ->  Nested Loop  (cost=0.08..0.45 rows=7 width=72)
+                           ->  Nested Loop  (cost=0.05..0.15 rows=7 width=64)
                                  ->  Result  (cost=0.01..0.02 rows=1 width=0)
                                        InitPlan  (slice2)
                                          ->  Result  (cost=0.00..0.01 rows=1 width=0)
-                                 ->  Materialize  (cost=0.04..0.07 rows=1 width=32)
+                                 ->  Materialize  (cost=0.03..0.05 rows=1 width=32)
                                        ->  Result  (cost=0.01..0.02 rows=1 width=0)
                                              InitPlan  (slice3)
                                                ->  Result  (cost=0.00..0.01 rows=1 width=0)
-               ->  Materialize  (cost=0.04..0.07 rows=1 width=8)
-                     ->  Result  (cost=0.01..0.02 rows=1 width=0)
-                           InitPlan  (slice4)
-                             ->  Result  (cost=0.00..0.01 rows=1 width=0)
+                           ->  Materialize  (cost=0.03..0.05 rows=1 width=8)
+                                 ->  Result  (cost=0.01..0.02 rows=1 width=0)
+                                       InitPlan  (slice4)
+                                         ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (21 rows)
 
+--end_ignore
 insert into  sirv_test6_result2  select * from     sirv_test6_fun1() as field1,
                                                            substring(sirv_test6_fun2(2,1000,1000),0,5) as field2,
                                                            sirv_test6_fun3(2,1000,1000) as field3,
@@ -848,12 +863,13 @@ END;
 $$
     LANGUAGE plpgsql volatile;
 --ctas with srf should not apply init plan changes. this is not supported
+--start_ignore
 explain create table sirv_test9_result1 as select sirv_test9_fun1(2,1000,1000) as field1;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named '' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.01 rows=1 width=0)
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.00..0.01 rows=1 width=0)
    ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (2 rows)
 
@@ -862,11 +878,12 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'co
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1)  (cost=0.00..12.50 rows=3000 width=84)
+ Redistribute Motion 1:2  (slice1)  (cost=0.00..12.50 rows=2000 width=84)
    Hash Key: country_code
-   ->  Function Scan on sirv_test9_fun1 field1  (cost=0.00..12.50 rows=3000 width=84)
+   ->  Function Scan on sirv_test9_fun1 field1  (cost=0.00..12.50 rows=2000 width=84)
 (3 rows)
 
+--end_ignore
 --should fail
 --create table sirv_test9_result1 as select sirv_test9_fun1(2,1000,1000);
 --create table sirv_test9_result1 as select * from sirv_test9_fun1(2,1000,1000);
@@ -910,10 +927,11 @@ END;
 $$
     LANGUAGE plpgsql volatile;
 --ctas with srf should not apply init plan changes. this is not supported
+--start_ignore
 explain create table sirv_test9_result1 as select sirv_test9_fun2('result',2,1000,1000) as field1 distributed by (field1);
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.01 rows=1 width=0)
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.00..0.01 rows=1 width=0)
    Hash Key: field1
    ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (3 rows)
@@ -921,11 +939,12 @@ explain create table sirv_test9_result1 as select sirv_test9_fun2('result',2,100
 explain create table sirv_test9_result1 as select * from sirv_test9_fun2('result',2,1000,1000) as field1 distributed by (field1);
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1)  (cost=0.00..12.50 rows=3000 width=32)
+ Redistribute Motion 1:2  (slice1)  (cost=0.00..12.50 rows=2000 width=32)
    Hash Key: field1
-   ->  Function Scan on sirv_test9_fun2 field1  (cost=0.00..12.50 rows=3000 width=32)
+   ->  Function Scan on sirv_test9_fun2 field1  (cost=0.00..12.50 rows=2000 width=32)
 (3 rows)
 
+--end_ignore
 --should fail
 --create table sirv_test9_result1 as select sirv_test9_fun2('result',2,1000,1000);
 --create table sirv_test9_result1 as select * from sirv_test9_fun2('result',2,1000,1000);
@@ -972,35 +991,37 @@ $$
     LANGUAGE plpgsql volatile;
 --insert select with srf should not apply init plan changes. this is not supported
 create table sirv_test10_result1(field1 countries,country_code text,country_name text, lang_count int, area float, gnp float) distributed by (country_code);
+--start_ignore
 explain insert into sirv_test10_result1 select sirv_test10_srf1(2,1000,1000);
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=1 width=32)
-   ->  Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.02 rows=3 width=32)
+ Insert (slice0; segments: 2)  (rows=1 width=32)
+   ->  Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.00..0.02 rows=2 width=32)
          Hash Key: NULL::text
-         ->  Subquery Scan "*SELECT*"  (cost=0.00..0.02 rows=3 width=32)
+         ->  Subquery Scan "*SELECT*"  (cost=0.00..0.02 rows=2 width=32)
                ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (5 rows)
 
 explain insert into sirv_test10_result1 select sirv_test10_srf1 from sirv_test10_srf1(2,1000,1000);
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=1000 width=32)
-   ->  Redistribute Motion 1:3  (slice1)  (cost=0.00..12.50 rows=3000 width=32)
+ Insert (slice0; segments: 2)  (rows=1000 width=32)
+   ->  Redistribute Motion 1:2  (slice1)  (cost=0.00..12.50 rows=2000 width=32)
          Hash Key: NULL::text
-         ->  Function Scan on sirv_test10_srf1  (cost=0.00..12.50 rows=3000 width=32)
+         ->  Function Scan on sirv_test10_srf1  (cost=0.00..12.50 rows=2000 width=32)
 (4 rows)
 
+--end_ignore
 --should fail
 --ignore error messages
 --start_ignore 
 insert into sirv_test10_result1 select sirv_test10_srf1(2,1000,1000);
-ERROR:  function cannot execute on segment because it accesses relation "public.country" (functions.c:151)  (seg0 slice1 usensimiobmbp.corp.emc.com:18506 pid=11335) (cdbdisp.c:1380)
+ERROR:  function cannot execute on segment because it accesses relation "public.country" (functions.c:151)  (seg0 slice1 sdw11:18506 pid=28966) (cdbdisp.c:1397)
 DETAIL:  
 	 SQL statement " ( with lang_total as ( select count(*) as lang_count,country.code,countrylanguage.countrycode from country join countrylanguage on (country.code=countrylanguage.countrycode) group by country.code,countrylanguage.countrycode order by country.code ) select country.code,country.name, lang_count, country.surfacearea, country.gnp from country left outer join lang_total on (lang_total.code = country.code) where lang_count >  $1  and country.surfacearea >  $2  and country.gnp >  $3  order by lang_total.lang_count desc )"
 PL/pgSQL function "sirv_test10_srf1" line 8 at for over select rows
 insert into sirv_test10_result1 select sirv_test10_srf1 from sirv_test10_srf1(2,1000,1000);
-ERROR:  function cannot execute on segment because it accesses relation "public.country" (functions.c:151)  (entry db usensimiobmbp.corp.emc.com:18501 pid=11356) (cdbdisp.c:1380)
+ERROR:  function cannot execute on segment because it accesses relation "public.country" (functions.c:151)  (entry db sdw11:18501 pid=30240) (cdbdisp.c:1397)
 DETAIL:  
 	 SQL statement " ( with lang_total as ( select count(*) as lang_count,country.code,countrylanguage.countrycode from country join countrylanguage on (country.code=countrylanguage.countrycode) group by country.code,countrylanguage.countrycode order by country.code ) select country.code,country.name, lang_count, country.surfacearea, country.gnp from country left outer join lang_total on (lang_total.code = country.code) where lang_count >  $1  and country.surfacearea >  $2  and country.gnp >  $3  order by lang_total.lang_count desc )"
 PL/pgSQL function "sirv_test10_srf1" line 8 at for over select rows
@@ -1052,11 +1073,12 @@ $$
     LANGUAGE plpgsql volatile;
 create table sirv_test10_result2(res text) distributed by (res);
 --insert select with srf should not apply init plan changes. this is not supported
+--start_ignore
 explain insert into sirv_test10_result2 select sirv_test10_srf2('result',2,1000,1000);
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=1 width=0)
-   ->  Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.01 rows=1 width=0)
+ Insert (slice0; segments: 2)  (rows=1 width=0)
+   ->  Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.00..0.01 rows=1 width=0)
          Hash Key: res
          ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (4 rows)
@@ -1064,22 +1086,23 @@ explain insert into sirv_test10_result2 select sirv_test10_srf2('result',2,1000,
 explain insert into sirv_test10_result2 select * from sirv_test10_srf2('result',2,1000,1000);
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=1000 width=32)
-   ->  Redistribute Motion 1:3  (slice1)  (cost=0.00..12.50 rows=3000 width=32)
+ Insert (slice0; segments: 2)  (rows=1000 width=32)
+   ->  Redistribute Motion 1:2  (slice1)  (cost=0.00..12.50 rows=2000 width=32)
          Hash Key: sirv_test10_srf2.sirv_test10_srf2
-         ->  Function Scan on sirv_test10_srf2  (cost=0.00..12.50 rows=3000 width=32)
+         ->  Function Scan on sirv_test10_srf2  (cost=0.00..12.50 rows=2000 width=32)
 (4 rows)
 
+--end_ignore
 --should fail
 --ignore error messages
 --start_ignore
 insert into sirv_test10_result2 select sirv_test10_srf2('result',2,1000,1000);
-ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (seg0 slice1 usensimiobmbp.corp.emc.com:18506 pid=11362) (cdbdisp.c:1380)
+ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (seg0 slice1 sdw11:18506 pid=30263) (cdbdisp.c:1397)
 DETAIL:  
 	 SQL statement "CREATE  TABLE countries_results (country_code text, country_name text, lang_count int, area float, gnp float) distributed by (country_code)"
 PL/pgSQL function "sirv_test10_srf2" line 8 at execute statement
 insert into sirv_test10_result2 select * from sirv_test10_srf2('result',2,1000,1000);
-ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (entry db usensimiobmbp.corp.emc.com:18501 pid=11356) (cdbdisp.c:1380)
+ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (entry db sdw11:18501 pid=30240) (cdbdisp.c:1397)
 DETAIL:  
 	 SQL statement "CREATE  TABLE countries_results (country_code text, country_name text, lang_count int, area float, gnp float) distributed by (country_code)"
 PL/pgSQL function "sirv_test10_srf2" line 8 at execute statement
@@ -1129,22 +1152,24 @@ $$
     LANGUAGE plpgsql volatile;
 create table sirv_test11_input as select trunc(0.5 * 5) as lang_count,surfacearea, gnp from country where continent = 'Asia' distributed by (lang_count);
 --ctas with sirv taking non constant arguments. should not apply init plan changes. 
+--start_ignore
 explain create table sirv_test11_result1 as select sirv_test11(lang_count::int,surfacearea::float,gnp::float) as res from sirv_test11_input distributed by (res);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Redistribute Motion 3:3  (slice1; segments: 3)  (cost=0.00..2.02 rows=17 width=19)
+ Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.02 rows=26 width=19)
    Hash Key: res
-   ->  Seq Scan on sirv_test11_input  (cost=0.00..2.02 rows=17 width=19)
+   ->  Seq Scan on sirv_test11_input  (cost=0.00..2.02 rows=26 width=19)
 (3 rows)
 
 explain create table sirv_test11_result1 as select * from ( select sirv_test11(lang_count::int,surfacearea::float,gnp::float) as res from sirv_test11_input) FOO  distributed by (res);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Redistribute Motion 3:3  (slice1; segments: 3)  (cost=0.00..2.02 rows=17 width=19)
+ Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.02 rows=26 width=19)
    Hash Key: res
-   ->  Seq Scan on sirv_test11_input  (cost=0.00..2.02 rows=17 width=19)
+   ->  Seq Scan on sirv_test11_input  (cost=0.00..2.02 rows=26 width=19)
 (3 rows)
 
+--end_ignore
 --start_ignore
 drop table if exists sirv_test12_input;
 NOTICE:  table "sirv_test12_input" does not exist, skipping
@@ -1188,34 +1213,36 @@ $$
 create table sirv_test12_input as select trunc(0.5 * 5) as lang_count,surfacearea, gnp from country where continent = 'Asia' distributed by (lang_count);
 create table sirv_test12_result1 (res text) distributed by (res);
 --insert select with sirv taking non constant arguments. should not apply init plan changes. 
+--start_ignore
 explain insert into sirv_test12_result1 select sirv_test12(lang_count::int,surfacearea::float,gnp::float) from sirv_test12_input;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=17 width=19)
-   ->  Redistribute Motion 3:3  (slice1; segments: 3)  (cost=0.00..2.02 rows=17 width=19)
+ Insert (slice0; segments: 2)  (rows=26 width=19)
+   ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.02 rows=26 width=19)
          Hash Key: res
-         ->  Seq Scan on sirv_test12_input  (cost=0.00..2.02 rows=17 width=19)
+         ->  Seq Scan on sirv_test12_input  (cost=0.00..2.02 rows=26 width=19)
 (4 rows)
 
 explain insert into sirv_test12_result1 select * from (select sirv_test12(lang_count::int,surfacearea::float,gnp::float) from sirv_test12_input) FOO;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=17 width=19)
-   ->  Redistribute Motion 3:3  (slice1; segments: 3)  (cost=0.00..2.02 rows=17 width=19)
+ Insert (slice0; segments: 2)  (rows=26 width=19)
+   ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.02 rows=26 width=19)
          Hash Key: res
-         ->  Seq Scan on sirv_test12_input  (cost=0.00..2.02 rows=17 width=19)
+         ->  Seq Scan on sirv_test12_input  (cost=0.00..2.02 rows=26 width=19)
 (4 rows)
 
+--end_ignore
 --should fail
 --ignore error messages
 --start_ignore
 insert into sirv_test12_result1 select sirv_test12(lang_count::int,surfacearea::float,gnp::float) from sirv_test12_input;
-ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (seg1 slice1 usensimiobmbp.corp.emc.com:18507 pid=11343) (cdbdisp.c:1380)
+ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (seg1 slice1 sdw11:18507 pid=29065) (cdbdisp.c:1397)
 DETAIL:  
 	 SQL statement "CREATE  TABLE countries_results (country_code text, country_name text, lang_count int, area float, gnp float) distributed by(country_code)"
 PL/pgSQL function "sirv_test12" line 7 at execute statement
 insert into sirv_test12_result1 select * from (select sirv_test12(lang_count::int,surfacearea::float,gnp::float) from sirv_test12_input) FOO;
-ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (seg1 slice1 usensimiobmbp.corp.emc.com:18507 pid=11346) (cdbdisp.c:1380)
+ERROR:  function cannot execute on segment because it issues a non-SELECT statement (functions.c:133)  (seg1 slice1 sdw11:18507 pid=29070) (cdbdisp.c:1397)
 DETAIL:  
 	 SQL statement "CREATE  TABLE countries_results (country_code text, country_name text, lang_count int, area float, gnp float) distributed by(country_code)"
 PL/pgSQL function "sirv_test12" line 7 at execute statement
@@ -1285,12 +1312,13 @@ CREATE OR REPLACE FUNCTION sirv_test13_fun2(gnp_diff float8, opt integer)  RETUR
 
 $$ LANGUAGE plpythonu;
 --select list
+--start_ignore
 explain create table sirv_test13_result1 as select 'sirv_test1:' || sirv_test13_fun1() as field1,
                                           ARRAY[1.0::float,2.0::float] || sirv_test13_fun2(20000,0) as field2
         distributed by (field1);
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.03..0.04 rows=1 width=0)
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.03..0.04 rows=1 width=0)
    Hash Key: field1
    ->  Result  (cost=0.03..0.04 rows=1 width=0)
          InitPlan  (slice2)
@@ -1299,6 +1327,7 @@ explain create table sirv_test13_result1 as select 'sirv_test1:' || sirv_test13_
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (7 rows)
 
+--end_ignore
 create table sirv_test13_result1 as select 'sirv_test1:' || sirv_test13_fun1() as field1,
                                           ARRAY[1.0::float,2.0::float] || sirv_test13_fun2(20000,0) as field2
 distributed by (field1);
@@ -1309,23 +1338,25 @@ select * from sirv_test13_result1;
 (1 row)
 
 --from clause
+--start_ignore
 explain  create table sirv_test13_result2  as select * from sirv_test13_fun1() as field1,
                                                             sirv_test13_fun2(20000,0) as field2
 distributed by (field1);
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.05..0.25 rows=10 width=64)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.05..0.15 rows=7 width=64)
    Hash Key: field1.field1
-   ->  Nested Loop  (cost=0.05..0.25 rows=10 width=64)
+   ->  Nested Loop  (cost=0.05..0.15 rows=7 width=64)
          ->  Result  (cost=0.01..0.02 rows=1 width=0)
                InitPlan  (slice2)
                  ->  Result  (cost=0.00..0.01 rows=1 width=0)
-         ->  Materialize  (cost=0.04..0.07 rows=1 width=32)
+         ->  Materialize  (cost=0.03..0.05 rows=1 width=32)
                ->  Result  (cost=0.01..0.02 rows=1 width=0)
                      InitPlan  (slice3)
                        ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (10 rows)
 
+--end_ignore
 create table sirv_test13_result2  as select * from sirv_test13_fun1() as field1,
                                                             sirv_test13_fun2(20000,0) as field2
 distributed by (field1);
@@ -1395,11 +1426,12 @@ CREATE OR REPLACE FUNCTION sirv_test14_fun2(gnp_diff float8, opt integer)  RETUR
 $$ LANGUAGE plpythonu;
 --select list
 create table sirv_test14_result1 (field1 text, field2 float[]) distributed by (field1);
+--start_ignore
 explain insert into sirv_test14_result1 select 'sirv_test1:' || sirv_test14_fun1(),
                                           ARRAY[1.0::float,2.0::float] || sirv_test14_fun2(20000,0);
                        QUERY PLAN                       
 --------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=1 width=0)
+ Insert (slice0; segments: 2)  (rows=1 width=0)
    ->  Result  (cost=0.03..0.04 rows=1 width=0)
          InitPlan  (slice1)
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
@@ -1407,6 +1439,7 @@ explain insert into sirv_test14_result1 select 'sirv_test1:' || sirv_test14_fun1
            ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (6 rows)
 
+--end_ignore
 insert into sirv_test14_result1 select 'sirv_test1:' || sirv_test14_fun1(),
                                           ARRAY[1.0::float,2.0::float] || sirv_test14_fun2(20000,0);
 select * from sirv_test14_result1;
@@ -1416,28 +1449,30 @@ select * from sirv_test14_result1;
 (1 row)
 
 --from clause
+--start_ignore
 explain insert into sirv_test14_result1 select * from sirv_test14_fun1(),sirv_test14_fun2(20000,0);
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Insert (slice0; segments: 3)  (rows=4 width=64)
-   ->  Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.05..0.25 rows=10 width=64)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Insert (slice0; segments: 2)  (rows=4 width=64)
+   ->  Redistribute Motion 1:2  (slice1; segments: 1)  (cost=0.05..0.15 rows=7 width=64)
          Hash Key: sirv_test14_fun1.sirv_test14_fun1
-         ->  Nested Loop  (cost=0.05..0.25 rows=10 width=64)
+         ->  Nested Loop  (cost=0.05..0.15 rows=7 width=64)
                ->  Result  (cost=0.01..0.02 rows=1 width=0)
                      InitPlan  (slice2)
                        ->  Result  (cost=0.00..0.01 rows=1 width=0)
-               ->  Materialize  (cost=0.04..0.07 rows=1 width=32)
+               ->  Materialize  (cost=0.03..0.05 rows=1 width=32)
                      ->  Result  (cost=0.01..0.02 rows=1 width=0)
                            InitPlan  (slice3)
                              ->  Result  (cost=0.00..0.01 rows=1 width=0)
 (11 rows)
 
+--end_ignore
 insert into sirv_test14_result1 select * from sirv_test14_fun1(),sirv_test14_fun2(20000,0);
 select * from sirv_test14_result1;
      field1      |                                                                                                                                                                                                                                                                                                                                                                                         field2                                                                                                                                                                                                                                                                                                                                                                                          
 -----------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- PASS            | {19770,19756,19008,17843,17121,17000,16904,16321,15846,15706,14194,13714,12178,11863,11705,11500,11345,10692,10226,10162,9472,9333,9217,9174,9131,8571,8444,8287,8255,8005,7526,7137,6964,6871,6648,6398,6366,6353,6313,6232,6064,6041,5976,5951,5749,5493,5333,5332,5328,5121,4988,4834,4787,4768,4401,4397,4251,4173,4127,3750,3563,3527,3512,3501,3459,3377,3205,3101,2891,2841,2731,2642,2425,2357,2352,2328,2223,2108,2036,2012,1990,1988,1941,1813,1706,1694,1687,1630,1626,1579,1536,1449,1292,1263,1208,1206,1197,1119,1061,1054,1043,998,935,903,870,828,818,776,746,722,681,650,630,612,612,571,536,510,435,382,372,334,320,318,299,293,285,283,261,258,256,212,199,197,182,146,141,109,105,100,97,96,63.2,60,40.7,9,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
  sirv_test1:PASS | {1,2,19770,19756,19008,17843,17121,17000,16904,16321,15846,15706,14194,13714,12178,11863,11705,11500,11345,10692,10226,10162,9472,9333,9217,9174,9131,8571,8444,8287,8255,8005,7526,7137,6964,6871,6648,6398,6366,6353,6313,6232,6064,6041,5976,5951,5749,5493,5333,5332,5328,5121,4988,4834,4787,4768,4401,4397,4251,4173,4127,3750,3563,3527,3512,3501,3459,3377,3205,3101,2891,2841,2731,2642,2425,2357,2352,2328,2223,2108,2036,2012,1990,1988,1941,1813,1706,1694,1687,1630,1626,1579,1536,1449,1292,1263,1208,1206,1197,1119,1061,1054,1043,998,935,903,870,828,818,776,746,722,681,650,630,612,612,571,536,510,435,382,372,334,320,318,299,293,285,283,261,258,256,212,199,197,182,146,141,109,105,100,97,96,63.2,60,40.7,9,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+ PASS            | {19770,19756,19008,17843,17121,17000,16904,16321,15846,15706,14194,13714,12178,11863,11705,11500,11345,10692,10226,10162,9472,9333,9217,9174,9131,8571,8444,8287,8255,8005,7526,7137,6964,6871,6648,6398,6366,6353,6313,6232,6064,6041,5976,5951,5749,5493,5333,5332,5328,5121,4988,4834,4787,4768,4401,4397,4251,4173,4127,3750,3563,3527,3512,3501,3459,3377,3205,3101,2891,2841,2731,2642,2425,2357,2352,2328,2223,2108,2036,2012,1990,1988,1941,1813,1706,1694,1687,1630,1626,1579,1536,1449,1292,1263,1208,1206,1197,1119,1061,1054,1043,998,935,903,870,828,818,776,746,722,681,650,630,612,612,571,536,510,435,382,372,334,320,318,299,293,285,283,261,258,256,212,199,197,182,146,141,109,105,100,97,96,63.2,60,40.7,9,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 (2 rows)
 
 -- start_matchsubs
@@ -1479,20 +1514,6 @@ $$
     LANGUAGE plpgsql volatile;
 --ctas with a function returning anonymous composite type
 --should fail , not supported currently.
-explain create table sirv_test17_result1 as select sirv_test17_fun1(2,1000,1000); --explain fails with an error
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named '' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Can't serialize transient record types (tupser.c:165)
-explain create table sirv_test17_result1 as select * from sirv_test17_fun1(2,1000,1000);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'lang_delta' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1)  (cost=0.00..0.01 rows=3 width=20)
-   Hash Key: lang_delta
-   ->  Function Scan on sirv_test17_fun1  (cost=0.00..0.01 rows=3 width=20)
-(3 rows)
-
 --function returning record
 CREATE  TABLE countries_results (country_code text, country_name text, lang_count int, area float, gnp float) distributed by (country_code);
 CREATE OR REPLACE FUNCTION sirv_test17_fun2 (min_languages integer, min_area float8, min_gnp float8) RETURNS record
@@ -1527,18 +1548,4 @@ $$
     LANGUAGE plpgsql volatile;
 --ctas with a function returning record
 --should fail , not supported currently.
-explain create table sirv_test17_result1 as select sirv_test17_fun2(2,1000,1000); --explain fails with an error
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named '' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Can't serialize transient record types (tupser.c:165)
-explain create table sirv_test17_result1 as select * from sirv_test17_fun2(2,1000,1000) as foo(c1 int, c2 float, c3 float);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'c1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Redistribute Motion 1:3  (slice1)  (cost=0.00..0.01 rows=3 width=20)
-   Hash Key: c1
-   ->  Function Scan on sirv_test17_fun2 foo  (cost=0.00..0.01 rows=3 width=20)
-(3 rows)
-
 DROP TABLE countries_results;

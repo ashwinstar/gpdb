@@ -19,4 +19,6 @@ BEFORE INSERT OR UPDATE ON test_trig
 FOR EACH ROW
     EXECUTE PROCEDURE fn_trig();
 INSERT INTO test_trig VALUES (0, 'after creating trigger');
+--start_ignore
 SELECT gp_segment_id, * FROM test_trig;
+--end_ignore

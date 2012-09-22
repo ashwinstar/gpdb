@@ -52,24 +52,24 @@ SELECT owner, property FROM GistTable1
  WHERE property ~= '((7052,250),(6050,20))';
   owner  |       property       
 ---------+----------------------
- Hypatia | (7052,250),(6050,20)
   Patty  | (7052,250),(6050,20)
+ Hypatia | (7052,250),(6050,20)
 (2 rows)
 
 SELECT owner, property FROM GistTable1 
  WHERE property ~= ' ( ( 7052, 250 ) , (6050, 20) )';
   owner  |       property       
 ---------+----------------------
-  Patty  | (7052,250),(6050,20)
  Hypatia | (7052,250),(6050,20)
+  Patty  | (7052,250),(6050,20)
 (2 rows)
 
 SELECT owner, property FROM GistTable1
  WHERE property ~= '( (6050, 20), (7052, 250) )';
   owner  |       property       
 ---------+----------------------
-  Patty  | (7052,250),(6050,20)
  Hypatia | (7052,250),(6050,20)
+  Patty  | (7052,250),(6050,20)
 (2 rows)
 
 -- start_ignore
@@ -78,7 +78,7 @@ SELECT owner, property FROM GistTable1
  WHERE property ~= '( (6050, 20), (7052, 250) )';
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..200.27 rows=1 width=64)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..200.27 rows=1 width=64)
    ->  Index Scan using propertyboxindex on gisttable1  (cost=0.00..200.27 rows=1 width=64)
          Index Cond: property ~= '(7052,250),(6050,20)'::box
  Settings:  enable_seqscan=off
@@ -107,8 +107,8 @@ SELECT owner, property FROM GistTable1
  WHERE property ~= ' ( ( 7052, 250 ) , (6050, 20) )';
   owner  |       property       
 ---------+----------------------
-  Patty  | (7052,250),(6050,20)
  Hypatia | (7052,250),(6050,20)
+  Patty  | (7052,250),(6050,20)
 (2 rows)
 
 SELECT owner, property FROM GistTable1
@@ -125,7 +125,7 @@ SELECT owner, property FROM GistTable1
  WHERE property ~= '( (6050, 20), (7052, 250) )';
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..200.27 rows=1 width=64)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..200.27 rows=1 width=64)
    ->  Index Scan using propertyboxindex on gisttable1  (cost=0.00..200.27 rows=1 width=64)
          Index Cond: property ~= '(7052,250),(6050,20)'::box
  Settings:  enable_seqscan=off
@@ -426,12 +426,13 @@ SELECT owner, property FROM GistTable1
  WHERE property IS NULL;
             owner            | property 
 -----------------------------+----------
- Neil, Nell, and Noel Newall | 
- FelDon Adams                | 
  S. T. "Rip" Sunset          | 
+ FelDon Adams                | 
+ Neil, Nell, and Noel Newall | 
  A. Gent                     | 
 (4 rows)
 
+--start_ignore
 EXPLAIN 
 SELECT owner, property FROM GistTable1 
  WHERE property IS NULL
@@ -439,7 +440,7 @@ SELECT owner, property FROM GistTable1
  ;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=200.28..200.28 rows=1 width=68)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=200.28..200.28 rows=1 width=68)
    Merge Key: "?column3?"
    ->  Sort  (cost=200.28..200.28 rows=1 width=68)
          Sort Key: id
@@ -447,6 +448,7 @@ SELECT owner, property FROM GistTable1
  Settings:  enable_seqscan=off
 (6 rows)
 
+--end_ignore
 -- Alter the table and see if we get the same results.
 ALTER TABLE GistTable1 CLUSTER ON propertyBoxIndex;
 SELECT id, property FROM GistTable1 
@@ -461,6 +463,7 @@ SELECT id, property FROM GistTable1
  99 | 
 (4 rows)
 
+--start_ignore
 EXPLAIN
 SELECT id, property FROM GistTable1 
  WHERE property IS NULL 
@@ -468,7 +471,7 @@ SELECT id, property FROM GistTable1
  ;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=200.28..200.28 rows=1 width=36)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=200.28..200.28 rows=1 width=36)
    Merge Key: id
    ->  Sort  (cost=200.28..200.28 rows=1 width=36)
          Sort Key: id
@@ -476,6 +479,7 @@ SELECT id, property FROM GistTable1
  Settings:  enable_seqscan=off
 (6 rows)
 
+--end_ignore
 -- test12expression.sql
 INSERT INTO GistTable1 (id, box1) VALUES (300, '( (1, 1), (2, 2) )');
 ERROR:  column "box1" of relation "gisttable1" does not exist
@@ -508,11 +512,13 @@ SELECT id, box1 FROM GistTable1
 ERROR:  column "box1" does not exist
 LINE 1: SELECT id, box1 FROM GistTable1
                    ^
+--start_ignore
 EXPLAIN SELECT id, box1 FROM GistTable1
  WHERE (box1 * POINT '(2.0, 0)' ) ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)');
 ERROR:  column "box1" does not exist
 LINE 1: EXPLAIN SELECT id, box1 FROM GistTable1
                            ^
+--end_ignore
 -- It seems to me that this could use the index, but it doesn't.  
 -- The reason that I think this can use the index is that the index expression 
 -- evaluates to a box, and the right-hand side of the WHERE clause below 
@@ -524,11 +530,13 @@ SELECT id, box1 FROM GistTable1
 ERROR:  column "box1" does not exist
 LINE 1: SELECT id, box1 FROM GistTable1
                    ^
+--start_ignore
 EXPLAIN SELECT id, box1 FROM GistTable1
  WHERE box1 ~= BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)';
 ERROR:  column "box1" does not exist
 LINE 1: EXPLAIN SELECT id, box1 FROM GistTable1
                            ^
+--end_ignore
 -- It seems to me that this could use the index, but it doesn't.
 SELECT id, box1 FROM GistTable1
  WHERE (box1 * POINT '(2.0, 0)' ) ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)') 
@@ -538,10 +546,12 @@ SELECT id, box1 FROM GistTable1
 ERROR:  column "box1" does not exist
 LINE 1: SELECT id, box1 FROM GistTable1
                    ^
+--start_ignore
 EXPLAIN SELECT id, box1 FROM GistTable1 WHERE (box1 * POINT '(2.0, 0)' ) ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)') OR box1 ~= (BOX '( (1,1), (2,2) )' * POINT '(2.0, 0)');
 ERROR:  column "box1" does not exist
 LINE 1: EXPLAIN SELECT id, box1 FROM GistTable1 WHERE (box1 * POINT ...
                            ^
+--end_ignore
 -- test13Vaccum.sql
 -- start_ignore
 DROP TABLE IF EXISTS GistTable13;
@@ -561,8 +571,33 @@ CREATE TABLE GistTable13 (
  DISTRIBUTED BY (id);
 --start_ignore
 drop language plpgsql;
+NOTICE:  function fn_trig() depends on language plpgsql
+NOTICE:  trigger test_trig_1 on table test_trig depends on function fn_trig()
+NOTICE:  function sirv_test17_fun2(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test17_fun1(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test12(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test11(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test10_srf2(text,integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test10_srf1(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test9_fun2(text,integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test9_fun1(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test6_fun4(double precision,integer) depends on language plpgsql
+NOTICE:  function sirv_test6_fun3(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test6_fun2(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test6_fun1() depends on language plpgsql
+NOTICE:  function sirv_test5_fun4(double precision,integer) depends on language plpgsql
+NOTICE:  function sirv_test5_fun3(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test5_fun2(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test5_fun1() depends on language plpgsql
+NOTICE:  function sirv_test4(double precision,integer) depends on language plpgsql
+NOTICE:  function sirv_test3(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test2(integer,double precision,double precision) depends on language plpgsql
+NOTICE:  function sirv_test1() depends on language plpgsql
+ERROR:  cannot drop language plpgsql because other objects depend on it
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 --end_ignore
 create language plpgsql;
+NOTICE:  language "plpgsql" already exists, skipping
 -- Register a function that converts TEXT to BOX data type.
 CREATE FUNCTION TO_BOX(TEXT) RETURNS BOX AS
   $$
@@ -625,7 +660,9 @@ SELECT COUNT(*) FROM GistTable13;
   1000
 (1 row)
 
+--start_ignore
 ANALYZE GistTable13;
+--end_ignore
 -- Note that "=" for geometric data types means equal AREA, NOT COORDINATES.
 -- The "~=" operator means that the values (coordinates), not just the 
 -- AREA, are the same.
@@ -636,18 +673,24 @@ SELECT id, property AS "ProperTee" FROM GistTable13
  999 | (999,999),(998,998)
 (1 row)
 
+--start_ignore
 EXPLAIN SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..200.27 rows=1 width=36)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..200.27 rows=1 width=36)
    ->  Index Scan using gistindex13 on gisttable13  (cost=0.00..200.27 rows=1 width=36)
          Index Cond: property ~= '(999,999),(998,998)'::box
  Settings:  enable_seqscan=off
 (4 rows)
 
+--end_ignore
+--start_ignore
 VACUUM GistTable13;
+--end_ignore
+--start_ignore
 ANALYZE GistTable13;
+--end_ignore
 SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
  id  |      ProperTee      
@@ -655,16 +698,18 @@ SELECT id, property AS "ProperTee" FROM GistTable13
  999 | (999,999),(998,998)
 (1 row)
 
+--start_ignore
 EXPLAIN SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..200.27 rows=1 width=36)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..200.27 rows=1 width=36)
    ->  Index Scan using gistindex13 on gisttable13  (cost=0.00..200.27 rows=1 width=36)
          Index Cond: property ~= '(999,999),(998,998)'::box
  Settings:  enable_seqscan=off
 (4 rows)
 
+--end_ignore
 TRUNCATE TABLE GistTable13;
 -- Add some rows.
 SELECT insertManyIntoGistTable13(1, 1000);
@@ -673,7 +718,9 @@ SELECT insertManyIntoGistTable13(1, 1000);
  
 (1 row)
 
+--start_ignore
 ANALYZE GistTable13;
+--end_ignore
 -- Note that "=" for geometric data types means equal AREA, NOT COORDINATES.
 -- The "~=" operator means that the values are the same, not just the 
 -- same AREA.
@@ -684,16 +731,18 @@ SELECT id, property AS "ProperTee" FROM GistTable13
  999 | (999,999),(998,998)
 (1 row)
 
+--start_ignore
 EXPLAIN SELECT id, property AS "ProperTee" FROM GistTable13 
  WHERE property ~= '( (999,999), (998,998) )';
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..200.27 rows=1 width=36)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..200.27 rows=1 width=36)
    ->  Index Scan using gistindex13 on gisttable13  (cost=0.00..200.27 rows=1 width=36)
          Index Cond: property ~= '(999,999),(998,998)'::box
  Settings:  enable_seqscan=off
 (4 rows)
 
+--end_ignore
 -- start_ignore
 DROP TABLE IF EXISTS GistTable13;
 -- end_ignore

@@ -30,74 +30,130 @@ ERROR:  database "co_db" does not exist
 drop database co_table_drop_col3;
 ERROR:  database "co_table_drop_col3" does not exist
 DROP USER "MAIN_USER";
+ERROR:  role "MAIN_USER" does not exist
 DROP USER "sub_user" ;
+ERROR:  role "sub_user" does not exist
 DROP USER "SUB_user_1";
+ERROR:  role "SUB_user_1" does not exist
 DROP USER "user123" ;
+ERROR:  role "user123" does not exist
 drop role  user_1;
 drop role "ISO";
+ERROR:  role "ISO" does not exist
 drop role "geography" ;
+ERROR:  role "geography" does not exist
 drop role "ISO_ro_1";
+ERROR:  role "ISO_ro_1" does not exist
 drop role "iso123" ;
+ERROR:  role "iso123" does not exist
 drop GROUP prachgrp;
+ERROR:  role "prachgrp" does not exist
 create database db_test_bed;
 ERROR:  database "db_test_bed" already exists
 \c db_test_bed
 DROP RESOURCE QUEUE db_resque2;
+ERROR:  resource queue "db_resque2" does not exist
 DROP RESOURCE QUEUE DB_RESque3;
+ERROR:  resource queue "db_resque3" does not exist
 DROP RESOURCE QUEUE DB_RESQUE4;
+ERROR:  resource queue "db_resque4" does not exist
 DROP ROLE db_role1;
+ERROR:  role "db_role1" does not exist
 DROP ROLE db_role2;
+ERROR:  role "db_role2" does not exist
 DROP ROLE db_role3;
+ERROR:  role "db_role3" does not exist
 DROP ROLE db_role4;
+ERROR:  role "db_role4" does not exist
 DROP ROLE db_role5;
+ERROR:  role "db_role5" does not exist
 DROP ROLE db_role6;
+ERROR:  role "db_role6" does not exist
 DROP ROLE db_role7;
+ERROR:  role "db_role7" does not exist
 DROP ROLE new_role8;
 DROP ROLE db_role9;
+ERROR:  role "db_role9" does not exist
 DROP ROLE db_role10;
+ERROR:  role "db_role10" does not exist
 DROP ROLE db_role11;
+ERROR:  role "db_role11" does not exist
 DROP ROLE db_role12;
+ERROR:  role "db_role12" does not exist
 DROP GROUP db_grp1;
+ERROR:  role "db_grp1" does not exist
 DROP SCHEMA db_schema1;
 DROP GROUP db_user_grp1;
+ERROR:  role "db_user_grp1" does not exist
 DROP ROLE db_user1;
+ERROR:  role "db_user1" does not exist
 DROP ROLE db_user2;
+ERROR:  role "db_user2" does not exist
 DROP ROLE db_user3;
+ERROR:  role "db_user3" does not exist
 DROP ROLE db_user4;
+ERROR:  role "db_user4" does not exist
 DROP ROLE db_user5;
+ERROR:  role "db_user5" does not exist
 DROP ROLE db_user6;
+ERROR:  role "db_user6" does not exist
 DROP ROLE db_user7;
+ERROR:  role "db_user7" does not exist
 DROP ROLE new_user8;
 DROP ROLE db_user9;
+ERROR:  role "db_user9" does not exist
 DROP ROLE db_user10;
+ERROR:  role "db_user10" does not exist
 DROP ROLE db_user11;
+ERROR:  role "db_user11" does not exist
 DROP ROLE db_user12;
+ERROR:  role "db_user12" does not exist
 DROP SCHEMA db_schema2;
 DROP RESOURCE QUEUE resqueu3;
+ERROR:  resource queue "resqueu3" does not exist
 DROP RESOURCE QUEUE resqueu4;
+ERROR:  resource queue "resqueu4" does not exist
 DROP DATABASE db_schema_test;
 DROP USER db_user13 ;
 DROP ROLE db_owner1;
+ERROR:  role "db_owner1" does not exist
 DROP DATABASE db_name1;
 DROP ROLE db_owner2;
 DROP SCHEMA myschema;
 DROP GROUP db_group1; 
+ERROR:  role "db_group1" does not exist
 DROP GROUP db_grp2;
+ERROR:  role "db_grp2" does not exist
 DROP GROUP db_grp3;
+ERROR:  role "db_grp3" does not exist
 DROP GROUP db_grp4;
+ERROR:  role "db_grp4" does not exist
 DROP GROUP db_grp5;
+ERROR:  role "db_grp5" does not exist
 DROP GROUP db_grp6;
+ERROR:  role "db_grp6" does not exist
 DROP GROUP db_grp7;
+ERROR:  role "db_grp7" does not exist
 DROP GROUP db_grp8;
+ERROR:  role "db_grp8" does not exist
 DROP GROUP db_grp9;
+ERROR:  role "db_grp9" does not exist
 DROP GROUP db_grp10;
+ERROR:  role "db_grp10" does not exist
 DROP GROUP db_grp11;
+ERROR:  role "db_grp11" does not exist
 DROP GROUP db_grp12;
+ERROR:  role "db_grp12" does not exist
 DROP ROLE grp_role1;
+ERROR:  role "grp_role1" does not exist
 DROP ROLE grp_role2;
+ERROR:  role "grp_role2" does not exist
 DROP USER test_user_1;
+ERROR:  role "test_user_1" does not exist
 DROP RESOURCE QUEUE grp_rsq1 ;
+ERROR:  resource queue "grp_rsq1" does not exist
 DROP RESOURCE QUEUE db_resque1;
+ERROR:  resource queue "db_resque1" does not exist
 DROP TABLE test_tbl;
 DROP SEQUENCE  db_seq3;
 DROP SEQUENCE  db_seq4;
@@ -144,8 +200,11 @@ DROP SCHEMA func_schema;
 DROP VIEW IF EXISTS emp_view CASCADE;
 DROP TABLE test_emp_view;
 DROP ROLE sally;
+ERROR:  role "sally" does not exist
 DROP ROLE ron;
+ERROR:  role "ron" does not exist
 DROP ROLE ken;
+ERROR:  role "ken" does not exist
 \c db_test_bed 
 DROP TABLE if exists sch_tbint CASCADE;
 NOTICE:  drop cascades to rule _RETURN on view sch_vbint
@@ -469,8 +528,8 @@ CREATE TABLE table_like_parent4 (
     
    CREATE TABLE table_parent ( a int, b text) DISTRIBUTED BY (a);
    insert into table_parent values (generate_series(1,10),'test');
-\echo --start_ignore
---start_ignore
+\echo -- start_ignore
+-- start_ignore
    select count(*) from table_parent;
  count 
 -------
@@ -488,24 +547,24 @@ LINE 1: select * from table_child;
    select * from table_parent;
  a  |  b   
 ----+------
-  1 | test
   2 | test
-  3 | test
   4 | test
-  5 | test
   6 | test
-  7 | test
   8 | test
-  9 | test
  10 | test
+  1 | test
+  3 | test
+  5 | test
+  7 | test
+  9 | test
 (10 rows)
 
    select * from table_child;
 ERROR:  relation "table_child" does not exist
 LINE 1: select * from table_child;
                       ^
-   \echo --end_ignore 
---end_ignore
+   \echo -- end_ignore 
+-- end_ignore
 --on commit
     
     CREATE LOCAL TEMP TABLE on_commit (
@@ -916,11 +975,13 @@ NOTICE:  language "plpgsql" already exists, skipping
           numeric_col numeric
           ) WITH OIDS DISTRIBUTED RANDOMLY;
 NOTICE:  OIDS=TRUE is not recommended for user-created tables. Use OIDS=FALSE to prevent wrap-around of the OID counter
+\echo -- start_ignore
 -- start_ignore
           insert into table_with_oid values ('0_zero', 0, '0_zero', 0);
           insert into table_with_oid values ('1_zero', 1, '1_zero', 1);
           insert into table_with_oid values ('2_zero', 2, '2_zero', 2);
           insert into table_with_oid select i||'_'||repeat('text',100),i,i||'_'||repeat('text',5),i from generate_series(3,100)i;
+\echo -- end_ignore
 -- end_ignore
           ALTER TABLE table_with_oid SET WITHOUT OIDS;
 --SET & RESET ( storage_parameter = value , ... )
@@ -970,9 +1031,9 @@ ERROR:  INHERITANCE support deprecated
           select * from parent_table;
  text_col | bigint_col | char_vary_col | numeric_col 
 ----------+------------+---------------+-------------
- 2_zero   |          2 | 2_zero        |           2
  0_zero   |          0 | 0_zero        |           0
  1_zero   |          1 | 1_zero        |           1
+ 2_zero   |          2 | 2_zero        |           2
 (3 rows)
 
 --OWNER TO new_owner
@@ -1017,11 +1078,11 @@ NOTICE:  CREATE TABLE / UNIQUE will create implicit index "test_drop_column_col_
 --drop non toast column
     ALTER TABLE test_drop_column DROP COLUMN non_toast_col ;
 --drop default
-\echo --start_ignore
---start_ignore
+\echo -- start_ignore
+-- start_ignore
     ALTER TABLE test_drop_column ALTER COLUMN col_with_default_text DROP DEFAULT;
-\echo --end_ignore
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 --TODO - drop column from partitioned table
 \c ao_db
 --Tables with storage Parameters
@@ -1036,6 +1097,7 @@ NOTICE:  CREATE TABLE / UNIQUE will create implicit index "test_drop_column_col_
 create table test (a int, b int, c int, d int) WITH (appendonly=true,compresslevel=3);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+\echo -- start_ignore
 -- start_ignore
 \d test
 Append-Only Table "public.test"
@@ -1051,12 +1113,14 @@ Block Size: 32768
 Checksum: f
 Distributed by: (a)
 
+\echo -- end_ignore
 -- end_ignore
 insert into test select i, i%1, i%2, i%3 from generate_series(1,100)i;
 -- vacuum analyze the table
 vacuum analyze test;
 -- rename the table
 alter table test rename to new_test;
+\echo -- start_ignore
 -- start_ignore
 \d new_test
 Append-Only Table "public.new_test"
@@ -1072,8 +1136,10 @@ Block Size: 32768
 Checksum: f
 Distributed by: (a)
 
+\echo -- end_ignore
 -- end_ignore
 alter table new_test rename to test;
+\echo -- start_ignore
 -- start_ignore
 \d test
 Append-Only Table "public.test"
@@ -1089,6 +1155,7 @@ Block Size: 32768
 Checksum: f
 Distributed by: (a)
 
+\echo -- end_ignore
 -- end_ignore
 -- Negative Tests for AO Tables
  
@@ -1099,15 +1166,18 @@ create table bar_ao (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 --invalid operations
+\echo -- start_ignore
 -- start_ignore
 update foo_ao set a=5;
 ERROR:  Cannot parallelize an UPDATE statement that updates the distribution columns
 delete from foo_ao;
+\echo -- end_ignore
 -- end_ignore
 -- try and trick by setting rules
 create rule one as on insert to bar_ao do instead update foo_ao set a=1;
 create rule two as on insert to bar_ao do instead delete from foo_ao where a=1;
 -- create table with ao specification should fail
+\echo -- start_ignore
 -- start_ignore
 create table mpp2865_ao_syntax_test (a int, b int) with (compresslevel=5);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -1121,6 +1191,7 @@ create table mpp2865_ao_sytax_text(a int, b int) with (appendonly=false,blocksiz
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 ERROR:  invalid option 'blocksize' for base relation. Only valid for Append Only relations
+\echo -- end_ignore
 -- end_ignore
 --drop table foo_ao cascade;
 --drop table bar_ao cascade;
@@ -1339,18 +1410,6 @@ NOTICE:  CREATE TABLE will create partition "sales1_1_prt_11" for table "sales1"
 NOTICE:  CREATE TABLE will create partition "sales1_1_prt_12" for table "sales1"
 INSERT INTO sales1 SELECT * FROM sales; 
 -- Verifying Your Partition Strategy 
-EXPLAIN SELECT * FROM sales WHERE date='01-07-08' AND 
-region='usa';
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..0.00 rows=1 width=53)
-   ->  Append  (cost=0.00..0.00 rows=1 width=53)
-         ->  Seq Scan on sales  (cost=0.00..0.00 rows=1 width=53)
-               Filter: date = '01-07-2008'::date AND region = 'usa'::text
-         ->  Seq Scan on sales_1_prt_1_2_prt_usa sales  (cost=0.00..41.46 rows=1 width=53)
-               Filter: date = '01-07-2008'::date AND region = 'usa'::text
-(6 rows)
-
 --Viewing Your Partition Design 
 SELECT partitionboundary, partitiontablename, partitionname, 
 partitionlevel, partitionrank FROM pg_partitions WHERE 
@@ -1489,7 +1548,7 @@ ALTER TABLE sales3 SPLIT DEFAULT PARTITION
 START ('2009-01-01') INCLUSIVE 
 END ('2009-02-01') EXCLUSIVE 
 INTO (PARTITION jan09, PARTITION other);
-NOTICE:  exchanged partition "other" of relation "sales3" with relation "pg_temp_378490"
+NOTICE:  exchanged partition "other" of relation "sales3" with relation "pg_temp_58903"
 NOTICE:  dropped partition "other" for relation "sales3"
 NOTICE:  CREATE TABLE will create partition "sales3_1_prt_jan09" for table "sales3"
 NOTICE:  CREATE TABLE will create partition "sales3_1_prt_other" for table "sales3"
@@ -1585,18 +1644,6 @@ NOTICE:  CREATE TABLE will create partition "sales_ao1_1_prt_11" for table "sale
 NOTICE:  CREATE TABLE will create partition "sales_ao1_1_prt_12" for table "sales_ao1"
 INSERT INTO sales_ao1 SELECT * FROM sales_ao; 
 -- Verifying Your Partition Strategy 
-EXPLAIN SELECT * FROM sales_ao WHERE date='01-07-08' AND 
-region='usa';
-                                               QUERY PLAN                                               
---------------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..0.00 rows=1 width=53)
-   ->  Append  (cost=0.00..0.00 rows=1 width=53)
-         ->  Seq Scan on sales_ao  (cost=0.00..0.00 rows=1 width=53)
-               Filter: date = '01-07-2008'::date AND region = 'usa'::text
-         ->  Append-only Scan on sales_ao_1_prt_1_2_prt_usa sales_ao  (cost=0.00..6.91 rows=1 width=53)
-               Filter: date = '01-07-2008'::date AND region = 'usa'::text
-(6 rows)
-
 --Viewing Your Partition Design 
 SELECT partitionboundary, partitiontablename, partitionname, 
 partitionlevel, partitionrank FROM pg_partitions WHERE 
@@ -1734,7 +1781,7 @@ ALTER TABLE sales_ao3 SPLIT DEFAULT PARTITION
 START ('2009-01-01') INCLUSIVE 
 END ('2009-02-01') EXCLUSIVE 
 INTO (PARTITION jan09, PARTITION other);
-NOTICE:  exchanged partition "other" of relation "sales_ao3" with relation "pg_temp_382658"
+NOTICE:  exchanged partition "other" of relation "sales_ao3" with relation "pg_temp_63071"
 NOTICE:  dropped partition "other" for relation "sales_ao3"
 NOTICE:  CREATE TABLE will create partition "sales_ao3_1_prt_jan09" for table "sales_ao3"
 NOTICE:  CREATE TABLE will create partition "sales_ao3_1_prt_other" for table "sales_ao3"
@@ -1829,18 +1876,6 @@ NOTICE:  CREATE TABLE will create partition "sales_hybrid1_1_prt_11" for table "
 NOTICE:  CREATE TABLE will create partition "sales_hybrid1_1_prt_12" for table "sales_hybrid1"
 INSERT INTO sales_hybrid1 SELECT * FROM sales_hybrid; 
 -- Verifying Your Partition Strategy 
-EXPLAIN SELECT * FROM sales_hybrid WHERE date='01-07-08' AND 
-region='usa';
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..0.00 rows=1 width=53)
-   ->  Append  (cost=0.00..0.00 rows=1 width=53)
-         ->  Seq Scan on sales_hybrid  (cost=0.00..0.00 rows=1 width=53)
-               Filter: date = '01-07-2008'::date AND region = 'usa'::text
-         ->  Append-only Scan on sales_hybrid_1_prt_1_2_prt_usa sales_hybrid  (cost=0.00..6.91 rows=1 width=53)
-               Filter: date = '01-07-2008'::date AND region = 'usa'::text
-(6 rows)
-
 --Viewing Your Partition Design 
 SELECT partitionboundary, partitiontablename, partitionname, 
 partitionlevel, partitionrank FROM pg_partitions WHERE 
@@ -1978,7 +2013,7 @@ ALTER TABLE sales_hybrid3 SPLIT DEFAULT PARTITION
 START ('2009-01-01') INCLUSIVE 
 END ('2009-02-01') EXCLUSIVE 
 INTO (PARTITION jan09, PARTITION other);
-NOTICE:  exchanged partition "other" of relation "sales_hybrid3" with relation "pg_temp_386830"
+NOTICE:  exchanged partition "other" of relation "sales_hybrid3" with relation "pg_temp_67243"
 NOTICE:  dropped partition "other" for relation "sales_hybrid3"
 NOTICE:  CREATE TABLE will create partition "sales_hybrid3_1_prt_jan09" for table "sales_hybrid3"
 NOTICE:  CREATE TABLE will create partition "sales_hybrid3_1_prt_other" for table "sales_hybrid3"
@@ -2060,22 +2095,26 @@ create database check_oid_relfilenode_db;
 create table table2 (col1 int,col2 int) distributed randomly;
 insert into table2 values (generate_series(1,100),generate_series(1,100));
 create index clusterindex on table2(col1);
+\echo -- start_ignore
 -- start_ignore
 select oid,relname, relfilenode from pg_class where relname = 'table2';
-  oid   | relname | relfilenode 
---------+---------+-------------
- 387841 | table2  |      387841
+  oid  | relname | relfilenode 
+-------+---------+-------------
+ 68254 | table2  |       68254
 (1 row)
 
+\echo -- end_ignore
 -- end_ignore
 CLUSTER clusterindex on table2;
+\echo -- start_ignore
 -- start_ignore
 select oid, relname, relfilenode from pg_class where relname = 'table2';
-  oid   | relname | relfilenode 
---------+---------+-------------
- 387841 | table2  |      387883
+  oid  | relname | relfilenode 
+-------+---------+-------------
+ 68254 | table2  |       68296
 (1 row)
 
+\echo -- end_ignore
 -- end_ignore
 --RE-INDEXING: changes the relfilenode of the indexes
 create table bm_test (i int, j int);
@@ -2086,53 +2125,63 @@ create index bm_test_j on bm_test using bitmap(j);
 delete from bm_test where j =1;
 insert into bm_test values (0, 0), (1,0);
 insert into bm_test values (generate_series(2,100),generate_series(2,100));
+\echo -- start_ignore
 -- start_ignore
 select relname, relfilenode from pg_class where relname = 'bm_test';
  relname | relfilenode 
 ---------+-------------
- bm_test |      387908
+ bm_test |       68321
 (1 row)
 
+\echo -- end_ignore
 -- end_ignore
 REINDEX index "public"."bm_test_j";
+\echo -- start_ignore
 -- start_ignore
 select relname, relfilenode from pg_class where relname = 'bm_test';
  relname | relfilenode 
 ---------+-------------
- bm_test |      387908
+ bm_test |       68321
 (1 row)
 
+\echo -- end_ignore
 -- end_ignore
 --The relfilenode should stay the same before and after the delete from tablename
 create table foo (a int, b text) distributed randomly;
 insert into foo values (1, '1_one'), (2, '2_two');
 insert into foo select i,i||'_'||repeat('text',100) from generate_series(3,100)i;
+\echo -- start_ignore
 -- start_ignore
 select relname, relfilenode from pg_class where relname = 'foo';
  relname | relfilenode 
 ---------+-------------
- foo     |      387957
+ foo     |       68370
 (1 row)
 
+\echo -- end_ignore
 -- end_ignore
 delete from foo where a = 1;
+\echo -- start_ignore
 -- start_ignore
 select relname, relfilenode from pg_class where relname = 'foo';
  relname | relfilenode 
 ---------+-------------
- foo     |      387957
+ foo     |       68370
 (1 row)
 
+\echo -- end_ignore
 -- end_ignore
 --the relfilenode should have stayed the same.
 delete from foo;
+\echo -- start_ignore
 -- start_ignore
 select relname, relfilenode from pg_class where relname = 'foo';
  relname | relfilenode 
 ---------+-------------
- foo     |      387957
+ foo     |       68370
 (1 row)
 
+\echo -- end_ignore
 -- end_ignore
 --the relfilenode should still have stayed the same.
 CREATE DATABASE cancel_trans;
@@ -2382,8 +2431,10 @@ ALTER DATABASE new_db_name1  OWNER TO db_owner2;
 ALTER DATABASE new_db_name1 RENAME TO db_name1;
 CREATE SCHEMA myschema;
 ALTER DATABASE db_name1 SET search_path TO myschema, public, pg_catalog;
+\echo -- start_ignore
 -- start_ignore
 ALTER DATABASE db_name1 RESET search_path;
+\echo -- end_ignore
 -- end_ignore
 \c db_test_bed
 CREATE USER db_user13;
@@ -2418,9 +2469,11 @@ CREATE OR REPLACE FUNCTION add(integer, integer) RETURNS integer
     LANGUAGE SQL 
     STABLE
     RETURNS NULL ON NULL INPUT; 
+\echo -- start_ignore
 -- start_ignore
 CREATE LANGUAGE plpgsql;
 NOTICE:  language "plpgsql" already exists, skipping
+\echo -- end_ignore
 -- end_ignore
 CREATE OR REPLACE FUNCTION increment(i integer) RETURNS 
 integer AS $$ 
@@ -2576,11 +2629,13 @@ CREATE TABLE err_table1 (cmdtime timestamp with time zone, relname text, filenam
     date_column date,
     col_set_default numeric) WITH OIDS DISTRIBUTED RANDOMLY;
 NOTICE:  OIDS=TRUE is not recommended for user-created tables. Use OIDS=FALSE to prevent wrap-around of the OID counter
+\echo -- start_ignore
 -- start_ignore
     insert into test_table2 values ('0_zero', 0, '0_zero', 0, 0, 0, '{0}', 0, 0, '2004-10-19 10:23:54', '2004-10-19 10:23:54+02', '1-1-2000',0);
     insert into test_table2 values ('1_zero', 1, '1_zero', 1, 1, 1, '{1}', 1, 1, '2005-10-19 10:23:54', '2005-10-19 10:23:54+02', '1-1-2001',1);
     insert into test_table2 values ('2_zero', 2, '2_zero', 2, 2, 2, '{2}', 2, 2, '2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002',2);
     insert into test_table2 select i||'_'||repeat('text',100),i,i||'_'||repeat('text',3),i,i,i,'{3}',i,i,'2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002',i from generate_series(3,100)i;
+\echo -- end_ignore
 -- end_ignore
 COPY (select * from test_table) TO 'data/test1_file_copy' WITH DELIMITER AS ',' NULL AS 'null string' ESCAPE AS E'\n' CSV HEADER QUOTE AS '"' FORCE QUOTE char_vary_col;
 ERROR:  relative path not allowed for COPY to file
@@ -2772,11 +2827,13 @@ SELECT CASE WHEN $1 THEN 1 ELSE 0 END;
 
 $BODY$
   LANGUAGE 'sql' IMMUTABLE;
+\echo -- start_ignore
 -- start_ignore
 CREATE CAST (boolean AS int4) WITH FUNCTION int4(boolean) AS ASSIGNMENT;
 ERROR:  cast from type pg_catalog.bool to type int4 already exists
 CREATE CAST (varchar AS text) WITHOUT FUNCTION AS IMPLICIT;
 ERROR:  cast from type pg_catalog.varchar to type text already exists
+\echo -- end_ignore
 -- end_ignore
 \c ao_db
 -- Heap Table 
@@ -3085,9 +3142,11 @@ insert into CO_table_bitmap_index values ('0_zero', 0, '0_zero', 0, 0, 0, '{0}',
 insert into CO_table_bitmap_index values ('1_zero', 1, '1_zero', 1, 1, 1, '{1}', 1, 1, 1, '2005-10-19 10:23:54', '2005-10-19 10:23:54+02', '1-1-2001');
 insert into CO_table_bitmap_index values ('2_zero', 2, '2_zero', 2, 2, 2, '{2}', 2, 2, 2, '2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002');
 insert into CO_table_bitmap_index select i||'_'||repeat('text',100),i,i||'_'||repeat('text',3),i,i,i,'{3}',i,i,i,'2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002' from generate_series(3,100)i;
+\echo -- start_ignore
 -- start_ignore
 DROP TABLE IF EXISTS st_GistTable1;
 NOTICE:  table "st_gisttable1" does not exist, skipping
+\echo -- end_ignore
 -- end_ignore
 CREATE TABLE st_GistTable1 (
  id INTEGER,
@@ -4350,6 +4409,7 @@ NOTICE:  table "co_compr_zlib_with_ctas" does not exist, skipping
 CREATE TABLE co_compr_zlib_with_ctas  WITH (appendonly=true, orientation=column) AS Select * from co_compr_zlib_with;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'id' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+\echo -- start_ignore
 -- start_ignore
 drop table if exists csq_t1;
 NOTICE:  table "csq_t1" does not exist, skipping
@@ -4378,6 +4438,7 @@ insert into csq_t3 values(1,'one');
 insert into csq_t3 values(3,'three');
 insert into csq_t3 values(5,'five');
 insert into csq_t3 values(7,'seven');
+\echo -- end_ignore
 -- end_ignore
 -- CSQ 01: Basic query with where clause
 select a, (select y from csq_t2 where x=a) from csq_t1 where b < 8 order by a;
@@ -4446,6 +4507,7 @@ SELECT a, (SELECT d FROM csq_t3 WHERE a=c) FROM csq_t1 GROUP BY a order by a;
 -- CSQ Q8
 SELECT a, (SELECT (SELECT d FROM csq_t3 WHERE a=c)) FROM csq_t1 GROUP BY a order by a;
 ERROR:  correlated subquery with skip-level correlations is not supported (subselect.c:394)
+\echo -- start_ignore
 -- start_ignore
     drop table if exists t5;
 NOTICE:  table "t5" does not exist, skipping
@@ -4477,6 +4539,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
     insert into csq_emp values('h','adept',11200.00);
     insert into csq_emp values('i','bdept',11200.00);
     insert into csq_emp values('j','adept',11200.00);
+\echo -- end_ignore
 -- end_ignore
 -- CSQ Q1
     select 
@@ -4592,14 +4655,16 @@ SELECT name, department, salary FROM csq_emp ea group by name, department,salary
 ------+------------+--------
 (0 rows)
 
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 DROP TABLE IF EXISTS city cascade;
 NOTICE:  table "city" does not exist, skipping
 DROP TABLE IF EXISTS country cascade;
 NOTICE:  table "country" does not exist, skipping
 DROP TABLE IF EXISTS countrylanguage cascade;
 NOTICE:  table "countrylanguage" does not exist, skipping
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 BEGIN;
 --SET client_encoding = 'LATIN1';
 CREATE TABLE city (
@@ -4678,10 +4743,12 @@ order by code,language;
  NLD  |  5 | Amsterdam  | NLD         | Dutch      | t          |       95.6
 (5 rows)
 
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 DROP TABLE IF EXISTS foo1;
 DROP TABLE IF EXISTS foo2;
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 create table foo1 (i int, j varchar(10)) 
 partition by list(j)
 (partition p1 values('1'), partition p2 values('2'), partition p3 values('3'), partition p4 values('4'), partition p5 values('5'),partition p0 values('0'));
@@ -4700,46 +4767,6 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into foo2 select i , i ||'' from generate_series(1,5) i;
 analyze foo1;
 analyze foo2;
-explain select count(*) from foo1,foo2 where foo1.j = foo2.j;
-                                                 QUERY PLAN                                                  
--------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=53.83..53.84 rows=1 width=8)
-   InitPlan  (slice4)
-     ->  Aggregate  (cost=2.06..2.08 rows=1 width=32)
-           ->  Gather Motion 3:1  (slice3; segments: 3)  (cost=0.00..2.05 rows=2 width=2)
-                 ->  Seq Scan on foo2  (cost=0.00..2.05 rows=2 width=2)
-   ->  Gather Motion 3:1  (slice2; segments: 3)  (cost=51.69..51.74 rows=1 width=8)
-         ->  Aggregate  (cost=51.69..51.70 rows=1 width=8)
-               ->  Hash Join  (cost=2.44..51.09 rows=81 width=0)
-                     Hash Cond: public.foo1.j::text = public.foo2.j::text
-                     ->  Append  (cost=0.00..16.00 rows=17 width=2)
-                           ->  Result  (cost=0.00..16.00 rows=17 width=2)
-                                 One-Time Filter: 393770::oid = ANY ($0)
-                                 ->  Seq Scan on foo1  (cost=0.00..16.00 rows=17 width=2)
-                           ->  Result  (cost=0.00..5.54 rows=17 width=2)
-                                 One-Time Filter: 393793::oid = ANY ($0)
-                                 ->  Seq Scan on foo1_1_prt_p1 foo1  (cost=0.00..5.54 rows=17 width=2)
-                           ->  Result  (cost=0.00..5.54 rows=17 width=2)
-                                 One-Time Filter: 393817::oid = ANY ($0)
-                                 ->  Seq Scan on foo1_1_prt_p2 foo1  (cost=0.00..5.54 rows=17 width=2)
-                           ->  Result  (cost=0.00..5.54 rows=17 width=2)
-                                 One-Time Filter: 393841::oid = ANY ($0)
-                                 ->  Seq Scan on foo1_1_prt_p3 foo1  (cost=0.00..5.54 rows=17 width=2)
-                           ->  Result  (cost=0.00..5.54 rows=17 width=2)
-                                 One-Time Filter: 393865::oid = ANY ($0)
-                                 ->  Seq Scan on foo1_1_prt_p4 foo1  (cost=0.00..5.54 rows=17 width=2)
-                           ->  Result  (cost=0.00..0.00 rows=17 width=2)
-                                 One-Time Filter: 393889::oid = ANY ($0)
-                                 ->  Seq Scan on foo1_1_prt_p5 foo1  (cost=0.00..0.00 rows=17 width=2)
-                           ->  Result  (cost=0.00..5.54 rows=17 width=2)
-                                 One-Time Filter: 393913::oid = ANY ($0)
-                                 ->  Seq Scan on foo1_1_prt_p0 foo1  (cost=0.00..5.54 rows=17 width=2)
-                     ->  Hash  (cost=2.25..2.25 rows=5 width=2)
-                           ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..2.25 rows=5 width=2)
-                                 ->  Seq Scan on foo2  (cost=0.00..2.05 rows=2 width=2)
- Settings:  enable_seqscan=off
-(35 rows)
-
 select count(*) from foo1,foo2 where foo1.j = foo2.j;DROP USER IF EXISTS testuser;
  count 
 -------
@@ -4747,9 +4774,8 @@ select count(*) from foo1,foo2 where foo1.j = foo2.j;DROP USER IF EXISTS testuse
 (1 row)
 
 NOTICE:  role "testuser" does not exist, skipping
-NOTICE:  role "testuser" does not exist, skipping  (seg0 sdw11:24011 pid=26744)
-NOTICE:  role "testuser" does not exist, skipping  (seg1 sdw11:24012 pid=26746)
-NOTICE:  role "testuser" does not exist, skipping  (seg2 sdw11:24013 pid=26748)
+NOTICE:  role "testuser" does not exist, skipping  (seg0 sdw11:18506 pid=16017)
+NOTICE:  role "testuser" does not exist, skipping  (seg1 sdw11:18507 pid=16019)
 CREATE USER testuser WITH LOGIN DENY BETWEEN DAY 'Monday' TIME '01:00:00' AND DAY 'Monday' TIME '01:30:00';;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 SELECT r.rolname, d.start_day, d.start_time, d.end_day, d.end_time
@@ -5038,7 +5064,8 @@ ORDER BY r.rolname, d.start_day, d.start_time, d.end_day, d.end_time;
 ---------+-----------+------------+---------+----------
 (0 rows)
 
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 drop view if exists relconstraint cascade;
 NOTICE:  view "relconstraint" does not exist, skipping
 drop view if exists ptable cascade;
@@ -5047,7 +5074,8 @@ drop view if exists part_closure cascade;
 NOTICE:  view "part_closure" does not exist, skipping
 drop view if exists anyconstraint cascade;
 NOTICE:  view "anyconstraint" does not exist, skipping
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 
 create view relconstraint
     (
@@ -5165,10 +5193,12 @@ create view anyconstraint
             left join 
         part_closure p
             on relid = partid;
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 drop table if exists mulpt_pk;
 NOTICE:  table "mulpt_pk" does not exist, skipping
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 -- Create multi-level partitioned tables with CONSTRAINTS on distcol and ptcol
 create table mulpt_pk
 (
@@ -5194,10 +5224,12 @@ NOTICE:  CREATE TABLE will create partition "mulpt_pk_1_prt_lower" for table "mu
 NOTICE:  CREATE TABLE will create partition "mulpt_pk_1_prt_upper" for table "mulpt_pk"
 ERROR:  PRIMARY KEY constraint must contain all columns in the partition key
 HINT:  Include column "subptcol" in the PRIMARY KEY constraint or create a part-wise UNIQUE index after creating the table instead.
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 drop table if exists mulpt_un;
 NOTICE:  table "mulpt_un" does not exist, skipping
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 create table mulpt_un
 (
 distcol int,
@@ -5229,10 +5261,12 @@ select tablename from pg_tables where tablename in ('mulpt_pk','mulpt_un') order
 (0 rows)
 
 -- create the tables with CONSTRAINTS on distcol,ptcol and subptcol, check that the tables are created.
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 drop table if exists mulpt_pk;
 NOTICE:  table "mulpt_pk" does not exist, skipping
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 create table mulpt_pk
 (
 distcol int,
@@ -5271,10 +5305,12 @@ NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "mulpt_pk_1_prt_l
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "mulpt_pk_1_prt_upper_pkey" for table "mulpt_pk_1_prt_upper"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "mulpt_pk_1_prt_upper_2_prt_1_pkey" for table "mulpt_pk_1_prt_upper_2_prt_1"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "mulpt_pk_1_prt_upper_2_prt_2_pkey" for table "mulpt_pk_1_prt_upper_2_prt_2"
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 drop table if exists mulpt_un;
 NOTICE:  table "mulpt_un" does not exist, skipping
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 create table mulpt_un
 (
 distcol int,
@@ -5365,24 +5401,28 @@ select conname,partid from anyconstraint where contype='u' and tableid='mulpt_un
 
 /* Note that roles are defined at the system-level and are valid
  * for all databases in your Greenplum Database system. */
-\echo '-- start_ignore'
+\echo -- start_ignore
 -- start_ignore
 revoke all on protocol gphdfs from _hadoop_perm_test_role;
 DROP ROLE IF EXISTS _hadoop_perm_test_role;
 revoke all on protocol gphdfs from _hadoop_perm_test_role2;
 DROP ROLE IF EXISTS _hadoop_perm_test_role2;
-\echo '-- end_ignore'
+\echo -- end_ignore
 -- end_ignore
 /* Now create a new role. Initially this role should NOT
  * be allowed to create an external hdfs table. */
---start_ignore
+\echo -- start_ignore
+-- start_ignore
 DROP ROLE _hadoop_perm_test_role;
 ERROR:  role "_hadoop_perm_test_role" does not exist
---end_ignore
---start_ignore
+\echo -- end_ignore
+-- end_ignore
+\echo -- start_ignore
+-- start_ignore
 DROP ROLE _hadoop_perm_test_role2; 
 ERROR:  role "_hadoop_perm_test_role2" does not exist
---end_ignore
+\echo -- end_ignore
+-- end_ignore
 CREATE ROLE _hadoop_perm_test_role
 WITH CREATEEXTTABLE
 LOGIN;
@@ -5589,12 +5629,15 @@ NOTICE:  4 bb cc
  
 (1 row)
 
+\echo -- start_ignore
 -- start_ignore
 drop role "ISO";
 drop role "geography";
 drop role "ISO_ro_1";
 drop role "iso123";
 DROP ROLE user_1;
+ERROR:  role "user_1" cannot be dropped because some objects depend on it
+DETAIL:  1 objects in database alter_table_db
 DROP ROLE db_role1;
 DROP ROLE db_role2;
 DROP ROLE db_role3;
@@ -5603,6 +5646,7 @@ DROP ROLE db_role5;
 DROP ROLE db_role6; 
 DROP ROLE db_role7; 
 DROP ROLE db_role8;
+ERROR:  role "db_role8" does not exist
 DROP ROLE db_role9;
 DROP ROLE db_role10;
 DROP ROLE db_role11;
@@ -5611,24 +5655,41 @@ DROP ROLE grp_role1;
 DROP ROLE grp_role2;
 DROP ROLE db_owner1;
 DROP ROLE db_owner2;
+ERROR:  role "db_owner2" cannot be dropped because some objects depend on it
+DETAIL:  owner of database db_name1
 DROP ROLE domain_owner;
+ERROR:  role "domain_owner" cannot be dropped because some objects depend on it
+DETAIL:  owner of type domain_schema.domain_3
 DROP ROLE func_role;
+ERROR:  role "func_role" cannot be dropped because some objects depend on it
+DETAIL:  owner of function add(integer,integer)
 DROP ROLE agg_owner;
+ERROR:  role "agg_owner" cannot be dropped because some objects depend on it
+DETAIL:  owner of function agg_schema.scube(numeric)
 DROP ROLE sally;
 DROP ROLE ron;
 DROP ROLE ken;
 DROP ROLE admin;
+ERROR:  role "admin" cannot be dropped because some objects depend on it
+DETAIL:  owner of table foo3
 DROP ROLE _hadoop_perm_test_role;
+ERROR:  role "_hadoop_perm_test_role" cannot be dropped because some objects depend on it
+DETAIL:  access to protocol gphdfs
 DROP ROLE _hadoop_perm_test_role2;
-
+ERROR:  role "_hadoop_perm_test_role2" cannot be dropped because some objects depend on it
+DETAIL:  access to protocol gphdfs
 DROP USER "MAIN_USER";
 DROP USER "sub_user";
 DROP USER "SUB_user_1";
 DROP USER "user123";
 DROP USER "MAIN_USER";
+ERROR:  role "MAIN_USER" does not exist
 DROP USER "sub_user";
+ERROR:  role "sub_user" does not exist
 DROP USER "SUB_user_1";
+ERROR:  role "SUB_user_1" does not exist
 DROP USER "user123";
+ERROR:  role "user123" does not exist
 DROP USER db_user1;
 DROP USER db_user2;
 DROP USER db_user3;
@@ -5637,16 +5698,21 @@ DROP USER db_user5;
 DROP USER db_user6; 
 DROP USER db_user7; 
 DROP USER db_user8;
+ERROR:  role "db_user8" does not exist
 DROP USER db_user9;
 DROP USER db_user10;
 DROP USER db_user11;
 DROP USER db_user12;
 DROP USER test_user_1;
 DROP USER db_user13;
+ERROR:  role "db_user13" cannot be dropped because some objects depend on it
+DETAIL:  owner of database db_schema_test
+2 objects in database db_schema_test
 DROP USER testuser;
-
+ERROR:  role "testuser" does not exist
 DROP GROUP prachgrp; 
 DROP GROUP prachgrp; 
+ERROR:  role "prachgrp" does not exist
 DROP GROUP db_grp1;
 DROP GROUP db_user_grp1;
 DROP GROUP db_group1;
@@ -5661,13 +5727,14 @@ DROP GROUP db_grp9;
 DROP GROUP db_grp10;
 DROP GROUP db_grp11;
 DROP GROUP db_grp12;
-
 DROP RESOURCE QUEUE db_resque1;
 DROP RESOURCE QUEUE db_resque2;
 DROP RESOURCE QUEUE DB_RESque3;
 DROP RESOURCE QUEUE DB_RESQUE4;
 DROP RESOURCE QUEUE db_resque1;
+ERROR:  resource queue "db_resque1" does not exist
 DROP RESOURCE QUEUE resqueu3;
 DROP RESOURCE QUEUE resqueu4;
 DROP RESOURCE QUEUE grp_rsq1;
+\echo -- end_ignore
 -- end_ignore
