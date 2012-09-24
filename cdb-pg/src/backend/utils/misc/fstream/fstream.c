@@ -519,7 +519,7 @@ fstream_open(const char *path, const struct fstream_options *options,
 			return 0;
 		}
 
-	    tempfilename = apr_pstrcat(mp, tempdir, "/pathsXXXXXX", NULL);
+	    tempfilename = apr_pstrcat(mp, tempdir, "/pathsXXXXXX", (char *)NULL);
 		if ((rv = apr_file_mktemp(&f, tempfilename, APR_CREATE|APR_WRITE|APR_EXCL, mp)) != APR_SUCCESS)
 		{
 			*response_code = 500;
