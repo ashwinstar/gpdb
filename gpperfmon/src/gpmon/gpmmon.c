@@ -563,10 +563,17 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 						ptr_smon_log_location_suffix = gpperfmon_string;
 					}
 
-					snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %s%d ",
-							active_hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
-							((opt.iterator_aggregate)?"-a ":""), ax.port);
+					if (h->smon_dir) { //if this if filled, then use it as the directory for smon istead of the default
+						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
+								" %s %s -m %" FMT64 " -l %s%s -v %d %s%d ",
+								active_hostname, h->smon_dir, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+								((opt.iterator_aggregate)?"-a ":""), ax.port);
+					} else {
+						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
+								" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %s%d ",
+								active_hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+								((opt.iterator_aggregate)?"-a ":""), ax.port);
+					}
 
 					if (h->ever_connected)
 					{

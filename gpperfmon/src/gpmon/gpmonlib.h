@@ -98,6 +98,7 @@ extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 
 #define PATH_TO_APPLIANCE_VERSION_FILE "/etc/gpdb-appliance-version"
 #define PATH_TO_APPLAINCE_DEVICES_FILE "/opt/dca/etc/healthmond/devices.cnf"
+#define PATH_TO_HADOOP_HOSTS_FILE "/etc/gphd/gphdmgr/conf/clusterinfo.txt"
 
 #define MIN_MESSAGES_PER_INTERVAL (1)
 #define MAX_MESSAGES_PER_INTERVAL (50)
@@ -191,6 +192,7 @@ typedef struct host_t
 	multi_interface_holder_t snmp_hostname;	
 
 	apr_uint32_t address_count; 
+	char* smon_dir;
 	char* data_dir;
 	unsigned char is_master; /* 1 if host is the same host where the master runs */ 
 	unsigned char is_hdm; 

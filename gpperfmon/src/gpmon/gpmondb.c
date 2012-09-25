@@ -15,6 +15,8 @@
 #define GPMON_HOSTTTYPE_HBW 4
 #define GPMON_HOSTTTYPE_HDC 5
 
+#define MAX_SMON_PATH_SIZE (1024)
+
 #define GPDB_CONNECTION_STRING "dbname='" GPMON_DB "' user='" GPMON_DBUSER "' connect_timeout='30'"
 
 #ifdef USE_CONNECTEMC
@@ -183,6 +185,7 @@ struct hostinfo_holder_t
 	apr_uint32_t address_count;
 
 	char* datadir;
+	char* smon_dir;
 	char* hostname;
 	int is_master;
 	int is_hdm;
@@ -216,13 +219,29 @@ void initializeHostInfoDataWithAddress(struct hostinfo_holder_t* holder, char* a
 	}
 }
 
-void initializeHostInfoDataFromDevicesEntry(apr_pool_t* tmp_pool, struct hostinfo_holder_t* holder, char* primary_hostname, char* hostEntry, int hostType)
+void initializeHostInfoDataFromFileEntry(apr_pool_t* tmp_pool, struct hostinfo_holder_t* holder,
+		char* primary_hostname, char* hostEntry, int hostType, char* smon_dir)
 {
 	holder->hostname = apr_pstrdup(tmp_pool, primary_hostname);
 	CHECKMEM(holder->hostname);
 
-	holder->datadir = apr_pstrdup(tmp_pool, "/opt/dca/var/gpsmon");
-	CHECKMEM(holder->datadir);
+	if (smon_dir) {		
+		holder->smon_dir = apr_pstrdup(tmp_pool, smon_dir);
+		CHECKMEM(holder->smon_dir);
+		
+		//Make the datadir the directory that smon is in if the smon directory is given
+		holder->datadir = apr_pstrdup(tmp_pool, smon_dir);
+		CHECKMEM(holder->datadir);
+		char *location = strrchr(holder->datadir, '/');
+                if (location) {
+                        *location = 0;
+                }
+
+	} else {
+		holder->smon_dir = NULL;
+		holder->datadir = apr_pstrdup(tmp_pool, "/opt/dca/var/gpsmon");
+		CHECKMEM(holder->datadir);
+	}
 
  	switch(hostType){
 		case GPMON_HOSTTTYPE_HDW:
@@ -377,10 +396,127 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 
 	apr_hash_set(htab, primary_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
 
-	initializeHostInfoDataFromDevicesEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType);
+	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, NULL);
 }
 
-void get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
+// return 0 if location not found, 1 if found
+int process_location_line_in_hadoop_cluster(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line, char* smon_location)
+{
+	if (!line){
+		gpmon_warningx(FLINE, 0, "Line in hadoop cluster info file is null, skipping");
+		return 0;
+	}
+
+	char* location = strchr(line, '#');
+	if (location) {
+		*location = 0;// remove comments from the line
+	}
+
+	if (!line) {
+		gpmon_warningx(FLINE, 0, "Line in devices file is null after removing comments, skipping");
+		return 0;
+	}
+	
+	char* temp_smon_location;
+	if (find_token_in_config_string(line, &temp_smon_location, "smon_location")) {
+		return 0;
+	}
+	if (strlen(temp_smon_location) > MAX_SMON_PATH_SIZE-1) {
+		gpmon_warningx(FLINE, 0, "smon location path size too long!");
+		return 0;
+        }
+	//Copy the smon location into the local buffer
+	strcpy(smon_location, temp_smon_location);
+	TR1(("Found smon location %s\n",smon_location ));
+	return 1;
+}
+
+void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line, char* smon_location)
+{
+	if (!line) {
+		gpmon_warningx(FLINE, 0, "Line in hadoop cluster info file is null, skipping");
+		return;
+	}
+
+	char* host;
+	char* category;
+
+	char primary_hostname[64];
+
+	char* location = strchr(line, '#');
+	if (location) {
+		*location = 0; // remove comments from the line
+	}
+
+	if (!line) {
+		gpmon_warningx(FLINE, 0, "Line in devices file is null after removing comments, skipping");
+		return;
+	}
+
+	// we do these in reverse order so inserting null chars does not prevent finding other tokens
+	if (find_token_in_config_string(line, &category, "Categories")) {
+		return;
+	}
+	location = strchr(category, ','); //remove the comma and extra categories
+	if (location) {
+		*location = 0;
+	}
+
+	if (find_token_in_config_string(line, &host, "Hostname")) {
+		return;
+	}
+	TR1(("Found hadoop host %s\n",host ));
+	// look for the 3 hadoop host types
+	int monitored_device = 0;
+	int hostType = 0;
+	if (strcmp(category, "hdm") == 0)
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_HDM;
+	}
+
+	if (strcmp(category, "hdw") == 0)
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_HDW;
+	}
+
+	if (strcmp(category, "hdc") == 0)
+	{
+		monitored_device = 1;
+		hostType = GPMON_HOSTTTYPE_HDC;
+	}
+	// The below code is the same as the devices file parsing code
+
+	// segment host, switch, etc ... we are only adding additional hosts required for performance monitoring
+	if (!monitored_device) {
+		return;
+	}
+
+	strncpy(primary_hostname, host, sizeof(primary_hostname));
+	primary_hostname[sizeof(primary_hostname) - 1] = 0;
+	location = strchr(primary_hostname, ',');
+	if (location) {
+		*location = 0;
+	}
+
+	struct hostinfo_holder_t* hostinfo_holder = apr_hash_get(htab, primary_hostname, APR_HASH_KEY_STRING);
+	if (hostinfo_holder) {
+		gpmon_warningx(FLINE, 0, "Host '%s' is duplicated in clusterinfo.txt", primary_hostname);
+		return;
+	}
+
+	// OK Lets add this record at this point
+	hostinfo_holder = apr_pcalloc(tmp_pool, sizeof(struct hostinfo_holder_t));
+	CHECKMEM(hostinfo_holder);
+
+	apr_hash_set(htab, primary_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
+
+	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, smon_location);
+}
+
+//Return 1 if not an appliance and 0 if an appliance
+int get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
 {
 	// open devices.cnf and then start reading the data
 	// populate all relevant hosts: Spidey0001, Spidey0002, EtlHost
@@ -388,15 +524,15 @@ void get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab
 	if (!fd)
 	{
 		TR0(("not an appliance ... not reading devices.cnf\n"));
-		return; 
+		return 1;
 	}
 	fclose(fd);
 
 	fd = fopen(PATH_TO_APPLAINCE_DEVICES_FILE, "r");
 	if (!fd)
 	{
-		gpmon_warningx(FLINE, 0, "can not read %s, ingoring\n", PATH_TO_APPLAINCE_DEVICES_FILE);
-		return; 
+		gpmon_warningx(FLINE, 0, "can not read %s, ignoring\n", PATH_TO_APPLAINCE_DEVICES_FILE);
+		return 0;
 	}
 
 	char* line;
@@ -410,6 +546,41 @@ void get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab
 	}
 
 	fclose(fd);
+	return 0;
+}
+
+//Return 1 if not a hadoop software only cluster and 0 it is a hadoop software only cluster
+int get_hadoop_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
+{
+	// open devices.cnf and then start reading the data
+	// populate all relevant hosts: Spidey0001, Spidey0002, EtlHost
+	FILE* fd = fopen(PATH_TO_HADOOP_HOSTS_FILE, "r");
+	if (!fd)
+	{
+		TR0(("not a hadoop software only cluster ... not reading %s\n", PATH_TO_HADOOP_HOSTS_FILE));
+		return 1;
+	}
+
+	char* line;
+	char buffer[1024];
+	char smon_location[MAX_SMON_PATH_SIZE]; 
+	// Get the smon location
+
+	while (NULL != fgets(buffer, sizeof(buffer), fd)) {
+		line = gpmon_trim(buffer);// remove new line
+		if ( process_location_line_in_hadoop_cluster(tmp_pool, htab, line, smon_location)) {
+			break; // found the location
+		}
+	}
+	fseek(fd, 0, SEEK_SET); // go back to the beginning of the file
+	// process the hostlines
+	while (NULL != fgets(buffer, sizeof(buffer), fd)) {
+		line = gpmon_trim(buffer);// remove new line
+		process_line_in_hadoop_cluster_info(tmp_pool, htab, line, smon_location);
+	}
+
+	fclose(fd);
+	return 0;
 }
 
 
@@ -509,7 +680,10 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 		}
 
 		// if we have any appliance specific hosts such as hadoop nodes add them to the hash table
-		get_appliance_hosts_and_add_to_hosts(pool, htab);
+		if (get_appliance_hosts_and_add_to_hosts(pool, htab)){
+			TR0(("Not an appliance: checking for SW Only hadoop hosts.\n"));
+			get_hadoop_hosts_and_add_to_hosts(pool, htab); // Not an appliance, so check for SW only hadoop nodes.
+		} 
 
 		unique_hosts = apr_hash_count(htab);
 
@@ -532,6 +706,9 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 
 			hosts[hostcounter].hostname = strdup(hostinfo_holder->hostname);
 			hosts[hostcounter].data_dir = strdup(hostinfo_holder->datadir);
+			if (hostinfo_holder->smon_dir){
+				hosts[hostcounter].smon_dir = strdup(hostinfo_holder->smon_dir);
+			}
 			hosts[hostcounter].is_master = hostinfo_holder->is_master;
 			hosts[hostcounter].addressinfo_head = hostinfo_holder->addressinfo_head;
 			hosts[hostcounter].addressinfo_tail = hostinfo_holder->addressinfo_tail;
