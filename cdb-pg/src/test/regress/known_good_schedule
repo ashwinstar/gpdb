@@ -180,6 +180,7 @@ test: caql
 test: icudp_no_fault_injection
 test: parser
 test: resource_queue_function
+test: co_nestloop_idxscan
 ignore: icudp_full
 #
 # gpcheckmirrorseg should be last to check mirror integrity
