@@ -838,11 +838,11 @@ insert into genders values('M', 66666);
 
 select gender, decode(gender, 1, 'Unknown', 'M', 'Male', 'F', 'Female', 'Unknown')
 from genders
-order by student_id;
+order by gender,student_id;
 
 select gender,decode(gender, 'N/A', 'Unknown', 'M', 'Male', 'F', 'Female')
 from genders
-order by student_id;
+order by gender,student_id;
 
 
 
