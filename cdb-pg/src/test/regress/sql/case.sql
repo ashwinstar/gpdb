@@ -268,6 +268,12 @@ CREATE VIEW myview as
 
 SELECT * FROM myview ORDER BY id, location;
 
+-- MPP-18409: decode in group by clause
+CREATE TABLE decode_test (col1 integer, col2 integer);
+SELECT decode(col1, 1, 1, 2, 2) as foo, sum(col2) as foo2
+  FROM decode_test
+GROUP BY decode(col1, 1, 1, 2, 2);
+
 -- Test deparse
 select pg_get_viewdef('myview',true); 
 

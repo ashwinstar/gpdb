@@ -1393,10 +1393,13 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 		{
 			/* 
 			 * CASE placeholder WHEN IS NOT DISTINCT FROM warg:
-			 * 		set: warg->rhs->lhs = placeholder
+			 * 	create a new IS_NOT_DISTINCT_FROM expression node warg
+			 * 	similar to the original one and set warg->rhs->lhs = placeholder
 			 */
 			if (isWhenIsNotDistinctFromExpr(warg))
 			{
+				warg = copyObject(warg);
+
 				A_Expr *top  = (A_Expr *) warg;
 				A_Expr *expr = (A_Expr *) top->rexpr;
 				expr->lexpr = (Node *) placeholder;
