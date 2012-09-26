@@ -443,9 +443,9 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber 
 %type <node>	OptTabPartitionSpec OptTabSubPartitionSpec TabSubPartitionTemplate      /* PartitionSpec */
-%type <list>	TabPartitionElemList TabSubPartitionElemList /* list of PartitionElem */
+%type <list>	TabPartitionElemList TabSubPartitionElemList TabSubPartitionTemplateElemList/* list of PartitionElem */
 
-%type <node> 	TabPartitionElem TabSubPartitionElem  /* PartitionElem */
+%type <node> 	TabPartitionElem TabSubPartitionElem  TabSubPartitionTemplateElem/* PartitionElem */
 
 %type <node> 	TabPartitionBoundarySpec OptTabPartitionBoundarySpec  /* PartitionBoundSpec */
 %type <list> 	TabPartitionBoundarySpecValList
@@ -2864,7 +2864,7 @@ alter_table_partition_cmd:
 					$$ = (Node *)n;
 				}
 			| SET SUBPARTITION TEMPLATE
-            '(' TabSubPartitionElemList ')' 
+            '(' TabSubPartitionTemplateElemList ')' 
 				{
 					AlterPartitionId  *pid   = makeNode(AlterPartitionId);
 					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
@@ -3945,6 +3945,11 @@ TabSubPartitionElemList:
               TabSubPartitionElem					{ $$ = lappend($1, $3); }
 		;
 
+TabSubPartitionTemplateElemList:
+            TabSubPartitionTemplateElem						{ $$ = list_make1($1); }
+			| TabSubPartitionTemplateElemList ',' 
+              TabSubPartitionTemplateElem					{ $$ = lappend($1, $3); }
+
 tab_part_val_no_paran: AexprConst { $$ = $1; }
 			| CAST '(' tab_part_val AS Typename ')'
 				{ 
@@ -4174,10 +4179,6 @@ TabPartitionElem:
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
-			| column_reference_storage_directive
-				{
-					$$ = (Node *)$1;
-				}
             ;
 
 TabSubPartitionElem: 
@@ -4230,11 +4231,18 @@ TabSubPartitionElem:
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
+            ;
+
+TabSubPartitionTemplateElem: TabSubPartitionElem 
+				{
+					$$ = (Node *)$1;
+				}
 			| column_reference_storage_directive
 				{
 					$$ = (Node *)$1;
 				}
             ;
+		
 
 TabPartitionNameDecl: PARTITION PartitionColId
 				{
@@ -4346,7 +4354,7 @@ OptTabPartitionBy:
 
 TabSubPartitionTemplate:
 			SUBPARTITION TEMPLATE 
-            '(' TabSubPartitionElemList ')' 
+            '(' TabSubPartitionTemplateElemList ')' 
 				{
 					PartitionSpec *n = makeNode(PartitionSpec); 
 					n->partElem  = $4;

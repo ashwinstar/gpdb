@@ -209,9 +209,11 @@ drop table ccddl_co;
 create table ccddl (i int, j int)
 with (appendonly = true, orientation=column)
 partition by range(j)
-(partition p1 start(1) end(10),
- partition p2 start(10) end(20),
- column i encoding(compresstype=zlib),
+(partition p1 start(1) end(10)
+ column i encoding(compresstype=zlib)
+ column j encoding(compresstype=quicklz),
+ partition p2 start(10) end(20)
+ column i encoding(compresstype=zlib)
  column j encoding(compresstype=quicklz)
 );
 
@@ -374,7 +376,9 @@ create table ccddl (
 	i int,
 	j int,
 	k int,
-	l int
+	l int,
+	column i encoding (blocksize=65536),
+	default column encoding (compresstype=quicklz)
 	)
 	with (appendonly=true, orientation=column)
 	partition by range(i)
@@ -385,9 +389,7 @@ create table ccddl (
 	 	partition p3 start(3) end(4) column i encoding(compresstype=rle_type)
 									 column j encoding(blocksize=8192)
 									 default column encoding
-									 	(compresstype=zlib),
-		column i encoding (blocksize=65536),
-		default column encoding (compresstype=quicklz)
+									 	(compresstype=zlib)
 	);
 
 execute ccddlcheck;
@@ -399,16 +401,16 @@ with (appendonly=true, orientation=column)
 partition by range(i) subpartition by range(j)
  (
  partition p1 start(1) end(2)
-		(subpartition sp1 start(1) end(2) column i encoding(compresstype=zlib),
-		 column i encoding (blocksize=65536),
+		(subpartition sp1 start(1) end(2) column i encoding(compresstype=zlib)
+		 column i encoding (blocksize=65536)
 		 default column encoding (compresstype=quicklz)
 		),
  partition p2 start(2) end(3)
+		column i encoding (blocksize=65536)
+		default column encoding (compresstype=quicklz)
  		(subpartition sp1 start(1) end(2)
 			column j encoding(compresstype=rle_type)
-			column k encoding(blocksize=8192),
-		 column i encoding (blocksize=65536),
-		 default column encoding (compresstype=quicklz)
+			column k encoding(blocksize=8192)
 		)
 );
 
@@ -423,8 +425,8 @@ CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
 					 COLUMN c3 ENCODING (compresstype=RLE_TYPE))
 WITH (appendonly=true, orientation=column)
 	PARTITION BY RANGE (c3) (
-		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
-		        COLUMN c3 ENCODING (compresstype=zlib),
+		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE)
+		        COLUMN c3 ENCODING (compresstype=zlib)
 				COLUMN c2 ENCODING (compresstype=rle_type)
 	);
 
@@ -435,13 +437,12 @@ drop table ccddl;
 -- if it's explicitly marked appendonly=false. This is to support
 -- what dump has been doing all along
 create table ccddl
-	(i int, j int encoding (compresstype=quicklz))
+	(i int, j int encoding (compresstype=quicklz), default column encoding (compresstype=zlib))
 	with (appendonly=true, orientation=column)
 	partition by range(i)
 	(
 		partition p1 start(1) end(2) with(appendonly=false),
-		partition p2 start(2) end(3),
-		default column encoding (compresstype=zlib)
+		partition p2 start(2) end(3)
 	);
 execute ccddlcheck;
 drop table ccddl;
@@ -482,12 +483,15 @@ drop table ccddl;
 -- Expect: failure
 -----------------------------------------------------------------------
 
+create table gg (i int, k int) with (appendonly=true, orientation=column)
+partition by range(k) (partition p1 start(1) end(2), column i encoding(compresstype=zlib));
+
 -- Make sure we validate the storage directives
 create table gg (i int, k int) with (appendonly=true, orientation=column)
-partition by range(k) (partition p1 start(1) end(2), column i encoding(a=b));
+partition by range(k) (partition p1 start(1) end(2) column i encoding(a=b));
 
 create table gg (i int, k int) with (appendonly=true, orientation=column)
-partition by range(k) (partition p1 start(1) end(2), column i
+partition by range(k) (partition p1 start(1) end(2) column i
 encoding(compresstype=sdf2sdf));
 
 -- We don't support partition element specific encoding clauses in subpartition
@@ -503,9 +507,10 @@ CREATE TABLE ccddl
 (a1 int,a2 char(5),a3 text,a4 timestamp ,a5 date) 
 partition by range(a1) 
 	(   
-		start(1) end(1000) every(500),
+		start(1) end(1000) every(500)
 		COLUMN a1 ENCODING (compresstype=zlib,compresslevel=4,blocksize=32768)
 	);
+drop table ccddl;
 
 -----------------------------------------------------------------------
 -- Type support

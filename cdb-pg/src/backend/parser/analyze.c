@@ -7504,19 +7504,19 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 	if (!stenc)
 		return;
 
-	/*
+	/*    
 	 * First, split the table elements into column reference storage directives
 	 * and everything else.
 	 */
 	foreach(lc, cs->tableElts)
-	{
+	{     
 		Node *n = lfirst(lc);
 
 		if (IsA(n, ColumnReferenceStorageDirective))
 			parentencs = lappend(parentencs, n);
-		else
+		else  
 			others = lappend(others, n);
-	}
+	}     
 
 	/*
 	 * Now build a final set of storage directives for this partition. Start
@@ -7534,15 +7534,9 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 		ListCell *lc2;
 		ColumnReferenceStorageDirective *p = lfirst(lc);
 
-		if (p->deflt)
-			continue;
-
 		foreach(lc2, finalencs)
 		{
 			ColumnReferenceStorageDirective *f = lfirst(lc2);
-
-			if (f->deflt)
-				continue;
 
 			if (equal(f->column, p->column))
 			{
@@ -7550,6 +7544,8 @@ merge_part_column_encodings(CreateStmt *cs, List *stenc)
 				break;
 			}
 		}
+
+		/* add parent encoding if no partition level encoding */
 		if (!found)
 			finalencs = lappend(finalencs, p);
 	}
