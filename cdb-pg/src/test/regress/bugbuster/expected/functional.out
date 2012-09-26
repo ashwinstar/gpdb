@@ -1,5 +1,6 @@
 \c regression
 create language plpgsql;
+NOTICE:  language "plpgsql" already exists, skipping
 -- start_ignore
 drop table if exists decodeint; 
 NOTICE:  table "decodeint" does not exist, skipping
@@ -493,23 +494,23 @@ CREATE TABLE emp_start_dates
    startdate date
 ) distributed by (startdate);
 insert into employees(empid, name, gender) values(100, 'John Smith', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg2 jaltarmbp:18508 pid=33996)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(101, 'John Deere', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg2 jaltarmbp:18508 pid=33996)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(102, 'Jane Doe', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg2 jaltarmbp:18508 pid=33996)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(103, 'Janet Jackson', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(104, 'Anne Smith', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(105, 'Ryan Goesling', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(106, 'George Clooney', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(107, 'Julia Roberts', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 jaltarmbp:18507 pid=33995)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(108, 'Jennifer Aniston', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 jaltarmbp:18507 pid=33995)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(109, 'Null Startdate', 'M');
  
 insert into emp_start_dates(empid, startdate) values(100, '2011-01-01'::date);
@@ -593,11 +594,11 @@ from emp
 group by deptno;
  deptno | count 
 --------+-------
-    100 |  1332
     500 |  4668
     400 |  1667
-    200 |   666
     300 |  1668
+    200 |   666
+    100 |  1332
 (5 rows)
 
 create or replace function set_names()
@@ -934,25 +935,25 @@ CREATE TABLE emp_start_dates
    startdate date
 ) distributed by (startdate);
 insert into employees(empid, name, gender) values(100, 'John Smith', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg2 jaltarmbp:18508 pid=33996)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(101, 'John Deere', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg2 jaltarmbp:18508 pid=33996)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(102, 'Jane Doe', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg2 jaltarmbp:18508 pid=33996)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(103, 'Janet Jackson', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(104, 'Anne Smith', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(105, 'Ryan Goesling', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(106, 'George Clooney', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 jaltarmbp:18506 pid=33994)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(107, 'Julia Roberts', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 jaltarmbp:18507 pid=33995)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg0 sdw11:18506 pid=22924)
 insert into employees(empid, name, gender) values(108, 'Jennifer Aniston', 'F');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 jaltarmbp:18507 pid=33995)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_women_pkey"  (seg1 sdw11:18507 pid=22926)
 insert into employees(empid, name, gender) values(109, 'John Mayer', 'M');
-ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg1 jaltarmbp:18507 pid=33995)
+ERROR:  duplicate key violates unique constraint "employees_1_prt_men_pkey"  (seg0 sdw11:18506 pid=22924)
  
 insert into emp_start_dates(empid, startdate) values(100, '2012-01-01'::date);
 insert into emp_start_dates(empid, startdate) values(101, '2010-01-15'::date);
@@ -1087,31 +1088,31 @@ insert into genders values('F', 55555);
 insert into genders values('M', 66666);
 select gender, decode(gender, 1, 'Unknown', 'M', 'Male', 'F', 'Female', 'Unknown')
 from genders
-order by student_id;
+order by gender,student_id;
  gender |  case  
 --------+--------
+ F      | Female
+ F      | Female
+ F      | Female
+ F      | Female
  M      | Male
  M      | Male
- F      | Female
- F      | Female
- F      | Female
  M      | Male
- F      | Female
  M      | Male
 (8 rows)
 
 select gender,decode(gender, 'N/A', 'Unknown', 'M', 'Male', 'F', 'Female')
 from genders
-order by student_id;
+order by gender,student_id;
  gender |  case  
 --------+--------
+ F      | Female
+ F      | Female
+ F      | Female
+ F      | Female
  M      | Male
  M      | Male
- F      | Female
- F      | Female
- F      | Female
  M      | Male
- F      | Female
  M      | Male
 (8 rows)
 
@@ -1382,8 +1383,8 @@ from decode_view
 order by region, country_code;
       bus_name       | country_code |  region  
 ---------------------+--------------+----------
- Test Solutions      | CN           | APJ
  Taing Consulting    | US           | Americas
+ Test Solutions      | CN           | APJ
  Computers Unlimited | IL           | EMEA
  Parts Plus          | IT           | EMEA
  Kangaroos Inc.      | AU           | 
