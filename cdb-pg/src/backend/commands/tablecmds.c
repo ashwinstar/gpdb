@@ -5581,15 +5581,22 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 	EState	   *estate;
 
 	/*
-	 * Open the relation(s).  We have surely already locked the existing
-	 * table.
+	 * Open the relation(s).  We have surely already locked the existing table.
+	 * In EXCHANGE of partition case, we only need to validate the content
+	 * based on new constraints.  oldTupDesc should point to the oldrel's tuple
+	 * descriptor since tab->oldDesc comes from the parent partition.
 	 */
 	if (OidIsValid(tab->exchange_relid))
+	{
 		oldrel = heap_open(tab->exchange_relid, NoLock);
+		oldTupDesc = RelationGetDescr(oldrel);
+	}
 	else
+	{
 		oldrel = heap_open(tab->relid, NoLock);
+		oldTupDesc = tab->oldDesc;
+	}
 
-	oldTupDesc = tab->oldDesc;
 	newTupDesc = RelationGetDescr(oldrel);		/* includes all mods */
 
 	if (OidIsValid(OIDNewHeap))
@@ -5969,6 +5976,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			int nvp = oldrel->rd_att->natts;
 			bool *proj = palloc0(sizeof(bool) * nvp);
 
+			/*
+			 * We use the old tuple descriptor instead of oldrel's tuple descriptor,
+			 * which may already contain altered column.
+			 */
 			if (oldTupDesc)
 			{
 				Assert(oldTupDesc->natts <= nvp);
@@ -5980,7 +5991,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			if(newrel)
 				idesc = aocs_insert_init(newrel, segno);
 
-			sdesc = aocs_beginscan(oldrel, SnapshotNow, tab->oldDesc, proj);
+			sdesc = aocs_beginscan(oldrel, SnapshotNow, oldTupDesc, proj);
 
 			aocs_getnext(sdesc, ForwardScanDirection, oldslot);
 

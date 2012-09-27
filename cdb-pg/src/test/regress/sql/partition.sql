@@ -4410,3 +4410,20 @@ drop table if exists plst2;
 
 -- MPP-17814 end
 
+-- MPP-18441
+create table s_heap (i1 int, t1 text, t2 text, i2 int, i3 int, n1 numeric, b1 bool)
+partition by list (t1)
+     (partition abc values('abc0', 'abc1', 'abc2'));
+insert into s_heap (t1, i1, i2, i3, n1, b1) select 'abc0', 1, 1, 1, 2.3, true
+    from generate_series(1, 5);
+alter table s_heap drop column t2;
+alter table s_heap drop column i3;
+-- create co table for exchange
+create table s_heap_ex_abc (i1 int, t1 text, f1 float, i2 int, n1 numeric, b1 bool)
+    WITH (appendonly=true, orientation=column, compresstype=quicklz);
+alter table s_heap_ex_abc drop column f1;
+insert into s_heap_ex_abc select 1, 'abc1', 2, 2, true from generate_series(1, 5);
+-- exchange partition
+alter table s_heap exchange partition abc with table s_heap_ex_abc;
+alter table s_heap exchange partition abc with table s_heap_ex_abc;
+-- MPP-18441 end
