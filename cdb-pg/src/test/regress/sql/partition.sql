@@ -4426,4 +4426,5 @@ insert into s_heap_ex_abc select 1, 'abc1', 2, 2, true from generate_series(1, 5
 -- exchange partition
 alter table s_heap exchange partition abc with table s_heap_ex_abc;
 alter table s_heap exchange partition abc with table s_heap_ex_abc;
+drop table s_heap, s_heap_ex_abc;
 -- MPP-18441 end
