@@ -563,10 +563,10 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 						ptr_smon_log_location_suffix = gpperfmon_string;
 					}
 
-					if (h->smon_dir) { //if this if filled, then use it as the directory for smon istead of the default
+					if (h->smon_bin_location) { //if this if filled, then use it as the directory for smon istead of the default
 						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
 								" %s %s -m %" FMT64 " -l %s%s -v %d %s%d ",
-								active_hostname, h->smon_dir, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+								active_hostname, h->smon_bin_location, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
 								((opt.iterator_aggregate)?"-a ":""), ax.port);
 					} else {
 						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
@@ -1272,6 +1272,24 @@ static int read_conf_file(char *conffile)
 
 				opt.smon_log_dir = strdup(pVal);
 			}
+			else if (apr_strnatcasecmp(pName, "hadoop_hostfile") == 0)
+			{
+				if (opt.smon_hadoop_swonly_clusterfile)
+					free(opt.smon_hadoop_swonly_clusterfile);
+				opt.smon_hadoop_swonly_clusterfile = strdup(pVal);
+			}
+			else if (apr_strnatcasecmp(pName, "hadoop_logdir") == 0)
+			{
+				if (opt.smon_hadoop_swonly_logdir)
+					free(opt.smon_hadoop_swonly_logdir);
+				opt.smon_hadoop_swonly_logdir = strdup(pVal);
+			}
+			else if (apr_strnatcasecmp(pName, "hadoop_smon_path") == 0)
+			{
+				if (opt.smon_hadoop_swonly_binfile)
+					free(opt.smon_hadoop_swonly_binfile);
+				opt.smon_hadoop_swonly_binfile = strdup(pVal);
+			}
 			else if (apr_strnatcasecmp(pName, "smdw_aliases") == 0)
 			{
 				opt.smdw_aliases = strdup(pVal);
@@ -1717,7 +1735,7 @@ static void gethostlist()
 	int i = 0;
 
 	/* Connect to database, get segment hosts from gp_segment_configuration */
-	gpdb_get_hostlist(&ax.hosttabsz, &ax.hosttab, ax.pool);
+	gpdb_get_hostlist(&ax.hosttabsz, &ax.hosttab, ax.pool, &opt);
 
 	for (i = 0; i < ax.hosttabsz; ++i)
 	{

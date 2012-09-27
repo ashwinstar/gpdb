@@ -220,22 +220,18 @@ void initializeHostInfoDataWithAddress(struct hostinfo_holder_t* holder, char* a
 }
 
 void initializeHostInfoDataFromFileEntry(apr_pool_t* tmp_pool, struct hostinfo_holder_t* holder,
-		char* primary_hostname, char* hostEntry, int hostType, char* smon_dir)
+		char* primary_hostname, char* hostEntry, int hostType, char* smon_bin_dir, char* smon_log_dir)
 {
 	holder->hostname = apr_pstrdup(tmp_pool, primary_hostname);
 	CHECKMEM(holder->hostname);
 
-	if (smon_dir) {		
-		holder->smon_dir = apr_pstrdup(tmp_pool, smon_dir);
+	if (smon_bin_dir && smon_log_dir) {		
+
+		holder->smon_dir = apr_pstrdup(tmp_pool, smon_bin_dir);
 		CHECKMEM(holder->smon_dir);
-		
-		//Make the datadir the directory that smon is in if the smon directory is given
-		holder->datadir = apr_pstrdup(tmp_pool, smon_dir);
+
+		holder->datadir = apr_pstrdup(tmp_pool, smon_log_dir);
 		CHECKMEM(holder->datadir);
-		char *location = strrchr(holder->datadir, '/');
-                if (location) {
-                        *location = 0;
-                }
 
 	} else {
 		holder->smon_dir = NULL;
@@ -396,42 +392,11 @@ void process_line_in_devices_cnf(apr_pool_t* tmp_pool, apr_hash_t* htab, char* l
 
 	apr_hash_set(htab, primary_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
 
-	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, NULL);
+	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, NULL, NULL);
 }
 
-// return 0 if location not found, 1 if found
-int process_location_line_in_hadoop_cluster(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line, char* smon_location)
-{
-	if (!line){
-		gpmon_warningx(FLINE, 0, "Line in hadoop cluster info file is null, skipping");
-		return 0;
-	}
 
-	char* location = strchr(line, '#');
-	if (location) {
-		*location = 0;// remove comments from the line
-	}
-
-	if (!line) {
-		gpmon_warningx(FLINE, 0, "Line in devices file is null after removing comments, skipping");
-		return 0;
-	}
-	
-	char* temp_smon_location;
-	if (find_token_in_config_string(line, &temp_smon_location, "smon_location")) {
-		return 0;
-	}
-	if (strlen(temp_smon_location) > MAX_SMON_PATH_SIZE-1) {
-		gpmon_warningx(FLINE, 0, "smon location path size too long!");
-		return 0;
-        }
-	//Copy the smon location into the local buffer
-	strcpy(smon_location, temp_smon_location);
-	TR1(("Found smon location %s\n",smon_location ));
-	return 1;
-}
-
-void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line, char* smon_location)
+void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab, char* line, char* smon_bin_location, char* smon_log_location)
 {
 	if (!line) {
 		gpmon_warningx(FLINE, 0, "Line in hadoop cluster info file is null, skipping");
@@ -512,7 +477,7 @@ void process_line_in_hadoop_cluster_info(apr_pool_t* tmp_pool, apr_hash_t* htab,
 
 	apr_hash_set(htab, primary_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
 
-	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, smon_location);
+	initializeHostInfoDataFromFileEntry(tmp_pool, hostinfo_holder, primary_hostname, host, hostType, smon_bin_location, smon_log_location);
 }
 
 //Return 1 if not an appliance and 0 if an appliance
@@ -550,33 +515,42 @@ int get_appliance_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
 }
 
 //Return 1 if not a hadoop software only cluster and 0 it is a hadoop software only cluster
-int get_hadoop_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
+int get_hadoop_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab, mmon_options_t* opt)
 {
-	// open devices.cnf and then start reading the data
-	// populate all relevant hosts: Spidey0001, Spidey0002, EtlHost
-	FILE* fd = fopen(PATH_TO_HADOOP_HOSTS_FILE, "r");
+	if (!opt->smon_hadoop_swonly_binfile){
+		TR0(("hadoop_smon_path not specified in gpmmon config. not processing hadoop nodes\n"));
+		return 1;
+	}
+
+	char* smon_log_dir;
+	char* hadoop_cluster_file;
+	if (opt->smon_hadoop_swonly_logdir){
+		smon_log_dir = opt->smon_hadoop_swonly_logdir;
+	}
+	else{
+		smon_log_dir = (char*)PATH_TO_HADOOP_SMON_LOGS;
+	}
+	if (opt->smon_hadoop_swonly_clusterfile){
+		hadoop_cluster_file = opt->smon_hadoop_swonly_clusterfile;
+	}
+	else{
+		hadoop_cluster_file = (char*)DEFAULT_PATH_TO_HADOOP_HOST_FILE;
+	}
+
+	FILE* fd = fopen(hadoop_cluster_file, "r");
 	if (!fd)
 	{
-		TR0(("not a hadoop software only cluster ... not reading %s\n", PATH_TO_HADOOP_HOSTS_FILE));
+		TR0(("not a hadoop software only cluster ... not reading %s\n", hadoop_cluster_file));
 		return 1;
 	}
 
 	char* line;
 	char buffer[1024];
-	char smon_location[MAX_SMON_PATH_SIZE]; 
-	// Get the smon location
 
-	while (NULL != fgets(buffer, sizeof(buffer), fd)) {
-		line = gpmon_trim(buffer);// remove new line
-		if ( process_location_line_in_hadoop_cluster(tmp_pool, htab, line, smon_location)) {
-			break; // found the location
-		}
-	}
-	fseek(fd, 0, SEEK_SET); // go back to the beginning of the file
 	// process the hostlines
 	while (NULL != fgets(buffer, sizeof(buffer), fd)) {
 		line = gpmon_trim(buffer);// remove new line
-		process_line_in_hadoop_cluster_info(tmp_pool, htab, line, smon_location);
+		process_line_in_hadoop_cluster_info(tmp_pool, htab, line, opt->smon_hadoop_swonly_binfile, smon_log_dir);
 	}
 
 	fclose(fd);
@@ -584,7 +558,7 @@ int get_hadoop_hosts_and_add_to_hosts(apr_pool_t* tmp_pool, apr_hash_t* htab)
 }
 
 
-void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool)
+void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool, mmon_options_t* opt)
 {
 	apr_pool_t* pool;
 	PGconn* conn = 0;
@@ -682,7 +656,7 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 		// if we have any appliance specific hosts such as hadoop nodes add them to the hash table
 		if (get_appliance_hosts_and_add_to_hosts(pool, htab)){
 			TR0(("Not an appliance: checking for SW Only hadoop hosts.\n"));
-			get_hadoop_hosts_and_add_to_hosts(pool, htab); // Not an appliance, so check for SW only hadoop nodes.
+			get_hadoop_hosts_and_add_to_hosts(pool, htab, opt); // Not an appliance, so check for SW only hadoop nodes.
 		} 
 
 		unique_hosts = apr_hash_count(htab);
@@ -707,7 +681,7 @@ void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_poo
 			hosts[hostcounter].hostname = strdup(hostinfo_holder->hostname);
 			hosts[hostcounter].data_dir = strdup(hostinfo_holder->datadir);
 			if (hostinfo_holder->smon_dir){
-				hosts[hostcounter].smon_dir = strdup(hostinfo_holder->smon_dir);
+				hosts[hostcounter].smon_bin_location = strdup(hostinfo_holder->smon_dir);
 			}
 			hosts[hostcounter].is_master = hostinfo_holder->is_master;
 			hosts[hostcounter].addressinfo_head = hostinfo_holder->addressinfo_head;

@@ -98,7 +98,8 @@ extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 
 #define PATH_TO_APPLIANCE_VERSION_FILE "/etc/gpdb-appliance-version"
 #define PATH_TO_APPLAINCE_DEVICES_FILE "/opt/dca/etc/healthmond/devices.cnf"
-#define PATH_TO_HADOOP_HOSTS_FILE "/etc/gphd/gphdmgr/conf/clusterinfo.txt"
+#define DEFAULT_PATH_TO_HADOOP_HOST_FILE "/etc/gphd/gphdmgr/conf/clusterinfo.txt"
+#define PATH_TO_HADOOP_SMON_LOGS "/var/log/gphd/smon"
 
 #define MIN_MESSAGES_PER_INTERVAL (1)
 #define MAX_MESSAGES_PER_INTERVAL (50)
@@ -135,6 +136,9 @@ typedef struct mmon_options_t
 	char* conf_file;
 	char* log_dir;
 	char* smon_log_dir;
+	char* smon_hadoop_swonly_clusterfile;
+	char* smon_hadoop_swonly_logdir;
+	char* smon_hadoop_swonly_binfile;
 	char* smdw_aliases;
 	apr_uint64_t max_log_size;
 	int max_fd; /* this is the max fd value we ever seen */
@@ -192,7 +196,7 @@ typedef struct host_t
 	multi_interface_holder_t snmp_hostname;	
 
 	apr_uint32_t address_count; 
-	char* smon_dir;
+	char* smon_bin_location;
 	char* data_dir;
 	unsigned char is_master; /* 1 if host is the same host where the master runs */ 
 	unsigned char is_hdm; 
