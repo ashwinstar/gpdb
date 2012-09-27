@@ -3008,7 +3008,9 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
     #     If the non-nulls are <= 1/2 the result report those segments as "extra"
 
     qry = """
-          -- disribute catalog table from master, so that we can avoid to gather
+          SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+          
+          -- distribute catalog table from master, so that we can avoid to gather
           CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
               SELECT gp_segment_id segid, {primary_key} FROM {catalog};
           SELECT {oidcasted_pk}, exists, array_agg(segid order by segid) as segids
@@ -3033,9 +3035,9 @@ def missingEntryQuery(max_content, catname, pkey, castedPkey):
           WHERE subcount <= ({max_content}+2)/2.0
           GROUP BY {oidcasted_pk}, exists;
           """.format(oidcasted_pk = ','.join(castedPkey),
-                     primary_key  = ','.join(pkey),
-                     catalog      = catname,
-                     max_content  = max_content)
+                     primary_key = ','.join(pkey),
+                     catalog = catname,
+                     max_content = max_content)
 
     return qry
 
@@ -3161,9 +3163,11 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns, castcols):
         #-- SET GUC due to MPP-14531:
 
         qry = """
+              SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+              
               SET gp_enable_mk_sort=off; 
 
-              -- disribute catalog table from master, so that we can avoid to gather
+              -- distribute catalog table from master, so that we can avoid to gather
               CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
                   SELECT gp_segment_id segid, {columns} FROM {catalog};
               SELECT {columns}, array_agg(gp_segment_id order by gp_segment_id) as segids
@@ -3188,10 +3192,10 @@ def inconsistentEntryQuery(max_content, catname, pkey, columns, castcols):
               ) rowresult
               GROUP BY {columns}
               ORDER BY {pkey}, segids;
-              """.format(pkey        = ','.join(pkey),
-                         catalog     = catname,
-                         columns     = ','.join(columns),
-                         castcols    = ','.join(castcols),
+              """.format(pkey = ','.join(pkey),
+                         catalog = catname,
+                         columns = ','.join(columns),
+                         castcols = ','.join(castcols),
                          max_content = max_content)
 
         return qry
@@ -3279,7 +3283,9 @@ def duplicateEntryQuery(catname, pkey):
     #--
 
     qry = """
-          -- disribute catalog table from master, so that we can avoid to gather
+          SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
+          -- distribute catalog table from master, so that we can avoid to gather
           CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
               SELECT gp_segment_id segid, {pkey} FROM {catalog};
           SELECT {pkey}, total, array_agg(segid order by segid) as segids
@@ -3295,7 +3301,7 @@ def duplicateEntryQuery(catname, pkey):
           ) rowresult
           GROUP BY {pkey}, total
           """.format(catalog = catname,
-                     pkey    = ','.join(pkey))
+                     pkey = ','.join(pkey))
 
     return qry
 
@@ -3351,9 +3357,11 @@ def duplicatePersistentEntryQuery(catname, pkey, excol, state):
     """
     
     qry = """
+          SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+          
+          -- distribute catalog table from master, so that we can avoid to gather
           CREATE TEMPORARY TABLE _tmp_master ON COMMIT DROP AS
               SELECT gp_segment_id segid, {pkey}, {excol} FROM {catalog};
-
           SELECT {pkey}, total, array_agg(segid order by segid) as segids
           FROM (
               SELECT segid, {pkey}, count(*) as total
@@ -4480,7 +4488,7 @@ if __name__ == '__main__':
     GV.report_cfg = getReportConfiguration()
     GV.max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
     GV.catalog = getCatalog()
-    
+
     for dbname in GV.alldb:
 
         # Reset global variables
