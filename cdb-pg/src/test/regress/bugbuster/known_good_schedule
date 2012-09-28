@@ -57,7 +57,7 @@ test: tidscan
 test: functional
 test: memory_quota
 test: TestPSQL
-ignore: table_statistics
-test: queries_wellpoint
-ignore: opperf
+test: table_statistics
+ignore: queries_wellpoint
+test: opperf
 # end of tests
