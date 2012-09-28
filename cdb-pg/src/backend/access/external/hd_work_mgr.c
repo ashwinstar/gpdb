@@ -133,7 +133,7 @@ static void make_srvrs_uri(StringInfo uri, HadoopUri *hadoop_uri);
 static int find_datanode_rest_server_port(List *srvrs, char *srv_host);
 static List* parse_datanodes_response(List *rest_srvrs, StringInfo rest_buf);
 static void free_datanode_rest_servers(List *srvrs);
-static char* get_http_error_msg(char* msg);
+static char* get_http_error_msg(long http_ret_code, char* msg);
 static void send_message(CURL *handle, StringInfo rest_buf);
 
 /*
@@ -195,7 +195,7 @@ char** map_hddata_2gp_segments(char* uri, int num_segs)
 		if (http_ret != 200)
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					 errmsg("%s", get_http_error_msg(the_rest_buf.data) )));
+					 errmsg("%s", get_http_error_msg(http_ret, the_rest_buf.data) )));
 		/* 
 		 * the curl client finished the communication with hadoop backend (namenode or HMaster)
 		 * now the response from the backend lies at rest_buf.data
@@ -654,7 +654,7 @@ get_datanode_rest_servers(CURL *handle, HadoopUri *hadoop_uri, StringInfo rest_b
 	if (http_ret != 200)
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("%s", get_http_error_msg(rest_buf->data) )));	
+				 errmsg("%s", get_http_error_msg(http_ret, rest_buf->data) )));	
 	/* 
 	 * the curl client finished the communication with HBase stargate REST server 
 	 * now the response from the backend lies at rest_buf->data
@@ -999,23 +999,122 @@ get_rest_uris_list(CURL *handle, HadoopUri *hadoop_uri, StringInfo rest_buf)
 
 /*
  * Extracts the error message from the full HTTP response
+ * We test for several conditions in the http_ret_code and the HTTP response message.
+ * The first condition that matches, defines the final message string and ends the function.
+ * The layout of the HTTP response message is:
+ 
+ <html>
+ <head>
+ <meta meta_data_attributes />
+ <title> title_content_which_has_a_brief_description_of_the_error </title>
+ </head>
+ <body>
+ <h2> heading_containing_the_error_code </h2>
+ <p> 
+ main_body_paragraph_with_a_detailed_description_of_the_error_on_the_rest_server_side
+ <pre> the_error_in_original_format_not_HTML_ususally_the_title_of_the_java_exception</pre>
+ </p>
+ <h3>Caused by:</h3>
+ <pre>
+ the_full_java_exception_with_the_stack_output
+ </pre>
+ <hr /><i><small>Powered by Jetty://</small></i>
+ <br/>                                               
+ <br/>                                               								 
+ </body>
+ </html> 
+ 
+ * Our first priority is to get the paragraph <p> inside <body>, and in case we don't find it, then we try to get
+ * the <title>.
  */
 static char*
-get_http_error_msg(char* msg)
+get_http_error_msg(long http_ret_code, char* msg)
 {
 	char *start, *end, *ret;
-	start = strstr(msg, "<title>");
+	StringInfoData errMsg;
+	initStringInfo(&errMsg);
 	
-	if (start == NULL) /* there is no <title> element in the HTML response */
-		ret = pstrdup(msg);
-	else
+	/* 
+	 * 1. The server not listening on the port specified in the <create external...> statement" 
+	 *    In this case there is no Response from the server, so we issue our own message
+	 */
+	if (http_ret_code == 0) 
+		return "There is no gpfusion servlet listening on the port specified in the external table url";
+	
+	/*
+	 * 2. There is a response from the server since the http_ret_code is not 0, but there is no response message.
+	 *    This is an abnormal situation that could be the result of a bug, libraries incompatibility or versioning issue
+	 *    in the Rest server or our curl client. In this case we again issue our own message. 
+	 */
+	if (!msg || (msg && strlen(msg) == 0) )
 	{
-		start += 7;
-		end = strstr(start, "</title>"); /* no need to check if end is null, if <title> exists then also </title> exists*/
-		ret = pnstrdup(start, end - start);
+		appendStringInfo(&errMsg, "HTTP status code is %ld but HTTP response string is empty", http_ret_code);
+		ret = pstrdup(errMsg.data);
+		pfree(errMsg.data);
+		return ret;
 	}
 	
-	return ret;
+	/*
+	 * 3. The "normal" case - There is an HTTP response and the response has a <body> section inside where 
+	 *    there is a paragraph contained by the <p> tag.
+	 */
+	start =  strstr(msg, "<body>");
+	if (start != NULL)
+	{
+		start = strstr(start, "<p>");
+		if (start != NULL)
+		{
+			char *tmp;
+			bool skip = false;
+			
+			start += 3;
+			end = strstr(start, "</p>");	/* assuming where is a <p>, there is a </p> */
+			if (end != NULL)
+			{
+				tmp =  start;
+				
+				/*
+				 * Right now we have the full paragraph inside the <body>. We need to extract from it
+				 * the <pre> tags, the '\n' and the '\r'.
+				 */
+				while (tmp != end)
+				{
+					if (*tmp == '>') // skipping the <pre> tags 
+						skip = false;
+					else if (*tmp == '<') // skipping the <pre> tags 
+						skip = true;
+					else if (*tmp != '\n' && *tmp != '\r' && skip == false)
+						appendStringInfoChar(&errMsg, *tmp);
+					tmp++;
+				}
+				
+				ret = pstrdup(errMsg.data);
+				pfree(errMsg.data);
+				return ret;
+			}
+		}
+	}
+	
+ 	/*
+	 * 4. We did not find the <body>. So we try to print the <title>. 
+	 */
+	start = strstr(msg, "<title>");
+	if (start != NULL)  
+	{
+		start += 7;
+		end = strstr(start, "</title>"); // no need to check if end is null, if <title> exists then also </title> exists
+		if (end != NULL)
+		{
+			ret = pnstrdup(start, end - start);
+			return ret;
+		}
+	}
+	
+	/*
+	 * 5. This is an unexpected situation. We recevied an error message from the server but it does not have neither a <body>
+	 *    nor a <title>. In this case we return the error message we received as-is.
+	 */
+	return msg;
 }
 
 /*
@@ -1037,7 +1136,7 @@ get_files_list(CURL *handle, HadoopUri *hadoop_uri, StringInfo rest_buf)
 	if (http_ret != 200)
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("%s", get_http_error_msg(rest_buf->data) )));
+				 errmsg("%s", get_http_error_msg(http_ret, rest_buf->data) )));
 	
 	/* 
 	 * the curl client finished the communication with hadoop backend (namenode or HMaster)
