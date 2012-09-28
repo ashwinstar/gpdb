@@ -297,6 +297,10 @@ gpdbwritableformatter_export(PG_FUNCTION_ARGS)
 	 */
 	if (myData == NULL)
 	{
+		if (FORMATTER_GET_EXTENCODING(fcinfo) != PG_UTF8)
+			ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+							errmsg("gpdbwritable formatter can only export UTF8 formatted data. Define the external table with ENCODING UTF8"), 
+							errOmitLocation(true)));		
 
 		myData          = palloc(sizeof(format_t));
 		myData->values  = palloc(sizeof(Datum) * ncolumns);
@@ -511,6 +515,10 @@ gpdbwritableformatter_import(PG_FUNCTION_ARGS)
 	 */
 	if (myData == NULL)
 	{
+		if (FORMATTER_GET_EXTENCODING(fcinfo) != PG_UTF8)
+			ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+							errmsg("gpdbwritable formatter can only import UTF8 formatted data. Define the external table with ENCODING UTF8"), 
+							errOmitLocation(true)));
 
 		myData          = palloc(sizeof(format_t));
 		myData->values  = palloc(sizeof(Datum) * ncolumns);
