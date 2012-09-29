@@ -1543,7 +1543,7 @@ transformStorageEncodingClause(List *options)
  * 2. Ensure that each column is referenced either zero times or once.
  */
 static void
-validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
+validateColumnStorageEncodingClauses(List *stenc, CreateStmtContext *cxt)
 {
 	ListCell *lc;
 	struct HTAB *ht = NULL;
@@ -1551,71 +1551,55 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 		char colname[NAMEDATALEN];
 		int count;
 	} *ce = NULL;
+	HASHCTL  cacheInfo;
+	int      cacheFlags;
 
 	if (!stenc)
 		return;
 
+	memset(&cacheInfo, 0, sizeof(cacheInfo));
+	cacheInfo.keysize = NAMEDATALEN;
+	cacheInfo.entrysize = sizeof(*ce);
+	cacheFlags = HASH_ELEM;
+
+	ht = hash_create("column info cache",
+					 list_length(cxt->columns),
+					 &cacheInfo, cacheFlags);
+
 	/* Generate a hash table for all the columns */
-	foreach(lc, stmt->tableElts)
+	foreach(lc, cxt->columns)
 	{
-		Node *n = lfirst(lc);
+		ColumnDef *c = (ColumnDef *) lfirst(lc);
+		char *colname;
+		bool found = false;
+		size_t n = NAMEDATALEN - 1 < strlen(c->colname) ?
+						NAMEDATALEN - 1 : strlen(c->colname);
 
-		if (IsA(n, ColumnDef))
+		colname = palloc0(NAMEDATALEN);
+		MemSet(colname, 0, NAMEDATALEN);
+		memcpy(colname, c->colname, n);
+		colname[n] = '\0';
+
+		ce = hash_search(ht, colname, HASH_ENTER, &found);
+
+		/*
+		 * The user specified a duplicate column name. We check duplicate
+		 * column names VERY late (under MergeAttributes(), which is called
+		 * by DefineRelation(). For the specific case here, it is safe to
+		 * call out that this is a duplicate. We don't need to delay until
+		 * we look at inheritance.
+		 */
+		if (found)
 		{
-			ColumnDef *c = (ColumnDef *)n;
-			char *colname;
-			bool found = false;
-			size_t n = NAMEDATALEN - 1 < strlen(c->colname) ?
-							NAMEDATALEN - 1 : strlen(c->colname);
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_COLUMN),
+					 errmsg("column \"%s\" duplicated",
+							colname),
+					 errOmitLocation(true)));
 
-			colname = palloc0(NAMEDATALEN);
-			MemSet(colname, 0, NAMEDATALEN);
-			memcpy(colname, c->colname, n);
-			colname[n] = '\0';
-
-			if (!ht)
-			{
-				HASHCTL  cacheInfo;
-				int      cacheFlags;
-
-				memset(&cacheInfo, 0, sizeof(cacheInfo));
-				cacheInfo.keysize = NAMEDATALEN;
-				cacheInfo.entrysize = sizeof(*ce);
-				cacheFlags = HASH_ELEM;
-
-				ht = hash_create("column info cache",
-								 list_length(stmt->tableElts),
-								 &cacheInfo, cacheFlags);
-			}
-
-			ce = hash_search(ht, colname, HASH_ENTER, &found);
-
-			/*
-			 * The user specified a duplicate column name. We check duplicate
-			 * column names VERY late (under MergeAttributes(), which is called
-			 * by DefineRelation(). For the specific case here, it is safe to
-			 * call out that this is a duplicate. We don't need to delay until
-			 * we look at inheritance.
-			 */
-			if (found)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_COLUMN),
-						 errmsg("column \"%s\" duplicated",
-								colname),
-						 errOmitLocation(true)));
-
-			}
-			ce->count = 0;
 		}
+		ce->count = 0;
 	}
-
-	/*
-	 * If the table has no columns -- usually in the partitioning case -- then
-	 * we can short circuit.
-	 */
-	if (!ht)
-		return;
 
 	/*
 	 * All column reference storage directives without the DEFAULT
@@ -1899,7 +1883,7 @@ transformAttributeEncoding(List *stenc, CreateStmt *stmt, CreateStmtContext cxt)
 			return NULL;
 	}
 
-	validateColumnStorageEncodingClauses(newenc, stmt);
+	validateColumnStorageEncodingClauses(newenc, &cxt);
 
 	return newenc;
 }
