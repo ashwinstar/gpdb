@@ -207,6 +207,8 @@ extern List *attrMapIntList(AttrMap *map, List *attrs);
 extern Node *attrMapExpr(AttrMap *map, Node *expr);
 extern bool map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throwerror);
 extern PartitionState *createPartitionState(PartitionNode *partsAndRules, int resultPartSize);
+extern TupleTableSlot *reconstructMatchingTupleSlot(TupleTableSlot *slot,
+													ResultRelInfo *resultRelInfo);
 
 /*
  * prototypes from functions in execProcnode.c
