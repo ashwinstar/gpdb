@@ -20,9 +20,14 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_tablespace.h"
+#include "cdb/cdbllize.h"
+#include "cdb/cdbvars.h"
+#include "cdb/memquota.h"
 #include "executor/executor.h"
-#include "optimizer/planner.h"
 #include "miscadmin.h"
+#include "nodes/print.h"
+#include "optimizer/planner.h"
+#include "pgstat.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
@@ -35,10 +40,6 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
-#include "cdb/cdbllize.h"
-#include "cdb/cdbvars.h"
-#include "nodes/print.h"
-#include "cdb/memquota.h"
 /*
  * GUC variables.
  */
@@ -677,19 +678,32 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 		{
 #ifdef RESLOCK_DEBUG
 			elog(DEBUG1, "acquire resource lock for queue %u (portal %u)", 
-				 queueid, portal->portalId);
+					queueid, portal->portalId);
 #endif
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
 
-            PG_TRY();
-            {
-    			lockResult = ResLockAcquire(&tag, &incData);
-            }
-            PG_CATCH();
-            {
-                ResLockRelease(&tag, portal->portalId);
+			PG_TRY();
+			{
+				lockResult = ResLockAcquire(&tag, &incData);
+			}
+			PG_CATCH();
+			{
+				/* 
+				 * We might have been waiting for a resource queue lock when we get 
+				 * here. Calling ResLockRelease without calling ResLockWaitCancel will 
+				 * cause the locallock to be cleaned up, but will leave the global
+				 * variable lockAwaited still pointing to the locallock hash 
+				 * entry.
+				 */
+				ResLockWaitCancel();
+		
+				/* Change status to no longer waiting for lock */
+				pgstat_report_waiting(false);
 
-				/**
+				/* If we had acquired the resource queue lock, release it and clean up */	
+				ResLockRelease(&tag, portal->portalId);
+
+				/*
 				 * Perfmon related stuff: clean up if we got cancelled
 				 * while waiting.
 				 */
@@ -703,9 +717,9 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 				portal->queueId = InvalidOid;
 				portal->portalId = INVALID_PORTALID;
 
-                PG_RE_THROW();
-            }
-            PG_END_TRY();
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			/* 
 			 * See if query was too small to bother locking at all, i.e had
@@ -715,7 +729,7 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 			{
 #ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "cancel resource lock for queue %u (portal %u)", 
-					 queueid, portal->portalId);
+						queueid, portal->portalId);
 #endif
 				/* 
 				 * Reset portalId and queueid for this portal so the queue
