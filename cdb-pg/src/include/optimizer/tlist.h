@@ -23,6 +23,7 @@ extern TargetEntry *tlist_member_ignoring_RelabelType(Expr *expr, List *targetli
 
 extern List *flatten_tlist(List *tlist);
 extern List *add_to_flat_tlist(List *tlist, List *vars, bool resjunk);
+extern void check_flat_tlist_not_changed(List *tlist, List *exprs);
 
 extern TargetEntry *get_sortgroupclause_tle(SortClause *sortClause,
 						List *targetList);

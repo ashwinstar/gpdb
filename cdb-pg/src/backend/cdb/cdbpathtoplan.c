@@ -20,7 +20,7 @@
 #include "cdb/cdbpathtoplan.h"  /* me */
 
 extern List *add_to_flat_tlist(List *tlist, List *exprs, bool resjunk);
-
+extern void check_flat_tlist_not_changed(List *tlist, List *exprs);
 
 /*
  * cdbpathtoplan_create_flow
@@ -174,10 +174,16 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
         /**
          * If there are subplans in the hashExpr, push it down to lower level.
          */
-        if (contain_subplans( (Node *) hashExpr)
-        		&& is_projection_capable_plan(subplan))
+        if (contain_subplans( (Node *) hashExpr))
         {
-        	subplan->targetlist = add_to_flat_tlist(subplan->targetlist, hashExpr, true /* resjunk */);
+			if (is_projection_capable_plan(subplan))
+			{
+				subplan->targetlist = add_to_flat_tlist(subplan->targetlist, hashExpr, true /* resjunk */);
+			}
+			else
+			{
+				check_flat_tlist_not_changed(subplan->targetlist, hashExpr);
+			}
         }
 
         motion = make_hashed_motion(subplan,
@@ -206,7 +212,14 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
 	if (subplan->flow
 			&& subplan->flow->hashExpr)
 	{
-		subplan->targetlist = add_to_flat_tlist(subplan->targetlist, subplan->flow->hashExpr, true /* resjunk */);
+		if (is_projection_capable_plan(subplan))
+		{
+			subplan->targetlist = add_to_flat_tlist(subplan->targetlist, subplan->flow->hashExpr, true /* resjunk */);
+		}
+		else
+		{
+			check_flat_tlist_not_changed(subplan->targetlist, subplan->flow->hashExpr);
+		}
 	}
 
     return motion;

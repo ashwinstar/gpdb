@@ -139,6 +139,15 @@ add_to_flat_tlist(List *tlist, List *exprs, bool resjunk)
 
 		if (!tlist_member_ignoring_RelabelType(expr, tlist))
 		{
+			/*
+			 * Do not add resjunk constants to target list because they will cause misalignment.
+			 * See MPP-18457 for more details.
+			 */
+			if (IsA(expr, Const) && resjunk)
+			{
+				continue;
+			}
+
 			TargetEntry *tle;
 
 			tle = makeTargetEntry(copyObject(expr),		/* copy needed?? */
@@ -149,6 +158,23 @@ add_to_flat_tlist(List *tlist, List *exprs, bool resjunk)
 		}
 	}
 	return tlist;
+}
+
+/*
+ * check_flat_tlist_not_changed
+ *		Checks that no resjunk expressions are added to a flattened tlist
+ *		because they're expected to be in it.
+ *
+ * 'tlist' is the flattened tlist
+ * 'exprs' is a list of expression nodes
+ *
+ */
+void
+check_flat_tlist_not_changed(List *tlist, List *exprs)
+{
+	int before_length = list_length(tlist);
+	tlist = add_to_flat_tlist(tlist, exprs, true /* resjunk */);
+	Insist(before_length == list_length(tlist));
 }
 
 /*

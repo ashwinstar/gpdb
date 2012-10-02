@@ -4476,3 +4476,116 @@ alter table s_heap_co split partition def
 select * from s_heap_co_1_prt_def0;
 drop table s_heap_co;
 -- MPP-18456 end
+
+-- MPP-18457, MPP-18415
+CREATE TABLE non_ws_phone_leads (
+    lead_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    source_system_lead_id character varying(60) NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_event_type_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_site_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_date_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_time_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_phone_number_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    duration_second smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_program_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_call_status_key integer NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_phone_department_set_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_phone_channel_set_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_phone_provider_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768),
+    dim_phone_ad_set_key smallint NOT NULL ENCODING (compresstype=quicklz,compresslevel=1,blocksize=32768)
+)
+WITH (appendonly=true, compresstype=quicklz, orientation=column) DISTRIBUTED BY (dim_site_key ,dim_date_key) PARTITION BY RANGE(dim_date_key) 
+          (
+          PARTITION p_max START (2451545) END (9999999) WITH (tablename='non_ws_phone_leads_1_prt_p_max', orientation=column, appendonly=true ) 
+                    COLUMN lead_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN source_system_lead_id ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_event_type_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_site_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_date_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_time_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_phone_number_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN duration_second ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_program_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_call_status_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_phone_department_set_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_phone_channel_set_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_phone_provider_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768) 
+                    COLUMN dim_phone_ad_set_key ENCODING (compresstype=quicklz, compresslevel=1, blocksize=32768)
+          );
+
+INSERT INTO non_ws_phone_leads VALUES (63962490, 'CA6qOEyxOmNJUQC7', 5058, 999901, 2455441, 40435, 999904, 207, 79, 2, 9901, 9901, 1, 9901);
+
+CREATE TABLE dim_phone_numbers (
+    dim_phone_number_key integer NOT NULL,
+    media_tracker_description character varying(40) NOT NULL,
+    formatted_phone_number character varying(20) NOT NULL,
+    source_system_phone_number_id character varying(100) NOT NULL,
+    last_modified_date timestamp without time zone NOT NULL
+) DISTRIBUTED BY (dim_phone_number_key);
+
+ALTER TABLE ONLY dim_phone_numbers
+    ADD CONSTRAINT dim_phone_numbers_pk1 PRIMARY KEY (dim_phone_number_key);
+
+INSERT INTO dim_phone_numbers VALUES (999902, 'test', '800-123-4568', '8001234568', '2012-09-25 13:34:35.037637');
+INSERT INTO dim_phone_numbers VALUES (999904, 'test', '(800) 123-4570', '8001234570', '2012-09-25 13:34:35.148104');
+INSERT INTO dim_phone_numbers VALUES (999903, 'test', '(800) 123-4569', '8001234569', '2012-09-25 13:34:35.093523');
+INSERT INTO dim_phone_numbers VALUES (999901, 'test', '(800)123-4567', '8001234567', '2012-09-25 13:34:34.781042');
+
+INSERT INTO dim_phone_numbers SELECT gs.*, dim_phone_numbers.media_tracker_description, dim_phone_numbers.formatted_phone_number, dim_phone_numbers.source_system_phone_number_id, dim_phone_numbers.last_modified_date FROM dim_phone_numbers, generate_series(1,100000) gs WHERE dim_phone_numbers.dim_phone_number_key = 999901;
+
+ANALYZE dim_phone_numbers;  
+
+-- Table NON_WS_PHONE_LEADS_SINGLE has two distribution keys
+-- Equality condition with constant on one distribution key
+-- Redistribute over Append
+SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
+FROM NON_WS_PHONE_LEADS PL
+LEFT outer JOIN DIM_PHONE_NUMBERS DPN
+ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
+WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
+AND PL.DIM_DATE_KEY = 2455441;
+
+-- Table NON_WS_PHONE_LEADS_SINGLE has two distribution keys
+-- Equality conditions with constants on all distribution keys
+-- Redistribute over Append
+SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
+FROM NON_WS_PHONE_LEADS PL
+LEFT outer JOIN DIM_PHONE_NUMBERS DPN
+ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
+WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
+AND PL.DIM_DATE_KEY = 2455441
+AND PL.dim_site_key = 999901;
+
+-- Table NON_WS_PHONE_LEADS_SINGLE has two distribution keys
+-- Broadcast over Append
+SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
+FROM NON_WS_PHONE_LEADS PL
+JOIN DIM_PHONE_NUMBERS DPN
+ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
+WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
+AND PL.DIM_DATE_KEY = 2455441
+AND PL.dim_site_key = 999901;
+
+-- Join condition uses functions
+-- Broadcast over Append
+SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
+FROM NON_WS_PHONE_LEADS PL
+JOIN DIM_PHONE_NUMBERS DPN
+ON PL.DIM_PHONE_NUMBER_KEY + 1 = DPN.DIM_PHONE_NUMBER_KEY + 1
+WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
+AND PL.DIM_DATE_KEY = 2455441
+AND PL.dim_site_key = 999901;
+
+-- Equality condition with constant on one distribution key
+-- Redistribute over Append
+-- Accessing a varchar in the SELECT clause should cause a SIGSEGV
+SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY, source_system_lead_id
+FROM NON_WS_PHONE_LEADS PL
+LEFT outer JOIN DIM_PHONE_NUMBERS DPN
+ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
+WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
+AND PL.DIM_DATE_KEY = 2455441;
+
+DROP TABLE non_ws_phone_leads;
+DROP TABLE dim_phone_numbers;
+-- MPP-18457, MPP-18415 end
