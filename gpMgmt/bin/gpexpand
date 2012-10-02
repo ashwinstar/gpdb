@@ -17,6 +17,7 @@ from time import strftime, sleep
 
 try:
     from gppylib.commands.unix import *
+    from gppylib.fault_injection import inject_fault
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
     from gppylib.gparray import GpArray, MODE_CHANGELOGGING, STATUS_DOWN
@@ -1057,6 +1058,7 @@ class gpexpand:
                 cursor = dbconn.execSQL(status_conn,'SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1')
                 if cursor.rowcount == 1:
                     gpexpand_db_status = cursor.fetchone()[0]
+
             except Exception, e:
                 # expansion schema doesn't exists or there was a connection failure.
                 pass
@@ -1401,7 +1403,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                                              (fsInputFilename, str(lineNumber), str(e)))
 
         except IOError, ioe:
-           raise ExpansionError('Problem with filespace input file: %s. Eexception:' % (fsInputFilename, str(ioe)))
+           raise ExpansionError('Problem with filespace input file: %s. Exception: %s' % (fsInputFilename, str(ioe)))
         finally:
            if f != None:
               f.close()
@@ -1943,6 +1945,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             self.logger.info('Populating %s.%s with data from database %s' % (gpexpand_schema, status_detail_table, dbname.decode('utf-8')) )
             self._populate_regular_tables(dbname)
             self._populate_partitioned_tables(dbname)
+            inject_fault('gpexpand MPP-14620 fault injection')
             self._update_distribution_policy(dbname)
 
         nowStr = datetime.datetime.now()
