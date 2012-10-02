@@ -4535,7 +4535,7 @@ INSERT INTO dim_phone_numbers SELECT gs.*, dim_phone_numbers.media_tracker_descr
 
 ANALYZE dim_phone_numbers;  
 
--- Table NON_WS_PHONE_LEADS_SINGLE has two distribution keys
+-- Table NON_WS_PHONE_LEADS has two distribution keys
 -- Equality condition with constant on one distribution key
 -- Redistribute over Append
 SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
@@ -4545,7 +4545,7 @@ ON PL.DIM_PHONE_NUMBER_KEY = DPN.DIM_PHONE_NUMBER_KEY
 WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
 AND PL.DIM_DATE_KEY = 2455441;
 
--- Table NON_WS_PHONE_LEADS_SINGLE has two distribution keys
+-- Table NON_WS_PHONE_LEADS has two distribution keys
 -- Equality conditions with constants on all distribution keys
 -- Redistribute over Append
 SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
@@ -4556,7 +4556,7 @@ WHERE pl.SOURCE_SYSTEM_LEAD_ID = 'CA6qOEyxOmNJUQC7'
 AND PL.DIM_DATE_KEY = 2455441
 AND PL.dim_site_key = 999901;
 
--- Table NON_WS_PHONE_LEADS_SINGLE has two distribution keys
+-- Table NON_WS_PHONE_LEADS has two distribution keys
 -- Broadcast over Append
 SELECT pl.duration_Second , pl.dim_program_Key, PL.DIM_SITE_KEY, PL.DIM_DATE_KEY
 FROM NON_WS_PHONE_LEADS PL
@@ -4588,4 +4588,24 @@ AND PL.DIM_DATE_KEY = 2455441;
 
 DROP TABLE non_ws_phone_leads;
 DROP TABLE dim_phone_numbers;
+
+-- Equality condition with a constant expression on one distribution key
+drop table if exists foo_p;
+drop table if exists bar;
+create table foo_p( a int, b int, k int, t text, p int) distributed by (a,b) partition by range(p) ( start(0) end(10) every (2), default partition other);
+create table bar( a int, b int, k int, t text, p int) distributed by (a);
+
+insert into foo_p select i, i % 10, i , i || 'SOME NUMBER SOME NUMBER', i % 10 from generate_series(1, 1000) i;
+
+insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 100) i;
+insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 10000) i;
+insert into bar select i % 7, i % 6, i % 9, i || 'SOME NUMBER', i % 4 from generate_series(1, 10000) i;
+
+analyze foo_p;
+analyze bar;
+
+explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
+
+drop table if exists foo_p;
+drop table if exists bar;
 -- MPP-18457, MPP-18415 end
