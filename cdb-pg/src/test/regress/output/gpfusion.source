@@ -502,7 +502,7 @@ SELECT * FROM run_java;
 DROP EXTERNAL WEB TABLE run_java;
 set gp_hadoop_enable_filter_pushdown = on;
 -- Test
-CREATE EXTERNAL TABLE gphbase_select(hbaserowkey TEXT, 
+CREATE EXTERNAL TABLE gphbase_select(recordkey TEXT, 
                                      "cf1:q1" VARCHAR, 
                                      "cf1:q2" TEXT, 
                                      "cf1:q3" INT, 
@@ -514,8 +514,8 @@ CREATE EXTERNAL TABLE gphbase_select(hbaserowkey TEXT,
                                      "cf1:q9" BIGINT) 
 LOCATION ('gpfusion://@hostname@:8080/hbase/gphbase_test')
 FORMAT 'CUSTOM' (formatter='gpfusionwritable_import');
-SELECT * FROM gphbase_select ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000000 | ASCII00000000 | UTF8_計算機用語_00000000 |      0 | lookup00000000 |      0 |           0 |        |      0 |                 0
  row00000001 | ASCII00000001 | UTF8_計算機用語_00000001 |  10000 | lookup00000002 |    1.1 |      1111.1 | !      |      1 |      -10000000001
@@ -819,8 +819,8 @@ SELECT * FROM gphbase_select ORDER BY hbaserowkey ASC;
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (300 rows)
 
-SELECT * FROM gphbase_select WHERE gp_segment_id = 0 ORDER BY HBASEROWKEY ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE gp_segment_id = 0 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000000 | ASCII00000000 | UTF8_計算機用語_00000000 |      0 | lookup00000000 |      0 |           0 |        |      0 |                 0
  row00000001 | ASCII00000001 | UTF8_計算機用語_00000001 |  10000 | lookup00000002 |    1.1 |      1111.1 | !      |      1 |      -10000000001
@@ -1024,8 +1024,8 @@ SELECT * FROM gphbase_select WHERE gp_segment_id = 0 ORDER BY HBASEROWKEY ASC;
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (200 rows)
 
-SELECT * FROM gphbase_select WHERE hbaserowkey > 'row00000090' AND hbaserowkey <= 'row00000103' ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE recordkey > 'row00000090' AND recordkey <= 'row00000103' ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000091 | ASCII00000091 | UTF8_計算機用語_00000091 | 910000 | lookup00000182 |  91.91 | 91919191.91 | {      |     91 | -7535710000000091
  row00000092 | ASCII00000092 | UTF8_計算機用語_00000092 | 920000 | lookup00000184 |  92.92 | 92929292.92 | |      |     92 |  7786880000000092
@@ -1042,14 +1042,14 @@ SELECT * FROM gphbase_select WHERE hbaserowkey > 'row00000090' AND hbaserowkey <
  row00000103 | ASCII00000003 | UTF8_計算機用語_00000003 |  30000 | lookup00000006 |    3.3 |      3333.3 | #      |      3 |     -270000000003
 (13 rows)
 
-SELECT * FROM gphbase_select WHERE hbaserowkey = 'row00000100';
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 | cf1:q6 | cf1:q7 | cf1:q8 | cf1:q9 
+SELECT * FROM gphbase_select WHERE recordkey = 'row00000100';
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 | cf1:q6 | cf1:q7 | cf1:q8 | cf1:q9 
 -------------+---------------+--------------------------+--------+----------------+--------+--------+--------+--------+--------
  row00000100 | ASCII00000000 | UTF8_計算機用語_00000000 |      0 | lookup00000000 |      0 |      0 |        |      0 |      0
 (1 row)
 
-SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000090' AND hbaserowkey <= 'row00000103' ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE recordkey != 'row00000090' AND recordkey <= 'row00000103' ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000000 | ASCII00000000 | UTF8_計算機用語_00000000 |      0 | lookup00000000 |      0 |           0 |        |      0 |                 0
  row00000001 | ASCII00000001 | UTF8_計算機用語_00000001 |  10000 | lookup00000002 |    1.1 |      1111.1 | !      |      1 |      -10000000001
@@ -1156,8 +1156,8 @@ SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000090' AND hbaserowkey 
  row00000103 | ASCII00000003 | UTF8_計算機用語_00000003 |  30000 | lookup00000006 |    3.3 |      3333.3 | #      |      3 |     -270000000003
 (103 rows)
 
-SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000090' AND hbaserowkey <= 'row00000095' AND "cf1:q7" > 'o' ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE recordkey != 'row00000090' AND recordkey <= 'row00000095' AND "cf1:q7" > 'o' ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000080 | ASCII00000080 | UTF8_計算機用語_00000080 | 800000 | lookup00000160 |   80.8 |  80808080.8 | p      |     80 |  5120000000000080
  row00000081 | ASCII00000081 | UTF8_計算機用語_00000081 | 810000 | lookup00000162 |  81.81 | 81818181.81 | q      |     81 | -5314410000000081
@@ -1176,8 +1176,8 @@ SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000090' AND hbaserowkey 
  row00000095 | ASCII00000095 | UTF8_計算機用語_00000095 | 950000 | lookup00000190 |  95.95 | 95959595.95 | \x7F   |     95 | -8573750000000095
 (15 rows)
 
-SELECT * FROM gphbase_select WHERE "cf1:q1" > 'ASCII00000090' AND q4 <= 'lookup00000198' ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE "cf1:q1" > 'ASCII00000090' AND q4 <= 'lookup00000198' ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000091 | ASCII00000091 | UTF8_計算機用語_00000091 | 910000 | lookup00000182 |  91.91 | 91919191.91 | {      |     91 | -7535710000000091
  row00000092 | ASCII00000092 | UTF8_計算機用語_00000092 | 920000 | lookup00000184 |  92.92 | 92929292.92 | |      |     92 |  7786880000000092
@@ -1208,8 +1208,8 @@ SELECT * FROM gphbase_select WHERE "cf1:q1" > 'ASCII00000090' AND q4 <= 'lookup0
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (27 rows)
 
-SELECT * FROM gphbase_select WHERE "cf1:q2" > 'UTF8_計算機用語_00000090' AND "cf1:q3" <= 990000 ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE "cf1:q2" > 'UTF8_計算機用語_00000090' AND "cf1:q3" <= 990000 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000091 | ASCII00000091 | UTF8_計算機用語_00000091 | 910000 | lookup00000182 |  91.91 | 91919191.91 | {      |     91 | -7535710000000091
  row00000092 | ASCII00000092 | UTF8_計算機用語_00000092 | 920000 | lookup00000184 |  92.92 | 92929292.92 | |      |     92 |  7786880000000092
@@ -1240,8 +1240,8 @@ SELECT * FROM gphbase_select WHERE "cf1:q2" > 'UTF8_計算機用語_00000090' AN
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (27 rows)
 
-SELECT * FROM gphbase_select WHERE "cf1:q5" > 91.92 AND "cf1:q6" <= 99999999.99 ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE "cf1:q5" > 91.92 AND "cf1:q6" <= 99999999.99 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000092 | ASCII00000092 | UTF8_計算機用語_00000092 | 920000 | lookup00000184 |  92.92 | 92929292.92 | |      |     92 |  7786880000000092
  row00000093 | ASCII00000093 | UTF8_計算機用語_00000093 | 930000 | lookup00000186 |  93.93 | 93939393.93 | }      |     93 | -8043570000000093
@@ -1269,8 +1269,8 @@ SELECT * FROM gphbase_select WHERE "cf1:q5" > 91.92 AND "cf1:q6" <= 99999999.99 
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (24 rows)
 
-SELECT * FROM gphbase_select WHERE "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000098 | ASCII00000098 | UTF8_計算機用語_00000098 | 980000 | lookup00000196 |  98.98 | 98989898.98 | \u0082 |     98 |  9411920000000098
  row00000099 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
@@ -1280,8 +1280,8 @@ SELECT * FROM gphbase_select WHERE "cf1:q8" > 97 AND "cf1:q9" <= 970299000000009
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (6 rows)
 
-SELECT * FROM gphbase_select WHeRE "cf1:q9" < -7000000000000000 ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHeRE "cf1:q9" < -7000000000000000 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000089 | ASCII00000089 | UTF8_計算機用語_00000089 | 890000 | lookup00000178 |  89.89 | 89898989.89 | y      |     89 | -7049690000000089
  row00000091 | ASCII00000091 | UTF8_計算機用語_00000091 | 910000 | lookup00000182 |  91.91 | 91919191.91 | {      |     91 | -7535710000000091
@@ -1303,8 +1303,8 @@ SELECT * FROM gphbase_select WHeRE "cf1:q9" < -7000000000000000 ORDER BY hbasero
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (18 rows)
 
-SELECT * FROM gphbase_select WHERE hbaserowkey > 'row00000090' AND hbaserowkey <= 'row00000103' OR hbaserowkey = 'row00000105' ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE recordkey > 'row00000090' AND recordkey <= 'row00000103' OR recordkey = 'row00000105' ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000091 | ASCII00000091 | UTF8_計算機用語_00000091 | 910000 | lookup00000182 |  91.91 | 91919191.91 | {      |     91 | -7535710000000091
  row00000092 | ASCII00000092 | UTF8_計算機用語_00000092 | 920000 | lookup00000184 |  92.92 | 92929292.92 | |      |     92 |  7786880000000092
@@ -1322,8 +1322,8 @@ SELECT * FROM gphbase_select WHERE hbaserowkey > 'row00000090' AND hbaserowkey <
  row00000105 | ASCII00000005 | UTF8_計算機用語_00000005 |  50000 | lookup00000010 |    5.5 |      5555.5 | %      |      5 |    -1250000000005
 (14 rows)
 
-SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000099' AND "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE recordkey != 'row00000099' AND "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000098 | ASCII00000098 | UTF8_計算機用語_00000098 | 980000 | lookup00000196 |  98.98 | 98989898.98 | \u0082 |     98 |  9411920000000098
  row00000198 | ASCII00000098 | UTF8_計算機用語_00000098 | 980000 | lookup00000196 |  98.98 | 98989898.98 | \u0082 |     98 |  9411920000000098
@@ -1332,8 +1332,8 @@ SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000099' AND "cf1:q8" > 9
  row00000299 | ASCII00000099 | UTF8_計算機用語_00000099 | 990000 | lookup00000198 |  99.99 | 99999999.99 | \u0083 |     99 | -9702990000000099
 (5 rows)
 
-SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND hbaserowkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND recordkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000098 | ASCII00000098 | UTF8_計算機用語_00000098 | 980000 | lookup00000196 |  98.98 | 98989898.98 | \u0082 |     98 |  9411920000000098
  row00000198 | ASCII00000098 | UTF8_計算機用語_00000098 | 980000 | lookup00000196 |  98.98 | 98989898.98 | \u0082 |     98 |  9411920000000098
@@ -1343,8 +1343,8 @@ SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND hbaserowkey 
 (5 rows)
 
 set gp_hadoop_enable_filter_pushdown = off;
-SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND hbaserowkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY hbaserowkey ASC;
- hbaserowkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
+SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND recordkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY recordkey ASC;
+ recordkey |    cf1:q1     |          cf1:q2          | cf1:q3 |       q4       | cf1:q5 |   cf1:q6    | cf1:q7 | cf1:q8 |      cf1:q9       
 -------------+---------------+--------------------------+--------+----------------+--------+-------------+--------+--------+-------------------
  row00000098 | ASCII00000098 | UTF8_計算機用語_00000098 | 980000 | lookup00000196 |  98.98 | 98989898.98 | \u0082 |     98 |  9411920000000098
  row00000198 | ASCII00000098 | UTF8_計算機用語_00000098 | 980000 | lookup00000196 |  98.98 | 98989898.98 | \u0082 |     98 |  9411920000000098
@@ -1355,7 +1355,7 @@ SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND hbaserowkey 
 
 set gp_hadoop_enable_filter_pushdown = on;
 DROP EXTERNAL TABLE gphbase_select;
-CREATE EXTERNAL TABLE gphbase_error(hbaserowkey int)
+CREATE EXTERNAL TABLE gphbase_error(recordkey int)
 LOCATION ('gpfusion://@hostname@:8080/hbase/gphbase_test')
 FORMAT 'CUSTOM' (formatter='gpfusionwritable_import');
 SELECT * FROM gphbase_error;

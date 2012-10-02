@@ -231,7 +231,7 @@ DROP EXTERNAL WEB TABLE run_java;
 
 set gp_hadoop_enable_filter_pushdown = on;
 -- Test
-CREATE EXTERNAL TABLE gphbase_select(hbaserowkey TEXT, 
+CREATE EXTERNAL TABLE gphbase_select(recordkey TEXT, 
                                      "cf1:q1" VARCHAR, 
                                      "cf1:q2" TEXT, 
                                      "cf1:q3" INT, 
@@ -244,26 +244,26 @@ CREATE EXTERNAL TABLE gphbase_select(hbaserowkey TEXT,
 LOCATION ('gpfusion://@hostname@:8080/hbase/gphbase_test')
 FORMAT 'CUSTOM' (formatter='gpfusionwritable_import');
 
-SELECT * FROM gphbase_select ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE gp_segment_id = 0 ORDER BY HBASEROWKEY ASC;
-SELECT * FROM gphbase_select WHERE hbaserowkey > 'row00000090' AND hbaserowkey <= 'row00000103' ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE hbaserowkey = 'row00000100';
-SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000090' AND hbaserowkey <= 'row00000103' ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000090' AND hbaserowkey <= 'row00000095' AND "cf1:q7" > 'o' ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE "cf1:q1" > 'ASCII00000090' AND q4 <= 'lookup00000198' ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE "cf1:q2" > 'UTF8_計算機用語_00000090' AND "cf1:q3" <= 990000 ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE "cf1:q5" > 91.92 AND "cf1:q6" <= 99999999.99 ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHeRE "cf1:q9" < -7000000000000000 ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE hbaserowkey > 'row00000090' AND hbaserowkey <= 'row00000103' OR hbaserowkey = 'row00000105' ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE hbaserowkey != 'row00000099' AND "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY hbaserowkey ASC;
-SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND hbaserowkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY hbaserowkey ASC;
+SELECT * FROM gphbase_select ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE gp_segment_id = 0 ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE recordkey > 'row00000090' AND recordkey <= 'row00000103' ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE recordkey = 'row00000100';
+SELECT * FROM gphbase_select WHERE recordkey != 'row00000090' AND recordkey <= 'row00000103' ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE recordkey != 'row00000090' AND recordkey <= 'row00000095' AND "cf1:q7" > 'o' ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE "cf1:q1" > 'ASCII00000090' AND q4 <= 'lookup00000198' ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE "cf1:q2" > 'UTF8_計算機用語_00000090' AND "cf1:q3" <= 990000 ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE "cf1:q5" > 91.92 AND "cf1:q6" <= 99999999.99 ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHeRE "cf1:q9" < -7000000000000000 ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE recordkey > 'row00000090' AND recordkey <= 'row00000103' OR recordkey = 'row00000105' ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE recordkey != 'row00000099' AND "cf1:q8" > 97 AND "cf1:q9" <= 9702990000000099 ORDER BY recordkey ASC;
+SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND recordkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY recordkey ASC;
 set gp_hadoop_enable_filter_pushdown = off;
-SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND hbaserowkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY hbaserowkey ASC;
+SELECT * FROM gphbase_select WHERE "cf1:q9" <= 9702990000000099 AND recordkey != 'row00000099' AND "cf1:q8" > 97 ORDER BY recordkey ASC;
 set gp_hadoop_enable_filter_pushdown = on;
 DROP EXTERNAL TABLE gphbase_select;
 
-CREATE EXTERNAL TABLE gphbase_error(hbaserowkey int)
+CREATE EXTERNAL TABLE gphbase_error(recordkey int)
 LOCATION ('gpfusion://@hostname@:8080/hbase/gphbase_test')
 FORMAT 'CUSTOM' (formatter='gpfusionwritable_import');
 SELECT * FROM gphbase_error;
