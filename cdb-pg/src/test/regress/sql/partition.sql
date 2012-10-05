@@ -4609,3 +4609,184 @@ explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.
 drop table if exists foo_p;
 drop table if exists bar;
 -- MPP-18457, MPP-18415 end
+
+-- MPP-18359
+drop view if exists redundantly_named_part cascade;
+
+create view redundantly_named_part(tableid, partid, partname) as
+	with 
+		dups(paroid, partname) as 
+		(
+			select paroid, parname
+			from pg_partition_rule 
+			where parname is not null 
+			group by paroid, parname 
+			having count(*) > 1
+		),
+		parts(tableid, partid, paroid, partname) as
+		(
+			select p.parrelid, r.parchildrelid, r.paroid, r.parname
+			from pg_partition p, pg_partition_rule r
+			where not p.paristemplate and
+				p.oid = r.paroid
+		)
+	select p.tableid::regclass, p.partid::regclass, p.partname
+	from parts p, dups d
+	where 
+		p.paroid = d.paroid and
+		p.partname = d.partname;
+
+drop table if exists pnx;
+
+create table pnx 
+    (x int , y text)
+    distributed randomly
+    partition by list (y)
+        ( 
+            partition a values ('x1', 'x2'),
+            partition c values ('x3', 'x4')
+        );
+
+insert into pnx values
+    (1,'x1'),
+    (2,'x2'),
+    (3,'x3'), 
+    (4,'x4');
+
+select tableoid::regclass, * 
+from pnx;
+
+alter table pnx
+    split partition a at ('x1')
+    into (partition b, partition c);
+
+select * 
+from redundantly_named_part;
+
+select tableoid::regclass, * 
+from pnx;
+
+select tableoid::regclass, *
+from pnx
+where y = 'x1';
+
+select tableoid::regclass, *
+from pnx
+where x = 1;
+
+
+drop table if exists pxn;
+
+create table pxn 
+    (x int , y text)
+    distributed randomly
+    partition by list (y)
+        ( 
+            partition a values ('x1', 'x2'),
+            partition c values ('x3', 'x4')
+        );
+
+insert into pxn values
+    (1,'x1'),
+    (2,'x2'),
+    (3,'x3'), 
+    (4,'x4');
+
+select tableoid::regclass, * 
+from pxn;
+
+alter table pxn
+    split partition a at ('x1')
+    into (partition c, partition b);
+
+select * 
+from redundantly_named_part;
+
+select tableoid::regclass, * 
+from pxn;
+
+select tableoid::regclass, *
+from pxn
+where y = 'x2';
+
+select tableoid::regclass, *
+from pxn
+where x = 2;
+
+drop table if exists pxn;
+
+create table pxn 
+    (x int , y int)
+    distributed randomly
+    partition by range (y)
+        ( 
+            partition a start (0) end (10),
+            partition c start (11) end (20)
+        );
+
+insert into pxn values
+    (4,4),
+    (9,9),
+    (14,14), 
+    (19,19);
+
+select tableoid::regclass, * 
+from pxn;
+
+alter table pxn
+    split partition a at (5)
+    into (partition b, partition c);
+
+select * 
+from redundantly_named_part;
+
+select tableoid::regclass, * 
+from pxn;
+
+select tableoid::regclass, *
+from pxn
+where y = 4;
+
+select tableoid::regclass, *
+from pxn
+where x = 4;
+
+drop table if exists pxn;
+
+create table pxn 
+    (x int , y int)
+    distributed randomly
+    partition by range (y)
+        ( 
+            partition a start (0) end (10),
+            partition c start (11) end (20)
+        );
+
+insert into pxn values
+    (4,4),
+    (9,9),
+    (14,14), 
+    (19,19);
+
+select tableoid::regclass, * 
+from pxn;
+
+alter table pxn
+    split partition a at (5)
+    into (partition c, partition b);
+
+select * 
+from redundantly_named_part;
+
+select tableoid::regclass, * 
+from pxn;
+
+select tableoid::regclass, *
+from pxn
+where y = 9;
+
+select tableoid::regclass, *
+from pxn
+where x = 9;
+
+-- MPP-18359 end
