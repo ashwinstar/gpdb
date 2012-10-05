@@ -87,6 +87,9 @@ where column_constraint is:
    | PRIMARY KEY [USING INDEX TABLESPACE tablespace] 
                  [WITH ( FILLFACTOR = value )]
    | CHECK ( expression )
+   | REFERENCES table_name [ ( column_name [, ... ] ) ]
+            [ key_match_type ]
+            [ key_action ]
 
 and table_constraint is:
    [CONSTRAINT constraint_name]
@@ -97,6 +100,31 @@ and table_constraint is:
                  [USING INDEX TABLESPACE tablespace] 
                  [WITH ( FILLFACTOR=value )] 
    | CHECK ( expression )
+   | FOREIGN KEY ( column_name [, ... ] )
+            REFERENCES table_name [ ( column_name [, ... ] ) ]
+            [ key_match_type ]
+            [ key_action ]
+            [ key_checking_mode ]
+
+where key_match_type is:
+     MATCH FULL
+   | SIMPLE
+where key_action is:
+     ON DELETE
+   | ON UPDATE
+   | ON DELETE
+   | ON UPDATE
+   | NO ACTION
+   | RESTRICT
+   | CASCADE
+   | SET NULL
+   | SET DEFAULT
+
+where key_checking_mode is:
+     DEFERRABLE
+   | NOT DEFERRABLE
+   | INITIALLY DEFERRED
+   | INITIALLY IMMEDIATE
 
 where partition_type is:
     LIST
