@@ -338,15 +338,30 @@ _readWindowSpecParse(const char ** str)
 static WindowSpec *
 _readWindowSpec(const char ** str)
 {
-	READ_LOCALS(WindowSpec);
-
+	READ_LOCALS(WindowSpec); /* Identical to SeqWindowSpec */
+	
 	READ_STRING_FIELD(name);
 	READ_STRING_FIELD(parent);
 	READ_NODE_FIELD(partition);
 	READ_NODE_FIELD(order);
 	READ_NODE_FIELD(frame);
 	READ_INT_FIELD(location);
+	
+	READ_DONE();
+}
 
+static SeqWindowSpec *
+_readSeqWindowSpec(const char ** str)
+{
+	READ_LOCALS(SeqWindowSpec); /* Identical to WindowSpec */
+	
+	READ_STRING_FIELD(name);
+	READ_STRING_FIELD(parent);
+	READ_NODE_FIELD(partition);
+	READ_NODE_FIELD(order);
+	READ_NODE_FIELD(frame);
+	READ_INT_FIELD(location);
+	
 	READ_DONE();
 }
 
@@ -452,6 +467,39 @@ _readSetOperationStmt(const char ** str)
 	READ_NODE_FIELD(colTypes);
 	READ_NODE_FIELD(colTypmods);
 
+	READ_DONE();
+}
+
+/*
+ * _readSequenceDefn 
+ */
+static SequenceDefn *
+_readSequenceDefn(const char ** str)
+{
+	READ_LOCALS(SequenceDefn);
+	
+	READ_STRING_FIELD(keyname);
+	READ_NODE_FIELD(span);
+	READ_NODE_FIELD(seqlow);
+	READ_NODE_FIELD(seqlim);
+	
+	READ_DONE();
+}
+
+/*
+ * _readSequenceSpec 
+ */
+static SequenceSpec *
+_readSequenceSpec(const char ** str)
+{
+	READ_LOCALS(SequenceSpec);
+	
+	READ_STRING_FIELD(seqname);
+	READ_NODE_FIELD(partition);
+	READ_NODE_FIELD(order);
+	READ_NODE_FIELD(postorder);
+	READ_NODE_FIELD(seqdef);
+	
 	READ_DONE();
 }
 
@@ -3158,6 +3206,8 @@ _readWindow(const char ** str)
 	READ_INT_FIELD(numPartCols);
 	READ_INT_ARRAY(partColIdx, numPartCols, AttrNumber);
 	READ_NODE_FIELD(windowKeys);
+	READ_NODE_FIELD(sequence);
+	READ_ENUM_FIELD(semantics, WindowSemantics);
 
 	READ_DONE();
 }
@@ -4315,6 +4365,9 @@ readNodeBinary(const char ** str)
 			case T_WindowSpec:
 				return_value = _readWindowSpec(str);
 				break;
+			case T_SeqWindowSpec:
+				return_value = _readSeqWindowSpec(str);
+				break;
 			case T_WindowFrame:
 				return_value = _readWindowFrame(str);
 				break;
@@ -4335,6 +4388,12 @@ readNodeBinary(const char ** str)
 				break;
 			case T_SetOperationStmt:
 				return_value = _readSetOperationStmt(str);
+				break;
+			case T_SequenceDefn:
+				return_value = _readSequenceDefn(str);
+				break;
+			case T_SequenceSpec:
+				return_value = _readSequenceSpec(str);
 				break;
 			case T_RangeTblEntry:
 				return_value = _readRangeTblEntry(str);

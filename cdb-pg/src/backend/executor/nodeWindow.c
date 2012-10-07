@@ -25,10 +25,12 @@
 #include "executor/nodeAgg.h"
 #include "executor/nodeWindow.h"
 #include "optimizer/clauses.h"
+#include "parser/gramparse.h" /* for SystemFuncName */
 #include "nodes/makefuncs.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_func.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_type.h"
 #include "utils/acl.h"
@@ -54,6 +56,19 @@
      !OidIsValid(funcstate->invprelimfn_oid) && \
 	 !OidIsValid(funcstate->prelimfn_oid) && \
      OidIsValid(funcstate->transfn_oid))
+
+
+/* Macro to determine whether to use sequence semantics when determining
+ * peer group boundaries.  We don't want to use sequence semantics in a
+ * window node that implements a sequence -- these should use standard 
+ * semantics.  Use sequence semantics in windows that operate on sequenced 
+ * windows as their input.  The legacy planner marks all sequence related 
+ * nodes as using sequence semantics.  This macro corrects that.
+ */
+#define Use_Sequence_Semantics(wstate) \
+	( ((Window*) ((wstate)->ps.plan))->semantics == WINDOW_SEMANTICS_SEQ && \
+	   ((Window*) ((wstate)->ps.plan))->sequence == NULL )
+
 
 /* 
  * A struct to hold all the data relevant to a value, used for
@@ -114,6 +129,9 @@ typedef struct WindowStatePerLevelData
 	int64		dense_rank;
 	int64		prior_rank;
 	int64		prior_dense_rank;
+	bool		sequence_key_datum_defined;
+	Datum		sequence_key_datum;
+	int64		sequence_index;
 
 	/* List of functions in this key level */
 	List	   *level_funcs;
@@ -351,6 +369,66 @@ typedef struct WindowStatePerFunctionData
 															 (level_state)->lead_range_eq_expr)))))))
 
 /****************************************************
+ * GeneratedSequence and its APIs
+ ***************************************************/
+
+/* 
+ * A GeneratedSequenceState describes the execution state of the "generated"
+ * type of dense sequence used in the windowing implementation.  This is
+ * referenced by WindowStatePerLevelData which is private here.
+ *
+ * In comments below
+ *   OK is the type of the sequence ordering key  
+ *   IT is the type of the sequence step
+ *   SK is the type of the sequence key 
+ *
+ * These types aren't manifest in the structure.  They're indirectly specified
+ * by the referenced Expr and FmgrInfo structures.  When data type information
+ * is needed, it can be found indirectly in the parent WindowState.
+ */
+typedef struct GeneratedSequenceState
+{ 
+	WindowState *wstate; /* parent window state */
+	
+	Datum low; /* minimum low bound (SK) */
+	Datum high; /* maximum high bound (SK) */
+	Datum step; /* interval width (IT) */
+	
+	/* Facts about the interval */
+	Oid step_type;
+	int16 step_typlen;
+	bool step_typbyval;	
+	
+	Datum current; /* current low bound (SK) */
+	Datum offset; /* offset (IT) from low to next */
+	Datum next; /* current high bound, next low bound (SK) */
+	
+	bool in_progress;
+	bool finished;	
+	
+	FmgrInfo   *leq_call; /* SK <= SK -> bool */
+	FmgrInfo   *inc_call; /* IT + IT -> IT */
+	FmgrInfo   *adv_call; /* SK + IT -> SK */
+} GeneratedSequenceState;
+
+
+static GeneratedSequenceState* gs_new(WindowState *wstate,
+									  Datum low, 
+									  Datum high, 
+									  Datum step, 
+									  Oid step_type,
+									  int16 step_typlen,
+									  bool step_typbyval,
+									  FmgrInfo    *leq_call,
+									  FmgrInfo    *inc_call,
+									  FmgrInfo    *adv_call
+									  );
+static void gs_reset(GeneratedSequenceState* gs_state);
+
+static bool gs_next(GeneratedSequenceState* gs_state, Datum* pdatum);
+
+
+/****************************************************
  * Window Input Buffer and its APIs
  ***************************************************/
 /*
@@ -521,6 +599,9 @@ static int initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo
 					  WindowStatePerFunction funcstate, ExprContext *econtext,
 					  bool check_nulls);
 static void adjustEdges(WindowFrameBuffer buffer, WindowState *wstate);
+static inline bool is_sequence(Window *window);
+static TupleTableSlot *next_input_row(WindowState *wstate);
+static TupleTableSlot *synthesize_input_row(WindowState *wstate);
 static TupleTableSlot *fetchCurrentRow(WindowState *wstate);
 static TupleTableSlot *fetchTupleSlotThroughBuf(WindowState *wstate);
 static void processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer);
@@ -570,6 +651,18 @@ static ExprState *make_eq_exprstate(WindowState *wstate,
 static bool exec_eq_exprstate(WindowState *wstate, ExprState *eq_exprstate);
 static void setEmptyFrame(WindowStatePerLevel level_state,
 						  WindowState *wstate);
+static FmgrInfo *
+get_fmgrinfo_for_compatible_oper(WindowState *wstate,
+								 const char *oprname,
+								 Oid ltype, Oid rtype);
+
+static Datum  evaluate_const_expr(Expr *expr, ExprContext *ec);
+static void seq_init_wstate(WindowState *wstate);
+static bool seq_next_matches_part(WindowState *wstate);
+static void seq_set_partkey_in_synthslot(WindowState *wstate);
+static int seq_compare(WindowState* wstate);
+static Datum seq_extrapolate(WindowState* wstate);
+static void set_sequence_key(WindowState *wstate, Datum key_datum);
 
 /*
  * initFrameBuffer -- initialize the frame buffer.
@@ -4514,6 +4607,355 @@ adjustDelayBoundEdgeForRows(WindowStatePerLevel level_state,
 }
 
 /*
+ * next_input_row -- get the next input row.
+ *
+ * This is an alternative to ExecProcNode.  In the ordinary case it just calls
+ * ExecProcNode, but in the sequence case it may also introduce interpolated and 
+ * extrapolated rows based on the window's associated sequence.
+ *
+ * The outer process is similar to (should be nearly identical to) a partitioned 
+ * full outer join of the input to the given sequence keys (1-tuples) on inclusion 
+ * of the ordering key in the interval represented by the sequence key.  However,
+ * it produces a "windowed query" and so may have window functions in its target 
+ * list, and  it generates a matching sequence key for rows that  fall outside the 
+ * intervals specified by the sequence.
+ *
+ * So the trick here is to generate input rows that cause the outer process to
+ * behave correctly.  (Arguably, this function would be better realized as an
+ * executor node inserted below the Window node, but that has some challenges,
+ * too, e.g., where does the sequence key value go?
+ * 
+ * So this function may generate three kinds of rows.  In each case it places
+ * the associated sequence key in the window state to be used when the output
+ * row is projected by the outer process.
+ *
+ * - Matched rows are returned rows of the input query that lie in the current 
+ *   partition and interval.  In this case the sequence key is just the current
+ *   value of the sequence.
+ *
+ * - Sythesized (or interpolated) rows are returned rows generated for unmatched 
+ *   sequence intervals. They are null except for the partition key.  In this case 
+ *   the sequence key is just the current value of the sequence.
+ *
+ * - Extrapolated rows are returned rows of the input query that lie outside
+ *   the given interval sequence.  (They may come before or after the sequence.)
+ *   In this case, the sequence key is extrapolated from the value of the 
+ *   ordering key in the input.
+ */
+static TupleTableSlot *
+next_input_row(WindowState *wstate)
+{
+	TupleTableSlot *result = NULL;
+	
+	/* The normal windowed case just reads the outer plan.  Exit early. */
+	
+	if ( wstate->seq_state == NULL )
+	{
+		return ExecProcNode(outerPlanState(wstate));
+	}
+	
+//#define CDB_SEQUENCE_DISPLAY 1
+#ifdef CDB_SEQUENCE_DISPLAY
+	elog(NOTICE, "--------------------------------");
+	elog(NOTICE, "Sequence: redirect window input");
+#endif
+	
+	/* The sequenced (gap-filling) case interleaves interpolated rows with the
+	 * ones read from the outer plan. */
+	
+	while ( true ) /* State machine */
+	{
+		if ( wstate->seq_output_done )
+		{
+			/* Terminal state.  No more output. */
+#ifdef CDB_SEQUENCE_DISPLAY
+			elog(NOTICE, "Sequence: early exit");
+#endif
+			result = NULL;
+			break;
+		}
+		
+		/* Assure input query look ahead: We need to know, if there is another input 
+		 * row and whether it falls in the current part (under any PARTITION BY). We 
+		 * may or may not emit a row based on it this time through the loop so there
+		 * may or may not be a row staged from a previous entry to the loop.
+		 */
+		if ( ! wstate->seq_input_done ) 
+		{
+			if ( wstate->seq_input_next == NULL )
+			{
+#ifdef CDB_SEQUENCE_DISPLAY
+				elog(NOTICE, "Sequence: read input tuple");
+#endif
+				TupleTableSlot* slot = ExecProcNode(outerPlanState(wstate));
+				wstate->seq_input_next = (TupIsNull(slot)? NULL: slot);
+			}
+			
+			if ( wstate->seq_input_next == NULL )
+			{
+				/* No input rows left. */
+				wstate->seq_input_done = true;
+				wstate->seq_input_in_part = false;
+				if ( !wstate->seq_input_some )
+				{
+					/* Exit early when there are no input rows. */
+					wstate->seq_output_done = true;
+					continue;
+				}
+			}
+			else 
+			{
+				/* We read an input row or found one we haven't used yet. */
+				wstate->seq_input_some = true;
+#ifdef CDB_SEQUENCE_DISPLAY
+				elog(NOTICE, "Sequence: have input tuple");
+#endif
+				
+				if ( wstate->seq_input_synth == NULL )
+				{
+					/* This is the first row, so it defines the current partition. */
+					wstate->seq_input_synth = wstate->synthslot;
+					seq_set_partkey_in_synthslot(wstate);
+					wstate->seq_input_in_part = true;
+#ifdef CDB_SEQUENCE_DISPLAY
+					elog(NOTICE, "Sequence: input defines current part");
+#endif
+				}
+				else 
+				{
+					/* Compare current partkey to one in input */					
+					wstate->seq_input_in_part = seq_next_matches_part(wstate);
+#ifdef CDB_SEQUENCE_DISPLAY
+					if (!wstate->seq_input_in_part)
+						elog(NOTICE, "Sequence: input for next part");
+					else
+						elog(NOTICE, "Sequence: input for current part");
+#endif
+				}
+			}
+		}
+		
+		/* Assure sequence look ahead: If there is another sequence key value,
+		 * we need to know that.
+		 */
+		if ( wstate->seq_seq_done )
+		{
+			/* Sequence exhausted or never started. Restart. */
+			if (wstate->seq_seq_next_exists )
+			{
+				datumFree(wstate->seq_seq_next, 
+						  wstate->seq_key_typbyval, 
+						  wstate->seq_key_typlen);
+#ifdef CDB_SEQUENCE_DISPLAY
+				elog(NOTICE, "Sequence: SHOULD gs_reset?");
+#endif
+			}
+			wstate->seq_seq_next_exists = false;
+			wstate->seq_seq_next = (Datum)0;
+		}
+		else 
+		{
+			/* Sequence in progress, try to advance. */
+			if ( ! wstate->seq_seq_next_exists )
+			{
+#ifdef CDB_SEQUENCE_DISPLAY
+				elog(NOTICE, "Sequence: advance sequence");
+#endif
+				wstate->seq_seq_next_exists = gs_next(wstate->seq_state, 
+													   &wstate->seq_seq_next);
+				wstate->seq_seq_item_used = false;
+			}
+			
+			if ( ! wstate->seq_seq_next_exists )
+				wstate->seq_seq_done = true;
+		}
+#ifdef CDB_SEQUENCE_DISPLAY
+		if ( wstate->seq_seq_next_exists )
+			elog(NOTICE, "Sequence: have sequence item");
+		else 
+			elog(NOTICE, "Sequence: sequence exhausted");
+#endif		
+		
+		/* Now decide what to do.
+		 */
+		if ( wstate->seq_input_done && wstate->seq_seq_done )
+		{
+			/* Input and sequence are exhausted, we are done. */		
+			wstate->seq_output_done = true;
+			continue;
+		}
+		
+		if ( wstate->seq_input_in_part && wstate->seq_seq_next_exists )
+		{
+			/* Input and sequence item are both staged.  Compare the input
+			 * ordering key to the implied sequence interval to decide
+			 * what to do.
+			 */
+			int c = seq_compare(wstate);
+
+			if ( c < 0 )
+			{
+				/* Input row precedes the current interval (thus the whole
+				 * sequence).  Extrapolate a sequence key for it.
+				 */
+				Datum sequence_key = seq_extrapolate(wstate);
+				set_sequence_key(wstate, sequence_key);
+				
+				/* Count real row. */
+				wstate->level_state[0].sequence_index++;
+				
+				result = wstate->seq_input_next;
+#ifdef CDB_SEQUENCE_DISPLAY
+				elog(NOTICE, "Sequence: input row precedes next sequence item, extrapolate");
+#endif
+				wstate->seq_input_next = NULL;
+				break;
+			}
+			else if ( c == 0 )
+			{
+				/* Input row is in the current interval.  This is an
+				 * ordinary match.  Use the current interval low bound
+				 * as the sequence key.  Note that the next input row
+				 * may match too, so don't discard the current item
+				 * just yet.
+				 */
+				Datum sequence_key = wstate->seq_seq_next;
+				set_sequence_key(wstate, sequence_key);
+				wstate->seq_seq_item_used = true;
+				
+				/* Count real row. */
+				wstate->level_state[0].sequence_index++;
+				
+				result = wstate->seq_input_next;
+#ifdef CDB_SEQUENCE_DISPLAY
+				elog(NOTICE, "Sequence: input row matches current sequence item, emit");
+#endif
+				wstate->seq_input_next = NULL;
+				break;
+			}
+			else /* c > 0 */
+			{
+				/* Input row follows the current interval. */
+				if ( wstate->seq_seq_item_used )
+				{
+					/* We already matched this sequence value to an input
+					 * row, so don't use it in an interpolated row, just
+					 * consume it and reenter the state machine.
+					 */
+					datumFree(wstate->seq_seq_next, 
+							  wstate->seq_key_typbyval, 
+							  wstate->seq_key_typlen);
+					wstate->seq_seq_next_exists = false;
+					wstate->seq_seq_next = (Datum)0; /* tidy */
+#ifdef CDB_SEQUENCE_DISPLAY
+					elog(NOTICE, "Sequence: input row follows used current sequence item");
+#endif
+					continue;
+				}
+				else 
+				{
+					set_sequence_key(wstate, wstate->seq_seq_next);
+					
+					result = synthesize_input_row(wstate);
+					
+					/* Done with the sequence item, so consume it, but
+					 * fall through to emit the synthesized row.
+					 */
+					datumFree(wstate->seq_seq_next, 
+							  wstate->seq_key_typbyval, 
+							  wstate->seq_key_typlen);
+					wstate->seq_seq_next_exists = false;
+					wstate->seq_seq_next = (Datum)0;					
+#ifdef CDB_SEQUENCE_DISPLAY
+					elog(NOTICE, "Sequence: input row follows unused current sequence item, synthesize");
+#endif
+					break;
+				}
+			}
+		}
+		else if ( wstate->seq_input_in_part ) /* but sequence exhausted */
+		{
+			Datum sequence_key = seq_extrapolate(wstate);
+			set_sequence_key(wstate, sequence_key);
+			
+			/* Count real row. */
+			wstate->level_state[0].sequence_index++;
+			
+			result = wstate->seq_input_next;
+			wstate->seq_input_next = NULL;
+#ifdef CDB_SEQUENCE_DISPLAY
+			elog(NOTICE, "Sequence: input row follows entire sequence, extrapolate");
+#endif
+			break;
+		}
+		else if ( wstate->seq_seq_next_exists ) /* but query done in this part */
+		{
+			if ( wstate->seq_seq_item_used )
+			{
+				datumFree(wstate->seq_seq_next, 
+						  wstate->seq_key_typbyval, 
+						  wstate->seq_key_typlen);
+				wstate->seq_seq_next_exists = false;
+				wstate->seq_seq_next = (Datum)0;
+			}
+			else 
+			{
+				set_sequence_key(wstate, wstate->seq_seq_next);
+				result = synthesize_input_row(wstate);
+				datumFree(wstate->seq_seq_next, 
+						  wstate->seq_key_typbyval, 
+						  wstate->seq_key_typlen);
+				wstate->seq_seq_next_exists = false;
+				wstate->seq_seq_next = (Datum)0;
+#ifdef CDB_SEQUENCE_DISPLAY
+				elog(NOTICE, "Sequence: current sequence item but no input, interpolate");
+#endif
+				break;
+			}
+
+		}
+		else /* no more input for current partition and no more sequence */
+		{
+#ifdef CDB_SEQUENCE_DISPLAY
+			elog(NOTICE, "Sequence: end of part, reset");
+#endif
+			seq_set_partkey_in_synthslot(wstate);
+			gs_reset(wstate->seq_state);
+			wstate->level_state[0].sequence_index = 0;
+			wstate->seq_seq_done = false;
+			wstate->seq_seq_item_used = false;
+			if ( wstate->seq_seq_next_exists )
+			{
+				datumFree(wstate->seq_seq_next, 
+						  wstate->seq_key_typbyval, 
+						  wstate->seq_key_typlen);	
+			}
+			wstate->seq_seq_next_exists = false;
+			wstate->seq_seq_next = (Datum)0;
+		}
+
+	} /* while */
+	
+	return result;
+}
+
+/* Return an input row of null except for the partition key.
+ * It might seem like we should place the sequence key as well, 
+ * but that is done when the window's output tuple is projected
+ * through an execution of the sequence_key function.
+ */
+TupleTableSlot *
+synthesize_input_row(WindowState *wstate)
+{
+	Assert( wstate->seq_state != NULL );
+	Assert( wstate->seq_seq_next_exists );
+	Assert( !wstate->seq_seq_item_used );
+	Assert( wstate->seq_input_synth != NULL );
+		
+	return wstate->seq_input_synth; 
+}
+
+/*
  * fetchCurrentRow -- retrieve the current_row from the input buffer.
  * 
  * The current_row_reader always points to the previous current_row
@@ -4545,7 +4987,7 @@ fetchCurrentRow(WindowState *wstate)
 	else
 	{
 		/* Fetch the first tuple from the outer plan */
-		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));
+		TupleTableSlot *slot = next_input_row(wstate);
 
 		if (TupIsNull(slot))
 			return NULL;
@@ -4618,9 +5060,15 @@ fetchCurrentRow(WindowState *wstate)
 			for (level=0; level<wstate->numlevels; level++)
 			{
 				WindowStatePerLevel lvl = &wstate->level_state[level];
+				int matchcols = lvl->numSortCols;
+				if ( Use_Sequence_Semantics(wstate) )
+				{
+					Assert(lvl->numSortCols > 0);
+					matchcols = 1;
+				}
 
 				match = execTuplesMatch(wstate->curslot, wstate->priorslot, 
-										lvl->numSortCols, 
+										matchcols, 
 										lvl->sortColIdx,
 										lvl->eqfunctions,
 										econtext->ecxt_per_tuple_memory);
@@ -4774,7 +5222,7 @@ fetchTupleSlotThroughBuf(WindowState *wstate)
 	
 	if (!found)
 	{
-		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));
+		TupleTableSlot *slot = next_input_row(wstate);
 
 		if (TupIsNull(slot))
 			return NULL;
@@ -4818,9 +5266,15 @@ fetchTupleSlotThroughBuf(WindowState *wstate)
 			for (level=0; level<wstate->numlevels; level++)
 			{
 				WindowStatePerLevel lvl = &wstate->level_state[level];
-
+				int matchcols = lvl->numSortCols;
+				if ( Use_Sequence_Semantics(wstate) )
+				{
+					Assert(lvl->numSortCols > 0);
+					matchcols = 1;
+				}
+				
 				match = execTuplesMatch(wstate->spare, wstate->priorslot, 
-										lvl->numSortCols, 
+										matchcols, 
 										lvl->sortColIdx,
 										lvl->eqfunctions,
 										econtext->ecxt_per_tuple_memory);
@@ -6152,18 +6606,26 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	/* Create state structure. */
 	wstate = makeWindowState(node, estate);
+	
+	/* If we're implementing a sequence, we'll need to generate one. */
+	if ( is_sequence(node) )
+	{
+		seq_init_wstate(wstate);
+	}	
 
 	/* Create expression context. */
 	ExecAssignExprContext(estate, &wstate->ps);
 
-	/* XXX: temporarily high for debugging purposes */
-#define WINDOW_NSLOTS 4
+	/* Could get away with 4, if not a sequence, but that's too finicky. */
+#define WINDOW_NSLOTS 5
 
 	/* Initialize tuple table. */
 	ExecInitResultTupleSlot(estate, &wstate->ps);
 	wstate->curslot = ExecInitExtraTupleSlot(estate);
 	wstate->priorslot = ExecInitExtraTupleSlot(estate);
 	wstate->spare = ExecInitExtraTupleSlot(estate);
+	wstate->synthslot = NULL; /* Child result type not set yet. */
+
 
 	/* Initialize child expressions.
 	 *
@@ -6183,6 +6645,12 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	/* Initialize result tuple type and projection info. */
 	ExecAssignResultTypeFromTL(&wstate->ps);
 	ExecAssignProjectionInfo(&wstate->ps, NULL);
+	
+	/* Reset now that we know the child (input) type. */
+	wstate->synthslot = 
+	ExecInitNullTupleSlot(estate,
+						  ExecGetResultType(outerPlanState(wstate)));
+	
 
 	desc = ExecGetResultType(wstate->ps.lefttree);
 
@@ -6406,6 +6874,128 @@ dense_rank_immed(PG_FUNCTION_ARGS)
 	
 	PG_RETURN_INT64(result);
 }
+
+
+/*
+ * Window Functions receive an initial internal argument which is actually 
+ * a pointer to a WindowRefExprState.  This is a private structure in
+ * nodeWindow.c because it is managed by the windowing framework.  The 
+ * following are accessors that return values for certain "immediate" window 
+ * functions derived from the internal argument.
+ */
+
+int64 internal_row_number(void *datum_pointer)
+{
+	WindowRefExprState *ref_state = NULL;
+	
+	if ( !PointerIsValid(datum_pointer) ||
+		!IsA(datum_pointer, WindowRefExprState) 
+		)
+	{
+		elog(ERROR, "invalid pointer in internal_row_number");
+	}
+	
+	ref_state = (WindowRefExprState *)datum_pointer;
+	return 1 + ref_state->windowstate->row_index;
+}
+
+int64 internal_rank(void *datum_pointer)
+{
+	WindowRefExprState *ref_state = NULL;
+	WindowState *window_state = NULL;
+	WindowRef *ref = NULL;
+	WindowStatePerLevel level_state = NULL;
+	
+	if ( !PointerIsValid(datum_pointer) ||
+		!IsA(datum_pointer, WindowRefExprState) 
+		)
+	{
+		elog(ERROR, "invalid pointer in internal_rank");
+	}
+	
+	ref_state = (WindowRefExprState *)datum_pointer;
+	window_state = ref_state->windowstate;
+	ref = (WindowRef *)ref_state->xprstate.expr;
+	level_state = &window_state->level_state[ref->winlevel];
+	return level_state->rank;
+}	  
+
+int64 internal_dense_rank(void *datum_pointer)
+{
+	WindowRefExprState *ref_state = NULL;
+	WindowState *window_state = NULL;
+	WindowRef *ref = NULL;
+	WindowStatePerLevel level_state = NULL;
+	
+	if ( !PointerIsValid(datum_pointer) ||
+		!IsA(datum_pointer, WindowRefExprState) 
+		)
+	{
+		elog(ERROR, "invalid pointer in internal_dense_rank");
+	}
+	
+	ref_state = (WindowRefExprState *)datum_pointer;
+	window_state = ref_state->windowstate;
+	ref = (WindowRef *)ref_state->xprstate.expr;
+	level_state = &window_state->level_state[ref->winlevel];
+	return level_state->dense_rank;
+}
+
+
+/* Returns a pointer to the Datum representing the current sequence key
+ * value of the WindowRefExprState* supplied as an internal type
+ * parameter.  May be NULL (unset).  Caller must know the sequence key
+ * type in order to interpret the referenced Datum.
+ *
+ * Used by implementations of the sequence_key window function.
+ */
+DatumPtr internal_seqkey_ptr(void *datum_pointer)
+{
+	WindowRefExprState *ref_state = NULL;
+	WindowState *window_state = NULL;
+	WindowRef *ref = NULL;
+	WindowStatePerLevel level_state = NULL;
+	
+	if ( !PointerIsValid(datum_pointer) ||
+		!IsA(datum_pointer, WindowRefExprState) 
+		)
+	{
+		elog(ERROR, "invalid pointer passed to internal_seqkey_ptr");
+	}
+	
+	ref_state = (WindowRefExprState *)datum_pointer;
+	window_state = ref_state->windowstate;
+	ref = (WindowRef *)ref_state->xprstate.expr;
+	level_state = &window_state->level_state[ref->winlevel];
+	
+	if ( level_state->sequence_key_datum_defined )
+	{
+		return &level_state->sequence_key_datum;
+	}
+	return NULL;
+}	  
+
+
+/* 
+ * SEQUENCE_INDEX() OVER (... ORDER BY q) -- INT8
+ *
+ * The current sequence key index of the WindowRefExprState* 
+ * supplied as an internal type parameter.  Always non-null int64 type.
+ */
+Datum sequence_index_immed(PG_FUNCTION_ARGS)
+{
+	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
+	WindowState *window_state = NULL;
+	WindowRef *ref = NULL;
+	WindowStatePerLevel level_state = NULL;
+	
+	window_state = ref_state->windowstate;
+	ref = (WindowRef *)ref_state->xprstate.expr;
+	level_state = &window_state->level_state[ref->winlevel];
+	
+	PG_RETURN_INT64(level_state->sequence_index);
+}	  
+
 
 
 /*
@@ -6979,3 +7569,659 @@ ExecEagerFreeWindow(WindowState *node)
 	
 	freeFrameBuffers(node);
 }
+
+/* Make an FmgrInfo for the given function in the current context.
+ */
+static FmgrInfo *
+new_fmgrinfo(Oid funcid)
+{
+	FmgrInfo *finfo = (FmgrInfo*)palloc0(sizeof(FmgrInfo));
+	fmgr_info(funcid, finfo);
+	return finfo;
+}
+
+/* Make an FmgrInfo to evaluate the named binary operator without any
+ * type coercion.  This is only used for sequences and only for operators
+ * expected to exist.  May issue an unexpected (internal) error.
+ */
+static FmgrInfo *
+get_fmgrinfo_for_compatible_oper(WindowState *wstate,
+								 const char *oprname,
+								 Oid ltype, Oid rtype)
+{
+	List *oname = list_make1(makeString(oprname));
+	Operator op = compatible_oper(NULL, oname, ltype, rtype, true, -1);
+	Oid funcid;
+	
+	if ( op == NULL )
+	{
+		elog(ERROR, "no compatible '%s' operator for sequence", oprname);
+	}
+	
+	funcid = oprfuncid(op);
+	ReleaseSysCache(op);
+	
+	return new_fmgrinfo(funcid);
+}
+
+
+
+/* ----- Begin Sequence implementation ----- */
+
+static inline bool
+is_sequence(Window *window)
+{
+	return window->sequence != NULL && list_length(window->windowKeys) > 0;
+}
+
+
+/* Evaluate the given expression (known to be constant, i.e., without ANY
+ * external references) and non-null and return its value as a Datum.
+ */
+Datum
+evaluate_const_expr(Expr *expr, ExprContext *ec)
+{
+    bool null_mark;
+	ExprState *es = ExecInitExpr(expr, NULL);
+	Datum datum = ExecEvalExpr(es, ec, &null_mark, NULL);
+	if ( null_mark )
+	{
+		elog(ERROR,"invalid call to evaluate_const_expr (non-constant)");
+	}
+	ReScanExprContext(ec);	
+	return datum;
+}
+
+
+/*
+ * Add sequence-related information to the given WindowState.  This function
+ * should only be called for Window nodes that implement a sequence.
+ *
+ * The WindowState field seq_state is NULL for normal windows, but here is
+ * set to point to a sequence state.
+ */
+static void
+seq_init_wstate(WindowState *wstate)
+{
+	MemoryContext oldcontext;
+	Oid ok_type = InvalidOid; /* ordering key type -- ok */
+	bool ok_typbyval = false;
+	int16 ok_typlen = 0;
+	Expr *ok_expr = NULL;
+
+	Oid it_type = InvalidOid; /* span (interval or step) type -- it */
+	bool it_typbyval = false;
+	int16 it_typlen = 0;
+	Expr *it_expr = NULL;
+
+	Oid sk_type = InvalidOid; /* sequence key type -- sk */
+	bool sk_typbyval = false;
+	int16 sk_typlen = 0;
+	Expr *low_expr = NULL;
+	Expr *high_expr = NULL;
+
+	Datum low_datum; /* type sk  */
+	Datum high_datum; /* type sk */
+	Datum it_datum; /* type it */
+	
+	Expr *ib_expr = NULL;
+	FmgrInfo *ok_to_sk = NULL;
+	FmgrInfo *sk_le_sk = NULL;
+	FmgrInfo *sk_lt_sk = NULL;
+	FmgrInfo *it_pl_it = NULL;
+	FmgrInfo *sk_pl_it = NULL;
+	
+	Window *window = (Window*)wstate->ps.plan;
+	SequenceDefn *seqdef = (SequenceDefn*)window->sequence;
+	Assert( seqdef != NULL && IsA(seqdef, SequenceDefn) );
+	
+	/* Make a memory context to hold all the sequence-related artifacts.
+	 * This will cleared at end of query (under the parent ExecutorState
+	 * context) but seems easier and cleaner to manage separately.
+	 */
+	oldcontext = CurrentMemoryContext;
+	wstate->seq_context = AllocSetContextCreate(oldcontext,
+												"SequenceContext",
+												ALLOCSET_SMALL_MINSIZE,
+												ALLOCSET_SMALL_INITSIZE,
+												ALLOCSET_SMALL_MAXSIZE);
+	
+	MemoryContextSwitchTo(wstate->seq_context);
+	
+	/* Get type information about the attributes of the partition key
+	 * (if any) for Datum management.  The partition attributes in the
+	 * Window node refer to the outer plan's result, which is exactly
+	 * what we need.
+	 */
+	if ( window->numPartCols > 0 )
+	{
+		Index i;
+		
+		Plan *input_plan = outerPlan(window);
+			   
+		wstate->seq_partkey_type = palloc(window->numPartCols * sizeof(Oid));
+		wstate->seq_partkey_typlen = palloc(window->numPartCols * sizeof(int16));
+		wstate->seq_partkey_typbyval = palloc(window->numPartCols * sizeof(bool));
+		
+		for ( i = 0; i < window->numPartCols; i++ )
+		{			
+			AttrNumber attnum = window->partColIdx[i];
+			TargetEntry *tle;
+			Node *expr;
+			
+			tle = (TargetEntry*) list_nth(input_plan->targetlist, attnum - 1);
+			Assert( IsA(tle, TargetEntry) );
+			expr = (Node*)tle->expr;
+						
+			wstate->seq_partkey_type[i] = exprType((Node*)expr); 
+			get_typlenbyval(wstate->seq_partkey_type[i], 
+							&wstate->seq_partkey_typlen[i], 
+							&wstate->seq_partkey_typbyval[i]);
+		}
+	}
+	else 
+	{
+		wstate->seq_partkey_type = NULL;
+		wstate->seq_partkey_typlen = NULL;
+		wstate->seq_partkey_typbyval = NULL;
+	}
+	
+	
+	/* Get ordering key expression (and type).  Local results will be
+	 *
+	 *	ok_expr -- expression on input query for ordering key
+	 *			   (also low-order sort key of Window).
+	 *	ok_type, ok_typlen, ok_typbyval -- ordering key pg_type OID 
+	 *			   and extras
+	 */
+	{
+		WindowKey *wk;
+		TargetEntry *target;
+		Index ordkey_attr;
+		Assert( list_length(window->windowKeys) > 0 );
+		wk = linitial(window->windowKeys);
+		Assert( IsA(wk, WindowKey) && wk->numSortCols == 1 );
+		ordkey_attr = wk->sortColIdx[0];
+		target = list_nth(window->plan.lefttree->targetlist, ordkey_attr-1);
+		ok_expr = target->expr;
+		ok_type = exprType((Node*)ok_expr);
+		get_typlenbyval(ok_type, &ok_typlen, &ok_typbyval);
+	}
+	
+	/* Get specific interval_bound expression with datatype casts as needed
+	 * and harvest the sequence key and span datatypes and expressions. 
+	 * After parsing, the interval_bound arguments will be
+	 *
+	 *		0: order key recast as interval_bound first argument
+	 *		1: span (numeric step or interval)
+	 *		2: integer 0
+	 *		3: registration bound (use sequence low bound). 
+	 *
+	 * The order key is an expression on the input plan from above.  The span
+	 * and registration bound (lowest low bound) are constant but may include
+	 * type casts.  We rewrite these as Const nodes and retain them as Datum
+	 * values to speed evaluation in the loop.
+	 * 
+	 * Note that here we are trusting our detailed knowledge of how function 
+	 * ParseFuncOrColumn will bind arguments to the interval_bound function.
+	 * This function is intimately tied to gap-filling, however, one might 
+	 * wish for a better way.  (TODO?)
+	 * 
+	 * Local results will be
+	 *
+	 *	ib_expr -- the interval bound function call expression.
+	 *	it_expr, it_type, it_typlen, it_typbyval
+	 *	low_expr -- expression returning the lowest lower bound of the sequence.
+	 *  sk_type, sk_typlen, sk_typbyval -- sequence key type and extras.
+	 *	ok_to_sk -- FmgrInfo* for conversion or null, if none required.
+	 */
+	{
+		FuncExpr *fx;
+		Node *ok_cast;
+		Node *ok_arg;
+		Oid ok_coerce_fn = InvalidOid;
+		List *funcname = SystemFuncName("interval_bound");
+		List *fargs = list_make4(ok_expr,
+								 seqdef->span,
+								 makeConst(INT4OID, -1, sizeof(int32), 
+										   (Datum)0, false, true),
+								 seqdef->seqlow);
+	
+		ib_expr = (Expr*)ParseFuncOrColumn(NULL, funcname, fargs,
+										   NIL, false, false, false, false,
+										   NULL, -1, NULL);
+		
+		/* Peer into the bound function call to learn useful facts. */
+		fx = (FuncExpr*)ib_expr;
+		if ( ib_expr == NULL || !IsA(fx, FuncExpr) || list_length(fx->args) != 4 )
+			elog(ERROR, "failed to bind interval_bound call correctly");
+	
+		ok_cast = list_nth(fx->args, 0);
+		it_expr = (Expr*)list_nth(fx->args, 1);
+		it_type = exprType((Node*)it_expr); 
+		get_typlenbyval(it_type, &it_typlen, &it_typbyval);
+		
+		low_expr = (Expr*)list_nth(fx->args,3);
+		sk_type = exprType((Node*)low_expr);
+		get_typlenbyval(sk_type, &sk_typlen, &sk_typbyval);
+		
+		Assert( sk_type == exprType((Node*)ib_expr) );
+		
+		if ( IsA(ok_cast, FuncExpr) )
+		{
+			FuncExpr *ok_castfunc = (FuncExpr *)ok_cast;
+			Assert( list_length(ok_castfunc->args) == 1 );
+			Assert( ok_castfunc->funcresulttype == sk_type );
+			ok_coerce_fn = ok_castfunc->funcid;
+			ok_arg = list_nth(ok_castfunc->args, 0);
+			ok_to_sk = new_fmgrinfo(ok_coerce_fn);
+		}		
+		else 
+		{
+			ok_arg = ok_cast;
+			ok_to_sk = NULL;
+		}
+		Assert( equal(ok_expr, ok_arg) );
+	}
+	
+	/* The local results of the following block are
+	 *
+	 *	it_datum
+	 *	low_datum
+	 *	high_datum
+	 */
+
+	{
+		Oid typeid = InvalidOid;
+		ExprContext *econtext = CreateStandaloneExprContext();
+
+		
+		low_datum = evaluate_const_expr(low_expr, econtext); 
+		
+		it_datum = evaluate_const_expr(it_expr, econtext);
+		
+		high_expr = copyObject(seqdef->seqlim);
+		typeid = exprType((Node*)high_expr);
+		if ( sk_type != typeid )
+		{
+			high_expr = (Expr*)coerce_type(NULL, 
+										   (Node*)high_expr, typeid, 
+										   sk_type, -1, 
+										   COERCION_IMPLICIT, COERCE_IMPLICIT_CAST,
+										   -1);
+		}
+		high_datum = evaluate_const_expr(high_expr, econtext);
+	}
+		
+	/* Determine the comparison functions to use based on the datatypes.
+	 * Note that the input ordering here is ALWAYS ascending on the
+	 * order key. The comparisions are for testing interval containment
+	 * on the sequence key, not sort order on the ordering key.  However,
+	 * there must be agreement between the two.
+	 *
+	 *	sk_lt_sk - does the input ordering key coerced to the type of the 
+	 *             sequence key come before a given interval start?
+	 *	sk_le_sk - does the sequence key fall after a given interval end?
+	 *	it_pl_it - advance the offset interval.
+	 *	sk_pl_it - add the offset interval to the base sequence key.
+	 */
+	sk_lt_sk = get_fmgrinfo_for_compatible_oper(wstate, "<", sk_type, sk_type);
+	sk_le_sk = get_fmgrinfo_for_compatible_oper(wstate, "<=", sk_type, sk_type);
+	it_pl_it = get_fmgrinfo_for_compatible_oper(wstate, "+", it_type, it_type);
+	sk_pl_it = get_fmgrinfo_for_compatible_oper(wstate, "+", sk_type, it_type);
+
+	wstate->seq_coerce_fn = ok_to_sk;
+	wstate->seq_compare_fn = sk_lt_sk;
+	wstate->seq_extrapolate_estate = ExecInitExpr(ib_expr, (PlanState*)wstate);
+	wstate->seq_key_type = sk_type;
+	wstate->seq_key_typlen = sk_typlen;
+	wstate->seq_key_typbyval = sk_typbyval;
+	
+	/* Last to provide gs_new with values in wstate! */
+	wstate->seq_state = gs_new(wstate,
+							   datumCopy(low_datum, sk_typbyval, sk_typlen), 
+							   datumCopy(high_datum, sk_typbyval, sk_typlen), 
+							   datumCopy(it_datum, it_typbyval, it_typlen),
+							   it_type, it_typlen, it_typbyval,
+							   sk_le_sk, it_pl_it, sk_pl_it);
+	
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * Look into the next input tuple to find out whether it will cause 
+ * the partition key of the window (sequence, actually) to break.
+ */
+static bool
+seq_next_matches_part(WindowState *wstate)
+{
+	Window *window = NULL;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	bool part_match = false;
+	Assert( wstate->seq_state );
+	
+	if ( wstate->seq_input_done )
+		return false;
+	
+	window = (Window*)wstate->ps.plan;
+	if ( window->numPartCols == 0 )
+		return true;
+	
+	if ( wstate->seq_input_synth == NULL )
+	{
+		part_match = true;
+	}
+	else
+	{
+		part_match = execTuplesMatch(wstate->seq_input_synth,
+									 wstate->seq_input_next,
+									window->numPartCols, 
+									window->partColIdx,
+									wstate->eqfunctions,
+									econtext->ecxt_per_tuple_memory);
+	}
+	return part_match;
+}
+	
+/*
+* Update the mostly null tuple in seq_input_synth by copying the partition
+* key value from the next input tuple into it.
+*  
+* The synthetic slot is a virtual tuple because it was initialized with
+* ExecInitNullTupleSlot. Therefore we can just manipulate its attribute
+* arrays.  (This breaks modularity a bit, but should be okay.)
+*/
+static void
+seq_set_partkey_in_synthslot(WindowState *wstate)
+{
+	Window *window = (Window*)wstate->ps.plan;
+	bool free_first = false;
+	Datum *values;
+	bool *isnull;
+	Datum v = (Datum)0;
+	bool nv = true;
+	int i;
+	MemoryContext oldcontext;
+
+	
+	if ( wstate->seq_input_synth == NULL )
+	{
+		wstate->seq_input_synth = wstate->synthslot;
+		free_first = false;
+	}
+	else 
+	{
+		free_first = true;
+	}
+	
+	Assert(TupHasVirtualTuple(wstate->seq_input_synth));
+	values = slot_get_values(wstate->seq_input_synth);
+	isnull = slot_get_isnull(wstate->seq_input_synth);
+	
+	/* Assign new partitioning key attributes. */
+	for ( i = 0; i < window->numPartCols; i++ )
+	{
+		AttrNumber attrno = window->partColIdx[i];
+		int idx = attrno - 1;
+		
+		/* Free preexisting non-null attribute, if any. */
+		if (free_first && !isnull[idx]) 
+		{
+			datumFree(values[attrno], 
+					  wstate->seq_partkey_typbyval[i], 
+					  (int)wstate->seq_partkey_typlen[i]);
+			isnull[idx] = true;
+		}
+		
+		v = slot_getattr(wstate->seq_input_next, attrno, &nv);
+		if ( nv )
+		{
+			values[idx] = (Datum)0;
+			isnull[idx] = true;
+		}
+		else 
+		{
+			oldcontext = MemoryContextSwitchTo(wstate->seq_context);
+			
+			values[idx] = datumCopy(v, 
+								  wstate->seq_partkey_typbyval[i], 
+								  wstate->seq_partkey_typlen[i]);
+			MemoryContextSwitchTo(oldcontext);
+			isnull[idx] = false;
+		}
+	}
+}
+
+/*
+ *
+ */
+void set_sequence_key(WindowState *wstate, Datum key_datum)
+{
+	WindowStatePerLevel lvl;
+	MemoryContext oldcontext;
+	
+	Assert( is_sequence((Window*)wstate->ps.plan) );
+	Assert( wstate->numlevels == 1 );
+	
+	lvl = &wstate->level_state[0];
+	
+	if ( lvl->sequence_key_datum_defined )
+	{
+		datumFree(lvl->sequence_key_datum, 
+				  wstate->seq_key_typbyval, 
+				  wstate->seq_key_typlen);
+	}
+	
+	oldcontext = MemoryContextSwitchTo(wstate->seq_context);
+	
+	lvl->sequence_key_datum = datumCopy(key_datum, 
+										wstate->seq_key_typbyval, 
+										wstate->seq_key_typlen);
+	MemoryContextSwitchTo(oldcontext);
+	
+	lvl->sequence_key_datum_defined = true;
+}
+
+	
+/* Compare the current ordering key with the next-up sequence interval.
+ *
+ * Return -1, 0, or 1 as the ordering key is before, in, or after the
+ * interval.  Use the expression initialized by seq_init_wstate.
+ *
+ * The idea is to return
+ *         -1 if order_key_var < low, 
+ *     else 0 if order_key_var < high, 
+ *     else 1
+ */
+static int 
+seq_compare(WindowState* wstate)
+{
+	Datum ok_datum;
+	Assert(wstate != NULL);
+	GeneratedSequenceState *gs_state = wstate->seq_state;
+	AttrNumber ok_attr = -1;
+	bool is_null = true;
+	
+	/* Get input ordering key, may not be null. */
+	Assert( wstate->numlevels == 1 && wstate->level_state[0].numSortCols == 1);
+	ok_attr = wstate->level_state[0].sortColIdx[0];
+	
+	ok_datum = slot_getattr(wstate->seq_input_next, ok_attr, &is_null);
+	
+	if (is_null)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				 errmsg("null value not allowed in sequence ordering key"),
+				 errhint("consider using coalese to assign a non-null value to the key"),
+				 errOmitLocation(true)));
+	}
+	
+	
+	if ( wstate->seq_coerce_fn )
+	{
+		ok_datum = FunctionCall1(wstate->seq_coerce_fn, ok_datum);
+	}
+
+	/* sk_lt_sk(order_key, gs_state->current) */
+	if ( FunctionCall2(wstate->seq_compare_fn, ok_datum, gs_state->current ) )
+		return -1; /* key below current interval */
+	
+	/* sk_lt_sk(order_key, gs_state->next */
+	if ( FunctionCall2(wstate->seq_compare_fn, ok_datum, gs_state->next ) )
+		return 0; /* key in current interval */
+	
+	return 1; /* key above current interval */
+}
+
+/* Extrapolate a sequence key value for the current ordering key value.
+ *
+ * Use the expression initialized by seq_init_wstate.
+ * 
+ * The idea is execute interval_bound(order_key_var, step, 0, low) on
+ * the input plan.
+ */
+Datum
+seq_extrapolate(WindowState* wstate)
+{
+	Datum value;
+	bool isnull = true;
+	ExprContext *econtext = wstate->ps.ps_ExprContext;
+	TupleTableSlot *hold_outertuple = econtext->ecxt_outertuple;
+	
+	econtext->ecxt_outertuple = wstate->seq_input_next;
+	
+	value = ExecEvalExpr(wstate->seq_extrapolate_estate,
+						 econtext,
+						 &isnull,
+						 NULL);
+	
+	econtext->ecxt_outertuple = hold_outertuple;
+	
+	if (isnull)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				 errmsg("null value not allowed in sequence ordering key"),
+				 errhint("consider using coalese to assign a non-null value to the key"),
+				 errOmitLocation(true)));
+	}
+	
+	return value;
+}
+
+/* ----- End Sequence implementation ----- */
+
+/* ----- Begin GeneratedSequence implementation ----- */
+
+
+/* Allocate and initialize a generated sequence given its definition
+ * (derived from the SEQUENCE clause).
+ */
+GeneratedSequenceState* 
+gs_new(WindowState *wstate,
+	   Datum		low, 
+	   Datum		high,
+	   Datum		step,
+	   Oid			step_type,
+	   int16		step_typlen,
+	   bool			step_typbyval,
+	   FmgrInfo    *leq_call,
+	   FmgrInfo    *inc_call,
+	   FmgrInfo    *adv_call
+	   )
+{
+	GeneratedSequenceState *gs_state = NULL;
+	
+	gs_state = palloc0(sizeof(GeneratedSequenceState));
+	gs_state->wstate = wstate;
+	gs_state->low = low;
+	gs_state->high = high;
+	gs_state->step = step;
+	gs_state->step_type = step_type;
+	gs_state->step_typlen = step_typlen;
+	gs_state->step_typbyval = step_typbyval;
+	gs_state->in_progress = false;
+	gs_state->finished = false;
+	
+	gs_state->leq_call = leq_call;
+	gs_state->inc_call = inc_call;
+	gs_state->adv_call = adv_call;
+	
+	gs_reset(gs_state);
+	
+	return gs_state;
+}
+
+/* Reset the generated sequence so it will start from 
+ * the beginning again.
+ */
+void
+gs_reset(GeneratedSequenceState* gs_state)
+{
+	gs_state->current = datumCopy(gs_state->low, 
+								  gs_state->wstate->seq_key_typbyval,
+								  gs_state->wstate->seq_key_typlen);
+	gs_state->offset = datumCopy(gs_state->step,
+								 gs_state->step_typbyval,
+								 gs_state->step_typlen);
+	gs_state->next = FunctionCall2(gs_state->adv_call, 
+								   gs_state->current, 
+								   gs_state->offset);
+	gs_state->in_progress = false;
+	gs_state->finished = false;
+}
+
+/* Try to get the next value from a generated sequence.
+ * If there is one, return it implicitly at the given
+ * pointer and return true.  Otherwise return false.
+ *
+ * See also gs_reset for how to restart a generated
+ * sequence (e.g., for the next partition).
+ */
+bool
+gs_next(GeneratedSequenceState* gs_state, Datum* pdatum)
+{
+	if (gs_state->finished)
+		return false;
+	
+	if (gs_state->in_progress)
+	{
+		/* Continue returning values of the sequence.
+		 * Note the curious two-step advance (offset += step;
+		 * answer = low + offset).  This is specifically so 
+		 * that interval semantics is retained for timestamp
+		 * sequences: (timestamp+interval)+interval may differ
+		 * from timestamp+(interval+interval).  Here we choose
+		 * the latter.
+		 *
+		 * XXX Is this the correct choice?  It differs from 
+		 *     generate_series() in PG (and, for now, GPDB).
+		 */
+		gs_state->current = gs_state->next;
+		gs_state->offset = FunctionCall2(gs_state->inc_call, 
+											   gs_state->offset, 
+											   gs_state->step);
+		gs_state->next = FunctionCall2(gs_state->adv_call,
+											 gs_state->low, 
+											 gs_state->offset);
+	}
+	
+	gs_state->in_progress = true;
+	
+	if ( FunctionCall2(gs_state->leq_call, 
+							 gs_state->current, 
+							 gs_state->high) )
+	{
+		*pdatum = gs_state->current;
+		return true;
+	}
+	else 
+	{
+		gs_state->finished = true;
+		return false;
+	}
+}
+
+/* ----- End GeneratedSequence implementation ----- */
+

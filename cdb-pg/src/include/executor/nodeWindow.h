@@ -56,6 +56,7 @@ extern Datum row_number_immed(PG_FUNCTION_ARGS);
 extern Datum rank_immed(PG_FUNCTION_ARGS);
 extern Datum dense_rank_immed(PG_FUNCTION_ARGS);
 extern Datum cume_dist_prelim(PG_FUNCTION_ARGS);
+extern Datum sequence_index_immed(PG_FUNCTION_ARGS);
 extern Datum percent_rank_final(PG_FUNCTION_ARGS);
 extern Datum cume_dist_final(PG_FUNCTION_ARGS);
 Datum ntile_prelim_int(PG_FUNCTION_ARGS);
@@ -68,6 +69,14 @@ extern Datum first_value_generic(PG_FUNCTION_ARGS);
 extern Datum lag_generic(PG_FUNCTION_ARGS);
 extern Datum lead_lag_frame_maker(PG_FUNCTION_ARGS);
 extern Datum wm_frame_maker(PG_FUNCTION_ARGS);
+
+/* Declarations to give "outsiders" read access to private 
+ * immediate window function state. */
+extern int64 internal_row_number(void *datum_pointer);
+extern int64 internal_rank(void *datum_pointer);
+extern int64 internal_dense_rank(void *datum_pointer);
+extern DatumPtr internal_seqkey_ptr(void *datum_pointer);
+
 
 enum {
 	GPMON_WINDOW_TOTAL = GPMON_QEXEC_M_NODE_START,

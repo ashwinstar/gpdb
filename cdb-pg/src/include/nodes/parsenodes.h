@@ -1018,6 +1018,72 @@ typedef struct WindowSpecParse
 
 
 /* ----------------------
+ *     Sequence Definition input to analysis
+ *
+ * The parser may produce a SequenceDefn that defines the reference
+ * sequence for a sequence specification.  It is just a sub-structure
+ * of SequenceSpec.
+ * 
+ * For now, the sequence is restricted to a generated sequence based
+ * a step size (width) and low and high bounds.  Further the sequence
+ * key (name) is restricted to be a single column name for use in the
+ * derived sequence. 
+ *
+ * Either restriction might be relaxed someday, e.g, to accept a query
+ * result as the definition of the sequence or to allow a multi-column
+ * sequence key.
+ *
+ * The analyzer must translate this for use by the planner.
+ * ----------------------
+ */
+typedef struct SequenceDefn
+{
+	NodeTag type;
+	char	*keyname;	/* name of the key column */
+	Node	*span;		/* interval or numeric */
+	Node	*seqlow;	/* timestamp, timestamptz, or numeric */
+	Node	*seqlim;	/* timestamp, timestamptz, or numeric */
+} SequenceDefn;
+
+
+/* ----------------------
+ *     Sequence Specification input to analysis
+ *
+ * The parser may produce a SequenceSpec that defines a derived sequence.
+ * The analyzer must translate this for use by the planner.
+ * ----------------------
+ */
+typedef struct SequenceSpec
+{
+	NodeTag type;
+	char *seqname;	/* name of the sequence */
+	List *partition; /* PARTITION BY clause or NULL */
+	List *order; /* ORDER BY clause required on input */
+	List *postorder; /* ORDER BY clause produced on output. */
+	SequenceDefn *seqdef; /* definition of the reference sequence */
+	int			location;		/* token location, or -1 if unknown */
+} SequenceSpec;
+
+/* ----------------------
+ *     Sequence Window Specification input to analysis
+ *
+ * The analyzer may split a sequence query into a lower subquery that
+ * implements the sequence using a SequenceSpec and an upper query that 
+ * operates on the sequenced result.  Such window queries have different
+ * semantics from ordinary ones  The analyzer converts the SequenceSpec
+ * that indicates that a window as implements a sequence, into a
+ * SeqWindowSpec (cast compatible with a WindowSpec) to indicate that
+ * the window operates as the upper query.
+ *
+ * This somewhat shady use of node type allows the analyzer to communicate
+ * with the planner without disrupting stored views the way, say, adding
+ * a flag to the Query node would.
+ * ----------------------
+ */
+typedef WindowSpec SeqWindowSpec;
+
+
+/* ----------------------
  *		Set Operation node for post-analysis query trees
  *
  * After parse analysis, a SELECT with set operations is represented by a

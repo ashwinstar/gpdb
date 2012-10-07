@@ -379,5 +379,7 @@ extern int	date2isoyear(int year, int mon, int mday);
 extern int	date2isoyearday(int year, int mon, int mday);
 extern Interval *interval_mul_internal(float8 factor, Interval *span);
 
+extern Datum sequence_key_timestamp(PG_FUNCTION_ARGS);
+extern Datum sequence_key_timestamptz(PG_FUNCTION_ARGS);
 
 #endif   /* TIMESTAMP_H */

@@ -35,6 +35,7 @@
 #include "utils/builtins.h"
 #include "utils/int8.h"
 #include "utils/numeric.h"
+#include "executor/nodeWindow.h" /* for window function implementation */
 
 /* ----------
  * Uncomment the following to enable compilation of dump_numeric()
@@ -6597,4 +6598,29 @@ Datum
 numeric_wm_stddev_samp(PG_FUNCTION_ARGS)
 {
 	return numeric_wm_stddev_body(fcinfo, false, true);
+}
+
+/* Window Function: sequence_key_numeric(internal) 
+ */
+Datum
+sequence_key_numeric(PG_FUNCTION_ARGS)
+{
+	DatumPtr result_ptr;
+	
+	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
+	if ( ! IsA(ref_state, WindowRefExprState) )
+		elog(ERROR, "invalid call to sequence_key_numeric");
+	
+	result_ptr = internal_seqkey_ptr(ref_state);
+	
+	if ( result_ptr != NULL )
+		PG_RETURN_DATUM(*result_ptr);
+	
+
+	ereport(ERROR,
+			(errcode(ERRCODE_WINDOWING_ERROR),
+			 errmsg("invalid call to SEQUENCE_KEY (numeric)"),
+			 errOmitLocation(true)));
+			 
+	PG_RETURN_NULL(); /* smooth compile */
 }

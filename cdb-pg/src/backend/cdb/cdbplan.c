@@ -553,6 +553,7 @@ plan_tree_mutator(Node *node,
 				
 				COPYARRAY(newwindow, window, numPartCols, partColIdx);
 				MUTATE(newwindow->windowKeys, window->windowKeys, List *);
+				MUTATE(newwindow->sequence, window->sequence, Node *);
 				
 				return (Node *) newwindow;
 			}

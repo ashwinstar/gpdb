@@ -372,6 +372,12 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 %type <str>		opt_window_name window_name
 %type <ival>	opt_null_treatment
 
+%type <list>	sequence_clause sequence_or_window_clause
+%type <str>		sequence_name
+%type <node>	sequence_clause_spec sequence_definition sequence_generator
+%type <list>	sequence_partition_clause opt_sequence_partition_clause
+				sequence_order_clause
+
 %type <list>	row type_list array_expr_list
 %type <node>	case_expr case_arg when_clause when_operand case_default
 %type <list>	when_clause_list
@@ -1489,6 +1495,7 @@ OptAlterRoleList:
 OptAlterRoleElem:
 			OptRoleElem								{ $$ = $1; }
 			| DROP DENY FOR deny_point				{ $$ = makeDefElem("drop_deny", $4); }
+		;
 
 
 /*****************************************************************************
@@ -9008,7 +9015,7 @@ select_clause:
 simple_select:
 			SELECT opt_distinct target_list
 			into_clause from_clause where_clause
-			group_clause having_clause window_clause
+			group_clause having_clause sequence_or_window_clause
 				{
 					SelectStmt *n = makeNode(SelectStmt);
 					n->distinctClause = $2;
@@ -9347,7 +9354,6 @@ having_clause:
 
 window_clause:
 			WINDOW window_definition_list			{ $$ = $2; }
-			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 window_definition_list: 
@@ -9505,6 +9511,92 @@ window_frame_exclusion: EXCLUDE CURRENT ROW { $$ = WINDOW_EXCLUSION_CUR_ROW; }
 			| EXCLUDE NO OTHERS { $$ = WINDOW_EXCLUSION_NO_OTHERS; }
 			| /*EMPTY*/ { $$ = WINDOW_EXCLUSION_NULL; }
 		;
+
+
+/*
+ * The SEQUENCE clause is a non-standard feature.  The syntax looks like
+ *
+ * SEQUENCE <sequence name> AS (
+ *    [PARTITION BY <cluster key>]
+ *    ORDER BY <order key>
+ *    WITH <sequence key>
+ *    EVERY <interval width> 
+ *    BETWEEN <low bound> AND <high bound>
+ *    )
+ * 
+ * It is a subclause of SELECT that appears after grouping.  It is mutually, 
+ * exclusive with the windowClause.  See simple_select for details.
+ */
+
+sequence_clause:
+		SEQUENCE sequence_name AS '(' sequence_clause_spec ')'
+			{
+				SequenceSpec *ss = (SequenceSpec*)$5;
+				ss->seqname = $2;
+				ss->location = @2;
+				$$ = list_make1(ss);
+			}
+		;
+
+sequence_name: ColId				{ $$ = $1; }
+		;
+
+sequence_or_window_clause:
+		sequence_clause				{ $$ = $1; }
+		| window_clause				{ $$ = $1; }
+		| /*EMPTY*/					{ $$ = NIL; }
+		;
+
+sequence_clause_spec:
+		opt_sequence_partition_clause sequence_order_clause sequence_definition
+			{
+				SequenceSpec *ss = makeNode(SequenceSpec);
+				ss->seqname = NULL;
+				ss->partition = $1;
+				ss->order = $2;
+				ss->seqdef = (SequenceDefn *)$3;
+				ss->location = -1;
+				$$ = (Node *)ss;
+			}
+		;
+
+opt_sequence_partition_clause: 
+		sequence_partition_clause	{ $$ = $1; }
+		| /*EMPTY*/					{ $$ = NIL; }
+		;
+
+sequence_partition_clause: 
+		PARTITION BY sortby_list	{ $$ = (List *)$3; }
+		;
+
+sequence_order_clause: sort_clause	{ $$ = $1; }
+		;
+
+sequence_definition:
+		WITH attr_name sequence_generator
+			{
+				SequenceDefn *sd = (SequenceDefn*)$3;
+				sd->keyname = $2;
+				$$ = (Node *)sd;
+			}
+		;
+
+sequence_generator:
+		EVERY b_expr BETWEEN b_expr AND b_expr
+			{
+				SequenceDefn *sd = makeNode(SequenceDefn);
+				sd->keyname = NULL;
+				sd->span = (Node *)$2;
+				sd->seqlow = (Node *)$4;
+				sd->seqlim = (Node *)$6;
+				$$ = (Node *)sd;
+			}
+		;
+
+
+/*
+ * Done with SEQUENCE clause grammar.
+ */
 
 for_locking_clause:
 			for_locking_items						{ $$ = $1; }
@@ -12806,7 +12898,6 @@ unreserved_keyword:
 			| SECOND_P
 			| SECURITY
 			| SEGMENT
-			| SEQUENCE
 			| SERIALIZABLE
 			| SESSION
 			| SET
@@ -13076,7 +13167,6 @@ PartitionIdentKeyword: ABORT_P
 			| SCROLL
 			| SECURITY
 			| SEGMENT
-			| SEQUENCE
 			| SERIALIZABLE
 			| SESSION
 			| SET
@@ -13344,6 +13434,7 @@ reserved_keyword:
 			| ROWS
 			| SCATTER  /* gp */
 			| SELECT
+			| SEQUENCE
 			| SESSION_USER
 			| SOME
 			| SYMMETRIC

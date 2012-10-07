@@ -144,7 +144,6 @@ datumCopy(Datum value, bool typByVal, int typLen)
  * ONLY datums created by "datumCopy" can be freed!
  *-------------------------------------------------------------------------
  */
-#ifdef NOT_USED
 void
 datumFree(Datum value, bool typByVal, int typLen)
 {
@@ -155,7 +154,6 @@ datumFree(Datum value, bool typByVal, int typLen)
 		pfree(s);
 	}
 }
-#endif
 
 /*-------------------------------------------------------------------------
  * datumIsEqual

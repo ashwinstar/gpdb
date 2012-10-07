@@ -70,6 +70,14 @@ typedef struct ParseStateBreadCrumb
  * of ParseStates, only the topmost ParseState contains paramtype info; but
  * we copy the p_variableparams flag down to the child nodes for speed in
  * coerce_type.
+ *
+ * p_seqkey_transformed supports use of a "variable" name for the sequence
+ * key of a SEQUENCE query.  It is similar to the use of p_value_substitute
+ * that supports use of VALUE in a constraint expression.  Note that it holds
+ * the transformed value. (Transformation may have side-effects, so it's best 
+ * to avoid doing it multiple times.  It could be generalized to a (name->expr) 
+ * map, but this generality isn't called for at the moment.  The sequence and 
+ * sequence key names are also cached. 
  */
 typedef struct ParseState
 {
@@ -88,6 +96,11 @@ typedef struct ParseState
 	int			p_next_resno;	/* next targetlist resno to assign */
 	List	   *p_locking_clause;		/* raw FOR UPDATE/FOR SHARE info */
 	Node	   *p_value_substitute;		/* what to replace VALUE with, if any */
+	char	   *p_seq_name;		/* Name of SEQUENCE, if any */
+	char	   *p_seqkey_name;	/* Name of the sequence key column, if any */
+	Node	   *p_seqkey_transformed;	/* Transformed SEQUENCE key name replacement, if any */
+	char	   *p_seqind_name;	/* Name of the sequence key column, if any */
+	Node	   *p_seqind_transformed;	/* Transformed SEQUENCE key expression, if any */
 	bool		p_variableparams;
 	bool		p_hasAggs;
 	bool		p_hasWindFuncs;

@@ -449,6 +449,7 @@ expression_tree_walker(Node *node,
 			}
 			break;
 		case T_WindowSpec:
+		case T_SeqWindowSpec:
 			{
 				WindowSpec *wspec = (WindowSpec *)node;
 
@@ -484,6 +485,34 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_SequenceDefn:
+			{
+				SequenceDefn *defn = (SequenceDefn*)node;;
+				
+				if ( expression_tree_walker(defn->span, walker, context) )
+					return true;
+				if ( expression_tree_walker(defn->seqlow, walker, context) )
+					return true;
+				if ( expression_tree_walker(defn->seqlim, walker, context) )
+					return true;
+			}
+			break;
+		case T_SequenceSpec:
+			{
+				SequenceSpec *spec = (SequenceSpec*)node;;
+				
+				if ( expression_tree_walker((Node *)spec->partition, walker, context) )
+					return true;
+				if ( expression_tree_walker((Node *)spec->order, walker, context) )
+					return true;
+				if ( expression_tree_walker((Node *)spec->postorder, walker, context) )
+					return true;
+				if ( expression_tree_walker((Node *)spec->seqdef, walker, context) )
+					return true;
+			}
+			break;
+			
+			
 		case T_PercentileExpr:
 			{
 				PercentileExpr *perc = (PercentileExpr *) node;
@@ -1483,19 +1512,49 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_SeqWindowSpec:
 		case T_WindowSpec:
 			{
 				WindowSpec *winspec = (WindowSpec *) node;
 				WindowSpec *newnode;
-
+				
 				FLATCOPY(newnode, winspec, WindowSpec);
-
+				
 				MUTATE(newnode->partition, winspec->partition, List *);
 				MUTATE(newnode->order, winspec->order, List *);
 				MUTATE(newnode->frame, winspec->frame, WindowFrame *);
-
+				
 				return (Node *) newnode;
-
+				
+			}
+		case T_SequenceSpec:
+			{
+				SequenceSpec *seqspec = (SequenceSpec *) node;
+				SequenceSpec *newnode;
+				
+				FLATCOPY(newnode, seqspec, SequenceSpec);
+				
+				MUTATE(newnode->partition, seqspec->partition, List *);
+				MUTATE(newnode->order, seqspec->order, List *);
+				MUTATE(newnode->order, seqspec->postorder, List *);
+				MUTATE(newnode->seqdef, seqspec->seqdef, SequenceDefn *);
+				
+				return (Node *) newnode;
+				
+			}
+		case T_SequenceDefn:
+			{
+				SequenceDefn *seqdef = (SequenceDefn *) node;
+				SequenceDefn *newnode;
+				
+				FLATCOPY(newnode, seqdef, SequenceDefn);
+				
+				MUTATE(newnode->span, seqdef->span, Node *);
+				MUTATE(newnode->seqlow, seqdef->seqlow, Node *);
+				MUTATE(newnode->seqlim, seqdef->seqlim, Node *);
+				
+				return (Node *) newnode;
+				
 			}
 		case T_PercentileExpr:
 			{

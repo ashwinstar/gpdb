@@ -31,6 +31,7 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "executor/nodeWindow.h" /* for window function implementation */
 
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from
@@ -5757,5 +5758,53 @@ interval_amalg_demalg(ArrayType  *aTransArray,
 							 INTERVALOID, sizeof(Interval), false, 'd');
 
     return result;
+}
+
+/* Window Function: sequence_key_timestamp(internal) 
+ */
+Datum
+sequence_key_timestamp(PG_FUNCTION_ARGS)
+{
+	DatumPtr result_ptr;
+	
+	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
+	if ( ! IsA(ref_state, WindowRefExprState) )
+		elog(ERROR, "invalid call to sequence_key_timestamp");
+	
+	result_ptr = internal_seqkey_ptr(ref_state);
+	
+	if ( result_ptr != NULL )
+		PG_RETURN_DATUM(*result_ptr);
+	
+	ereport(ERROR,
+			(errcode(ERRCODE_WINDOWING_ERROR),
+			 errmsg("invalid call to SEQUENCE_KEY (timestamp)"),
+			 errOmitLocation(true)));
+			 
+	PG_RETURN_NULL(); /* smooth compile */
+}
+
+/* Window Function: sequence_key_timestamptz(internal) 
+ */
+Datum
+sequence_key_timestamptz(PG_FUNCTION_ARGS)
+{
+	DatumPtr result_ptr;
+	
+	WindowRefExprState *ref_state = (WindowRefExprState *) PG_GETARG_POINTER(0);
+	if ( ! IsA(ref_state, WindowRefExprState) )
+		elog(ERROR, "invalid call to sequence_key_timestamptz");
+	
+	result_ptr = internal_seqkey_ptr(ref_state);
+	
+	if ( result_ptr != NULL )
+		PG_RETURN_DATUM(*result_ptr);
+	
+	ereport(ERROR,
+			(errcode(ERRCODE_WINDOWING_ERROR),
+			 errmsg("invalid call to SEQUENCE_KEY (timestamptz)"),
+			 errOmitLocation(true)));
+	
+	PG_RETURN_NULL(); /* smooth compile*/
 }
 

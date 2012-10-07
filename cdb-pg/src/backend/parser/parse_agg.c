@@ -18,6 +18,7 @@
 #include "optimizer/clauses.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
+#include "parser/gramparse.h" /* for SystemFuncName */
 #include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
@@ -50,6 +51,8 @@ static bool check_ungrouped_columns_walker(Node *node,
 							   check_ungrouped_columns_context *context);
 static List* check_aggregate_ingroup(Node *grpcl, List *targetList, List *groupClauses);
 static List* get_groupclause_exprs(Node *grpcl, List *targetList);
+static void transformSequenceSpec(ParseState *pstate, SequenceSpec *spec);
+static void transformSequenceDefn(ParseState *pstate, SequenceDefn *defn);
 
 /*
  * Worker for transformAggregateCall() and transformWindowCall(). We need to
@@ -906,7 +909,10 @@ checkExprHasGroupExtFuncs(Node *node)
 /*
  * transformWindowSpec
  *
- * Transform the expression inside a "WindowSpec" structure.
+ * Transform the expressions inside a "WindowSpec" structure.
+ *
+ * This is used both for window specifications in a WINDOW clause
+ * and for window or sequence references in an OVER clause.
  */
 void
 transformWindowSpec(ParseState *pstate, WindowSpec *spec)
@@ -955,16 +961,180 @@ transformWindowSpec(ParseState *pstate, WindowSpec *spec)
 	}
 }
 
+/* transformSequenceDefn
+ *
+ * Transform the expressions inside a SequenceDefn structure.
+ */
+void 
+transformSequenceDefn(ParseState *pstate, SequenceDefn *defn)
+{
+	defn->span = (Node*)transformExpr(pstate, defn->span);
+	defn->seqlow = (Node*)transformExpr(pstate, defn->seqlow);
+	defn->seqlim = (Node*)transformExpr(pstate, defn->seqlim);
+}
+
+/* 
+ * Create a parse-form expression tree representing a call to the window
+ * function "sequence_key" on the argument sequence key over the sequence
+ * window.  The idea is to depend on the overloads of "sequence_key" to
+ * resolve to the correct implementation (e.g. "sequence_key_timestamp"),
+ * when analysis transforms the expression tree.
+ */
+static Node*
+make_sequence_key_call(const char *sequence_name, Node* sequence_key)
+{     
+    WindowSpec *spec = makeNode(WindowSpec);
+    FuncCall *call = makeNode(FuncCall);
+    
+    spec->parent = pstrdup(sequence_name);
+    spec->location = -1;
+    
+    call->funcname = SystemFuncName("sequence_key");
+    call->args = list_make1(copyObject(sequence_key));
+	call->agg_star = false;
+	call->agg_distinct = false;
+	call->func_variadic = false;
+	call->over = (Node*)spec;
+	call->location = -1;
+	
+	return (Node*)call;
+}
+
+/* 
+ * Create a parse-form expression tree representing a call to the window
+ * function "sequence_index".
+ */
+static Node*
+make_sequence_index_call(const char *sequence_name)
+{     
+    WindowSpec *spec = makeNode(WindowSpec);
+    FuncCall *call = makeNode(FuncCall);
+    
+    spec->parent = pstrdup(sequence_name);
+    spec->location = -1;
+    
+    call->funcname = SystemFuncName("sequence_index");
+    call->args = NIL;
+	call->agg_star = false;
+	call->agg_distinct = false;
+	call->func_variadic = false;
+	call->over = (Node*)spec;
+	call->location = -1;
+	
+	return (Node*)call;
+}
+
+/* transformSequenceSpec
+ *
+ * Transform the expressions inside a SequenceSpec structure and cache 
+ * various items derived from the SequenceSpec in the ParseState.  
+ * This is okay, since there is only one SequenceSpec in a query block.
+ * 
+ * This is used only for sequence specification in a SEQUENCE clause.
+ */
+void
+transformSequenceSpec(ParseState *pstate, SequenceSpec *spec)
+{
+	ListCell *lc2;
+	List *new = NIL;
+	Node *parse_ordering_key = NULL;
+	Node *seqkey_sub = NULL;
+	Node *seqind_sub = NULL;
+	int n;
+	
+	foreach(lc2, spec->partition)
+	{
+		Node *n = (Node *)lfirst(lc2);
+		SortBy *sb;
+		
+		Assert(IsA(n, SortBy));
+		
+		sb = (SortBy *)n;
+		
+		sb->node = (Node *)transformExpr(pstate, sb->node);
+		new = lappend(new, (void *)sb);
+	}
+	spec->partition = new;
+	
+	new = NIL;
+	n = list_length(spec->order);
+	
+	if ( n == 0 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("no ORDER BY specified for SEQUENCE"),
+				 errOmitLocation(false)));
+	}
+	else if ( n != 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("more than one ORDER BY column specified for SEQUENCE"),
+				 errOmitLocation(false)));
+	}
+	else 
+	{
+		Node *n = (Node *)linitial(spec->order);
+		SortBy *sb;
+		
+		Assert(IsA(n, SortBy));
+		
+		sb = (SortBy *)n;
+		
+		if ( sb->sortby_kind != SORTBY_ASC )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("non-ascending ORDER BY specified for SEQUENCE"),
+					 errOmitLocation(false)));
+			
+		}
+		
+		parse_ordering_key = sb->node;
+		sb->node = (Node *)transformExpr(pstate, parse_ordering_key);
+		new = lappend(new, (void *)sb);
+		
+	}
+	spec->order = new;
+	
+	transformSequenceDefn(pstate, spec->seqdef);
+	
+	Assert(pstate->p_seq_name == NULL);
+	Assert(pstate->p_seqkey_name == NULL);
+	Assert(pstate->p_seqkey_transformed == NULL);
+	
+	pstate->p_seq_name = pstrdup(spec->seqname);
+	pstate->p_seqkey_name = pstrdup(spec->seqdef->keyname);
+	seqkey_sub = make_sequence_key_call(spec->seqname, parse_ordering_key);
+	seqind_sub = make_sequence_index_call(spec->seqname);
+	pstate->p_seqkey_transformed = transformExpr(pstate, seqkey_sub);
+	pstate->p_seqind_name = pstrdup("sequence_index");
+	pstate->p_seqind_transformed = transformExpr(pstate, seqind_sub);
+}
+ 
+
 /*
  * transformWindowSpecExprs
  *
- * Do a quick pre-process of WindowSpecs to transform expressions into
- * something the rest of the parser is going to recognise.
+ * Member p_win_clauses may be an empty list, a list of WindowSpec, or
+ * a list of one SequenceSpec.  The grammar should assure us there are
+ * no other possibilities, but be defensive anyway.
+ *
+ * Do a quick pre-process of WindowSpecs or SequenceSpec to transform 
+ * expressions into  something the rest of the parser will recognise.
  */
 void
 transformWindowSpecExprs(ParseState *pstate)
 {
 	ListCell *lc;
+	SequenceSpec *s = getSequenceSpec(pstate->p_win_clauses);
+	
+	if ( s != NULL )
+	{		
+	    transformSequenceSpec(pstate, s);
+		return;
+	}
 
 	foreach(lc, pstate->p_win_clauses)
 	{
@@ -972,6 +1142,89 @@ transformWindowSpecExprs(ParseState *pstate)
 		transformWindowSpec(pstate, s);
 	}
 }
+
+/*
+ * transformTargetListSequenced -
+ *	  transform the target list of a SEQUENCE query so that it contains 
+ *    tles for both the sequence key and the sequence index (as junk, 
+ *    if necessary).  Assure that the entries have non-zero sort group
+ *    reference values.   Mark p_hasWindFuncs true.
+ *    
+ * This is NOP on non-SEQUENCE queries (since we check for the sequence 
+ * key substitution expression in the parse context.
+ *
+ * Since items may be added to the targetList (as a resjunk columns), the
+ * targetList must be passed by reference.
+ */
+List *
+transformTargetListSequenced(ParseState *pstate, List **targetList)
+{
+	ListCell   *lc_tle;
+	TargetEntry *seq_key_tle;
+	TargetEntry *seq_ind_tle;
+	
+	if ( !pstate->p_seqkey_transformed )
+		return *targetList;
+	Assert( pstate->p_seqkey_name != NULL );
+	Assert( pstate->p_seqind_name != NULL );
+	Assert( pstate->p_seqind_transformed != NULL );
+	
+	seq_key_tle = tlist_member(pstate->p_seqkey_transformed, *targetList);
+	seq_ind_tle = tlist_member(pstate->p_seqind_transformed, *targetList);
+	
+	/* Assure existent of tles */
+	if ( seq_key_tle == NULL || seq_ind_tle == NULL )
+	{
+		AttrNumber	maxresno = list_length(*targetList);
+		
+		foreach (lc_tle, *targetList)
+		{
+			TargetEntry *tle = (TargetEntry*)lfirst(lc_tle);
+			if ( tle->resno > maxresno )
+			{
+				maxresno = tle->resno;
+			}
+		}
+		
+		if ( seq_key_tle == NULL )
+		{
+			seq_key_tle = makeTargetEntry((Expr*)copyObject(pstate->p_seqkey_transformed),
+										  ++maxresno,
+										  pstate->p_seqkey_name,
+										  true);
+			*targetList = lappend(*targetList, seq_key_tle);
+		}
+		
+		if (seq_ind_tle == NULL )
+		{
+			seq_ind_tle = makeTargetEntry((Expr*)copyObject(pstate->p_seqind_transformed),
+										  ++maxresno,
+										  pstate->p_seqind_name,
+										  true);
+			*targetList = lappend(*targetList, seq_ind_tle);
+		}
+	}
+	
+	/* Assure usable sort group reference values. */
+	if ( seq_key_tle->ressortgroupref == 0 || seq_ind_tle->ressortgroupref == 0 )
+	{
+		Index maxsgr = maxSortGroupRef(*targetList, true);
+		
+		if ( seq_key_tle->ressortgroupref == 0 )
+		{
+			seq_key_tle->ressortgroupref = ++maxsgr;
+		}
+		
+		if ( seq_ind_tle->ressortgroupref == 0 )
+		{
+			seq_ind_tle->ressortgroupref = ++maxsgr;
+		}
+	}
+	
+    pstate->p_hasWindFuncs = true;
+	return *targetList;
+}
+
 
 /*
  * parseProcessWindFuncs

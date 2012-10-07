@@ -2045,63 +2045,107 @@ typedef struct WindowInputBufferData *WindowInputBuffer;
 
 typedef struct WindowState
 {
-        PlanState        ps;                                /* its first field is NodeTag */
-        List           *wrxstates;                /* all WindowRefExprState nodes in targetlist */        
-        FmgrInfo   *eqfunctions;        /* equality fns for partition key */
-        struct TupleTableSlot *priorslot;        /* place for prior tuple */
-        struct TupleTableSlot *curslot;        /* current tuple */
-        struct TupleTableSlot *spare;        /* current tuple */
-        struct TupleTableSlot *saveslot; /* convenient place holder */
+	PlanState        ps;                                /* its first field is NodeTag */
+	List           *wrxstates;                /* all WindowRefExprState nodes in targetlist */        
+	FmgrInfo   *eqfunctions;        /* equality fns for partition key */
+	struct TupleTableSlot *priorslot;        /* place for prior tuple */
+	struct TupleTableSlot *curslot;        /* current tuple */
+	struct TupleTableSlot *spare;        /* current tuple */
+	struct TupleTableSlot *saveslot; /* convenient place holder */
+	struct TupleTableSlot *synthslot; /* place for sequences to set up synthesized tuples */
 
-        /* meta data about the current slot */
-        bool cur_slot_is_new; /* is this a slot from a buffer or outer plan */
-        bool cur_slot_part_break; /* slot breaks the partition key */
-        int cur_slot_key_break; /* break level of the key in the slot */
-        
-        /* Array of working states per distinct window function */
-        int                        numfuncs;
-        WindowStatePerFunction  func_state;
-        
-        /* Per row state */
-        int64                row_index;
+	/* meta data about the current slot */
+	bool cur_slot_is_new; /* is this a slot from a buffer or outer plan */
+	bool cur_slot_part_break; /* slot breaks the partition key */
+	int cur_slot_key_break; /* break level of the key in the slot */
+	
+	/* Array of working states per distinct window function */
+	int                        numfuncs;
+	WindowStatePerFunction  func_state;
+	
+	/* Per row state */
+	int64                row_index;
 
-        int                        numlevels;
+	int                        numlevels;
 
-        WindowStatePerLevel level_state;
+	WindowStatePerLevel level_state;
 
-        /* memory context for transition value processing */
-        /* XXX: we should probably have one context per level, so that we can
-         * reset it when there's a key change at that level
-         */
-        MemoryContext transcontext;
-        MemoryManagerContainer mem_manager;
+	/* memory context for transition value processing */
+	/* XXX: we should probably have one context per level, so that we can
+	 * reset it when there's a key change at that level
+	 */
+	MemoryContext transcontext;
+	MemoryManagerContainer mem_manager;
 
-        /*
-         * context for comparing datums immediately.
-         * we need reset this context every time we run comparison,
-         * since window frame may contain unlimited number of rows.
-         */
-        MemoryContext cmpcontext;
+	/*
+	 * context for comparing datums immediately.
+	 * we need reset this context every time we run comparison,
+	 * since window frame may contain unlimited number of rows.
+	 */
+	MemoryContext cmpcontext;
 
-        /* framed window functions need access to their frames */
-        WindowStatePerFunction cur_funcstate;
+	/* framed window functions need access to their frames */
+	WindowStatePerFunction cur_funcstate;
 
-        /* input buffer */
-        WindowInputBuffer input_buffer;
+	/* input buffer */
+	WindowInputBuffer input_buffer;
 
-        /* Indicate if any function need a peer count. */
-        bool need_peercount;
+	/* Indicate if any function need a peer count. */
+	bool need_peercount;
 
-        /* A char buffer to temporarily hold serialized data
-         * before writing them to the frame buffer.
-         *
-         * Use this pre-allocated buffer to avoid doing
-         * palloc/pfree many times.
-         *
-         * The size of this array is specified by 'max_size'.
-         */
-        char *serial_array;
-        Size max_size;
+	/* A char buffer to temporarily hold serialized data
+	 * before writing them to the frame buffer.
+	 *
+	 * Use this pre-allocated buffer to avoid doing
+	 * palloc/pfree many times.
+	 *
+	 * The size of this array is specified by 'max_size'.
+	 */
+	char *serial_array;
+	Size max_size;
+	
+	/* If implementing a sequence, seq_state holds the sequence 
+	 * definition; otherwise it is NULL. (Note that more general 
+	 * sequences than generated ones might be supported.  In this 
+	 * case, this field would need to change to a more general 
+	 * type, e.g. Node*.  But by the time that support is needed,
+	 * we may have switched to a better, outer-join-based approach 
+	 * to gap-filling.) 
+	 *
+	 * The remaining seq_ fields are used only when seq_state is
+	 * non-null.
+	 */
+	struct GeneratedSequenceState *seq_state;
+	MemoryContext seq_context;
+	FmgrInfo *seq_coerce_fn;
+	FmgrInfo *seq_compare_fn;
+	ExprState *seq_extrapolate_estate;
+	bool seq_output_done; /* Done producing output? */
+	
+	bool seq_input_done; /* Input exhausted? */
+	bool seq_input_some; /* Seen an input row. */
+	bool seq_input_in_part; /* Current input in current part? */
+	
+	/* Facts about the partitioning key in the input.
+	 */
+	Oid *seq_partkey_type;
+	int16 *seq_partkey_typlen;
+	bool *seq_partkey_typbyval;
+	
+	/* Facts about the sequence key
+	 */
+	Oid seq_key_type;
+	int16 seq_key_typlen;
+	bool seq_key_typbyval;
+	
+	struct TupleTableSlot *seq_input_synth;
+	struct TupleTableSlot *seq_input_next;
+	
+	bool seq_seq_done; /* Sequence exhausted? */
+	bool seq_seq_item_used; /* Used current sequence item in output? */
+	bool seq_seq_next_exists; /* Is there a staged item in seq_item? */
+	Datum seq_seq_next; /* The currently staged sequence  */
+	
 } WindowState;
 
 /* ----------------

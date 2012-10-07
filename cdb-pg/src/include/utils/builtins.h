@@ -994,6 +994,7 @@ extern Datum numeric_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum int8_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum float8_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
 extern Datum numeric_avg_demalg(PG_FUNCTION_ARGS); /* MPP */
+extern Datum sequence_key_numeric(PG_FUNCTION_ARGS); /* MPP */
 
 extern Datum numeric_wm_avg(PG_FUNCTION_ARGS);
 extern Datum numeric_wm_var_pop(PG_FUNCTION_ARGS);

@@ -708,6 +708,39 @@ _readSetOperationStmt(void)
 	READ_DONE();
 }
 
+/*
+ * _readSequenceDefn 
+ */
+static SequenceDefn *
+_readSequenceDefn(void)
+{
+	READ_LOCALS(SequenceDefn);
+	
+	READ_STRING_FIELD(keyname);
+	READ_NODE_FIELD(span);
+	READ_NODE_FIELD(seqlow);
+	READ_NODE_FIELD(seqlim);
+	
+	READ_DONE();
+}
+
+/*
+ * _readSequenceSpec 
+ */
+static SequenceSpec *
+_readSequenceSpec(void)
+{
+	READ_LOCALS(SequenceSpec);
+	
+	READ_STRING_FIELD(seqname);
+	READ_NODE_FIELD(partition);
+	READ_NODE_FIELD(order);
+	READ_NODE_FIELD(postorder);
+	READ_NODE_FIELD(seqdef);
+	
+	READ_DONE();
+}
+
 
 /*
  *	Stuff from primnodes.h.
@@ -3073,7 +3106,6 @@ static ParseNodeInfo infoAr[] =
 	{"CREATEFDWSTMT", (ReadFn)_readCreateFdwStmt},
 	{"CREATEFOREIGNSERVERSTMT", (ReadFn)_readCreateForeignServerStmt},
 	{"CREATEFOREIGNSTMT", (ReadFn)_readCreateForeignStmt},	
-	{"CREATEUSERMAPPINGSTMT", (ReadFn)_readCreateUserMappingStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
 	{"CREATEOPCLASS", (ReadFn)_readCreateOpClassStmt},
 	{"CREATEOPCLASSITEM", (ReadFn)_readCreateOpClassItem},
@@ -3083,6 +3115,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"CREATETRIGSTMT", (ReadFn)_readCreateTrigStmt},
+	{"CREATEUSERMAPPINGSTMT", (ReadFn)_readCreateUserMappingStmt},
 	{"CURRENTOFEXPR", (ReadFn)_readCurrentOfExpr},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
@@ -3091,14 +3124,14 @@ static ParseNodeInfo infoAr[] =
 	{"DENYLOGINPOINT", (ReadFn)_readDenyLoginPoint},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
 	{"DROPCAST", (ReadFn)_readDropCastStmt},
+	{"DROPDBSTMT", (ReadFn)_readDropdbStmt},
 	{"DROPFDWCAST", (ReadFn)_readDropFdwStmt},
 	{"DROPFOREIGNSERVERCAST", (ReadFn)_readDropForeignServerStmt},
-	{"DROPUSERMAPPINGCAST", (ReadFn)_readDropUserMappingStmt},
-	{"DROPDBSTMT", (ReadFn)_readDropdbStmt},
 	{"DROPPLANGSTMT", (ReadFn)_readDropPLangStmt},
 	{"DROPPROPSTMT", (ReadFn)_readDropPropertyStmt},
 	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
+	{"DROPUSERMAPPINGCAST", (ReadFn)_readDropUserMappingStmt},
 	{"EXTTABLETYPEDESC", (ReadFn)_readExtTableTypeDesc},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
@@ -3130,9 +3163,9 @@ static ParseNodeInfo infoAr[] =
 	{"PARAM", (ReadFn)_readParam},
 	{"PARTITION", (ReadFn)_readPartition},
 	{"PARTITIONNODE", (ReadFn)_readPartitionNode},
-	{"PGPARTRULE", (ReadFn)_readPgPartRule},
 	{"PARTITIONRULE", (ReadFn)_readPartitionRule},
 	{"PERCENTILEEXPR", (ReadFn)_readPercentileExpr},
+	{"PGPARTRULE", (ReadFn)_readPgPartRule},
 	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},
 	{"QUERY", (ReadFn)_readQuery},
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},
@@ -3150,6 +3183,8 @@ static ParseNodeInfo infoAr[] =
 	{"SCALARARRAYOPEXPR", (ReadFn)_readScalarArrayOpExpr},
 	{"SCATTERCLAUSE", (ReadFn)_readScatterClause},
 	{"SEGFILEMAPNODE", (ReadFn)_readSegfileMapNode},
+	{"SEQUENCEDEFN", (ReadFn)_readSequenceDefn},
+	{"SEQUENCESPEC", (ReadFn)_readSequenceSpec},
 	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
 	{"SINGLEROWERRORDESC",(ReadFn)_readSingleRowErrorDesc},

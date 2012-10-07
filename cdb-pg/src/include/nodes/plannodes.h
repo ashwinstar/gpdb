@@ -939,6 +939,25 @@ typedef struct Agg
  * For example, the ordering key for the WindowKey in position 2 of
  * the windowKeys list is the concatenation of the partial keys found
  * in positions 0 through 2. *
+ *
+ * Some window nodes actually implement sequences as indicated by 
+ * sequence.  The rules for sequences (specified by a SEQUENCE 
+ * clause in the query) are more restrictive that those for ordinary 
+ * windows.
+ * 
+ * Some window nodes are planned as part of a sequence operation.
+ * They lack a sequence definition, but peer groups should use
+ * sequence rules, i.e., breaks occur on only the first item in
+ * ordering key.  (This will be the system generated sequence index, 
+ * known to increase monotonically within a partition.  Additional 
+ * ordering keys are recorded and may provide a more complete order,
+ * though inputs with duplicate ordering keys are, at best, partially
+ * ordered.)  The semantics field determines how peer group breaks
+ * are determined.
+ *
+ * Currently the only possibilities for sequence are NULL (not a 
+ * sequence query) and SequenceDefn* (a generated sequence).  In
+ * the future, there may be others (e.g., a subquery).
  * ---------------
  */
 typedef struct Window
@@ -948,6 +967,8 @@ typedef struct Window
 	AttrNumber	   *partColIdx;		/* their indexes in the target list
 									   of the window's outer plan.  */
 	List	       *windowKeys;		/* list of WindowKey nodes */
+	Node		   *sequence;		/* sequence definition or NULL */
+	WindowSemantics semantics;		/* WINDOW_SEMANTICS_STD or _SEQ. */
 } Window;
 
 

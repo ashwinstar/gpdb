@@ -1017,7 +1017,16 @@ explain_outNode(StringInfo str,
 			}
 			break;
 		case T_Window:
-			pname = "Window";
+			if ( ((Window *) plan)->sequence != NULL )
+			{
+			/* If this is a sequence, there must be windowKeys. */
+				Assert(list_length(((Window *) plan)->windowKeys) > 0);
+				pname = "Sequence";
+			}
+			else
+			{
+				pname = "Window";
+			}
 			break;
 		case T_TableFunctionScan:
 			pname = "Table Function Scan";

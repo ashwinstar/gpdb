@@ -145,6 +145,2024 @@ from ( values
         (timestamptz '1776-07-04 12:34:56', interval '1 month', timestamptz '2012-04-01 00:00:00 UTC', 1)
     ) r(v,w,r,s);
 
+-- Gap-filling
+
+
+drop table if exists gapinput cascade; -- ignore
+create table gapinput
+(
+	a int, 
+	b int, 
+	pk1 int,
+	pk2 int,
+	sk int
+)
+distributed randomly;
+
+delete from gapinput; -- ignore
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, 7);
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, 1);
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, 11);
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, 1),
+     (1, 0, -1, -1, 3),
+     (2, 0, -1, -1, 5),
+     (3, 0, -1, -1, 6),
+     (4, 0, -1, -1, 9),
+     (5, 0, -1, -1, 11),
+     (6, 0, -1, -1, 13),
+     (7, 0, -1, -2, 2),
+     (8, 0, -1, -2, 4),
+     (9, 0, -1, -3, 7),
+     (10, 0, -1, -3, 10),
+     (11, 0, -1, -3, 12),
+     (12, 0, -1, -4, 14);
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (2, 4, 8))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every 2 between 4 and 8 )
+order by pk1, pk2, qk, si, sk, b;
+
+drop table if exists gapinput cascade; -- ignore
+create table gapinput
+(
+	a int, 
+	b int, 
+	pk1 int,
+	pk2 int,
+	sk timestamp
+)
+distributed randomly;
+
+delete from gapinput; -- ignore
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamp '2012-07-07');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamp '2012-01-10');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamp '2012-11-07');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamp '2012-1-15'),
+     (1, 0, -1, -1, timestamp '2012-3-15'),
+     (2, 0, -1, -1, timestamp '2012-5-15'),
+     (3, 0, -1, -1, timestamp '2012-5-16'),
+     (4, 0, -1, -1, timestamp '2012-9-15'),
+     (5, 0, -1, -1, timestamp '2012-11-15'),
+     (6, 0, -1, -1, timestamp '2013-1-17'),
+     (7, 0, -1, -2, timestamp '2012-1-17'),
+     (8, 0, -1, -2, timestamp '2012-3-17'),
+     (9, 0, -1, -3, timestamp '2012-7-17'),
+     (10, 0, -1, -3, timestamp '2012-9-17'),
+     (11, 0, -1, -3, timestamp '2012-11-17'),
+     (12, 0, -1, -4, timestamp '2013-1-17');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamp '2012-04-01', timestamp '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamp '2012-04-01' and timestamp '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+drop table if exists gapinput cascade; -- ignore
+create table gapinput
+(
+	a int, 
+	b int, 
+	pk1 int,
+	pk2 int,
+	sk timestamptz
+)
+distributed randomly;
+
+delete from gapinput; -- ignore
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamptz  '2012-07-07');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamptz  '2012-01-10');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamptz  '2012-11-07');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+delete from gapinput; -- ignore
+insert into gapinput values
+     (0, 0, -1, -1, timestamptz  '2012-1-15'),
+     (1, 0, -1, -1, timestamptz  '2012-3-15'),
+     (2, 0, -1, -1, timestamptz  '2012-5-15'),
+     (3, 0, -1, -1, timestamptz  '2012-5-16'),
+     (4, 0, -1, -1, timestamptz  '2012-9-15'),
+     (5, 0, -1, -1, timestamptz  '2012-11-15'),
+     (6, 0, -1, -1, timestamptz  '2013-1-17'),
+     (7, 0, -1, -2, timestamptz  '2012-1-17'),
+     (8, 0, -1, -2, timestamptz  '2012-3-17'),
+     (9, 0, -1, -3, timestamptz  '2012-7-17'),
+     (10, 0, -1, -3, timestamptz  '2012-9-17'),
+     (11, 0, -1, -3, timestamptz  '2012-11-17'),
+     (12, 0, -1, -4, timestamptz  '2013-1-17');
+
+ 
+-- start_equiv
+
+select qk, sk, b
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				clock c
+				using (qk)
+		),
+	some_rows as (
+		select null as dummy
+		from gapinput
+		having count(*) > 0
+	)
+select qk, sk, b
+from filled, some_rows
+order by qk, sk, b;
+-- end_equiv
+ 
+-- start_equiv mvd 1,2->3
+
+select pk1, pk2, qk, sk, b
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, sk, b;
+
+with
+	sequence_parameters as (
+		select step, start, stop
+		from (values (interval '2 months', timestamptz '2012-04-01', timestamptz '2012-08-31'))
+			sequence_parameters(step, start, stop)
+		),
+	clock as (
+		select start + i * step as qk
+		from generate_series(0, 10) i(i), sequence_parameters
+		where start + i * step <= stop
+	),
+	keys as (
+		select distinct pk1, pk2
+		from gapinput
+		),
+	partitioned_clock as (
+		select pk1, pk2, qk
+		from keys, clock
+		),
+	augmented as (
+		select b, pk1, pk2, sk, interval_bound(sk, step, 0, start) as qk
+		from gapinput, sequence_parameters
+		),
+	filled as (
+		select b, pk1, pk2, sk, coalesce(a.qk, c.qk) as qk
+		from 
+			augmented a
+				full outer join
+				partitioned_clock c
+				using (pk1, pk2, qk)
+		),
+	some_rows as (
+		select pk1, pk2
+		from gapinput
+		group by pk1, pk2
+		having count(*) > 0
+	)
+select pk1, pk2, qk, sk, b
+from filled
+	natural join
+	some_rows
+order by pk1, pk2, qk, sk, b;
+-- end_equiv
+ 
+
+select 
+    qk, sk, b,
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq,
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by si, qk, sk, b;
+
+select 
+    pk1, pk2, qk, sk, b, 
+    sequence_index() over (q) as si,
+    count(*) over (q) as cq, 
+    count(*) over (partition by pk1, pk2) as cp, 
+    count(*) over () as cn,
+    rank() over (q) as rk,
+    dense_rank() over (q) as dr
+from gapinput
+sequence q as (
+	partition by pk1, pk2
+	order by sk
+	with qk every interval '2 months' between timestamptz '2012-04-01' and timestamptz '2012-08-31' )
+order by pk1, pk2, qk, si, sk, b;
+
+-- Clean up
+drop table if exists gapinput cascade;
+
+-- Scalar Linear Interpolation
+
 -- Test limits
 select linear_interpolate(3, 0, 0::bigint, 1, (2^62)::bigint);
 select linear_interpolate(3, 0, 0::bigint, 1, (-2^62)::bigint);

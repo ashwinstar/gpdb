@@ -894,6 +894,29 @@ _equalSetOperationStmt(const SetOperationStmt *a, const SetOperationStmt *b)
 }
 
 static bool
+_equalSequenceDefn(const SequenceDefn *a, const SequenceDefn *b)
+{
+	COMPARE_STRING_FIELD(keyname);
+	COMPARE_NODE_FIELD(span);
+	COMPARE_NODE_FIELD(seqlow);
+	COMPARE_NODE_FIELD(seqlim);
+	
+	return true;
+}
+
+static bool
+_equalSequenceSpec(const SequenceSpec *a, const SequenceSpec *b)
+{
+	COMPARE_STRING_FIELD(seqname);
+	COMPARE_NODE_FIELD(partition);
+	COMPARE_NODE_FIELD(order);
+	COMPARE_NODE_FIELD(postorder);
+	COMPARE_NODE_FIELD(seqdef);
+	
+	return true;
+}
+
+static bool
 _equalAlterTableStmt(const AlterTableStmt *a, const AlterTableStmt *b)
 {
 	COMPARE_NODE_FIELD(relation);
@@ -2666,6 +2689,12 @@ equal(const void *a, const void *b)
 		case T_SetOperationStmt:
 			retval = _equalSetOperationStmt(a, b);
 			break;
+		case T_SequenceDefn:
+			retval = _equalSequenceDefn(a, b);
+			break;
+		case T_SequenceSpec:
+			retval = _equalSequenceSpec(a, b);
+			break;
 		case T_AlterTableStmt:
 			retval = _equalAlterTableStmt(a, b);
 			break;
@@ -3028,6 +3057,7 @@ equal(const void *a, const void *b)
 			retval = _equalWindowSpecParse(a, b);
 			break;
 		case T_WindowSpec:
+		case T_SeqWindowSpec:
 			retval = _equalWindowSpec(a, b);
 			break;
 		case T_WindowFrame:

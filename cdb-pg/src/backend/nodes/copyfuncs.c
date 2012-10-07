@@ -855,6 +855,8 @@ _copyWindow(const Window *from)
 	if (from->numPartCols > 0)
 		COPY_POINTER_FIELD(partColIdx, from->numPartCols * sizeof(AttrNumber));
 	COPY_NODE_FIELD(windowKeys);
+	COPY_NODE_FIELD(sequence);
+	COPY_SCALAR_FIELD(semantics);
 
 	return newnode;
 }
@@ -2016,14 +2018,29 @@ static WindowSpec *
 _copyWindowSpec(const WindowSpec *from)
 {
 	WindowSpec *newnode = makeNode(WindowSpec);
-
+	
 	COPY_STRING_FIELD(name);
 	COPY_STRING_FIELD(parent);
 	COPY_NODE_FIELD(partition);
 	COPY_NODE_FIELD(order);
 	COPY_NODE_FIELD(frame);
 	COPY_SCALAR_FIELD(location);
+	
+	return newnode;
+}
 
+static SeqWindowSpec *
+_copySeqWindowSpec(const SeqWindowSpec *from)
+{
+	SeqWindowSpec *newnode = makeNode(SeqWindowSpec);
+	
+	COPY_STRING_FIELD(name);
+	COPY_STRING_FIELD(parent);
+	COPY_NODE_FIELD(partition);
+	COPY_NODE_FIELD(order);
+	COPY_NODE_FIELD(frame);
+	COPY_SCALAR_FIELD(location);
+	
 	return newnode;
 }
 
@@ -2506,7 +2523,34 @@ _copySetOperationStmt(const SetOperationStmt *from)
 	COPY_NODE_FIELD(rarg);
 	COPY_NODE_FIELD(colTypes);
 	COPY_NODE_FIELD(colTypmods);
+	
+	return newnode;
+}
 
+static SequenceDefn *
+_copySequenceDefn(const SequenceDefn *from)
+{
+	SequenceDefn *newnode = makeNode(SequenceDefn);
+	
+	COPY_STRING_FIELD(keyname);
+	COPY_NODE_FIELD(span);
+	COPY_NODE_FIELD(seqlow);
+	COPY_NODE_FIELD(seqlim);
+	
+	return newnode;
+}
+
+static SequenceSpec *
+_copySequenceSpec(const SequenceSpec *from)
+{
+	SequenceSpec *newnode = makeNode(SequenceSpec);
+	
+	COPY_STRING_FIELD(seqname);
+	COPY_NODE_FIELD(partition);
+	COPY_NODE_FIELD(order);
+	COPY_NODE_FIELD(postorder);
+	COPY_NODE_FIELD(seqdef);
+	
 	return newnode;
 }
 
@@ -4406,6 +4450,12 @@ copyObject(const void *from)
 		case T_SetOperationStmt:
 			retval = _copySetOperationStmt(from);
 			break;
+		case T_SequenceDefn:
+			retval = _copySequenceDefn(from);
+			break;
+		case T_SequenceSpec:
+			retval = _copySequenceSpec(from);
+			break;
 		case T_AlterTableStmt:
 			retval = _copyAlterTableStmt(from);
 			break;
@@ -4793,6 +4843,9 @@ copyObject(const void *from)
 			break;
 		case T_WindowSpec:
 			retval = _copyWindowSpec(from);
+			break;
+		case T_SeqWindowSpec:
+			retval = _copySeqWindowSpec(from);
 			break;
 		case T_WindowFrame:
 			retval = _copyWindowFrame(from);

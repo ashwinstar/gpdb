@@ -770,6 +770,7 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				}
 			}
 			pfree(subplan_itlist);
+			/* For now window->sequence contains only constants.  May change. */
 		}
 			break;
 		case T_Result:

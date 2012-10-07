@@ -688,6 +688,8 @@ _outWindow(StringInfo str, Window *node)
 	WRITE_INT_ARRAY(partColIdx, numPartCols, AttrNumber);
 
 	WRITE_NODE_FIELD(windowKeys);
+	WRITE_NODE_FIELD(sequence);
+	WRITE_ENUM_FIELD(semantics, WindowSemantics);
 }
 
 static void
@@ -2929,8 +2931,21 @@ _outWindowSpecParse(StringInfo str, WindowSpecParse *node)
 static void
 _outWindowSpec(StringInfo str, WindowSpec *node)
 {
-	WRITE_NODE_TYPE("WINDOWSPEC");
+	WRITE_NODE_TYPE("WINDOWSPEC"); /* identical to SeqWindowSpec. */
+	
+	WRITE_STRING_FIELD(name);
+	WRITE_STRING_FIELD(parent);
+	WRITE_NODE_FIELD(partition);
+	WRITE_NODE_FIELD(order);
+	WRITE_NODE_FIELD(frame);
+    WRITE_INT_FIELD(location);
+}
 
+static void
+_outSeqWindowSpec(StringInfo str, SeqWindowSpec *node)
+{
+	WRITE_NODE_TYPE("SEQWINDOWSPEC"); /* identical to WindowSpec. */
+	
 	WRITE_STRING_FIELD(name);
 	WRITE_STRING_FIELD(parent);
 	WRITE_NODE_FIELD(partition);
@@ -3009,6 +3024,29 @@ _outCommonTableExpr(StringInfo str, CommonTableExpr *node)
 	WRITE_NODE_FIELD(ctecolnames);
 	WRITE_NODE_FIELD(ctecoltypes);
 	WRITE_NODE_FIELD(ctecoltypmods);
+}
+
+static void
+_outSequenceDefn(StringInfo str, SequenceDefn *node)
+{
+	WRITE_NODE_TYPE("SEQUENCEDEFN");
+	
+	WRITE_STRING_FIELD(keyname);
+	WRITE_NODE_FIELD(span);
+	WRITE_NODE_FIELD(seqlow);
+	WRITE_NODE_FIELD(seqlim);
+}
+
+static void
+_outSequenceSpec(StringInfo str, SequenceSpec *node)
+{
+	WRITE_NODE_TYPE("SEQUENCESPEC");
+	
+	WRITE_STRING_FIELD(seqname);
+	WRITE_NODE_FIELD(partition);
+	WRITE_NODE_FIELD(order);
+	WRITE_NODE_FIELD(postorder);
+	WRITE_NODE_FIELD(seqdef);
 }
 
 static void
@@ -4146,6 +4184,9 @@ _outNode(StringInfo str, void *obj)
 			case T_WindowSpec:
 				_outWindowSpec(str, obj);
 				break;
+			case T_SeqWindowSpec:
+				_outSeqWindowSpec(str, obj);
+				break;
 			case T_WindowFrame:
 				_outWindowFrame(str, obj);
 				break;
@@ -4166,6 +4207,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SetOperationStmt:
 				_outSetOperationStmt(str, obj);
+				break;
+			case T_SequenceDefn:
+				_outSequenceDefn(str, obj);
+				break;
+			case T_SequenceSpec:
+				_outSequenceSpec(str, obj);
 				break;
 			case T_RangeTblEntry:
 				_outRangeTblEntry(str, obj);

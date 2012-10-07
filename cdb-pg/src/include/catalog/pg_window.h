@@ -131,6 +131,7 @@ typedef FormData_pg_window *Form_pg_window;
 #define WINKIND_LAST_VALUE	'l'		/* Oracle LAST_VALUE function */
 #define WINKIND_LEAD		'd'		/* Oracle LEAD function */
 #define WINKIND_LAG			'g'		/* Oracle LAG function */
+#define WINKIND_SEQUENCE_KEY	'k'	/* SEQUENCE clause sequence_key function */
 
 /* This constant for use in code, never in catalog */
 #define WINKIND_AGGREGATE	'a'		/* aggregate-based window function */
@@ -143,6 +144,7 @@ typedef FormData_pg_window *Form_pg_window;
 #define IS_LAG(winkind) ((winkind)==WINKIND_LAG)
 #define IS_LEAD_LAG(winkind) (IS_LEAD(winkind) || IS_LAG(winkind)) 
 #define IS_NTILE(winkind) ((winkind)==WINKIND_NTILE)
+#define IS_SEQUENCE_KEY(winkind) ((winkind)==WINKIND_SEQUENCE_KEY)
 
 
 /* ----------------
@@ -156,6 +158,9 @@ DATA(insert ( 7000	f f f f	7100		0			0			0		w	f	0));
 
 /* rank */
 DATA(insert ( 7001	t f f f	7101		0			0			0		w	f	0));
+
+/* sequence_index */
+DATA(insert ( 7082	t f f f	7183		0			0			0		w	f	0));
 
 /* dense_rank */
 DATA(insert ( 7002	t f f f	7102		0			0			0		w	f	0));
@@ -480,5 +485,9 @@ DATA(insert ( 7187  t f f f 7197		0		0		0	d	f	5082 ));
 DATA(insert ( 7188  t f f f 7198		0		0		0	d	f	5082 ));
 DATA(insert ( 7192  t f f f 7202		0		0		0	d	f	5082 ));
 DATA(insert ( 7193  t f f f 7203		0		0		0	d	f	5082 ));
+/* sequence_key */
+DATA(insert ( 7076  t f f f 7077        0       0       0	k 	f	0));
+DATA(insert ( 7078  t f f f 7079		0		0		0	k 	f	0));
+DATA(insert ( 7080  t f f f 7081		0		0		0	k 	f	0));
 
 #endif   /* _PG_WINDOW_H */

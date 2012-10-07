@@ -4611,7 +4611,7 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
 
 Window *make_window(PlannerInfo *root, List *tlist,
 		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
-		   Plan *lefttree)
+		   Node *sequence, WindowSemantics semantics, Plan *lefttree)
 {
 	Window *node = makeNode(Window);
 	Plan	   *plan = &node->plan;
@@ -4623,6 +4623,8 @@ Window *make_window(PlannerInfo *root, List *tlist,
 	node->numPartCols = numPartCols;
 	node->partColIdx = partColIdx;
 	node->windowKeys = windowKeys;
+	node->sequence = sequence;
+	node->semantics = semantics;
 
 	numOrderCols = numPartCols;
 	foreach(cell, windowKeys)

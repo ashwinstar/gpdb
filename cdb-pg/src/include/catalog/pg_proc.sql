@@ -2547,6 +2547,29 @@
 
  CREATE FUNCTION interval_bound(timestamptz, "interval", int4, timestamptz) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'timestamptz_interval_bound' WITH (OID=2999, DESCRIPTION="boundary of the interval containing the given value");
 
+--
+-- Note that these functions are for use with the sequence clause.  Though cataloged
+-- separately, they must track the interval_bound function.  They use the datatype
+-- of the input ordering key of a SEQUENCE clause to select the overload of function
+-- sequence_key that returns the correct datatype.
+--
+-- If there is a definition for 
+--     interval_bound(DTin, ...) returns DTout, 
+-- then there must be a definition for 
+--      sequence_key(DTin) return DTout.
+--
+ CREATE FUNCTION sequence_key("numeric") RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7076, proiswin="t");
+
+ CREATE FUNCTION sequence_key_numeric(internal) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'sequence_key_numeric' WITH (OID=7077, proiswin="t");
+
+ CREATE FUNCTION sequence_key("timestamp") RETURNS "timestamp" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7078, proiswin="t");
+
+ CREATE FUNCTION sequence_key_timestamp(internal) RETURNS "timestamp" LANGUAGE internal IMMUTABLE STRICT AS 'sequence_key_timestamp' WITH (OID=7079, proiswin="t");
+
+ CREATE FUNCTION sequence_key(timestamptz) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7080, proiswin="t");
+
+ CREATE FUNCTION sequence_key_timestamptz(internal) RETURNS timestamptz LANGUAGE internal IMMUTABLE STRICT AS 'sequence_key_timestamptz' WITH (OID=7081, proiswin="t");
+
 
 -- Aggregate-related functions 
  CREATE FUNCTION float8_avg(bytea) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_avg' WITH (OID=1830, DESCRIPTION="AVG aggregate final function");
@@ -3280,6 +3303,8 @@
 -- #define ROW_NUMBER_TYPE 20
 
  CREATE FUNCTION rank() RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7001, proiswin="t");
+
+ CREATE FUNCTION sequence_index() RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7082, proiswin="t");
 
  CREATE FUNCTION dense_rank() RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7002, proiswin="t");
 
@@ -4741,6 +4766,8 @@
  CREATE FUNCTION row_number_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'row_number_immed' WITH (OID=7100, DESCRIPTION="window immediate function");
 
  CREATE FUNCTION rank_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'rank_immed' WITH (OID=7101, DESCRIPTION="window immediate function");
+
+ CREATE FUNCTION sequence_index_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'sequence_index_immed' WITH (OID=7183, DESCRIPTION="window immediate function");
 
  CREATE FUNCTION dense_rank_immed(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'dense_rank_immed' WITH (OID=7102, DESCRIPTION="window immediate function");
 

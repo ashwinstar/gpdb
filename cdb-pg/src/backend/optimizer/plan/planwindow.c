@@ -194,6 +194,8 @@ typedef struct WindowContext
 	
 	bool			has_unordered_aggs;
 	bool			has_deferred_window_fns;
+	SequenceSpec   *sequence;
+	WindowSemantics semantics;
 	
 	 /* Only for sequential plans */
 	bool			original_range;
@@ -287,7 +289,8 @@ static Plan *add_join_to_wrapper(PlannerInfo *root, Plan *plan, Query *query, Li
 static Query *copy_common_subquery(Query *original, List *targetList);
 static char *get_function_name(Oid proid, const char *dflt);
 
-
+/* Plan a window or sequence query.
+ */
 Plan *
 window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 {
@@ -308,6 +311,19 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 #ifdef CDB_WINDOW_DISPLAY	
 	elog_node_display(NOTICE, "Window  query target list", parse->targetList, true);
 	elog_node_display(NOTICE, "Window  query window  clause", parse->windowClause, true);
+#endif
+
+	context->sequence = getSequenceSpec(parse->windowClause);
+	if ( useSequenceSemantics(parse->windowClause) )
+		context->semantics = WINDOW_SEMANTICS_SEQ;
+	else
+		context->semantics = WINDOW_SEMANTICS_STD;
+
+#ifdef CDB_SEQUENCE_DISPLAY	
+	if ( context->sequence != NULL )
+	{
+		elog_node_display(NOTICE, "Sequence specified: ", context->sequence, true);
+	}
 #endif
 	
 	/* Create a map: (varno,varattno)  <--> (integer) for use in recording
@@ -330,8 +346,8 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	preprocess_window_tlist(parse->targetList, context);
 
 	/* Create an array of SpecInfo structures corresponding to the distinct
-	 * referenced WindowSpec nodes in the input. Refer back to this array
-	 * from the array of RefInfo structures.
+	 * SequenceSpec and referenced WindowSpec nodes in the input. Refer back 
+	 * to this array from the array of RefInfo structures.
 	 */
 	inventory_window_specs(parse->windowClause, context);
 
@@ -356,14 +372,14 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	if ( context->nwindowinfos == 1 && 
 		!(context->has_unordered_aggs || context->has_deferred_window_fns) )
 	{
-		return plan_trivial_window_query(root, context, pathkeys_ptr);
+		result_plan = plan_trivial_window_query(root, context, pathkeys_ptr);
 	}
 	else
 	{
 		if ( root->config->gp_enable_sequential_window_plans )
-			return plan_sequential_window_query(root, context, pathkeys_ptr);
+			result_plan = plan_sequential_window_query(root, context, pathkeys_ptr);
 		else
-			return plan_parallel_window_query(root, context, pathkeys_ptr);
+			result_plan = plan_parallel_window_query(root, context, pathkeys_ptr);
 	}
 
 	/* TODO Check our API.
@@ -401,6 +417,9 @@ static WindowContext *newWindowContext()
 	context->coplan_count = 0;
 	context->has_unordered_aggs = false;
 	context->has_deferred_window_fns = false;
+	
+	context->sequence = NULL;
+	context->semantics = WINDOW_SEMANTICS_STD;
 
 	context->original_range = true;
 	context->subquery = NULL;
@@ -846,25 +865,44 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 	i = 0;
 	foreach ( lcs, window_specs )
 	{
-		WindowSpec *spec = (WindowSpec *) lfirst(lcs);
+		Node *node = (Node *)lfirst(lcs);
 		Bitmapset *map = NULL;
 		ListCell *lc;
 		Bitmapset *orderset = NULL;
 		
-		foreach ( lcp, spec->partition )
+		List *order = NIL;
+		WindowFrame *frame = NULL;
+		List *partition = NIL;
+		
+		if (IsA(node, WindowSpec) || IsA(node, SeqWindowSpec))
+		{
+			WindowSpec *spec = (WindowSpec *)node;
+			order = spec->order;
+			frame = spec->frame;
+			partition = spec->partition;
+		}
+		else if (IsA(node, SequenceSpec))
+		{
+			SequenceSpec *spec = (SequenceSpec *)node;
+			order = spec->order;
+			frame = NULL;
+			partition = spec->partition;
+		}
+		
+		foreach ( lcp, partition )
 		{
 			SortClause *sc = (SortClause *) lfirst(lcp);
 			map = bms_add_member(map, sc->tleSortGroupRef);
 		}
 		specinfos[i].specindex = i;
 		specinfos[i].partset = map;
-		specinfos[i].order = spec->order;
-		specinfos[i].frame = spec->frame;
+		specinfos[i].order = order;
+		specinfos[i].frame = frame;
 		specinfos[i].refset = NULL;
 		specinfos[i].windowindex = 0;
 		specinfos[i].keylevel = 0;
-		specinfos[i].partkey = spec->partition;
-
+		specinfos[i].partkey = partition;
+		
 		/* Construct unique_order for each SpecInfo by removing
 		 * keys that are duplicates of partitioning keys and other
 		 * ORDER BY keys.
@@ -1971,7 +2009,9 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	List *lower_tlist = context->lower_tlist;
 	CdbPathLocus input_locus, output_locus;
 	List *pathkeys = NIL;
-	List *window_pathkeys = NIL;	
+	List *window_pathkeys = NIL;
+	SequenceSpec *sspec = context->sequence;
+	Node *seqdef = (sspec ? (Node*)sspec->seqdef : NULL);
 	
 	Assert ( pathkeys_ptr );
 	Assert (context->nwindowinfos == 1);
@@ -2001,14 +2041,27 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	result_plan = (Plan*) make_window(root, context->upper_tlist, 
 									  winfo->partkey_len, winfo->partkey_attrs,
 									  winfo->key_list, /* XXX copy? */
+									  seqdef, context->semantics,
 									  result_plan);
 	
 	/* 
 	 * Add a Flow node to the top node, if it doesn't have one yet.
 	 * Retrieve distribution info from the next-to-top node which
-	 * must have a Flow node.
+	 * must have a Flow node.  Note that, if this window is a
+	 * sequence producer, we need to change the sort order since
+	 * the output sort order differs from the input sort order.
 	 */
-	if (!result_plan->flow)
+	if ( sspec != NULL )
+	{				
+		List *new_order = list_concat(sspec->partition, sspec->postorder);
+		result_plan->flow = pull_up_Flow(result_plan,
+										 result_plan->lefttree,
+										 false);
+		pathkeys = make_pathkeys_for_sortclauses(new_order, context->upper_tlist);
+		pathkeys = canonicalize_pathkeys(root, pathkeys);
+		update_flow_from_sortclauses(result_plan->flow, new_order, context->upper_tlist);
+	}
+	else if (!result_plan->flow)
 		result_plan->flow = pull_up_Flow(result_plan, 
 										 result_plan->lefttree, 
 										 (pathkeys != NIL));
@@ -2232,6 +2285,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	Query *agg_subquery;
 	bool hasaux, hasagg;
 	CdbPathLocus input_locus = *locus_ptr;
+	Node *seqdef = (context->sequence ? (Node*)context->sequence->seqdef: NULL);
 
 	/* In-Out parameters */
 	List *pathkeys = *pathkeys_ptr;
@@ -2468,6 +2522,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 							winfo->partkey_len,
 							partkey,
 							(List*) translate_upper_vars_sequential((Node*)winfo->key_list, context), /* XXX mutate windowKeys to translate any Var nodes in frame vals. */
+							seqdef, context->semantics,
 							window_plan);
 							
 			window_plan->flow = pull_up_Flow(window_plan, window_plan->lefttree, true);
@@ -2710,6 +2765,7 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 	List *targetlist;
 	List *rtable;
 	FromExpr *jointree;
+	Node *seqdef = (context->sequence? (Node*)context->sequence->seqdef: NULL);
 	
 	int i;
 	
@@ -2745,6 +2801,7 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 		subplan = (Plan*) make_window(root, lower_tlist, 
 										  0, NULL, /* No paritioning */
 										  NIL, /* No ordering */
+										  seqdef, context->semantics,
 										  subplan);
 		if (!subplan->flow)
 			subplan->flow = pull_up_Flow(subplan, 
@@ -3203,12 +3260,14 @@ static RangeTblEntry *rte_for_coplan(
 		Plan *input_plan, 
 		CdbPathLocus subplan_locus,
 		List *subplan_pathkeys,
+		WindowContext *context,
 		WindowInfo *winfo,
 		Coplan *coplan)
 {
 	RangeTblEntry *rte;
 	Plan *new_plan = input_plan;
 	Alias *new_eref;
+	Node* seqdef = (context->sequence? (Node*)context->sequence->seqdef: NULL);
 	
 	/* Now new_plan is suitable input for a coplan of this winfo. 
 	 * Add the coplan processing.
@@ -3217,10 +3276,11 @@ static RangeTblEntry *rte_for_coplan(
 	{
 		case COPLAN_WINDOW:
 			new_plan = (Plan*) 
-				make_window(root, coplan->targetlist, 
-						winfo->partkey_len, winfo->partkey_attrs,
-						winfo->key_list, /* XXX copy? */
-						new_plan);
+				make_window(root, coplan->targetlist,
+							winfo->partkey_len, winfo->partkey_attrs,
+							winfo->key_list, /* XXX copy? */
+							seqdef, context->semantics,
+							new_plan);
 		break;
 	case COPLAN_AGG:
 		if ( coplan->partkey_len > 0 )
@@ -3466,6 +3526,7 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *context)
 					(Plan *) lfirst(lc),
 					context->subplan_locus,
 					(List *)lfirst(pk_lc),
+					context,
 					winfo,
 					winfo->window_coplan);
 			lc = lnext(lc);
@@ -3482,6 +3543,7 @@ List *plan_window_rtable(PlannerInfo *root, WindowContext *context)
 					(Plan *) lfirst(lc),
 					context->subplan_locus,
 					(List *)lfirst(pk_lc),
+					context,
 					winfo,
 					winfo->agg_coplan);
 			lc = lnext(lc);

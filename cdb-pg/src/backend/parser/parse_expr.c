@@ -575,6 +575,7 @@ parse_expr_location(Expr *expr)
             break;
 
         case T_WindowSpec:
+		case T_SeqWindowSpec:
             loc = ((WindowSpec *)expr)->location;
             break;
 
@@ -713,6 +714,22 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					{
 						node = (Node *) copyObject(pstate->p_value_substitute);
 						break;
+					}
+					
+					/* It might be the sequence key of a SEQUENCE query.
+					 */
+					if ( pstate->p_seqkey_name != NULL )
+					{
+						if (pstate->p_seqkey_transformed == NULL ||
+							pstate->p_win_clauses == NIL )
+						{
+							elog(ERROR, "invalid internal state in transformColumnRef");
+						}
+						if (strcmp(name, pstate->p_seqkey_name) == 0)
+						{
+							node = copyObject(pstate->p_seqkey_transformed);
+							break;
+						}
 					}
 
 					/*

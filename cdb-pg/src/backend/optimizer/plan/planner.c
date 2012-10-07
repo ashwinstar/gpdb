@@ -675,7 +675,13 @@ subquery_planner(PlannerGlobal *glob,
 	{
 		WindowSpec *w =(WindowSpec*)lfirst(l);
 		
-		if ( w != NULL && w->frame != NULL )
+		Assert( 
+			   IsA(w, WindowSpec) || 
+			   IsA(w, SequenceSpec) ||
+			   IsA(w, SeqWindowSpec) 
+			);
+		
+		if ( ( IsA(w, WindowSpec) || IsA(w, SeqWindowSpec) ) && w != NULL && w->frame != NULL )
 		{
 			WindowFrame *f = w->frame;
 						
@@ -1348,8 +1354,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													  tlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 	}
-	else if ( parse->windowClause && parse->targetList &&
-			  contain_windowref((Node *)parse->targetList, NULL) )
+	else if ( parse->windowClause && parse->targetList && 
+			  ( IsA(linitial(parse->windowClause), SequenceSpec) ||
+			    contain_windowref((Node *)parse->targetList, NULL) ) )
 	{
 		if (extract_nodes(NULL, (Node *) tlist, T_PercentileExpr) != NIL)
 		{

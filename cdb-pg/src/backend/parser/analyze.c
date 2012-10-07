@@ -110,27 +110,34 @@ typedef struct
 } check_parameter_resolution_context;
 
 /* Context for transformGroupedWindows() which mutates components
- * of a query that mixes windowing and aggregation or grouping.  It
- * accumulates context for eventual construction of a subquery (the
- * grouping query) during mutation of components of the outer query
- * (the windowing query).
+ * of a query that mixes windowing and aggregation or grouping and 
+ * for transformSequencedWindowQuery() which mutates components of
+ * a query that implements a SEQUENCE clause.  The cases have much
+ * in common.  This function accumulates context for eventual 
+ * construction of a subquery (the grouping or sequencing query) 
+ * during mutation of components of the outer query (the original
+ * query).
  */
 typedef struct
 {
 	List *subtlist; /* target list for subquery */
-	List *subgroupClause; /* group clause for subquery */
-	List *windowClause; /* window clause for outer query*/
+	List *subgroupClause; /* group clause for subquery (null in sequence case). */
+	
+	List *partition; /* SortClause list for partitioning. */
+	List *seqorder; /* SortClause list for sequence key and index. */
+	Expr *seqkey; /* Same as in seqorder, for convenience. */
+	Expr *seqind; /* Same as in seqorder, for convenience. */
 
 	/* Scratch area for init_grouped_window context and map_sgr_mutator.
 	 */
 	Index *sgr_map;
 
-	/* Scratch area for grouped_window_mutator and var_for_gw_expr.
+	/* Scratch area for grouped_window_mutator and var_for_subq_expr.
 	 */
-	List *subrtable;
+	List *subrtable; /* range for subquery */
 	int call_depth;
 	TargetEntry *tle;
-} grouped_window_ctx;
+} transform_window_ctx;
 
 typedef struct
 {
@@ -250,15 +257,21 @@ static List *getLikeDistributionPolicy(InhRelation *e);
 static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 											SingleRowErrorDesc *sreh);
 
-static Query *transformGroupedWindows(Query *qry);
-static void init_grouped_window_context(grouped_window_ctx *ctx, Query *qry);
-static Var *var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force);
-static void discard_grouped_window_context(grouped_window_ctx *ctx);
+static RangeTblEntry *derive_subquery_rte(Query *qry);
+static Query *transformGroupedWindows(ParseState* pstate, Query *qry);
+static Query *transformSequencedWindowQuery(ParseState* pstate, Query *qry);
+static Node* sequenced_window_mutator(Node *node, void *context);
+static List *deseq_windowClause(List *windowClause, List *new_order);
+static SortClause *sortClauseForTarget(TargetEntry *tle);
+static void init_grouped_window_ctx(transform_window_ctx *ctx, Query *qry);
+static void init_sequenced_window_ctx(transform_window_ctx *ctx, Query *qry, ParseState *pstate);
+static Var *var_for_subq_expr(transform_window_ctx *ctx, Node *expr, bool force);
+static void discard_transform_window_ctx(transform_window_ctx *ctx);
 static Node *map_sgr_mutator(Node *node, void *context);
 static Node *grouped_window_mutator(Node *node, void *context);
 static Alias *make_replacement_alias(Query *qry, const char *aname);
 static char *generate_positional_name(AttrNumber attrno);
-static List*generate_alternate_vars(Var *var, grouped_window_ctx *ctx);
+static List*generate_alternate_vars(Var *var, List *rtable, List *tlist);
 
 static List *fillin_encoding(List *list);
 
@@ -9115,6 +9128,81 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 	return qry;
 }
 
+/* 
+ * Make an RTE containing a new subquery based on the range of the input
+ * query.  This is used for the subquery splitting in support of separation
+ * of grouping and windowing and separation of sequencing from ordinary
+ * windowing. 
+ *
+ * Result is a RangeTableEntry *rte. 
+ * 
+ * Caller is responsible for setting 
+ *
+ *    rte->alias (initialized NULL)
+ *    rte->eref (initialized NULL)
+ *
+ *    rte->subquery->targetList (initialized empty)
+ *    rte->subquery->windowClause (initialized per input query range)
+ *    rte->subquery->hasAggs (initialized per input query)
+ *    rte->subquery->hasWinFuncs (initialized per input query range)
+ *    rte->subquery->hasSubLinks (initialized per input query)
+ */
+static RangeTblEntry *derive_subquery_rte(Query *qry)
+{
+	Query *subq;
+	RangeTblEntry *rte;
+	
+	subq = makeNode(Query);
+	subq->commandType = CMD_SELECT;
+	subq->querySource = QSRC_PARSER;
+	subq->canSetTag = true;
+	subq->utilityStmt = NULL;
+	subq->resultRelation = 0;
+	subq->intoClause = NULL;
+	subq->hasAggs = qry->hasAggs;
+	subq->hasWindFuncs = false; /* reevaluate later */
+	subq->hasSubLinks = qry->hasSubLinks; /* reevaluate later */
+	
+	/* Core of subquery input table expression: */
+	subq->rtable = qry->rtable; /* before windowing */
+	subq->jointree = qry->jointree; /* before windowing */
+	subq->targetList = NIL; /* fill in later */
+	
+	subq->returningList = NIL;
+	subq->groupClause = qry->groupClause; /* before windowing */
+	subq->havingQual = qry->havingQual; /* before windowing */
+	subq->windowClause = NIL; /* by construction */
+	subq->distinctClause = NIL; /* after windowing */
+	subq->sortClause = NIL; /* after windowing */
+	subq->limitOffset = NULL; /* after windowing */
+	subq->limitCount = NULL; /* after windowing */
+	subq->rowMarks = NIL;
+	subq->setOperations = NULL;
+	
+	/* Check if there is a window function in the join tree. If so
+	 * we must mark hasWindFuncs in the sub query as well.
+	 */
+	if (checkExprHasWindFuncs((Node *)subq->jointree))
+		subq->hasWindFuncs = true;
+	
+	/* Make the single range table entry for the outer query Q' as
+	 * a wrapper for the subquery (Q'') currently under construction.
+	 */
+	rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_SUBQUERY;
+	rte->subquery = subq;
+	rte->alias = NULL; /* fill in later */
+	rte->eref = NULL; /* fill in later */
+	rte->inFromCl = true;
+	rte->requiredPerms = ACL_SELECT;
+	/* Default?
+	 * rte->inh = 0;
+	 * rte->checkAsUser = 0;
+	 * rte->pseudocols = 0;
+	 */
+	
+	return rte;
+}
 
 /*
  * If an input query (Q) mixes window functions with aggregate
@@ -9142,7 +9230,7 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
  * done with them.
  */
 static Query *
-transformGroupedWindows(Query *qry)
+transformGroupedWindows(ParseState* pstate, Query *qry)
 {
 	Query *subq;
 	RangeTblEntry *rte;
@@ -9150,67 +9238,38 @@ transformGroupedWindows(Query *qry)
 	Alias *alias;
 	bool hadSubLinks = qry->hasSubLinks;
 
-	grouped_window_ctx ctx;
+	transform_window_ctx ctx;
 
 	Assert(qry->commandType == CMD_SELECT);
 	Assert(!PointerIsValid(qry->utilityStmt));
 	Assert(qry->returningList == NIL);
+	
+	/* The parse state is not used locally at the moment.  Just keep 
+	 * the compiler happy so we can use the "standard" signature for
+	 * such functions. 
+	 */
+	pstate = NULL;
 
 	if ( !qry->hasWindFuncs || !(qry->groupClause || qry->hasAggs) )
 		return qry;
+	
+	/* This subquery transformation can't coexist with sequences.  
+	 * Attribute references in the SEQUENCE clause refer to items
+	 * in the ungrouped FROM clause.
+	 */
+	if ( getSequenceSpec(qry->windowClause) )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("query has both GROUP BY and SEQUENCE clauses")));
+	}
 
 	/* Make the new subquery (Q'').  Note that (per SQL:2003) there
 	 * can't be any window functions called in the WHERE, GROUP BY,
 	 * or HAVING clauses.
 	 */
-	subq = makeNode(Query);
-	subq->commandType = CMD_SELECT;
-	subq->querySource = QSRC_PARSER;
-	subq->canSetTag = true;
-	subq->utilityStmt = NULL;
-	subq->resultRelation = 0;
-	subq->intoClause = NULL;
-	subq->hasAggs = qry->hasAggs;
-	subq->hasWindFuncs = false; /* reevaluate later */
-	subq->hasSubLinks = qry->hasSubLinks; /* reevaluate later */
-
-	/* Core of subquery input table expression: */
-	subq->rtable = qry->rtable; /* before windowing */
-	subq->jointree = qry->jointree; /* before windowing */
-	subq->targetList = NIL; /* fill in later */
-
-	subq->returningList = NIL;
-	subq->groupClause = qry->groupClause; /* before windowing */
-	subq->havingQual = qry->havingQual; /* before windowing */
-	subq->windowClause = NIL; /* by construction */
-	subq->distinctClause = NIL; /* after windowing */
-	subq->sortClause = NIL; /* after windowing */
-	subq->limitOffset = NULL; /* after windowing */
-	subq->limitCount = NULL; /* after windowing */
-	subq->rowMarks = NIL;
-	subq->setOperations = NULL;
-
-	/* Check if there is a window function in the join tree. If so
-	 * we must mark hasWindFuncs in the sub query as well.
-	 */
-	if (checkExprHasWindFuncs((Node *)subq->jointree))
-		subq->hasWindFuncs = true;
-
-	/* Make the single range table entry for the outer query Q' as
-	 * a wrapper for the subquery (Q'') currently under construction.
-	 */
-	rte = makeNode(RangeTblEntry);
-	rte->rtekind = RTE_SUBQUERY;
-	rte->subquery = subq;
-	rte->alias = NULL; /* fill in later */
-	rte->eref = NULL; /* fill in later */
-	rte->inFromCl = true;
-	rte->requiredPerms = ACL_SELECT;
-	/* Default?
-	 * rte->inh = 0;
-	 * rte->checkAsUser = 0;
-	 * rte->pseudocols = 0;
-	*/
+	rte = derive_subquery_rte(qry);
+	subq = rte->subquery;
 
 	/* Make a reference to the new range table entry .
 	 */
@@ -9221,7 +9280,7 @@ transformGroupedWindows(Query *qry)
 	 * This is trickier than it looks.  The context will be
 	 * "primed" with grouping targets.
 	 */
-	init_grouped_window_context(&ctx, qry);
+	init_grouped_window_ctx(&ctx, qry);
 
     /* Begin rewriting the outer query in place.
      */
@@ -9271,11 +9330,378 @@ transformGroupedWindows(Query *qry)
 	if (hadSubLinks != (qry->hasSubLinks || subq->hasSubLinks))
 		elog(ERROR, "inconsistency detected in internal grouped windows transformation");
 
-	discard_grouped_window_context(&ctx);
+	discard_transform_window_ctx(&ctx);
 
 	return qry;
 }
 
+/*
+ * Divide an input sequence query (Q) which may contain a mix
+ * of window function calls (subject to restrictions) and window
+ * function call specific to sequences (i.e., sequence_key and
+ * sequence_index) into an outer query, Q', that contains no 
+ * sequence-specific calls and an inner query, Q'', that contains 
+ * no window function calls except sequence-specific ones.
+ *
+ * Q' will have a 1-entry range table whose entry corresponds to
+ * the results of Q''.
+ *
+ * Q'' will have the same range as Q and will be pushed down into
+ * a subquery range table entry in Q'.
+ *
+ * This is similar to the technique of transformGroupedWindows,
+ * so there is some shared code, however the details are different
+ * and hard enough to generalize that it seems clearer to separate
+ * the code paths in many cases.  Note that, if applicable, 
+ * transformGroupedWindows has already made its transformation.
+ * Thus there will be not grouping involved in Q.
+ *
+ * As in the case of transformGroupedWindows, the depth of outer 
+ * references in Q'' and below will increase, so we need to adjust 
+ * non-zero xxxlevelsup fields (Var, Aggref, and WindowRef nodes) 
+ * in Q'' and below.  At the end, there will be no levelsup items 
+ * referring to Q'.  Prior references to Q will now refer to Q''; 
+ * prior references to blocks above Q will refer to the same blocks 
+ * above Q'.)
+ *
+ * We do all this by creating a new Query node, subq, for Q''.  We
+ * modify the input Query node, qry, in place for Q'.  (Since qry is
+ * also the input, Q, be careful not to destroy values before we're
+ * done with them.
+ */
+static Query *
+transformSequencedWindowQuery(ParseState *pstate, Query *qry)
+{
+	Query *subq;
+	List *orig_windowClause;
+	RangeTblEntry *rte;
+	RangeTblRef *ref;
+	Alias *alias;
+	SequenceSpec *sspec;
+	bool hadSubLinks = qry->hasSubLinks;
+	
+	transform_window_ctx ctx;
+	
+	Assert(qry->commandType == CMD_SELECT);
+	Assert(!PointerIsValid(qry->utilityStmt));
+	Assert(qry->returningList == NIL);
+
+	orig_windowClause = qry->windowClause;
+	sspec = getSequenceSpec(orig_windowClause);
+	if ( sspec == NULL )
+		return qry;
+	
+	Assert( !(qry->groupClause || qry->hasAggs) );
+	Assert( qry->hasWindFuncs );
+	
+	/* Make the new subquery (Q'').  Note that (per SQL:2003) there
+	 * can't be any window functions called in the WHERE, GROUP BY,
+	 * or HAVING clauses.  Also, since we have already been through
+	 * transformGroupedWindows, there won't be any grouping.  Finally,
+	 * transformTargetListSequenced has already made sure that there 
+	 * are targets for the sequence key and index and that they have 
+	 * non-zero sort group reference values.
+	 */
+	rte = derive_subquery_rte(qry);
+	subq = rte->subquery;
+	
+	/* Make a reference to the new range table entry .
+	 */
+	ref = makeNode(RangeTblRef);
+	ref->rtindex = 1;
+	
+	/* Set up context for mutating the target list.	 */
+	init_sequenced_window_ctx(&ctx, qry, pstate);
+	
+    /* Begin rewriting the outer query in place.
+     */
+	qry->hasAggs = false; /* by constuction */
+	/* qry->hasSubLinks -- reevaluate later. */
+	
+	/* Core of outer query input table expression: */
+	qry->rtable = list_make1(rte);
+	qry->jointree = (FromExpr *)makeNode(FromExpr);
+	qry->jointree->fromlist = list_make1(ref);
+	qry->jointree->quals = NULL;
+	/* qry->targetList -- to be mutated from Q to Q' below */
+	
+	qry->groupClause = NIL; /* by construction */
+	qry->havingQual = NULL; /* by construction */
+	
+	/* Mutate the Q target list for use in Q' and, at the  same time, update state 
+	 * with info needed to assemble the target list for the subquery (Q'').  All
+	 * the window functions are in the target list, so we don't have to look
+	 * elsewhere.
+	 */
+	qry->targetList = (List*)sequenced_window_mutator((Node*)qry->targetList, &ctx);
+	
+	/* The window clause on the input Q specified a sequence.  Sequence production
+	 * has been delegated to the subquery Q''.  Make Q' an sequence consuming 
+	 * window query, and revise the window ordering to (sequence index, sequence 
+	 * key, order key) in agreement with sequence semantics which uses only the 
+	 * first (sequence index column) to determine peer group breaks, but accepts 
+	 * additional keys to allow for total ordering, in case there are no duplicate
+	 * order key values.
+	 *
+	 * Ultimately we hope that the sort operators go unused because the planner
+	 * will know that Q'' implemented by a sequencing operation will generate a 
+	 * result already sorted correctly.  But this query should be correct even
+	 * if the planner is ignorant of the ordering.
+	 */
+	qry->windowClause = deseq_windowClause(orig_windowClause, ctx.seqorder);
+	
+	/* The SequenceSpec sspec is the one from orig_windowClause.  Here we set
+	 * the post-order for the node implementing the sequence so that the planner
+	 * can see it.
+	 */
+	Assert(sspec->postorder == NIL); /* We are the only writer of this field! */
+	sspec->postorder = copyObject(ctx.seqorder);
+	
+	qry->hasSubLinks = checkExprHasSubLink((Node*)qry->targetList);
+	
+	/* Set subquery fields.  Note that the subquery needs targets for all the 
+	 * sort group references of interest.  The SequenceSpec has what we need.
+	 */
+	subq->targetList = ctx.subtlist;
+	subq->windowClause = orig_windowClause;
+	subq->hasWindFuncs = true;
+	
+	/* We always need an eref, but we shouldn't really need a filled in alias.
+	 * However, view deparse (or at least the fix for MPP-2189) wants one.
+	 */
+	alias = make_replacement_alias(subq, "Sequence");
+	rte->eref = copyObject(alias);
+	rte->alias = alias;
+	
+	/* Accomodate depth change in new subquery, Q''.
+	 */
+	IncrementVarSublevelsUp((Node*)subq, 1, 1);
+	
+	/* Might have changed. */
+	subq->hasSubLinks = checkExprHasSubLink((Node*)subq);
+	
+	Assert(PointerIsValid(qry->targetList));
+	Assert(IsA(qry->targetList, List));
+	/* Use error instead of assertion to "use" hadSubLinks and keep compiler happy. */
+	if (hadSubLinks != (qry->hasSubLinks || subq->hasSubLinks))
+		elog(ERROR, "inconsistency detected in internal sequenced window transformation");
+	
+	discard_transform_window_ctx(&ctx);
+	
+	return qry;
+}
+
+
+/*
+ * Helper for transformSequencedWindows:
+ *
+ * Transform targets from Q into targets for Q' and place information
+ * needed to eventually construct the target list for the subquery Q''
+ * in the context structure.
+ *
+ * The general idea is to add expressions that must be evaluated in the
+ * subquery to the subquery target list (in the context) and to replace
+ * them with Var nodes (mutate them) in the outer query.
+ *
+ * If we're pushing down an entire TLE that has a resname, use
+ * it as an alias in the upper TLE, too.  Facilitate this by copying
+ * down the resname from an immediately enclosing TargetEntry, if any.
+ *
+ * The algorithm repeatedly searches the subquery target list under
+ * construction (quadric), however we don't expect many targets so
+ * we don't optimize this.  (Could, for example, use a hash or divide
+ * the target list into var, expr, and group/aggregate function lists.)
+ */
+
+static Node* sequenced_window_mutator(Node *node, void *context)
+{
+	Node *result = NULL;
+	
+	transform_window_ctx *ctx = (transform_window_ctx*)context;
+	
+	if (!node)
+		return result;
+	
+	ctx->call_depth++; /* so value at top-level call is 1 */
+	
+	if (IsA(node, TargetEntry))
+	{
+		TargetEntry *tle = (TargetEntry *)node;
+		TargetEntry *new_tle = makeNode(TargetEntry);
+		
+		/* Copy the target entry. */
+		new_tle->resno = tle->resno;
+		if (tle->resname == NULL )
+		{
+			new_tle->resname = generate_positional_name(new_tle->resno);
+		}
+		else
+		{
+			new_tle->resname = pstrdup(tle->resname);
+		}
+		new_tle->ressortgroupref = tle->ressortgroupref;
+		new_tle->resorigtbl = InvalidOid;
+		new_tle->resorigcol = 0;
+		new_tle->resjunk = tle->resjunk;
+		
+		/* This is pretty shady, but we know our call pattern.  The target
+		 * list is at level 1, so we're interested in target entries at level
+		 * 2.  We record them in context so var_for_subq_expr can maybe make a better
+		 * than default choice of alias.
+		 */
+		if (ctx->call_depth == 2 )
+		{
+			ctx->tle = tle;
+			
+			/* Targets with non-zero sort group references might be needed in the
+			 * subquery (e.g., the SequenceSpec might refer to them.  Be sure these
+			 * appear. 
+			 */
+			if ( tle->ressortgroupref != 0 && tlist_member((Node*) tle, ctx->subtlist) == NULL )
+			{
+				TargetEntry *subtle = copyObject(tle);
+				ctx->subtlist = lappend(ctx->subtlist, subtle);
+				subtle->resno = list_length(ctx->subtlist);
+				subtle->resjunk = false;
+			}
+		}
+		else
+		{
+			ctx->tle = NULL;
+		}
+		
+		new_tle->expr = (Expr*)sequenced_window_mutator((Node*)tle->expr, ctx);
+		
+		ctx->tle = NULL;
+		result = (Node*)new_tle;
+	}
+	else if (IsA(node, WindowRef) && equal(node, ctx->seqkey) )
+	{
+		/* This is a call to the sequence-related window function sequence_key. 
+		 * It must be evaluated in Q'' and Q' must refer to it by a Var on Q''.
+		 * The expression sought is known to appear in the target list, so don't
+		 * force, but do insist.
+		 */
+		result = (Node*) var_for_subq_expr(ctx, node, true);
+		if ( result == NULL )
+			elog(ERROR, "invalid query input to sequenced window");
+	}
+	else if (IsA(node, WindowRef) && equal(node, ctx->seqind) )
+	{
+		/* This is a call to the sequence-related window function sequence_index.
+		 * It must be evaluated in Q'' and Q' must refer to it by a Var on Q''.
+		 * The expression sought is known to appear in the target list, so don't
+		 * force, but do insist.
+		 */
+		result = (Node*) var_for_subq_expr(ctx, node, true);
+		if ( result == NULL )
+			elog(ERROR, "invalid query input to sequenced window");
+	}
+	else if (IsA(node, Var))
+	{
+		Var *var = (Var*)node;
+		
+		/* Since this is a Var (leaf node), we must be able to mutate it,
+		 * else we can't finish the transformation and must give up.
+		 */
+		result = (Node*) var_for_subq_expr(ctx, node, true);
+		
+		if ( !result )
+		{
+			List *altvars = generate_alternate_vars(var, ctx->subrtable,ctx->subtlist);
+			ListCell *lc;
+			foreach(lc, altvars)
+			{
+				result = (Node*) var_for_subq_expr(ctx, lfirst(lc), false);
+				if ( result )
+					break;
+			}
+		}
+	}
+	
+	if ( !result )
+	{
+		result = expression_tree_mutator(node, sequenced_window_mutator, ctx);
+	}
+	
+	ctx->call_depth--;
+	return result;
+}
+
+/*
+ * Make a new windowClause based on an input windowClause taken from a sequence query.
+ * The new clause should have its "sequence-ness" removed and should have a newly
+ * specified order in place of any non-empty order in the input.  However we replace
+ * the SequenceSpec with a SeqWindowSpec to track it's origin.  A SeqWindowSpec is,
+ * by design, functionally equivalent (typedef) to a WindowSpec.
+ *
+ * The input windowClause must be valid.  The input new_order must be a list of
+ * SortClause nodes.  Note that the result Query node's targetList must have sort-
+ * group reference values that match those in the input new_order.
+ *
+ * The idea is that the WindowRef nodes in the result Query node's targetList can 
+ * continue to refer (via their winindex) to the same list positions in the new
+ * windowClause, but will inherit the new ordering, where appropriate.  
+ * 
+ * Also, note that the window planner will see the resulting query as an ordinary 
+ * window query, not a sequence query.
+ */
+static List *deseq_windowClause(List *windowClause, List *new_order)
+{
+	ListCell *lc;
+	WindowSpec *new_windowSpec;
+	List *new_windowClause = NIL;
+	int i = 0;
+	
+	foreach( lc, windowClause )
+	{
+		WindowSpec *wspec = (WindowSpec *) lfirst(lc);
+		
+		if ( i == 0 )
+		{
+		    SequenceSpec *sspec = (SequenceSpec *) wspec;
+			SeqWindowSpec *new_swspec = NULL;
+		    
+			if ( !IsA(sspec, SequenceSpec) && list_length(sspec->order) == 1 )
+			{
+				elog(ERROR, "invalid call to desequence");
+			}
+			
+			/* Derive a WindowSpec from the leading SequenceSpec. */
+			
+			new_swspec = makeNode(SeqWindowSpec);
+			new_swspec->name = pstrdup(sspec->seqname);
+			new_swspec->parent = NULL;
+			new_swspec->partition = copyObject(sspec->partition);
+			new_swspec->order = new_order; /* no copy on first element! */
+			new_swspec->location = sspec->location;
+			new_swspec->frame = NULL;
+			new_windowSpec = new_swspec;
+		}
+		else
+		{
+			if ( !IsA(wspec, WindowSpec) )
+			{
+				elog(ERROR, "invalid call to desequence");
+			}
+			new_windowSpec = makeNode(WindowSpec);
+			new_windowSpec->name = wspec->name ? pstrdup(wspec->name) : wspec->name;
+			new_windowSpec->parent = wspec->parent ? pstrdup(wspec->parent) : wspec->parent;
+			new_windowSpec->partition = copyObject(wspec->partition);
+			if ( list_length(wspec->order) == 0 )
+				new_windowSpec->order = NIL;
+			else
+				new_windowSpec->order = copyObject(new_order);
+				new_windowSpec->location = wspec->location;
+			new_windowSpec->frame = copyObject(wspec->frame);
+		}
+		
+		new_windowClause = lappend(new_windowClause, new_windowSpec);
+		
+		i++;
+	}
+	return new_windowClause;
+}
 
 /* Helper for transformGroupedWindows:
  *
@@ -9293,23 +9719,25 @@ transformGroupedWindows(Query *qry)
  * shouldn't care about ordering, etc. XXX
  */
 static void
-init_grouped_window_context(grouped_window_ctx *ctx, Query *qry)
+init_grouped_window_ctx(transform_window_ctx *ctx, Query *qry)
 {
 	List *grp_tles = NIL;
 	ListCell *lc = NULL;
 	Index maxsgr = 0;
-
+	
 	grp_tles = get_sortgroupclauses_tles(qry->groupClause, qry->targetList);
 	maxsgr = maxSortGroupRef(grp_tles, true);
-
+	
 	ctx->subtlist = NIL;
 	ctx->subgroupClause = NIL;
-
+	
+	ctx->seqorder = NIL;
+	
 	/* Set up scratch space.
 	 */
-
+	
 	ctx->subrtable = qry->rtable;
-
+	
 	/* Map input = outer query sortgroupref values to subquery values while building the
 	 * subquery target list prefix. */
 	ctx->sgr_map = palloc0((maxsgr+1)*sizeof(ctx->sgr_map[0]));
@@ -9317,30 +9745,86 @@ init_grouped_window_context(grouped_window_ctx *ctx, Query *qry)
 	{
 	    TargetEntry *tle;
 	    Index old_sgr;
-
+		
 	    tle = (TargetEntry*)copyObject(lfirst(lc));
 	    old_sgr = tle->ressortgroupref;
-
+		
 	    ctx->subtlist = lappend(ctx->subtlist, tle);
 		tle->resno = list_length(ctx->subtlist);
 		tle->ressortgroupref = tle->resno;
 		tle->resjunk = false;
-
+		
 		ctx->sgr_map[old_sgr] = tle->ressortgroupref;
 	}
-
+	
 	/* Miscellaneous scratch area. */
 	ctx->call_depth = 0;
 	ctx->tle = NULL;
-
+	
 	/* Revise grouping into ctx->subgroupClause */
 	ctx->subgroupClause = (List*)map_sgr_mutator((Node*)qry->groupClause, ctx);
 }
 
+/*
+ * Make an ascending sort clause to suit the sort group reference
+ * and expression type of the given target list entry. 
+ */
+static SortClause*
+sortClauseForTarget(TargetEntry *tle)
+{
+	SortClause *key = makeNode(SortClause);
+	
+	key->tleSortGroupRef = tle->ressortgroupref;
+	key->sortop = ordering_oper_opid(exprType((Node*)tle->expr));
+	
+	return key;	
+}
 
-/* Helper for transformGroupedWindows */
+/* Helper for transformSequencedWindowQuery:
+ *
+ * Prime the subquery target list in the context with the windowing 
+ * attributes from the given query and adjust the subquery clauses 
+ * in the context to agree.
+ */
 static void
-discard_grouped_window_context(grouped_window_ctx *ctx)
+init_sequenced_window_ctx(transform_window_ctx *ctx,
+						  Query *qry, 
+						  ParseState *pstate)
+{
+	TargetEntry *seq_key_tle;
+	TargetEntry *seq_ind_tle;
+	SequenceSpec *sspec;
+	
+	sspec = getSequenceSpec(qry->windowClause);	
+	seq_key_tle = copyObject(tlist_member(pstate->p_seqkey_transformed, qry->targetList));
+	seq_ind_tle = copyObject(tlist_member(pstate->p_seqind_transformed, qry->targetList));
+	
+	Assert( sspec != NULL );
+	Assert( seq_key_tle != NULL && seq_key_tle->ressortgroupref != 0);
+	Assert( seq_ind_tle != NULL && seq_ind_tle->ressortgroupref != 0);
+	
+	ctx->seqorder = NIL;
+	ctx->seqorder = lappend(ctx->seqorder, sortClauseForTarget(seq_ind_tle));
+	ctx->seqind = seq_ind_tle->expr;
+	ctx->seqorder = lappend(ctx->seqorder, sortClauseForTarget(seq_key_tle));
+	ctx->seqkey = seq_key_tle->expr;
+	ctx->seqorder = lappend(ctx->seqorder, copyObject((SortClause*)linitial(sspec->order)));
+	
+	ctx->subgroupClause = NIL;
+	ctx->sgr_map = NULL;	
+	ctx->subgroupClause = NIL;
+	ctx->subrtable = qry->rtable;	
+	ctx->subtlist = NIL;
+	
+	/* Miscellaneous scratch area. */
+	ctx->call_depth = 0;
+	ctx->tle = NULL;
+}
+
+
+/* Helper for transformGroupedWindows/transformSequencedWindowQuery */
+static void
+discard_transform_window_ctx(transform_window_ctx *ctx)
 {
     ctx->subtlist = NIL;
     ctx->subgroupClause = NIL;
@@ -9352,7 +9836,7 @@ discard_grouped_window_context(grouped_window_ctx *ctx)
 }
 
 
-/* Helper for transformGroupedWindows:
+/* Helper for transformGroupedWindows/transformSequencedWindowQuery:
  *
  * Look for the given expression in the context's subtlist.  If
  * none is found and the force argument is true, add a target
@@ -9361,7 +9845,7 @@ discard_grouped_window_context(grouped_window_ctx *ctx)
  * was found/added.
  */
 static Var *
-var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force)
+var_for_subq_expr(transform_window_ctx *ctx, Node *expr, bool force)
 {
 	Var *var = NULL;
 	TargetEntry *tle = tlist_member(expr, ctx->subtlist);
@@ -9381,7 +9865,14 @@ var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force)
 		{
 			tle->resname = generate_positional_name(tle->resno);
 		}
-		tle->ressortgroupref = 0;
+		if ( ctx->call_depth == 3 && ctx->tle != NULL ) /* can we do this unconditionally??? */
+		{
+			tle->ressortgroupref = ctx->tle->ressortgroupref;
+		}
+		else 
+		{
+			tle->ressortgroupref = 0;
+		}
 		tle->resorigtbl = 0;
 		tle->resorigcol = 0;
 		tle->resjunk = false;
@@ -9404,7 +9895,7 @@ var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force)
 }
 
 
-/* Helper for transformGroupedWindows:
+/* Helper for transformGroupedWindows/transformSequencedWindowQuery:
  *
  * Mutator for subquery groupingClause to adjust sortgrpref values
  * based on map developed while priming context target list.
@@ -9412,7 +9903,7 @@ var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force)
 static Node*
 map_sgr_mutator(Node *node, void *context)
 {
-	grouped_window_ctx *ctx = (grouped_window_ctx*)context;
+	transform_window_ctx *ctx = (transform_window_ctx*)context;
 
 	if (!node)
 		return NULL;
@@ -9494,7 +9985,7 @@ static Node* grouped_window_mutator(Node *node, void *context)
 {
 	Node *result = NULL;
 
-	grouped_window_ctx *ctx = (grouped_window_ctx*)context;
+	transform_window_ctx *ctx = (transform_window_ctx*)context;
 
 	if (!node)
 		return result;
@@ -9523,7 +10014,7 @@ static Node* grouped_window_mutator(Node *node, void *context)
 
 		/* This is pretty shady, but we know our call pattern.  The target
 		 * list is at level 1, so we're interested in target entries at level
-		 * 2.  We record them in context so var_for_gw_expr can maybe make a better
+		 * 2.  We record them in context so var_for_subq_expr can maybe make a better
 		 * than default choice of alias.
 		 */
 		if (ctx->call_depth == 2 )
@@ -9546,7 +10037,7 @@ static Node* grouped_window_mutator(Node *node, void *context)
 			 IsA(node, GroupId) )
 	{
 		/* Aggregation expression */
-		result = (Node*) var_for_gw_expr(ctx, node, true);
+		result = (Node*) var_for_subq_expr(ctx, node, true);
 	}
 	else if (IsA(node, Var))
 	{
@@ -9555,15 +10046,15 @@ static Node* grouped_window_mutator(Node *node, void *context)
 		/* Since this is a Var (leaf node), we must be able to mutate it,
 		 * else we can't finish the transformation and must give up.
 		 */
-		result = (Node*) var_for_gw_expr(ctx, node, false);
+		result = (Node*) var_for_subq_expr(ctx, node, false);
 
 		if ( !result )
 		{
-			List *altvars = generate_alternate_vars(var, ctx);
+			List *altvars = generate_alternate_vars(var, ctx->subrtable,ctx->subtlist);
 			ListCell *lc;
 			foreach(lc, altvars)
 			{
-				result = (Node*) var_for_gw_expr(ctx, lfirst(lc), false);
+				result = (Node*) var_for_subq_expr(ctx, lfirst(lc), false);
 				if ( result )
 					break;
 			}
@@ -9580,7 +10071,7 @@ static Node* grouped_window_mutator(Node *node, void *context)
 	else
 	{
 		/* Grouping expression; may not find one. */
-		result = (Node*) var_for_gw_expr(ctx, node, false);
+		result = (Node*) var_for_subq_expr(ctx, node, false);
 	}
 
 
@@ -9594,8 +10085,6 @@ static Node* grouped_window_mutator(Node *node, void *context)
 }
 
 /*
- * Helper for transformGroupedWindows:
- *
  * Build an Alias for a subquery RTE representing the given Query.
  * The input string aname is the name for the overall Alias. The
  * attribute names are all found or made up.
@@ -9641,8 +10130,6 @@ make_replacement_alias(Query *qry, const char *aname)
 }
 
 /*
- * Helper for transformGroupedWindows:
- *
  * Make a palloc'd C-string named for the input attribute number.
  */
 static char *
@@ -9664,8 +10151,6 @@ generate_positional_name(AttrNumber attrno)
 }
 
 /*
- * Helper for transformGroupedWindows:
- *
  * Find alternate Vars on the range of the input query that are aliases
  * (modulo ANSI join) of the input Var on the range and that occur in the
  * target list of the input query.
@@ -9679,9 +10164,8 @@ generate_positional_name(AttrNumber attrno)
  * bother to precompute this.
  */
 static List*
-generate_alternate_vars(Var *invar, grouped_window_ctx *ctx)
+generate_alternate_vars(Var *invar, List *rtable, List *tlist)
 {
-	List *rtable = ctx->subrtable;
 	RangeTblEntry *inrte;
 	List *alternates = NIL;
 
@@ -9730,7 +10214,7 @@ generate_alternate_vars(Var *invar, grouped_window_ctx *ctx)
 
 					/* Look for a matching Var in the target list. */
 
-					foreach(tlc, ctx->subtlist)
+					foreach(tlc, tlist)
 					{
 						TargetEntry *tle = (TargetEntry*)lfirst(tlc);
 						Var *v = (Var*)tle->expr;
@@ -9843,14 +10327,24 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	pstate->having_qual = NULL;
 
 	/*
-	 * Process WINDOW clause.
+	 * Process WINDOW or SEQUENCE clause.
 	 */
-	transformWindowClause(pstate, qry);
+	if ( getSequenceSpec(pstate->p_win_clauses) != NULL )
+	{
+		transformSequenceClause(pstate, qry);
+	}
+	else
+	{
+		transformWindowClause(pstate, qry);
+	}
 
 	qry->distinctClause = transformDistinctClause(pstate,
 												  stmt->distinctClause,
 												  &qry->targetList,
 												  &qry->sortClause);
+	
+	/* Make sure there's a sequence key representative in  targetList. */
+	qry->targetList = transformTargetListSequenced(pstate, &qry->targetList);
 
 	qry->limitOffset = transformLimitClause(pstate, stmt->limitOffset,
 											"OFFSET");
@@ -9904,7 +10398,17 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	 * transform it such that the grouped query appears as a subquery
 	 */
 	if (qry->hasWindFuncs && (qry->groupClause || qry->hasAggs))
-		transformGroupedWindows(qry);
+		transformGroupedWindows(pstate, qry);
+	
+	/*
+	 * Sequence queries need to be fractured into the ordinary part
+	 * (outer query) and the sequence part (subquery).
+	 */
+	if ( getSequenceSpec(pstate->p_win_clauses) != NULL )
+	{
+		Assert( getSequenceSpec(qry->windowClause) != NULL );
+		transformSequencedWindowQuery(pstate, qry);
+	}
 
 	return qry;
 }

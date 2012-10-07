@@ -172,7 +172,7 @@ extern MergeJoin *make_mergejoin(List *tlist,
 			   JoinType jointype);
 extern Window *make_window(PlannerInfo *root, List *tlist,
 		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
-		   Plan *lefttree);
+		   Node *sequence, WindowSemantics semantics, Plan *lefttree);
 extern Material *make_material(Plan *lefttree);
 extern Plan *materialize_finished_plan(PlannerInfo *root, Plan *subplan);
 extern Unique *make_unique(Plan *lefttree, List *distinctList);

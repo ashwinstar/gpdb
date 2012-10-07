@@ -58,9 +58,9 @@
 #define DISTINCT_ON_CLAUSE 2
 
 static const char *clauseText[] = {
-    "ORDER BY", 
-    "GROUP BY", 
-    "DISTINCT ON"
+	"ORDER BY", 
+	"GROUP BY", 
+	"DISTINCT ON"
 };
 
 static void extractRemainingColumns(List *common_colnames,
@@ -488,14 +488,12 @@ transformWindowClause(ParseState *pstate, Query *qry)
 	Index clauseno = -1;
 
 	/*
-	 * We have two lists of window specs: one in the ParseState -- put there
-	 * when we find the OVER(...) clause in the targetlist and the other
-	 * is windowClause, a list of named window clauses. So, we concatenate
-	 * them together.
-	 *
-	 * Note that we're careful place those found in the target list at
-	 * the end because the spec might refer to a named clause and we'll
-	 * after to know about those first.
+	 * ParseState actually contains two kinds of window spec:  The leading
+	 * ones are from the input window clause (the SelectStmt windowClause), 
+	 * if any.  The trailing ones were added when we found OVER(...) clauses 
+	 * in the target list.  We count on the ones from the window clause 
+	 * coming first because as spec might refer to a named clause and this
+	 * should occur earlier in the list.
 	 */
 
 	foreach(w, winin)
@@ -509,6 +507,11 @@ transformWindowClause(ParseState *pstate, Query *qry)
 
         /* Include this WindowSpec's location in error messages. */
         pstate->p_breadcrumb.node = (Node *)ws;
+		
+		if ( !IsA(ws, WindowSpec) )
+		{
+			elog(ERROR, "invalid call to transform a window clause: sequence clause found");
+		}
 
         if (checkExprHasWindFuncs((Node *)ws))
 		{
@@ -788,6 +791,245 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		qry->windowClause = winout;
 	}
 }
+
+/*
+ * getSequenceSpec
+ *		Returns the first item in the list as a SequenceSpec, if that's what it
+ *		is; else returns NULL.
+ *
+ * This is the canonical way to tell whether a list of WindowSpec pointers represents
+ * a SEQUENCE.  The function should normally be applied to the windowClause list of
+ * a Query node or to the p_win_clauses list of a ParseState
+ */
+SequenceSpec *getSequenceSpec(List *speclist)
+{
+	if ( speclist != NULL && list_length(speclist) > 0 && IsA(linitial(speclist), SequenceSpec) )
+		return (SequenceSpec*)linitial(speclist);
+	return NULL;
+}
+
+/*
+ * useSequenceSemantics
+ *		Returns true, if the windowClause indicates sequence semantics; else false.
+ *
+ * This is the canonical way to tell whether a list of WindowSpec pointers indicates
+ * that the associated window query should use sequence semantics in determining peer
+ * group boundaries. The function should normally be applied to the windowClause list of
+ * a Query node or to the p_win_clauses list of a ParseState, i.e., to same argument
+ * as getSequenceSpec.
+ */
+bool useSequenceSemantics(List *speclist)
+{
+	if ( speclist != NULL && list_length(speclist) > 0 && IsA(linitial(speclist), SeqWindowSpec) )
+		return true;
+	return false;
+}
+
+/*
+ * transformSequenceClause
+ * 		Process sequence clause in a SELECT query
+ *
+ * Checks:
+ * - Column references in the PARTITION and ORDER clauses must be valid; 
+ * - ORDER clause must present;
+ * - no frame clause present;
+ * - OVER clause limitations for sequences observed (see below).
+ *
+ * Then we translate it to use the proper parse nodes for the respective
+ * part of the clause.
+ */
+void
+transformSequenceClause(ParseState *pstate, Query *qry)
+{
+	ListCell *lc;
+	List *winout = NIL;
+	Index clauseno = -1;
+	SequenceSpec *sspec = NULL;
+	SequenceSpec *new_sspec = NULL;
+	
+	/* The list pstate->p_win_clauses should contain exactly one SequenceSpec
+	 * in the first position, along with some number of WindowSpec clauses
+	 * derived from references to the sequence or to windows in OVER clauses
+	 * encountered in WindowRefs in the target list.  We need to reconcile 
+	 * these.
+	 */
+	
+	sspec = getSequenceSpec(pstate->p_win_clauses);
+	
+	/* This should never happen, but make sure! */
+	if ( sspec == NULL )
+	{
+		elog(ERROR, "invalid call to sequence transform");
+	}
+	
+	if ( sspec->seqname == NULL || sspec->order == NIL || sspec->seqdef == NULL )
+	{
+		elog(ERROR, "invalid call to sequence transform");
+	}
+	
+	/* Transform the sequence partition and order once.
+	 */	
+	new_sspec = copyObject(sspec);
+	
+	new_sspec->partition = 
+	transformSortClause(pstate, 
+						sspec->partition, 
+						&qry->targetList, 
+						true, /* fix unknowns */
+						false /* use SQL92 rules */
+						);
+	
+	new_sspec->order = 
+	transformSortClause(pstate, 
+						sspec->order, 
+						&qry->targetList, 
+						true, /* fix unknowns */
+						false /* use SQL92 rules */
+						);
+	
+	/* We always need a basic OVER (seqname), even in the absence of any OVER
+	 * clauses.  We use the SequenceSpec (instead of a WindowSpec) and always
+	 * make it the first.
+	 */	
+	winout = list_make1(new_sspec);
+	
+	/* Additional entries correspond to WindowRefs.  These should 
+	 * be ordinary WindowSpecs (as they appear in the input list).
+	 *
+	 * There are only three valid OVER(...) clauses for sequences:
+	 * - OVER (seqname)
+	 *		seqname is the name in the SequenceSpec
+	 * - OVER (PARTITION BY partitionlist
+	 *		partitionlist matches the one in the SequenceSpec
+	 * - OVER ()
+	 */
+	
+	clauseno = -1;
+	foreach(lc, pstate->p_win_clauses)
+	{
+		WindowSpec *wspec = NULL;
+		Node *node = lfirst(lc);
+		
+		clauseno++;
+		
+		/* Skip sspec.  It is already on winout. */
+		if (clauseno == 0)
+		{
+			Assert( IsA(node, SequenceSpec) );
+			continue;
+		}
+		
+		if (! IsA(node, WindowSpec))
+		{
+			elog(ERROR, "invalid call to sequence transform");
+		}
+		
+		/* The WindowSpec at wspec enters in parse form (like sspec).  Before 
+		 * appending it to the output we'll need to put it in query form
+		 * (like new_sspec).
+		 */
+		wspec = (WindowSpec*)copyObject(node);
+		
+        /* Include this WindowSpec's location in error messages. */
+        pstate->p_breadcrumb.node = (Node *)wspec;
+        
+		/* Sanity: Only the sequence entry itself may be named. */
+        if ( wspec->name )
+        {
+			elog(ERROR, "invalid call to sequence transform");        	
+        }
+		
+        if (checkExprHasWindFuncs((Node *)wspec))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("cannot use window function in a window "
+							"specification"),
+					 errOmitLocation(true)));
+		}
+		
+		if ( wspec->parent ) /* better be OVER (seqname) */
+		{
+			if ( strcmp(sspec->seqname, wspec->parent) != 0 )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("name in OVER clause doesn't match sequence name "
+						 		"\"%s\"", sspec->seqname),
+						 errOmitLocation(true)));
+			}
+			if ( wspec->partition || wspec->order )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot respecify partitioning or order within "
+								"a named sequence"),
+						 errOmitLocation(true)));
+			}
+			
+			/* Copy particulars of the sequence into the window spec. */
+			wspec->partition = copyObject(new_sspec->partition);
+			wspec->order = copyObject(new_sspec->order);
+		}
+		else if (wspec->partition ) /* better be OVER (PARTITION BY partitionlist) */
+		{
+			if ( ! equal(sspec->partition, wspec->partition) )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("partitioning clause in window specification "
+							    "conflicts with sequence \"%s\"", new_sspec->seqname),
+						 errOmitLocation(true)));
+			}
+			if ( wspec->order != NULL )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot specify order within a named sequence"),
+						 errOmitLocation(true)));
+			}
+			
+			/* Compare to parse form, but copy query form. */
+			wspec->partition = copyObject(new_sspec->partition);	
+		}
+		else /* better be OVER () */
+		{
+			if ( wspec->order )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot specify order within a named sequence"),
+						 errOmitLocation(true)));
+			}
+			
+			/* No external reference, no need to update. */	
+		}
+		
+		if ( wspec->frame )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("framing clause may not appear "
+					 		"in window specifications for sequences"),
+					 errOmitLocation(true)));
+		}
+		
+        /* Refresh our breadcrumb in case transformSortClause stepped on it. */
+        pstate->p_breadcrumb.node = (Node *)wspec;
+
+		/* Check function restriction with this spec. */
+		winref_checkspec(pstate, qry, clauseno,
+						 PointerIsValid(wspec->order),
+						 false /* valid frame */
+						 );
+		
+        winout = lappend(winout, wspec);
+    }
+			
+	qry->windowClause = winout;
+	/* pstate->p_win_clauses = winout; */
+}
+
 
 /*
  * setTargetTable
@@ -2121,8 +2363,8 @@ findTargetlistEntrySQL92(ParseState *pstate, Node *node, List **tlist,
 	TargetEntry *target_result = NULL;
 	ListCell   *tl;
 
-    /* CDB: Drop a breadcrumb in case of error. */
-    pstate->p_breadcrumb.node = node;
+	/* CDB: Drop a breadcrumb in case of error. */
+	pstate->p_breadcrumb.node = node;
 
 	/*----------
 	 * Handle two special cases as mandated by the SQL92 spec:
