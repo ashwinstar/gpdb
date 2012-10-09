@@ -32,6 +32,14 @@ typedef enum FaultInjectorIdentifier_e {
 	PgXlog,
 	
 	StartPrepareTx,
+
+	FaultBeforePendingDeleteRelationEntry,
+
+	FaultBeforePendingDeleteDatabaseEntry,
+
+	FaultBeforePendingDeleteTablespaceEntry,
+
+	FaultBeforePendingDeleteFilespaceEntry,
 	
 	FileRepConsumer,
 	

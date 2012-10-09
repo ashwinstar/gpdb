@@ -527,6 +527,14 @@ smgrcreatefilespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteFilespaceEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
+
 	PendingDelete_AddCreatePendingEntry(
 								&fsObjName,
 								persistentTid,
@@ -597,6 +605,14 @@ smgrcreatetablespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteTablespaceEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
+
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
 						persistentTid,
@@ -659,6 +675,14 @@ smgrcreatedbdirpending(
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
+
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteDatabaseEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
 
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
@@ -785,7 +809,13 @@ void smgrcreatepending(
 								persistentSerialNum,
 								flushToXLog);
 
-
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteRelationEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
 
 	pending = PendingDelete_AddCreatePendingEntry(
 								&fsObjName,

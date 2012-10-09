@@ -113,6 +113,14 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault when files in pg_xlog directory are written */
 	_("start_prepare"),
 		/* inject fault during start prepare */
+	_("fault_before_pending_delete_relation_entry"),
+		/* inject fault after adding entry to persistent relation table in CP state but before adding to Pending delete list */
+	_("fault_before_pending_delete_database_entry"),
+		/* inject fault after adding entry to persistent database table in CP state but before adding to Pending delete list */
+	_("fault_before_pending_delete_tablespace_entry"),
+		/* inject fault after adding entry to persistent tablespace table in CP state but before adding to Pending delete list */
+	_("fault_before_pending_delete_filespace_entry"),
+		/* inject fault after adding entry to persistent filespace table in CP state but before adding to Pending delete list */
 	_("filerep_consumer"),
 		/* 
 		 * inject fault before data are processed
@@ -974,7 +982,11 @@ FaultInjector_NewHashEntry(
 				goto exit;
 			}			
 			break;
-			
+		
+		case FaultBeforePendingDeleteRelationEntry:
+		case FaultBeforePendingDeleteDatabaseEntry:
+		case FaultBeforePendingDeleteTablespaceEntry:
+		case FaultBeforePendingDeleteFilespaceEntry:	
 		case FileRepConsumer:
 		case FileRepSender:
 		case FileRepReceiver:
