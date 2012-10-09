@@ -71,8 +71,9 @@ extern void PersistentRelation_AddCreatePending(
 	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 
-	bool				flushToXLog);
+	bool				flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
+	bool				isLocalBuf);
 	
 extern void PersistentRelation_AddCreated(
 	RelFileNode 		*relFileNode,

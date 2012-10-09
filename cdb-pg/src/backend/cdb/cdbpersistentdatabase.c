@@ -37,6 +37,7 @@
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 
 
 /*
@@ -478,6 +479,8 @@ void PersistentDatabase_MarkCreatePending(
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
+	PersistentFileSysObjName fsObjName;
+
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -494,6 +497,11 @@ void PersistentDatabase_MarkCreatePending(
 	}
 
 	PersistentDatabase_VerifyInitScan();
+
+	PersistentFileSysObjName_SetDatabaseDir(
+									&fsObjName,
+									dbDirNode->tablespace,
+									dbDirNode->database);
 
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
@@ -548,6 +556,25 @@ void PersistentDatabase_MarkCreatePending(
 #ifdef MASTER_MIRROR_SYNC
 	mmxlog_log_create_database(dbDirNode->tablespace, dbDirNode->database); 
 #endif
+
+
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteDatabaseEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
+
+	/*
+	 * MPP-18228
+	 * To make adding 'Create Pending' entry to persistent table and adding
+	 * to the PendingDelete list atomic
+	 */
+	PendingDelete_AddCreatePendingEntryWrapper(
+					&fsObjName,
+					persistentTid,
+					*persistentSerialNum);
 
 	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }

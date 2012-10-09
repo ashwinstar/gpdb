@@ -40,6 +40,7 @@
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 
 typedef struct PersistentTablespaceSharedData
 {
@@ -748,6 +749,24 @@ void PersistentTablespace_MarkCreatePending(
 						filespaceOid,
 						tablespaceOid);
 #endif
+
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteTablespaceEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
+
+	/*
+	 * MPP-18228
+	 * To make adding 'Create Pending' entry to persistent table and adding
+	 * to the PendingDelete list atomic
+	 */
+	PendingDelete_AddCreatePendingEntryWrapper(
+						&fsObjName,
+						persistentTid,
+						*persistentSerialNum);
 
 	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 

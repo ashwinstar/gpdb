@@ -37,6 +37,7 @@
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 
@@ -253,9 +254,9 @@ void PersistentRelation_AddCreatePending(
 	int64				*serialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 
-	bool 				flushToXLog)
+	bool 				flushToXLog,
 				/* When true, the XLOG record for this change will be flushed to disk. */
-
+	bool				isLocalBuf)
 {
 	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
@@ -335,6 +336,29 @@ void PersistentRelation_AddCreatePending(
 						relFileNode->relNode,
 						segmentFileNum);	
 #endif
+
+	#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   FaultBeforePendingDeleteRelationEntry,
+										   DDLNotSpecified,
+										   "",  // databaseName
+										   ""); // tableName
+	#endif
+
+	/*
+	 * MPP-18228
+	 * To make adding 'Create Pending' entry to persistent table and adding
+	 * to the PendingDelete list atomic
+	 */
+	PendingDelete_AddCreatePendingRelationEntry(
+								&fsObjName,
+								persistentTid,
+								serialNum,
+								relStorageMgr,
+								relationName,
+								isLocalBuf,
+								bufferPoolBulkLoad);
+
 
 	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
