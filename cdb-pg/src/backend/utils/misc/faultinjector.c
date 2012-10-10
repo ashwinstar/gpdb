@@ -259,6 +259,11 @@ FaultInjectorIdentifierEnumToString[] = {
 	  /* set the GUC  gp_test_system_cache_flush_force to plain */
 	_("set_gp_test_system_cache_flush_force_off"),
 	  /* set the GUC  gp_test_system_cache_flush_force to off */
+		_("update_persistent_serial_number_for_new_table"),
+		/* Inject fault to sleep after a new persistent serial number has been assigned during CREATE TABLE */
+        	_("check_btree_for_uniqueness_violation"),
+          	/* Inject fault to sleep after checking that CREATE TABLE does not cause a unique index violation while updating pg_type_typname_nsp_index */
+
 	_("not recognized"),
 };
 
@@ -1043,6 +1048,8 @@ FaultInjector_NewHashEntry(
 		case UpdateCommittedEofInPersistentTable:
 		case SetGpTestSystemCacheFlushForcePlain:
 		case SetGpTestSystemCacheFlushForceOff:
+		case UpdatePersistentSerialNumberForNewTable:
+		case CheckBtreeForUniquenessViolation:
 			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
 			{
 				LockRelease();

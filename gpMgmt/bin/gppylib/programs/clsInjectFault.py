@@ -381,6 +381,8 @@ class GpInjectFaultProgram:
 			      "update_committed_eof_in_persistent_table (inject fault before committed EOF is updated in gp_persistent_relation_node for Append Only segment files), " \
                   "set_gp_test_system_cache_flush_force_plain (set the gp_test_system_cache_flush_force GUC to plain), " \
                   "set_gp_test_system_cache_flush_force_off (set the gp_test_system_cache_flush_force GUC to off), " \
+			      "update_persistent_serial_number_for_new_table (inject fault after a persistent serial number has been assigned to a new table), " \
+			      "check_btree_for_uniqueness_violation (inject fault after checking that a CREATE TABLE statement does not cause a unique index violation in pg_type_typname_nsp_index), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

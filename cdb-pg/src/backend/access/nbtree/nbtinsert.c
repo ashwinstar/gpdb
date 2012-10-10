@@ -23,7 +23,7 @@
 #include "cdb/cdbvars.h"  /*Gp_is_primary*/
 #include "miscadmin.h"
 #include "utils/inval.h"
-
+#include "utils/faultinjector.h"
 
 typedef struct
 {
@@ -150,6 +150,14 @@ top:
 			goto top;
 		}
 	}
+
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet(     CheckBtreeForUniquenessViolation,
+						DDLNotSpecified,
+						"" /* databaseName */,
+						"" /* tableName */))
+			;
+#endif
 
 	/* do the insertion */
 	_bt_insertonpg(rel, buf, stack, natts, itup_scankey, itup, 0, false);

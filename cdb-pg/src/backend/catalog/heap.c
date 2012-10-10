@@ -76,6 +76,7 @@
 #include "utils/memutils.h"             /* CDB: GetMemoryChunkContext */
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbvars.h"
 
@@ -1457,6 +1458,14 @@ heap_create_with_catalog(const char *relname,
 											  ownerid);
 		else
 		{
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet(     UpdatePersistentSerialNumberForNewTable,
+						DDLNotSpecified,
+						"" /* databaseName */,
+						"" /* tableName */))
+		;
+#endif
+
 			new_type_oid = TypeCreateWithOid(relname,	/* type name */
 					   relnamespace,		/* type namespace */
 					   relid, /* relation oid */

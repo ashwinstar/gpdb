@@ -168,6 +168,9 @@ typedef enum FaultInjectorIdentifier_e {
 	SetGpTestSystemCacheFlushForcePlain,
 	SetGpTestSystemCacheFlushForceOff,
 
+	UpdatePersistentSerialNumberForNewTable,
+	CheckBtreeForUniquenessViolation,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
