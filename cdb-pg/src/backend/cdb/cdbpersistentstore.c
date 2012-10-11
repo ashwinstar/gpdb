@@ -594,7 +594,6 @@ static void PersistentStore_DoInitScan(
 			if (storeSharedData->maxInUseSerialNum < persistentSerialNum)
 			{
 				storeSharedData->maxInUseSerialNum = persistentSerialNum;
-				storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
 			}
 		}
 
@@ -832,12 +831,6 @@ void PersistentStore_FlushXLog(void)
 		XLogFlush(nowaitXLogEndLoc);
 		XLogRecPtr_Zero(&nowaitXLogEndLoc);
 	}
-}
-
-int64 PersistentStore_MyHighestSerialNum(
-	PersistentStoreData 	*storeData)
-{
-	return storeData->myHighestSerialNum;
 }
 
 int64 PersistentStore_CurrentMaxSerialNum(
@@ -1467,7 +1460,6 @@ void PersistentStore_AddTuple(
 	}
 
 	*persistentSerialNum = ++storeSharedData->maxInUseSerialNum;
-	storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
 	
 	// Overwrite with the new serial number value.
 	values[storeData->attNumPersistentSerialNum - 1] = 

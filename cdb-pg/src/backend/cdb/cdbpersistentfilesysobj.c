@@ -741,21 +741,6 @@ void PersistentFileSysObj_Scan(
 
 }
 
-int64 PersistentFileSysObj_MyHighestSerialNum(
-	PersistentFsObjType 	fsObjType)
-{
-	PersistentFileSysObjData 		*fileSysObjData;
-	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
-
-	PersistentFileSysObj_GetDataPtrs(
-								fsObjType,
-								&fileSysObjData,
-								&fileSysObjSharedData);
-
-	return PersistentStore_MyHighestSerialNum(
-								&fileSysObjData->storeData);
-}
-
 int64 PersistentFileSysObj_CurrentMaxSerialNum(
 	PersistentFsObjType 	fsObjType)
 {

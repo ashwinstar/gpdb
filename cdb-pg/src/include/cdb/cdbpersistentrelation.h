@@ -23,7 +23,6 @@
  * the relation file will be deleted even on system crash.  The relation file could be a heap,
  * index, or append-only (row- or column-store).
  */
-extern int64 PersistentRelation_MyHighestSerialNum(void);
 extern int64 PersistentRelation_CurrentMaxSerialNum(void);
 
 extern void PersistentRelation_CheckTablespace(

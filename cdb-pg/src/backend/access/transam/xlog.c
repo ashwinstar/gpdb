@@ -1405,7 +1405,6 @@ begin:;
 												info,
 												(void *)rdatabuf,
 												&RecPtr,
-												/* weAreGeneratingXLogNow */ true,
 												/* printSkipIssuesOnly */ Debug_print_xlog_relation_change_info_skip_issues_only);
 
 		if (Debug_print_xlog_relation_change_info_backtrace_skip_issues &&

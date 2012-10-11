@@ -442,7 +442,6 @@ bool ChangeTracking_PrintRelationChangeInfo(
 									  uint8		xl_info,
 									  void		*data, 
 									  XLogRecPtr *loc,
-									  bool		weAreGeneratingXLogNow,
 									  bool		printSkipIssuesOnly)
 {
 	bool				atLeastOneSkipIssue = false;
@@ -472,10 +471,7 @@ bool ChangeTracking_PrintRelationChangeInfo(
 
 		relationChangeInfo = &relationChangeInfoArray[i];
 
-		if (weAreGeneratingXLogNow)
-			maxPersistentSerialNum = PersistentRelation_MyHighestSerialNum();
-		else
-			maxPersistentSerialNum = PersistentRelation_CurrentMaxSerialNum();
+		maxPersistentSerialNum = PersistentRelation_CurrentMaxSerialNum();
 
 		skip = GpPersistent_SkipXLogInfo(relationChangeInfo->relFileNode.relNode);
 		if (!skip)

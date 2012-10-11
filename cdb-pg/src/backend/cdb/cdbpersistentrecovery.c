@@ -621,7 +621,6 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 											record->xl_info,
 											(void*)XLogRecGetData(record), 
 											lsn,
-											/* weAreGeneratingXLogNow */ false,
 											/* printSkipIssuesOnly */ false);
 
 	/*
@@ -888,7 +887,6 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 											record->xl_info,
 											(void*)XLogRecGetData(record), 
 											lsn,
-											/* weAreGeneratingXLogNow */ false,
 											/* printSkipIssuesOnly */ false);
 
 	/*

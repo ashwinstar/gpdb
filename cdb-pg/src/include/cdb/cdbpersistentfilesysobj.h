@@ -84,8 +84,6 @@ extern void PersistentFileSysObj_Scan(
 
 extern void PersistentFileSysObj_FlushXLog(void);
 
-extern int64 PersistentFileSysObj_MyHighestSerialNum(
-	PersistentFsObjType 	fsObjType);
 extern int64 PersistentFileSysObj_CurrentMaxSerialNum(
 	PersistentFsObjType 	fsObjType);
 

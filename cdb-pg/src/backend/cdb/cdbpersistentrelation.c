@@ -104,12 +104,6 @@ extern void PersistentRelation_Reset(void)
 
 //------------------------------------------------------------------------------
 
-int64 PersistentRelation_MyHighestSerialNum(void)
-{
-	return PersistentFileSysObj_MyHighestSerialNum(
-							PersistentFsObjType_RelationFile);
-}
-
 int64 PersistentRelation_CurrentMaxSerialNum(void)
 {
 	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;

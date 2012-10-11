@@ -86,7 +86,7 @@ typedef void (*PersistentStorePrintTupleCallback) (
 								ItemPointer 			persistentTid,
 								Datum					*values);
 
-#define PersistentStoreData_StaticInit {NULL,0,NULL,NULL,NULL,NULL,0,0,0,0}
+#define PersistentStoreData_StaticInit {NULL,0,NULL,NULL,NULL,NULL,0,0,0}
 
 typedef struct PersistentStoreData
 {
@@ -101,8 +101,6 @@ typedef struct PersistentStoreData
 	PersistentStoreScanTupleCallback	scanTupleCallback;
 
 	PersistentStorePrintTupleCallback	printTupleCallback;
-
-	int64			myHighestSerialNum;
 
 	int				numAttributes;
 
@@ -580,9 +578,6 @@ extern void PersistentStore_EndScan(
 	PersistentStoreScan			*storeScan);
 
 extern void PersistentStore_FlushXLog(void);
-
-extern int64 PersistentStore_MyHighestSerialNum(
-	PersistentStoreData 	*storeData);
 
 extern int64 PersistentStore_CurrentMaxSerialNum(
 	PersistentStoreSharedData 	*storeSharedData);
