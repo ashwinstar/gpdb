@@ -2,6 +2,7 @@
 #include "funcapi.h"
 #include "assert.h"
 #include "miscadmin.h"
+#include "access/catquery.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
@@ -260,9 +261,12 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 	if (list_length(names) != 1)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
-	namespaceId = GetSysCacheOid(NAMESPACENAME,
-							CStringGetDatum(strVal(linitial(names))),
-							0, 0, 0);
+	namespaceId = caql_getoid(
+			NULL,
+			cql("SELECT oid FROM pg_namespace "
+				" WHERE nspname = :1 ",
+				CStringGetDatum(strVal(linitial(names)))));
+
 	if (!OidIsValid(namespaceId))
 		INVALID_SCHEMA_NAME_EXCEPTION();
 

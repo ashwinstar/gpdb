@@ -1267,8 +1267,8 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		 * left, we can set rolconfig to null; otherwise use the returned
 		 * array
 		 */
-		datum = SysCacheGetAttr(AUTHNAME, oldtuple,
-								Anum_pg_authid_rolconfig, &isnull);
+		datum = caql_getattr(pcqCtx,
+							 Anum_pg_authid_rolconfig, &isnull);
 		if (!isnull)
 			new = GUCArrayReset(DatumGetArrayTypeP(datum));
 		if (new)
@@ -1291,8 +1291,8 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		repl_null[Anum_pg_authid_rolconfig - 1] = false;
 
 		/* Extract old value of rolconfig */
-		datum = SysCacheGetAttr(AUTHNAME, oldtuple,
-								Anum_pg_authid_rolconfig, &isnull);
+		datum = caql_getattr(pcqCtx,
+							 Anum_pg_authid_rolconfig, &isnull);
 		array = isnull ? NULL : DatumGetArrayTypeP(datum);
 
 		/* Update (valuestr is NULL in RESET cases) */

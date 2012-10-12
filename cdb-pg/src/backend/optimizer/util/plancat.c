@@ -1145,15 +1145,22 @@ has_subclass(Oid relationId)
 {
 	HeapTuple	tuple;
 	bool		result;
+	cqContext  *pcqCtx;
 
-	tuple = SearchSysCache(RELOID,
-						   ObjectIdGetDatum(relationId),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(relationId)));
+	
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", relationId);
 
 	result = ((Form_pg_class) GETSTRUCT(tuple))->relhassubclass;
-	ReleaseSysCache(tuple);
+
+	caql_endscan(pcqCtx);
 	return result;
 }
 
@@ -1279,4 +1286,3 @@ cdb_default_stats_warning_for_table(Oid reloid)
     if (relname)
         pfree(relname);
 }                               /* cdb_default_stats_warning_for_table */
-

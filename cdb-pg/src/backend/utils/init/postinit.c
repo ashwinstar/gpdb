@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -158,11 +159,17 @@ CheckMyDatabase(const char *name, bool am_superuser)
 {
 	HeapTuple	tup;
 	Form_pg_database dbform;
+	cqContext	*pcqCtx;
 
 	/* Fetch our real pg_database row */
-	tup = SearchSysCache(DATABASEOID,
-						 ObjectIdGetDatum(MyDatabaseId),
-						 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_database "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(MyDatabaseId)));
+
+	tup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for database %u", MyDatabaseId);
 	dbform = (Form_pg_database) GETSTRUCT(tup);
@@ -263,8 +270,8 @@ CheckMyDatabase(const char *name, bool am_superuser)
 		Datum		datum;
 		bool		isnull;
 
-		datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datconfig,
-								&isnull);
+		datum = caql_getattr(pcqCtx, Anum_pg_database_datconfig,
+							 &isnull);
 		if (!isnull)
 		{
 			ArrayType  *a = DatumGetArrayTypeP(datum);
@@ -273,7 +280,7 @@ CheckMyDatabase(const char *name, bool am_superuser)
 		}
 	}
 
-	ReleaseSysCache(tup);
+	caql_endscan(pcqCtx);
 }
 
 
@@ -716,17 +723,8 @@ ShutdownPostgres(int code, Datum arg)
 static bool
 ThereIsAtLeastOneRole(void)
 {
-	Relation	pg_authid_rel;
-	HeapScanDesc scan;
-	bool		result;
-
-	pg_authid_rel = heap_open(AuthIdRelationId, AccessShareLock);
-
-	scan = heap_beginscan(pg_authid_rel, SnapshotNow, 0, NULL);
-	result = (heap_getnext(scan, ForwardScanDirection) != NULL);
-
-	heap_endscan(scan);
-	heap_close(pg_authid_rel, AccessShareLock);
-
-	return result;
+	return (caql_getcount(
+					NULL,
+					cql("SELECT count(*) FROM pg_authid ",
+						NULL)) > 0);
 }

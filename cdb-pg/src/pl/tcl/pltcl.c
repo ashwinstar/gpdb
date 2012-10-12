@@ -18,6 +18,7 @@
 #define CONST84
 #endif
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
@@ -836,6 +837,7 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS)
 			Oid			typinput;
 			Oid			typioparam;
 			FmgrInfo	finfo;
+			cqContext  *typcqCtx;
 
 			/************************************************************
 			 * Ignore ".tupno" pseudo elements (see pltcl_set_tuple_values)
@@ -862,15 +864,21 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS)
 			 * Lookup the attribute type in the syscache
 			 * for the input function
 			 ************************************************************/
-			typeTup = SearchSysCache(TYPEOID,
-					  ObjectIdGetDatum(tupdesc->attrs[attnum - 1]->atttypid),
-									 0, 0, 0);
+			typcqCtx = caql_beginscan(
+					NULL,
+					cql("SELECT * FROM pg_type "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(tupdesc->attrs[attnum - 1]->atttypid)));
+
+			typeTup = caql_getnext(typcqCtx);
+
 			if (!HeapTupleIsValid(typeTup))
 				elog(ERROR, "cache lookup failed for type %u",
 					 tupdesc->attrs[attnum - 1]->atttypid);
 			typinput = ((Form_pg_type) GETSTRUCT(typeTup))->typinput;
 			typioparam = getTypeIOParam(typeTup);
-			ReleaseSysCache(typeTup);
+
+			caql_endscan(typcqCtx);
 
 			/************************************************************
 			 * Set the attribute to NOT NULL and convert the contents
@@ -956,11 +964,17 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 	int			i;
 	int			hashnew;
 	int			tcl_rc;
+	cqContext  *pcqCtx;
 
 	/* We'll need the pg_proc tuple in any case... */
-	procTup = SearchSysCache(PROCOID,
-							 ObjectIdGetDatum(fn_oid),
-							 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(fn_oid)));
+
+	procTup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(procTup))
 		elog(ERROR, "cache lookup failed for function %u", fn_oid);
 	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
@@ -1022,6 +1036,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		bool		isnull;
 		char	   *proc_source;
 		char		buf[32];
+		cqContext  *lancqCtx;
 
 		/************************************************************
 		 * Allocate a new procedure description block
@@ -1043,9 +1058,14 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		/************************************************************
 		 * Lookup the pg_language tuple by Oid
 		 ************************************************************/
-		langTup = SearchSysCache(LANGOID,
-								 ObjectIdGetDatum(procStruct->prolang),
-								 0, 0, 0);
+		lancqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_language "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(procStruct->prolang)));
+
+		langTup = caql_getnext(lancqCtx);
+
 		if (!HeapTupleIsValid(langTup))
 		{
 			free(prodesc->proname);
@@ -1055,7 +1075,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		}
 		langStruct = (Form_pg_language) GETSTRUCT(langTup);
 		prodesc->lanpltrusted = langStruct->lanpltrusted;
-		ReleaseSysCache(langTup);
+		
+		caql_endscan(lancqCtx);
 
 		if (prodesc->lanpltrusted)
 			interp = pltcl_safe_interp;
@@ -1068,9 +1089,16 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		 ************************************************************/
 		if (!is_trigger)
 		{
-			typeTup = SearchSysCache(TYPEOID,
-									 ObjectIdGetDatum(procStruct->prorettype),
-									 0, 0, 0);
+			cqContext	*typcqCtx;
+
+			typcqCtx = caql_beginscan(
+					NULL,
+					cql("SELECT * FROM pg_type "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(procStruct->prorettype)));
+
+			typeTup = caql_getnext(typcqCtx);
+
 			if (!HeapTupleIsValid(typeTup))
 			{
 				free(prodesc->proname);
@@ -1081,7 +1109,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 			typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
 			/* Disallow pseudotype result, except VOID */
-			if (typeStruct->typtype == 'p')
+			if (typeStruct->typtype == TYPTYPE_PSEUDO)
 			{
 				if (procStruct->prorettype == VOIDOID)
 					 /* okay */ ;
@@ -1104,7 +1132,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 				}
 			}
 
-			if (typeStruct->typtype == 'c')
+			if (typeStruct->typtype == TYPTYPE_COMPOSITE)
 			{
 				free(prodesc->proname);
 				free(prodesc);
@@ -1116,7 +1144,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 			perm_fmgr_info(typeStruct->typinput, &(prodesc->result_in_func));
 			prodesc->result_typioparam = getTypeIOParam(typeTup);
 
-			ReleaseSysCache(typeTup);
+			caql_endscan(typcqCtx);
 		}
 
 		/************************************************************
@@ -1129,9 +1157,16 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 			proc_internal_args[0] = '\0';
 			for (i = 0; i < prodesc->nargs; i++)
 			{
-				typeTup = SearchSysCache(TYPEOID,
-						 ObjectIdGetDatum(procStruct->proargtypes.values[i]),
-										 0, 0, 0);
+				cqContext	*typcqCtx;
+
+				typcqCtx = caql_beginscan(
+					NULL,
+					cql("SELECT * FROM pg_type "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(procStruct->proargtypes.values[i])));
+
+				typeTup = caql_getnext(typcqCtx);
+
 				if (!HeapTupleIsValid(typeTup))
 				{
 					free(prodesc->proname);
@@ -1142,7 +1177,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 				typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
 				/* Disallow pseudotype argument */
-				if (typeStruct->typtype == 'p')
+				if (typeStruct->typtype == TYPTYPE_PSEUDO)
 				{
 					free(prodesc->proname);
 					free(prodesc);
@@ -1152,7 +1187,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 						format_type_be(procStruct->proargtypes.values[i]))));
 				}
 
-				if (typeStruct->typtype == 'c')
+				if (typeStruct->typtype == TYPTYPE_COMPOSITE)
 				{
 					prodesc->arg_is_rowtype[i] = true;
 					snprintf(buf, sizeof(buf), "__PLTcl_Tup_%d", i + 1);
@@ -1169,7 +1204,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 					strcat(proc_internal_args, " ");
 				strcat(proc_internal_args, buf);
 
-				ReleaseSysCache(typeTup);
+				caql_endscan(typcqCtx);
 			}
 		}
 		else
@@ -1230,8 +1265,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		/************************************************************
 		 * Add user's function definition to proc body
 		 ************************************************************/
-		prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
-									  Anum_pg_proc_prosrc, &isnull);
+		prosrcdatum = caql_getattr(pcqCtx,
+								   Anum_pg_proc_prosrc, &isnull);
 		if (isnull)
 			elog(ERROR, "null prosrc");
 		proc_source = DatumGetCString(DirectFunctionCall1(textout,
@@ -1268,7 +1303,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		Tcl_SetHashValue(hashent, (ClientData) prodesc);
 	}
 
-	ReleaseSysCache(procTup);
+	caql_endscan(pcqCtx);
 
 	return prodesc;
 }
@@ -1875,7 +1910,7 @@ pltcl_SPI_prepare(ClientData cdata, Tcl_Interp *interp,
 			perm_fmgr_info(((Form_pg_type) GETSTRUCT(typeTup))->typinput,
 						   &(qdesc->arginfuncs[i]));
 			qdesc->argtypioparams[i] = getTypeIOParam(typeTup);
-			ReleaseSysCache(typeTup);
+			ReleaseType(typeTup);
 		}
 
 		/************************************************************
@@ -2186,8 +2221,8 @@ pltcl_set_tuple_values(Tcl_Interp *interp, CONST84 char *arrayname,
 	bool		isnull;
 
 	CONST84 char *attname;
-	HeapTuple	typeTup;
 	Oid			typoutput;
+	int			fetchCount;
 
 	CONST84 char **arrptr;
 	CONST84 char **nameptr;
@@ -2230,15 +2265,17 @@ pltcl_set_tuple_values(Tcl_Interp *interp, CONST84 char *arrayname,
 		 * Lookup the attribute type in the syscache
 		 * for the output function
 		 ************************************************************/
-		typeTup = SearchSysCache(TYPEOID,
-							   ObjectIdGetDatum(tupdesc->attrs[i]->atttypid),
-								 0, 0, 0);
-		if (!HeapTupleIsValid(typeTup))
+		typoutput = caql_getoid_plus(
+				NULL,
+				&fetchCount,
+				NULL,
+				cql("SELECT typoutput FROM pg_type "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(tupdesc->attrs[i]->atttypid)));
+
+		if (!fetchCount)
 			elog(ERROR, "cache lookup failed for type %u",
 				 tupdesc->attrs[i]->atttypid);
-
-		typoutput = ((Form_pg_type) GETSTRUCT(typeTup))->typoutput;
-		ReleaseSysCache(typeTup);
 
 		/************************************************************
 		 * If there is a value, set the variable
@@ -2276,7 +2313,7 @@ pltcl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc,
 	bool		isnull;
 
 	char	   *attname;
-	HeapTuple	typeTup;
+	int			fetchCount;
 	Oid			typoutput;
 
 	for (i = 0; i < tupdesc->natts; i++)
@@ -2299,15 +2336,17 @@ pltcl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc,
 		 * Lookup the attribute type in the syscache
 		 * for the output function
 		 ************************************************************/
-		typeTup = SearchSysCache(TYPEOID,
-							   ObjectIdGetDatum(tupdesc->attrs[i]->atttypid),
-								 0, 0, 0);
-		if (!HeapTupleIsValid(typeTup))
+		typoutput = caql_getoid_plus(
+				NULL,
+				&fetchCount,
+				NULL,
+				cql("SELECT typoutput FROM pg_type "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(tupdesc->attrs[i]->atttypid)));
+
+		if (!fetchCount)
 			elog(ERROR, "cache lookup failed for type %u",
 				 tupdesc->attrs[i]->atttypid);
-
-		typoutput = ((Form_pg_type) GETSTRUCT(typeTup))->typoutput;
-		ReleaseSysCache(typeTup);
 
 		/************************************************************
 		 * If there is a value, append the attribute name and the

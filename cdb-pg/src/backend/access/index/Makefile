@@ -23,6 +23,8 @@ include $(top_srcdir)/src/backend/common.mk
 # needed with latest contents of caql.files to improve Makefile
 # dependencies for catquery.c regeneration
 CAQL_CQL_SRCS := $(addprefix $(top_srcdir)/src/backend/,\
+	access/common/tupdesc.c \
+	access/heap/heapam.c \
 	catalog/aclchk.c \
 	catalog/dependency.c \
 	catalog/gp_fastsequence.c \
@@ -45,11 +47,16 @@ CAQL_CQL_SRCS := $(addprefix $(top_srcdir)/src/backend/,\
 	catalog/pg_proc_callback.c \
 	catalog/pg_shdepend.c \
 	catalog/pg_type.c \
+	catalog/toasting.c \
 	cdb/cdbcat.c \
+	cdb/cdbdisp.c \
 	cdb/cdbfts.c \
 	cdb/cdbpartition.c \
+	cdb/cdbpersistentbuild.c \
+	cdb/cdbsubselect.c \
 	cdb/cdbtm.c \
 	cdb/cdbutil.c \
+	cdb/motion/tupser.c \
 	commands/aggregatecmds.c \
 	commands/analyze.c \
 	commands/async.c \
@@ -74,25 +81,77 @@ CAQL_CQL_SRCS := $(addprefix $(top_srcdir)/src/backend/,\
 	commands/typecmds.c \
 	commands/user.c \
 	commands/vacuum.c \
+	commands/variable.c \
+	executor/functions.c \
+	executor/nodeAgg.c \
+	executor/nodeMergejoin.c \
+	executor/nodeWindow.c \
+	executor/spi.c \
 	foreign/foreign.c \
 	fts/fts.c \
+	optimizer/plan/planagg.c \
+	optimizer/plan/planpartition.c \
+	optimizer/plan/planwindow.c \
+	optimizer/plan/setrefs.c \
+	optimizer/plan/subselect.c \
+	optimizer/util/clauses.c \
 	optimizer/util/plancat.c \
+	optimizer/util/predtest.c \
 	parser/analyze.c \
+	parser/parse_clause.c \
+	parser/parse_coerce.c \
 	parser/parse_func.c \
+	parser/parse_node.c \
+	parser/parse_oper.c \
 	parser/parse_relation.c \
 	parser/parse_type.c \
+	parser/parse_utilcmd.c \
 	postmaster/autovacuum.c \
 	rewrite/rewriteDefine.c \
 	rewrite/rewriteRemove.c \
 	rewrite/rewriteSupport.c \
 	storage/large_object/inv_api.c \
+	tcop/fastpath.c \
+	tcop/utility.c \
 	utils/adt/acl.c \
 	utils/adt/dbsize.c \
+	utils/adt/format_type.c \
 	utils/adt/regproc.c \
 	utils/adt/ruleutils.c \
+	utils/adt/selfuncs.c \
+	utils/cache/lsyscache.c \
 	utils/cache/relcache.c \
+	utils/cache/typcache.c \
+	utils/fmgr/fmgr.c \
+	utils/fmgr/funcapi.c \
 	utils/gp/segadmin.c \
+	utils/init/miscinit.c \
+	utils/init/postinit.c \
+	utils/misc/superuser.c \
 	utils/resscheduler/resscheduler.c \
+	utils/sort/tuplesort.c \
+	)
+
+CAQL_CQL_PLSRCS := $(addprefix $(top_srcdir)/src/pl/,\
+	pljava/src/C/pljava/PgObject.c \
+	plperl/plperl.c \
+	plpgsql/src/pl_comp.c \
+	plpgsql/src/pl_handler.c \
+	plpython/plpython.c \
+	plr/pg_backend_support.c \
+	plr/pg_userfuncs.c \
+	plr/plr.c \
+	tcl/pltcl.c \
+	)
+
+CAQL_CQL_CONTRIBSRCS := $(addprefix $(top_srcdir)/contrib/,\
+	dblink/dblink.c \
+	orafce/assert.c \
+	postgis/postgis/lwgeom_estimate.c \
+	)
+
+CAQL_CQL_OTHER := $(addprefix $(top_srcdir)/,\
+	src/bin/gpupgrade/gpviewcp.c \
 	)
 
 # Generate catquery.c by discovering cql statements in src files
@@ -101,8 +160,8 @@ jversion := 5.0
 
 # NOTE: to turn on query logging, do "make caql_logquery_FLAGS=-logquery"
 
-caql.files: $(CAQL_CQL_SRCS) 
-	find $(top_srcdir)/src/ -name '*.c' | \
+caql.files: $(CAQL_CQL_SRCS) $(CAQL_CQL_PLSRCS) $(CAQL_CQL_CONTRIBSRCS) $(CAQL_CQL_OTHER) $(top_srcdir)/src/include/catalog/calico.pl 
+	find $(top_srcdir)/ -name '*.c' | \
 	xargs grep -l cql | grep -v catquery > caql.files 
 
 catquery.o: catquery.c

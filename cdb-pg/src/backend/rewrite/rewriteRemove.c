@@ -41,14 +41,21 @@ RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior,
 	HeapTuple	tuple;
 	Oid			eventRelationOid;
 	ObjectAddress object;
+	cqContext	*pcqCtx;
 
 	/*
 	 * Find the tuple for the target rule.
 	 */
-	tuple = SearchSysCache(RULERELNAME,
-						   ObjectIdGetDatum(owningRel),
-						   PointerGetDatum((char *) ruleName),
-						   0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_rewrite "
+				" WHERE ev_class = :1 "
+				" AND rulename = :2 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(owningRel),
+				PointerGetDatum((char *) ruleName)));
+
+	tuple = caql_getnext(pcqCtx);
 
 	/*
 	 * complain if no rule with such name exists
@@ -64,6 +71,8 @@ RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior,
 			ereport(NOTICE,
 					(errmsg("rule \"%s\" for relation \"%s\" does not exist, skipping",
 							ruleName, get_rel_name(owningRel))));
+
+		caql_endscan(pcqCtx);
 		return;
 	}
 
@@ -83,7 +92,7 @@ RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior,
 	object.objectId = HeapTupleGetOid(tuple);
 	object.objectSubId = 0;
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	performDeletion(&object, behavior);
 }
@@ -106,7 +115,7 @@ RemoveRewriteRuleById(Oid ruleOid)
 	 */
 	pcqCtx = caql_beginscan(
 			NULL,
-			cql("SELECT ev_class FROM  pg_rewrite "
+			cql("SELECT * FROM pg_rewrite "
 				" WHERE oid = :1 "
 				" FOR UPDATE ",
 				ObjectIdGetDatum(ruleOid)));

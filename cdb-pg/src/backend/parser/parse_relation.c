@@ -61,6 +61,7 @@ static int	specialAttNum(const char *attname);
 static void warnAutoRange(ParseState *pstate, RangeVar *relation,
 			  int location);
 
+static bool get_attisdropped(Oid relid, int attnum);
 
 /*
  * refnameRangeTblEntry
@@ -1491,15 +1492,24 @@ isSimplyUpdatableRelation(Oid relid)
 {
 	if (OidIsValid(relid))
 	{
-		HeapTuple tuple = SearchSysCache(RELOID,
-			                             ObjectIdGetDatum(relid),
-            			                 0, 0, 0);
+		cqContext		*pcqCtx;
+		HeapTuple		 tuple;
+
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_class "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(relid)));
+
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for relation %u", relid);
 		Form_pg_class rel = (Form_pg_class) GETSTRUCT(tuple);
 		bool is_heap_tuple = rel->relkind == RELKIND_RELATION &&
 							 rel->relstorage == RELSTORAGE_HEAP;
-		ReleaseSysCache(tuple);
+
+		caql_endscan(pcqCtx);
 		return is_heap_tuple;
 	}
 	return false;
@@ -2069,6 +2079,36 @@ bogus:
 	return "*BOGUS*";
 }
 
+static bool get_attisdropped(Oid relid, int attnum)
+{
+	HeapTuple			 tp;
+	Form_pg_attribute	 att_tup;
+	bool				 result = false;
+	cqContext			*pcqCtx;
+
+	/* SELECT attisdropped FROM pg_attribute */
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_attribute "
+				" WHERE attrelid = :1 "
+				" AND attnum = :2 ",
+				ObjectIdGetDatum(relid),
+				Int16GetDatum(attnum)));
+
+	tp = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(tp))		/* shouldn't happen */
+		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+			 attnum, relid);
+	att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+	result	= att_tup->attisdropped;
+
+	caql_endscan(pcqCtx);
+
+	return (result);
+}
+
 /*
  * get_rte_attribute_type
  *		Get attribute type information from a RangeTblEntry
@@ -2084,11 +2124,18 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 				/* Plain relation RTE --- get the attribute's type info */
 				HeapTuple	tp;
 				Form_pg_attribute att_tup;
+				cqContext  *pcqCtx;
 
-				tp = SearchSysCache(ATTNUM,
-									ObjectIdGetDatum(rte->relid),
-									Int16GetDatum(attnum),
-									0, 0);
+				pcqCtx = caql_beginscan(
+						NULL,
+						cql("SELECT * FROM pg_attribute "
+							" WHERE attrelid = :1 "
+							" AND attnum = :2 ",
+							ObjectIdGetDatum(rte->relid),
+							Int16GetDatum(attnum)));
+
+				tp = caql_getnext(pcqCtx);
+
 				if (!HeapTupleIsValid(tp))		/* shouldn't happen */
 					elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 						 attnum, rte->relid);
@@ -2107,7 +2154,8 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 					errOmitLocation(true)));
 				*vartype = att_tup->atttypid;
 				*vartypmod = att_tup->atttypmod;
-				ReleaseSysCache(tp);
+
+				caql_endscan(pcqCtx);
 			}
 			break;
 		case RTE_SUBQUERY:
@@ -2235,22 +2283,7 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 	{
 		case RTE_RELATION:
 			{
-				/*
-				 * Plain relation RTE --- get the attribute's catalog entry
-				 */
-				HeapTuple	tp;
-				Form_pg_attribute att_tup;
-
-				tp = SearchSysCache(ATTNUM,
-									ObjectIdGetDatum(rte->relid),
-									Int16GetDatum(attnum),
-									0, 0);
-				if (!HeapTupleIsValid(tp))		/* shouldn't happen */
-					elog(ERROR, "cache lookup failed for attribute %d of relation %u",
-						 attnum, rte->relid);
-				att_tup = (Form_pg_attribute) GETSTRUCT(tp);
-				result = att_tup->attisdropped;
-				ReleaseSysCache(tp);
+				result = get_attisdropped(rte->relid, attnum);
 			}
 			break;
 		case RTE_SUBQUERY:
@@ -2292,19 +2325,7 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 					 *
 					 * Same as ordinary relation RTE
 					 */
-					HeapTuple	tp;
-					Form_pg_attribute att_tup;
-
-					tp = SearchSysCache(ATTNUM,
-										ObjectIdGetDatum(funcrelid),
-										Int16GetDatum(attnum),
-										0, 0);
-					if (!HeapTupleIsValid(tp))	/* shouldn't happen */
-						elog(ERROR, "cache lookup failed for attribute %d of relation %u",
-							 attnum, funcrelid);
-					att_tup = (Form_pg_attribute) GETSTRUCT(tp);
-					result = att_tup->attisdropped;
-					ReleaseSysCache(tp);
+					result = get_attisdropped(funcrelid, attnum);
 				}
 				else
 				{

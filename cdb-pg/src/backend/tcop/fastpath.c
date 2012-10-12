@@ -20,6 +20,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "access/catquery.h"
 #include "access/xact.h"
 #include "catalog/pg_proc.h"
 #include "libpq/libpq.h"
@@ -196,6 +197,7 @@ fetch_fp_info(Oid func_id, struct fp_info * fip)
 {
 	HeapTuple	func_htp;
 	Form_pg_proc pp;
+	cqContext	*pcqCtx;
 
 	Assert(OidIsValid(func_id));
 	Assert(fip != NULL);
@@ -213,9 +215,14 @@ fetch_fp_info(Oid func_id, struct fp_info * fip)
 
 	fmgr_info(func_id, &fip->flinfo);
 
-	func_htp = SearchSysCache(PROCOID,
-							  ObjectIdGetDatum(func_id),
-							  0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(func_id)));
+
+	func_htp = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(func_htp))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
@@ -232,7 +239,7 @@ fetch_fp_info(Oid func_id, struct fp_info * fip)
 	memcpy(fip->argtypes, pp->proargtypes.values, pp->pronargs * sizeof(Oid));
 	strlcpy(fip->fname, NameStr(pp->proname), NAMEDATALEN);
 
-	ReleaseSysCache(func_htp);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * This must be last!

@@ -609,6 +609,7 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	Relation	avRel;
 	HeapTuple	tuple;
 	cqContext	*pcqCtx;
+	cqContext	*dbcqCtx;
 	cqContext	 cqc;
 	Form_pg_database dbForm;
 	List	   *vacuum_tables = NIL;
@@ -634,9 +635,14 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	 * We use zero in template and nonconnectable databases,
 	 * else the system-wide default.
 	 */
-	tuple = SearchSysCache(DATABASEOID,
-						   ObjectIdGetDatum(MyDatabaseId),
-						   0, 0, 0);
+	dbcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_database "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(MyDatabaseId)));
+
+	tuple = caql_getnext(dbcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for database %u", MyDatabaseId);
 	dbForm = (Form_pg_database) GETSTRUCT(tuple);
@@ -646,7 +652,7 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	else
 		default_freeze_min_age = vacuum_freeze_min_age;
 
-	ReleaseSysCache(tuple);
+	caql_endscan(dbcqCtx);
 
 	/*
 	 * StartTransactionCommand and CommitTransactionCommand will automatically
@@ -1288,6 +1294,8 @@ bool autostats_on_change_check(AutoStatsCmdType cmdType, uint64 ntuples)
  */
 bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid) 
 {
+	cqContext	*pcqCtx;
+
 	if (cmdType == AUTOSTATS_CMDTYPE_CTAS)
 		return true;
 		
@@ -1304,9 +1312,14 @@ bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid)
 		/*
 		 * Must get the relation's tuple from pg_class
 		 */
-		tuple = SearchSysCache(RELOID,
-				ObjectIdGetDatum(relationOid),
-				0, 0, 0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_class "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(relationOid)));
+
+		tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple)) 
 		{
 			ereport(ERROR,
@@ -1322,7 +1335,8 @@ bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid)
 				classForm->reltuples);
 
 		result = (classForm->relpages ==0 && classForm->reltuples < 1);
-		ReleaseSysCache(tuple);
+
+		caql_endscan(pcqCtx);
 		return result;
 	}	
 	

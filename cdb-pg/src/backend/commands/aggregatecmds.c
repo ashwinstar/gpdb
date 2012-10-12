@@ -263,7 +263,7 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 	List	   *aggName = stmt->name;
 	List	   *aggArgs = stmt->args;
 	Oid			procOid;
-	HeapTuple	tup;
+	Oid			namespaceOid;
 	ObjectAddress object;
 
 	/* Look up function and make sure it's an aggregate */
@@ -282,20 +282,18 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 	/*
 	 * Find the function tuple, do permissions and validity checks
 	 */
-	tup = SearchSysCache(PROCOID,
-						 ObjectIdGetDatum(procOid),
-						 0, 0, 0);
-	if (!HeapTupleIsValid(tup)) /* should not happen */
+	namespaceOid = get_func_namespace(procOid);
+	
+	if (!OidIsValid(namespaceOid)) /* should not happen */
 		elog(ERROR, "cache lookup failed for function %u", procOid);
 
 	/* Permission check: must own agg or its namespace */
 	if (!pg_proc_ownercheck(procOid, GetUserId()) &&
-	  !pg_namespace_ownercheck(((Form_pg_proc) GETSTRUCT(tup))->pronamespace,
+		!pg_namespace_ownercheck(namespaceOid,
 							   GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 					   NameListToString(aggName));
 
-	ReleaseSysCache(tup);
 
 	/*
 	 * Do the deletion

@@ -141,6 +141,7 @@ regprocout(PG_FUNCTION_ARGS)
 	RegProcedure proid = PG_GETARG_OID(0);
 	char	   *result;
 	HeapTuple	proctup;
+	cqContext  *pcqCtx;
 
 	if (proid == InvalidOid)
 	{
@@ -148,9 +149,13 @@ regprocout(PG_FUNCTION_ARGS)
 		PG_RETURN_CSTRING(result);
 	}
 
-	proctup = SearchSysCache(PROCOID,
-							 ObjectIdGetDatum(proid),
-							 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(proid)));
+
+	proctup = caql_getnext(pcqCtx);
 
 	/* XXX XXX select proname, pronamespace from pg_proc */
 	if (HeapTupleIsValid(proctup))
@@ -184,8 +189,6 @@ regprocout(PG_FUNCTION_ARGS)
 
 			result = quote_qualified_identifier(nspname, proname);
 		}
-
-		ReleaseSysCache(proctup);
 	}
 	else
 	{
@@ -193,6 +196,8 @@ regprocout(PG_FUNCTION_ARGS)
 		result = (char *) palloc(NAMEDATALEN);
 		snprintf(result, NAMEDATALEN, "%u", proid);
 	}
+
+	caql_endscan(pcqCtx);
 
 	PG_RETURN_CSTRING(result);
 }
@@ -292,10 +297,15 @@ format_procedure(Oid procedure_oid)
 {
 	char	   *result;
 	HeapTuple	proctup;
+	cqContext  *pcqCtx;
 
-	proctup = SearchSysCache(PROCOID,
-							 ObjectIdGetDatum(procedure_oid),
-							 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(procedure_oid)));
+
+	proctup = caql_getnext(pcqCtx);
 
 	/* XXX XXX select proname, pronamespace from pg_proc */
 	if (HeapTupleIsValid(proctup))
@@ -334,7 +344,6 @@ format_procedure(Oid procedure_oid)
 
 		result = buf.data;
 
-		ReleaseSysCache(proctup);
 	}
 	else
 	{
@@ -342,6 +351,8 @@ format_procedure(Oid procedure_oid)
 		result = (char *) palloc(NAMEDATALEN);
 		snprintf(result, NAMEDATALEN, "%u", procedure_oid);
 	}
+
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -479,6 +490,7 @@ regoperout(PG_FUNCTION_ARGS)
 	Oid			oprid = PG_GETARG_OID(0);
 	char	   *result;
 	HeapTuple	opertup;
+	cqContext  *pcqCtx;
 
 	if (oprid == InvalidOid)
 	{
@@ -486,9 +498,13 @@ regoperout(PG_FUNCTION_ARGS)
 		PG_RETURN_CSTRING(result);
 	}
 
-	opertup = SearchSysCache(OPEROID,
-							 ObjectIdGetDatum(oprid),
-							 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_operator "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(oprid)));
+
+	opertup = caql_getnext(pcqCtx);
 
 	/* XXX XXX select oprname, oprnamespace from pg_operator */
 	if (HeapTupleIsValid(opertup))
@@ -526,8 +542,6 @@ regoperout(PG_FUNCTION_ARGS)
 				sprintf(result, "%s.%s", nspname, oprname);
 			}
 		}
-
-		ReleaseSysCache(opertup);
 	}
 	else
 	{
@@ -537,6 +551,8 @@ regoperout(PG_FUNCTION_ARGS)
 		result = (char *) palloc(NAMEDATALEN);
 		snprintf(result, NAMEDATALEN, "%u", oprid);
 	}
+
+	caql_endscan(pcqCtx);
 
 	PG_RETURN_CSTRING(result);
 }
@@ -637,10 +653,15 @@ format_operator(Oid operator_oid)
 {
 	char	   *result;
 	HeapTuple	opertup;
+	cqContext  *pcqCtx;
 
-	opertup = SearchSysCache(OPEROID,
-							 ObjectIdGetDatum(operator_oid),
-							 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_operator "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(operator_oid)));
+
+	opertup = caql_getnext(pcqCtx);
 
 	/* XXX XXX select oprname, oprnamespace from pg_operator */
 	if (HeapTupleIsValid(opertup))
@@ -680,8 +701,6 @@ format_operator(Oid operator_oid)
 			appendStringInfo(&buf, "NONE)");
 
 		result = buf.data;
-
-		ReleaseSysCache(opertup);
 	}
 	else
 	{
@@ -691,6 +710,8 @@ format_operator(Oid operator_oid)
 		result = (char *) palloc(NAMEDATALEN);
 		snprintf(result, NAMEDATALEN, "%u", operator_oid);
 	}
+
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -814,6 +835,7 @@ regclassout(PG_FUNCTION_ARGS)
 	Oid			classid = PG_GETARG_OID(0);
 	char	   *result;
 	HeapTuple	classtup;
+	cqContext  *pcqCtx;
 
 	if (classid == InvalidOid)
 	{
@@ -821,9 +843,13 @@ regclassout(PG_FUNCTION_ARGS)
 		PG_RETURN_CSTRING(result);
 	}
 
-	classtup = SearchSysCache(RELOID,
-							  ObjectIdGetDatum(classid),
-							  0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(classid)));
+
+	classtup = caql_getnext(pcqCtx);
 
 	/* XXX XXX select relname, relnamespace from pg_class */
 	if (HeapTupleIsValid(classtup))
@@ -852,8 +878,6 @@ regclassout(PG_FUNCTION_ARGS)
 
 			result = quote_qualified_identifier(nspname, classname);
 		}
-
-		ReleaseSysCache(classtup);
 	}
 	else
 	{
@@ -861,6 +885,8 @@ regclassout(PG_FUNCTION_ARGS)
 		result = (char *) palloc(NAMEDATALEN);
 		snprintf(result, NAMEDATALEN, "%u", classid);
 	}
+
+	caql_endscan(pcqCtx);
 
 	PG_RETURN_CSTRING(result);
 }
@@ -969,8 +995,8 @@ Datum
 regtypeout(PG_FUNCTION_ARGS)
 {
 	Oid			typid = PG_GETARG_OID(0);
-	char	   *result;
-	HeapTuple	typetup;
+	char	   *result = NULL;
+	int			fetchCount;
 
 	if (typid == InvalidOid)
 	{
@@ -978,30 +1004,26 @@ regtypeout(PG_FUNCTION_ARGS)
 		PG_RETURN_CSTRING(result);
 	}
 
-	typetup = SearchSysCache(TYPEOID,
-							 ObjectIdGetDatum(typid),
-							 0, 0, 0);
+	result = caql_getcstring_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT typname FROM pg_type "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(typid)));
 
-	/* XXX XXX select typname from pg_type */
-	if (HeapTupleIsValid(typetup))
+	if (fetchCount)
 	{
-		Form_pg_type typeform = (Form_pg_type) GETSTRUCT(typetup);
-
 		/*
 		 * In bootstrap mode, skip the fancy namespace stuff and just return
 		 * the type name.  (This path is only needed for debugging output
 		 * anyway.)
 		 */
-		if (IsBootstrapProcessingMode())
+		if (!IsBootstrapProcessingMode())
 		{
-			char	   *typname = NameStr(typeform->typname);
-
-			result = pstrdup(typname);
-		}
-		else
+			if (result) pfree(result);
 			result = format_type_be(typid);
-
-		ReleaseSysCache(typetup);
+		}
 	}
 	else
 	{

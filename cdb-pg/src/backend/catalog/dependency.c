@@ -1885,17 +1885,23 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_CONVERSION:
 			{
-				HeapTuple	conTup;
+				char	   *conname;
+				int			fetchCount;
 
-				conTup = SearchSysCache(CONOID,
-										ObjectIdGetDatum(object->objectId),
-										0, 0, 0);
-				if (!HeapTupleIsValid(conTup))
+				conname = caql_getcstring_plus(
+						NULL,
+						&fetchCount,
+						NULL,
+						cql("SELECT conname FROM pg_conversion "
+							 " WHERE oid = :1 ",
+							 ObjectIdGetDatum(object->objectId)));
+
+				if (!fetchCount)
 					elog(ERROR, "cache lookup failed for conversion %u",
 						 object->objectId);
 				appendStringInfo(&buffer, _("conversion %s"),
-				 NameStr(((Form_pg_conversion) GETSTRUCT(conTup))->conname));
-				ReleaseSysCache(conTup);
+								 conname);
+				pfree(conname);
 				break;
 			}
 
@@ -1931,17 +1937,23 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_LANGUAGE:
 			{
-				HeapTuple	langTup;
+				char	   *lanname;
+				int			fetchCount;
 
-				langTup = SearchSysCache(LANGOID,
-										 ObjectIdGetDatum(object->objectId),
-										 0, 0, 0);
-				if (!HeapTupleIsValid(langTup))
+				lanname = caql_getcstring_plus(
+						NULL,
+						&fetchCount,
+						NULL,
+						cql("SELECT lanname FROM pg_language "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
+
+				if (!fetchCount)
 					elog(ERROR, "cache lookup failed for language %u",
 						 object->objectId);
 				appendStringInfo(&buffer, _("language %s"),
-				  NameStr(((Form_pg_language) GETSTRUCT(langTup))->lanname));
-				ReleaseSysCache(langTup);
+								 lanname);
+				pfree(lanname);
 				break;
 			}
 
@@ -1954,25 +1966,35 @@ getObjectDescription(const ObjectAddress *object)
 			{
 				HeapTuple	opcTup;
 				Form_pg_opclass opcForm;
-				HeapTuple	amTup;
-				Form_pg_am	amForm;
 				char	   *nspname;
+				char	   *amname;
+				int			fetchCount;
+				cqContext  *pcqCtx;
 
-				opcTup = SearchSysCache(CLAOID,
-										ObjectIdGetDatum(object->objectId),
-										0, 0, 0);
+				pcqCtx = caql_beginscan(
+						NULL,
+						cql("SELECT * FROM pg_opclass "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
+
+				opcTup = caql_getnext(pcqCtx);
+
 				if (!HeapTupleIsValid(opcTup))
 					elog(ERROR, "cache lookup failed for opclass %u",
 						 object->objectId);
 				opcForm = (Form_pg_opclass) GETSTRUCT(opcTup);
 
-				amTup = SearchSysCache(AMOID,
-									   ObjectIdGetDatum(opcForm->opcamid),
-									   0, 0, 0);
-				if (!HeapTupleIsValid(amTup))
+				amname = caql_getcstring_plus(
+						NULL,
+						&fetchCount,
+						NULL,
+						cql("SELECT amname FROM pg_am "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(opcForm->opcamid)));
+
+				if (!fetchCount)
 					elog(ERROR, "cache lookup failed for access method %u",
 						 opcForm->opcamid);
-				amForm = (Form_pg_am) GETSTRUCT(amTup);
 
 				/* Qualify the name if not visible in search path */
 				if (OpclassIsVisible(object->objectId))
@@ -1983,10 +2005,10 @@ getObjectDescription(const ObjectAddress *object)
 				appendStringInfo(&buffer, _("operator class %s for access method %s"),
 								 quote_qualified_identifier(nspname,
 												  NameStr(opcForm->opcname)),
-								 NameStr(amForm->amname));
+								 amname);
 
-				ReleaseSysCache(amTup);
-				ReleaseSysCache(opcTup);
+				pfree(amname);
+				caql_endscan(pcqCtx);
 				break;
 			}
 
@@ -2116,20 +2138,21 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_USER_MAPPING:
 			{
-				HeapTuple	tup;
 				Oid			useid;
 				char	   *usename;
+				int			fetchCount;
 
-				tup = SearchSysCache(USERMAPPINGOID,
-									 ObjectIdGetDatum(object->objectId),
-									 0, 0, 0);
-				if (!HeapTupleIsValid(tup))
+				useid  = caql_getoid_plus(
+						NULL,
+						&fetchCount,
+						NULL,
+						cql("SELECT umuser FROM pg_user_mapping "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(object->objectId)));
+
+				if (!fetchCount)
 					elog(ERROR, "cache lookup failed for user mapping %u",
 						 object->objectId);
-
-				useid = ((Form_pg_user_mapping) GETSTRUCT(tup))->umuser;
-
-				ReleaseSysCache(tup);
 
 				if (OidIsValid(useid))
 					usename = GetUserNameFromId(useid);
@@ -2172,10 +2195,16 @@ getRelationDescription(StringInfo buffer, Oid relid)
 	Form_pg_class relForm;
 	char	   *nspname;
 	char	   *relname;
+	cqContext  *pcqCtx;
 
-	relTup = SearchSysCache(RELOID,
-							ObjectIdGetDatum(relid),
-							0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(relid)));
+
+	relTup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(relTup))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 	relForm = (Form_pg_class) GETSTRUCT(relTup);
@@ -2239,5 +2268,5 @@ getRelationDescription(StringInfo buffer, Oid relid)
 			break;
 	}
 
-	ReleaseSysCache(relTup);
+	caql_endscan(pcqCtx);
 }

@@ -15,6 +15,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "access/catquery.h"
 #include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -2189,10 +2190,16 @@ record_plan_function_dependency(PlannerGlobal *glob, Oid funcid)
 	{
 		HeapTuple	func_tuple;
 		PlanInvalItem *inval_item;
+		cqContext	*pcqCtx;
 		
-		func_tuple = SearchSysCache(PROCOID,
-									ObjectIdGetDatum(funcid),
-									0, 0, 0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_proc "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(funcid)));
+
+		func_tuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(func_tuple))
 			elog(ERROR, "cache lookup failed for function %u", funcid);
 		
@@ -2207,7 +2214,7 @@ record_plan_function_dependency(PlannerGlobal *glob, Oid funcid)
 		
 		glob->invalItems = lappend(glob->invalItems, inval_item);
 		
-		ReleaseSysCache(func_tuple);
+		caql_endscan(pcqCtx);
 	}
 }
 
@@ -2316,4 +2323,3 @@ cdb_insert_result_node(PlannerGlobal *glob, Plan *plan, int rtoffset)
 	
     return resultplan;
 }                               /* cdb_insert_result_node */
-

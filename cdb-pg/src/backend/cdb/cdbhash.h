@@ -689,7 +689,8 @@ typeIsArrayType(Oid typeoid)
 		typeform->typinput == F_ARRAY_IN)
 		res = true;
 
-	ReleaseSysCache(tup);
+	/* XXX XXX: caql fixes */
+	ReleaseType(tup);
 	return res;
 }
 

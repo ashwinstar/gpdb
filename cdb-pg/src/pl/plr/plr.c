@@ -184,6 +184,7 @@ static Datum plr_trigger_handler(PG_FUNCTION_ARGS);
 static Datum plr_func_handler(PG_FUNCTION_ARGS);
 static plr_function *compile_plr_function(FunctionCallInfo fcinfo);
 static plr_function *do_compile(FunctionCallInfo fcinfo,
+								cqContext	*pcqCtx,
 								HeapTuple procTup,
 								plr_func_hashkey *hashkey);
 static SEXP plr_parse_func_body(const char *body);
@@ -797,14 +798,21 @@ compile_plr_function(FunctionCallInfo fcinfo)
 	plr_function	   *function;
 	plr_func_hashkey	hashkey;
 	bool				hashkey_valid = false;
+	cqContext		   *pcqCtx;
+
 	ERRORCONTEXTCALLBACK;
 
 	/*
 	 * Lookup the pg_proc tuple by Oid; we'll need it in any case
 	 */
-	procTup = SearchSysCache(PROCOID,
-							 ObjectIdGetDatum(funcOid),
-							 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcOid)));
+
+	procTup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(procTup))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for proc %u", funcOid);
@@ -883,10 +891,10 @@ compile_plr_function(FunctionCallInfo fcinfo)
 		/*
 		 * Do the hard part.
 		 */
-		function = do_compile(fcinfo, procTup, &hashkey);
+		function = do_compile(fcinfo, pcqCtx, procTup, &hashkey);
 	}
 
-	ReleaseSysCache(procTup);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Save pointer in FmgrInfo to avoid search on subsequent calls
@@ -907,6 +915,7 @@ compile_plr_function(FunctionCallInfo fcinfo)
  */
 static plr_function *
 do_compile(FunctionCallInfo fcinfo,
+		   cqContext	*pcqCtx,
 		   HeapTuple procTup,
 		   plr_func_hashkey *hashkey)
 {
@@ -928,6 +937,7 @@ do_compile(FunctionCallInfo fcinfo,
 	char				   *proc_source;
 	MemoryContext			oldcontext;
 	char				   *p;
+	cqContext			   *lancqCtx;
 
 	/* grab the function name */
 	proname = NameStr(procStruct->proname);
@@ -960,9 +970,14 @@ do_compile(FunctionCallInfo fcinfo,
 	function->fn_tid = procTup->t_self;
 
 	/* Lookup the pg_language tuple by Oid*/
-	langTup = SearchSysCache(LANGOID,
-							 ObjectIdGetDatum(procStruct->prolang),
-							 0, 0, 0);
+	lancqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_language "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(procStruct->prolang)));
+
+	langTup = caql_getnext(lancqCtx);
+
 	if (!HeapTupleIsValid(langTup))
 	{
 		xpfree(function->proname);
@@ -973,7 +988,8 @@ do_compile(FunctionCallInfo fcinfo,
 	}
 	langStruct = (Form_pg_language) GETSTRUCT(langTup);
 	function->lanpltrusted = langStruct->lanpltrusted;
-	ReleaseSysCache(langTup);
+
+	caql_endscan(lancqCtx);
 
 	/* get the functions return type */
 	if (procStruct->prorettype == ANYARRAYOID ||
@@ -992,10 +1008,18 @@ do_compile(FunctionCallInfo fcinfo,
 	 */
 	if (!is_trigger)
 	{
+		cqContext	*typcqCtx;
+
 		function->result_typid = result_typid;
-		typeTup = SearchSysCache(TYPEOID,
-								 ObjectIdGetDatum(function->result_typid),
-								 0, 0, 0);
+
+		typcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_type "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(function->result_typid)));
+
+		typeTup = caql_getnext(typcqCtx);
+
 		if (!HeapTupleIsValid(typeTup))
 		{
 			xpfree(function->proname);
@@ -1008,7 +1032,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 		/* Disallow pseudotype return type except VOID or RECORD */
 		/* (note we already replaced ANYARRAY/ANYELEMENT) */
-		if (typeStruct->typtype == 'p')
+		if (typeStruct->typtype == TYPTYPE_PSEUDO)
 		{
 			if (procStruct->prorettype == VOIDOID ||
 				procStruct->prorettype == RECORDOID)
@@ -1126,7 +1150,7 @@ do_compile(FunctionCallInfo fcinfo,
 				function->result_elem_typalign = typalign;
 			}
 		}
-		ReleaseSysCache(typeTup);
+		caql_endscan(typcqCtx);
 	}
 	else /* trigger */
 	{
@@ -1147,6 +1171,7 @@ do_compile(FunctionCallInfo fcinfo,
 		function->nargs = procStruct->pronargs;
 		for (i = 0; i < function->nargs; i++)
 		{
+			cqContext	*typcqCtx;
 			/*
 			 * Since we already did the replacement of polymorphic
 			 * argument types by actual argument types while computing
@@ -1154,9 +1179,14 @@ do_compile(FunctionCallInfo fcinfo,
 			 */
 			function->arg_typid[i] = hashkey->argtypes[i];
 
-			typeTup = SearchSysCache(TYPEOID,
-						ObjectIdGetDatum(function->arg_typid[i]),
-									 0, 0, 0);
+			typcqCtx = caql_beginscan(
+					NULL,
+					cql("SELECT * FROM pg_type "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(function->arg_typid[i])));
+
+			typeTup = caql_getnext(typcqCtx);
+
 			if (!HeapTupleIsValid(typeTup))
 			{
 				Oid		arg_typid = function->arg_typid[i];
@@ -1171,7 +1201,7 @@ do_compile(FunctionCallInfo fcinfo,
 			/* Disallow pseudotype argument
 			 * note we already replaced ANYARRAY/ANYELEMENT
 			 */
-			if (typeStruct->typtype == 'p')
+			if (typeStruct->typtype == TYPTYPE_PSEUDO)
 			{
 				Oid		arg_typid = function->arg_typid[i];
 
@@ -1203,7 +1233,7 @@ do_compile(FunctionCallInfo fcinfo,
 				appendStringInfo(proc_internal_args, ",");
 			SET_ARG_NAME;
 
-			ReleaseSysCache(typeTup);
+			caql_endscan(typcqCtx);
 
 			if (function->arg_elem[i] != InvalidOid)
 			{
@@ -1316,8 +1346,8 @@ do_compile(FunctionCallInfo fcinfo,
 					 proc_internal_args->data);
 
 	/* Add user's function definition to proc body */
-	prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
-								  Anum_pg_proc_prosrc, &isnull);
+	prosrcdatum = caql_getattr(pcqCtx,
+							   Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
 		elog(ERROR, "null prosrc");
 	proc_source = DatumGetCString(DirectFunctionCall1(textout, prosrcdatum));
@@ -1581,45 +1611,42 @@ fetchArgNames(HeapTuple procTup, int nargs)
 static Oid
 getNamespaceOidFromFunctionOid(Oid fnOid)
 {
-	HeapTuple			procTuple;
-	HeapTuple			langTuple;
-	Form_pg_proc		procStruct;
-	Form_pg_language	langStruct;
 	Oid					langOid;
 	Oid					hfnOid;
 	Oid					nspOid;
+	int					fetchCount;
 
-	/* Lookup the pg_proc tuple for the called function by OID */
-	procTuple = SearchSysCache(PROCOID, ObjectIdGetDatum(fnOid), 0, 0, 0);
+	/* Lookup the language for the called function by OID */
+	langOid  = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT prolang FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(fnOid)));
 
-	if (!HeapTupleIsValid(procTuple))
+	if (!fetchCount)
 		/* internal error */
 		elog(ERROR, "cache lookup failed for function %u", fnOid);
 
-	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
-	langOid = procStruct->prolang;
-	ReleaseSysCache(procTuple);
-
-	/* Lookup the pg_language tuple by OID */
-	langTuple = SearchSysCache(LANGOID, ObjectIdGetDatum(langOid), 0, 0, 0);
-	if (!HeapTupleIsValid(langTuple))
+	/* Lookup the language handler by OID */
+	hfnOid  = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT lanplcallfoid FROM pg_language "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(langOid)));
+	if (!fetchCount)
 		/* internal error */
 		elog(ERROR, "cache lookup failed for language %u", langOid);
 
-	langStruct = (Form_pg_language) GETSTRUCT(langTuple);
-	hfnOid = langStruct->lanplcallfoid;
-	ReleaseSysCache(langTuple);
+	/* Lookup the namespace for the language handler function by OID */
+	nspOid = get_func_namespace(hfnOid);
 
-	/* Lookup the pg_proc tuple for the language handler by OID */
-	procTuple = SearchSysCache(PROCOID, ObjectIdGetDatum(hfnOid), 0, 0, 0);
-
-	if (!HeapTupleIsValid(procTuple))
+	if (!OidIsValid(nspOid))
 		/* internal error */
 		elog(ERROR, "cache lookup failed for function %u", hfnOid);
-
-	procStruct = (Form_pg_proc) GETSTRUCT(procTuple);
-	nspOid = procStruct->pronamespace;
-	ReleaseSysCache(procTuple);
 
 	return nspOid;
 }

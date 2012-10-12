@@ -781,7 +781,7 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
 		cqContext	cqc;
 		cqContext  *pcqCtx;
 
-		/* heapscan */
+		/* NOTE: force heapscan in caql */
 		pcqCtx = caql_beginscan(
 				caql_syscache(
 						caql_indexOK(cqclr(&cqc), false),
@@ -919,6 +919,8 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	Form_pg_class pgcform;
 	Oid			relid = RelationGetRelid(rel);
 	bool		dirty;
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	Assert(relid != InvalidOid);
 
@@ -984,10 +986,16 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	 */
 	rd = heap_open(RelationRelationId, RowExclusiveLock);
 
+	pcqCtx = caql_addrel(cqclr(&cqc), rd);
+
 	/* Fetch a copy of the tuple to scribble on */
-	ctup = SearchSysCacheCopy(RELOID,
-							  ObjectIdGetDatum(relid),
-							  0, 0, 0);
+	ctup = caql_getfirst(
+			pcqCtx,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(relid)));
+
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			 relid);
@@ -1137,10 +1145,20 @@ vac_update_datfrozenxid(void)
 	/* Now fetch the pg_database tuple we need to update. */
 	relation = heap_open(DatabaseRelationId, RowExclusiveLock);
 
+	cqContext  *dbcqCtx;
+	cqContext	dbcqc;
+
+	dbcqCtx = caql_addrel(cqclr(&dbcqc), relation);
+
 	/* Fetch a copy of the tuple to scribble on */
-	tuple = SearchSysCacheCopy(DATABASEOID,
-							   ObjectIdGetDatum(MyDatabaseId),
-							   0, 0, 0);
+
+	tuple = caql_getfirst(
+			dbcqCtx,
+			cql("SELECT * FROM pg_database "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(MyDatabaseId)));
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
 	dbform = (Form_pg_database) GETSTRUCT(tuple);
@@ -4352,4 +4370,3 @@ vacuum_combine_stats(CdbDispatchResults *primaryResults,
 	}
 
 }
-

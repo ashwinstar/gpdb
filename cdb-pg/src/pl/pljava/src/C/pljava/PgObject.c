@@ -178,10 +178,27 @@ jfieldID PgObject_getStaticJavaField(jclass cls, const char* fieldName, const ch
 	return m;
 }
 
-HeapTuple PgObject_getValidTuple(int cacheId, Oid tupleId, const char* tupleType)
+HeapTuple PgObject_getProcTuple(Oid tupleId)
 {
-	HeapTuple tuple = SearchSysCache(cacheId, ObjectIdGetDatum(tupleId), 0, 0, 0);
+	HeapTuple tuple = caql_getfirst(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(tupleId)));
+
 	if(!HeapTupleIsValid(tuple))
-		ereport(ERROR, (errmsg("cache lookup failed for %s %u", tupleType, tupleId)));
+		ereport(ERROR, (errmsg("cache lookup failed for function %u", tupleId)));
+	return tuple;
+}
+HeapTuple PgObject_getTypeTuple(Oid tupleId)
+{
+	HeapTuple tuple = caql_getfirst(
+			NULL,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(tupleId)));
+
+	if(!HeapTupleIsValid(tuple))
+		ereport(ERROR, (errmsg("cache lookup failed for type %u", tupleId)));
 	return tuple;
 }

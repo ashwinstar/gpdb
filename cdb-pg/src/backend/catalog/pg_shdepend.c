@@ -678,24 +678,16 @@ checkSharedDependencies(Oid classId, Oid objectId)
 void
 copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 {
-	Relation	sdepRel;
-	TupleDesc	sdepDesc;
 	cqContext  *pcqCtx;
-	cqContext	cqc;
 	HeapTuple	tup;
-	CatalogIndexState indstate;
 	Datum		values[Natts_pg_shdepend];
 	bool		nulls[Natts_pg_shdepend];
 	bool		replace[Natts_pg_shdepend];
 
-	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
-	sdepDesc = RelationGetDescr(sdepRel);
-
-	indstate = CatalogOpenIndexes(sdepRel);
 
 	/* Scan all entries with dbid = templateDbId */
 	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), sdepRel),
+			NULL,
 			cql("SELECT * FROM pg_shdepend "
 				" WHERE dbid = :1 "
 				" FOR UPDATE ",
@@ -720,19 +712,14 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 	{
 		HeapTuple	newtup;
 
-		newtup = heap_modify_tuple(tup, sdepDesc, values, nulls, replace);
-		simple_heap_insert(sdepRel, newtup);
-
-		/* Keep indexes current */
-		CatalogIndexInsert(indstate, newtup);
+		newtup = caql_modify_current(pcqCtx, values, nulls, replace);
+		caql_insert(pcqCtx, newtup);
+		/* and Update indexes (implicit) */
 
 		heap_freetuple(newtup);
 	}
 
 	caql_endscan(pcqCtx);
-
-	CatalogCloseIndexes(indstate);
-	heap_close(sdepRel, RowExclusiveLock);
 }
 
 /*

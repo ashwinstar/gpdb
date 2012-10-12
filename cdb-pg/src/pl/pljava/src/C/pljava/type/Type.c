@@ -468,7 +468,7 @@ Type Type_fromOid(Oid typeId, jobject typeMap)
 	if(type != 0)
 		return type;
 
-	typeTup    = PgObject_getValidTuple(TYPEOID, typeId, "type");
+	typeTup    = PgObject_getTypeTuple(typeId);
 	typeStruct = (Form_pg_type)GETSTRUCT(typeTup);
 
 	if(typeStruct->typelem != 0 && typeStruct->typlen == -1)
@@ -512,7 +512,7 @@ Type Type_fromOid(Oid typeId, jobject typeMap)
 
 	/* Composite and record types will not have a TypeObtainer registered
 	 */
-	if(typeStruct->typtype == 'c' || (typeStruct->typtype == 'p' && typeId == RECORDOID))
+	if(typeStruct->typtype == TYPTYPE_COMPOSITE || (typeStruct->typtype == TYPTYPE_PSEUDO && typeId == RECORDOID))
 	{
 		type = Composite_obtain(typeId);
 		goto finally;
@@ -532,7 +532,7 @@ Type Type_fromOid(Oid typeId, jobject typeMap)
 	}
 
 finally:
-	ReleaseSysCache(typeTup);
+	heap_freetuple(typeTup);
 	Type_cacheByOid(typeId, type);
 	return type;
 }

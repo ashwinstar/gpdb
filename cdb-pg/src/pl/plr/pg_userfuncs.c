@@ -218,6 +218,7 @@ plr_array_create(FunctionCallInfo fcinfo, int numelems, int elem_start)
 	Oid			functypeid;
 	Oid		   *funcargtypes;
 	ArrayType  *result;
+	cqContext  *pcqCtx;
 
 	if (numelems == 0)
 		ereport(ERROR,
@@ -227,9 +228,14 @@ plr_array_create(FunctionCallInfo fcinfo, int numelems, int elem_start)
 	/*
 	 * Get the type metadata for the array return type and its elements
 	 */
-	tp = SearchSysCache(PROCOID,
-						ObjectIdGetDatum(funcid),
-						0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcid)));
+
+	tp = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tp))
 		/* internal error */
 		elog(ERROR, "function OID %u does not exist", funcid);
@@ -253,7 +259,7 @@ plr_array_create(FunctionCallInfo fcinfo, int numelems, int elem_start)
 					 errmsg("argument %d datatype not " \
 							"compatible with return data type", i + 1)));
 
-	ReleaseSysCache(tp);
+	caql_endscan(pcqCtx);
 
 	for (i = 0; i < numelems; i++)
 		dvalues[i] = PG_GETARG_DATUM(elem_start + i);

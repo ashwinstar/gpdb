@@ -798,37 +798,21 @@ ResUnLockPortal(Portal portal)
 Oid	
 GetResQueueForRole(Oid roleid)
 {
-	Relation		authrel;
-	HeapTuple		tup;
-	Datum			datum;
 	bool			isnull;
-	TupleDesc		tupdesc;
+	int				fetchCount;
 	Oid				queueid = InvalidOid;
 
-	authrel = heap_open(AuthIdRelationId, AccessShareLock);
-
-    tupdesc = RelationGetDescr(authrel);
-
-	tup = SearchSysCache(AUTHOID,
- 						 ObjectIdGetDatum(roleid),
-						 0, 0, 0);
-	if (HeapTupleIsValid(tup))
-	{
-		datum = heap_getattr(tup, Anum_pg_authid_rolresqueue, tupdesc, &isnull);
-		if (!isnull)
-		{
-			queueid = DatumGetObjectId(datum);
-		}
-		ReleaseSysCache(tup);
-	} 
-
-	heap_close(authrel, AccessShareLock);
+	queueid = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			&isnull,
+			cql("SELECT rolresqueue FROM pg_authid "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(roleid)));
 
 	/* MPP-6926: use default queue if none specified */
-	if (InvalidOid == queueid)
-	{
+	if (!OidIsValid(queueid) || !fetchCount || isnull)
 		queueid = DEFAULTRESQUEUE_OID;
-	}
 
 	return queueid;
 	

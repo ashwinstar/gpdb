@@ -38,6 +38,7 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/catversion.h"
 #include "catalog/pg_language.h"

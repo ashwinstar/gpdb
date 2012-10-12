@@ -97,6 +97,24 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 }
 
 /*
+ *		LockRelationOid_GetGrantMask
+ *
+ * given the OID for a relation, get its grantmask if it is locked
+ */
+LOCKMASK
+LockRelationOid_GetGrantMask(Oid relid, char *comment)
+{
+	LOCKTAG		tag;
+	LOCKMASK	grantmask = 0;
+
+	SetLocktagRelationOid(&tag, relid);
+
+	grantmask = LockGetGrantMask(&tag, false, comment);
+
+	return (grantmask);
+}
+
+/*
  *		ConditionalLockRelationOid
  *
  * As above, but only lock if we can get the lock without blocking.

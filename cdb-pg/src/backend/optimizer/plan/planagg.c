@@ -15,6 +15,7 @@
  */
 #include "postgres.h"
 
+#include "access/catquery.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -581,19 +582,20 @@ replace_aggs_with_params_mutator(Node *node, List **context)
 static Oid
 fetch_agg_sort_op(Oid aggfnoid)
 {
-	HeapTuple	aggTuple;
-	Form_pg_aggregate aggform;
 	Oid			aggsortop;
+	int			fetchCount;
 
 	/* fetch aggregate entry from pg_aggregate */
-	aggTuple = SearchSysCache(AGGFNOID,
-							  ObjectIdGetDatum(aggfnoid),
-							  0, 0, 0);
-	if (!HeapTupleIsValid(aggTuple))
+	aggsortop = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT aggsortop FROM pg_aggregate "
+				" WHERE aggfnoid = :1 ",
+				ObjectIdGetDatum(aggfnoid)));
+
+	if (!fetchCount)
 		return InvalidOid;
-	aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
-	aggsortop = aggform->aggsortop;
-	ReleaseSysCache(aggTuple);
 
 	return aggsortop;
 }

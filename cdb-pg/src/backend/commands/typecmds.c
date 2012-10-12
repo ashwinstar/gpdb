@@ -113,7 +113,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	char		delimiter = DEFAULT_TYPDELIM;
 	char		alignment = 'i';	/* default alignment */
 	char		storage = 'p';	/* default TOAST storage method */
-	char        typtype = 'b';
+	char        typtype = TYPTYPE_BASE;
 	Oid			inputOid;
 	Oid			outputOid;
 	Oid			receiveOid = InvalidOid;
@@ -243,7 +243,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 		{
 			elemType = typenameTypeId(NULL, defGetTypeName(defel));
 			/* disallow arrays of pseudotypes */
-			if (get_typtype(elemType) == 'p')
+			if (get_typtype(elemType) == TYPTYPE_PSEUDO)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("array element type cannot be %s",
@@ -490,7 +490,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	 *
 	 * Create a array type only if we're not creating an internal type during upgrade.
 	 */
-	if (typtype == 'b')
+	if (typtype == TYPTYPE_BASE)
 	{
 		shadow_type = makeArrayTypeName(typeName);
 
@@ -503,7 +503,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 			   0,				/* relation kind (ditto) */
 			   GetUserId(), /* owner's ID */
 			   -1,				/* internal size */
-			   'b',				/* type-type (base type) */
+			   TYPTYPE_BASE,	/* type-type (base type) */
 			   delimiter,		/* array element delimiter */
 			   F_ARRAY_IN,		/* input procedure */
 			   F_ARRAY_OUT,		/* output procedure */
@@ -724,7 +724,7 @@ DefineDomain(CreateDomainStmt *stmt)
 	 * might be made to work in the future, but not today.
 	 */
 	typtype = baseType->typtype;
-	if (typtype != 'b' && typtype != 'd')
+	if (typtype != TYPTYPE_BASE && typtype != TYPTYPE_DOMAIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("\"%s\" is not a valid base type for a domain",
@@ -919,7 +919,7 @@ DefineDomain(CreateDomainStmt *stmt)
 				   0,			/* relation kind (ditto) */
 				   GetUserId(), /* owner's ID */
 				   internalLength,		/* internal size */
-				   'd',			/* type-type (domain type) */
+				   TYPTYPE_DOMAIN,		/* type-type (domain type) */
 				   delimiter,	/* array element delimiter */
 				   inputProcedure,		/* input procedure */
 				   outputProcedure,		/* output procedure */
@@ -970,7 +970,7 @@ DefineDomain(CreateDomainStmt *stmt)
 	/*
 	 * Now we can clean up.
 	 */
-	ReleaseSysCache(typeTup);
+	ReleaseType(typeTup);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -993,6 +993,7 @@ RemoveDomain(List *names, DropBehavior behavior, bool missing_ok)
 	HeapTuple	tup;
 	char		typtype;
 	ObjectAddress object;
+	cqContext  *pcqCtx;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typname = makeTypeNameFromNameList(names);
@@ -1022,9 +1023,14 @@ RemoveDomain(List *names, DropBehavior behavior, bool missing_ok)
 		return;
 	}
 
-	tup = SearchSysCache(TYPEOID,
-						 ObjectIdGetDatum(typeoid),
-						 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(typeoid)));
+
+	tup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typeoid);
 
@@ -1038,14 +1044,14 @@ RemoveDomain(List *names, DropBehavior behavior, bool missing_ok)
 	/* Check that this is actually a domain */
 	typtype = ((Form_pg_type) GETSTRUCT(tup))->typtype;
 
-	if (typtype != 'd')
+	if (typtype != TYPTYPE_DOMAIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not a domain",
 						TypeNameToString(typname)),
 								   errOmitLocation(true)));
 
-	ReleaseSysCache(tup);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Do the deletion
@@ -1884,7 +1890,7 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 		/* Check for directly dependent types --- must be domains */
 		if (pg_depend->classid == TypeRelationId)
 		{
-			Assert(get_typtype(pg_depend->objid) == 'd');
+			Assert(get_typtype(pg_depend->objid) == TYPTYPE_DOMAIN);
 			/*
 			 * Recursively add dependent columns to the output list.  This
 			 * is a bit inefficient since we may fail to combine RelToCheck
@@ -1992,7 +1998,7 @@ checkDomainOwner(HeapTuple tup, TypeName *typname)
 	Form_pg_type typTup = (Form_pg_type) GETSTRUCT(tup);
 
 	/* Check that this is actually a domain */
-	if (typTup->typtype != 'd')
+	if (typTup->typtype != TYPTYPE_DOMAIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not a domain",
@@ -2179,20 +2185,26 @@ GetDomainConstraints(Oid typeOid)
 		HeapTuple	tup;
 		HeapTuple	conTup;
 		Form_pg_type typTup;
+		cqContext	*typcqCtx;
 		cqContext	*pcqCtx;
 		cqContext	 cqc;
 
-		tup = SearchSysCache(TYPEOID,
-							 ObjectIdGetDatum(typeOid),
-							 0, 0, 0);
+		typcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_type "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(typeOid)));
+
+		tup = caql_getnext(typcqCtx);
+
 		if (!HeapTupleIsValid(tup))
 			elog(ERROR, "cache lookup failed for type %u", typeOid);
 		typTup = (Form_pg_type) GETSTRUCT(tup);
 
-		if (typTup->typtype != 'd')
+		if (typTup->typtype != TYPTYPE_DOMAIN)
 		{
 			/* Not a domain, so done */
-			ReleaseSysCache(tup);
+			caql_endscan(typcqCtx);
 			break;
 		}
 
@@ -2223,8 +2235,8 @@ GetDomainConstraints(Oid typeOid)
 			/*
 			 * Not expecting conbin to be NULL, but we'll test for it anyway
 			 */
-			val = fastgetattr(conTup, Anum_pg_constraint_conbin,
-							  conRel->rd_att, &isNull);
+			val = caql_getattr(pcqCtx, Anum_pg_constraint_conbin,
+							   &isNull);
 			if (isNull)
 				elog(ERROR, "domain \"%s\" constraint \"%s\" has NULL conbin",
 					 NameStr(typTup->typname), NameStr(c->conname));
@@ -2252,7 +2264,7 @@ GetDomainConstraints(Oid typeOid)
 
 		/* loop to next domain in stack */
 		typeOid = typTup->typbasetype;
-		ReleaseSysCache(tup);
+		caql_endscan(typcqCtx);
 	}
 
 	heap_close(conRel, AccessShareLock);
@@ -2324,7 +2336,7 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 	 * free-standing composite type, and not a table's underlying type. We
 	 * want people to use ALTER TABLE not ALTER TYPE for that case.
 	 */
-	if (typTup->typtype == 'c' &&
+	if (typTup->typtype == TYPTYPE_COMPOSITE &&
 		get_rel_relkind(typTup->typrelid) != RELKIND_COMPOSITE_TYPE)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -2363,7 +2375,7 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 		 * fix up the pg_class entry properly.  That will call back to
 		 * AlterTypeOwnerInternal to take care of the pg_type entry(s).
 		 */
-		if (typTup->typtype == 'c')
+		if (typTup->typtype == TYPTYPE_COMPOSITE)
 			ATExecChangeOwner(typTup->typrelid, newOwnerId, true);
 		else
 		{
@@ -2548,11 +2560,12 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 
 	/* Detect whether type is a composite type (but not a table rowtype) */
 	isCompositeType =
-		(typform->typtype == 'c' &&
+		(typform->typtype == TYPTYPE_COMPOSITE &&
 		 get_rel_relkind(typform->typrelid) == RELKIND_COMPOSITE_TYPE);
 
 	/* Enforce not-table-type if requested */
-	if (typform->typtype == 'c' && !isCompositeType && errorOnTableType)
+	if (typform->typtype == TYPTYPE_COMPOSITE && 
+		!isCompositeType && errorOnTableType)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("%s is a table's row type",
@@ -2594,7 +2607,7 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 	else
 	{
 		/* If it's a domain, it might have constraints */
-		if (typform->typtype == 'd')
+		if (typform->typtype == TYPTYPE_DOMAIN)
 			AlterConstraintNamespaces(typeOid, oldNspOid, nspOid, true);
 	}
 
@@ -2602,7 +2615,7 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 	 * Update dependency on schema, if any --- a table rowtype has not got
 	 * one.
 	 */
-	if (isCompositeType || typform->typtype != 'c')
+	if (isCompositeType || typform->typtype != TYPTYPE_COMPOSITE)
 		if (changeDependencyFor(TypeRelationId, typeOid,
 							NamespaceRelationId, oldNspOid, nspOid) != 1)
 			elog(ERROR, "failed to change schema dependency for type %s",

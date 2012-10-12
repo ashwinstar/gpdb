@@ -5676,20 +5676,25 @@ atpxPartAddList(Relation rel,
 				Datum aclDatum;
 				bool isNull;
 				CreateStmt *t = (CreateStmt *)((Query *)s)->utilityStmt;
-				
+				cqContext	*classcqCtx;
 				
 				t->attr_encodings = copyObject(attr_encodings);
 
-				tuple = SearchSysCache(RELOID,
-									   ObjectIdGetDatum(RelationGetRelid(rel)),
-									   0, 0, 0);
+				classcqCtx = caql_beginscan(
+						NULL,
+						cql("SELECT * FROM pg_class "
+							" WHERE oid = :1 ",
+							ObjectIdGetDatum(RelationGetRelid(rel))));
+
+				tuple = caql_getnext(classcqCtx);
+
 				if (!HeapTupleIsValid(tuple))
 					elog(ERROR, "cache lookup failed for relation %u",
 						 RelationGetRelid(rel));
 				
-				aclDatum = SysCacheGetAttr(RELOID, tuple,
-										   Anum_pg_class_relacl,
-										   &isNull);
+				aclDatum = caql_getattr(classcqCtx,
+										Anum_pg_class_relacl,
+										&isNull);
 				if (!isNull)
 				{
 					List *cp = NIL;
@@ -5731,7 +5736,8 @@ atpxPartAddList(Relation rel,
 						l1 = list_concat(l1, pt);
 					}
 				}
-				ReleaseSysCache(tuple);
+
+				caql_endscan(classcqCtx);
 				break;
 			}
 		}
@@ -6060,17 +6066,36 @@ exchange_permissions(Oid oldrelid, Oid newrelid)
 	HeapTuple replace_tuple;
 	bool isnull;
 	Relation rel = heap_open(RelationRelationId, RowExclusiveLock);
+	cqContext	oldcqc;
+	cqContext	newcqc;
+	cqContext	*oldpcqCtx;
+	cqContext	*newpcqCtx;
+
+	oldpcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&oldcqc), rel),
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(oldrelid)));
+
+	oldtuple = caql_getnext(oldpcqCtx);
 	
-	oldtuple = SearchSysCache(RELOID, ObjectIdGetDatum(oldrelid),
-							  0, 0, 0);
 	if (!HeapTupleIsValid(oldtuple))
 		elog(ERROR, "cache lookup failed for relation %u", oldrelid);
 	
-	save = SysCacheGetAttr(RELOID, oldtuple, Anum_pg_class_relacl,
-						   &saveisnull);
+	save = caql_getattr(oldpcqCtx,
+						Anum_pg_class_relacl,
+						&saveisnull);
 	
-	newtuple = SearchSysCache(RELOID, ObjectIdGetDatum(newrelid),
-							  0, 0, 0);
+	newpcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&newcqc), rel),
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(newrelid)));
+
+	newtuple = caql_getnext(newpcqCtx);
+
 	if (!HeapTupleIsValid(newtuple))
 		elog(ERROR, "cache lookup failed for relation %u", newrelid);
 	
@@ -6080,19 +6105,17 @@ exchange_permissions(Oid oldrelid, Oid newrelid)
 	MemSet(replaces, false, sizeof(replaces));
 	
 	replaces[Anum_pg_class_relacl - 1] = true;
-	values[Anum_pg_class_relacl - 1] = SysCacheGetAttr(RELOID, newtuple,
-													   Anum_pg_class_relacl,
-													   &isnull);
+	values[Anum_pg_class_relacl - 1] = caql_getattr(newpcqCtx,
+													Anum_pg_class_relacl,
+													&isnull);
 	if (isnull)
 		nulls[Anum_pg_class_relacl - 1] = true;
 	
-	replace_tuple = heap_modify_tuple(oldtuple, RelationGetDescr(rel),
-									  values, nulls, replaces);
+	replace_tuple = caql_modify_current(oldpcqCtx,
+										values, nulls, replaces);
 	
-	simple_heap_update(rel, &replace_tuple->t_self, replace_tuple);
-	
-	/* keep the catalog indexes up to date */
-	CatalogUpdateIndexes(rel, replace_tuple);
+	caql_update_current(oldpcqCtx, replace_tuple);
+	/* and Update indexes (implicit) */
 	
 	/* XXX: Update the shared dependency ACL info */
 	
@@ -6107,18 +6130,16 @@ exchange_permissions(Oid oldrelid, Oid newrelid)
 	if (saveisnull)
 		nulls[Anum_pg_class_relacl - 1] = true;
 	
-	replace_tuple = heap_modify_tuple(newtuple, RelationGetDescr(rel),
-									  values, nulls, replaces);
+	replace_tuple = caql_modify_current(newpcqCtx,
+										values, nulls, replaces);
 	
-	simple_heap_update(rel, &replace_tuple->t_self, replace_tuple);
-	
-	/* keep the catalog indexes up to date */
-	CatalogUpdateIndexes(rel, replace_tuple);
+	caql_update_current(newpcqCtx, replace_tuple);
+	/* and Update indexes (implicit) */
 	
 	/* update shared dependency */
 	
-	ReleaseSysCache(oldtuple);
-	ReleaseSysCache(newtuple);
+	caql_endscan(oldpcqCtx);
+	caql_endscan(newpcqCtx);
 	heap_close(rel, NoLock);
 }
 
@@ -6841,7 +6862,7 @@ get_opfuncid_by_opname(List *opname, Oid lhsid, Oid rhsid)
 	
 	opfuncid = ((Form_pg_operator)GETSTRUCT(op))->oprcode;
 	
-	ReleaseSysCache(op);
+	ReleaseOperator(op);
 	return opfuncid;
 }
 
@@ -6978,12 +6999,15 @@ bool can_implement_dist_on_part(Relation rel, List *dist_cnames)
 		HeapTuple tuple;
 		Node *item = lfirst(lc);
 		bool ok = false;
+		cqContext	*pcqCtx;
 		
 		if ( !(item && IsA(item, String)) )
 			return false;
 		
 		cname = strVal((Value *)item);
-		tuple = SearchSysCacheAttName(RelationGetRelid(rel), cname);
+		pcqCtx = caql_getattname_scan(NULL, RelationGetRelid(rel), cname);
+		tuple = caql_get_current(pcqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -6994,7 +7018,7 @@ bool can_implement_dist_on_part(Relation rel, List *dist_cnames)
 		
 		attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
 		ok = attnum == rel->rd_cdbpolicy->attrs[i++];
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 		
 		if ( ! ok )
 			return false;
@@ -9094,4 +9118,3 @@ gp_get_parts_index_relid(PG_FUNCTION_ARGS)
 
         return ObjectIdGetDatum(resultOid);
 }
-

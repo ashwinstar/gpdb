@@ -18,6 +18,7 @@
 #include "fmgr.h"
 #include "miscadmin.h"
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/indexing.h"
@@ -64,6 +65,9 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	List             *range_table;
 	RangeTblEntry    *rte;
 	Query	         *query;
+	cqContext		  cqc1, cqc2;
+	cqContext		 *srcqCtx;
+	cqContext		 *tgtqCtx;
 
 	/* Validate input arguments */
 	if (PG_NARGS() != 2)
@@ -92,8 +96,15 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	 * result type.
 	 */
 	rel = heap_open(RelationRelationId, RowShareLock);
-	source_tup = SearchSysCache(RELOID, ObjectIdGetDatum(source_oid),
-								0,0,0);
+
+	srcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc1), rel),
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(source_oid)));
+
+	source_tup = caql_getnext(srcqCtx);
+
 	if (!HeapTupleIsValid(source_tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -104,8 +115,15 @@ gpviewcopy(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("gpviewcopy(): \"%s\" is not a view", source_name)));
-	target_tup = SearchSysCache(RELOID, ObjectIdGetDatum(target_oid),
-								0,0,0);
+
+	tgtqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc2), rel),
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(target_oid)));
+
+	target_tup = caql_getnext(tgtqCtx);
+
 	if (!HeapTupleIsValid(target_tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -128,8 +146,9 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	natts = source_class->relnatts;
 
 	/* Keep the lock on the pg_class tuples until we are done */
-	ReleaseSysCache(source_tup);
-	ReleaseSysCache(target_tup);
+	caql_endscan(srcqCtx);
+	caql_endscan(tgtqCtx);
+
 	heap_close(rel, NoLock);
 
 	/* Now verify that pg_attribute matches for the two views */
@@ -138,19 +157,31 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	{
 		char *source_attname, *target_attname;
 
-		source_tup = SearchSysCache(ATTNUM, 
-									ObjectIdGetDatum(source_oid),
-									Int16GetDatum(attnum),
-									0, 0);
+		srcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc1), rel),
+				cql("SELECT * FROM pg_attribute "
+					" WHERE attrelid = :1 "
+					" AND attnum = :2 ",
+					ObjectIdGetDatum(source_oid),
+					Int16GetDatum(attnum)));
+
+		source_tup = caql_getnext(srcqCtx);
+
 		if (!HeapTupleIsValid(source_tup))
 			elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 				 attnum, source_oid);
 		source_att = (Form_pg_attribute) GETSTRUCT(source_tup);
 
-		target_tup = SearchSysCache(ATTNUM, 
-									ObjectIdGetDatum(target_oid),
-									Int16GetDatum(attnum),
-									0, 0);
+		tgtqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc2), rel),
+				cql("SELECT * FROM pg_attribute "
+					" WHERE attrelid = :1 "
+					" AND attnum = :2 ",
+					ObjectIdGetDatum(target_oid),
+					Int16GetDatum(attnum)));
+
+		target_tup = caql_getnext(tgtqCtx);
+
 		if (!HeapTupleIsValid(target_tup))
 			elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 				 attnum, target_oid);
@@ -216,8 +247,8 @@ gpviewcopy(PG_FUNCTION_ARGS)
 					 errhint("attnum %d: alignent mismatch %c != %c", attnum, 
 							 source_att->attalign, target_att->attalign)));
 
-		ReleaseSysCache(source_tup);
-		ReleaseSysCache(target_tup);
+		caql_endscan(srcqCtx);
+		caql_endscan(tgtqCtx);
 	}
 	heap_close(rel, RowShareLock);
 
@@ -225,10 +256,18 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	rel = heap_open(RewriteRelationId, RowExclusiveLock);
 
 	/* Find the source action */
-	source_tup = SearchSysCache(RULERELNAME,
-								ObjectIdGetDatum(source_oid),
-								PointerGetDatum("_RETURN"), 
-								0, 0);
+	/* NOTE: UPDATE is on target, not source, but both are same table... */
+	srcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc1), rel),
+			cql("SELECT * FROM pg_rewrite "
+				" WHERE ev_class = :1 "
+				" AND rulename = :2 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(source_oid),
+				CStringGetDatum("_RETURN")));
+
+	source_tup = caql_getnext(srcqCtx);
+
 	if (!HeapTupleIsValid(source_tup))
 		elog(ERROR, "gpviewcopy(): \"%s\" not found in pg_rewrite", source_name);
 	source_rec = (Form_pg_rewrite) GETSTRUCT(source_tup);
@@ -240,19 +279,25 @@ gpviewcopy(PG_FUNCTION_ARGS)
 		elog(ERROR, "gpviewcopy(): pg_rewrite entry is invalid for \"%s\"", 
 			 source_name);
 	}
-	source_action = heap_getattr(source_tup, 
+	source_action = caql_getattr(srcqCtx,
 								 Anum_pg_rewrite_ev_action, 
-								 RelationGetDescr(rel), 
 								 &isnull);
 	if (isnull)
 		elog(ERROR, "gpviewcopy(): ev_action is null for \"%s\"", source_name);
 	ev_action = TextDatumGetCString(source_action);  /* palloced */
 
 	/* Find the target */
-	target_tup = SearchSysCache(RULERELNAME, 
-								ObjectIdGetDatum(target_oid),
-								PointerGetDatum("_RETURN"), 
-								0, 0);
+	tgtqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc2), rel),
+			cql("SELECT * FROM pg_rewrite "
+				" WHERE ev_class = :1 "
+				" AND rulename = :2 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(target_oid),
+				CStringGetDatum("_RETURN")));
+
+	target_tup = caql_getnext(tgtqCtx);
+
 	if (!HeapTupleIsValid(target_tup))
 		elog(ERROR, "gpviewcopy(): \"%s\" not found in pg_rewrite", target_name);
 	target_rec = (Form_pg_rewrite) GETSTRUCT(target_tup);
@@ -300,15 +345,18 @@ gpviewcopy(PG_FUNCTION_ARGS)
 	MemSet(replaces, false, sizeof(replaces));
 	values[Anum_pg_rewrite_ev_action - 1] = CStringGetTextDatum(new_action);
 	replaces[Anum_pg_rewrite_ev_action - 1] = true;
-	new_tuple = heap_modify_tuple(target_tup, RelationGetDescr(rel),
-								  values, nulls, replaces);
-	simple_heap_update(rel, &new_tuple->t_self, new_tuple);
-	CatalogUpdateIndexes(rel, new_tuple);
+
+	new_tuple = caql_modify_current(tgtqCtx,
+									values, nulls, replaces);
+	caql_update_current(tgtqCtx, new_tuple);
+	/* and Update indexes (implicit) */
+
 	heap_freetuple(new_tuple);
 
 	/* Cleanup */
-	ReleaseSysCache(source_tup);
-	ReleaseSysCache(target_tup);
+	caql_endscan(srcqCtx);
+	caql_endscan(tgtqCtx);
+
 	heap_close(rel, RowExclusiveLock);
 
 	PG_RETURN_VOID();

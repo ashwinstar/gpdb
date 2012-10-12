@@ -47,10 +47,15 @@ GetForeignDataWrapper(Oid fdwid)
 	Datum		datum;
 	HeapTuple	tp;
 	bool		isnull;
+	cqContext  *pcqCtx;
 
-	tp = SearchSysCache(FOREIGNDATAWRAPPEROID,
-						ObjectIdGetDatum(fdwid),
-						0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_foreign_data_wrapper "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(fdwid)));
+
+	tp = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for foreign-data wrapper %u", fdwid);
@@ -64,13 +69,12 @@ GetForeignDataWrapper(Oid fdwid)
 	fdw->fdwvalidator = fdwform->fdwvalidator;
 
 	/* Extract the options */
-	datum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID,
-							tp,
-							Anum_pg_foreign_data_wrapper_fdwoptions,
-							&isnull);
+	datum = caql_getattr(pcqCtx,
+						 Anum_pg_foreign_data_wrapper_fdwoptions,
+						 &isnull);
 	fdw->options = untransformRelOptions(datum);
 
-	ReleaseSysCache(tp);
+	caql_endscan(pcqCtx);
 
 	return fdw;
 }
@@ -128,10 +132,15 @@ GetForeignServer(Oid serverid)
 	HeapTuple	tp;
 	Datum		datum;
 	bool		isnull;
+	cqContext  *pcqCtx;
 
-	tp = SearchSysCache(FOREIGNSERVEROID,
-						ObjectIdGetDatum(serverid),
-						0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_foreign_server "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(serverid)));
+
+	tp = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for foreign server %u", serverid);
@@ -145,29 +154,26 @@ GetForeignServer(Oid serverid)
 	server->fdwid = serverform->srvfdw;
 
 	/* Extract server type */
-	datum = SysCacheGetAttr(FOREIGNSERVEROID,
-							tp,
-							Anum_pg_foreign_server_srvtype,
-							&isnull);
+	datum = caql_getattr(pcqCtx,
+						 Anum_pg_foreign_server_srvtype,
+						 &isnull);
 	server->servertype = isnull ? NULL : pstrdup(TextDatumGetCString(datum));
 
 	/* Extract server version */
-	datum = SysCacheGetAttr(FOREIGNSERVEROID,
-							tp,
-							Anum_pg_foreign_server_srvversion,
-							&isnull);
+	datum = caql_getattr(pcqCtx,
+						 Anum_pg_foreign_server_srvversion,
+						 &isnull);
 	server->serverversion = isnull ? NULL : pstrdup(TextDatumGetCString(datum));
 
 	/* Extract the srvoptions */
-	datum = SysCacheGetAttr(FOREIGNSERVEROID,
-							tp,
-							Anum_pg_foreign_server_srvoptions,
-							&isnull);
+	datum = caql_getattr(pcqCtx,
+						 Anum_pg_foreign_server_srvoptions,
+						 &isnull);
 
 	/* untransformRelOptions does exactly what we want - avoid duplication */
 	server->options = untransformRelOptions(datum);
 
-	ReleaseSysCache(tp);
+	caql_endscan(pcqCtx);
 
 	return server;
 }
@@ -226,19 +232,32 @@ GetUserMapping(Oid userid, Oid serverid)
 	HeapTuple	tp;
 	bool		isnull;
 	UserMapping *um;
+	cqContext  *pcqCtx;
 
-	tp = SearchSysCache(USERMAPPINGUSERSERVER,
-						ObjectIdGetDatum(userid),
-						ObjectIdGetDatum(serverid),
-						0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_user_mapping "
+				" WHERE umuser = :1 "
+				" AND umserver = :2 ",
+				ObjectIdGetDatum(userid),
+				ObjectIdGetDatum(serverid)));
+
+	tp = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(tp))
 	{
+		caql_endscan(pcqCtx);
+
 		/* Not found for the specific user -- try PUBLIC */
-		tp = SearchSysCache(USERMAPPINGUSERSERVER,
-							ObjectIdGetDatum(InvalidOid),
-							ObjectIdGetDatum(serverid),
-							0, 0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_user_mapping "
+					" WHERE umuser = :1 "
+					" AND umserver = :2 ",
+					ObjectIdGetDatum(InvalidOid),
+					ObjectIdGetDatum(serverid)));
+
+		tp = caql_getnext(pcqCtx);
 	}
 
 	if (!HeapTupleIsValid(tp))
@@ -251,17 +270,16 @@ GetUserMapping(Oid userid, Oid serverid)
 	umform = (Form_pg_user_mapping) GETSTRUCT(tp);
 
 	/* Extract the umoptions */
-	datum = SysCacheGetAttr(USERMAPPINGUSERSERVER,
-							tp,
-							Anum_pg_user_mapping_umoptions,
-							&isnull);
+	datum = caql_getattr(pcqCtx,
+						 Anum_pg_user_mapping_umoptions,
+						 &isnull);
 
 	um = palloc(sizeof(UserMapping));
 	um->userid = userid;
 	um->serverid = serverid;
 	um->options = untransformRelOptions(datum);
 
-	ReleaseSysCache(tp);
+	caql_endscan(pcqCtx);
 
 	return um;
 }

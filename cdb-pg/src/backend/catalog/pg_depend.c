@@ -57,11 +57,12 @@ recordMultipleDependencies(const ObjectAddress *depender,
 						   DependencyType behavior)
 {
 	Relation	dependDesc;
-	CatalogIndexState indstate;
 	HeapTuple	tup;
 	int			i;
 	bool		nulls[Natts_pg_depend];
 	Datum		values[Natts_pg_depend];
+	cqContext	cqc;
+	cqContext  *pcqCtx;
 
 	if (nreferenced <= 0)
 		return;					/* nothing to do */
@@ -75,8 +76,10 @@ recordMultipleDependencies(const ObjectAddress *depender,
 
 	dependDesc = heap_open(DependRelationId, RowExclusiveLock);
 
-	/* Don't open indexes unless we need to make an update */
-	indstate = NULL;
+	pcqCtx = caql_beginscan(
+			caql_addrel(cqclr(&cqc), dependDesc),
+			cql("INSERT INTO pg_depend ",
+				NULL));
 
 	memset(nulls, false, sizeof(nulls));
 
@@ -103,22 +106,16 @@ recordMultipleDependencies(const ObjectAddress *depender,
 
 			values[Anum_pg_depend_deptype - 1] = CharGetDatum((char) behavior);
 
-			tup = heap_form_tuple(dependDesc->rd_att, values, nulls);
+			tup = caql_form_tuple(pcqCtx, values, nulls);
 
-			simple_heap_insert(dependDesc, tup);
-
-			/* keep indexes current */
-			if (indstate == NULL)
-				indstate = CatalogOpenIndexes(dependDesc);
-
-			CatalogIndexInsert(indstate, tup);
+			caql_insert(pcqCtx, tup);
+			/* and Update indexes (implicit) */
 
 			heap_freetuple(tup);
 		}
 	}
 
-	if (indstate != NULL)
-		CatalogCloseIndexes(indstate);
+	caql_endscan(pcqCtx);
 
 	heap_close(dependDesc, RowExclusiveLock);
 }

@@ -69,10 +69,11 @@ extern jmethodID PgObject_getJavaMethod(jclass cls, const char* methodName, cons
 extern jmethodID PgObject_getStaticJavaMethod(jclass cls, const char* methodName, const char* signature);
 
 /*
- * Obtain a HeapTuple from the system cache and throw an excption
+ * Obtain a HeapTuple from the system cache and throw an exception
  * on failure.
  */
-extern HeapTuple PgObject_getValidTuple(int cacheId, Oid tupleId, const char* tupleType);
+extern HeapTuple PgObject_getProcTuple(Oid tupleId);
+extern HeapTuple PgObject_getTypeTuple(Oid tupleId);
 
 /*
  * Obtains a java field. Calls elog(ERROR, ...) on failure so that

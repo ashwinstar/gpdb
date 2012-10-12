@@ -3447,15 +3447,21 @@ has_rolinherit(Oid roleid)
 {
 	bool		result = false;
 	HeapTuple	utup;
+	cqContext  *pcqCtx;
 
-	utup = SearchSysCache(AUTHOID,
-						  ObjectIdGetDatum(roleid),
-						  0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_authid "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(roleid)));
+
+	utup = caql_getnext(pcqCtx);
+
 	if (HeapTupleIsValid(utup))
-	{
 		result = ((Form_pg_authid) GETSTRUCT(utup))->rolinherit;
-		ReleaseSysCache(utup);
-	}
+
+	caql_endscan(pcqCtx);
+
 	return result;
 }
 
@@ -3510,9 +3516,14 @@ roles_has_privs_of(Oid roleid)
 			continue;
 
 		/* Find roles that memberid is directly a member of */
-		memlist = SearchSysCacheList(AUTHMEMMEMROLE, 1,
-									 ObjectIdGetDatum(memberid),
-									 0, 0, 0);
+		memlist = caql_begin_CacheList(
+				NULL,
+				cql("SELECT * FROM pg_auth_members "
+					" WHERE member = :1 "
+					" ORDER BY member, "
+					" roleid ",
+					ObjectIdGetDatum(memberid)));
+
 		for (i = 0; i < memlist->n_members; i++)
 		{
 			HeapTuple	tup = &memlist->members[i]->tuple;
@@ -3525,7 +3536,7 @@ roles_has_privs_of(Oid roleid)
 			 */
 			roles_list = list_append_unique_oid(roles_list, otherid);
 		}
-		ReleaseSysCacheList(memlist);
+		caql_end_CacheList(memlist);
 	}
 
 	/*
@@ -3590,9 +3601,14 @@ roles_is_member_of(Oid roleid)
 		int			i;
 
 		/* Find roles that memberid is directly a member of */
-		memlist = SearchSysCacheList(AUTHMEMMEMROLE, 1,
-									 ObjectIdGetDatum(memberid),
-									 0, 0, 0);
+		memlist = caql_begin_CacheList(
+				NULL,
+				cql("SELECT * FROM pg_auth_members "
+					" WHERE member = :1 "
+					" ORDER BY member, "
+					" roleid ",
+					ObjectIdGetDatum(memberid)));
+
 		for (i = 0; i < memlist->n_members; i++)
 		{
 			HeapTuple	tup = &memlist->members[i]->tuple;
@@ -3605,7 +3621,7 @@ roles_is_member_of(Oid roleid)
 			 */
 			roles_list = list_append_unique_oid(roles_list, otherid);
 		}
-		ReleaseSysCacheList(memlist);
+		caql_end_CacheList(memlist);
 	}
 
 	/*
@@ -3750,9 +3766,14 @@ is_admin_of_role(Oid member, Oid role)
 		int			i;
 
 		/* Find roles that memberid is directly a member of */
-		memlist = SearchSysCacheList(AUTHMEMMEMROLE, 1,
-									 ObjectIdGetDatum(memberid),
-									 0, 0, 0);
+		memlist = caql_begin_CacheList(
+				NULL,
+				cql("SELECT * FROM pg_auth_members "
+					" WHERE member = :1 "
+					" ORDER BY member, "
+					" roleid ",
+					ObjectIdGetDatum(memberid)));
+
 		for (i = 0; i < memlist->n_members; i++)
 		{
 			HeapTuple	tup = &memlist->members[i]->tuple;
@@ -3768,7 +3789,7 @@ is_admin_of_role(Oid member, Oid role)
 
 			roles_list = list_append_unique_oid(roles_list, otherid);
 		}
-		ReleaseSysCacheList(memlist);
+		caql_end_CacheList(memlist);
 		if (result)
 			break;
 	}

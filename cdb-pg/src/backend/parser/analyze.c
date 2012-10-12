@@ -1678,32 +1678,34 @@ List *
 TypeNameGetStorageDirective(TypeName *typname)
 {
 	HeapTuple tuple;
-	cqContext	cqc;
-	Relation pgtypenc = heap_open(TypeEncodingRelationId, AccessShareLock);
+	cqContext  *pcqCtx;
 	Oid typid = typenameTypeId(NULL, typname);
 	List *out = NIL;
 
 	/* XXX XXX: SELECT typoptions */
-	tuple = caql_getfirst(
-			caql_addrel(cqclr(&cqc), pgtypenc), 
+	pcqCtx = caql_beginscan(
+			NULL,
 			cql("SELECT * FROM pg_type_encoding "
 				" WHERE typid = :1 ",
 				ObjectIdGetDatum(typid)));
+
+	tuple = caql_getnext(pcqCtx);
 
 	if (HeapTupleIsValid(tuple))
 	{
 		Datum options;
 		bool isnull;
 
-		options = heap_getattr(tuple, Anum_pg_type_encoding_typoptions,
-							   RelationGetDescr(pgtypenc), &isnull);
+		options = caql_getattr(pcqCtx, 
+							   Anum_pg_type_encoding_typoptions,
+							   &isnull);
 
 		Insist(!isnull);
 
 		out = untransformRelOptions(options);
 	}
 
-	heap_close(pgtypenc, AccessShareLock);
+	caql_endscan(pcqCtx);
 	return out;
 }
 
@@ -4096,7 +4098,7 @@ make_partition_rules(ParseState *pstate,
 						pgtype = (Form_pg_type)GETSTRUCT(typ);
 						dat = OidFunctionCall1(pgtype->typoutput,c->constvalue);
 
-						ReleaseSysCache(typ);
+						ReleaseType(typ);
 						val = makeString(DatumGetCString(dat));
 						aconst->val = *val;
                     	aconst->location = -1;
@@ -4405,7 +4407,7 @@ make_partition_rules(ParseState *pstate,
 						val= makeString(DatumGetCString(dat));
 						aconst->val = *val;
                         aconst->location = -1;
-						ReleaseSysCache(typ);
+						ReleaseType(typ);
 
 						pValConst = aconst;
 					}
@@ -4891,7 +4893,7 @@ preprocess_range_spec(partValidationState *vstate)
 				{
 					Type type = typenameType(vstate->pstate, column->typname);
 					column->typname->typid = typeTypeId(type);
-					ReleaseSysCache(type);
+					ReleaseType(type);
 				}
 				typname = column->typname;
 				break;
@@ -5041,7 +5043,7 @@ preprocess_range_spec(partValidationState *vstate)
 
 
 						newrtypeId = ((Form_pg_operator)GETSTRUCT(optup))->oprright;
-						ReleaseSysCache(optup);
+						ReleaseOperator(optup);
 
 						if (rtypeId != newrtypeId)
 						{
@@ -5049,7 +5051,7 @@ preprocess_range_spec(partValidationState *vstate)
 							int4 typmod =
 								((Form_pg_type)GETSTRUCT(newetyp))->typtypmod;
 
-							ReleaseSysCache(newetyp);
+							ReleaseType(newetyp);
 
 							/* we need to coerce */
 							e  = coerce_partition_value(e,
@@ -6075,7 +6077,7 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 
 		c = makeConst(typid, -1, typeLen(typ), d, isnull,
 					  typeByVal(typ));
-		ReleaseSysCache(typ);
+		ReleaseType(typ);
 		out = (Node *)c;
 
 		/*
@@ -6125,7 +6127,7 @@ validate_list_partition(partValidationState *vstate)
 				{
 					Type type = typenameType(vstate->pstate, column->typname);
 					column->typname->typid = typeTypeId(type);
-					ReleaseSysCache(type);
+					ReleaseType(type);
 				}
 				typname = column->typname;
 				break;
@@ -6735,7 +6737,7 @@ flatten_partition_val(Node *node, Oid target_type)
 		bool typbyval = ((Form_pg_type)GETSTRUCT(typ))->typbyval;
 		bool isnull;
 
-		ReleaseSysCache(typ);
+		ReleaseType(typ);
 
 		curtyp = exprType(node);
 		Assert(OidIsValid(curtyp));
@@ -6896,21 +6898,26 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 	Datum lhs = 0;
 	Datum rhs = 0;
 	OpExpr *opexpr;
-	HeapTuple optup;
 	bool byval;
 	int16 len;
 	bool need_typ_info = (PointerIsValid(restypid) && *restypid == InvalidOid);
 	bool isnull;
+	Oid oprcode;
+	int fetchCount;
 
 	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, location);
-	optup = SearchSysCache(OPEROID, ObjectIdGetDatum(opexpr->opno),
-						   0, 0, 0);
 
-	if (optup == NULL)	  /* should not fail */
+	oprcode = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT oprcode FROM pg_operator "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(opexpr->opno)));
+
+	if (!fetchCount)	  /* should not fail */
 		elog(ERROR, "cache lookup failed for operator %u", opexpr->opno);
-	opexpr->opfuncid = ((Form_pg_operator)GETSTRUCT(optup))->oprcode;
-
-	ReleaseSysCache(optup);
+	opexpr->opfuncid = oprcode;
 
 	lhs = partition_arg_get_val((Node *)linitial(opexpr->args), &isnull);
 	if (!isnull)
@@ -6934,11 +6941,11 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 
 				c = makeConst(opexpr->opresulttype, -1, typeLen(typ), res,
 							  isnull, typeByVal(typ));
-				ReleaseSysCache(typ);
+				ReleaseType(typ);
 
 				typ = typeidType(*restypid);
 				typmod = ((Form_pg_type)GETSTRUCT(typ))->typtypmod;
-				ReleaseSysCache(typ);
+				ReleaseType(typ);
 
 				e = (Expr *)coerce_type(NULL, (Node *)c, opexpr->opresulttype,
 										*restypid, typmod,
@@ -6973,7 +6980,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 			*typlen = len;
 		}
 
-		ReleaseSysCache(typ);
+		ReleaseType(typ);
 	}
 	else
 	{
@@ -7219,7 +7226,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				{
 					Type t = typenameType(pstate, type);
 					coltypid = type->typid = typeTypeId(t);
-					ReleaseSysCache(t);
+					ReleaseType(t);
 				}
 
 				oprmul = lappend(NIL, makeString("*"));
@@ -7258,7 +7265,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				typ = typeidType(restypid);
 				c = makeConst(restypid, -1, typeLen(typ), res, false,
 							  typeByVal(typ));
-				ReleaseSysCache(typ);
+				ReleaseType(typ);
 
 				/*
 				 * n1t + (...)
@@ -7275,7 +7282,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				typ = typeidType(restypid);
 				newend = makeConst(restypid, -1, typeLen(typ), res, false,
 								   typeByVal(typ));
-				ReleaseSysCache(typ);
+				ReleaseType(typ);
 
 				/*
 				 * Now we must detect a few conditions.
@@ -7324,7 +7331,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 						typ = typeidType(test_typid);
 						tmpconst = makeConst(test_typid, -1, typeLen(typ), uncast,
 											 false, typeByVal(typ));
-						ReleaseSysCache(typ);
+						ReleaseType(typ);
 
 						iseq = eval_basic_opexpr(NULL, opreq, (Node *)tmpconst,
 												 (Node *)newend, NULL, NULL,
@@ -8018,7 +8025,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					{
 						Type type = typenameType(pstate, column->typname);
 						column->typname->typid = typeid = typeTypeId(type);
-						ReleaseSysCache(type);
+						ReleaseType(type);
 					}
 				}
 				break;
@@ -8750,7 +8757,7 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				position = ((Form_pg_partition_rule)GETSTRUCT(tuple))->parruleord;
 				paroid = ((Form_pg_partition_rule)GETSTRUCT(tuple))->paroid;
 
-
+				heap_freetuple(tuple);
 				heap_close(partrel, NoLock);
 
 				partrel = heap_open(PartitionRelationId, AccessShareLock);
@@ -8765,6 +8772,7 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 
 				depth = ((Form_pg_partition)GETSTRUCT(tuple))->parlevel + 1;
 
+				heap_freetuple(tuple);
 				heap_close(partrel, NoLock);
 
 				heap_close(crel, NoLock);
@@ -12601,7 +12609,7 @@ transformColumnType(ParseState *pstate, ColumnDef *column)
 	 */
 	Type		ctype = typenameType(NULL, column->typname);
 
-	ReleaseSysCache(ctype);
+	ReleaseType(ctype);
 }
 
 static void
@@ -13050,4 +13058,3 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 }
-

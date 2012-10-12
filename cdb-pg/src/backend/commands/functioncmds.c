@@ -969,6 +969,7 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 	List       *describeQualName = NIL;
 	Oid         describeFuncOid  = InvalidOid;
 	char		proDataAccess = PRODATAACCESS_NONE;
+	cqContext  *pcqCtx;
 
 	/* Convert list of names to a name and namespace */
 	namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
@@ -994,9 +995,14 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 	languageName = case_translate_language_name(language);
 
 	/* Look up the language and validate permissions */
-	languageTuple = SearchSysCache(LANGNAME,
-								   PointerGetDatum(languageName),
-								   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_language "
+				" WHERE lanname = :1 ",
+				PointerGetDatum(languageName)));
+
+	languageTuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(languageTuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1027,7 +1033,7 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 
 	languageValidator = languageStruct->lanvalidator;
 
-	ReleaseSysCache(languageTuple);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Convert remaining parameters of CREATE to form wanted by
@@ -1132,6 +1138,7 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	Oid			funcOid;
 	HeapTuple	tup;
 	ObjectAddress object;
+	cqContext  *pcqCtx;
 
 	/*
 	 * Find the function, do permissions and validity checks
@@ -1147,9 +1154,14 @@ RemoveFunction(RemoveFuncStmt *stmt)
 		return;
 	}
 
-	tup = SearchSysCache(PROCOID,
-						 ObjectIdGetDatum(funcOid),
-						 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcOid)));
+
+	tup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for function %u", funcOid);
 
@@ -1177,7 +1189,7 @@ RemoveFunction(RemoveFuncStmt *stmt)
 						NameListToString(functionName))));
 	}
 
-	ReleaseSysCache(tup);
+	caql_endscan(pcqCtx);
 
 	/*
 	 * Do the deletion
@@ -1459,9 +1471,9 @@ AlterFunctionOwner_internal(cqContext *pcqCtx,
 		 * Determine the modified ACL for the new owner.  This is only
 		 * necessary when the ACL is non-null.
 		 */
-		aclDatum = SysCacheGetAttr(PROCOID, tup,
-								   Anum_pg_proc_proacl,
-								   &isNull);
+		aclDatum = caql_getattr(pcqCtx,
+								Anum_pg_proc_proacl,
+								&isNull);
 		if (!isNull)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
@@ -1702,14 +1714,20 @@ CreateCast(CreateCastStmt *stmt)
 	if (stmt->func != NULL)
 	{
 		Form_pg_proc procstruct;
+		cqContext  *proccqCtx;
 
 		funcid = LookupFuncNameTypeNames(stmt->func->funcname,
 										 stmt->func->funcargs,
 										 false);
 
-		tuple = SearchSysCache(PROCOID,
-							   ObjectIdGetDatum(funcid),
-							   0, 0, 0);
+		proccqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_proc "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(funcid)));
+
+		tuple = caql_getnext(proccqCtx);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", funcid);
 
@@ -1756,7 +1774,7 @@ CreateCast(CreateCastStmt *stmt)
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("cast function must not return a set")));
 
-		ReleaseSysCache(tuple);
+		caql_endscan(proccqCtx);
 	}
 	else
 	{
@@ -1913,18 +1931,25 @@ DropCast(DropCastStmt *stmt)
 {
 	Oid			sourcetypeid;
 	Oid			targettypeid;
-	HeapTuple	tuple;
 	ObjectAddress object;
+	int			fetchCount;
+	Oid			castOid;
 
 	/* when dropping a cast, the types must exist even if you use IF EXISTS */
 	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype);
 	targettypeid = typenameTypeId(NULL, stmt->targettype);
 
-	tuple = SearchSysCache(CASTSOURCETARGET,
-						   ObjectIdGetDatum(sourcetypeid),
-						   ObjectIdGetDatum(targettypeid),
-						   0, 0);
-	if (!HeapTupleIsValid(tuple))
+	castOid = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT oid FROM pg_cast "
+				" WHERE castsource = :1 "
+				" AND casttarget = :2 ",
+				ObjectIdGetDatum(sourcetypeid),
+				ObjectIdGetDatum(targettypeid)));
+
+	if (!fetchCount)
 	{
 		if (!stmt->missing_ok)
 			ereport(ERROR,
@@ -1954,10 +1979,8 @@ DropCast(DropCastStmt *stmt)
 	 * Do the deletion
 	 */
 	object.classId = CastRelationId;
-	object.objectId = HeapTupleGetOid(tuple);
+	object.objectId = castOid;
 	object.objectSubId = 0;
-
-	ReleaseSysCache(tuple);
 
 	performDeletion(&object, stmt->behavior);
 	

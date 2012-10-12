@@ -416,9 +416,9 @@ ProcedureCreate(const char *procedureName,
 		 * names have not been changed, as this could break existing calls.
 		 * We allow adding names to formerly unnamed parameters, though.
 		 */
-		proargnames = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
-									  Anum_pg_proc_proargnames,
-									  &isnull);
+		proargnames = caql_getattr(pcqCtx,
+								   Anum_pg_proc_proargnames,
+								   &isnull);
 		if (!isnull)
 		{
 			Datum       proargmodes;
@@ -428,9 +428,9 @@ ProcedureCreate(const char *procedureName,
 			int         n_new_arg_names;
 			int         j;
 
-			proargmodes = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
-										  Anum_pg_proc_proargmodes,
-										  &isnull);
+			proargmodes = caql_getattr(pcqCtx,
+									   Anum_pg_proc_proargmodes,
+									   &isnull);
 			if (isnull)
 				proargmodes = PointerGetDatum(NULL);    /* just to be sure */
 
@@ -462,8 +462,8 @@ ProcedureCreate(const char *procedureName,
 		 * parameter is polymorphic, and in such cases a change of default
 		 * type might alter the resolved output type of existing calls.)
 		 */
-		ndefDatum = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
-									Anum_pg_proc_pronargdefaults, &isnull);
+		ndefDatum = caql_getattr(pcqCtx,
+								 Anum_pg_proc_pronargdefaults, &isnull);
 		ndefCount = DatumGetObjectId(ndefDatum);
 		if (ndefCount != 0) 
 		{
@@ -478,9 +478,9 @@ ProcedureCreate(const char *procedureName,
 						 errmsg("cannot remove parameter defaults from existing function"),
 						 errhint("Use DROP FUNCTION first.")));
 
-			proargdefaults = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
-											 Anum_pg_proc_proargdefaults,
-											 &isnull);
+			proargdefaults = caql_getattr(pcqCtx,
+										  Anum_pg_proc_proargdefaults,
+										  &isnull);
 			Assert(!isnull);
 			oldDefaults = (List *) stringToNode(TextDatumGetCString(proargdefaults));
 			Assert(IsA(oldDefaults, List));
@@ -691,26 +691,28 @@ Datum
 fmgr_internal_validator(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
-	HeapTuple	tuple;
 	bool		isnull;
-	Datum		tmp;
 	char	   *prosrc;
+	int			fetchCount;
 
 	/*
 	 * We do not honor check_function_bodies since it's unlikely the function
 	 * name will be found later if it isn't there now.
 	 */
 
-	tuple = SearchSysCache(PROCOID,
-						   ObjectIdGetDatum(funcoid),
-						   0, 0, 0);
-	if (!HeapTupleIsValid(tuple))
+	prosrc = caql_getcstring_plus(
+					NULL,
+					&fetchCount,
+					&isnull,
+					cql("SELECT prosrc FROM pg_proc "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(funcoid)));
+
+	if (!fetchCount)
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
 		elog(ERROR, "null prosrc");
-	prosrc = TextDatumGetCString(tmp);
 
 	if (fmgr_internal_function(prosrc) == InvalidOid)
 		ereport(ERROR,
@@ -718,8 +720,6 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 				 errmsg("there is no built-in function named \"%s\"",
 						prosrc),
 				 errOmitLocation(true)));
-
-	ReleaseSysCache(tuple);
 
 	PG_RETURN_VOID();
 }
@@ -743,6 +743,7 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	Datum		tmp;
 	char	   *prosrc;
 	char	   *probin;
+	cqContext  *pcqCtx;
 
 	/*
 	 * It'd be most consistent to skip the check if !check_function_bodies,
@@ -750,18 +751,23 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	 * and for pg_dump loading it's much better if we *do* check.
 	 */
 
-	tuple = SearchSysCache(PROCOID,
-						   ObjectIdGetDatum(funcoid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcoid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
+	tmp = caql_getattr(pcqCtx, Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
 		elog(ERROR, "null prosrc for C function %u", funcoid);
 	prosrc = DatumGetCString(DirectFunctionCall1(textout, tmp));
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_probin, &isnull);
+	tmp = caql_getattr(pcqCtx, Anum_pg_proc_probin, &isnull);
 	if (isnull)
 		elog(ERROR, "null probin for C function %u", funcoid);
 	probin = DatumGetCString(DirectFunctionCall1(textout, tmp));
@@ -769,7 +775,7 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	(void) load_external_function(probin, prosrc, true, &libraryhandle);
 	(void) fetch_finfo_record(libraryhandle, prosrc);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	PG_RETURN_VOID();
 }
@@ -793,10 +799,16 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 	ErrorContextCallback sqlerrcontext;
 	bool		haspolyarg;
 	int			i;
+	cqContext  *pcqCtx;
 
-	tuple = SearchSysCache(PROCOID,
-						   ObjectIdGetDatum(funcoid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcoid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 	proc = (Form_pg_proc) GETSTRUCT(tuple);
@@ -834,7 +846,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 	/* Postpone body checks if !check_function_bodies */
 	if (check_function_bodies)
 	{
-		tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
+		tmp = caql_getattr(pcqCtx, Anum_pg_proc_prosrc, &isnull);
 		if (isnull)
 			elog(ERROR, "null prosrc");
 
@@ -871,7 +883,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 		error_context_stack = sqlerrcontext.previous;
 	}
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	PG_RETURN_VOID();
 }

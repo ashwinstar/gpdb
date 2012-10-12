@@ -162,7 +162,8 @@ DefineIndex(RangeVar *heapRelation,
 	char	   *altconname = stmt ? stmt->altconname : NULL;
 	cqContext	cqc;
 	cqContext  *pcqCtx;
-
+	cqContext  *amcqCtx;
+	cqContext  *attcqCtx;
 
 	/*
 	 * count attributes in index
@@ -334,11 +335,18 @@ DefineIndex(RangeVar *heapRelation,
 	/*
 	 * look up the access method, verify it can handle the requested features
 	 */
-	tuple = SearchSysCache(AMNAME,
-						   PointerGetDatum(accessMethodName),
-						   0, 0, 0);
+	amcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_am "
+				" WHERE amname = :1 ",
+				PointerGetDatum(accessMethodName)));
+	
+	tuple = caql_getnext(amcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 	{
+		caql_endscan(amcqCtx);
+
 		/*
 		 * Hack to provide more-or-less-transparent updating of old RTREE
 		 * indexes to GIST: if RTREE is requested and not found, use GIST.
@@ -348,9 +356,14 @@ DefineIndex(RangeVar *heapRelation,
 			ereport(NOTICE,
 					(errmsg("substituting access method \"gist\" for obsolete method \"rtree\"")));
 			accessMethodName = "gist";
-			tuple = SearchSysCache(AMNAME,
-								   PointerGetDatum(accessMethodName),
-								   0, 0, 0);
+
+			amcqCtx = caql_beginscan(
+					NULL,
+					cql("SELECT * FROM pg_am "
+						" WHERE amname = :1 ",
+						PointerGetDatum(accessMethodName)));
+	
+			tuple = caql_getnext(amcqCtx);
 		}
 
 		if (!HeapTupleIsValid(tuple))
@@ -391,7 +404,7 @@ DefineIndex(RangeVar *heapRelation,
 
 	amoptions = accessMethodForm->amoptions;
 
-	ReleaseSysCache(tuple);
+	caql_endscan(amcqCtx);
 
 	/*
 	 * If a range table was created then check that only the base rel is
@@ -453,7 +466,9 @@ DefineIndex(RangeVar *heapRelation,
 			if (SystemAttributeByName(key->name, rel->rd_rel->relhasoids))
 				continue;
 
-			atttuple = SearchSysCacheAttName(relationId, key->name);
+			attcqCtx = caql_getattname_scan(NULL, relationId, key->name);
+			atttuple = caql_get_current(attcqCtx);
+
 			if (HeapTupleIsValid(atttuple))
 			{
 				if (!((Form_pg_attribute) GETSTRUCT(atttuple))->attnotnull)
@@ -467,7 +482,6 @@ DefineIndex(RangeVar *heapRelation,
 
 					cmds = lappend(cmds, cmd);
 				}
-				ReleaseSysCache(atttuple);
 			}
 			else
 			{
@@ -481,6 +495,7 @@ DefineIndex(RangeVar *heapRelation,
 						 errmsg("column \"%s\" named in key does not exist",
 								key->name)));
 			}
+			caql_endscan(attcqCtx);
 		}
 
 		/*
@@ -930,9 +945,13 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			/* Simple index attribute */
 			HeapTuple	atttuple;
 			Form_pg_attribute attform;
+			cqContext	*pcqCtx;
 
 			Assert(attribute->expr == NULL);
-			atttuple = SearchSysCacheAttName(relId, attribute->name);
+
+			pcqCtx = caql_getattname_scan(NULL, relId, attribute->name);
+			atttuple = caql_get_current(pcqCtx);
+
 			if (!HeapTupleIsValid(atttuple))
 			{
 				/* difference in error message spellings is historical */
@@ -950,7 +969,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			attform = (Form_pg_attribute) GETSTRUCT(atttuple);
 			indexInfo->ii_KeyAttrNumbers[attn] = attform->attnum;
 			atttype = attform->atttypid;
-			ReleaseSysCache(atttuple);
+
+			caql_endscan(pcqCtx);
 		}
 		else if (attribute->expr && IsA(attribute->expr, Var))
 		{
@@ -1019,6 +1039,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 	HeapTuple	tuple;
 	Oid			opClassId,
 				opInputType;
+	cqContext	*pcqCtx;
 
 	/*
 	 * Release 7.0 removed network_ops, timespan_ops, and datetime_ops, so we
@@ -1074,11 +1095,16 @@ GetIndexOpClass(List *opclass, Oid attrType,
 		Oid			namespaceId;
 
 		namespaceId = LookupExplicitNamespace(schemaname);
-		tuple = SearchSysCache(CLAAMNAMENSP,
-							   ObjectIdGetDatum(accessMethodId),
-							   PointerGetDatum(opcname),
-							   ObjectIdGetDatum(namespaceId),
-							   0);
+
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_opclass "
+					" WHERE opcamid = :1 "
+					" AND opcname = :2 "
+					" AND opcnamespace = :3 ",
+					ObjectIdGetDatum(accessMethodId),
+					PointerGetDatum(opcname),
+					ObjectIdGetDatum(namespaceId)));
 	}
 	else
 	{
@@ -1089,10 +1115,15 @@ GetIndexOpClass(List *opclass, Oid attrType,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 							opcname, accessMethodName)));
-		tuple = SearchSysCache(CLAOID,
-							   ObjectIdGetDatum(opClassId),
-							   0, 0, 0);
+
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_opclass "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(opClassId)));
 	}
+
+	tuple = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
@@ -1113,7 +1144,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 				 errmsg("operator class \"%s\" does not accept data type %s",
 					  NameListToString(opclass), format_type_be(attrType))));
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return opClassId;
 }
@@ -1339,7 +1370,7 @@ relationHasPrimaryKey(Relation rel)
 	bool		result = false;
 	List	   *indexoidlist;
 	ListCell   *indexoidscan;
-
+	cqContext  *pcqCtx;
 	/*
 	 * Get the list of index OIDs for the table from the relcache, and look up
 	 * each one in the pg_index syscache until we find one marked primary key
@@ -1352,13 +1383,22 @@ relationHasPrimaryKey(Relation rel)
 		Oid			indexoid = lfirst_oid(indexoidscan);
 		HeapTuple	indexTuple;
 
-		indexTuple = SearchSysCache(INDEXRELID,
-									ObjectIdGetDatum(indexoid),
-									0, 0, 0);
+		/* XXX: select * from pg_index where indexrelid = :1 
+		   and indisprimary */
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_index "
+					" WHERE indexrelid = :1 ",
+					ObjectIdGetDatum(indexoid)));
+		
+		indexTuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(indexTuple))		/* should not happen */
 			elog(ERROR, "cache lookup failed for index %u", indexoid);
 		result = ((Form_pg_index) GETSTRUCT(indexTuple))->indisprimary;
-		ReleaseSysCache(indexTuple);
+
+		caql_endscan(pcqCtx);
+
 		if (result)
 			break;
 	}
@@ -1380,7 +1420,7 @@ relationHasUniqueIndex(Relation rel)
 	bool		result = false;
 	List	   *indexoidlist;
 	ListCell   *indexoidscan;
-
+	cqContext  *pcqCtx;
 	/*
 	 * Get the list of index OIDs for the table from the relcache, and look up
 	 * each one in the pg_index syscache until we find one marked unique
@@ -1392,13 +1432,21 @@ relationHasUniqueIndex(Relation rel)
 		Oid			indexoid = lfirst_oid(indexoidscan);
 		HeapTuple	indexTuple;
 
-		indexTuple = SearchSysCache(INDEXRELID,
-									ObjectIdGetDatum(indexoid),
-									0, 0, 0);
+		/* XXX: select * from pg_index where indexrelid = :1 
+		   and indisunique */
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_index "
+					" WHERE indexrelid = :1 ",
+					ObjectIdGetDatum(indexoid)));
+
+		indexTuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(indexTuple))		/* should not happen */
 			elog(ERROR, "cache lookup failed for index %u", indexoid);
 		result = ((Form_pg_index) GETSTRUCT(indexTuple))->indisunique;
-		ReleaseSysCache(indexTuple);
+
+		caql_endscan(pcqCtx);
 		if (result)
 			break;
 	}
@@ -1420,6 +1468,7 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	ObjectAddress object;
 	HeapTuple tuple;
 	PartStatus pstat;
+	cqContext	*pcqCtx;
 
 	indOid = RangeVarGetRelid(relation, false);
 
@@ -1431,9 +1480,15 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	/* Lock the relation to be dropped */
 	LockRelationOid(indOid, AccessExclusiveLock);
 
-	tuple = SearchSysCache(RELOID,
-						   ObjectIdGetDatum(indOid),
-						   0, 0, 0);
+	/* XXX: just an existence (count(*)) check? */
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(indOid)));
+
+	tuple = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "index \"%s\" does not exist", relation->relname);
@@ -1451,7 +1506,7 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	
 	pstat = rel_part_status(IndexGetRelation(indOid));
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	performDeletion(&object, behavior);
 	
@@ -1475,11 +1530,18 @@ ReindexIndex(ReindexStmt *stmt)
 	Oid			newOid;
 	Oid			mapoid = InvalidOid;
 	List        *extra_oids = NIL;
+	cqContext	*pcqCtx;
 
 	indOid = RangeVarGetRelid(stmt->relation, false);
-	tuple = SearchSysCache(RELOID,
-						   ObjectIdGetDatum(indOid),
-						   0, 0, 0);
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(indOid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))		/* shouldn't happen */
 		elog(ERROR, "cache lookup failed for relation %u", indOid);
 
@@ -1494,7 +1556,7 @@ ReindexIndex(ReindexStmt *stmt)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   stmt->relation->relname);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -1547,15 +1609,22 @@ ReindexTable(ReindexStmt *stmt)
 {
 	Oid			heapOid;
 	HeapTuple	tuple;
+	cqContext  *pcqCtx;
 
 	Assert(stmt != NULL);
 	Assert(stmt->relation != NULL);
 	Assert(stmt->relation->relname != NULL);
 
 	heapOid = RangeVarGetRelid(stmt->relation, false);
-	tuple = SearchSysCache(RELOID,
-						   ObjectIdGetDatum(heapOid),
-						   0, 0, 0);
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(heapOid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))		/* shouldn't happen */
 		elog(ERROR, "cache lookup failed for relation %u", heapOid);
 
@@ -1578,7 +1647,7 @@ ReindexTable(ReindexStmt *stmt)
 				 errmsg("shared table \"%s\" can only be reindexed in stand-alone mode",
 						stmt->relation->relname)));
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	if (!reindex_relation(heapOid, true, true, true, &stmt->new_ind_oids,
 						  Gp_role == GP_ROLE_DISPATCH))
@@ -1603,10 +1672,16 @@ generate_relation_name(Oid relid)
 	Form_pg_class reltup;
 	char	   *nspname;
 	char	   *result;
+	cqContext  *pcqCtx;
 
-	tp = SearchSysCache(RELOID,
-						ObjectIdGetDatum(relid),
-						0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(relid)));
+
+	tp = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 
@@ -1620,7 +1695,7 @@ generate_relation_name(Oid relid)
 
 	result = quote_qualified_identifier(nspname, NameStr(reltup->relname));
 
-	ReleaseSysCache(tp);
+	caql_endscan(pcqCtx);
 
 	return result;
 }

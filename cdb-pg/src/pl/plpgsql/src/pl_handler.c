@@ -16,6 +16,7 @@
 #include "plpgsql.h"
 #include "pl_gram.h"
 
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -135,11 +136,18 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 	char	   *argmodes;
 	bool		istrigger = false;
 	int			i;
+	cqContext  *pcqCtx;
 
 	/* Get the new function's pg_proc entry */
-	tuple = SearchSysCache(PROCOID,
-						   ObjectIdGetDatum(funcoid),
-						   0, 0, 0);
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcoid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 	proc = (Form_pg_proc) GETSTRUCT(tuple);
@@ -221,7 +229,7 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 			elog(ERROR, "SPI_finish failed: %s", SPI_result_code_string(rc));
 	}
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	PG_RETURN_VOID();
 }

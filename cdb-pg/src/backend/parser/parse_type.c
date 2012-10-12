@@ -261,7 +261,7 @@ typenameTypeId(ParseState *pstate, const TypeName *typname)
  * typenameType - given a TypeName, return a Type structure
  *
  * This is equivalent to typenameTypeId + syscache fetch of Type tuple.
- * NB: caller must ReleaseSysCache the type tuple when done with it.
+ * NB: caller must ReleaseType the type tuple when done with it.
  */
 Type
 typenameType(ParseState *pstate, const TypeName *typname)
@@ -292,7 +292,7 @@ typenameType(ParseState *pstate, const TypeName *typname)
 }
 
 /* return a Type structure, given a type id */
-/* NB: caller must ReleaseSysCache the type tuple when done with it */
+/* NB: caller must ReleaseType the type tuple when done with it */
 Type
 typeidType(Oid id)
 {

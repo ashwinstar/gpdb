@@ -18,6 +18,7 @@
 
 #include <ctype.h>
 
+#include "access/catquery.h"
 #include "access/xact.h"
 #include "catalog/pg_authid.h"
 #include "commands/variable.h"
@@ -712,6 +713,7 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 	{
 		/* not a saved ID, so look it up */
 		HeapTuple	roleTup;
+		cqContext  *pcqCtx;
 
 		if (InSecurityDefinerContext())
 		{
@@ -739,9 +741,13 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 			return NULL;
 		}
 
-		roleTup = SearchSysCache(AUTHNAME,
-								 PointerGetDatum((char *) value),
-								 0, 0, 0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_authid "
+					" WHERE rolname = :1 ",
+					PointerGetDatum((char *) value)));
+
+		roleTup = caql_getnext(pcqCtx);
 		if (!HeapTupleIsValid(roleTup))
 		{
 			if (source >= PGC_S_INTERACTIVE)
@@ -755,7 +761,7 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 		is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
 		actual_rolename = value;
 
-		ReleaseSysCache(roleTup);
+		caql_endscan(pcqCtx);
 	}
 
 	if (doit)
@@ -863,6 +869,7 @@ assign_role(const char *value, bool doit, GucSource source)
 	{
 		/* not a saved ID, so look it up */
 		HeapTuple	roleTup;
+		cqContext  *pcqCtx;
 
 		if (!IsTransactionState())
 		{
@@ -874,9 +881,13 @@ assign_role(const char *value, bool doit, GucSource source)
 			return NULL;
 		}
 
-		roleTup = SearchSysCache(AUTHNAME,
-								 PointerGetDatum((char *) value),
-								 0, 0, 0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_authid "
+					" WHERE rolname = :1 ",
+					PointerGetDatum((char *) value)));
+
+		roleTup = caql_getnext(pcqCtx);
 		if (!HeapTupleIsValid(roleTup))
 		{
 			if (source >= PGC_S_INTERACTIVE)
@@ -889,7 +900,7 @@ assign_role(const char *value, bool doit, GucSource source)
 		roleid = HeapTupleGetOid(roleTup);
 		is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
 
-		ReleaseSysCache(roleTup);
+		caql_endscan(pcqCtx);
 
 		/*
 		 * Verify that session user is allowed to become this role

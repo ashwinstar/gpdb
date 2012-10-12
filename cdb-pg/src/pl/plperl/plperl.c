@@ -16,6 +16,7 @@
 #include <locale.h>
 
 /* postgreSQL stuff */
+#include "access/catquery.h"
 #include "access/xact.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
@@ -1721,9 +1722,17 @@ plperl_validator(PG_FUNCTION_ARGS)
 	char	   *argmodes;
 	bool		istrigger = false;
 	int			i;
+	cqContext  *pcqCtx;
 
 	/* Get the new function's pg_proc entry */
-	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcoid));
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcoid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 	proc = (Form_pg_proc) GETSTRUCT(tuple);
@@ -1759,7 +1768,7 @@ plperl_validator(PG_FUNCTION_ARGS)
 							format_type_be(argtypes[i]))));
 	}
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	/* Postpone body checks if !check_function_bodies */
 	if (check_function_bodies)
@@ -2371,9 +2380,18 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 	int			i;
 	plperl_interp_desc *oldinterp = plperl_active_interp;
 	ErrorContextCallback plperl_error_context;
+	cqContext	*pcqCtx;
 
 	/* We'll need the pg_proc tuple in any case... */
-	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid));
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(fn_oid)));
+
+	procTup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(procTup))
 		elog(ERROR, "cache lookup failed for function %u", fn_oid);
 	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
@@ -2446,8 +2464,16 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		/************************************************************
 		 * Lookup the pg_language tuple by Oid
 		 ************************************************************/
-		langTup = SearchSysCache1(LANGOID,
-								  ObjectIdGetDatum(procStruct->prolang));
+		cqContext	*lancqCtx;
+
+		lancqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_language "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(procStruct->prolang)));
+
+		langTup = caql_getnext(lancqCtx);
+
 		if (!HeapTupleIsValid(langTup))
 		{
 			free(prodesc->proname);
@@ -2457,7 +2483,8 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		}
 		langStruct = (Form_pg_language) GETSTRUCT(langTup);
 		prodesc->lanpltrusted = langStruct->lanpltrusted;
-		ReleaseSysCache(langTup);
+
+		caql_endscan(lancqCtx);
 
 		/************************************************************
 		 * Get the required information for input conversion of the
@@ -2465,9 +2492,16 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		 ************************************************************/
 		if (!is_trigger)
 		{
-			typeTup =
-				SearchSysCache1(TYPEOID,
-								ObjectIdGetDatum(procStruct->prorettype));
+			cqContext	*typcqCtx;
+
+			typcqCtx = caql_beginscan(
+					NULL,
+					cql("SELECT * FROM pg_type "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(procStruct->prorettype)));
+
+			typeTup = caql_getnext(typcqCtx);
+
 			if (!HeapTupleIsValid(typeTup))
 			{
 				free(prodesc->proname);
@@ -2514,7 +2548,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 			perm_fmgr_info(typeStruct->typinput, &(prodesc->result_in_func));
 			prodesc->result_typioparam = getTypeIOParam(typeTup);
 
-			ReleaseSysCache(typeTup);
+			caql_endscan(typcqCtx);
 		}
 
 		/************************************************************
@@ -2526,8 +2560,16 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 			prodesc->nargs = procStruct->pronargs;
 			for (i = 0; i < prodesc->nargs; i++)
 			{
-				typeTup = SearchSysCache1(TYPEOID,
-						ObjectIdGetDatum(procStruct->proargtypes.values[i]));
+				cqContext	*typcqCtx;
+
+				typcqCtx = caql_beginscan(
+						NULL,
+						cql("SELECT * FROM pg_type "
+							" WHERE oid = :1 ",
+						ObjectIdGetDatum(procStruct->proargtypes.values[i])));
+
+				typeTup = caql_getnext(typcqCtx);
+
 				if (!HeapTupleIsValid(typeTup))
 				{
 					free(prodesc->proname);
@@ -2565,7 +2607,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 				else
 					prodesc->arg_arraytype[i] = InvalidOid;
 
-				ReleaseSysCache(typeTup);
+				caql_endscan(typcqCtx);
 			}
 		}
 
@@ -2574,8 +2616,8 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		 * we do not use a named subroutine so that we can call directly
 		 * through the reference.
 		 ************************************************************/
-		prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
-									  Anum_pg_proc_prosrc, &isnull);
+		prosrcdatum = caql_getattr(pcqCtx,
+								   Anum_pg_proc_prosrc, &isnull);
 		if (isnull)
 			elog(ERROR, "null prosrc");
 		proc_source = TextDatumGetCString(prosrcdatum);
@@ -2613,7 +2655,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 	/* restore previous error callback */
 	error_context_stack = plperl_error_context.previous;
 
-	ReleaseSysCache(procTup);
+	caql_endscan(pcqCtx);
 
 	return prodesc;
 }

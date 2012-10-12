@@ -20,6 +20,7 @@
 
 #include "postgres.h"
 
+#include "access/catquery.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_operator.h"
@@ -91,18 +92,21 @@ static Expr *simplify_function(Oid funcid, Oid result_type, List **args,
 				  bool allow_inline,
 				  eval_const_expressions_context *context);
 static List *reorder_function_arguments(List *args, Oid result_type,
+				  cqContext	*pcqCtx,
 				  HeapTuple func_tuple,
 				  eval_const_expressions_context *context);
 static List *add_function_defaults(List *args, Oid result_type,
+								   cqContext *pcqCtx,
 								   HeapTuple func_tuple,
 								   eval_const_expressions_context *context);
-static List *fetch_function_defaults(HeapTuple func_tuple);
+static List *fetch_function_defaults(cqContext *pcqCtx, HeapTuple func_tuple);
 static void recheck_cast_function_args(List *args, Oid result_type,
 									   HeapTuple func_tuple);
 static Expr *evaluate_function(Oid funcid, Oid result_type, List *args,
 				  HeapTuple func_tuple,
 				  eval_const_expressions_context *context);
 static Expr *inline_function(Oid funcid, Oid result_type, List *args,
+				cqContext *pcqCtx,
 				HeapTuple func_tuple,
 				eval_const_expressions_context *context);
 static Node *substitute_actual_parameters(Node *expr, int nargs, List *args,
@@ -428,6 +432,7 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		Oid			aggprelimfn;
 		int			i;
 		ListCell   *l;
+		cqContext  *pcqCtx;
 
 		Assert(aggref->agglevelsup == 0);
 		counts->numAggs++;
@@ -467,16 +472,22 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		}
 
 		/* fetch aggregate transition datatype from pg_aggregate */
-		aggTuple = SearchSysCache(AGGFNOID,
-								  ObjectIdGetDatum(aggref->aggfnoid),
-								  0, 0, 0);
+		pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_aggregate "
+					" WHERE aggfnoid = :1 ",
+					ObjectIdGetDatum(aggref->aggfnoid)));
+
+		aggTuple = caql_getnext(pcqCtx);
+
 		if (!HeapTupleIsValid(aggTuple))
 			elog(ERROR, "cache lookup failed for aggregate %u",
 				 aggref->aggfnoid);
 		aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 		aggtranstype = aggform->aggtranstype;
 		aggprelimfn = aggform->aggprelimfn;
-		ReleaseSysCache(aggTuple);
+		
+		caql_endscan(pcqCtx);
 		
 		/* CDB wants to know whether the function can do 2-stage aggregation */
 		if ( aggprelimfn == InvalidOid )
@@ -2728,6 +2739,7 @@ simplify_function(Oid funcid, Oid result_type, List **args,
 {
 	HeapTuple	func_tuple;
 	Expr	   *newexpr;
+	cqContext  *pcqCtx;
 
 	/*
 	 * We have two strategies for simplification: either execute the function
@@ -2737,9 +2749,14 @@ simplify_function(Oid funcid, Oid result_type, List **args,
 	 * to the function's pg_proc tuple, so fetch it just once to use in both
 	 * attempts.
 	 */
-	func_tuple = SearchSysCache(PROCOID,
-								ObjectIdGetDatum(funcid),
-								0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcid)));
+
+	func_tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(func_tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
@@ -2748,19 +2765,23 @@ simplify_function(Oid funcid, Oid result_type, List **args,
 	 * arguments if needed.
 	 */
 	if (has_named_args)
-		*args = reorder_function_arguments(*args, result_type, func_tuple,
+		*args = reorder_function_arguments(*args, result_type, 
+										   pcqCtx,
+										   func_tuple,
 										   context);
 	else if (((Form_pg_proc) GETSTRUCT(func_tuple))->pronargs > list_length(*args))
-		*args = add_function_defaults(*args, result_type, func_tuple, context);
+		*args = add_function_defaults(*args, result_type, pcqCtx,
+									  func_tuple, context);
 
 	newexpr = evaluate_function(funcid, result_type, *args,
 								func_tuple, context);
 
 	if (!newexpr && allow_inline)
 		newexpr = inline_function(funcid, result_type, *args,
+								  pcqCtx,
 								  func_tuple, context);
 
-	ReleaseSysCache(func_tuple);
+	caql_endscan(pcqCtx);
 
 	return newexpr;
 }
@@ -2773,7 +2794,9 @@ simplify_function(Oid funcid, Oid result_type, List **args,
  * impossible to form a truly valid positional call without that.
  */
 static List *
-reorder_function_arguments(List *args, Oid result_type, HeapTuple func_tuple,
+reorder_function_arguments(List *args, Oid result_type, 
+						   cqContext *pcqCtx,
+						   HeapTuple func_tuple,
 						   eval_const_expressions_context *context)
 {
 	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
@@ -2818,13 +2841,13 @@ reorder_function_arguments(List *args, Oid result_type, HeapTuple func_tuple,
 	 * proper locations (they aren't necessarily consecutive or all used)
 	 */
 	defargnumbers = NULL;
-	datum = SysCacheGetAttr(PROCOID, func_tuple,
-							Anum_pg_proc_pronargdefaults, &isnull);
+	datum = caql_getattr(pcqCtx,
+						 Anum_pg_proc_pronargdefaults, &isnull);
 	pronargdefaults = DatumGetObjectId(datum);
 
 	if (nargsprovided < pronargs)
 	{
-		List   *defaults = fetch_function_defaults(func_tuple);
+		List   *defaults = fetch_function_defaults(pcqCtx, func_tuple);
 
 		i = pronargs - pronargdefaults;
 		foreach(lc, defaults)
@@ -2883,7 +2906,9 @@ reorder_function_arguments(List *args, Oid result_type, HeapTuple func_tuple,
  * and so we know we just need to add defaults at the end.
  */
 static List *
-add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple,
+add_function_defaults(List *args, Oid result_type, 
+					  cqContext *pcqCtx,
+					  HeapTuple func_tuple,
 					  eval_const_expressions_context *context)
 {
 	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
@@ -2893,7 +2918,7 @@ add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple,
 	ListCell   *lc;
 
 	/* Get all the default expressions from the pg_proc tuple */
-	defaults = fetch_function_defaults(func_tuple);
+	defaults = fetch_function_defaults(pcqCtx, func_tuple);
 
 	/* Delete any unused defaults from the list */
 	ndelete = nargsprovided + list_length(defaults) - funcform->pronargs;
@@ -2934,7 +2959,8 @@ add_function_defaults(List *args, Oid result_type, HeapTuple func_tuple,
  * fetch_function_defaults: get function's default arguments as expression list
  */
 static List *
-fetch_function_defaults(HeapTuple func_tuple)
+fetch_function_defaults(cqContext *pcqCtx,
+						HeapTuple func_tuple)
 {
 	List       *defaults;
 	Datum       proargdefaults;
@@ -2942,9 +2968,9 @@ fetch_function_defaults(HeapTuple func_tuple)
 	char       *str;
 
 	/* The error cases here shouldn't happen, but check anyway */
-	proargdefaults = SysCacheGetAttr(PROCOID, func_tuple,
-									 Anum_pg_proc_proargdefaults,
-									 &isnull);
+	proargdefaults = caql_getattr(pcqCtx,
+								  Anum_pg_proc_proargdefaults,
+								  &isnull);
 	if (isnull)
 		elog(ERROR, "not enough default arguments");
 	str = TextDatumGetCString(proargdefaults);
@@ -3127,6 +3153,7 @@ evaluate_function(Oid funcid, Oid result_type, List *args,
  */
 static Expr *
 inline_function(Oid funcid, Oid result_type, List *args,
+				cqContext *pcqCtx,
 				HeapTuple func_tuple,
 				eval_const_expressions_context *context)
 {
@@ -3169,6 +3196,9 @@ inline_function(Oid funcid, Oid result_type, List *args,
 	 * finger the function that bad information came from.
 	 */
 	sqlerrcontext.callback = sql_inline_error_callback;
+	/* XXX XXX: could pass the pcqCtx or prosrc directly here to avoid
+	 * SysCacheGetAttr 
+	 */
 	sqlerrcontext.arg = func_tuple;
 	sqlerrcontext.previous = error_context_stack;
 	error_context_stack = &sqlerrcontext;
@@ -3198,10 +3228,9 @@ inline_function(Oid funcid, Oid result_type, List *args,
 	}
 
 	/* Fetch and parse the function body */
-	tmp = SysCacheGetAttr(PROCOID,
-						  func_tuple,
-						  Anum_pg_proc_prosrc,
-						  &isNull);
+	tmp = caql_getattr(pcqCtx,
+					   Anum_pg_proc_prosrc,
+					   &isNull);
 	if (isNull)
 		elog(ERROR, "null prosrc for function %u", funcid);
 	src = DatumGetCString(DirectFunctionCall1(textout, tmp));

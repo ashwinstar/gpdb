@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/catquery.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -289,7 +290,7 @@ coerce_type(ParseState *pstate, Node *node,
 									  targetTypeId,
 									  cformat, location, false, false);
 
-		ReleaseSysCache(targetType);
+		ReleaseType(targetType);
 
 		return result;
 	}
@@ -1034,10 +1035,16 @@ build_coercion_expression(Node *node, Oid funcId,
 	int			nargs;
 	List	   *args;
 	Const	   *cons;
+	cqContext  *pcqCtx;
 
-	tp = SearchSysCache(PROCOID,
-						ObjectIdGetDatum(funcId),
-						0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcId)));
+
+	tp = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for function %u", funcId);
 	procstruct = (Form_pg_proc) GETSTRUCT(tp);
@@ -1056,7 +1063,7 @@ build_coercion_expression(Node *node, Oid funcId,
 	Assert(nargs < 2 || procstruct->proargtypes.values[1] == INT4OID);
 	Assert(nargs < 3 || procstruct->proargtypes.values[2] == BOOLOID);
 
-	ReleaseSysCache(tp);
+	caql_endscan(pcqCtx);
 
 	args = list_make1(node);
 
@@ -2041,6 +2048,7 @@ IsBinaryCoercible(Oid srctype, Oid targettype)
 	HeapTuple	tuple;
 	Form_pg_cast castForm;
 	bool		result;
+	cqContext  *pcqCtx;
 
 	/* Fast path if same type */
 	if (srctype == targettype)
@@ -2056,22 +2064,28 @@ IsBinaryCoercible(Oid srctype, Oid targettype)
 
 	/* Also accept any array type as coercible to ANYARRAY */
 	if (targettype == ANYARRAYOID)
-		if (get_element_type(srctype) != InvalidOid)
+		if (OidIsValid(get_element_type(srctype)))
 			return true;
 
 	/* Else look in pg_cast */
-	tuple = SearchSysCache(CASTSOURCETARGET,
-						   ObjectIdGetDatum(srctype),
-						   ObjectIdGetDatum(targettype),
-						   0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_cast "
+				" WHERE castsource = :1 "
+				" AND casttarget = :2 ",
+				ObjectIdGetDatum(srctype),
+				ObjectIdGetDatum(targettype)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		return false;			/* no cast */
 	castForm = (Form_pg_cast) GETSTRUCT(tuple);
 
-	result = (castForm->castfunc == InvalidOid &&
+	result = (!OidIsValid(castForm->castfunc) &&
 			  castForm->castcontext == COERCION_CODE_IMPLICIT);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2099,6 +2113,7 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 {
 	bool		result = false;
 	HeapTuple	tuple;
+	cqContext  *pcqCtx;
 
 	*funcid = InvalidOid;
 
@@ -2112,11 +2127,18 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 	if (sourceTypeId == targetTypeId)
 		return true;
 
+	/* SELECT castcontext from pg_cast */
+
 	/* Look in pg_cast */
-	tuple = SearchSysCache(CASTSOURCETARGET,
-						   ObjectIdGetDatum(sourceTypeId),
-						   ObjectIdGetDatum(targetTypeId),
-						   0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_cast "
+				" WHERE castsource = :1 "
+				" AND casttarget = :2 ",
+				ObjectIdGetDatum(sourceTypeId),
+				ObjectIdGetDatum(targetTypeId)));
+
+	tuple = caql_getnext(pcqCtx);
 
 	if (HeapTupleIsValid(tuple))
 	{
@@ -2149,7 +2171,6 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 			result = true;
 		}
 
-		ReleaseSysCache(tuple);
 	}
 	else
 	{
@@ -2196,6 +2217,7 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 		}
 	}
 
+	caql_endscan(pcqCtx);
 	return result;
 }
 
@@ -2220,35 +2242,29 @@ find_typmod_coercion_function(Oid typeId)
 	bool		isArray = false;
 	Type		targetType;
 	Form_pg_type typeForm;
-	HeapTuple	tuple;
 
 	targetType = typeidType(typeId);
 	typeForm = (Form_pg_type) GETSTRUCT(targetType);
 
 	/* Check for a varlena array type (and not a domain) */
-	if (typeForm->typelem != InvalidOid &&
+	if (OidIsValid(typeForm->typelem) &&
 		typeForm->typlen == -1 &&
-		typeForm->typtype != 'd')
+		typeForm->typtype != TYPTYPE_DOMAIN)
 	{
 		/* Yes, switch our attention to the element type */
 		typeId = typeForm->typelem;
 		isArray = true;
 	}
-	ReleaseSysCache(targetType);
+	ReleaseType(targetType);
 
 	/* Look in pg_cast */
-	tuple = SearchSysCache(CASTSOURCETARGET,
-						   ObjectIdGetDatum(typeId),
-						   ObjectIdGetDatum(typeId),
-						   0, 0);
-
-	if (HeapTupleIsValid(tuple))
-	{
-		Form_pg_cast castForm = (Form_pg_cast) GETSTRUCT(tuple);
-
-		funcid = castForm->castfunc;
-		ReleaseSysCache(tuple);
-	}
+	funcid = caql_getoid(
+			NULL,
+			cql("SELECT castfunc FROM pg_cast "
+				" WHERE castsource = :1 "
+				" AND casttarget = :2 ",
+				ObjectIdGetDatum(typeId),
+				ObjectIdGetDatum(typeId)));
 
 	/*
 	 * Now, if we did find a coercion function for an array element type,

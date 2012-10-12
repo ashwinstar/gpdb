@@ -498,6 +498,8 @@ extern void LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks);
 extern void LockReleaseCurrentOwner(void);
 extern void LockReassignCurrentOwner(void);
 extern List *GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode);
+extern LOCKMASK LockGetGrantMask(const LOCKTAG *locktag, bool sessionLock,
+								 char *comment);
 extern void AtPrepare_Locks(void);
 extern void PostPrepare_Locks(TransactionId xid);
 extern int LockCheckConflicts(LockMethod lockMethodTable,

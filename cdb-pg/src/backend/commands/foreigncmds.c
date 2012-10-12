@@ -527,10 +527,9 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 		/*
 		 * Validator is not changed, but we need it for validating options.
 		 */
-		datum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID,
-								tp,
-								Anum_pg_foreign_data_wrapper_fdwvalidator,
-								&isnull);
+		datum = caql_getattr(pcqCtx,
+							 Anum_pg_foreign_data_wrapper_fdwvalidator,
+							 &isnull);
 		Assert(!isnull);
 		fdwvalidator = DatumGetObjectId(datum);
 	}
@@ -541,10 +540,9 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 	if (stmt->options)
 	{
 		/* Extract the current options */
-		datum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID,
-								tp,
-								Anum_pg_foreign_data_wrapper_fdwoptions,
-								&isnull);
+		datum = caql_getattr(pcqCtx,
+							 Anum_pg_foreign_data_wrapper_fdwoptions,
+							 &isnull);
 		if (isnull)
 			datum = PointerGetDatum(NULL);
 
@@ -828,10 +826,9 @@ AlterForeignServer(AlterForeignServerStmt *stmt)
 		bool		isnull;
 
 		/* Extract the current srvoptions */
-		datum = SysCacheGetAttr(FOREIGNSERVEROID,
-								tp,
-								Anum_pg_foreign_server_srvoptions,
-								&isnull);
+		datum = caql_getattr(pcqCtx,
+							 Anum_pg_foreign_server_srvoptions,
+							 &isnull);
 		if (isnull)
 			datum = PointerGetDatum(NULL);
 
@@ -1126,10 +1123,9 @@ AlterUserMapping(AlterUserMappingStmt *stmt)
 
 		fdw = GetForeignDataWrapper(srv->fdwid);
 
-		datum = SysCacheGetAttr(USERMAPPINGUSERSERVER,
-								tp,
-								Anum_pg_user_mapping_umoptions,
-								&isnull);
+		datum = caql_getattr(pcqCtx,
+							 Anum_pg_user_mapping_umoptions,
+							 &isnull);
 		if (isnull)
 			datum = PointerGetDatum(NULL);
 

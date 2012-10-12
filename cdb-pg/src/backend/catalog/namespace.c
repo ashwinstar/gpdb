@@ -373,10 +373,15 @@ RelationIsVisible(Oid relid)
 	Form_pg_class relform;
 	Oid			relnamespace;
 	bool		visible;
+	cqContext  *pcqCtx;
 
-	reltup = SearchSysCache(RELOID,
-							ObjectIdGetDatum(relid),
-							0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(relid)));
+
+	reltup = caql_getnext(pcqCtx);
 
 	if (!HeapTupleIsValid(reltup))
 	{
@@ -385,7 +390,7 @@ RelationIsVisible(Oid relid)
 		 * Note that the caller may not have gotten a lock on the relation.
 		 * Therefore, it is possible that the relation may have been dropped
 		 * by the time this method is called. Therefore, we simply return false
-		 * when we cannot find the relation in SysCache instead of erroring out.
+		 * when we cannot find the relation in syscache instead of erroring out.
 		 */
 		return false;
 	}
@@ -432,7 +437,7 @@ RelationIsVisible(Oid relid)
 		}
 	}
 
-	ReleaseSysCache(reltup);
+	caql_endscan(pcqCtx);
 
 	return visible;
 }
@@ -486,10 +491,16 @@ TypeIsVisible(Oid typid)
 	Form_pg_type typform;
 	Oid			typnamespace;
 	bool		visible;
+	cqContext  *pcqCtx;
 
-	typtup = SearchSysCache(TYPEOID,
-							ObjectIdGetDatum(typid),
-							0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_type "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(typid)));
+
+	typtup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(typtup))
 		elog(ERROR, "cache lookup failed for type %u", typid);
 	typform = (Form_pg_type) GETSTRUCT(typtup);
@@ -541,7 +552,7 @@ TypeIsVisible(Oid typid)
 		}
 	}
 
-	ReleaseSysCache(typtup);
+	caql_endscan(pcqCtx);
 
 	return visible;
 }
@@ -639,9 +650,15 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 	}
 
 	/* Search syscache by name only */
-	catlist = SearchSysCacheList(PROCNAMEARGSNSP, 1,
-								 CStringGetDatum(funcname),
-								 0, 0, 0);
+
+	catlist = caql_begin_CacheList(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE proname = :1 "
+				" ORDER BY proname, "
+				" proargtypes, "
+				" pronamespace ",
+				CStringGetDatum(funcname)));
 
 	for (i = 0; i < catlist->n_members; i++)
 	{
@@ -832,7 +849,7 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			(any_special || !OidIsValid(namespaceId)))
 		{
 			/*
-			 * If we have an ordered list from SearchSysCacheList (the normal
+			 * If we have an ordered list from caql_begin_CacheList (the normal
 			 * case), then any conflicting proc must immediately adjoin this
 			 * one in the list, so we only need to look at the newest result
 			 * item.  If we have an unordered list, we have to scan the whole
@@ -966,7 +983,7 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		resultList = newResult;
 	}
 
-	ReleaseSysCacheList(catlist);
+	caql_end_CacheList(catlist);
 
 	return resultList;
 }
@@ -1107,10 +1124,16 @@ FunctionIsVisible(Oid funcid)
 	Form_pg_proc procform;
 	Oid			pronamespace;
 	bool		visible;
+	cqContext  *pcqCtx;
 
-	proctup = SearchSysCache(PROCOID,
-							 ObjectIdGetDatum(funcid),
-							 0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(funcid)));
+
+	proctup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(proctup))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
@@ -1155,7 +1178,7 @@ FunctionIsVisible(Oid funcid)
 		}
 	}
 
-	ReleaseSysCache(proctup);
+	caql_endscan(pcqCtx);
 
 	return visible;
 }
@@ -1187,35 +1210,44 @@ OpernameGetOprid(List *names, Oid oprleft, Oid oprright)
 	{
 		/* search only in exact schema given */
 		Oid			namespaceId;
-		HeapTuple	opertup;
+		Oid			operoid;
 
 		namespaceId = LookupExplicitNamespace(schemaname);
-		opertup = SearchSysCache(OPERNAMENSP,
-								 CStringGetDatum(opername),
-								 ObjectIdGetDatum(oprleft),
-								 ObjectIdGetDatum(oprright),
-								 ObjectIdGetDatum(namespaceId));
-		if (HeapTupleIsValid(opertup))
-		{
-			Oid			result = HeapTupleGetOid(opertup);
 
-			ReleaseSysCache(opertup);
-			return result;
-		}
-		return InvalidOid;
+		operoid = caql_getoid(
+				NULL,
+				cql("SELECT oid FROM pg_operator "
+					" WHERE oprname = :1 "
+					" AND oprleft = :2 "
+					" AND oprright = :3 "
+					" AND oprnamespace = :4 ",
+					CStringGetDatum(opername),
+					ObjectIdGetDatum(oprleft),
+					ObjectIdGetDatum(oprright),
+					ObjectIdGetDatum(namespaceId)));
+
+		return operoid;
 	}
 
 	/* Search syscache by name and argument types */
-	catlist = SearchSysCacheList(OPERNAMENSP, 3,
-								 CStringGetDatum(opername),
-								 ObjectIdGetDatum(oprleft),
-								 ObjectIdGetDatum(oprright),
-								 0);
+	catlist = caql_begin_CacheList(
+			NULL,
+			cql("SELECT * FROM pg_operator "
+				" WHERE oprname = :1 "
+				" AND oprleft = :2 "
+				" AND oprright = :3 "
+				" ORDER BY oprname, "
+				" oprleft, "
+				" oprright, "
+				" oprnamespace ",
+				CStringGetDatum(opername),
+				ObjectIdGetDatum(oprleft),
+				ObjectIdGetDatum(oprright)));
 
 	if (catlist->n_members == 0)
 	{
 		/* no hope, fall out early */
-		ReleaseSysCacheList(catlist);
+		caql_end_CacheList(catlist);
 		return InvalidOid;
 	}
 
@@ -1243,13 +1275,13 @@ OpernameGetOprid(List *names, Oid oprleft, Oid oprright)
 			{
 				Oid			result = HeapTupleGetOid(opertup);
 
-				ReleaseSysCacheList(catlist);
+				caql_end_CacheList(catlist);
 				return result;
 			}
 		}
 	}
 
-	ReleaseSysCacheList(catlist);
+	caql_end_CacheList(catlist);
 	return InvalidOid;
 }
 
@@ -1298,9 +1330,15 @@ OpernameGetCandidates(List *names, char oprkind)
 	}
 
 	/* Search syscache by name only */
-	catlist = SearchSysCacheList(OPERNAMENSP, 1,
-								 CStringGetDatum(opername),
-								 0, 0, 0);
+	catlist = caql_begin_CacheList(
+			NULL, 
+			cql("SELECT * FROM pg_operator "
+				" WHERE oprname = :1 "
+				" ORDER BY oprname, "
+				" oprleft, "
+				" oprright, "
+				" oprnamespace ",
+				CStringGetDatum(opername)));
 
 	/*
 	 * In typical scenarios, most if not all of the operators found by the
@@ -1357,7 +1395,7 @@ OpernameGetCandidates(List *names, char oprkind)
 			 * arguments as something we already accepted?	If so, keep only
 			 * the one that appears earlier in the search path.
 			 *
-			 * If we have an ordered list from SearchSysCacheList (the normal
+			 * If we have an ordered list from caql_begin_CacheList (the normal
 			 * case), then any conflicting oper must immediately adjoin this
 			 * one in the list, so we only need to look at the newest result
 			 * item.  If we have an unordered list, we have to scan the whole
@@ -1418,7 +1456,7 @@ OpernameGetCandidates(List *names, char oprkind)
 		resultList = newResult;
 	}
 
-	ReleaseSysCacheList(catlist);
+	caql_end_CacheList(catlist);
 
 	return resultList;
 }
@@ -1436,10 +1474,16 @@ OperatorIsVisible(Oid oprid)
 	Form_pg_operator oprform;
 	Oid			oprnamespace;
 	bool		visible;
+	cqContext  *pcqCtx;
 
-	oprtup = SearchSysCache(OPEROID,
-							ObjectIdGetDatum(oprid),
-							0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_operator "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(oprid)));
+
+	oprtup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(oprtup))
 		elog(ERROR, "cache lookup failed for operator %u", oprid);
 	oprform = (Form_pg_operator) GETSTRUCT(oprtup);
@@ -1470,7 +1514,7 @@ OperatorIsVisible(Oid oprid)
 				   == oprid);
 	}
 
-	ReleaseSysCache(oprtup);
+	caql_endscan(pcqCtx);
 
 	return visible;
 }
@@ -1530,10 +1574,16 @@ OpclassIsVisible(Oid opcid)
 	Form_pg_opclass opcform;
 	Oid			opcnamespace;
 	bool		visible;
+	cqContext  *pcqCtx;
 
-	opctup = SearchSysCache(CLAOID,
-							ObjectIdGetDatum(opcid),
-							0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_opclass "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(opcid)));
+
+	opctup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(opctup))
 		elog(ERROR, "cache lookup failed for opclass %u", opcid);
 	opcform = (Form_pg_opclass) GETSTRUCT(opctup);
@@ -1562,7 +1612,7 @@ OpclassIsVisible(Oid opcid)
 		visible = (OpclassnameGetOpcid(opcform->opcamid, opcname) == opcid);
 	}
 
-	ReleaseSysCache(opctup);
+	caql_endscan(pcqCtx);
 
 	return visible;
 }
@@ -1618,10 +1668,16 @@ ConversionIsVisible(Oid conid)
 	Form_pg_conversion conform;
 	Oid			connamespace;
 	bool		visible;
+	cqContext  *pcqCtx;
 
-	contup = SearchSysCache(CONOID,
-							ObjectIdGetDatum(conid),
-							0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_conversion "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(conid)));
+
+	contup = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(contup))
 		elog(ERROR, "cache lookup failed for conversion %u", conid);
 	conform = (Form_pg_conversion) GETSTRUCT(contup);
@@ -1650,7 +1706,7 @@ ConversionIsVisible(Oid conid)
 		visible = (ConversionGetConid(conname) == conid);
 	}
 
-	ReleaseSysCache(contup);
+	caql_endscan(pcqCtx);
 
 	return visible;
 }
@@ -2156,24 +2212,25 @@ recomputeNamespacePath(void)
 		if (strcmp(curname, "$user") == 0)
 		{
 			/* $user --- substitute namespace matching user name, if any */
-			HeapTuple	tuple;
+			char	   *rname = NULL;
+			int			fetchCount;
 
-			tuple = SearchSysCache(AUTHOID,
-								   ObjectIdGetDatum(roleid),
-								   0, 0, 0);
-			if (HeapTupleIsValid(tuple))
+			rname = caql_getcstring_plus(
+					NULL,
+					&fetchCount,
+					NULL,
+					cql("SELECT rolname FROM pg_authid "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(roleid)));
+
+			if (fetchCount)
 			{
-				char	   *rname;
-
-				rname = NameStr(((Form_pg_authid) GETSTRUCT(tuple))->rolname);
-
 				namespaceId = caql_getoid(
 						NULL,
 						cql("SELECT oid FROM pg_namespace "
 							" WHERE nspname = :1 ",
 							CStringGetDatum(rname)));
 
-				ReleaseSysCache(tuple);
 				if (OidIsValid(namespaceId) &&
 					!list_member_oid(oidlist, namespaceId) &&
 					pg_namespace_aclcheck(namespaceId, roleid,
@@ -2286,7 +2343,7 @@ static void
 InitTempTableNamespace(void)
 {
 	char				 namespaceName[NAMEDATALEN];
-	HeapTuple			 tup;
+	int					 fetchCount;
 	char				*rolname;
 	CreateSchemaStmt   	*stmt;
 
@@ -2349,11 +2406,16 @@ InitTempTableNamespace(void)
 	 */
 		
 	/* Lookup the name of the superuser */
-	tup = SearchSysCache(AUTHOID, ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID),
-						 0,0,0);
-	Assert(HeapTupleIsValid(tup));  /* bootstrap user MUST exist */
-	rolname = pstrdup(NameStr(((Form_pg_authid) GETSTRUCT(tup))->rolname));
-	ReleaseSysCache(tup);
+
+	rolname = caql_getcstring_plus(
+					NULL,
+					&fetchCount,
+					NULL,
+					cql("SELECT rolname FROM pg_authid "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID)));
+
+	Assert(fetchCount);  /* bootstrap user MUST exist */
 
 	/* Execute the internal DDL */
 	stmt = makeNode(CreateSchemaStmt);
@@ -2375,7 +2437,7 @@ ExistsCommittedTempNamespace(void)
 	 * a portal, because it relies on there being a valid ResourceOwner,
 	 * which is needed if you want to call syscache or catcache. (ugh).
 	 *
-	 * TempNameSpaceValid does use GetSysCacheOid()
+	 * TempNameSpaceValid does use getsyscacheoid()
 	 *
 	 */
 	return TempNamespaceValid(false) &&
@@ -2801,7 +2863,7 @@ fetch_search_path(bool includeImplicit)
  * operate on SnapshotNow semantics and so might see the object as already
  * gone when it's still visible to the MVCC snapshot.  (There is no race
  * condition in the current coding because we don't accept sinval messages
- * between the SearchSysCacheExists test and the subsequent lookup.)
+ * between the searchsyscacheexists/getcount test and the subsequent lookup.)
  */
 
 Datum

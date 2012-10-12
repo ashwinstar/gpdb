@@ -230,11 +230,19 @@ FindDefaultConversion(Oid name_space, int32 for_encoding, int32 to_encoding)
 	Oid			proc = InvalidOid;
 	int			i;
 
-	catlist = SearchSysCacheList(CONDEFAULT, 3,
-								 ObjectIdGetDatum(name_space),
-								 Int32GetDatum(for_encoding),
-								 Int32GetDatum(to_encoding),
-								 0);
+	catlist = caql_begin_CacheList(
+			NULL, 
+			cql("SELECT * FROM pg_conversion "
+				" WHERE connamespace = :1 "
+				" AND conforencoding = :2 "
+				" AND contoencoding = :3 "
+				" ORDER BY connamespace, "
+				"  conforencoding,  "
+				"  contoencoding,  "
+				"  oid  ",
+				ObjectIdGetDatum(name_space),
+				Int32GetDatum(for_encoding),
+				Int32GetDatum(to_encoding)));
 
 	for (i = 0; i < catlist->n_members; i++)
 	{
@@ -246,7 +254,7 @@ FindDefaultConversion(Oid name_space, int32 for_encoding, int32 to_encoding)
 			break;
 		}
 	}
-	ReleaseSysCacheList(catlist);
+	caql_end_CacheList(catlist);
 	return proc;
 }
 

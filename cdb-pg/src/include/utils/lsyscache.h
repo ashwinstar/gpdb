@@ -61,6 +61,7 @@ extern Oid	get_negator(Oid opno);
 extern RegProcedure get_oprrest(Oid opno);
 extern RegProcedure get_oprjoin(Oid opno);
 extern char *get_func_name(Oid funcid);
+extern Oid	get_func_namespace(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
 extern void pfree_ptr_array(char **ptrarray, int nelements);
 extern List *get_func_output_arg_types(Oid funcid);
@@ -133,6 +134,7 @@ extern bool type_exists(Oid oid);
 extern bool function_exists(Oid oid);
 extern bool operator_exists(Oid oid);
 extern bool aggregate_exists(Oid oid);
+extern bool attname_exists(Oid relid, const char *attname);
 extern List *get_relation_keys(Oid relid);
 #define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
 

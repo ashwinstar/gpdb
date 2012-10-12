@@ -36,7 +36,6 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 
@@ -466,15 +465,21 @@ assignOperSubtype(Oid amoid, Oid typeoid, Oid operOid)
 	Oid			subtype;
 	Operator	optup;
 	Form_pg_operator opform;
+	cqContext  *pcqCtx;
 
 	/* Subtypes are currently only supported by btree and bitmap, others use 0 */
 	if (amoid != BTREE_AM_OID && amoid != BITMAP_AM_OID)
 		return InvalidOid;
 
-	optup = SearchSysCache(OPEROID,
-						   ObjectIdGetDatum(operOid),
-						   0, 0, 0);
-	if (optup == NULL)
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_operator "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(operOid)));
+
+	optup = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(optup))
 		elog(ERROR, "cache lookup failed for operator %u", operOid);
 	opform = (Form_pg_operator) GETSTRUCT(optup);
 
@@ -503,7 +508,8 @@ assignOperSubtype(Oid amoid, Oid typeoid, Oid operOid)
 		subtype = InvalidOid;
 	else
 		subtype = opform->oprright;
-	ReleaseSysCache(optup);
+
+	caql_endscan(pcqCtx);
 	return subtype;
 }
 
@@ -520,15 +526,21 @@ assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid)
 	Oid			subtype;
 	HeapTuple	proctup;
 	Form_pg_proc procform;
+	cqContext  *pcqCtx;
 
 	/* Subtypes are currently only supported by btree and bitmap, others use 0 */
 	if (amoid != BTREE_AM_OID && amoid != BITMAP_AM_OID)
 		return InvalidOid;
 
-	proctup = SearchSysCache(PROCOID,
-							 ObjectIdGetDatum(procOid),
-							 0, 0, 0);
-	if (proctup == NULL)
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(procOid)));
+
+	proctup = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(proctup))
 		elog(ERROR, "cache lookup failed for function %u", procOid);
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 
@@ -557,7 +569,8 @@ assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid)
 		subtype = InvalidOid;
 	else
 		subtype = procform->proargtypes.values[1];
-	ReleaseSysCache(proctup);
+
+	caql_endscan(pcqCtx);
 	return subtype;
 }
 

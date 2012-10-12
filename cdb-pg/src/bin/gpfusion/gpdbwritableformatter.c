@@ -254,15 +254,14 @@ static void byteArrayToBoolArray(bits8* data, int len, bool** booldata, int bool
  */
 static void getTypeName(Oid typeid, char* data)
 {
-	HeapTuple type_tuple;
 	char*     name;
 
-	type_tuple = SearchSysCache(TYPEOID, ObjectIdGetDatum(typeid), 0, 0, 0);
-	Insist(HeapTupleIsValid(type_tuple));
-	name = ((Form_pg_type) GETSTRUCT(type_tuple))->typname.data;
+	name = get_type_name(typeid);
+
+	Insist(name);
 
 	strcpy(data, name);
-	ReleaseSysCache(type_tuple);
+	pfree(name);
 }
 
 Datum

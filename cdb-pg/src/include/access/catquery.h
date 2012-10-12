@@ -16,6 +16,7 @@
 #include "access/sdir.h"
 #include "nodes/primnodes.h"
 #include "storage/lock.h"
+#include "utils/catcache.h"
 #include "utils/relcache.h"
 
 typedef struct cqListData
@@ -48,10 +49,18 @@ typedef struct cqContextData
 	bool		cq_setidxOK;	/* set the indexOK mode */
 	bool		cq_useidxOK;	/* use supplied indexOK mode) */
 
+	bool		cq_setpklock;	/* lock primary keys on fetch if set */
+	bool		cq_pklock_excl;	/* lock exclusive if true */
+
 	Datum		cq_datumKeys[5];/* key array of datums */
 	int			cq_NumKeys;		/* number of keys */
 	ScanKeyData	cq_scanKeys[5]; /* initialized sysscan key (from datums) */
 
+	/* 	index update information */
+	CatalogIndexState	cq_indstate;	/* non-NULL after CatalogOpenIndexes */
+	bool				cq_bScanBlock;	/* true if ctx in
+										 * beginscan/endscan block */
+		
 	/* 	these attributes control syscache vs normal heap/index
 	 * 	scan. If setsyscache is set, then usesyscache is the
 	 * 	user-setting, else catquery chooses.  If usesyscache is set
@@ -60,6 +69,7 @@ typedef struct cqContextData
 	 */
 	bool		cq_setsyscache;	/* use syscache (else heap/index scan) */
 	bool		cq_usesyscache;	/* use syscache (internal) */
+	bool		cq_bCacheList;	/* cache list search (internal) */
 	int			cq_cacheId; 	/* cache identifier */
 	Datum	   *cq_cacheKeys;	/* array of keys */
 	HeapTuple   cq_lasttup;		/* last tuple fetched (for ReleaseSysCache) */
@@ -93,6 +103,11 @@ HeapTuple	 caql_getprev(cqContext *pCtx);
 /* XXX XXX: endscan must specify if hold or release locks */
 void		 caql_endscan(cqContext *pCtx);
 
+/* list-search interface.  Users of this must import catcache.h too */
+extern struct catclist *caql_begin_CacheList(cqContext *pCtx,
+											 cq_list *pcql);
+#define caql_end_CacheList(x)	ReleaseSysCacheList(x)
+
 /* during beginscan/endscan iteration, 
  * or subsequent to a getfirst (where a context was supplied), 
  * delete, update or modify the current tuple 
@@ -110,6 +125,9 @@ HeapTuple	 caql_modify_current(cqContext *pCtx, Datum *replValues,
 /* form tuple */
 HeapTuple	 caql_form_tuple(cqContext *pCtx, Datum *replValues,
 							 bool *replIsnull);
+
+/* retrieve the last (current) tuple */
+#define caql_get_current(pCtx) ((pCtx)->cq_lasttup)
 
 /* 
    NOTE: don't confuse caql_getattr and caql_getattname.  
@@ -132,6 +150,23 @@ Datum caql_getattr(cqContext *pCtx, AttrNumber attnum, bool *isnull);
  */
 HeapTuple caql_getattname(cqContext *pCtx, Oid relid, const char *attname);
 
+/* same as SearchSysCacheAttName - return a scan where the tuple is
+ * *already* fetched, so use caql_get_current (not getnext!) to get
+ * the tuple, and endscan to free the context
+ */
+cqContext *caql_getattname_scan(cqContext *pCtx, 
+								Oid relid, const char *attname);
+
+/*
+ * adapted from original lsyscache.c/get_attnum()
+ *
+ *		Given the relation id and the attribute name,
+ *		return the "attnum" field from the attribute relation.
+ *
+ *		Returns InvalidAttrNumber if the attr doesn't exist (or is dropped).
+ */
+AttrNumber caql_getattnumber(Oid relid, const char *attname);
+
 /* return the specified Name or Text column of the first tuple 
    (and set the fetchcount or isnull if specified)
 */
@@ -151,6 +186,7 @@ cq_list *cql1(const char* caqlStr, const char* filename, int lineno, ...);
 cqContext	*caql_addrel(cqContext *pCtx, Relation rel);		/*  */
 cqContext	*caql_indexOK(cqContext *pCtx, bool bindexOK);		/*  */
 cqContext	*caql_lockmode(cqContext *pCtx, LOCKMODE lm);		/*  */
+cqContext	*caql_PKLOCK(cqContext *pCtx, bool bExclusive);		/*  */
 cqContext	*caql_snapshot(cqContext *pCtx, Snapshot ss);		/*  */
 cqContext	*caql_syscache(cqContext *pCtx, bool bUseCache);	/*  */
 

@@ -868,8 +868,8 @@ ExecGrant_Relation(InternalGrant *istmt)
 			 * there's no ACL, substitute the proper default.
 			 */
 			ownerId = pg_class_tuple->relowner;
-			aclDatum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_relacl,
-									   &isNull);
+			aclDatum = caql_getattr(pcqCtx, Anum_pg_class_relacl,
+									&isNull);
 			if (isNull)
 				old_acl = acldefault(pg_class_tuple->relkind == RELKIND_SEQUENCE ?
 									 ACL_OBJECT_SEQUENCE : ACL_OBJECT_RELATION,
@@ -1149,9 +1149,9 @@ ExecGrant_Fdw(InternalGrant *istmt)
 		 * substitute the proper default.
 		 */
 		ownerId = pg_fdw_tuple->fdwowner;
-		aclDatum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID, tuple,
-								   Anum_pg_foreign_data_wrapper_fdwacl,
-								   &isNull);
+		aclDatum = caql_getattr(pcqCtx,
+								Anum_pg_foreign_data_wrapper_fdwacl,
+								&isNull);
 		if (isNull)
 			old_acl = acldefault(ACL_OBJECT_FDW, ownerId);
 		else
@@ -1272,9 +1272,9 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 		 * substitute the proper default.
 		 */
 		ownerId = pg_server_tuple->srvowner;
-		aclDatum = SysCacheGetAttr(FOREIGNSERVEROID, tuple,
-								   Anum_pg_foreign_server_srvacl,
-								   &isNull);
+		aclDatum = caql_getattr(pcqCtx,
+								Anum_pg_foreign_server_srvacl,
+								&isNull);
 		if (isNull)
 			old_acl = acldefault(ACL_OBJECT_FOREIGN_SERVER, ownerId);
 		else
@@ -1395,8 +1395,8 @@ ExecGrant_Function(InternalGrant *istmt)
 		 * substitute the proper default.
 		 */
 		ownerId = pg_proc_tuple->proowner;
-		aclDatum = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_proacl,
-								   &isNull);
+		aclDatum = caql_getattr(pcqCtx, Anum_pg_proc_proacl,
+								&isNull);
 		if (isNull)
 			old_acl = acldefault(ACL_OBJECT_FUNCTION, ownerId);
 		else
@@ -1526,8 +1526,8 @@ ExecGrant_Language(InternalGrant *istmt)
 		 * user. We should add an owner column to pg_language instead.
 		 */
 		ownerId = BOOTSTRAP_SUPERUSERID;
-		aclDatum = SysCacheGetAttr(LANGNAME, tuple, Anum_pg_language_lanacl,
-								   &isNull);
+		aclDatum = caql_getattr(pcqCtx, Anum_pg_language_lanacl,
+								&isNull);
 		if (isNull)
 			old_acl = acldefault(ACL_OBJECT_LANGUAGE, ownerId);
 		else
@@ -1647,9 +1647,9 @@ ExecGrant_Namespace(InternalGrant *istmt)
 		 * substitute the proper default.
 		 */
 		ownerId = pg_namespace_tuple->nspowner;
-		aclDatum = SysCacheGetAttr(NAMESPACENAME, tuple,
-								   Anum_pg_namespace_nspacl,
-								   &isNull);
+		aclDatum = caql_getattr(pcqCtx,
+								Anum_pg_namespace_nspacl,
+								&isNull);
 		if (isNull)
 			old_acl = acldefault(ACL_OBJECT_NAMESPACE, ownerId);
 		else
@@ -2281,17 +2281,19 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	Acl		   *acl;
 	Oid			ownerId;
 	bool		updating;
-
-
-	cql0("SELECT * FROM pg_class  WHERE oid = :1 ",
-		 ObjectIdGetDatum(relOid));
+	cqContext  *pcqCtx;
 
 	/*
 	 * Must get the relation's tuple from pg_class
 	 */
-	tuple = SearchSysCache(RELOID,
-						   ObjectIdGetDatum(table_oid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_class "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(table_oid)));
+	
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_TABLE),
@@ -2372,7 +2374,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 #ifdef ACLDEBUG
 		elog(DEBUG2, "OID %u is superuser, home free", roleid);
 #endif
-		ReleaseSysCache(tuple);
+		caql_endscan(pcqCtx);
 		return mask;
 	}
 
@@ -2381,8 +2383,8 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	 */
 	ownerId = classForm->relowner;
 
-	aclDatum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_relacl,
-							   &isNull);
+	aclDatum = caql_getattr(pcqCtx, Anum_pg_class_relacl,
+							&isNull);
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
@@ -2403,7 +2405,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2446,8 +2448,8 @@ pg_database_aclmask(Oid db_oid, Oid roleid,
 
 	ownerId = ((Form_pg_database) GETSTRUCT(tuple))->datdba;
 
-	aclDatum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_datacl,
-							   &isNull);
+	aclDatum = caql_getattr(pcqCtx, Anum_pg_database_datacl,
+							&isNull);
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
@@ -2484,20 +2486,23 @@ pg_proc_aclmask(Oid proc_oid, Oid roleid,
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	cqContext  *pcqCtx;
 
 	/* Superusers bypass all permission checking. */
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_proc  WHERE oid = :1 ",
-		 ObjectIdGetDatum(proc_oid));
-
 	/*
 	 * Get the function's ACL from pg_proc
 	 */
-	tuple = SearchSysCache(PROCOID,
-						   ObjectIdGetDatum(proc_oid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_proc "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(proc_oid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
@@ -2505,8 +2510,8 @@ pg_proc_aclmask(Oid proc_oid, Oid roleid,
 
 	ownerId = ((Form_pg_proc) GETSTRUCT(tuple))->proowner;
 
-	aclDatum = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_proacl,
-							   &isNull);
+	aclDatum = caql_getattr(pcqCtx, Anum_pg_proc_proacl,
+							&isNull);
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
@@ -2525,7 +2530,7 @@ pg_proc_aclmask(Oid proc_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2543,20 +2548,23 @@ pg_language_aclmask(Oid lang_oid, Oid roleid,
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	cqContext  *pcqCtx;
 
 	/* Superusers bypass all permission checking. */
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_language  WHERE oid = :1 ",
-		 ObjectIdGetDatum(lang_oid));
-
 	/*
 	 * Get the language's ACL from pg_language
 	 */
-	tuple = SearchSysCache(LANGOID,
-						   ObjectIdGetDatum(lang_oid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_language "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(lang_oid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -2565,8 +2573,8 @@ pg_language_aclmask(Oid lang_oid, Oid roleid,
 	/* XXX pg_language should have an owner column, but doesn't */
 	ownerId = BOOTSTRAP_SUPERUSERID;
 
-	aclDatum = SysCacheGetAttr(LANGOID, tuple, Anum_pg_language_lanacl,
-							   &isNull);
+	aclDatum = caql_getattr(pcqCtx, Anum_pg_language_lanacl,
+							&isNull);
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
@@ -2585,7 +2593,7 @@ pg_language_aclmask(Oid lang_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2603,6 +2611,7 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	cqContext  *pcqCtx;
 
 	/* Superusers bypass all permission checking. */
 	if (superuser_arg(roleid))
@@ -2636,15 +2645,17 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 			return mask & ACL_USAGE;
 	}
 
-	cql0("SELECT * FROM pg_namespace  WHERE oid = :1 ",
-		 ObjectIdGetDatum(nsp_oid));
-
 	/*
 	 * Get the schema's ACL from pg_namespace
 	 */
-	tuple = SearchSysCache(NAMESPACEOID,
-						   ObjectIdGetDatum(nsp_oid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_namespace "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(nsp_oid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -2652,7 +2663,7 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 
 	ownerId = ((Form_pg_namespace) GETSTRUCT(tuple))->nspowner;
 
-	aclDatum = SysCacheGetAttr(NAMESPACEOID, tuple, Anum_pg_namespace_nspacl,
+	aclDatum = caql_getattr(pcqCtx, Anum_pg_namespace_nspacl,
 							   &isNull);
 	if (isNull)
 	{
@@ -2672,7 +2683,7 @@ pg_namespace_aclmask(Oid nsp_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2770,6 +2781,7 @@ pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	cqContext  *pcqCtx;
 
 	Form_pg_foreign_data_wrapper fdwForm;
 
@@ -2777,15 +2789,17 @@ pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_foreign_data_wrapper  WHERE oid = :1 ",
-		 ObjectIdGetDatum(fdw_oid));
-
 	/*
 	 * Must get the FDW's tuple from pg_foreign_data_wrapper
 	 */
-	tuple = SearchSysCache(FOREIGNDATAWRAPPEROID,
-						   ObjectIdGetDatum(fdw_oid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_foreign_data_wrapper "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(fdw_oid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errmsg("foreign-data wrapper with OID %u does not exist",
@@ -2797,8 +2811,8 @@ pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 	 */
 	ownerId = fdwForm->fdwowner;
 
-	aclDatum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID, tuple,
-							   Anum_pg_foreign_data_wrapper_fdwacl, &isNull);
+	aclDatum = caql_getattr(pcqCtx,
+							Anum_pg_foreign_data_wrapper_fdwacl, &isNull);
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
@@ -2817,7 +2831,7 @@ pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -2836,6 +2850,7 @@ pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	cqContext  *pcqCtx;
 
 	Form_pg_foreign_server srvForm;
 
@@ -2843,15 +2858,17 @@ pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 	if (superuser_arg(roleid))
 		return mask;
 
-	cql0("SELECT * FROM pg_foreign_server  WHERE oid = :1 ",
-		 ObjectIdGetDatum(srv_oid));
-
 	/*
 	 * Must get the FDW's tuple from pg_foreign_data_wrapper
 	 */
-	tuple = SearchSysCache(FOREIGNSERVEROID,
-						   ObjectIdGetDatum(srv_oid),
-						   0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_foreign_server "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(srv_oid)));
+
+	tuple = caql_getnext(pcqCtx);
+
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errmsg("foreign server with OID %u does not exist",
@@ -2863,8 +2880,8 @@ pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 	 */
 	ownerId = srvForm->srvowner;
 
-	aclDatum = SysCacheGetAttr(FOREIGNSERVEROID, tuple,
-							   Anum_pg_foreign_server_srvacl, &isNull);
+	aclDatum = caql_getattr(pcqCtx,
+							Anum_pg_foreign_server_srvacl, &isNull);
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
@@ -2883,7 +2900,7 @@ pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
 		pfree(acl);
 
-	ReleaseSysCache(tuple);
+	caql_endscan(pcqCtx);
 
 	return result;
 }
@@ -3183,7 +3200,8 @@ pg_proc_ownercheck(Oid proc_oid, Oid roleid)
 			NULL,
 			&fetchCount,
 			NULL,
-			cql("SELECT proowner FROM pg_proc WHERE oid = :1 ",
+			cql("SELECT proowner FROM pg_proc "
+				" WHERE oid = :1 ",
 				ObjectIdGetDatum(proc_oid)));
 
 	if (0 == fetchCount)

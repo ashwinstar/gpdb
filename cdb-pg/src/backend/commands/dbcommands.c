@@ -2177,6 +2177,7 @@ get_db_info(const char *name, LOCKMODE lockmode,
 	for (;;)
 	{
 		cqContext	cqc;
+		cqContext  *pcqCtx;
 		HeapTuple	tuple;
 		Oid			dbOid;
 		int			fetchCount;
@@ -2191,7 +2192,7 @@ get_db_info(const char *name, LOCKMODE lockmode,
 				&fetchCount,
 				NULL,
 				cql("SELECT oid FROM pg_database" 
-					" WHERE datname = :1 FOR UPDATE", 
+					" WHERE datname = :1 ", 
 					CStringGetDatum((char *) name)));
 
 		if (!fetchCount)
@@ -2211,9 +2212,14 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		 * the same name, we win; else, drop the lock and loop back to try
 		 * again.
 		 */
-		tuple = SearchSysCache(DATABASEOID,
-							   ObjectIdGetDatum(dbOid),
-							   0, 0, 0);
+		pcqCtx = caql_beginscan(
+				caql_addrel(cqclr(&cqc), relation),
+				cql("SELECT * FROM pg_database "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(dbOid)));
+
+		tuple = caql_getnext(pcqCtx);
+
 		if (HeapTupleIsValid(tuple))
 		{
 			Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
@@ -2244,13 +2250,15 @@ get_db_info(const char *name, LOCKMODE lockmode,
 				/* default tablespace for this database */
 				if (dbTablespace)
 					*dbTablespace = dbform->dattablespace;
-				ReleaseSysCache(tuple);
+				
+				caql_endscan(pcqCtx);
 				result = true;
 				break;
 			}
 			/* can only get here if it was just renamed */
-			ReleaseSysCache(tuple);
+
 		}
+		caql_endscan(pcqCtx);
 
 		if (lockmode != NoLock)
 			UnlockSharedObject(DatabaseRelationId, dbOid, 0, lockmode);
@@ -2267,19 +2275,25 @@ have_createdb_privilege(void)
 {
 	bool		result = false;
 	HeapTuple	utup;
+	cqContext  *pcqCtx;
 
 	/* Superusers can always do everything */
 	if (superuser())
 		return true;
 
-	utup = SearchSysCache(AUTHOID,
-						  ObjectIdGetDatum(GetUserId()),
-						  0, 0, 0);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_authid "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(GetUserId())));
+
+	utup = caql_getnext(pcqCtx);
+
 	if (HeapTupleIsValid(utup))
-	{
 		result = ((Form_pg_authid) GETSTRUCT(utup))->rolcreatedb;
-		ReleaseSysCache(utup);
-	}
+
+	caql_endscan(pcqCtx);
+
 	return result;
 }
 

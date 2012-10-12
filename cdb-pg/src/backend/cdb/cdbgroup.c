@@ -3679,20 +3679,7 @@ Node* finalize_split_expr_mutator(Node *node, MppGroupContext *ctx)
  */
 Oid lookup_agg_transtype(Aggref *aggref)
 {
-	HeapTuple aggTuple;
-	Form_pg_aggregate aggform;
-	Oid aggtranstype;
-
-	aggTuple = SearchSysCache(AGGFNOID, ObjectIdGetDatum(aggref->aggfnoid), 0, 0, 0);
-	if (!HeapTupleIsValid(aggTuple))
-	{
-		elog(ERROR, "cache lookup failed for aggregate %u", aggref->aggfnoid);
-	}
-	aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
-	aggtranstype = aggform->aggtranstype;
-	ReleaseSysCache(aggTuple);
-
-	return aggtranstype;
+	return get_agg_transtype(aggref->aggfnoid);
 }
 
 /* Function:  adapt_flow_to_targetlist
@@ -3954,7 +3941,7 @@ hash_safe_type(Oid type)
 	if (!optup)
 		return false;
 	oprcanhash = ((Form_pg_operator) GETSTRUCT(optup))->oprcanhash;
-	ReleaseSysCache(optup);
+	ReleaseOperator(optup);
 	if (!oprcanhash)
 		return false;
 

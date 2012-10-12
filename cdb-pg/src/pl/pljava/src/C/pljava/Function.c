@@ -401,10 +401,13 @@ static void parseFunction(ParseResult info, HeapTuple procTup)
 
 static jstring getSchemaName(int namespaceOid)
 {
-	HeapTuple nspTup = PgObject_getValidTuple(NAMESPACEOID, namespaceOid, "namespace");
-	Form_pg_namespace nspStruct = (Form_pg_namespace)GETSTRUCT(nspTup);
-	jstring schemaName = String_createJavaStringFromNTS(NameStr(nspStruct->nspname));
-	ReleaseSysCache(nspTup);
+	char *nspName = get_namespace_name(namespaceOid);
+	if(!nspName)
+		ereport(ERROR, (errmsg("cache lookup failed for namespace %u", 
+							   namespaceOid)));
+	
+	jstring schemaName = String_createJavaStringFromNTS(nspName);
+	pfree(nspName);
 	return schemaName;
 }
 
@@ -457,10 +460,10 @@ static void setupUDT(Function self, ParseResult info, Form_pg_proc procStruct)
 			errmsg("Unknown UDT function %s", info->methodName)));
 	}
 
-	typeTup = PgObject_getValidTuple(TYPEOID, udtId, "type");
+	typeTup = PgObject_getTypeTuple(udtId);
 	pgType = (Form_pg_type)GETSTRUCT(typeTup);
 	self->func.udt.udt = UDT_registerUDT(self->clazz, udtId, pgType, 0, true);
-	ReleaseSysCache(typeTup);
+	heap_freetuple(typeTup);
 }
 
 static void setupFunctionParams(Function self, ParseResult info, Form_pg_proc procStruct, PG_FUNCTION_ARGS)
@@ -619,14 +622,14 @@ static Function Function_create(PG_FUNCTION_ARGS)
 {
 	ParseResultData info;
 	Function self = (Function)PgObjectClass_allocInstance(s_FunctionClass, TopMemoryContext);
-	HeapTuple procTup = PgObject_getValidTuple(PROCOID, fcinfo->flinfo->fn_oid, "function");
+	HeapTuple procTup = PgObject_getProcTuple(fcinfo->flinfo->fn_oid);
 
 	memset(&info, 0, sizeof(ParseResultData));
 	parseFunction(&info, procTup);
 	Function_init(self, &info, (Form_pg_proc)GETSTRUCT(procTup), fcinfo);
 
 	pfree(info.buffer);
-	ReleaseSysCache(procTup);
+	heap_freetuple(procTup);
 	return self;
 }
 

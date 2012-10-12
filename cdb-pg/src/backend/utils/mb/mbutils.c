@@ -15,6 +15,7 @@
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/syscache.h"
+#include "utils/lsyscache.h"
 
 /*
  * When converting strings between different encodings, we assume that space
@@ -272,9 +273,7 @@ pg_do_encoding_conversion(unsigned char *src, int len,
 	 * are going into infinite loop!  So we have to make sure that the
 	 * function exists before calling OidFunctionCall.
 	 */
-	if (!SearchSysCacheExists(PROCOID,
-							  ObjectIdGetDatum(proc),
-							  0, 0, 0))
+	if (!function_exists(proc))
 	{
 		elog(LOG, "cache lookup failed for function %u", proc);
 		return src;
