@@ -400,17 +400,6 @@ extern size_t strlcat(char *dst, const char *src, size_t siz);
 extern size_t strlcpy(char *dst, const char *src, size_t siz);
 #endif
 
-/* 
- * Return the first occurrence of needle in haystack, or NULL if needle doesn't appear.
- * using memcmp and not strcmp (i.e. works also for not null-terminate strings).
- *
- * Needed because OSX does not have memmem and linux does not have strnstr...
- */
-#if !HAVE_DECL_MEMMEM
-extern void *memmem (const void *haystack, size_t haystacklen,
-					 const void *needle, size_t needlelen);
-#endif
-
 #if !defined(HAVE_RANDOM) && !defined(__BORLANDC__)
 extern long random(void);
 #endif

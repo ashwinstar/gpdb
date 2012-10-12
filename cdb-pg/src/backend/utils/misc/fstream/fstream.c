@@ -10,15 +10,14 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
+#include <fstream/fstream.h>
+#include <fstream/gfile.h>
 #include <assert.h>
 #include <glob.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>		/* needed for url percent decoding */
-#include "fstream/fstream.h"
-#include "fstream/gfile.h"
-#include "c.h"
-#include "port.h"
 
 #ifdef GPFXDIST
 #include <gpfxdist.h>
@@ -92,27 +91,49 @@ static inline char *decode_percent_url(char *url) {
 
 
 /*
- * Return the last occurrence of needle in haystack, or NULL if needle doesn't appear.
- * using memcmp and not strcmp (i.e. works also for not null-terminate strings).
+ * Returns a pointer to the end of the last delimiter occurrence,
+ * or the start pointer if delimiter doesn't appear.
+ *
+ * delimiter_length MUST be > 0
  */
-static char *find_last_eol_delim (const char *chunk, size_t chunk_len,
-								  const char *delimiter, size_t delimiter_len)
+static char *find_last_eol_delim (const char *start, const int size,
+								  const char *delimiter, const int delimiter_length)
 {
-	char const *curr = chunk + chunk_len - delimiter_len;
+	char* p;
 
-	if (delimiter_len == 0)
-		return (char *)curr;
-	
-	if (delimiter_len > chunk_len || chunk == NULL || delimiter == NULL)
-		return NULL;
-	
-	for (; chunk <= curr; curr--)
+	if (size <= delimiter_length)
+		return (char*)start - 1;
+
+	for (p = (char*)start + size - delimiter_length; start <= p; p--)
 	{
-		if (memcmp(curr, delimiter, delimiter_len) == 0)
-			return (char*)curr;
+		if (memcmp(p, delimiter, delimiter_length) == 0)
+		{
+			return (char*)p + delimiter_length - 1;
+		}
 	}
-	
-	return NULL;
+	return (char*)start - 1;
+}
+
+/*
+ * Returns a pointer to the end of the first delimiter occurrence,
+ * or the end pointer if delimiter doesn't appear.
+ *
+ * delimiter_length MUST be > 0
+ */
+static char *find_first_eol_delim (char *start, char *end,
+								   const char *delimiter, const int delimiter_length)
+{
+	char *search_limit = (char*)end - delimiter_length;
+	if (end - start <= delimiter_length)
+		return end;
+
+	for (; start <= search_limit; start++)
+	{
+		if (memcmp(start, delimiter, delimiter_length) == 0)
+			return (char*)start + delimiter_length - 1;
+	}
+
+	return end;
 }
 
 /*
@@ -688,12 +709,9 @@ int fstream_read(fstream_t *fs,
 {
 	int buffer_capacity = fs->options.bufsize;
 	static char err_buf[FILE_ERROR_SZ] = {0};
-
+	
 	if (fs->ferror)
 		return -1;
-	
-	/* strlen fails on solaris in case of null string */	
-	assert(line_delim_str && line_delim_length >= 0);
 
 	for (;;)
 	{
@@ -738,25 +756,20 @@ int fstream_read(fstream_t *fs,
 			}
 			else
 			{
-				/* 
-				 * We can call memmem function in both cases, but since \n is much 
-				 * more common, the performances here are critical.
-				 * Moreover, in case of a single char as a line delimiter, the for loop is more efficient.
-				 */
-				if (line_delim_length > 1)
+				if (line_delim_length > 0)
 				{
-					/* text header with defined EOL with length grater than 1 */
-					p = (char*)memmem(p, q-p, line_delim_str, line_delim_length);
+					/* text header with defined EOL */
+					p = find_first_eol_delim (p, q, line_delim_str, line_delim_length);
 
 				}
 				else
 				{
-					/* text header with a single char delimiter (\n by default) */
-					for (; p < q && *p != *line_delim_str; p++)
+					/* text header with \n as delimiter (by default) */
+					for (; p < q && *p != '\n'; p++)
 						;
 				}
 
-				p = (p && (p < q)) ? p + line_delim_length : 0;
+				p = (p < q) ? p + 1 : 0;
 				fs->line_number++;
 			}
 
@@ -861,11 +874,7 @@ int fstream_read(fstream_t *fs,
 				/*
 				 * TEXT: go fast, scan for end of line delimiter (\n by default) for
 				 * record boundary.
-				 * find the last EOL delimiter from the back
-				 * 
-				 * We can call find_last_eol_delim function in both cases, but since \n is much 
-				 * more common, the performances here are critical.
-				 * Moreover, in case of a single char as a line delimiter, the for loop is more efficient.
+				 * find the last end of line delimiter from the back
 				 */
 				if (line_delim_length > 0)
 				{
@@ -873,11 +882,11 @@ int fstream_read(fstream_t *fs,
 				}
 				else
 				{
-					for (p = (char*)dest + size; (char*)dest <= --p && *p != *line_delim_str;)
+					for (p = (char*)dest + size; (char*)dest <= --p && *p != '\n';)
 						;
 				}
 
-				p = (char*)dest <= p ? p + line_delim_length : 0;
+				p = (char*)dest <= p ? p + 1 : 0;
 				fs->line_number = 0;
 			}
 
@@ -953,17 +962,14 @@ int fstream_write(fstream_t *fs,
 				  void *buf,
 				  int size,
 				  const int write_whole_lines,
-				  const char *line_delim_str,
+				  const char* line_delim_str,
 				  const int line_delim_length)
 {
 	int byteswritten = 0;
-
+	
 	if (fs->ferror)
 		return -1;
 
-	/* strlen fails on solaris in case of null string */
-	assert(line_delim_str && line_delim_length >= 0);
-	
 	/*
 	 * If we need to write all the data up to the last *complete* logical
 	 * line in the data buffer (like gpfdist for example) - we choose this
@@ -973,27 +979,22 @@ int fstream_write(fstream_t *fs,
 	 */	
 	if (write_whole_lines)
 	{
-		char *last_delim;
+		char* last_delim;
 
 	   /*
 		* scan for EOL Delimiter (\n by default) for record boundary
 		* find the last EOL Delimiter from the back
-		*
-		* We can call find_last_eol_delim function in both cases, but since \n is much 
-		* more common, the performances here are critical.
-		* Moreover, in case of a single char as a line delimiter, the for loop is more efficient.
 		*/
-		if (line_delim_length > 1)
+		if (line_delim_length > 0)
 		{
 			last_delim = find_last_eol_delim(buf, size, line_delim_str, line_delim_length);
 		}
 		else
 		{
-			for (last_delim = (char *)buf + size; (char *)buf <= --last_delim && *last_delim != *line_delim_str;)
+			for (last_delim = (char*)buf + size; (char*)buf <= --last_delim && *last_delim != '\n';)
 				;
 		}
-		
-		last_delim = (char *)buf <= last_delim ? last_delim + line_delim_length : 0;
+		last_delim = (char*)buf <= last_delim ? last_delim + 1 : 0;
 
 		if (last_delim == 0)
 		{
@@ -1004,14 +1005,14 @@ int fstream_write(fstream_t *fs,
 		/* TODO: need to do this more carefully for CSV, like in the read case */
 		
 		/* write data to destination file */
-		byteswritten = (int)gfile_write(&fs->fd, (char *)buf, last_delim - (char *)buf);
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, last_delim - (char *)buf);
 		
 		/* caller should move leftover data to start of buffer */
 	}
 	else
 	{
 		/* write data to destination file */
-		byteswritten = (int)gfile_write(&fs->fd, (char *)buf, size);
+		byteswritten = (int)gfile_write(&fs->fd, (char*) buf, size);
 	}
 		
 	if (byteswritten < 0)
