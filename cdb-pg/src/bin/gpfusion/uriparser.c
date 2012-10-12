@@ -138,8 +138,13 @@ GPHDUri_parse_protocol(GPHDUri *uri, char **cursor)
 static void
 GPHDUri_parse_authority(GPHDUri *uri, char **cursor)
 {
+	if (cursor == NULL || *cursor == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("URI string is NULL")));
+						
 	char		*start = *cursor;
-	char		*end;
+	char		*end = strchr(start, '/');
 	const char	*default_port = "9000"; /* TODO: port is no longer used, so no need for that */
 
 
@@ -153,8 +158,6 @@ GPHDUri_parse_authority(GPHDUri *uri, char **cursor)
 	}
 	else
 	{
-		end = strchr(start, '/');
-
 		if (!end)
 		{
 			ereport(ERROR,
