@@ -34,7 +34,6 @@
 
 static Oid ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype);
 static char *func_type_to_name(ExtPtcFuncType ftype);
-static int func_type_to_attnum(ExtPtcFuncType ftype);
 
 /*
  * ExtProtocolCreateWithOid
@@ -296,53 +295,63 @@ LookupExtProtocolFunction(const char *prot_name,
 						  ExtPtcFuncType prot_type,
 						  bool error)
 {
-
-	Relation	pg_extprotocol_rel;
-	TupleDesc	pg_extprotocol_dsc;
-	HeapTuple	tuple;
 	bool		isNull;
-	cqContext	cqc;
 	Oid			funcOid = InvalidOid;
-	Datum		funcDatum;
-
+	int			fetchCount = 0;
+	
 	/*
-	 * Check the pg_extprotocol relation to be certain the ao table
+	 * Check the pg_extprotocol relation to be certain the protocol
 	 * is there.
 	 */
-	pg_extprotocol_rel = heap_open(ExtprotocolRelationId, AccessShareLock);
-	pg_extprotocol_dsc = RelationGetDescr(pg_extprotocol_rel);
 
-	tuple = caql_getfirst(
-				caql_addrel(cqclr(&cqc), pg_extprotocol_rel),
-				cql("SELECT * FROM pg_extprotocol "
+	switch (prot_type)
+	{
+		case EXTPTC_FUNC_READER:
+			funcOid = caql_getoid_plus(
+					NULL,
+					&fetchCount,
+					&isNull,
+				cql("SELECT ptcreadfn FROM pg_extprotocol "
 					" WHERE ptcname = :1 ",
 					CStringGetDatum(prot_name)));
+			break;
+		case EXTPTC_FUNC_WRITER:
+			funcOid = caql_getoid_plus(
+					NULL,
+					&fetchCount,
+					&isNull,
+				cql("SELECT ptcwritefn FROM pg_extprotocol "
+					" WHERE ptcname = :1 ",
+					CStringGetDatum(prot_name)));
+			break;
+		case EXTPTC_FUNC_VALIDATOR:
+			funcOid = caql_getoid_plus(
+					NULL,
+					&fetchCount,
+					&isNull,
+				cql("SELECT ptcvalidatorfn FROM pg_extprotocol "
+					" WHERE ptcname = :1 ",
+					CStringGetDatum(prot_name)));
+			break;
+		default:
+			elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum");
+			break;
+	}
 
-	if (!HeapTupleIsValid(tuple))
+	if (!fetchCount)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol \"%s\" does not exist",
 						prot_name)));
 
-	funcDatum = heap_getattr(tuple,
-							 func_type_to_attnum(prot_type),
-							 pg_extprotocol_dsc,
-							 &isNull);
-
 	/* cat attr is defined as NOT NULL */
 	Assert(!isNull);
-
-	funcOid = DatumGetObjectId(funcDatum);
 
 	if (!OidIsValid(funcOid) && error)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol '%s' has no %s function defined",
 						 prot_name, func_type_to_name(prot_type))));
-
-	/* Finish up scan and close pg_extprotocol catalog. */
-
-	heap_close(pg_extprotocol_rel, AccessShareLock);
 
 	return funcOid;
 
@@ -359,7 +368,7 @@ LookupExtProtocolOid(const char *prot_name, bool missing_ok)
 	Oid			protOid = InvalidOid;
 
 	/*
-	 * Check the pg_extprotocol relation to be certain the ao table
+	 * Check the pg_extprotocol relation to be certain the protocol
 	 * is there.
 	 */
 	protOid = caql_getoid_plus(
@@ -434,22 +443,4 @@ static char *func_type_to_name(ExtPtcFuncType ftype)
 			return "undefined";
 	}
 }
-
-static int func_type_to_attnum(ExtPtcFuncType ftype)
-{
-	switch (ftype)
-	{
-		case EXTPTC_FUNC_READER:
-			return Anum_pg_extprotocol_ptcreadfn;
-		case EXTPTC_FUNC_WRITER:
-			return Anum_pg_extprotocol_ptcwritefn;
-		case EXTPTC_FUNC_VALIDATOR:
-			return Anum_pg_extprotocol_ptcvalidatorfn;
-		default:
-			elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum");
-			return -1;
-	}
-}
-
-
 
