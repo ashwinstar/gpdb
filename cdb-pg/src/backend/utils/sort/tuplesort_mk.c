@@ -1255,6 +1255,8 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
             elog(INFO, "Done tuple dump.  Mem peak is now %ld", (long)MemoryContextGetPeakSpace(state->sortcontext));
 #endif // PRINT_SPILL_AND_MEMORY_MESSAGES
 
+	    elog(DEBUG1, "ExecSort: mksort starting merge runs"); 
+
             mergeruns(state);
 
             state->pos.eof_reached = false;
