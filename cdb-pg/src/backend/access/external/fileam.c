@@ -88,10 +88,11 @@ static void close_external_source(FILE *dataSource, bool failOnError, const char
 static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom);
 static void justifyDatabuf(StringInfo buf);
 
-static void base16_encode(char* raw, int len, char* encoded);
-static char* get_eol_delimiter(List* params);
-static void external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape,
-									  char* quote, bool header, uint32 scancounter, List* params);
+static void base16_encode(const char *src, int len, char *dest);
+static char *get_eol_delimiter(List *custom_formatter_params);
+static void external_set_env_vars_ext(extvar_t *extvar, char *uri, bool csv, char *escape,
+									  char *quote, bool header, uint32 scancounter,
+									  List *custom_formatter_params);
 
 /* ----------------------------------------------------------------
 *				   external_ interface functions
@@ -111,6 +112,9 @@ elog(DEBUG2, "external_getnext returning tuple")
 #define FILEDEBUG_2
 #define FILEDEBUG_3
 #endif   /* !defined(FILEDEBUGALL) */
+
+/* this macro must be the same as EMPTY_DELIM_STR in gpfdist.c */
+#define EMPTY_DELIM_STR "empty"
 
 /*
  * A global reference to our data source so it could be freed
@@ -2553,27 +2557,40 @@ error:
 
 }
 
+/*
+ * returns the value of line_delim, or NULL if line_delim was not specified.
+ */
 static char*
-get_eol_delimiter(List* params)
+get_eol_delimiter(List* custom_formatter_params)
 {
-	ListCell* lc = params->head;
-	while (lc)
+	ListCell* cell;
+	
+	if (custom_formatter_params == NIL)
+		return NULL;
+	
+	foreach(cell, custom_formatter_params)
 	{
-		if (pg_strcasecmp(((DefElem *)lc->data.ptr_value)->defname, "line_delim") == 0)
-			return pstrdup(((Value*)((DefElem *)lc->data.ptr_value)->arg)->val.str);
-		lc = lc->next;
+		DefElem *elem = (DefElem *)lfirst(cell);
+		
+		if (pg_strcasecmp(elem->defname, "line_delim") == 0)
+			return strVal(elem->arg);
 	}
-	return pstrdup("");
+	
+	return NULL;
 }
 
+/*
+ * Encode src to base 16 and put the result in dest.
+ * len should be grather than 0, src and dest should not be NULL.
+ */
 static void
-base16_encode(char* raw, int len, char* encoded)
+base16_encode(const char* src, int len, char* dest)
 {
-	const char* raw_bytes = raw;
-	char *encoded_bytes = encoded;
-	int remaining = len;
-	for ( ; remaining-- ; encoded_bytes += 2 ) {
-	    sprintf ( encoded_bytes, "%02x", *(raw_bytes++) );
+	assert(src && dest && len > 0);
+	
+	for (; len-- ; dest += 2)
+	{
+	    snprintf(dest, 3, "%02x", *(src++));
 	}
 }
 
@@ -2585,15 +2602,13 @@ external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char*
 
 static void
 external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header,
-						  uint32 scancounter, List* params)
+						  uint32 scancounter, List* custom_formatter_params)
 {
 
 	time_t 		now = time(0);
 	struct tm* 	tm = localtime(&now);
 	char*		result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
-
-	char*		encoded_delim;
-	int			line_delim_len;
+	char* encoded_delim = "";
 
 	sprintf(extvar->GP_CSVOPT,
 			"m%dx%dq%dh%d",
@@ -2659,25 +2674,29 @@ external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, c
  	extvar->GP_HADOOP_CONN_VERSION = gp_hadoop_connector_version;
  	extvar->GP_HADOOP_HOME         = gp_hadoop_home;
 
-	if (NULL != params)
+	if (NULL != custom_formatter_params)
 	{
-		char* line_delim_str = get_eol_delimiter(params);
-		line_delim_len = (int)strlen(line_delim_str);
-		if (line_delim_len > 0){
-			encoded_delim = (char*)(palloc(line_delim_len*2+1));
-			base16_encode(line_delim_str, line_delim_len, encoded_delim);
-		}
-		else
+		char* line_delim_str = get_eol_delimiter(custom_formatter_params);
+		
+		if (line_delim_str)
 		{
-			line_delim_len = -1;
-			encoded_delim = "";
+			int	line_delim_len = (int)strlen(line_delim_str);
+			
+			if (line_delim_len > 0)
+			{
+				encoded_delim = (char*)(palloc(line_delim_len * 2 + 1));
+				base16_encode(line_delim_str, line_delim_len, encoded_delim);			
+			}
+			else
+			{
+				/*
+				 * base16_encode returns a string with even length, so for empty delimiter
+				 * the string which will be sent is with odd length.
+				 */
+				encoded_delim = "empty";
+			}
 		}
 	}
- 	else
-	{
-		encoded_delim = "";
-		line_delim_len = -1;
-	}
- 	extvar->GP_LINE_DELIM_STR      = pstrdup(encoded_delim);
- 	sprintf(extvar->GP_LINE_DELIM_LENGTH, "%d", line_delim_len);
+	
+	extvar->GP_LINE_DELIM_STR = pstrdup(encoded_delim);
 }
