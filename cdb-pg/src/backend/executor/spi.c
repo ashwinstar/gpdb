@@ -1915,14 +1915,30 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 				{
 					if (!ActivePortal->releaseResLock)
 					{
-						/** TODO: siva - can we ever reach this point? */
+						/* 
+						 * One scenario where this condition is hit is if 
+						 * the query running in the ActivePortal has a cost that is 
+						 * lower than the queue threshold, so it doesn't acquire
+						 * the resource queue lock. 
+						 * We may come here again due to an internal SPI query (example 
+						 * auto-stats) and we don't have a resource queue slot.
+						 */
 						PortalSetStatus(ActivePortal, PORTAL_QUEUE);
+			
+						/* MPP-18517 - Portal queue information may have been wiped out when
+						 * we decided to let the query bypass the queue. Re-populate it 
+						 */
+						if (ActivePortal->queueId == InvalidOid)
+						{
+							ActivePortal->queueId = GetResQueueId();
+							ActivePortal->portalId = ResCreatePortalId(ActivePortal->name);
+						}
 					
 						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 						{
 							queryDesc->plannedstmt->query_mem =
 								ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, 
-																 ActivePortal->queueId);
+												ActivePortal->queueId);
 						}
 
 						ActivePortal->releaseResLock =
