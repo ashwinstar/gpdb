@@ -498,7 +498,9 @@ extern SEXP plr_SPI_lastoid(void);
 extern void throw_r_error(const char **msg);
 
 /* Postgres callable functions useful in conjunction with PL/R */
+#if 0
 extern Datum reload_plr_modules(PG_FUNCTION_ARGS);
+#endif
 extern Datum install_rcmd(PG_FUNCTION_ARGS);
 extern Datum plr_array_push(PG_FUNCTION_ARGS);
 extern Datum plr_array(PG_FUNCTION_ARGS);

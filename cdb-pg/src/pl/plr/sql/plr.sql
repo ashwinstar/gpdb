@@ -10,8 +10,8 @@ CREATE TABLE plr_modules (
   modsrc text
 );
 
-INSERT INTO plr_modules VALUES (0, 'pg.test.module.load <-function(msg) {print(msg)}');
-select reload_plr_modules();
+-- INSERT INTO plr_modules VALUES (0, 'pg.test.module.load <-function(msg) {print(msg)}');
+-- select reload_plr_modules();
 
 --
 -- user defined R function test

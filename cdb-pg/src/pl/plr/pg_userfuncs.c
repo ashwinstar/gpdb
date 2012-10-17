@@ -45,7 +45,9 @@ static ArrayType *plr_array_create(FunctionCallInfo fcinfo,
  * reload_modules :
  *		interface to allow plr_modules to be reloaded on demand
  *----------------------------------------------------------------------------
+ * This feature of plr is not supported on GreenPlum
  */
+#if 0
 PG_FUNCTION_INFO_V1(reload_plr_modules);
 Datum
 reload_plr_modules(PG_FUNCTION_ARGS)
@@ -64,6 +66,7 @@ reload_plr_modules(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(PG_STR_GET_TEXT("OK"));
 }
+#endif
 
 /*-----------------------------------------------------------------------------
  * install_rcmd :
