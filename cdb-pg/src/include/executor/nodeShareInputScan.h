@@ -21,6 +21,7 @@ extern void ExecShareInputScanRestrPos(ShareInputScanState *node);
 extern void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt);
 
 extern void ExecSliceDependencyShareInputScan(ShareInputScanState *node);
+extern void ExecEagerFreeShareInputScan(ShareInputScanState *node);
 
 enum {
 	GPMON_SHAREINPUT_RESTOREPOS = GPMON_QEXEC_M_NODE_START,

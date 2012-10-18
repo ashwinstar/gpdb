@@ -222,6 +222,7 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	sisstate->ts_markpos = NULL;
 
 	sisstate->share_lk_ctxt = NULL;
+	sisstate->freed = false;
 
 	/* 
 	 * init child node.  
@@ -262,7 +263,20 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	ExecAssignScanType(&sisstate->ss, tupDesc);
 
 	sisstate->ss.ps.ps_ProjInfo = NULL;
-	
+
+	/*
+	 * If this is an intra-slice share node, increment reference count to
+	 * tell the underlying node not to be freed before this node is ready to
+	 * be freed.  fCreate flag to ExecGetShareNodeEntry is true because
+	 * at this point we don't have the entry which will be initialized in
+	 * the underlying node initialization later.
+	 */
+	if (node->share_type == SHARE_MATERIAL || node->share_type == SHARE_SORT)
+	{
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, node->share_id, true);
+		snEntry->refcount++;
+	}
+
 	initGpmonPktForShareInputScan((Plan *)node, &sisstate->ss.ps.gpmon_pkt, estate);
 	
 	return sisstate;
@@ -298,6 +312,8 @@ ExecCountSlotsShareInputScan(ShareInputScan* node)
 void ExecEndShareInputScan(ShareInputScanState *node)
 {
 	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
+
+	ExecEagerFreeShareInputScan(node);
 
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
@@ -857,4 +873,37 @@ initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 							 (int64)planNode->plan_rows, 
 							 NULL);
 	}
+}
+
+/*
+ * ShareInputScan has nothing to do in EagerFree, except decrementing the
+ * reference count in ShareNodeEntry when it's intra-slice share node.
+ * The reference count tells the underlying Material/Sort node not to free
+ * too eagerly as this node still needs to read its tuples.  Once this node
+ * is freed, the underlying node can free its content.
+ * We consider this reference counter only in intra-slice cases, because
+ * inter-slice share nodes have their own pointer to the buffer and
+ * there is not way to tell this reference over Motions anayway.
+ */
+void
+ExecEagerFreeShareInputScan(ShareInputScanState *node)
+{
+	ShareInputScan	   *sisc = (ShareInputScan *) node->ss.ps.plan;
+	EState			   *estate = node->ss.ps.state;
+
+	/*
+	 * This could be called more than once.
+	 */
+	if (node->freed)
+		return;
+
+	if (sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT)
+	{
+		ShareNodeEntry	   *snEntry;
+
+		snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
+		Assert(snEntry && snEntry->refcount > 0);
+		snEntry->refcount--;
+	}
+	node->freed = true;
 }

@@ -597,7 +597,6 @@ ExecEagerFree(PlanState *node)
 		case T_RepeatState:
 		case T_ResultState:
 		case T_SetOpState:
-		case T_ShareInputScanState:
 		case T_SubqueryScanState:
 		case T_TidScanState:
 		case T_UniqueState:
@@ -605,6 +604,15 @@ ExecEagerFree(PlanState *node)
 		case T_ValuesScanState:
 		case T_TableFunctionState:
 		case T_DynamicTableScanState:
+			break;
+
+		/*
+		 * Decrement reference count when it's intra-slice.  We don't need
+		 * two-pass tree decsending because ShareInputScan should always appear
+		 * before the underlying Material/Sort node.
+		 */
+		case T_ShareInputScanState:
+			ExecEagerFreeShareInputScan((ShareInputScanState *) node);
 			break;
 
 		case T_TableScanState:

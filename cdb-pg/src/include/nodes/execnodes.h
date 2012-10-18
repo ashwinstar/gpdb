@@ -294,6 +294,7 @@ typedef struct ShareNodeEntry
 
 	Node *sharePlan;
 	Node *shareState;
+	int		refcount; /* reference count to guard from too-eager-free risk */
 } ShareNodeEntry;
 
 /*
@@ -1928,6 +1929,7 @@ typedef struct ShareInputScanState
         void                 *ts_markpos; 
 
         void             *share_lk_ctxt;
+		bool				freed; /* is this node already freed? */
 } ShareInputScanState;
 
 /* XXX Should move into buf file */

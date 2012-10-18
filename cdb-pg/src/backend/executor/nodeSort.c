@@ -620,6 +620,26 @@ initGpmonPktForSort(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 void
 ExecEagerFreeSort(SortState *node)
 {
+	Sort	   *plan = (Sort *) node->ss.ps.plan;
+	EState	   *estate = node->ss.ps.state;
+
+	/*
+	 * If we still have potential readers assocated with this node,
+	 * we shouldn't free the tuplesort too early.  The eager-free message
+	 * doesn't know about upper ShareInputScan nodes, but those nodes
+	 * bumps up the reference count in their initializations and decrement
+	 * it in either EagerFree or ExecEnd.
+	 */
+	if (plan->share_type == SHARE_MATERIAL || plan->share_type == SHARE_SORT)
+	{
+		ShareNodeEntry	   *snEntry;
+
+		snEntry = ExecGetShareNodeEntry(estate, plan->share_id, false);
+
+		if (snEntry->refcount > 0)
+			return;
+	}
+
 	/* clean out the tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
