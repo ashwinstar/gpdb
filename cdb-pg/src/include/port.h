@@ -406,7 +406,7 @@ extern size_t strlcpy(char *dst, const char *src, size_t siz);
  *
  * Needed because OSX does not have memmem and linux does not have strnstr...
  */
-#if !HAVE_DECL_MEMMEM
+#if !HAVE_MEMMEM
 extern void *memmem (const void *haystack, size_t haystacklen,
 					 const void *needle, size_t needlelen);
 #endif
