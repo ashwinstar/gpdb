@@ -702,7 +702,7 @@ LockAcquire(const LOCKTAG *locktag,
 				
 				if (MyProc != proclock->tag.myProc && proclock->tag.myProc != 0 && proclock->tag.myLock == lock)
 				{
-					PGPROC		*otherProc = proclocktag.myProc;
+					PGPROC		*otherProc = proclock->tag.myProc;
 
 					if (otherProc->mppSessionId == gp_session_id)
 					{
