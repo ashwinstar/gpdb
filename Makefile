@@ -50,8 +50,6 @@ all : devel
 # tell included makefiles where to find build-top-level resources
 BLD_TOP:=$(shell sh -c pwd)
 include Makefile.global
-include Makefile.thirdparty
-include releng/releng.mk
 
 ifneq "$(BLD_BITS)" ""
 export NO_M64=1

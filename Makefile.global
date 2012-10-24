@@ -34,6 +34,7 @@ BLD_WHERE_THE_LIBRARY_THINGS_ARE=$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)
 endif
 
 include $(BLD_TOP)/Makefile.thirdparty
+include $(BLD_TOP)/releng/releng.mk
 
 # get current working directory with symlinks maintained
 HERE:=$(shell pwd -L)
