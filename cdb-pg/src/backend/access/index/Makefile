@@ -157,6 +157,9 @@ CAQL_CQL_OTHER := $(addprefix $(top_srcdir)/,\
 # Generate catquery.c by discovering cql statements in src files
 
 jversion := 5.0
+caql_locktest_FLAGS := -lockcheck -readlock \
+-logquery \
+-lwl=pg_type,pg_proc,pg_namespace,pg_operator,pg_opclass,pg_amop,pg_am,pg_amproc
 
 # NOTE: to turn on query logging, do "make caql_logquery_FLAGS=-logquery"
 
@@ -169,7 +172,6 @@ catquery.o: catquery.c
 catquery.c: caql.files $(top_srcdir)/src/include/catalog/calico.pl
 	perl $(top_srcdir)/src/include/catalog/calico.pl \
 		-meta $(top_srcdir)/../gpMgmt/bin/gppylib/data/$(jversion).json \
-		-syscache $(top_srcdir)/src/backend/utils/cache/syscache.c \
 		$(caql_logquery_FLAGS) \
 		-filemap caqlfilemap.json \
 		-gperf gperf.init -infiles caql.files > catquery.c 
@@ -178,6 +180,7 @@ catquery.c: caql.files $(top_srcdir)/src/include/catalog/calico.pl
 
 test: 
 	echo $(caql_logquery_FLAGS) 
+	echo $(caql_locktest_FLAGS) 
 
 clean:
 	rm -f SUBSYS.o $(OBJS) catquery.c caql.files gperf.init caqlfilemap.json

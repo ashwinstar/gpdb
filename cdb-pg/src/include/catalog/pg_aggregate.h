@@ -57,7 +57,7 @@
    aggordered      bool     -- MPP ordered aggregates
    );
 
-   create unique index on pg_aggregate(aggfnoid) with (indexid=2650, indexname=pg_aggregate_fnoid_index);
+   create unique index on pg_aggregate(aggfnoid) with (indexid=2650, indexname=pg_aggregate_fnoid_index, syscacheid=AGGFNOID, syscache_nbuckets=32);
 
    alter table pg_aggregate add fk aggfnoid on pg_proc(oid);
    alter table pg_aggregate add fk aggtransfn on pg_proc(oid);
