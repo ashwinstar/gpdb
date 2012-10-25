@@ -587,7 +587,7 @@ ExecEagerFreeMaterial(MaterialState *node)
 	 * If we still have potential readers assocated with this node,
 	 * we shouldn't free the tuplestore too early.  The eager-free message
 	 * doesn't know about upper ShareInputScan nodes, but those nodes
-	 * bumps up the reference count in their initializations and decrement
+	 * bump up the reference count in their initializations and decrement
 	 * it in either EagerFree or ExecEnd.
 	 */
 	if (ma->share_type == SHARE_MATERIAL || ma->share_type == SHARE_SORT)

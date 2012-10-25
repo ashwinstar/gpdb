@@ -311,43 +311,16 @@ ExecCountSlotsShareInputScan(ShareInputScan* node)
  */
 void ExecEndShareInputScan(ShareInputScanState *node)
 {
-	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
-
-	ExecEagerFreeShareInputScan(node);
 
 	/* clean up tuple table */
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	/* 
-	 * no need to call tuplestore end.  Underlying ShareInput will take
-	 * care of releasing tuplestore resources 
-	 */
-	/*
-	 * XXX Do we need to pfree the tuplestore_state and pos? 
-	 * XXX nodeMaterial.c does not, need to find out why
-	 */
-	
+	ShareInputScan * sisc = (ShareInputScan *) node->ss.ps.plan;
 	if(node->share_lk_ctxt)
 		shareinput_reader_notifydone(node->share_lk_ctxt, sisc->share_id);
 
-	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE) 
-	{
-		if(node->ts_pos != NULL)
-			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
-		if(node->ts_markpos != NULL)
-			pfree(node->ts_markpos);
-
-		if(node->ts_state != NULL)
-		{
-			if(ntuplestore_is_readerwriter_reader((NTupleStore *) node->ts_state))
-				ntuplestore_destroy((NTupleStore *) node->ts_state);
-		}
-	}
-
-	node->ts_state = NULL;
-	node->ts_pos = NULL;
-	node->ts_markpos = NULL;
+	ExecEagerFreeShareInputScan(node);
 
 	/* 
 	 * shutdown subplan.  First scanner of underlying share input will
@@ -525,7 +498,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	if(lk_ctxt->readyfd >= 0)
 	{
 		err = gp_retry_close(lk_ctxt->readyfd);
-		insist_log(!err, "shareinput_clean_lk_ctxt cannot close readyfd: %m");
+		insist_log(!err, "cannot close file: %m");
 
 		lk_ctxt->readyfd = -1;
 	}
@@ -533,7 +506,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	if(lk_ctxt->donefd >= 0)
 	{
 		err = gp_retry_close(lk_ctxt->donefd);
-		insist_log(!err, "shareinput_clean_lk_ctxt cannot close donefd: %m");
+		insist_log(!err, "cannot close file: %m");
 
 		lk_ctxt->donefd = -1;
 	}
@@ -875,16 +848,6 @@ initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 	}
 }
 
-/*
- * ShareInputScan has nothing to do in EagerFree, except decrementing the
- * reference count in ShareNodeEntry when it's intra-slice share node.
- * The reference count tells the underlying Material/Sort node not to free
- * too eagerly as this node still needs to read its tuples.  Once this node
- * is freed, the underlying node can free its content.
- * We consider this reference counter only in intra-slice cases, because
- * inter-slice share nodes have their own pointer to the buffer and
- * there is not way to tell this reference over Motions anayway.
- */
 void
 ExecEagerFreeShareInputScan(ShareInputScanState *node)
 {
@@ -897,13 +860,44 @@ ExecEagerFreeShareInputScan(ShareInputScanState *node)
 	if (node->freed)
 		return;
 
+
 	if (sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_SORT)
 	{
-		ShareNodeEntry	   *snEntry;
-
-		snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
+		/*
+		 * Decrement the reference count in ShareNodeEntry when it's an intra-slice share node.
+		 * The reference count tells the underlying Material/Sort node not to free
+		 * too eagerly as this node still needs to read its tuples.  Once this node
+		 * is freed, the underlying node can free its content.
+		 * We consider this reference counter only in intra-slice cases, because
+		 * inter-slice share nodes have their own pointer to the buffer and
+		 * there is no way to tell this reference over Motions anyway.
+		 */
+		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
 		Assert(snEntry && snEntry->refcount > 0);
 		snEntry->refcount--;
 	}
+
+	/*
+	 * no need to call tuplestore end.  Underlying ShareInput will take
+	 * care of releasing tuplestore resources
+	 */
+
+	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE)
+	{
+		if(node->ts_pos != NULL)
+			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
+		if(node->ts_markpos != NULL)
+			pfree(node->ts_markpos);
+
+		if(node->ts_state != NULL)
+		{
+			if(ntuplestore_is_readerwriter_reader((NTupleStore *) node->ts_state))
+				ntuplestore_destroy((NTupleStore *) node->ts_state);
+		}
+	}
+
+	node->ts_state = NULL;
+	node->ts_pos = NULL;
+	node->ts_markpos = NULL;
 	node->freed = true;
 }

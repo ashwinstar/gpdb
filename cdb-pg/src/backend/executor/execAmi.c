@@ -608,7 +608,7 @@ ExecEagerFree(PlanState *node)
 
 		/*
 		 * Decrement reference count when it's intra-slice.  We don't need
-		 * two-pass tree decsending because ShareInputScan should always appear
+		 * two-pass tree descending because ShareInputScan should always appear
 		 * before the underlying Material/Sort node.
 		 */
 		case T_ShareInputScanState:

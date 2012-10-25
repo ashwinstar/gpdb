@@ -1560,3 +1560,9 @@ select stddev(i) over(order by j rows j preceding), i, j from test1;
 
 select stddev(i) over(order by j range (d1-d2) preceding) from test1;
 select stddev(i) over(order by j range (d2-d1) preceding) from test1;
+
+drop table if exists win_shared_test; 
+create table win_shared_test(a int, b int); 
+insert into win_shared_test select i/2, i/7 from generate_series(0,19) i;
+select row_number() over(partition by a order by b), count(*) over (partition by a) from win_shared_test order by row_number; 
+
