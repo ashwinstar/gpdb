@@ -452,6 +452,22 @@ select perct.a, 0.2*avg(perct2.a) as avga,
 ---+------+-----------------
 (0 rows)
 
+select median(a - '2011-12-31 00:00:00 UTC'::timestamptz) from perctsz group by b order by median;
+       median        
+---------------------
+ @ 6 days
+ @ 15 days 12 hours
+ @ 25 days 12 hours
+ @ 35 days 12 hours
+ @ 45 days 12 hours
+ @ 55 days 12 hours
+ @ 65 days 12 hours
+ @ 74 days 35 hours
+ @ 84 days 35 hours
+ @ 94 days 35 hours
+ @ 100 days 23 hours
+(11 rows)
+
 -- view
 select * from percv;
  percentile_cont | median | percentile_disc 
@@ -898,6 +914,22 @@ select perct.a, 0.2*avg(perct2.a) as avga,
  a | avga | percentile_cont 
 ---+------+-----------------
 (0 rows)
+
+select median(a - '2011-12-31 00:00:00 UTC'::timestamptz) from perctsz group by b order by median;
+       median        
+---------------------
+ @ 6 days
+ @ 15 days 12 hours
+ @ 25 days 12 hours
+ @ 35 days 12 hours
+ @ 45 days 12 hours
+ @ 55 days 12 hours
+ @ 65 days 12 hours
+ @ 74 days 35 hours
+ @ 84 days 35 hours
+ @ 94 days 35 hours
+ @ 100 days 23 hours
+(11 rows)
 
 -- view
 select * from percv;

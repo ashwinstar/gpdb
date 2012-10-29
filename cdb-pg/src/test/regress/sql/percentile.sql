@@ -75,6 +75,7 @@ select perct.a, 0.2*avg(perct2.a) as avga,
 		(select a, a / 10 b from generate_series(1, 100)a)perct,
 		(select a, a / 10 b from generate_series(1, 100)a)perct2
 	where perct.a=perct2.a group by perct.a having median(perct.b) > 10;
+select median(a - '2011-12-31 00:00:00 UTC'::timestamptz) from perctsz group by b order by median;
 -- view
 select * from percv;
 
@@ -140,6 +141,7 @@ select perct.a, 0.2*avg(perct2.a) as avga,
 		(select a, a / 10 b from generate_series(1, 100)a)perct,
 		(select a, a / 10 b from generate_series(1, 100)a)perct2
 	where perct.a=perct2.a group by perct.a having median(perct.b) > 10;
+select median(a - '2011-12-31 00:00:00 UTC'::timestamptz) from perctsz group by b order by median;
 -- view
 select * from percv;
 
