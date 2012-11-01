@@ -338,6 +338,9 @@
 /* Define to 1 if `long long int' works and is 64 bits. */
 #undef HAVE_LONG_LONG_INT_64
 
+/* Define to 1 if you have the `memmem' function. */
+#undef HAVE_MEMMEM
+
 /* Define to 1 if you have the `memmove' function. */
 #undef HAVE_MEMMOVE
 
