@@ -1537,3 +1537,4 @@ create_orca_installer:
 .PHONY : unittest-check
 unittest-check:
 	$(MAKE) -C cdb-pg/src/backend unittest-check
+	$(MAKE) -C cdb-pg/src/port/test unittest-check

@@ -22,7 +22,7 @@ test__memmem__multi_chars(void **state)
 	char *s = "abcdefgcdh";
 	
 	char* ans = memmem(s, strlen(s), "cd", 2);
-	assert_string_equal(ans, "defgcdh");
+	assert_string_equal(ans, "cdefgcdh");
 }
 
 static void 
