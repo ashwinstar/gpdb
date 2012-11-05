@@ -328,45 +328,6 @@ static int expand_directories(fstream_t *fs)
 	return 0;
 }
 
-static int glob_path(fstream_t *fs, const char *path)
-{
-	char	*path2 = gfile_malloc(strlen(path) + 1);
-
-	if (!path2)
-	{
-		gfile_printf_then_putc_newline("fstream out of memory");
-		return 1;
-	}
-
-	path = strcpy(path2, path);
-
-	do
-	{
-		char*	p;
-
-		while (*path == ' ')
-			path++;
-
-		p = strchr(path, ' ');
-
-		if (p)
-			*p++ = 0;
-
-		if (*path &&
-			glob_and_copy(path, GLOB_MARK | GLOB_NOCHECK, 0, &fs->glob))
-		{
-			gfile_printf_then_putc_newline("fstream glob failed");
-			return 1;
-		}
-		path = p;
-	} while (path);
-
-	gfile_free(path2);
-
-	return 0;
-}
-
-
 #ifdef GPFXDIST
 /*
  * adjust fs->glob so that it contains a single item which is a
@@ -429,10 +390,10 @@ fstream_open(const char *path, const struct fstream_options *options,
 	fs->buffer = gfile_malloc(options->bufsize);
 	
 	/*
-	 * get a list of all files that were requested to be read and include them
-	 * in our fstream. This includes any wildcard pattern matching.
+	 * get a list of all files that were requested to be read (e.g. when a wildcard was used)
+	 * and include them in our fstream.
 	 */
-	if (glob_path(fs, path))
+	if (glob_and_copy(path, GLOB_MARK | GLOB_NOCHECK, 0, &fs->glob))
 	{
 		fstream_close(fs);
 		return 0;
