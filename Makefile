@@ -339,6 +339,7 @@ aix5_ppc_64_GPDB_BUILDSET=partial
 aix5_ppc_32_GPDB_BUILDSET=partial
 sol10_x86_32_GPDB_BUILDSET=partial
 sol10_sparc_32_GPDB_BUILDSET=partial
+sol10_sparc_64_GPDB_BUILDSET=partial
 sol9_sparc_32_GPDB_BUILDSET=partial
 sol9_sparc_64_GPDB_BUILDSET=partial
 sol9_sparc_GPDB_BUILDSET=partial
