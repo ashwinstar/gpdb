@@ -192,8 +192,7 @@ generate_gpdb_installer_header() {
 		more << EOF
 
 		********************************************************************************
-		You must read and accept the Greenplum Database license agreement
-		before installing
+		You must read and accept the EMC Database license agreement before installing
 		********************************************************************************
 
 	EOF_HEADER
@@ -206,7 +205,7 @@ generate_gpdb_installer_header() {
 
 	cat <<-EOF_HEADER
 
-		I HAVE READ AND AGREE TO THE TERMS OF THE ABOVE GREENPLUM SOFTWARE
+		I HAVE READ AND AGREE TO THE TERMS OF THE ABOVE EMC SOFTWARE
 		LICENSE AGREEMENT.
 
 		EOF
@@ -216,7 +215,7 @@ generate_gpdb_installer_header() {
 			cat << EOF
 
 			********************************************************************************
-			Do you accept the Greenplum Database license agreement? [yes|no]
+			Do you accept the EMC Database license agreement? [yes|no]
 			********************************************************************************
 
 			EOF
