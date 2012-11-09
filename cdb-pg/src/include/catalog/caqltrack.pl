@@ -26,8 +26,8 @@ B<caqltrack.pl> - track caql usage in csv files
 
 =head1 VERSION
 
- This document describes version 2 of caqltrack.pl, released
- Wed Oct 24 14:46:37 2012.
+ This document describes version 5 of caqltrack.pl, released
+ Wed Nov  7 19:51:35 2012.
 
 =head1 SYNOPSIS
 
@@ -102,10 +102,10 @@ find [data-directory] -name '*.csv' | xargs perl caqltrack.pl -csv | perl caqltr
 =head2 OUTPUT
 
 The output of the first phase is sorted by basic query function,
-filename, and lineno, followed by a reference count, with vertical bar
-separators, eg:
+filename, lineno, unique query code, and the "first arg" (if it is an
+oid) followed by a reference count, with vertical bar separators, eg:
 
-caql_basic_fn_94|aclchk.c|3141|6
+caql_basic_fn_94|aclchk.c|3141|33|101|6
 
 The output of the first phase is "pre-aggregated", so it may have
 multiple rows for a single (query function, filename, lineno) key.
@@ -114,15 +114,15 @@ The second phase consumes this output, and produces a final of
 fully-aggregated output.  Also, this phase sums all references to a
 basic function into a #TOTAL# row:
 
- caql_basic_fn_85|ruleutils.c|7137|306
- caql_basic_fn_85|tablecmds.c|14643|6
- caql_basic_fn_85|#TOTAL#|0|312
+ caql_basic_fn_85|ruleutils.c|7137|33|101306
+ caql_basic_fn_85|tablecmds.c|1464333|101|6
+ caql_basic_fn_85|#TOTAL#|0|0|0312
 
 Finally, the second phase output is terminated with grand total and
 total unique query counts:
 
- #GRANDTOTAL#|#TOTAL#|0|1676343
- #NUMQUERY#|#TOTAL#|0|105
+ #GRANDTOTAL#|#TOTAL#|0|0|0|1676343
+ #NUMQUERY#|#TOTAL#|0|0|0|105
 
 
 
@@ -198,8 +198,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '2';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1351115197';
+	$glob_glob->{_sleazy_properties}->{version} = '5';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1352346695';
 	$glob_glob->{_sleazy_properties}->{slzy_argv_str} = $slzy_argv_str;
 	
 	$glob_glob->{connect}    =  $s_connect      if (defined($s_connect));
@@ -354,6 +354,11 @@ sub do_csv
 
 		next unless ($ini =~ m/catquery.*caql\_basic/);
 
+		# make sure is actual message, not sql string for view:
+		# 'catquery: caql_basic_fn_', ''), 'caller: ', ''), ' ') \
+		# as caql_mess_arr
+		next unless ($ini =~ m/caql\_basic\_fn\_\d+\s+caller/);
+
 #		print $ini;
 		my @ggg = split(/catquery: /, $ini);
 		my @fff = split(/\,/, $ggg[1]); 
@@ -364,16 +369,17 @@ sub do_csv
 		$lin =~ s/\"//g; # remove quotes;
 		# change to vertical bar separated list
 		$lin =~ s/\s*caller\:\s*/\|/; 
-		$lin =~ s/\s+/\|/; 
+		$lin =~ s/\s+/\|/g; 
 
 		$bigh{$lin} = 0 unless (exists($bigh{$lin}));
 		$bigh{$lin} += 1;
 	} # end while
 
 	# output in the form of 
-	# <func name>|<filename>|<lineno>|<reference count>, eg:
+	# <func name>|<filename>|<lineno>|<uniqqno>|<firstarg>|<reference count>, 
+	# eg:
 	#
-	# caql_basic_fn_118|dbcommands.c|2270|3
+	# caql_basic_fn_118|dbcommands.c|2270|33|101|3
 
 	for my $kk (sort(keys(%bigh)))
 	{
@@ -387,14 +393,15 @@ sub do_agg
 	my %bigh;
 
 	# input in the form of 
-	# <func name>|<filename>|<lineno>|<reference count>, eg:
+	# <func name>|<filename>|<lineno>|<uniqqno>|<firstarg>|<reference count>, 
+	# eg:
 	#
-	# caql_basic_fn_118|dbcommands.c|2270|3
+	# caql_basic_fn_118|dbcommands.c|2270|33|101|3
 
 	# NOTE: since caqltrack -csv is called via xargs, may have
 	# multiple sets of pre-aggregated lines, 
-	# so split by "key" portion (func, file, lineno) and sum 
-	# the reference counts
+	# so split by "key" portion (func, file, lineno, uniqqno, firstarg) and
+	# sum the reference counts
 
 	while (<>)
 	{
@@ -406,6 +413,9 @@ sub do_agg
 		my $num = pop @ggg;
 		die "bad line count: $ini" unless ($num =~ m/\d+/);
 		
+		# convert the "firstarg" to zero to fix aggregation
+		$ggg[-1] = 0;
+
 		my $lin = join("|", @ggg);
 		$bigh{$lin} = 0 unless (exists($bigh{$lin}));
 		$bigh{$lin} += $num; # NOTE: not 1, sum the reference counts
@@ -429,7 +439,7 @@ sub do_agg
 			}
 			else
 			{
-				print $currqry, "|#TOTAL#|0|", $numcurr, "\n";
+				print $currqry, "|#TOTAL#|0|0|0|", $numcurr, "\n";
 				$currqry = $ggg[0];
 				$numcurr = $bigh{$kk};
 				$numqry += 1;
@@ -447,12 +457,12 @@ sub do_agg
 	} # end for $kk
 	if (defined($currqry))
 	{
-		print $currqry, "|#TOTAL#|0|", $numcurr, "\n";
+		print $currqry, "|#TOTAL#|0|0|0|", $numcurr, "\n";
 	}
 	if ($grandtot)
 	{
-		print "#GRANDTOTAL#|#TOTAL#|0|", $grandtot, "\n";
-		print "#NUMQUERY#|#TOTAL#|0|", $numqry, "\n";
+		print "#GRANDTOTAL#|#TOTAL#|0|0|0|", $grandtot, "\n";
+		print "#NUMQUERY#|#TOTAL#|0|0|0|", $numqry, "\n";
 	}
 
 } # end do_agg
@@ -464,9 +474,9 @@ sub do_missing
 	$biga->[0] = undef;
 
 	# input in the form of 
-	# <func name>|#TOTAL#|0|<reference count>, eg:
+	# <func name>|#TOTAL#|0|0|0|<reference count>, eg:
 	#
-	# caql_basic_fn_118|#TOTAL#|0|3
+	# caql_basic_fn_118|#TOTAL#|0|0|0|3
 
 	while (<>)
 	{
@@ -576,10 +586,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1351115197
+      "slzy_date" : 1352346695
    },
    "short" : "track caql usage in csv files",
-   "version" : "2"
+   "version" : "5"
 }
 
 EOF_bigstr
@@ -607,10 +617,10 @@ find [data-directory] -name '*.csv' | xargs perl caqltrack.pl -csv | perl caqltr
 {HEAD2} OUTPUT
 
 The output of the first phase is sorted by basic query function,
-filename, and lineno, followed by a reference count, with vertical bar
-separators, eg:
+filename, lineno, unique query code, and the "first arg" (if it is an
+oid) followed by a reference count, with vertical bar separators, eg:
 
-caql_basic_fn_94|aclchk.c|3141|6
+caql_basic_fn_94|aclchk.c|3141|33|101|6
 
 The output of the first phase is "pre-aggregated", so it may have
 multiple rows for a single (query function, filename, lineno) key.
@@ -619,15 +629,15 @@ The second phase consumes this output, and produces a final of
 fully-aggregated output.  Also, this phase sums all references to a
 basic function into a #TOTAL# row:
 
- caql_basic_fn_85|ruleutils.c|7137|306
- caql_basic_fn_85|tablecmds.c|14643|6
- caql_basic_fn_85|#TOTAL#|0|312
+ caql_basic_fn_85|ruleutils.c|7137|33|101306
+ caql_basic_fn_85|tablecmds.c|1464333|101|6
+ caql_basic_fn_85|#TOTAL#|0|0|0312
 
 Finally, the second phase output is terminated with grand total and
 total unique query counts:
 
- #GRANDTOTAL#|#TOTAL#|0|1676343
- #NUMQUERY#|#TOTAL#|0|105
+ #GRANDTOTAL#|#TOTAL#|0|0|0|1676343
+ #NUMQUERY#|#TOTAL#|0|0|0|105
 
 
 

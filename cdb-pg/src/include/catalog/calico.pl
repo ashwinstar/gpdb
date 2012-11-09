@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 49 of calico.pl, released
- Fri Oct 19 18:14:51 2012.
+ This document describes version 53 of calico.pl, released
+ Wed Nov  7 19:51:27 2012.
 
 =head1 SYNOPSIS
 
@@ -44,9 +44,12 @@ Options:
     -logquery       turn on logging (elog) for all basic functions
     -lockcheck      check locking
     -readlock       check locks for read
+    -holdtablelock  hold table locks until transaction commit
     -lockblacklist  tables excluded from locking
     -lockwhitelist  tables covered by locking
     -filemap        build a json file mapping files to catalog tables
+    -basedef        build a json file of basic caql definitions
+    -uniqdef        build a json file of uniq caql definitions
     -inputfiles     list of cql input files
 
 =head1 OPTIONS
@@ -79,8 +82,7 @@ Options:
 
 =item B<-logquery>
 
-    
-Turn on logging (elog) for all basic functions.  Use caqltrack.sql to
+    Turn on logging (elog) for all basic functions.  Use caqltrack.sql to
 process these statements from the logs to calculate code coverage.
 
 =item B<-lockcheck>
@@ -90,6 +92,12 @@ process these statements from the logs to calculate code coverage.
 =item B<-readlock>
 
     acquire primary key locks in basic fn prior to read
+
+=item B<-holdtablelock>
+
+    Normally, table locks are released at heap_close at caql_endscan.
+When this flag is set, the table lock is retained until transaction
+commit/abort.
 
 =item B<-lockblacklist>
 
@@ -102,6 +110,14 @@ process these statements from the logs to calculate code coverage.
 =item B<-filemap> <filename>
 
     build a json file mapping source files to catalog tables referenced in cql statements (for pablopcatso)
+
+=item B<-basedef> <filename>
+
+    build a json file of basic caql definitions
+
+=item B<-uniqdef> <filename>
+
+    build a json file of uniq caql definitions
 
 =item B<-inputfiles> <filename>
 
@@ -127,16 +143,17 @@ dependencies.
 
 CaQL has been extended to handle INSERT and UPDATE.
 
-
-=head1 CAVEATS/FUTURE WORK
-
 =head2 Locking
 
-Use the tidycat dependency information (JSON) to generate improved
-locking, e.g. handle the case where one transaction does CREATE TABLE
-in a schema and a concurrent transaction DROPs the schema, leading to
-a catalog corruption.  Understanding INSERT/UPDATE may be key to
-obtaining the correct locking.
+The readlock/lockcheck options use the tidycat dependency information
+(JSON) to generate the insert/update/delete ("iud") locking functions.
+Without locking, concurrent transactions can cause catalog corruption,
+e.g the case where one transaction does CREATE TABLE in a schema and a
+concurrent transaction DROPs the schema.  The caql_lockwell() function
+locks the "primary key" index(es) and any associated foreign key
+indexes, ensuring that referential integrity is maintained.
+
+=head1 CAVEATS/FUTURE WORK
 
 =head2 External Catalog
 
@@ -267,9 +284,12 @@ BEGIN {
 	    my $s_logquery          = 0;     # turn on logging (elog) for all basic functions
 	    my $s_lockcheck         = 0;     # check locking
 	    my $s_readlock          = 0;     # check locks for read
+	    my $s_holdtablelock     = 0;     # hold table locks until transaction commit
 	    my $s_lockblacklist;             # tables excluded from locking
 	    my $s_lockwhitelist;             # tables covered by locking
 	    my $s_filemap;                   # build a json file mapping files to catalog tables
+	    my $s_basedef;                   # build a json file of basic caql definitions
+	    my $s_uniqdef;                   # build a json file of uniq caql definitions
 	    my $s_inputfiles;                # list of cql input files
 
 	my $slzy_argv_str;
@@ -277,19 +297,22 @@ BEGIN {
 		if (scalar(@ARGV));
 
     GetOptions(
-		'help|?'                 =>     \$s_help,
-		'man'                    =>     \$s_man,
-		'interactive'            =>     \$s_interactive,
-		'metadata|json=s'        =>     \$s_metadata,
-		'gperf|perf:s'           =>     \$s_gperf,
-		'dump'                   =>     \$s_dump,
-		'logquery|elog'          =>     \$s_logquery,
-		'lockcheck'              =>     \$s_lockcheck,
-		'readlock'               =>     \$s_readlock,
-		'lockblacklist|lbl:s'    =>     \$s_lockblacklist,
-		'lockwhitelist|lwl:s'    =>     \$s_lockwhitelist,
-		'filemap:s'              =>     \$s_filemap,
-		'inputfiles|infiles:s'   =>     \$s_inputfiles,
+		'help|?'                     =>     \$s_help,
+		'man'                        =>     \$s_man,
+		'interactive'                =>     \$s_interactive,
+		'metadata|json=s'            =>     \$s_metadata,
+		'gperf|perf:s'               =>     \$s_gperf,
+		'dump'                       =>     \$s_dump,
+		'logquery|elog'              =>     \$s_logquery,
+		'lockcheck'                  =>     \$s_lockcheck,
+		'readlock'                   =>     \$s_readlock,
+		'holdtablelock|holdlock'     =>     \$s_holdtablelock,
+		'lockblacklist|lbl:s'        =>     \$s_lockblacklist,
+		'lockwhitelist|lwl:s'        =>     \$s_lockwhitelist,
+		'filemap:s'                  =>     \$s_filemap,
+		'basedef:s'                  =>     \$s_basedef,
+		'uniqdef:s'                  =>     \$s_uniqdef,
+		'inputfiles|infiles:s'       =>     \$s_inputfiles,
                )
         or pod2usage(2);
 
@@ -302,8 +325,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '49';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1350695691';
+	$glob_glob->{_sleazy_properties}->{version} = '53';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1352346687';
 	$glob_glob->{_sleazy_properties}->{slzy_argv_str} = $slzy_argv_str;
 	
 	    die ("missing required argument for 'metadata'")
@@ -326,9 +349,12 @@ BEGIN {
 	$glob_glob->{logquery}       =  $s_logquery         if (defined($s_logquery));
 	$glob_glob->{lockcheck}      =  $s_lockcheck        if (defined($s_lockcheck));
 	$glob_glob->{readlock}       =  $s_readlock         if (defined($s_readlock));
+	$glob_glob->{holdtablelock}  =  $s_holdtablelock    if (defined($s_holdtablelock));
 	$glob_glob->{lockblacklist}  =  $s_lockblacklist    if (defined($s_lockblacklist));
 	$glob_glob->{lockwhitelist}  =  $s_lockwhitelist    if (defined($s_lockwhitelist));
 	$glob_glob->{filemap}        =  $s_filemap          if (defined($s_filemap));
+	$glob_glob->{basedef}        =  $s_basedef          if (defined($s_basedef));
+	$glob_glob->{uniqdef}        =  $s_uniqdef          if (defined($s_uniqdef));
 	$glob_glob->{inputfiles}     =  $s_inputfiles       if (defined($s_inputfiles));
 	
 	glob_validate();
@@ -411,6 +437,14 @@ if (0)
          "type" : "untyped"
       },
       {
+         "alias" : "holdlock",
+         "long" : "$holdlocklong",
+         "name" : "holdtablelock",
+         "required" : "0",
+         "short" : "hold table locks until transaction commit",
+         "type" : "untyped"
+      },
+      {
          "alias" : "lbl",
          "name" : "lockblacklist",
          "required" : "0",
@@ -432,6 +466,18 @@ if (0)
          "type" : "outfile"
       },
       {
+         "name" : "basedef",
+         "required" : "0",
+         "short" : "build a json file of basic caql definitions",
+         "type" : "outfile"
+      },
+      {
+         "name" : "uniqdef",
+         "required" : "0",
+         "short" : "build a json file of uniq caql definitions",
+         "type" : "outfile"
+      },
+      {
          "alias" : "infiles",
          "long" : "file containing list of cql input files (1 per line).  If defined, ignores the filenames from the argument list and only processes files listed in the input file.",
          "name" : "inputfiles",
@@ -442,10 +488,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1350695691
+      "slzy_date" : 1352346687
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "49"
+   "version" : "53"
 }
 
 EOF_bigstr
@@ -471,16 +517,17 @@ dependencies.
 
 CaQL has been extended to handle INSERT and UPDATE.
 
-
-{HEAD1} CAVEATS/FUTURE WORK
-
 {HEAD2} Locking
 
-Use the tidycat dependency information (JSON) to generate improved
-locking, e.g. handle the case where one transaction does CREATE TABLE
-in a schema and a concurrent transaction DROPs the schema, leading to
-a catalog corruption.  Understanding INSERT/UPDATE may be key to
-obtaining the correct locking.
+The readlock/lockcheck options use the tidycat dependency information
+(JSON) to generate the insert/update/delete ("iud") locking functions.
+Without locking, concurrent transactions can cause catalog corruption,
+e.g the case where one transaction does CREATE TABLE in a schema and a
+concurrent transaction DROPs the schema.  The caql_lockwell() function
+locks the "primary key" index(es) and any associated foreign key
+indexes, ensuring that referential integrity is maintained.
+
+{HEAD1} CAVEATS/FUTURE WORK
 
 {HEAD2} External Catalog
 
@@ -497,10 +544,15 @@ Need to restructure the catalog to eliminate bloat.
 EOF_toplong
 
 	my $loglong = <<'EOF_loglong';
-
 Turn on logging (elog) for all basic functions.  Use caqltrack.sql to
 process these statements from the logs to calculate code coverage.
 EOF_loglong
+
+	my $holdlocklong = <<'EOF_holdlocklong';
+Normally, table locks are released at heap_close at caql_endscan.
+When this flag is set, the table lock is retained until transaction
+commit/abort.
+EOF_holdlocklong
 }
 # SLZY_LONG_END
 
@@ -808,13 +860,20 @@ EOF_bigstr
 
 # XXX XXX:
 # NOTE: logging function requires cql filename, lineno for debug
+#
+
+# NOTE WELL: always pass the first argument (pcql->cqlKeys[0] as an OID,
+# even if it isn't one (or doesn't exist!).  We will sort it out
+# later during log processing
 sub selectfrom_elog
 {
     my $bigstr = <<'EOF_bigstr';
 SUPPRESS_ERRCONTEXT_DECLARE;
 SUPPRESS_ERRCONTEXT_PUSH();
-elog(LOG, "catquery: %s caller: %s %d ", 
-	 "{FUNCNAME}", pcql->filename, pcql->lineno);
+if (gp_enable_caql_logging) elog(LOG, "catquery: %s caller: %s %d %d %d ", 
+	 "{FUNCNAME}", pcql->filename, pcql->lineno, pCtx->cq_uniqquery_code,
+	 DatumGetObjectId(pcql->cqlKeys[0]) 
+	);
 SUPPRESS_ERRCONTEXT_POP();
 EOF_bigstr
 	return $bigstr;
@@ -1565,6 +1624,23 @@ sub dothing
 		for my $k1 (keys(%{$bqh->{files}}))
 		{
 			my $fnam = basename($k1);
+
+			# XXX XXX: fix analyze
+			if ($fnam eq "analyze.c")
+			{
+				if ($k1 =~ m|commands/analyze|)
+				{
+					$fnam = "commands/analyze";
+				}
+				elsif ($k1 =~ m|parser/analyze|)
+				{
+					$fnam = "parser/analyze";
+				}
+				else
+				{
+					die "$k1 - yet another analyze.c!";
+				}
+			}
 
 			$glob_glob->{fil2tab}->{$fnam} = {}
 				unless (exists($glob_glob->{fil2tab}->{$fnam}));
@@ -3119,8 +3195,10 @@ sub get_caql
 			if ($basic_qry =~ m/^select\s+\*\s+from/i)
 			{
 				my @ccc = 
-					($basic_qry =~ m/^select\s+\*\s+from\s+(\w*)\s+/i);
+					($basic_qry =~ m/^select\s+\*\s+from\s+(\w*)\s*/i);
 				$tname	= shift @ccc;
+
+				$caqlh->{queries}->{$qry}->{tablename} = $tname;
 			}
 			else
 			{
@@ -3131,6 +3209,7 @@ sub get_caql
 				$tname	= shift @ccc;
 				
 				$caqlh->{queries}->{$qry}->{colname} = $colname;
+				$caqlh->{queries}->{$qry}->{tablename} = $tname;
 
 				die "no type for $colname! : $filnam: $qry"
 					unless (exists($bigh->{$tname}->{colh}->{$colname}));
@@ -3267,6 +3346,7 @@ sub gperf_header
 struct caql_hash_cookie
 {
 	const char *name;       /* caql string */
+	int uniqquery_code;     /* corresponding unique query */
 	int basequery_code;     /* corresponding base query */
 	int bDelete;            /* query performs DELETE */
 	int bCount;             /* SELECT COUNT(*) (or DELETE) */
@@ -3392,8 +3472,7 @@ static void caql_UpdateIndexes(cqContext	*pCtx,
 
 #define caql_heapclose(pCtx) \
 if (!(pCtx)->cq_externrel) { \
-heap_close((pCtx)->cq_heap_rel, (pCtx)->cq_lockmode); \
-(pCtx)->cq_heap_rel = InvalidRelation; } else
+{CAQL_HEAPCLOSE}(pCtx)->cq_heap_rel = InvalidRelation; } else
 
 /* ----------------------------------------------------------------
  * cq_lookup() 
@@ -3462,6 +3541,7 @@ cqContext *caql_switch(struct caql_hash_cookie *pchn,
 	pCtx->cq_NumKeys = pcql->maxkeys;
 	pCtx->cq_cacheKeys = &pCtx->cq_datumKeys[0];
 
+	pCtx->cq_uniqquery_code = pchn->uniqquery_code;
 	pCtx->cq_basequery_code = pchn->basequery_code;
 
 	/* NOTE: pass the cql to basic functions -- optionally 
@@ -3608,6 +3688,24 @@ static void caql_lock_entiretable(cqContext		*pCtx,
 EOF_bigstr
 	return $bigstr;
 } # end static_caql_lockwell
+
+sub caql_heapclose_releaselock
+{
+    my $bigstr = <<'EOF_bigstr';
+heap_close((pCtx)->cq_heap_rel, (pCtx)->cq_lockmode); \
+EOF_bigstr
+} # end caql_heapclose_releaselock
+
+# if not in a transaction, release the table lock, else hold it
+# (until the txn commits/aborts)
+sub caql_heapclose_holdlock
+{
+    my $bigstr = <<'EOF_bigstr';
+{ if (!IsTransactionState()) \
+heap_close((pCtx)->cq_heap_rel, (pCtx)->cq_lockmode); \
+else heap_close((pCtx)->cq_heap_rel, NoLock); } \
+EOF_bigstr
+} # end caql_heapclose_holdlock
 
 # build the C code for the caql fetch functions (getcount(), getfirst(), etc)
 sub caql_lockwell_func_body
@@ -5367,12 +5465,18 @@ sub do_gperf
 								  $glob_glob->{lockcheck}) ?
 								  static_caql_lockwell() : "";
 
-	$gen_hdr_str .= doformat(more_header(),
-							 {
-								 STATIC_CAQL_LOCKWELL =>
-									 $static_caql_lockwell_str
-							 }
-	);
+	my $caql_heapclose_str = (exists($glob_glob->{holdtablelock}) &&
+								  $glob_glob->{holdtablelock}) ?
+								  caql_heapclose_holdlock() :
+								  caql_heapclose_releaselock();
+
+	$gen_hdr_str .= 
+		doformat(more_header(),
+				 {
+					 STATIC_CAQL_LOCKWELL => $static_caql_lockwell_str,
+					 CAQL_HEAPCLOSE		  => $caql_heapclose_str
+				 }
+		);
 
 	print $gpo doformat(gperf_header(),
 						{
@@ -5381,18 +5485,27 @@ sub do_gperf
 		);
 
 	# caql hash cookie initialization
+	
+	my $uniq_code = 1; # label unique queries for caqltrack
 	for my $qry (sort(keys(%{$caqlh->{queries}})))
 	{
 		print $gpo '"' . $qry . '"' . ", "  ;
 
 		my $basic = $caqlh->{queries}->{$qry}->{basic};
 
+		print $gpo $uniq_code . ", ";
 		print $gpo $caqlh->{basic}->{$basic}->{func_number} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{bDelete} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{bCount} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{bUpdate} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{bInsert} . ", ";
 		print $gpo $caqlh->{queries}->{$qry}->{colnum} . "\n";
+
+		$caqlh->{queries}->{$qry}->{uniqquery_code} = $uniq_code;
+		$caqlh->{queries}->{$qry}->{basequery_code} = 
+			$caqlh->{basic}->{$basic}->{func_number};
+
+		$uniq_code++;
 	}
 
 	print $gpo '%%' . "\n\n";
@@ -6321,6 +6434,31 @@ if (1)
 								  canonical => 1});
 
 		}
+	}
+
+	# caql definitions
+	if (exists($glob_glob->{uniqdef}) && length($glob_glob->{uniqdef}))
+	{
+		my $f2mfh;
+		open $f2mfh, "> $glob_glob->{uniqdef}" or 
+			die "cannot open $glob_glob->{uniqdef}: $!";
+
+		print $f2mfh JSON::to_json($caqlh->{queries}, 
+								  {pretty => 1, indent => 2, 
+								   canonical => 1});
+		close $f2mfh;
+	}
+	# caql definitions
+	if (exists($glob_glob->{basedef}) && length($glob_glob->{basedef}))
+	{
+		my $f2mfh;
+		open $f2mfh, "> $glob_glob->{basedef}" or 
+			die "cannot open $glob_glob->{basedef}: $!";
+
+		print $f2mfh JSON::to_json($caqlh->{basic}, 
+								  {pretty => 1, indent => 2, 
+								   canonical => 1});
+		close $f2mfh;
 	}
 
 	# build filemap for pablopcatso

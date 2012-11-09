@@ -158,6 +158,7 @@ CAQL_CQL_OTHER := $(addprefix $(top_srcdir)/,\
 
 jversion := 5.0
 caql_locktest_FLAGS := -lockcheck -readlock \
+-holdlock \
 -logquery \
 -lwl=pg_type,pg_proc,pg_namespace,pg_operator,pg_opclass,pg_amop,pg_am,pg_amproc
 
@@ -174,6 +175,8 @@ catquery.c: caql.files $(top_srcdir)/src/include/catalog/calico.pl
 		-meta $(top_srcdir)/../gpMgmt/bin/gppylib/data/$(jversion).json \
 		$(caql_logquery_FLAGS) \
 		-filemap caqlfilemap.json \
+		-uniqdef uniqdef.json \
+		-basedef basedef.json \
 		-gperf gperf.init -infiles caql.files > catquery.c 
 	# track the cql source files
 	cat caql.files | xargs openssl dgst -md5 -hex | cat > caql.md5 
@@ -183,5 +186,5 @@ test:
 	echo $(caql_locktest_FLAGS) 
 
 clean:
-	rm -f SUBSYS.o $(OBJS) catquery.c caql.files gperf.init caqlfilemap.json
+	rm -f SUBSYS.o $(OBJS) catquery.c caql.files gperf.init caqlfilemap.json uniqdef.json basedef.json
 
