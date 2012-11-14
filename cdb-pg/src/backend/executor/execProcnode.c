@@ -543,6 +543,10 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_ShareInputScan,
 		&&Exec_Jmp_Window,
 		&&Exec_Jmp_Repeat,
+		&&Exec_Jmp_DML,
+		&&Exec_Jmp_SplitUpdate,
+		&&Exec_Jmp_RowTriggerOp,
+		&&Exec_Jmp_AssertOp
 	};
 
 	COMPILE_ASSERT((T_Plan_End - T_Plan_Start) == (T_PlanState_End - T_PlanState_Start));
@@ -691,6 +695,18 @@ Exec_Jmp_Window:
 	goto Exec_Jmp_Done;
 Exec_Jmp_Repeat:
 	result = ExecRepeat((RepeatState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_DML:
+	goto Exec_Jmp_Done;
+	
+Exec_Jmp_SplitUpdate:
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_RowTriggerOp:
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_AssertOp:
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_Done:
@@ -1065,6 +1081,11 @@ ExecCountSlotsNode(Plan *node)
 
 		case T_Repeat:
 			return ExecCountSlotsRepeat((Repeat *) node);
+
+		case T_DML:
+			// TODO: antova - Oct 23, 2012; fix
+			return 1;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;

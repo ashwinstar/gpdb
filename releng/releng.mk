@@ -19,12 +19,12 @@ UNAME_P = $(shell uname -p)
 
 UNAME_ALL = $(UNAME).$(UNAME_P)
 
-ARCH_FLAGS = -m$(BLD_BITS)
-
 # shared lib support
 ifeq (Darwin, $(UNAME))
+	ARCH_FLAGS = -m32
 	LDSFX = dylib
 else
+	ARCH_FLAGS = -m64
 	LDSFX = so
 endif
 
@@ -38,7 +38,9 @@ ifeq "$(BLD_ARCH)" "osx105_x86"
 EXTRA_EXT=_32
 endif
 
-BLD_TYPE=debug
+# by default use optimized build libraries of GP Optimizer
+# use 'make BLD_TYPE=debug' to work with debug build libraries of GP Optimizer
+BLD_TYPE=opt
 
 OBJDIR_DEFAULT = .obj.$(UNAME_ALL)$(ARCH_FLAGS).$(BLD_TYPE)
 
@@ -47,6 +49,7 @@ GREP_SED_VAR = $(BLD_TOP)/releng/make/dependencies/ivy.xml | sed -e 's|\(.*\)rev
 XERCES_VER  = $(shell grep "\"xerces-c\""   $(GREP_SED_VAR))
 LIBGPOS_VER = $(shell grep "\"libgpos\""    $(GREP_SED_VAR))
 OPTIMIZER_VER = $(shell grep "\"optimizer\""  $(GREP_SED_VAR))
+LIBSTDC++_VER = $(shell grep "\"libstdc\""  $(GREP_SED_VAR))
 
 XERCES =  /opt/releng/tools/xerces/xerces-c/$(XERCES_VER)/$(BLD_ARCH)$(EXTRA_EXT)
 XERCES_LIBDIR = $(XERCES)/lib
@@ -55,9 +58,35 @@ LIBGPOS = /opt/releng/tools/emc/libgpos/$(LIBGPOS_VER)/$(BLD_ARCH)$(EXTRA_EXT)/l
 LIBGPOS_LIBDIR = $(LIBGPOS)/$(OBJDIR_DEFAULT)
 
 OPTIMIZER = /opt/releng/tools/emc/optimizer/$(OPTIMIZER_VER)/$(BLD_ARCH)$(EXTRA_EXT)
-LIBGPOPT_LIBDIR = $(OPTIMIZER)//libgpopt/$(OBJDIR_DEFAULT)
+LIBGPOPT_LIBDIR = $(OPTIMIZER)/libgpopt/$(OBJDIR_DEFAULT)
 LIBGPOPTUDF_LIBDIR = $(OPTIMIZER)/libgpoptudf/$(OBJDIR_DEFAULT)
 LIBNAUCRATES_LIBDIR = $(OPTIMIZER)/libnaucrates/$(OBJDIR_DEFAULT)
+
+LIBSTDC++_BASEDIR = /opt/releng/tools/gnu/libstdc/$(LIBSTDC++_VER)/$(BLD_ARCH)
+
+ifeq "$(BLD_ARCH)" "osx105_x86"
+LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib
+endif
+
+ifeq "$(BLD_ARCH)" "rhel5_x86_32"
+LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib
+endif
+
+ifeq "$(BLD_ARCH)" "rhel5_x86_64"
+LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib64
+endif
+
+ifeq "$(BLD_ARCH)" "suse10_x86_64"
+LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib64
+endif
+
+ifeq "$(BLD_ARCH)" "sol10_x86_32"
+LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib
+endif
+
+ifeq "$(BLD_ARCH)" "sol10_x86_64"
+LIBSTDC++_LIBDIR = $(LIBSTDC++_BASEDIR)/lib/amd64
+endif
 
 ## ---------------------------------------
 ## R-Project support

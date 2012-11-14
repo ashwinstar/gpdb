@@ -725,6 +725,13 @@ ifeq "$(INSTLOC)" ""
 INSTLOC=$(GPDIR)
 endif
 
+# define build flags for GP Optimizer UDFs library
+ifeq (Darwin, $(BLD_OS))
+	GPOPT_UDF_FLAGS := -m32 -dynamiclib -flat_namespace -undefined dynamic_lookup
+else
+	GPOPT_UDF_FLAGS := -m64 -shared
+endif
+
 VERSION:=$(shell [ -f VERSION ] && perl -pe 's, ,-,g' VERSION)
 
 ifeq "$(findstring win,$(BLD_ARCH))" "win"
@@ -1270,6 +1277,24 @@ endif
 	# Copy glider stack trace capture tool
 	-cp -rp $(BLD_THIRDPARTY_BIN_DIR)/glider $(INSTLOC)/sbin/
 
+	# Copy GP Optimizer libraries 
+	echo "Copying Orca libraries";
+	for b in libnaucrates libgpopt; do \
+		rm -f $(INSTLOC)/lib/$$b.$(LDSFX); \
+		echo "Copying $$b"; \
+		cp  $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(INSTLOC)/lib ; \
+	done
+	rm -f $(INSTLOC)/lib/libgpos.$(LDSFX);
+	cp $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX) $(INSTLOC)/lib;
+	rm -f $(INSTLOC)/lib/libxerces-c-3.1.$(LDSFX);
+	cp $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(INSTLOC)/lib;	
+	cd $(LIBSTDC++_LIBDIR); tar cvf - * | (cd $(INSTLOC)/lib; tar xfp -)
+
+	# Create GP Optimizer UDFs library  
+	echo "Create GP Optimizer UDFs library";
+	rm -f $(INSTLOC)/lib/libgpoptudf.$(LDSFX);
+	g++ $(GPOPT_UDF_FLAGS) -L$(INSTLOC)/lib -lgpos -lnaucrates -lgpopt -o $(INSTLOC)/lib/libgpoptudf.$(LDSFX)  ./cdb-pg/src/backend/gpopt/utils/funcs.o ;
+
 greenplum_path:
 	mkdir -p $(INSTLOC)
 	unset LIBPATH; \
@@ -1492,34 +1517,14 @@ endif
 ## and Linux
 ## ----------------------------------------------------------------------
 
-GPOPTUTILS_NAMESPACE = gpoptutils
-
-PGDATABASE := template1
-
-install_udfs: 
-	for b in libnaucrates libgpopt libgpoptudf; do \
-		rm -f $(INSTLOC)/lib/$$b.$(LDSFX); \
-		echo "Linking $$b"; \
-		ln -s $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(INSTLOC)/lib ; \
-	done
-	rm -f $(INSTLOC)/lib/libgpos.$(LDSFX);
-	ln -s $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX) $(INSTLOC)/lib;
-	rm -f $(INSTLOC)/lib/libxerces-c-3.1.$(LDSFX);
-	ln -s $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(INSTLOC)/lib;
-	source $(INSTLOC)/greenplum_path.sh
-	sed -e "s|%%CURRENT_DIRECTORY%%|$${GPHOME}/lib|g; s|%%GPOPTUTILS_NAMESPACE%%|${GPOPTUTILS_NAMESPACE}|g; s|%%EXT%%|$(LDSFX)|g" $(OPTIMIZER)/libgpoptudf/examples/load.sql.in > /tmp/load.sql
-	psql $(PGDATABASE) -a -f /tmp/load.sql
-
 create_orca_installer:
 	rm -rf $(BLD_TOP)/orca_tmp
 	mkdir -p $(BLD_TOP)/orca_tmp
-	for b in libnaucrates libgpopt libgpoptudf; do \
-		rm -f $(INSTLOC)/lib/$$b.$(LDSFX); \
+	for b in libnaucrates libgpopt; do \
 		cp $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(BLD_TOP)/orca_tmp; \
 	done
 	cp $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX)  $(BLD_TOP)/orca_tmp
 	cp $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(BLD_TOP)/orca_tmp
-	cp $(OPTIMIZER)/libgpoptudf/examples/load.sql.in $(BLD_TOP)/orca_tmp
 	tar zcvf $(BLD_TOP)/orca.tgz -C $(BLD_TOP)/orca_tmp .
 	sed \
 	  -e "s|%%BUILD_NUMBER%%|$${BUILD_NUMBER:=99999}|g" \

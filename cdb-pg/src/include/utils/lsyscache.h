@@ -60,6 +60,11 @@ extern Oid	get_commutator(Oid opno);
 extern Oid	get_negator(Oid opno);
 extern RegProcedure get_oprrest(Oid opno);
 extern RegProcedure get_oprjoin(Oid opno);
+extern char *get_trigger_name(Oid triggerid);
+extern Oid get_trigger_relid(Oid triggerid);
+extern Oid get_trigger_funcid(Oid triggerid);
+extern int32 get_trigger_type(Oid triggerid);
+extern bool trigger_enabled(Oid triggerid);
 extern char *get_func_name(Oid funcid);
 extern Oid	get_func_namespace(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
@@ -135,7 +140,15 @@ extern bool function_exists(Oid oid);
 extern bool operator_exists(Oid oid);
 extern bool aggregate_exists(Oid oid);
 extern bool attname_exists(Oid relid, const char *attname);
+extern bool trigger_exists(Oid oid);
 extern List *get_relation_keys(Oid relid);
+
+extern bool check_constraint_exists(Oid oidCheckconstraint);
+extern List *get_check_constraint_oids(Oid relid);
+extern char *get_check_constraint_name(Oid oidCheckconstraint);
+extern Node *get_check_constraint_expr_tree(Oid oidCheckconstraint);
+Oid get_check_constraint_relid(Oid oidCheckconstraint);
+
 #define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
 
 #define TypeIsToastable(typid)	(get_typstorage(typid) != 'p')

@@ -134,6 +134,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 	PlannedStmt   *newnode = makeNode(PlannedStmt);
 
 	COPY_SCALAR_FIELD(commandType);
+	COPY_SCALAR_FIELD(planGen);
 	COPY_SCALAR_FIELD(canSetTag);
 	COPY_SCALAR_FIELD(transientPlan);
 
@@ -995,6 +996,88 @@ _copyMotion(const Motion *from)
 	
 	return newnode;
 }
+
+/*
+ * _copyDML
+ */
+static DML *
+_copyDML(const DML *from)
+{
+	DML *newnode = makeNode(DML);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+
+	COPY_SCALAR_FIELD(scanrelid);
+	COPY_SCALAR_FIELD(oidColIdx);
+	COPY_SCALAR_FIELD(actionColIdx);
+	COPY_SCALAR_FIELD(ctidColIdx);
+		
+	return newnode;
+}
+
+/*
+ * _copySplitUpdate
+ */
+static SplitUpdate *
+_copySplitUpdate(const SplitUpdate *from)
+{
+	SplitUpdate *newnode = makeNode(SplitUpdate);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+
+	COPY_NODE_FIELD(insertColIdx);
+	COPY_NODE_FIELD(deleteColIdx);
+	COPY_SCALAR_FIELD(actionColIdx);
+	COPY_SCALAR_FIELD(ctidColIdx);
+		
+	return newnode;
+}
+
+/*
+ * _copyRowTriggerOp
+ */
+static RowTriggerOp *
+_copyRowTriggerOp(const RowTriggerOp *from)
+{
+	RowTriggerOp *newnode = makeNode(RowTriggerOp);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+
+	COPY_SCALAR_FIELD(relid);
+	COPY_SCALAR_FIELD(eventFlags);
+	COPY_NODE_FIELD(oldValuesColIdx);
+	COPY_NODE_FIELD(newValuesColIdx);
+
+	return newnode;
+}
+
+/*
+ * _copyAssertOp
+ */
+static AssertOp *
+_copyAssertOp(const AssertOp *from)
+{
+	AssertOp *newnode = makeNode(AssertOp);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyPlanFields((Plan *) from, (Plan *) newnode);
+
+	COPY_SCALAR_FIELD(errcode);
+		
+	return newnode;
+}
+
 
 /* ****************************************************************
  *					   primnodes.h copy functions
@@ -2396,6 +2479,14 @@ _copyLockingClause(const LockingClause *from)
 	COPY_NODE_FIELD(lockedRels);
 	COPY_SCALAR_FIELD(forUpdate);
 	COPY_SCALAR_FIELD(noWait);
+
+	return newnode;
+}
+
+static DMLActionExpr *
+_copyDMLActionExpr(const DMLActionExpr *from)
+{
+	DMLActionExpr *newnode = makeNode(DMLActionExpr);
 
 	return newnode;
 }
@@ -4249,6 +4340,18 @@ copyObject(const void *from)
 		case T_Motion:
 			retval = _copyMotion(from);
 			break;
+		case T_DML:
+			retval = _copyDML(from);
+			break;
+		case T_SplitUpdate:
+			retval = _copySplitUpdate(from);
+			break;
+		case T_RowTriggerOp:
+			retval = _copyRowTriggerOp(from);
+			break;
+		case T_AssertOp:
+			retval = _copyAssertOp(from);
+			break;
 
 			/*
 			 * PRIMITIVE NODES
@@ -4813,6 +4916,9 @@ copyObject(const void *from)
 			break;
 		case T_LockingClause:
 			retval = _copyLockingClause(from);
+			break;
+		case T_DMLActionExpr:
+			retval = _copyDMLActionExpr(from);
 			break;
 		case T_RangeTblEntry:
 			retval = _copyRangeTblEntry(from);

@@ -30,6 +30,7 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_statistic.h"
+#include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h"
@@ -1002,6 +1003,138 @@ get_oprjoin(Oid opno)
 		return (RegProcedure) InvalidOid;
 
 	return (RegProcedure) result;
+}
+
+/*				---------- TRIGGER CACHE ----------					 */
+
+/*
+ * get_trigger_name
+ *	  returns the name of the trigger with the given triggerid
+ *
+ * Note: returns a palloc'd copy of the string, or NULL if no such trigger
+ */
+char *
+get_trigger_name(Oid triggerid)
+{
+	char	   *result = NULL;
+	int			fetchCount;
+
+	result = caql_getcstring_plus(
+					NULL,
+					&fetchCount,
+					NULL,
+					cql("SELECT tgname FROM pg_trigger "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(triggerid)));
+
+	if (!fetchCount)
+		return NULL;
+
+	return result;
+}
+
+/*
+ * get_trigger_relid
+ *		Given trigger id, return the trigger's relation oid
+ */
+Oid
+get_trigger_relid(Oid triggerid)
+{
+	Oid			result;
+	int			fetchCount;
+
+	result  = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT tgrelid FROM pg_trigger "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(triggerid)));
+
+	if (!fetchCount)
+		return InvalidOid;
+
+	return result;
+}
+
+/*
+ * get_trigger_funcid
+ *		Given trigger id, return the trigger's function oid
+ */
+Oid
+get_trigger_funcid(Oid triggerid)
+{
+	Oid			result;
+	int			fetchCount;
+
+	result  = caql_getoid_plus(
+			NULL,
+			&fetchCount,
+			NULL,
+			cql("SELECT tgfoid FROM pg_trigger "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(triggerid)));
+
+	if (!fetchCount)
+		return InvalidOid;
+
+	return result;
+}
+
+/*
+ * get_trigger_type
+ *		Given trigger id, return the trigger's type
+ */
+int32
+get_trigger_type(Oid triggerid)
+{
+	HeapTuple	tp;
+	cqContext  *pcqCtx;
+	int32		result = -1;
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_trigger "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(triggerid)));
+
+	tp = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for trigger %u", triggerid);
+
+	result = ((Form_pg_trigger) GETSTRUCT(tp))->tgtype;
+
+	caql_endscan(pcqCtx);
+	return result;
+}
+
+/*
+ * trigger_enabled
+ *		Given trigger id, return the trigger's enabled flag
+ */
+bool
+trigger_enabled(Oid triggerid)
+{
+	HeapTuple	tp;
+	bool		result;
+	cqContext  *pcqCtx;
+
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_trigger "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(triggerid)));
+
+	tp = caql_getnext(pcqCtx);
+
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for trigger %u", triggerid);
+
+	result = ((Form_pg_trigger) GETSTRUCT(tp))->tgenabled;
+
+	caql_endscan(pcqCtx);
+	return result;
 }
 
 /*				---------- FUNCTION CACHE ----------					 */
@@ -3163,6 +3296,20 @@ attname_exists(Oid relid, const char *attname)
 }
 
 /*
+ * trigger_exists
+ *	  Is there a trigger with the given oid
+ */
+bool
+trigger_exists(Oid oid)
+{
+	return (caql_getcount(
+					NULL,
+					cql("SELECT COUNT(*) FROM pg_trigger "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(oid))) > 0);
+}
+
+/*
  * get_relation_keys
  *	  Return a list of relation keys
  */
@@ -3217,4 +3364,141 @@ get_relation_keys(Oid relid)
 	caql_endscan(pcqCtx);
 
 	return keys;
+}
+
+/*
+ * check_constraint_exists
+ *	  Is there a check constraint with the given oid
+ */
+bool
+check_constraint_exists(Oid oidCheckconstraint)
+{
+	return (caql_getcount(
+					NULL,
+					cql("SELECT COUNT(*) FROM pg_constraint "
+						" WHERE oid = :1 ",
+						ObjectIdGetDatum(oidCheckconstraint))) > 0);
+}
+
+/*
+ * get_check_constraint_relid
+ *		Given check constraint id, return the check constraint's relation oid
+ */
+Oid
+get_check_constraint_relid(Oid oidCheckconstraint)
+{
+	Oid	result = InvalidOid;
+	int	iFetchCount = 0;
+
+	result  = caql_getoid_plus(
+			NULL,
+			&iFetchCount,
+			NULL,
+			cql("SELECT conrelid FROM pg_constraint "
+				" WHERE oid = :1 ",
+				ObjectIdGetDatum(oidCheckconstraint)));
+
+	if (0 == iFetchCount)
+	{
+		return InvalidOid;
+	}
+
+	return result;
+}
+
+/*
+ * get_check_constraint_oids
+ *	 Extract all check constraint oid for a given relation.
+ */
+List *
+get_check_constraint_oids(Oid oidRel)
+{
+	List *plConstraints = NIL;
+	HeapTuple htup = NULL;
+	cqContext *pcqCtx = NULL;
+
+	// lookup constraints for relation from the catalog table
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM pg_constraint "
+				" WHERE conrelid = :1 ",
+				ObjectIdGetDatum(oidRel)));
+
+	while (HeapTupleIsValid(htup = caql_getnext(pcqCtx)))
+	{
+		Form_pg_constraint contuple = (Form_pg_constraint) GETSTRUCT(htup);
+
+		// only consider check constraints
+		if (CONSTRAINT_CHECK != contuple->contype)
+		{
+			continue;
+		}
+
+		plConstraints = lappend_oid(plConstraints, HeapTupleGetOid(htup));
+	}
+
+	caql_endscan(pcqCtx);
+
+	return plConstraints;
+}
+
+/*
+ * get_check_constraint_name
+ *        returns the name of the check constraint with the given oidConstraint.
+ *
+ * Note: returns a palloc'd copy of the string, or NULL if no such constraint.
+ */
+char *
+get_check_constraint_name(Oid oidCheckconstraint)
+{
+	char *szResult = NULL;
+	int iFetchCount = 0;
+	szResult = caql_getcstring_plus
+				(
+				NULL,
+				&iFetchCount,
+				NULL,
+				cql("SELECT conname FROM pg_constraint "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oidCheckconstraint)
+					)
+				);
+
+	if (0 == iFetchCount)
+	{
+		return NULL;
+	}
+
+	return szResult;
+}
+
+/*
+ * get_check_constraint_expr_tree
+ *        returns the expression node tree representing the check constraint
+ *        with the given oidConstraint.
+ *
+ * Note: returns a palloc'd expression node tree, or NULL if no such constraint.
+ */
+Node *
+get_check_constraint_expr_tree(Oid oidCheckconstraint)
+{
+	char *szResult = NULL;
+	int iFetchCount = 0;
+	szResult = caql_getcstring_plus
+				(
+				NULL,
+				&iFetchCount,
+				NULL,
+				cql("SELECT conbin FROM pg_constraint "
+					" WHERE oid = :1 ",
+					ObjectIdGetDatum(oidCheckconstraint)
+					)
+				);
+
+	if (0 == iFetchCount)
+	{
+		return NULL;
+	}
+
+	return stringToNode(szResult);
 }
