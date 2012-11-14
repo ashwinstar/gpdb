@@ -92,10 +92,6 @@ typedef enum NodeTag
 	T_ShareInputScan,
 	T_Window,
 	T_Repeat,
-	T_DML,
-	T_SplitUpdate,
-	T_RowTriggerOp,
-	T_AssertOp,
 	T_Plan_End,
 	/* this one isn't a subclass of Plan: */
 	T_PlanInvalItem,
@@ -148,10 +144,6 @@ typedef enum NodeTag
 	T_ShareInputScanState,
 	T_WindowState,
 	T_RepeatState,
-	T_DMLState,
-	T_SplitUpdateState,
-	T_RowTriggerOpState,
-	T_AssertOpState,
 	T_PlanState_End,
 
 	/*
@@ -206,7 +198,6 @@ typedef enum NodeTag
 	T_IntoClause,
     T_AggOrder,
 	T_PercentileExpr,
-	T_DMLActionExpr,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)

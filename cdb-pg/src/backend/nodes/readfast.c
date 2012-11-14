@@ -407,14 +407,6 @@ _readPercentileExpr(const char ** str)
 	READ_DONE();
 }
 
-static DMLActionExpr *
-_readDMLActionExpr(const char ** str)
-{
-	READ_LOCALS(DMLActionExpr);
-
-	READ_DONE();
-}
-
 /*
  * _readRowMarkClause
  */
@@ -2736,7 +2728,6 @@ _readPlannedStmt(const char ** str)
 {
 	READ_LOCALS(PlannedStmt);
 	READ_ENUM_FIELD(commandType, CmdType);
-	READ_ENUM_FIELD(planGen, PlanGenerator);
 	READ_BOOL_FIELD(canSetTag);
 	READ_BOOL_FIELD(transientPlan);
 	READ_NODE_FIELD(planTree);
@@ -3428,76 +3419,6 @@ _readMotion(const char ** str)
 }
 
 /*
- * _readDML
- */
-static DML *
-_readDML(const char ** str)
-{
-	READ_LOCALS(DML);
-
-	READ_UINT_FIELD(scanrelid);
-	READ_INT_FIELD(oidColIdx);
-	READ_INT_FIELD(actionColIdx);
-	READ_INT_FIELD(ctidColIdx);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-/*
- * _readSplitUpdate
- */
-static SplitUpdate *
-_readSplitUpdate(const char ** str)
-{
-	READ_LOCALS(SplitUpdate);
-
-	READ_NODE_FIELD(insertColIdx);
-	READ_NODE_FIELD(deleteColIdx);
-	READ_INT_FIELD(actionColIdx);
-	READ_INT_FIELD(ctidColIdx);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-/*
- * _readRowTriggerOp
- */
-static RowTriggerOp *
-_readRowTriggerOp(const char ** str)
-{
-	READ_LOCALS(RowTriggerOp);
-
-	READ_INT_FIELD(relid);
-	READ_INT_FIELD(eventFlags);
-	READ_NODE_FIELD(oldValuesColIdx);
-	READ_NODE_FIELD(newValuesColIdx);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-/*
- * _readAssertOp
- */
-static AssertOp *
-_readAssertOp(const char ** str)
-{
-	READ_LOCALS(AssertOp);
-
-	READ_UINT_FIELD(errcode);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_DONE();
-}
-
-
-/*
  * _readVacuumStmt
  */
 static VacuumStmt *
@@ -4034,18 +3955,6 @@ readNodeBinary(const char ** str)
 			case T_Motion:
 				return_value = _readMotion(str);
 				break;
-			case T_DML:
-				return_value = _readDML(str);
-				break;
-			case T_SplitUpdate:
-				return_value = _readSplitUpdate(str);
-				break;
-			case T_RowTriggerOp:
-				return_value = _readRowTriggerOp(str);
-				break;
-			case T_AssertOp:
-				return_value = _readAssertOp(str);
-				break;
 			case T_Alias:
 				return_value = _readAlias(str);
 				break;
@@ -4467,9 +4376,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_PercentileExpr:
 				return_value = _readPercentileExpr(str);
-				break;
-			case T_DMLActionExpr:
-				return_value = _readDMLActionExpr(str);
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause(str);

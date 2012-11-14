@@ -55,17 +55,12 @@ endif
 BLD_CC=gcc
 osx106_x86_CC=gcc
 osx105_x86_CC=gcc
-
+osx104_x86_CC=gcc-4.0
 ifneq "$($(BLD_ARCH)_CC)" ""
 BLD_CC=$($(BLD_ARCH)_CC)
 export CC=$(BLD_CC)
 export CPP=$(subst gcc,cpp,$(BLD_CC))
 export CXX=$(subst gcc,g++,$(BLD_CC))
-endif
-
-sol10_x86_64_CXX=g++ -m64
-ifneq "$($(BLD_ARCH)_CXX)" ""
-export CXX=$($(BLD_ARCH)_CXX)
 endif
 
 # take over the path

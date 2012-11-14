@@ -109,9 +109,6 @@ static List *make_subplanTargetList(PlannerInfo *root, List *tlist,
 					   AttrNumber **groupColIdx, bool *need_tlist_eval);
 static List *register_ordered_aggs(List *tlist, Node *havingqual, List *sub_tlist);
 
-// GP optimizer entry point
-extern PlannedStmt *PplstmtOptimize(Query *parse);
-
 typedef struct
 {
 	List *tlist;
@@ -143,6 +140,52 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
 static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *limitOffset, int64 offset_est);
 bool is_dummy_plan(Plan *plan);
 static void fix_old_scatterclause(Query *parse);
+
+#ifdef __darwin__
+#define OPT_LIB "libgpoptudf.dylib"
+#else
+#define OPT_LIB "libgpoptudf.so"
+#endif
+
+/**
+ * Invoke the optimizer locally. Explicitly load the shared library, call the
+ * optimize task, retrieve the planned statement and close the shared library.
+ */
+static PlannedStmt *optimize_local(Query *parse)
+{
+	Assert(parse);
+
+	void *libHandle = dlopen(OPT_LIB, RTLD_NOW);
+	if (!libHandle)
+	{
+		if (gp_log_optimizer)
+		{
+			elog(NOTICE, "unable to load optimizer library");
+		}
+		return NULL;
+	}
+
+	typedef PlannedStmt * (*opt) (Query *);
+
+	opt orca = (opt ) dlsym(libHandle, "orca");
+
+	char *error = NULL;
+	if ((error = dlerror()) != NULL)
+	{
+		if (gp_log_optimizer)
+		{
+			elog(NOTICE, "unable to load orca function from library %s", error);
+		}
+		return NULL;
+	}
+
+	PlannedStmt *result = NULL;
+
+	result = (* orca) (parse);
+
+	dlclose(libHandle);
+	return result;
+}
 
 
 /**
@@ -195,7 +238,7 @@ planner(Query *parse, int cursorOptions,
 
 		if (gp_opt_local)
 		{
-			result = PplstmtOptimize(pqueryCopy);
+			result = optimize_local(pqueryCopy);
 		}
 		else
 		{

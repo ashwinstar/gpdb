@@ -34,12 +34,6 @@ typedef struct DirectDispatchInfo
     List *contentIds;
 } DirectDispatchInfo;
 
-typedef enum PlanGenerator
-{
-	PLANGEN_PLANNER,			/* plan produced by the planner*/
-	PLANGEN_OPTIMIZER,			/* plan produced by the optimizer*/
-} PlanGenerator;
-
 /* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
@@ -58,8 +52,6 @@ typedef struct PlannedStmt
 		
 		CmdType		commandType;	/* select|insert|update|delete */
 		
-		PlanGenerator	planGen;		/* optimizer generation */
-	
 		bool		canSetTag;		/* do I set the command result tag? */
 		
 		bool		transientPlan;	/* redo plan when TransactionXmin changes? */
@@ -1078,61 +1070,6 @@ typedef struct Motion
 	Oid			*sortOperators;		/* OID of operators to sort them by */
 } Motion;
 
-/*
- * DML Node
- */
-typedef struct DML
-{
-	
-	Plan		plan;				
-	Index		scanrelid;		/* index into the range table */
-	AttrNumber	oidColIdx;		/* index of table oid into the target list */
-	AttrNumber	actionColIdx;	/* index of action column into the target list */
-	AttrNumber	ctidColIdx;		/* index of ctid column into the target list */
-
-} DML;
-
-/*
- * SplitUpdate Node
- *
- */
-typedef struct SplitUpdate
-{
-	
-	Plan		plan;				
-	AttrNumber	actionColIdx;		/* index of action column into the target list */
-	AttrNumber	ctidColIdx;		/* index of ctid column into the target list */
-	List		*insertColIdx;		/* list of columns to INSERT into the target list */
-	List		*deleteColIdx;		/* list of columns to DELETE into the target list */
-
-} SplitUpdate;
-
-/*
- * AssertOp Node
- *
- */
-typedef struct AssertOp
-{
-	
-	Plan		plan;
-	unsigned int	errcode;		/* Error message code to process if assertion fails */
-
-} AssertOp;
-
-/*
- * RowTriggerOp Node
- *
- */
-typedef struct RowTriggerOp
-{
-
-	Plan		plan;
-	Oid			relid;				/* OID of target relation */
-	int 		eventFlags;			/* TriggerEvent bit flags (see trigger.h).*/
-	List		*oldValuesColIdx;	/* list of old columns */
-	List		*newValuesColIdx;	/* list of new columns */
-
-} RowTriggerOp;
 
 /*
  * Plan invalidation info
