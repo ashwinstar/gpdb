@@ -88,7 +88,7 @@ clean: $(patsubst %,%-clean,$(TARGETS))
 
 .PHONY:
 %-clean:
-	rm -f $*.t
+	rm -f $*.t $*_test.o
 
 .PHONY:
 clean-mock: $(patsubst %,%-clean-mock,$(TARGETS))
