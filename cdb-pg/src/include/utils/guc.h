@@ -338,6 +338,7 @@ extern bool	gp_opt_parallel;
 extern bool	gp_opt_local;
 extern int  gp_opt_retries;
 extern bool  gp_opt_xforms[GPOPT_XFORMS];
+extern char *gp_opt_search_strategy_path;
 
 #if USE_EMAIL
 extern char  *gp_email_smtp_server;
