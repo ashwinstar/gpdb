@@ -335,6 +335,7 @@ export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$(BLD_LD_LIBRARY_PATH)
 # how much of GPDB to build by platform (default is "full")
 rhel4_x86_64_GPDB_BUILDSET=partial
 rhel4_x86_32_GPDB_BUILDSET=partial
+rhel5_x86_32_GPDB_BUILDSET=partial
 aix5_ppc_64_GPDB_BUILDSET=partial
 aix5_ppc_32_GPDB_BUILDSET=partial
 sol10_x86_32_GPDB_BUILDSET=partial
@@ -1277,6 +1278,7 @@ endif
 	# Copy glider stack trace capture tool
 	-cp -rp $(BLD_THIRDPARTY_BIN_DIR)/glider $(INSTLOC)/sbin/
 
+ifeq "$(findstring win,$(BLD_ARCH))" "win"
 	# Copy GP Optimizer libraries 
 	echo "Copying Orca libraries";
 	for b in libnaucrates libgpopt; do \
@@ -1294,6 +1296,7 @@ endif
 	echo "Create GP Optimizer UDFs library";
 	rm -f $(INSTLOC)/lib/libgpoptudf.$(LDSFX);
 	g++ $(GPOPT_UDF_FLAGS) -L$(INSTLOC)/lib -lgpos -lnaucrates -lgpopt -o $(INSTLOC)/lib/libgpoptudf.$(LDSFX)  ./cdb-pg/src/backend/gpopt/utils/funcs.o ;
+endif
 
 greenplum_path:
 	mkdir -p $(INSTLOC)
