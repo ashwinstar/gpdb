@@ -24,6 +24,14 @@ else
         echo "FATAL: Problem exapanding tarball (${FILE})"
         exit 1
     fi
+
+    ##
+    ## Replace symlinks with actual files.  This is required by the
+    ## cleancache command.  The java directory deletion has problems
+    ## removing symbolic links.
+    ##
+
+    find ${ARTIFACT_DIR}/.. -type l -exec cp {} {}.tmp \; -exec rm {} \; -exec mv {}.tmp {} \;
 fi
 
 ## ----------------------------------------------------------------------

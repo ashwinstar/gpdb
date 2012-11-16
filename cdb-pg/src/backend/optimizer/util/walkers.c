@@ -138,7 +138,6 @@ expression_tree_walker(Node *node,
 		case T_SetToDefault:
 		case T_RangeTblRef:
 		case T_OuterJoinInfo:
-		case T_DMLActionExpr:
 			/* primitive node types with no expression subnodes */
 			break;
 		case T_Aggref:
@@ -1111,18 +1110,6 @@ plan_tree_walker(Node *node,
 			 */
 			break;
 
-		case T_DML:
-		case T_SplitUpdate:
-		case T_RowTriggerOp:
-		case T_AssertOp:
-
-			if (walk_plan_node_fields((Plan *) node, walker, context))
-			{
-				return true;
-			}
-			
-			break;
-			
 			/*
 			 * Query nodes are handled by the Postgres query_tree_walker. We
 			 * just use it without setting any ignore flags.  The caller must
