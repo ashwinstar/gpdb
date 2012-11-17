@@ -217,14 +217,12 @@ typedef struct WindowStatePerLevelData
 	 * This is used, together with range_edge_zero, to check whether
 	 * a delayed RANGE frame edge is negative.
 	 */
-	Oid trail_range_edge_ordering_oper;
-	Oid lead_range_edge_ordering_oper;
+	Oid range_edge_ordering_oper;
 
 	/*
 	 * The datum to represent the RANGE edge value "0"
 	 */
-	Datum trail_range_edge_zero;
-	Datum lead_range_edge_zero;
+	Datum range_edge_zero;
 
 	/* The frame buffer to buffer the intermediate results for
 	 * the functions in this level key.
@@ -4453,8 +4451,8 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 							 Datum *p_request_value,
 							 bool is_lead_edge)
 {
-	Oid edge_ordering_oper;
-	Datum edge_zero;
+	Oid edge_ordering_oper = level_state->range_edge_ordering_oper;
+	Datum edge_zero = level_state->range_edge_zero;
 	WindowFrameBuffer frame_buffer = level_state->frame_buffer;
 	NTupleStorePos pos;
 	bool found;
@@ -4463,16 +4461,6 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 	Assert(EDGE_IS_DELAYED(edge));
 	Assert(level_state->numSortCols == 1);
 
-	if (is_lead_edge)
-	{
-		edge_ordering_oper = level_state->lead_range_edge_ordering_oper;
-		edge_zero = level_state->lead_range_edge_zero;
-	}
-	else
-	{
-		edge_ordering_oper = level_state->trail_range_edge_ordering_oper;
-		edge_zero = level_state->trail_range_edge_zero;
-	}
 	/* Compute the new edge value */
 	*p_request_value = 
 		get_delay_range_edge(edge, edge_expr, edge_ordering_oper,
@@ -5725,19 +5713,18 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	Expr *varexpr;
 	Oid exprrestype;
 	Oid ltype, rtype;
-	HeapTuple tup;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	bool isNull;
-	char *oprname;
+	Operator tup;
 	Form_pg_operator opr;
 	int32 vartypmod = desc->attrs[attnum - 1]->atttypmod;
-	cqContext *pcqCtx;
-	
+	List *names;
+
 	Insist(EDGE_IS_BOUND(edge));
 
 	ltype = desc->attrs[attnum - 1]->atttypid;
 	rtype = exprType(edge->val);
-	
+
 	varexpr = (Expr *)makeVar(0, attnum, ltype, vartypmod, 0);
 
 	expr = (Expr *)edge->val;
@@ -5769,73 +5756,39 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		(EDGE_IS_BOUND_FOLLOWING(edge) &&
 		 !level_state->col_sort_asc[0]))
 	{
-		oprname = "-";
+		names = list_make1(makeString("-"));
 	}
 	else
 	{
-		oprname = "+";
+		names = list_make1(makeString("+"));
 	}
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_operator "
-				" WHERE oprname = :1 "
-				" AND oprleft = :2 "
-				" AND oprright = :3 "
-				" AND oprnamespace = :4 ",
-				CStringGetDatum(oprname),
-				ObjectIdGetDatum(ltype),
-				ObjectIdGetDatum(rtype),
-				ObjectIdGetDatum(PG_CATALOG_NAMESPACE)));
-	
-	tup = caql_getnext(pcqCtx);
 
 	/*
-	 * If we didn't find an operator, it's probably because the user has
-	 * specified a RANGE parameter which does not have an implicit cast
-	 * to the sorting column. So, see what operator the parser found
-	 * via oper() and arrange for the LHS to be cast to that for the purpose
-	 * of the expression evaluation.
+	 * Find the operator to calculate the bound.  If ORDER BY type is
+	 * not the type the oprator desires, coerce it here.  We don't do it
+	 * in the parser because it changes the semantics of ORDER BY.  On the
+	 * other hand, the edge type should have been coerced to the right type
+	 * in the parser.
 	 */
-	if (!HeapTupleIsValid(tup))
-	{
-		HeapTuple tup2;
+	tup = oper(NULL, names, ltype, rtype, false, -1);
+	opr = ((Form_pg_operator) GETSTRUCT(tup));
 
-		List *oprlist = lappend(NIL, makeString(oprname));
-
-		tup2 = oper(NULL, oprlist, ltype, rtype, false, -1);
-
-		list_free_deep(oprlist);
-
-		opr = (Form_pg_operator) GETSTRUCT(tup2);
-
-		/* this is why we're here */
-		Insist(ltype != opr->oprleft);
-		
-		varexpr = (Expr *)coerce_to_target_type(NULL, (Node *)varexpr, 
-												ltype, opr->oprleft, vartypmod,
-												COERCION_EXPLICIT,
-												COERCE_IMPLICIT_CAST,
-												-1);
-
-		exprrestype = opr->oprresult;
-		expr = make_opclause(HeapTupleGetOid(tup2), exprrestype,
-							 false, varexpr, 
-							 (Expr *)edge->val);
-		((OpExpr *)expr)->opfuncid = opr->oprcode;
-		ReleaseOperator(tup2);
-	}
-	else
-	{
-		opr = ((Form_pg_operator) GETSTRUCT(tup));
-
-		exprrestype = opr->oprresult;
-		expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
-							 false, varexpr, 
-							 (Expr *)edge->val);
-		((OpExpr *)expr)->opfuncid = opr->oprcode;
-	}
-	caql_endscan(pcqCtx);
+	varexpr = (Expr *)
+		coerce_to_target_type(NULL, (Node *) varexpr,
+							  ltype, opr->oprleft, vartypmod,
+							  COERCION_EXPLICIT,
+							  COERCE_IMPLICIT_CAST,
+							  -1);
+	/* Should not happen */
+	if (opr->oprright != exprType(edge->val))
+		elog(ERROR, "frame edge is not the right type");
+	exprrestype = opr->oprresult;
+	expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
+						 false, varexpr,
+						 (Expr *) edge->val);
+	((OpExpr *) expr)->opfuncid = opr->oprcode;
+	list_free_deep(names);
+	ReleaseOperator(tup);
 
 	/*
 	 * If the frame edge operation returns a different type
@@ -5890,17 +5843,16 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		Datum		edge_zero;
 
 		edge_ordering = ordering_oper(rtype, false /* noError */);
-		if (is_trail)
-			level_state->trail_range_edge_ordering_oper = oprfuncid(edge_ordering);
-		else
-			level_state->lead_range_edge_ordering_oper = oprfuncid(edge_ordering);
+		level_state->range_edge_ordering_oper = oprfuncid(edge_ordering);
 
+		/*
+		 * Constructing "zero" value from string "0" is not nice, but
+		 * we don't have notion of "zero" in our catalog system yet.
+		 * See also the parser, and it works for the built-in types so far.
+		 */
 		edge_type = typeidType(rtype);
 		edge_zero = stringTypeDatum(edge_type, "0", exprTypmod(edge->val));
-		if (is_trail)
-			level_state->trail_range_edge_zero = edge_zero;
-		else
-			level_state->lead_range_edge_zero = edge_zero;
+		level_state->range_edge_zero = edge_zero;
 
 		ReleaseOperator(edge_ordering);
 		ReleaseType(edge_type);
@@ -6194,8 +6146,18 @@ init_frames(WindowState *wstate)
 			
 			else
 			{
-				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree); 
-				
+				TupleDesc desc = ExecGetResultType(wstate->ps.lefttree);
+
+				/*
+				 * If both edges are specified, their types should have been
+				 * coerced to the common type in the parser.  But just in
+				 * case, double-check if we are safe.
+				 */
+				if (EDGE_IS_BOUND(frame->trail) &&
+					EDGE_IS_BOUND(frame->lead) &&
+					exprType(frame->trail->val) != exprType(frame->lead->val))
+					elog(ERROR, "frame edge types mismatch");
+
 				/* we only need the subtraction function for bound frames */
 				if (EDGE_IS_BOUND(frame->trail))
 				{

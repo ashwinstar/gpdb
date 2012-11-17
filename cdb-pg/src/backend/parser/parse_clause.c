@@ -185,6 +185,98 @@ expr_contains_null_const(Expr *expr)
 	return expr_null_check_walker((Node *)expr, NULL);
 }
 
+/*
+ * Checks if the edge type is compatible with the ORDER BY type, and returns
+ * the coerced type if necessary.  This is supposed to be called against
+ * RANGE edge.
+ */
+static Node *
+checkFrameEdgeType(ParseState *pstate, WindowFrameEdge *e,
+				   WindowSpec *spec, Query *qry)
+{
+	Node *result_expr = e->val;
+	SortClause *sort;
+	TargetEntry *te;
+	Oid otype, rtype, newrtype, oprresult;
+	List *oprname;
+	Operator tup;
+
+	/* The caller should check this */
+	Assert(list_length(spec->order) == 1);
+	sort = (SortClause *) linitial(spec->order);
+	te = getTargetBySortGroupRef(sort->tleSortGroupRef,
+								 qry->targetList);
+	otype = exprType((Node *) te->expr);
+	rtype = exprType(e->val);
+
+	/* XXX: Reverse these if user specified DESC */
+	if (e->kind == WINDOW_BOUND_FOLLOWING)
+		oprname = list_make1(makeString("+"));
+	else
+		oprname = list_make1(makeString("-"));
+
+	tup = oper(pstate, oprname, otype, rtype, true, 0);
+
+	if (!HeapTupleIsValid(tup))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("window specification RANGE parameter type "
+						"must be coercible to ORDER BY column type"),
+								   errOmitLocation(true)));
+
+	oprresult = ((Form_pg_operator) GETSTRUCT(tup))->oprresult;
+	newrtype = ((Form_pg_operator) GETSTRUCT(tup))->oprright;
+
+	ReleaseOperator(tup);
+	list_free_deep(oprname);
+
+	if (rtype != newrtype)
+	{
+		/*
+		 * We have to coerce the RHS to the new type so that we'll be
+		 * able to trivially find an operator later on.
+		 */
+		result_expr = coerce_to_target_type(NULL,
+											e->val,
+											rtype,
+											newrtype,
+											exprTypmod(e->val),
+											COERCION_EXPLICIT,
+											COERCE_IMPLICIT_CAST,
+											-1);
+		if (!PointerIsValid(result_expr))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("type mismatch between ORDER BY and RANGE "
+							"parameter in window specification"),
+					 errhint("Operations between window specification "
+							 "the ORDER BY column and RANGE parameter "
+							 "must result in a data type which can be "
+							 "cast back to the ORDER BY column type"),
+									   errOmitLocation(true)));
+		}
+	}
+
+	if (oprresult != otype)
+	{
+		/* see if it can be coerced */
+		if (!can_coerce_type(1, &oprresult, &otype, COERCION_EXPLICIT))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid RANGE parameter"),
+					 errhint("Operations between window specification "
+							 "the ORDER BY column and RANGE parameter "
+							 "must result in a data type which can be "
+							 "cast back to the ORDER BY column type"),
+									   errOmitLocation(true)));
+
+		/* The executor will do the rest of the work */
+	}
+
+	return result_expr;
+}
+
 static void
 transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 						 WindowSpec *spec, Query *qry, bool is_rows)
@@ -220,16 +312,6 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 		}
 		else
 		{
-			TargetEntry *te;
-			Oid otype;
-			Oid rtype;
-			Oid newrtype;
-			SortClause *sort;
-			Oid oprresult;
-			List *oprname;
-			Operator tup;
-			int32 typmod;
-
 			if (list_length(spec->order) != 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
@@ -237,103 +319,25 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 								" RANGE is used in a window specification"),
 										   errOmitLocation(true)));
 
-			/* e->val should already be transformed */
-			typmod = exprTypmod(e->val);
+			e->val = checkFrameEdgeType(pstate, e, spec, qry);
 
 			if (IsA(e->val, Const))
 			{
-				Const *con = (Const *)e->val;
+				Const *con = (Const *) e->val;
+				Oid valtype = exprType(e->val);
+				Operator tup;
 
 				if (con->constisnull)
 					ereport(ERROR,
 							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 							 errmsg("RANGE parameter cannot be NULL"),
 									   errOmitLocation(true)));
-			}
 
-			sort = (SortClause *)linitial(spec->order);
-			te = getTargetBySortGroupRef(sort->tleSortGroupRef,
-										 qry->targetList);
-			otype = exprType((Node *)te->expr);
-			rtype = exprType(e->val);
-
-			/* XXX: Reverse these if user specified DESC */
-			if (e->kind == WINDOW_BOUND_FOLLOWING)
-				oprname = lappend(NIL, makeString("+"));
-			else
-				oprname = lappend(NIL, makeString("-"));
-
-			tup = oper(pstate, oprname, otype, rtype, true, 0);
-
-			if (!HeapTupleIsValid(tup))
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("window specification RANGE parameter type "
-								"must be coercible to ORDER BY column type"),
-										   errOmitLocation(true)));
-
-			oprresult = ((Form_pg_operator)GETSTRUCT(tup))->oprresult;
-			newrtype = ((Form_pg_operator)GETSTRUCT(tup))->oprright;
-			ReleaseOperator(tup);
-			list_free_deep(oprname);
-
-			if (rtype != newrtype)
-			{
-				/*
-				 * We have to coerce the RHS to the new type so that we'll be
-				 * able to trivially find an operator later on.
-				 */
-
-				/* XXX: we assume that the typmod for the new RHS type
-				 * is the same as before... is that safe?
-				 */
-				Expr *expr =
-					(Expr *)coerce_to_target_type(NULL,
-												  e->val,
-											 	  rtype,
-											 	  newrtype, typmod,
-									 			  COERCION_EXPLICIT,
-												  COERCE_IMPLICIT_CAST,
-												  -1);
-				if (!PointerIsValid(expr))
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("type mismatch between ORDER BY and RANGE "
-									"parameter in window specification"),
-							 errhint("Operations between window specification "
-									 "the ORDER BY column and RANGE parameter "
-									 "must result in a data type which can be "
-									 "cast back to the ORDER BY column type"),
-											   errOmitLocation(true)));
-				}
-				else
-					e->val = (Node *)expr;
-			}
-
-			if (oprresult != otype)
-			{
-				/* see if it can be coerced */
-				if (!can_coerce_type(1, &oprresult, &otype, COERCION_EXPLICIT))
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("invalid RANGE parameter"),
-							 errhint("Operations between window specification "
-									 "the ORDER BY column and RANGE parameter "
-									 "must result in a data type which can be "
-									 "cast back to the ORDER BY column type"),
-											   errOmitLocation(true)));
-
-				/* The executor will do the rest of the work */
-			}
-
-			if (IsA(e->val, Const))
-			{
 				/* see if RANGE parameter is negative */
-				tup = ordering_oper(newrtype, false);
+				tup = ordering_oper(valtype, false);
 				if (HeapTupleIsValid(tup))
 				{
-					Type typ = typeidType(newrtype);
+					Type typ = typeidType(valtype);
 					Oid funcoid = oprfuncid(tup);
 					Datum zero;
 					Datum result;
@@ -774,6 +778,51 @@ transformWindowClause(ParseState *pstate, Query *qry)
 									 nf->is_rows);
 			transformWindowFrameEdge(pstate, nf->lead, newspec, qry,
 									 nf->is_rows);
+
+			/*
+			 * The both edge types in RANGE should be the same type.
+			 * This coercion should come after transformWindowFrameEdge()
+			 * because we have to coerce the edge type to be compatible
+			 * with ORDER BY type before checking the common type.
+			 */
+			if (!nf->is_rows && nf->trail->val && nf->lead->val)
+			{
+				List	   *typeids = NIL;
+				Oid			trail_type, lead_type, common_type;
+				const char *context = "RANGE FRAME";
+
+				trail_type = exprType(nf->trail->val);
+				lead_type = exprType(nf->lead->val);
+				typeids = lappend_oid(typeids, trail_type);
+				typeids = lappend_oid(typeids, lead_type);
+				common_type = select_common_type(typeids, context);
+
+				nf->trail->val =
+					coerce_to_common_type(pstate,
+										  nf->trail->val,
+										  common_type,
+										  context);
+				nf->lead->val =
+					coerce_to_common_type(pstate,
+										  nf->lead->val,
+										  common_type,
+										  context);
+
+				/*
+				 * The type change may introduce missing operator
+				 * between the new edge type and ORDER BY type, here after
+				 * transformWindowFrameEdge() where we checked the operator
+				 * existence between the original type and ORDER BY type.
+				 * All built-in types should be able to find a new operator
+				 * against ORDER BY after the common type coercion, but
+				 * we double-check and error out if that's the case.
+				 */
+				nf->trail->val =
+					checkFrameEdgeType(pstate, nf->trail, newspec, qry);
+				nf->lead->val =
+					checkFrameEdgeType(pstate, nf->lead, newspec, qry);
+			}
+
 			newspec->frame = nf;
 		}
 
