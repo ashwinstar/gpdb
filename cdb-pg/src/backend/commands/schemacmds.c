@@ -253,7 +253,8 @@ RemoveSchema_internal(const char *schemaName, DropBehavior behavior,
 	namespaceId = caql_getoid(
 			NULL,
 			cql("SELECT oid FROM pg_namespace "
-				" WHERE nspname = :1 ",
+				" WHERE nspname = :1 "
+				" FOR UPDATE ",
 				CStringGetDatum(schemaName)));
 
 	if (!OidIsValid(namespaceId))

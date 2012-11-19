@@ -744,7 +744,8 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 				cql("SELECT * FROM pg_opclass "
 					" WHERE opcamid = :1 "
 					" AND opcname = :2 "
-					" AND opcnamespace = :3 ",
+					" AND opcnamespace = :3 "
+					" FOR UPDATE ",
 					ObjectIdGetDatum(amID),
 					PointerGetDatum(opcname),
 					ObjectIdGetDatum(namespaceId)));
@@ -773,7 +774,8 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 		pcqCtx = caql_beginscan(
 				NULL,
 				cql("SELECT * FROM pg_opclass "
-					" WHERE oid = :1 ",
+					" WHERE oid = :1 "
+					" FOR UPDATE ",
 					ObjectIdGetDatum(opcID1)));
 	}
 

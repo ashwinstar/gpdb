@@ -452,7 +452,8 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 			&fetchCount,
 			NULL,
 			cql("SELECT oid FROM pg_language "
-				" WHERE lanname = :1 ",
+				" WHERE lanname = :1 "
+				" FOR UPDATE ",
 				CStringGetDatum(languageName)));
 
 	if (0 == fetchCount)

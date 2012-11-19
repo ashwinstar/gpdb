@@ -166,7 +166,8 @@ ConversionDrop(Oid conversionOid, DropBehavior behavior)
 	pcqCtx = caql_beginscan(
 			NULL,
 			cql("SELECT * FROM pg_conversion "
-				" WHERE oid = :1 ",
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(conversionOid)));
 
 	tuple = caql_getnext(pcqCtx);

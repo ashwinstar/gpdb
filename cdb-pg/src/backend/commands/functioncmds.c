@@ -1157,7 +1157,8 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	pcqCtx = caql_beginscan(
 			NULL,
 			cql("SELECT * FROM pg_proc "
-				" WHERE oid = :1 ",
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(funcOid)));
 
 	tup = caql_getnext(pcqCtx);
@@ -1945,7 +1946,8 @@ DropCast(DropCastStmt *stmt)
 			NULL,
 			cql("SELECT oid FROM pg_cast "
 				" WHERE castsource = :1 "
-				" AND casttarget = :2 ",
+				" AND casttarget = :2 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(sourcetypeid),
 				ObjectIdGetDatum(targettypeid)));
 

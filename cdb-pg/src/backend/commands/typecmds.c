@@ -587,7 +587,8 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 			&fetchCount,
 			NULL,
 			cql("SELECT typnamespace FROM pg_type "
-				" WHERE oid = :1 ",
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(typeoid)));
 
 	if (!fetchCount)
@@ -1026,7 +1027,8 @@ RemoveDomain(List *names, DropBehavior behavior, bool missing_ok)
 	pcqCtx = caql_beginscan(
 			NULL,
 			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(typeoid)));
 
 	tup = caql_getnext(pcqCtx);

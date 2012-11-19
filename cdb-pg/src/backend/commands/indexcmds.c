@@ -1485,7 +1485,8 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	pcqCtx = caql_beginscan(
 			NULL,
 			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(indOid)));
 
 	tuple = caql_getnext(pcqCtx);

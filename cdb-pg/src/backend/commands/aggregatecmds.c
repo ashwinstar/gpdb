@@ -282,7 +282,14 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 	/*
 	 * Find the function tuple, do permissions and validity checks
 	 */
-	namespaceOid = get_func_namespace(procOid);
+
+	/* MPP-18891: get_func_namespace(procOid) - but with FOR UPDATE for lock */
+	namespaceOid = caql_getoid(
+			NULL,
+			cql("SELECT pronamespace FROM pg_proc "
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
+				 ObjectIdGetDatum(procOid)));
 	
 	if (!OidIsValid(namespaceOid)) /* should not happen */
 		elog(ERROR, "cache lookup failed for function %u", procOid);

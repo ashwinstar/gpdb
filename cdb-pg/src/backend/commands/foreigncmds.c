@@ -1201,7 +1201,8 @@ RemoveUserMapping(DropUserMappingStmt *stmt)
 			NULL,
 			cql("SELECT oid FROM pg_user_mapping "
 				" WHERE umuser = :1 "
-				" AND umserver = :2 ",
+				" AND umserver = :2 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(useId),
 				ObjectIdGetDatum(srv->serverid)));
 

@@ -504,7 +504,8 @@ DropTrigger(Oid relid, const char *trigname, DropBehavior behavior,
 			NULL,
 			cql("SELECT oid FROM pg_trigger "
 				" WHERE tgrelid = :1 "
-				" AND tgname = :2 ",
+				" AND tgname = :2 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(relid),
 				CStringGetDatum((char *) trigname)));
 

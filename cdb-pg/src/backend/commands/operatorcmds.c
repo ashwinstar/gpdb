@@ -255,7 +255,8 @@ RemoveOperator(RemoveFuncStmt *stmt)
 			&fetchCount,
 			NULL,
 			cql("SELECT oprnamespace FROM pg_operator "
-				" WHERE oid = :1 ",
+				" WHERE oid = :1 "
+				" FOR UPDATE ",
 				ObjectIdGetDatum(operOid)));
 
 	if (0 == fetchCount) /* should not happen */

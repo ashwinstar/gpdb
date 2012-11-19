@@ -12290,13 +12290,11 @@ pick_name_of_similar_type(TypeName *tname, int2 typlen, char typalign)
 {
 	HeapTuple	tuple;
 
-	/* XXX XXX: not sure why this is RowExclusiveLock */
 	tuple = caql_getfirst(
 			NULL,
 			cql("SELECT * FROM pg_type "
 				" WHERE typlen = :1 "
-				" AND typalign = :2 "
-				" FOR UPDATE ",
+				" AND typalign = :2 ",
 				Int16GetDatum(typlen),
 				CharGetDatum(typalign)));
 
@@ -12306,6 +12304,8 @@ pick_name_of_similar_type(TypeName *tname, int2 typlen, char typalign)
 		tname->names =
 			list_make2(makeString(get_namespace_name(typtuple->typnamespace)),
 					   makeString(pstrdup(NameStr(typtuple->typname))));
+
+		heap_freetuple(tuple);
 	}
 	else
 		tname = NULL;
