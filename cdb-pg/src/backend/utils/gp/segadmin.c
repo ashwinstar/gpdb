@@ -293,7 +293,7 @@ mirroring_sanity_check(int flags, const char *func)
 			elog(ERROR, "%s cannot be run on the master", func);
 	}
 
-	if ((flags && STANDBY_ONLY) == STANDBY_ONLY)
+	if ((flags & STANDBY_ONLY) == STANDBY_ONLY)
 	{
 		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
 			elog(ERROR, "%s requires valid GpIdentity dbid", func);
