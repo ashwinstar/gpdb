@@ -269,6 +269,7 @@ RemoveFirst(bool isQueryProc)
 
 		if (myOffset == INVALID_OFFSET)
 		{
+			freeProc = NULL;
 			break;
 		}
 		
@@ -383,7 +384,9 @@ InitProcess(bool isQueryProc)
      * its gp_session_id down to all of its qExecs.  If this is a qExec,
      * we have already received the gp_session_id from the qDisp.
      */
-    elog(DEBUG1,"InitProcess(): gp_session_id %d", gp_session_id);
+    elog(LOG,"InitProcess(): PID %d ptr %p gp_session_id %d", 
+	MyProcPid, MyProc, mppLocalProcessSerial);
+
     if (Gp_role == GP_ROLE_DISPATCH && gp_session_id == -1)
         gp_session_id = mppLocalProcessSerial;
 
