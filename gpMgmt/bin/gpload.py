@@ -1812,13 +1812,13 @@ class gpload:
 
                 # Mark this column as having no mapping, which is important
                 # for do_insert()
-                self.from_columns.append([key,d[key],None, False])
+                self.from_columns.append([quote_ident(key),d[key],None, False])
         else:
             self.from_columns = self.into_columns
             self.from_cols_from_user = False
 
         # make sure that all columns have a type
-        for name, typ, map, hasseq in self.from_columns:
+        for name, typ, mapto, hasseq in self.from_columns:
             if typ == None:
                 self.log(self.ERROR, 'column "%s" has no type ' % name +
                        'and does not appear in target table "%s"' % self.schemaTable)
@@ -2198,8 +2198,14 @@ class gpload:
         else:
             from_cols = self.from_columns
 
+        # MPP-18366: the columns of the staging table are from_cols, but with their corresponding
+		# types in the target table (to handle MAPPING issues)
+        cols = [x[0] for x in from_cols]
+        columns_for_staging = [c for c in self.into_columns if c[0] in cols]
+
         # make sure we set the correct distribution policy
         distcols = self.getconfig('gpload:output:match_columns', list)
+        distcols = map(quote_ident, distcols)
 
         # MPP-13399, CR-2227
         including_defaults = ""
@@ -2221,7 +2227,7 @@ class gpload:
             target_table_name = quote_unident(self.table)
 
             # create a string from all reuse conditions for staging tables and ancode it 
-            conditions_str = self.get_staging_conditions_string(target_table_name, from_cols, distcols)
+            conditions_str = self.get_staging_conditions_string(target_table_name, columns_for_staging, distcols)
             encoding_conditions = hashlib.md5(conditions_str).hexdigest()
 					
             sql = self.get_reuse_staging_table_query(encoding_conditions)
@@ -2249,7 +2255,7 @@ class gpload:
         # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
         # and that is, whether it's a temp table or not. In other words, is_temp_table = '' iff self.reuse_tables == True.
         sql = 'CREATE %sTABLE %s ' % (is_temp_table, self.staging_table_name)
-        cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
+        cols = map(lambda a:'%s %s' % (a[0], a[1]), columns_for_staging)
         sql += "(%s)" % ','.join(cols)
         sql += " DISTRIBUTED BY (%s)" % ', '.join(distcols)
         self.log(self.LOG, sql)
@@ -2468,6 +2474,7 @@ class gpload:
         # insert new rows to the target table
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
+        matchColumns = map(quote_ident, matchColumns)
 		
         cols = filter(lambda a:a[2] != None, self.into_columns)				
         sql = 'INSERT INTO %s ' % self.get_qualified_tablename()
