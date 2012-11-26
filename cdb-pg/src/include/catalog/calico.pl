@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 53 of calico.pl, released
- Wed Nov  7 19:51:27 2012.
+ This document describes version 54 of calico.pl, released
+ Fri Nov 16 15:05:21 2012.
 
 =head1 SYNOPSIS
 
@@ -82,8 +82,9 @@ Options:
 
 =item B<-logquery>
 
-    Turn on logging (elog) for all basic functions.  Use caqltrack.sql to
-process these statements from the logs to calculate code coverage.
+    Turn on logging (elog) for all basic functions.  Use caqltrack.sql or
+the caqltrack test suite to process these statements from the logs to
+calculate code coverage.
 
 =item B<-lockcheck>
 
@@ -98,6 +99,12 @@ process these statements from the logs to calculate code coverage.
     Normally, table locks are released at heap_close at caql_endscan.
 When this flag is set, the table lock is retained until transaction
 commit/abort.
+
+Based on the work of Dr. Richard Astley:
+ "You know the rules and so do I
+ A full commitment's what I'm thinking of
+ ...
+ Never gonna give you up"
 
 =item B<-lockblacklist>
 
@@ -325,8 +332,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '53';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1352346687';
+	$glob_glob->{_sleazy_properties}->{version} = '54';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1353107121';
 	$glob_glob->{_sleazy_properties}->{slzy_argv_str} = $slzy_argv_str;
 	
 	    die ("missing required argument for 'metadata'")
@@ -488,10 +495,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1352346687
+      "slzy_date" : 1353107121
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "53"
+   "version" : "54"
 }
 
 EOF_bigstr
@@ -544,14 +551,21 @@ Need to restructure the catalog to eliminate bloat.
 EOF_toplong
 
 	my $loglong = <<'EOF_loglong';
-Turn on logging (elog) for all basic functions.  Use caqltrack.sql to
-process these statements from the logs to calculate code coverage.
+Turn on logging (elog) for all basic functions.  Use caqltrack.sql or
+the caqltrack test suite to process these statements from the logs to
+calculate code coverage.
 EOF_loglong
 
 	my $holdlocklong = <<'EOF_holdlocklong';
 Normally, table locks are released at heap_close at caql_endscan.
 When this flag is set, the table lock is retained until transaction
 commit/abort.
+
+Based on the work of Dr. Richard Astley:
+ "You know the rules and so do I
+ A full commitment's what I'm thinking of
+ ...
+ Never gonna give you up"
 EOF_holdlocklong
 }
 # SLZY_LONG_END
@@ -3761,10 +3775,6 @@ static void caql_lockwell(cqContext		*pCtx,
 	if (!ignoreInvalidTuple && !HeapTupleIsValid(tup))
 		return;
 
-//	SET_LOCKTAG_RELATION(tag, dbid, relid);
-	/* use gp_san_configuration for now */
-	SET_LOCKTAG_RELATION(tag, dbid, GpFaultStrategyRelationId);
-
 	Oid keyoid = hashoid;
 
 	/* XXX XXX: need a check to prevent lock of invalid oid for
@@ -3774,8 +3784,9 @@ static void caql_lockwell(cqContext		*pCtx,
 	if (!OidIsValid(keyoid))
 		return;
 
-	 tag.locktag_field3 = keyoid;  /* 32 bit for Oid */
-	 tag.locktag_field4 = indexid; /* 16 bit for indexid (less than 64k) */
+	SET_LOCKTAG_CATQUERY(tag, dbid, relid, keyoid, indexid);
+//	 tag.locktag_field3 = keyoid;  /* 32 bit for Oid */
+//	 tag.locktag_field4 = indexid; /* 16 bit for indexid (less than 64k) */
 
 	 /* get a lock (and don't wait) */
     res = LockAcquire(&tag, lockmode, false, dontWait);

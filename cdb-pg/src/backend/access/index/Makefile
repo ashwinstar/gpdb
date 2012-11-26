@@ -159,7 +159,6 @@ CAQL_CQL_OTHER := $(addprefix $(top_srcdir)/,\
 jversion := 5.0
 caql_locktest_FLAGS := -lockcheck -readlock \
 -holdlock \
--logquery \
 -lwl=pg_type,pg_proc,pg_namespace,pg_operator,pg_opclass,pg_amop,pg_am,pg_amproc
 
 # NOTE: to turn on query logging, do "make caql_logquery_FLAGS=-logquery"

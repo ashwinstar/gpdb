@@ -25,18 +25,7 @@
 
 /* This must match enum LockTagType! */
 static const char *const LockTagTypeNames[] = {
-	"relation",
-	"extend",
-	"page",
-	"tuple",
-	"transactionid",
-	"resynchronize",
-	"append-only segment file",
-	"object",
-	"resource queue",
-	"database maintenance",
-	"userlock",
-	"advisory"
+LOCKTAGTYPENAMES
 };
 
 /* Working status for pg_lock_status */

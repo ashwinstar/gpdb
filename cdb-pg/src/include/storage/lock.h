@@ -170,9 +170,34 @@ typedef enum LockTagType
 	LOCKTAG_RESOURCE_QUEUE,		/* ID info for resource queue is QUEUE ID */
 	LOCKTAG_DATABASE_MAINTENANCE,	/* We are doing a database maintenance operation (e.g. REINDEX TABLE). */
 	/* ID info is DB OID */
+	LOCKTAG_CATQUERY,			/* UCS catalog query logs */
+	/* ID info for a relation is DB OID + REL OID + KEYOID + INDEXID; 
+	   DB OID = 0 if shared */
 	LOCKTAG_USERLOCK,			/* reserved for old contrib/userlock code */
+
+	/* Keep as final enum... */
 	LOCKTAG_ADVISORY			/* advisory user locks */
 } LockTagType;
+
+/* This must match enum LockTagType! 
+ * -- see LockTagTypeNames[] in lock.c, lockfuncs.c 
+ */
+#define LOCKTAGTYPENAMES \
+	"relation", \
+	"extend", \
+	"page", \
+	"tuple", \
+	"transactionid", \
+	"resynchronize", \
+	"append-only segment file", \
+	"object", \
+	"resource queue", \
+	"database maintenance", \
+	"catquery", \
+	"userlock", \
+	"advisory"
+
+
 
 /*
  * The LOCKTAG struct is defined with malice aforethought to fit into 16
@@ -276,6 +301,15 @@ typedef struct LOCKTAG
 	 (locktag).locktag_field4 = 0, \
 	 (locktag).locktag_type = LOCKTAG_DATABASE_MAINTENANCE, \
 	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
+
+#define SET_LOCKTAG_CATQUERY(locktag,dboid,reloid,keyoid,indexid)	\
+	((locktag).locktag_field1 = (dboid), \
+	 (locktag).locktag_field2 = (reloid), \
+	 (locktag).locktag_field3 = (keyoid), \
+	 (locktag).locktag_field4 = (indexid),		\
+	 (locktag).locktag_type = LOCKTAG_CATQUERY, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
+
 
 /*
  * Per-locked-object lock information:
