@@ -172,7 +172,6 @@ static int	collectComments(Archive *fout, CommentItem **items);
 static void dumpDumpableObject(Archive *fout, DumpableObject *dobj);
 static void dumpNamespace(Archive *fout, NamespaceInfo *nspinfo);
 static void dumpType(Archive *fout, TypeInfo *tinfo);
-static void dumpTypeStorageOptions(Archive *fout, TypeStorageOptions *tstorageoptions);
 static void dumpBaseType(Archive *fout, TypeInfo *tinfo);
 static void dumpDomain(Archive *fout, TypeInfo *tinfo);
 static void dumpCompositeType(Archive *fout, TypeInfo *tinfo);
@@ -2390,10 +2389,6 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			if (!postDataSchemaOnly)
 			dumpType(fout, (TypeInfo *) dobj);
 			break;
-		case DO_TYPE_STORAGE_OPTIONS:
-			if (!postDataSchemaOnly)
-				dumpTypeStorageOptions(fout, (TypeStorageOptions *) dobj);
-			break;
 		case DO_SHELL_TYPE:
 			if (!postDataSchemaOnly)
 			dumpShellType(fout, (ShellTypeInfo *) dobj);
@@ -2725,9 +2720,22 @@ dumpBaseType(Archive *fout, TypeInfo *tinfo)
 
 	appendPQExpBuffer(q, "\n);\n");
 
+	/* writes out to fout the ALTER TYPE queries to set default storage options for type */
+	if (tinfo->typoptions != NULL)
+	{
+		appendPQExpBuffer(q, "\nALTER TYPE %s SET DEFAULT ENCODING (%s);\n", tinfo->typnamestorage, tinfo->typoptions);
+
+		/* writes out the matching array type  (starting with '_') */
+		if (tinfo->typarrayoptions != NULL)
+		{
+			appendPQExpBuffer(q, "\nALTER TYPE %s SET DEFAULT ENCODING (%s);\n",
+					tinfo->typarraynamestorage, tinfo->typarrayoptions);
+		}
+	}
+
 	ArchiveEntry(fout, tinfo->dobj.catId, tinfo->dobj.dumpId,
-				 tinfo->dobj.name,
-				 tinfo->dobj.namespace->dobj.name,
+			tinfo->dobj.name,
+			tinfo->dobj.namespace->dobj.name,
 				 NULL,
 				 tinfo->rolname, false,
 				 "TYPE", q->data, delq->data, NULL,
@@ -2747,53 +2755,6 @@ dumpBaseType(Archive *fout, TypeInfo *tinfo)
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
 }
-
-
-
-/*
- * dumpTypeStorageOptions
- *     writes out to fout the ALTER TYPE queries to set default storage options for type
- */
-static void
-dumpTypeStorageOptions(Archive *fout, TypeStorageOptions *tstorageoptions)
-{
-	PQExpBuffer q;
-	PQExpBuffer delq;
-
-	q = createPQExpBuffer();
-	delq = createPQExpBuffer();
-
-	/* Set proper schema search path so regproc references list correctly */
-	selectSourceSchema(tstorageoptions->dobj.namespace->dobj.name);
-
-	appendPQExpBuffer(q, "ALTER TYPE %s ", tstorageoptions->dobj.name);
-	appendPQExpBuffer(q, " SET DEFAULT ENCODING (%s);\n", tstorageoptions->typoptions);
-
-	ArchiveEntry(	fout
-							, tstorageoptions->dobj.catId                 /* catalog ID  */
-							, tstorageoptions->dobj.dumpId                /* dump ID     */
-							, tstorageoptions->dobj.name                  /* type name   */
-							, tstorageoptions->dobj.namespace->dobj.name  /* name space  */
-							, NULL                                        /* table space */
-							, tstorageoptions->rolname                    /* owner name  */
-							, false                                       /* with oids   */
-							, "TYPE STORAGE OPTIONS"                      /* Desc        */
-							, q->data                                     /* ALTER...    */
-							, ""                                          /* Del         */
-							, NULL                                        /* Copy        */
-							, NULL                                        /* Deps        */
-							, 0                                           /* num Deps    */
-							, NULL                                        /* Dumper      */
-							, NULL                                        /* Dumper Arg  */
-							);
-
-	destroyPQExpBuffer(q);
-	destroyPQExpBuffer(delq);
-
-
-}  /* end dumpTypeStorageOptions */
-
-
 
 /*
  * dumpDomain

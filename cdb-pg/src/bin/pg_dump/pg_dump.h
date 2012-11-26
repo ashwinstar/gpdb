@@ -133,7 +133,6 @@ typedef enum
 	DO_BLOBS,
 	DO_BLOB_COMMENTS,
 	DO_EXTPROTOCOL,
-	DO_TYPE_STORAGE_OPTIONS
 } DumpableObjectType;
 
 typedef struct _dumpableObject
@@ -176,23 +175,15 @@ typedef struct _typeInfo
 	/* If it's a domain, we store links to its constraints here: */
 	int			nDomChecks;
 	struct _constraintInfo *domChecks;
-} TypeInfo;
 
-
-typedef struct _typeStorageOptions
-{
-	DumpableObject dobj;
-
-	/*
-	 * Note: dobj.name is the pg_type.typname entry.  format_type() might
-	 * produce something different than typname
-	 */
+	/* Storage options: */
 	char     *typnamespace;
 	char     *typoptions; /* storage options */
-	char     *rolname;		/* name of owner, or empty string */
-} TypeStorageOptions;
+	char     *typnamestorage; /* format_type() of typname */
+	char	 *typarrayoptions; /* storage options of matching array type */
+	char	 *typarraynamestorage; /* format_type() of typname of matching array type */
 
-
+} TypeInfo;
 
 typedef struct _shellTypeInfo
 {
@@ -496,7 +487,6 @@ extern void sortDumpableObjectsByTypeOid(DumpableObject **objs, int numObjs);
  */
 extern NamespaceInfo *getNamespaces(int *numNamespaces);
 extern TypeInfo *getTypes(int *numTypes);
-extern TypeStorageOptions *getTypeStorageOptions(int *numTypes);
 extern FuncInfo *getFuncs(int *numFuncs);
 extern AggInfo *getAggregates(int *numAggregates);
 extern ExtProtInfo *getExtProtocols(int *numExtProtocols);
