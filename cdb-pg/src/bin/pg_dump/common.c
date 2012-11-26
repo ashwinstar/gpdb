@@ -46,10 +46,12 @@ static int	numCatalogIds = 0;
  */
 static TableInfo *tblinfo;
 static TypeInfo *typinfo;
+static TypeStorageOptions *typestorageoptions;
 static FuncInfo *funinfo;
 static OprInfo *oprinfo;
 static int	numTables;
 static int	numTypes;
+static int  numTypeStorageOptions;
 static int	numFuncs;
 static int	numOperators;
 
@@ -105,6 +107,11 @@ getSchemaData(int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined types\n");
 	typinfo = getTypes(&numTypes);
+
+	/* this must be after getFuncs */
+	if (g_verbose)
+		write_msg(NULL, "reading type storage options\n");
+	typestorageoptions = getTypeStorageOptions(&numTypeStorageOptions);
 
 	/* this must be after getFuncs, too */
 	if (g_verbose)
