@@ -1278,7 +1278,7 @@ endif
 	# Copy glider stack trace capture tool
 	-cp -rp $(BLD_THIRDPARTY_BIN_DIR)/glider $(INSTLOC)/sbin/
 
-ifneq "$(findstring win,$(BLD_ARCH))" "win"
+ifneq "$(BLD_GPDB_BUILDSET)" "partial"
 	# Copy GP Optimizer libraries 
 	echo "Copying Orca libraries";
 	for b in libnaucrates libgpopt; do \
