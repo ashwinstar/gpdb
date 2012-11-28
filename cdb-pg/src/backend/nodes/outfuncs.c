@@ -334,6 +334,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_NODE_TYPE("PLANNEDSTMT");
 	
 	WRITE_ENUM_FIELD(commandType, CmdType);
+	WRITE_ENUM_FIELD(planGen, PlanGenerator);
 	WRITE_BOOL_FIELD(canSetTag);
 	WRITE_BOOL_FIELD(transientPlan);
 	
@@ -870,6 +871,67 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_INT_FIELD(segidColIdx);
 
+	_outPlanInfo(str, (Plan *) node);
+}
+
+/*
+ * _outDML
+ */
+static void
+_outDML(StringInfo str, DML *node)
+{
+	WRITE_NODE_TYPE("DML");
+
+	WRITE_UINT_FIELD(scanrelid);
+	WRITE_INT_FIELD(oidColIdx);
+	WRITE_INT_FIELD(actionColIdx);
+	WRITE_INT_FIELD(ctidColIdx);
+
+	_outPlanInfo(str, (Plan *) node);
+}
+
+/*
+ * _outSplitUpdate
+ */
+static void
+_outSplitUpdate(StringInfo str, SplitUpdate *node)
+{
+	WRITE_NODE_TYPE("SplitUpdate");
+
+	WRITE_NODE_FIELD(insertColIdx);
+	WRITE_NODE_FIELD(deleteColIdx);
+	WRITE_INT_FIELD(actionColIdx);
+	WRITE_INT_FIELD(ctidColIdx);
+	
+	_outPlanInfo(str, (Plan *) node);
+}
+
+/*
+ * _outRowTriggerOp
+ */
+static void
+_outRowTriggerOp(StringInfo str, RowTriggerOp *node)
+{
+	WRITE_NODE_TYPE("RowTriggerOp");
+
+	WRITE_INT_FIELD(relid);
+	WRITE_INT_FIELD(eventFlags);
+	WRITE_NODE_FIELD(oldValuesColIdx);
+	WRITE_NODE_FIELD(newValuesColIdx);
+
+	_outPlanInfo(str, (Plan *) node);
+}
+
+/*
+ * _outAssertOp
+ */
+static void
+_outAssertOp(StringInfo str, AssertOp *node)
+{
+	WRITE_NODE_TYPE("AssertOp");
+
+	WRITE_UINT_FIELD(errcode);
+	
 	_outPlanInfo(str, (Plan *) node);
 }
 
@@ -2972,6 +3034,12 @@ _outLockingClause(StringInfo str, LockingClause *node)
 }
 
 static void
+_outDMLActionExpr(StringInfo str, DMLActionExpr *node)
+{
+	WRITE_NODE_TYPE("DMLACTIONEXPR");
+}
+
+static void
 _outColumnDef(StringInfo str, ColumnDef *node)
 {
 	WRITE_NODE_TYPE("COLUMNDEF");
@@ -4008,6 +4076,18 @@ _outNode(StringInfo str, void *obj)
 			case T_Motion:
 				_outMotion(str, obj);
 				break;
+			case T_DML:
+				_outDML(str, obj);
+				break;
+			case T_SplitUpdate:
+				_outSplitUpdate(str, obj);
+				break;
+			case T_RowTriggerOp:
+				_outRowTriggerOp(str, obj);
+				break;
+			case T_AssertOp:
+				_outAssertOp(str, obj);
+				break;
 			case T_Alias:
 				_outAlias(str, obj);
 				break;
@@ -4617,6 +4697,10 @@ _outNode(StringInfo str, void *obj)
 
 			case T_LockingClause:
 				_outLockingClause(str, obj);
+				break;
+
+			case T_DMLActionExpr:
+				_outDMLActionExpr(str, obj);
 				break;
 
 			case T_CreateTrigStmt:

@@ -667,6 +667,7 @@ bool		gp_opt_parallel;
 bool		gp_opt_local;
 int 		gp_opt_retries;
 bool  		gp_opt_xforms[GPOPT_XFORMS] = {[0 ... GPOPT_XFORMS - 1] = false}; /* array of xforms disable flags */
+char 		*gp_opt_search_strategy_path = NULL;
 char	   *gp_idf_deduplicate_str;
 
 /* Security */
@@ -6668,6 +6669,15 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&gp_idf_deduplicate_str,
 		"auto", assign_gp_idf_deduplicate, NULL
+	},
+
+	{
+		{"gp_opt_search_strategy_path", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Sets the search strategy used by gp optimizer."),
+			NULL
+		},
+		&gp_opt_search_strategy_path,
+		"default", NULL, NULL
 	},
 
 	/* End-of-list marker */
