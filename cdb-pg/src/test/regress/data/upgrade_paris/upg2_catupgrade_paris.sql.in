@@ -691,6 +691,154 @@ COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyele
 CREATE FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) RETURNS "numeric" LANGUAGE internal IMMUTABLE STRICT AS 'linterp_Numeric' WITH (OID=6083, DESCRIPTION="linear interpolation: x, x0,y0, x1,y1"); 
 COMMENT ON FUNCTION @gpupgradeschemaname@.linear_interpolate( anyelement, anyelement, "numeric", anyelement, "numeric" ) IS 'linear interpolation: x, x0,y0, x1,y1'; 
 
+CREATE FUNCTION @gpupgradeschemaname@.next_known_frame_maker( internal ) RETURNS internal LANGUAGE internal IMMUTABLE AS 'next_known_frame_maker' WITH (OID=7699, DESCRIPTION="internal window frame maker"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known_frame_maker( internal ) IS 'internal window frame maker'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7700, DESCRIPTION="last_known for first argument type int8"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( int8, anyelement ) IS 'last_known for first argument type int8'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7701, DESCRIPTION="last_known for first argument type int4"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( int4, anyelement ) IS 'last_known for first argument type int4'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7702, DESCRIPTION="last_known for first argument type int2"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( int2, anyelement ) IS 'last_known for first argument type int2'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7703, DESCRIPTION="last_known for first argument type float8"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( float8, anyelement ) IS 'last_known for first argument type float8'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7704, DESCRIPTION="last_known for first argument type float4"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( float4, anyelement ) IS 'last_known for first argument type float4'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7705, DESCRIPTION="last_known for first argument type date"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( date, anyelement ) IS 'last_known for first argument type date'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7706, DESCRIPTION="last_known for first argument type time"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( time, anyelement ) IS 'last_known for first argument type time'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7707, DESCRIPTION="last_known for first argument type timestamp"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( timestamp, anyelement ) IS 'last_known for first argument type timestamp'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7708, DESCRIPTION="last_known for first argument type timestamptz"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( timestamptz, anyelement ) IS 'last_known for first argument type timestamptz'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7709, DESCRIPTION="last_known for first argument type timetz"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( timetz, anyelement ) IS 'last_known for first argument type timetz'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7710, DESCRIPTION="last_known for first argument type "interval""); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( "interval", anyelement ) IS 'last_known for first argument type "interval"'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7711, DESCRIPTION="last_known for first argument type "numeric""); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( "numeric", anyelement ) IS 'last_known for first argument type "numeric"'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'last_known_int64' WITH (OID=7712, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( int8, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'last_known_int32' WITH (OID=7713, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( int4, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'last_known_int16' WITH (OID=7714, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( int2, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'last_known_float8' WITH (OID=7715, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( float8, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'last_known_float4' WITH (OID=7716, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( float4, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'last_known_dateadt' WITH (OID=7717, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( date, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'last_known_timeadt' WITH (OID=7718, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( time, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'last_known_timestamp' WITH (OID=7719, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( timestamp, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'last_known_timestamptz' WITH (OID=7720, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( timestamptz, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'last_known_timetzadt' WITH (OID=7721, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( timetz, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'last_known_interval' WITH (OID=7722, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( "interval", anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.last_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'last_known_numeric' WITH (OID=7723, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.last_known( "numeric", anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7740, DESCRIPTION="next_known for first argument type int8"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( int8, anyelement ) IS 'next_known for first argument type int8'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7741, DESCRIPTION="next_known for first argument type int4"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( int4, anyelement ) IS 'next_known for first argument type int4'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7742, DESCRIPTION="next_known for first argument type int2"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( int2, anyelement ) IS 'next_known for first argument type int2'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7743, DESCRIPTION="next_known for first argument type float8"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( float8, anyelement ) IS 'next_known for first argument type float8'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7744, DESCRIPTION="next_known for first argument type float4"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( float4, anyelement ) IS 'next_known for first argument type float4'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7745, DESCRIPTION="next_known for first argument type date"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( date, anyelement ) IS 'next_known for first argument type date'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7746, DESCRIPTION="next_known for first argument type time"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( time, anyelement ) IS 'next_known for first argument type time'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7747, DESCRIPTION="next_known for first argument type timestamp"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( timestamp, anyelement ) IS 'next_known for first argument type timestamp'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7748, DESCRIPTION="next_known for first argument type timestamptz"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( timestamptz, anyelement ) IS 'next_known for first argument type timestamptz'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7749, DESCRIPTION="next_known for first argument type timetz"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( timetz, anyelement ) IS 'next_known for first argument type timetz'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7750, DESCRIPTION="next_known for first argument type "interval""); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( "interval", anyelement ) IS 'next_known for first argument type "interval"'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7751, DESCRIPTION="next_known for first argument type "numeric""); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( "numeric", anyelement ) IS 'next_known for first argument type "numeric"'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'next_known_int64' WITH (OID=7752, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( int8, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'next_known_int32' WITH (OID=7753, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( int4, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'next_known_int16' WITH (OID=7754, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( int2, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'next_known_float8' WITH (OID=7755, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( float8, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'next_known_float4' WITH (OID=7756, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( float4, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'next_known_dateadt' WITH (OID=7757, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( date, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'next_known_timeadt' WITH (OID=7758, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( time, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'next_known_timestamp' WITH (OID=7759, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( timestamp, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'next_known_timestamptz' WITH (OID=7760, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( timestamptz, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'next_known_timetzadt' WITH (OID=7761, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( timetz, anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'next_known_interval' WITH (OID=7762, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( "interval", anyelement ) IS 'internal window variant'; 
+
+CREATE FUNCTION @gpupgradeschemaname@.next_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'next_known_numeric' WITH (OID=7763, DESCRIPTION="internal window variant"); 
+COMMENT ON FUNCTION @gpupgradeschemaname@.next_known( "numeric", anyelement ) IS 'internal window variant'; 
+
+
 -- GPFusion protocol/formatter upgrade
 --	1. create formatter/protocol functions
 --	2. create the protocol
@@ -845,3 +993,47 @@ SELECT catDML(
 'UPDATE @gpupgradeschemaname@.pg_proc SET proiswin = ''t''
  WHERE oid BETWEEN 7184 AND 7193'
 );
+-- New window functions for last_known
+SELECT catDML(
+'INSERT INTO @gpupgradeschema@.pg_window VALUES
+( 7700,  ''t'', ''f'', ''f'', ''f'', 7712,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7701,  ''t'', ''f'', ''f'', ''f'', 7713,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7702,  ''t'', ''f'', ''f'', ''f'', 7714,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7703,  ''t'', ''f'', ''f'', ''f'', 7715,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7704,  ''t'', ''f'', ''f'', ''f'', 7716,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7705,  ''t'', ''f'', ''f'', ''f'', 7717,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7706,  ''t'', ''f'', ''f'', ''f'', 7718,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7707,  ''t'', ''f'', ''f'', ''f'', 7719,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7708,  ''t'', ''f'', ''f'', ''f'', 7720,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7709,  ''t'', ''f'', ''f'', ''f'', 7721,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7710,  ''t'', ''f'', ''f'', ''f'', 7722,		0,		0,		0,	''w'',	''f'',	0 ),,
+( 7711,  ''t'', ''f'', ''f'', ''f'', 7723,		0,		0,		0,	''w'',	''f'',	0 ),
+'
+);
+SELECT catDML(
+'UPDATE @gpupgradeschemaname@.pg_proc SET proiswin = ''w''
+WHERE oid BETWEEN 7700 AND 7711'
+);
+
+-- New window functions for next_known
+SELECT catDML(
+'INSERT INTO @gpupgradeschema@.pg_window VALUES
+( 7740,  ''t'', ''f'', ''f'', ''f'', 7752,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7741,  ''t'', ''f'', ''f'', ''f'', 7753,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7742,  ''t'', ''f'', ''f'', ''f'', 7754,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7743,  ''t'', ''f'', ''f'', ''f'', 7755,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7744,  ''t'', ''f'', ''f'', ''f'', 7756,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7745,  ''t'', ''f'', ''f'', ''f'', 7757,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7746,  ''t'', ''f'', ''f'', ''f'', 7758,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7747,  ''t'', ''f'', ''f'', ''f'', 7759,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7748,  ''t'', ''f'', ''f'', ''f'', 7760,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7749,  ''t'', ''f'', ''f'', ''f'', 7761,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7750,  ''t'', ''f'', ''f'', ''f'', 7762,		0,		0,		0,	''x'',	''f'',	7699 ),,
+( 7751,  ''t'', ''f'', ''f'', ''f'', 7763,		0,		0,		0,	''x'',	''f'',	7699 ),
+'
+);
+SELECT catDML(
+'UPDATE @gpupgradeschemaname@.pg_proc SET proiswin = ''x''
+WHERE oid BETWEEN 7740 AND 7751'
+);
+

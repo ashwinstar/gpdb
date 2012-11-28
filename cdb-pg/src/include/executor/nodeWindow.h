@@ -69,6 +69,9 @@ extern Datum first_value_generic(PG_FUNCTION_ARGS);
 extern Datum lag_generic(PG_FUNCTION_ARGS);
 extern Datum lead_lag_frame_maker(PG_FUNCTION_ARGS);
 extern Datum wm_frame_maker(PG_FUNCTION_ARGS);
+extern Datum last_known_generic(PG_FUNCTION_ARGS);
+extern Datum next_known_frame_maker(PG_FUNCTION_ARGS);
+extern Datum next_known_generic(PG_FUNCTION_ARGS);
 
 /* Declarations to give "outsiders" read access to private 
  * immediate window function state. */

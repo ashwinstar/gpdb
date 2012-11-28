@@ -2071,6 +2071,9 @@ typedef struct WindowState
 	int                        numlevels;
 
 	WindowStatePerLevel level_state;
+	
+	/* Where is this node allocated? */
+	MemoryContext win_context;
 
 	/* memory context for transition value processing */
 	/* XXX: we should probably have one context per level, so that we can

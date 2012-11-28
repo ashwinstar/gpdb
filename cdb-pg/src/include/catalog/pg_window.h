@@ -132,6 +132,7 @@ typedef FormData_pg_window *Form_pg_window;
 #define WINKIND_LEAD		'd'		/* Oracle LEAD function */
 #define WINKIND_LAG			'g'		/* Oracle LAG function */
 #define WINKIND_SEQUENCE_KEY	'k'	/* SEQUENCE clause sequence_key function */
+#define WINKIND_BUFFER_ARGS	'x'		/* Requires argument buffering */
 
 /* This constant for use in code, never in catalog */
 #define WINKIND_AGGREGATE	'a'		/* aggregate-based window function */
@@ -145,6 +146,7 @@ typedef FormData_pg_window *Form_pg_window;
 #define IS_LEAD_LAG(winkind) (IS_LEAD(winkind) || IS_LAG(winkind)) 
 #define IS_NTILE(winkind) ((winkind)==WINKIND_NTILE)
 #define IS_SEQUENCE_KEY(winkind) ((winkind)==WINKIND_SEQUENCE_KEY)
+#define IS_BUFFERED(winkind) ((winkind)=='x' || IS_LEAD_LAG(winkind) || IS_FIRST_LAST(winkind))
 
 
 /* ----------------
@@ -489,5 +491,33 @@ DATA(insert ( 7193  t f f f 7203		0		0		0	d	f	5082 ));
 DATA(insert ( 7076  t f f f 7077        0       0       0	k 	f	0));
 DATA(insert ( 7078  t f f f 7079		0		0		0	k 	f	0));
 DATA(insert ( 7080  t f f f 7081		0		0		0	k 	f	0));
+
+/* last_known */
+DATA(insert ( 7700  t f f f 7712        0       0       0   w   t   0 ));
+DATA(insert ( 7701  t f f f 7713        0       0       0   w   t   0 ));
+DATA(insert ( 7702  t f f f 7714        0       0       0   w   t   0 ));
+DATA(insert ( 7703  t f f f 7715        0       0       0   w   t   0 ));
+DATA(insert ( 7704  t f f f 7716        0       0       0   w   t   0 ));
+DATA(insert ( 7705  t f f f 7717        0       0       0   w   t   0 ));
+DATA(insert ( 7706  t f f f 7718        0       0       0   w   t   0 ));
+DATA(insert ( 7707  t f f f 7719        0       0       0   w   t   0 ));
+DATA(insert ( 7708  t f f f 7720        0       0       0   w   t   0 ));
+DATA(insert ( 7709  t f f f 7721        0       0       0   w   t   0 ));
+DATA(insert ( 7710  t f f f 7722        0       0       0   w   t   0 ));
+DATA(insert ( 7711  t f f f 7723        0       0       0   w   t   0 ));
+
+/* next_known */
+DATA(insert ( 7740  t f f f 7752        0       0       0   x   t   7699 ));
+DATA(insert ( 7741  t f f f 7753        0       0       0   x   t   7699 ));
+DATA(insert ( 7742  t f f f 7754        0       0       0   x   t   7699 ));
+DATA(insert ( 7743  t f f f 7755        0       0       0   x   t   7699 ));
+DATA(insert ( 7744  t f f f 7756        0       0       0   x   t   7699 ));
+DATA(insert ( 7745  t f f f 7757        0       0       0   x   t   7699 ));
+DATA(insert ( 7746  t f f f 7758        0       0       0   x   t   7699 ));
+DATA(insert ( 7747  t f f f 7759        0       0       0   x   t   7699 ));
+DATA(insert ( 7748  t f f f 7760        0       0       0   x   t   7699 ));
+DATA(insert ( 7749  t f f f 7761        0       0       0   x   t   7699 ));
+DATA(insert ( 7750  t f f f 7762        0       0       0   x   t   7699 ));
+DATA(insert ( 7751  t f f f 7763        0       0       0   x   t   7699 ));
 
 #endif   /* _PG_WINDOW_H */

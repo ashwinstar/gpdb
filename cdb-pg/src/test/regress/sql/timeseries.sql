@@ -2915,3 +2915,67 @@ select
     linear_interpolate(600::int4, 100::int4, 2000::float4, 200::int4, 2050::float4),
      2250::float4 as answer,
      2250::float4 = linear_interpolate(600::int4, 100::int4, 2000::float4, 200::int4, 2050::float4) as match ;
+
+-- Partial test of last/next known -- more to come...
+drop table if exists interpolation_test cascade;
+create table interpolation_test
+    (
+        sym text,
+        ts timestamp,
+        qty int,
+        prc float,
+        inv int
+    )
+    distributed randomly;
+insert into interpolation_test values
+    ('s000', timestamp '2012-10-01T09:00:00', 10, 10.0, 1000),
+    ('s000', timestamp '2012-10-02T09:00:00', 20, 9.5, 990),
+    ('s000', timestamp '2012-10-03T09:00:00', 30, 9.0, 970),
+    ('s000', timestamp '2012-10-04T09:00:00', 40, 8.5, 940),
+    ('s000', timestamp '2012-10-05T09:00:00', 50, 8.0, 900),
+    ('s001', timestamp '2012-10-02T09:00:00', 20, 9.5, 1000),
+    ('s002', timestamp '2012-10-03T09:00:00', 30, 9.0, 1000),
+    ('s003', timestamp '2012-10-02T09:00:00', 20, 9.5, 1000),
+    ('s003', timestamp '2012-10-03T09:00:00', 30, 9.0, 980),
+    ('s004', timestamp '2012-10-04T09:00:00', 40, 8.5, 1000),
+    ('s005', timestamp '2012-10-02T09:00:00', 20, 9.5, 1000),
+    ('s005', timestamp '2012-10-04T09:00:00', 40, 8.5, 980),
+    ('s006', timestamp '2012-10-03T09:00:00', 30, 9.0, 1000),
+    ('s006', timestamp '2012-10-04T09:00:00', 40, 8.5, 970),
+    ('s007', timestamp '2012-10-02T09:00:00', 20, 9.5, 1000),
+    ('s007', timestamp '2012-10-03T09:00:00', 30, 9.0, 980),
+    ('s007', timestamp '2012-10-04T09:00:00', 40, 8.5, 950),
+    ('s008', timestamp '2012-10-05T09:00:00', 50, 8.0, 1000),
+    ('s009', timestamp '2012-10-02T09:00:00', 20, 9.5, 1000),
+    ('s009', timestamp '2012-10-05T09:00:00', 50, 8.0, 980),
+    ('s010', timestamp '2012-10-03T09:00:00', 30, 9.0, 1000),
+    ('s010', timestamp '2012-10-05T09:00:00', 50, 8.0, 970),
+    ('s011', timestamp '2012-10-02T09:00:00', 20, 9.5, 1000),
+    ('s011', timestamp '2012-10-03T09:00:00', 30, 9.0, 980),
+    ('s011', timestamp '2012-10-05T09:00:00', 50, 8.0, 950),
+    ('s012', timestamp '2012-10-04T09:00:00', 40, 8.5, 1000),
+    ('s012', timestamp '2012-10-05T09:00:00', 50, 8.0, 960),
+    ('s013', timestamp '2012-10-02T09:00:00', 20, 9.5, 1000),
+    ('s013', timestamp '2012-10-04T09:00:00', 40, 8.5, 980),
+    ('s013', timestamp '2012-10-05T09:00:00', 50, 8.0, 940),
+    ('s014', timestamp '2012-10-03T09:00:00', 30, 9.0, 1000),
+    ('s014', timestamp '2012-10-04T09:00:00', 40, 8.5, 970),
+    ('s014', timestamp '2012-10-05T09:00:00', 50, 8.0, 930);
+select
+    sym,
+    ts,
+    k,
+    qty,
+    prc,
+        last_known(ts, prc) over (q),
+        last_known(prc, ts) over (q),
+        next_known(ts, prc) over (q),
+        next_known(prc, ts) over (q),
+    inv
+from interpolation_test
+sequence q as (
+    partition by sym
+    order by ts 
+    with k every interval '1 day'
+    between timestamp '2012-09-30T09:00:00' and timestamp '2012-10-06T09:00:00'
+    );

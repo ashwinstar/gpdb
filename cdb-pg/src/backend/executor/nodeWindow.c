@@ -49,14 +49,81 @@
 /* The initial size (in bytes) for an entry in the frame buffer. */
 #define FRAMEBUFFER_ENTRY_SIZE 1024
 
+#define IS_AGG_DERIVED(funcstate) \
+	((funcstate)->isAgg)
+
+#define IS_PURE_WINDOW(funcstate) \
+    (!(funcstate)->isAgg)
+
+#define HAS_TRANSFN(funcstate) \
+	OidIsValid((funcstate)->transfn_oid)
+
+#define HAS_PRELIMFN(funcstate) \
+	OidIsValid((funcstate)->prelimfn_oid)
+
+#define HAS_INVPRELIMFN(funcstate) \
+	OidIsValid((funcstate)->invprelimfn_oid)
+
 /* Check for aggregate functions that have only transition functions,
  * but not inverse preliminary functions or preliminary functions.
  */
 #define HAS_ONLY_TRANS_FUNC(funcstate) \
-    (funcstate->isAgg && \
-     !OidIsValid(funcstate->invprelimfn_oid) && \
-	 !OidIsValid(funcstate->prelimfn_oid) && \
-     OidIsValid(funcstate->transfn_oid))
+    ( \
+		IS_AGG_DERIVED(funcstate) && \
+		!HAS_INVPRELIMFN(funcstate) && \
+		!HAS_PRELIMFN(funcstate) && \
+		HAS_TRANSFN(funcstate) \
+	 )
+
+#define IS_DEFAULT_ROW_FRAME(frame) \
+	( \
+		(frame) && 	\
+		(frame)->is_rows && \
+		(frame)->trail->kind == WINDOW_UNBOUND_PRECEDING && \
+		(frame)->lead->kind == WINDOW_CURRENT_ROW && \
+		(frame)->exclude == WINDOW_EXCLUSION_NULL \
+	) 
+
+#define IS_DEFAULT_RANGE_FRAME(frame) \
+	( \
+		(frame) && \
+		!(frame)->is_rows && \
+		(frame)->trail->kind == WINDOW_UNBOUND_PRECEDING && \
+		(frame)->lead->kind == WINDOW_CURRENT_ROW && \
+		(frame)->exclude == WINDOW_EXCLUSION_NULL \
+	)
+
+/*
+ * Should we save information about the argument types in the wrxstate for
+ * the given function?  Ultimately we'd like to retire macros that test for
+ * a kind of function and move to macros that test for a needed capability.
+ * 
+ * The macro includes the special winkind values for LEAD, LAG, FIRST_VALUE,
+ * and LAST_VALUE for backward compability.  It also tests for the new value
+ * WINKIND_LOOKAHEAD which is supposed to be a generic marker for functions
+ * 
+ */
+#define MAY_USE_ARG_TYPES(funcstate) \
+    ( \
+    	funcstate->allowframe || \
+    	funcstate->wrxstate->winkind == WINKIND_LEAD || \
+    	funcstate->wrxstate->winkind == WINKIND_LAG || \
+    	funcstate->wrxstate->winkind == WINKIND_FIRST_VALUE || \
+    	funcstate->wrxstate->winkind == WINKIND_LAST_VALUE || \
+    	funcstate->wrxstate->winkind == WINKIND_BUFFER_ARGS \
+    )
+
+/* Determine whether the supplied function needs to scan multiple entries 
+ * in the frame buffer to compute it's result.  The use is to avoid scanning
+ * the frame buffer, when it is known to be unnecessary.
+ */
+#define NEEDS_BUFFER_SCAN(funcstate) \
+	(! ( \
+		(funcstate)->trivial_frame || \
+		(funcstate)->winpeercount || \
+		( IS_AGG_DERIVED(funcstate) && HAS_INVPRELIMFN(funcstate) ) || \
+		IS_PURE_WINDOW(funcstate) ) \
+	)
 
 
 /* Macro to determine whether to use sequence semantics when determining
@@ -280,6 +347,13 @@ typedef struct WindowStatePerFunctionData
 	bool				win_value_is_null;
 	Oid					windowfn_oid;
 	FmgrInfo			windowfn;
+	/* Pointer to storage managed by pure window function implementation. 
+	 * The storage at win_pure_private (if any) is allocated in the
+	 * ExecutorContext.  Any extra storage used by the implementation is
+	 * allocated in win_pure_fn_context.
+	 */
+	void			   *win_pure_private;
+	MemoryContext		win_pure_fn_context;
 	
 	/* Aggregate-derived window function */
 	Oid					transfn_oid;
@@ -622,6 +696,12 @@ static bool hasTuplesInFrame(WindowStatePerLevel level_state,
 							 WindowState *wstate);
 static Datum first_last_value_internal(PG_FUNCTION_ARGS,
 									   bool *isnull, bool isfirstvalue);
+
+static MemoryContext win_get_private_context(WindowStatePerFunction wspf);
+static void win_clear_private_context(WindowStatePerFunction wspf);
+static void win_alloc_private(WindowStatePerFunction wspf, size_t sz);
+static void win_free_private(WindowStatePerFunction wspf);
+
 static FrameBufferEntry *createFrameBufferEntry(WindowStatePerLevel level_state);
 static void freeFrameBufferEntry(FrameBufferEntry *entry);
 static void advanceEdgeForRange(WindowStatePerLevel level_state,
@@ -972,20 +1052,32 @@ serializeFuncs(WindowStatePerLevel level_state,
 	ListCell *lc;
 	char *written_pos = (*p_serial_entry) + start_pos;
 	int serial_index = -1;
+	int index_delta = 1;
 
-	/* the value for each function. */
+	/* 
+	 * For each function at this level, do the appropriate kind of buffering. 
+	 */
 	foreach (lc, level_state->level_funcs)
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 
 		if (funcstate->trivial_frame)
 		{
-			/* ignore trivial window functions */
-			continue;
+			/* 
+			 * Trivial case: No buffering required. 
+			 */
+			index_delta = 0; /* added no attributes, not needed but tidy */
+  			continue;
 		}
+		
 		else if (funcstate->winpeercount)
 		{
-			/* functions that require peer counts. */
+			/* 
+			 * CUME_DIST case: Buffer win_value which is the row_number at the end of
+			 * the peer group. Currently, the only examples are functions that require 
+			 * peer counts.  (These may be obtained by subtracting the previous value
+			 * for the current.
+			 */
 			int16 typelen;
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
@@ -997,10 +1089,16 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   byvalue, typelen,
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
+			index_delta = 1; /* added one attribute */
 		}
+		
 		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
+			/* 
+			 * Window Transition Value case: Buffer aggTransValue (though this isn't
+			 * actually in service of an aggregate-derived window function).
+			 */
 			WindowRefExprState *wrxstate;
 			int nargs;
 			int argno = 1;
@@ -1015,18 +1113,17 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   wrxstate->argtyplen[argno],
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
+			index_delta = 1; /* added one attribute */
 		}
-		/* the function which has an inverse preliminary function or
-		 * preliminary function.
-		 */
-		else if (OidIsValid(funcstate->invprelimfn_oid) ||
-				 OidIsValid(funcstate->prelimfn_oid))
+		
+		else if ( HAS_PRELIMFN(funcstate) || HAS_INVPRELIMFN(funcstate) )
 		{
 			/*
-			 * Store number of not NULLS when the function has a 
-			 * inverse preliminary function.
+			 * Aggregate-derived Window Transition Value case:  Buffer aggTransvalue.
+			 * If the function also has inverse preliminary function, also store the
+			 * number of not NULLS.
 			 */
-			if (OidIsValid(funcstate->invprelimfn_oid))
+			if (HAS_INVPRELIMFN(funcstate))
 			{
 				written_pos = ensureSpace(p_serial_entry, p_max_size,
 										  written_pos, sizeof(uint64));
@@ -1041,10 +1138,14 @@ serializeFuncs(WindowStatePerLevel level_state,
 							   funcstate->aggTranstypeLen,
 							   p_serial_entry, p_max_size,
 							   p_len, (written_pos - *p_serial_entry));
+			index_delta = 1; /* added one attribute */
 		}
+
 		else
 		{
-			/* the general case */
+			/* 
+			 * General Case: Store the values of the function arguments. 
+			 */
 			WindowRefExprState *winref_state = funcstate->wrxstate;
 			ListCell *ref_lc;
 			Oid typid;
@@ -1052,6 +1153,7 @@ serializeFuncs(WindowStatePerLevel level_state,
 			int16 arglen;
 			
 			/* Store the input arguments */
+			index_delta = 0; /* count attributes added. */
 			foreach (ref_lc, winref_state->args)
 			{
 				ExprState *argstate = (ExprState *)lfirst(ref_lc);
@@ -1071,11 +1173,12 @@ serializeFuncs(WindowStatePerLevel level_state,
 								   byval, arglen,
 								   p_serial_entry, p_max_size,
 								   p_len, (written_pos - *p_serial_entry));
+				index_delta++; /* added another attribute. */
 			}
 		}
 
-		serial_index++;
-		funcstate->serial_index = serial_index;
+		funcstate->serial_index = serial_index + 1;
+		serial_index += index_delta;
 	}
 
 	*p_len = written_pos - *p_serial_entry;
@@ -1144,19 +1247,24 @@ deserializeFuncs(WindowStatePerLevel level_state,
 	ListCell *lc;
 	char *read_pos = start_pos;
 
-	/* the value for each function. */
+	/* For each function at this level, reconstitute the buffered values. */
 	foreach (lc, level_state->level_funcs)
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
 		WindowValue *value;
 
-		/* skip window functions with trivial frames */
 		if (funcstate->trivial_frame)
+		/* 
+		 * Trivial case: Nothing in buffer. 
+		 */
 			continue;
 
-		/* functions that require peer counts. */
 		else if (funcstate->winpeercount)
 		{
+			/* 
+			 * CUME_DIST case: Buffered value is the row_number at the end of this row's
+			 * the peer group.
+			 */
 			int16 typelen;
 			bool byvalue;
 			get_typlenbyval(CUME_DIST_PRELIM_TYPE,
@@ -1164,9 +1272,13 @@ deserializeFuncs(WindowStatePerLevel level_state,
 			value =	list_nth(func_values, funcstate->serial_index);
 			read_pos = deserializeValue(read_pos, value, byvalue, typelen);
 		}
+
 		else if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				 IS_FIRST_LAST(funcstate->wrxstate->winkind))
 		{
+			/* 
+			 * Window Transition Value case: Value was aggTransValue.
+			 */
 			WindowRefExprState *wrxstate;
 			int nargs;
 			int argno = 1;
@@ -1179,18 +1291,20 @@ deserializeFuncs(WindowStatePerLevel level_state,
 										wrxstate->argtypbyval[argno],
 										wrxstate->argtyplen[argno]);
 		}
-		else if (OidIsValid(funcstate->invprelimfn_oid) ||
-				 OidIsValid(funcstate->prelimfn_oid))
+		
+		else if ( HAS_INVPRELIMFN(funcstate) || HAS_PRELIMFN(funcstate) )
 		{
-			/* 
-			 * The function which has an inverse preliminary function.
+			/*
+			 * Aggregate-derived Window Transition Value case:  Value is aggTransvalue.
+			 * If the function also has inverse preliminary function, the value is 
+			 * preceded by the number of not NULLS.
 			 */
 			value =	list_nth(func_values, funcstate->serial_index);
 
 			/* Read number of not nulls if this function has a preliminary
 			 * function.
 			 */
-			if (OidIsValid(funcstate->invprelimfn_oid))
+			if (HAS_INVPRELIMFN(funcstate))
 			{
 				memcpy(&(value->numNotNulls), read_pos, sizeof(uint64));
 				read_pos += sizeof(uint64);
@@ -1202,7 +1316,9 @@ deserializeFuncs(WindowStatePerLevel level_state,
 		}
 		else
 		{
-			/* the general case */
+			/* 
+			 * General Case: Values are the values of the function arguments.
+			 */
 			WindowRefExprState *winref_state = funcstate->wrxstate;
 			ListCell *ref_lc;
 			Oid typid;
@@ -1709,8 +1825,8 @@ createFrameBufferEntry(WindowStatePerLevel level_state)
 		else if (funcstate->winpeercount ||
 				 (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 				  IS_FIRST_LAST(funcstate->wrxstate->winkind)) ||
-				 (OidIsValid(funcstate->invprelimfn_oid) ||
-				  OidIsValid(funcstate->prelimfn_oid)))
+				  ( HAS_INVPRELIMFN(funcstate) || HAS_PRELIMFN(funcstate) )
+				 )
 		{
 			value =	(WindowValue *)palloc0(sizeof(WindowValue));
 			entry->func_values = lappend(entry->func_values, value);
@@ -1926,25 +2042,39 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 }
 
 /*
- * freeTransValue -- release the space allocated for the given transition value.
+ * Similar to datumFree (which it calls) but also clears the variables that
+ * hold the Datum and null mark.
  */
 static void
-freeTransValue(Datum *transValue,
-			   bool transTypeByVal,
-			   bool *transValueIsNull,
-			   bool *noTransValue,
-			   bool shouldFree)
+datumClear(Datum *value, bool *isnull, bool typbyval)
 {
-	if (!shouldFree)
+	if ( *value && !*isnull )
+	    datumFree(*value, typbyval, 0);
+	
+	*value = 0;
+	*isnull = true;
+}
+
+/* 
+ * Previously called freeTransValue, but uses are more general.  Clears a
+ * value (based on the given typbyval) provided the value is set (!*notset)
+ * and marked to be freed.  Clears *notset, if appropriate. 
+ */
+static void
+freeValue(Datum *value,
+		  bool typbyval,
+		  bool *isnull,
+		  bool *notset,
+		   bool shouldfree)
+{
+	Assert(PointerIsValid(notset));
+	
+	if (!shouldfree)
 		return;
 	
-	if (!transTypeByVal && !(*noTransValue) && !(*transValueIsNull) &&
-		DatumGetPointer(*transValue) != NULL)
-		pfree(DatumGetPointer(*transValue));
-	
-	*transValue = 0;
-	*transValueIsNull = true;
-	*noTransValue = true;
+	if ( !*notset) 
+		datumClear(value, isnull, typbyval);
+		*notset = true;
 }
 
 /*
@@ -1997,13 +2127,10 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 		/* Ignore those functions that do not require scanning
 		 * multiple entries in the frame buffer.
 		 */
-		if (funcstate->trivial_frame ||
-			funcstate->winpeercount ||
-			(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
-			!funcstate->isAgg)
+		if ( !NEEDS_BUFFER_SCAN(funcstate) )
 			continue;
 		
-		freeTransValue(&funcstate->final_aggTransValue,
+		freeValue(&funcstate->final_aggTransValue,
 					   funcstate->aggTranstypeByVal,
 					   &funcstate->final_aggTransValueIsNull,
 					   &funcstate->final_aggNoTransValue,
@@ -2044,14 +2171,10 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 				/* Ignore those functions that do not require scanning
 				 * multiple entries in the frame buffer.
 				 */
-				if (funcstate->trivial_frame ||
-					funcstate->winpeercount ||
-					(funcstate->isAgg && 
-					 OidIsValid(funcstate->invprelimfn_oid)) ||
-					!funcstate->isAgg)
+				if ( !NEEDS_BUFFER_SCAN(funcstate) )
 					continue;
 					
-				if (OidIsValid(funcstate->prelimfn_oid))
+				if ( HAS_PRELIMFN(funcstate) )
 				{
 					curr_value = 
 						(WindowValue *)list_nth(curr_entry->func_values,
@@ -2120,13 +2243,10 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 				/* Ignore those functions that do not require scanning
 				 * multiple entries in the frame buffer.
 				 */
-				if (funcstate->trivial_frame ||
-					funcstate->winpeercount ||
-					(funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid)) ||
-					!funcstate->isAgg)
+				if ( !NEEDS_BUFFER_SCAN(funcstate) )
 					continue;
 
-				if (OidIsValid(funcstate->prelimfn_oid))
+				if (HAS_PRELIMFN(funcstate))
 				{
 					fcinfo.arg[1] = funcstate->aggTransValue;
 					fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
@@ -2254,7 +2374,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 		}
 
 		/* Aggregate functions with inverse preliminary functions. */
-		else if (funcstate->isAgg && OidIsValid(funcstate->invprelimfn_oid))
+		else if (IS_AGG_DERIVED(funcstate) && HAS_INVPRELIMFN(funcstate))
 		{
 			uint64 trail_num_not_nulls = 0;
 			uint64 lead_num_not_nulls = 0;
@@ -2329,7 +2449,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				trail_num_not_nulls = 0;
 			}
 
-			freeTransValue(&funcstate->final_aggTransValue,
+			freeValue(&funcstate->final_aggTransValue,
 						   funcstate->aggTranstypeByVal,
 						   &funcstate->final_aggTransValueIsNull,
 						   &funcstate->final_aggNoTransValue,
@@ -2430,7 +2550,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				}
 			}
 		}
-		else if (funcstate->isAgg && OidIsValid(funcstate->prelimfn_oid))
+		else if (IS_AGG_DERIVED(funcstate) && HAS_PRELIMFN(funcstate))
 		{
 			require_scanning = true;
 		}
@@ -2443,7 +2563,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 			 * functions, we pass the frame buffer to its function handler 
 			 * to generate the output.
 			 */
-			if (!funcstate->isAgg)
+			if (IS_PURE_WINDOW(funcstate))
 			{
 				int argno;
 				FunctionCallInfoData fcinfo;
@@ -2716,12 +2836,12 @@ initWindowFuncState(WindowState *wstate, Window *node)
 				fmgr_info(funcstate->invtransfn_oid, &funcstate->invtransfn);
 				funcstate->invtransfn.fn_expr = (Node *) invtransfnexpr;
 			}
-			if (OidIsValid(funcstate->prelimfn_oid))
+			if (HAS_PRELIMFN(funcstate))
 			{
 				fmgr_info(funcstate->prelimfn_oid, &funcstate->prelimfn);
 				funcstate->prelimfn.fn_expr = (Node *) prelimfnexpr;
 			}
-			if (OidIsValid(funcstate->invprelimfn_oid))
+			if (HAS_INVPRELIMFN(funcstate))
 			{
 				fmgr_info(funcstate->invprelimfn_oid, &funcstate->invprelimfn);
 				funcstate->invprelimfn.fn_expr = (Node *) invprelimfnexpr;
@@ -2840,12 +2960,13 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			fmgr_info(funcstate->windowfn_oid, &funcstate->windowfn);			
 
 			/* 
-			 * Initialize byval and typlen for framed funcs. Of course we're
-			 * creating an entry here for the inserted refptr but we do so
-			 * for consistency.
+			 * Initialize per-argument byval and typlen for functions that might 
+			 * need these.  Err on the side of caution here.  We also create an 
+			 * entry for the internal window (refptr) argument to keep the indexes
+			 * into the arrays and argument list consistent, though we don't really 
+			 * need to use it.
 			 */
-			if (funcstate->allowframe || IS_LEAD_LAG(wrxstate->winkind) ||
-				IS_FIRST_LAST(wrxstate->winkind))
+			if ( MAY_USE_ARG_TYPES(funcstate) )
 			{
 				ListCell *lc;
 				int numargs = list_length(wrxstate->args);
@@ -3062,6 +3183,8 @@ makeWindowState(Window *window, EState *estate)
 		wstate->level_state = NULL;
 	wstate->numlevels = numlevels;
 	
+	wstate->win_context = CurrentMemoryContext;
+	
 	wstate->transcontext = AllocSetContextCreate(CurrentMemoryContext,
 												 "TransContext",
 												 ALLOCSET_DEFAULT_MINSIZE,
@@ -3089,6 +3212,7 @@ static void
 initializePartition(WindowState *wstate)
 {
 	int level;
+	int funcno;
 	
 	/* Reset partition primitive values. Note row_index is -1 to flag 
 	 * "before first row of partition" and so that it increments to 0.
@@ -3109,6 +3233,17 @@ initializePartition(WindowState *wstate)
 		level_state->dense_rank = 1;
 		level_state->prior_rank = 1;
 		level_state->prior_dense_rank = 1;
+	}
+	
+	for ( funcno = 0; funcno < wstate->numfuncs; funcno++ )
+	{
+		WindowStatePerFunction func_state = &wstate->func_state[funcno];
+		
+		if ( func_state->win_pure_private != NULL )
+		{
+			win_free_private(func_state);
+			Assert( func_state->win_pure_private == NULL );
+		}
 	}
 	
 	/* Per-partition input buffer management reinitialzation. */
@@ -3303,7 +3438,7 @@ initFcinfo(WindowRefExprState *wrxstate, FunctionCallInfoData *fcinfo,
 	MemoryContext oldctx;
 			
 	/* If this is an agg, the first arg will be the trans value */
-	if (funcstate->isAgg)
+	if (IS_AGG_DERIVED(funcstate))
 		argno = 1;
 	else
 		argno = 0;
@@ -3338,7 +3473,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 	/* Evaluate function arguments, save in fcinfo. */
 	argno = initFcinfo(funcstate->wrxstate, &fcinfo, funcstate, econtext, check_nulls);
 
-	if (funcstate->isAgg)
+	if (IS_AGG_DERIVED(funcstate))
 	{
 		funcstate->aggTransValue =
 			invoke_agg_trans_func(&(funcstate->transfn),
@@ -3354,16 +3489,21 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 	}
 	else /* ordinary window function */
 	{
+		Assert(IS_PURE_WINDOW(funcstate));
+			
 		InitFunctionCallInfoData(fcinfo, 
 								 &funcstate->windowfn,
 								 argno,
 								 (void *) funcstate->wrxstate, 
 								 NULL);
+		
 		if (IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 			IS_LAST_VALUE(funcstate->wrxstate->winkind) ||
 			(IS_FIRST_VALUE(funcstate->wrxstate->winkind) &&
 			 funcstate->aggNoTransValue))
 		{
+			/* Buffer value of argument 1 (first supplied argument). */
+			
 			int argno = 1;
 			
 			funcstate->aggTransValue = 
@@ -3374,9 +3514,13 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 			funcstate->aggTransValueIsNull = fcinfo.argnull[argno];
 			funcstate->aggNoTransValue = false;
 		}
+		else if ( funcstate->wrxstate->winkind == 'x' )
+		{}
 
 		else
 		{
+			/* Buffer value of function result. */
+			
 			MemoryContext oldctx;
 			oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			funcstate->win_value = FunctionCallInvoke(&fcinfo);
@@ -3403,7 +3547,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			econtext->ecxt_scantuple = wstate->curslot;
 			add_tuple_to_trans(funcstate, wstate, econtext, false);
 
-			if (funcstate->isAgg)
+			if (IS_AGG_DERIVED(funcstate))
 			{
 				funcstate->final_aggTransValue = funcstate->aggTransValue;
 				funcstate->final_aggTransValueIsNull = funcstate->aggTransValueIsNull;
@@ -3420,7 +3564,7 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 			frame_buffer = level_state->frame_buffer;
 			Assert(frame_buffer != NULL);
 
-			freeTransValue(&funcstate->final_aggTransValue,
+			freeValue(&funcstate->final_aggTransValue,
 						   funcstate->aggTranstypeByVal,
 						   &funcstate->final_aggTransValueIsNull,
 						   &funcstate->final_aggNoTransValue,
@@ -3943,7 +4087,7 @@ finaliseFuncs(WindowState *wstate)
 			
 		/* Evaluate function arguments, save in fcinfo. */
 	
-		if (funcstate->isAgg)
+		if (IS_AGG_DERIVED(funcstate))
 		{
 			Datum *vals = econtext->ecxt_aggvalues;
 			bool *isnulls = econtext->ecxt_aggnulls;
@@ -5412,9 +5556,9 @@ static void
 resetTransValue(WindowStatePerFunction funcstate,
 				WindowState *wstate)
 {
-	if (funcstate->isAgg)
+	if (IS_AGG_DERIVED(funcstate))
 	{
-		freeTransValue(&funcstate->aggTransValue,
+		freeValue(&funcstate->aggTransValue,
 					   funcstate->aggTranstypeByVal,
 					   &funcstate->aggTransValueIsNull,
 					   &funcstate->aggNoTransValue,
@@ -5442,9 +5586,11 @@ resetTransValue(WindowStatePerFunction funcstate,
 	{
 		int argno = 1;
 		WindowRefExprState *wrxstate = funcstate->wrxstate;
-
+		
+		Insist( IS_PURE_WINDOW(funcstate) );
+		
 		if (wrxstate->argtypbyval)
-			freeTransValue(&funcstate->aggTransValue,
+			freeValue(&funcstate->aggTransValue,
 						   wrxstate->argtypbyval[argno],
 						   &funcstate->aggTransValueIsNull,
 						   &funcstate->aggNoTransValue,
@@ -5555,10 +5701,10 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 				foreach (lc, level_state->level_funcs)
 				{
 					WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-					if (funcstate->isAgg &&
+					if (IS_AGG_DERIVED(funcstate) &&
 						!funcstate->cumul_frame &&
-						!OidIsValid(funcstate->invprelimfn_oid) &&
-						OidIsValid(funcstate->prelimfn_oid))
+						HAS_PRELIMFN(funcstate) && !HAS_INVPRELIMFN(funcstate)
+						)
 					{
 						resetTransValue(funcstate, wstate);
 					}
@@ -6021,8 +6167,8 @@ init_frames(WindowState *wstate)
 			WindowStatePerFunction funcstate =
 				(WindowStatePerFunction)lfirst(lc);
 
-			if (!frame || (!funcstate->isAgg && !funcstate->allowframe &&
-						   !IS_LEAD_LAG(funcstate->wrxstate->winkind) &&
+			if (!frame || (IS_PURE_WINDOW(funcstate) && !funcstate->allowframe &&
+						   !IS_BUFFERED(funcstate->wrxstate->winkind) &&
 						   !funcstate->winpeercount))
 			{
 				funcstate->trivial_frame = true;
@@ -6034,17 +6180,11 @@ init_frames(WindowState *wstate)
 			 * as ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW with no
 			 * exclusion clause OR it is a window function without a frame.
 			 */
-			if (funcstate->isAgg && frame && frame->is_rows &&
-				frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
-				frame->lead->kind == WINDOW_CURRENT_ROW &&
-				frame->exclude == WINDOW_EXCLUSION_NULL)
+			if (IS_AGG_DERIVED(funcstate) && IS_DEFAULT_ROW_FRAME(frame) )
 			{
 				funcstate->trivial_frame = true;
 			}
-			else if (funcstate->isAgg && frame && !frame->is_rows &&
-					 frame->trail->kind == WINDOW_UNBOUND_PRECEDING && 
-				frame->lead->kind == WINDOW_CURRENT_ROW &&
-				frame->exclude == WINDOW_EXCLUSION_NULL)
+			else if (IS_AGG_DERIVED(funcstate) && IS_DEFAULT_RANGE_FRAME(frame))
 			{
 				funcstate->cumul_frame = true;
 			}
@@ -7564,6 +7704,306 @@ wm_frame_maker(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(frame);
 }
 
+/*
+ * Generic last_known
+ *
+ * If the current argument pair is non-null, return the first argument
+ * and update our records to show it as the current value.  Else, 
+ * return the saved current value (initialy null).  In effect this 
+ * does "constant interpolation" of the first argument but insists 
+ * that both are non-null.
+ */
+
+/* Private state (cleared per partition) for last_known_generic(). */
+typedef struct last_known_private
+{
+	bool isnull;
+	Datum value;
+	int16 typlen;
+	bool typbyval;
+} last_known_private;
+
+/* The actual implementation of the various type-specific declarations. */
+Datum
+last_known_generic(PG_FUNCTION_ARGS)
+{
+	WindowFuncContext	wcontext = windowGetContext(fcinfo);
+	WindowRefExprState *wrxstate = (WindowRefExprState *) wcontext;
+	WindowState *wstate = wrxstate->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
+	last_known_private *private = NULL;
+	Datum				value;
+	bool				isnull;
+	
+	Insist(PG_NARGS() == 3); /* context, x, y */
+	
+	/* If no private memory (first time thru or top of partition) allocate some. 
+	 * Also, note data type of first argument (same as datatype of result) this
+	 * time (just to avoid doing it every time).
+	 */
+	if ( funcstate->win_pure_private == NULL )
+	{
+		Oid restypid;
+		
+		win_alloc_private(funcstate, sizeof(last_known_private));
+		private = funcstate->win_pure_private;
+		Assert( private != NULL );
+		private->isnull = true;
+		private->value = 0;
+		
+		restypid = exprType((Node*)((ExprState*)list_nth(wrxstate->args, 1))->expr);
+		get_typlenbyval(restypid, &private->typlen, &private->typbyval);
+	}
+	else 
+	{
+		private = funcstate->win_pure_private;
+	}
+
+	
+	if ( !PG_ARGISNULL(1) && !PG_ARGISNULL(2) )
+	{
+		MemoryContext pcxt = win_get_private_context(funcstate);
+		MemoryContext oldcxt = MemoryContextSwitchTo(pcxt);
+		
+		/* We have a new result value. */
+		value = PG_GETARG_DATUM(1);
+		isnull = false;
+		
+		/* Copy the value into private storage in case we need it again. */
+		datumClear(&private->value, &private->isnull, private->typbyval);
+		private->isnull = isnull; /* false */
+		private->value = datumCopy(value, private->typbyval, private->typlen);
+		
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+	{
+		/* Copy the private value into current context. */
+	    isnull = private->isnull;
+		if (isnull)
+			value = 0;
+		else
+			value = datumCopy(private->value, private->typbyval, private->typlen);
+	}
+	
+	if ( isnull )
+		PG_RETURN_NULL();
+	
+	PG_RETURN_DATUM(value);
+}
+
+
+/*
+ * Generic next_known
+ *
+ * If the current argument pair is non-null, return the first argument and
+ * update our records to show its offset and value.  This is the last place
+ * we found a non-null pair.  (We'll never reuse the value, so we don't
+ * actually need to remember it, but the fields have more consistent 
+ * descriptions, if we do so.  Else, if the remembered offset exceeds the 
+ * offset of the current row, use the last remembered value.  Otherwise, 
+ * loop forward looking for the next non-null pair.  If one is found, 
+ * remember it and its offset and use it as the.  If not, record a null.
+ */
+
+/* Private state (cleared per partition) for next_known_generic(). */
+typedef struct next_known_private
+{
+	int64 row_index;
+	int64 lead_index;
+	bool isnull;
+	Datum value;
+	int16 typlen;
+	bool typbyval;
+} next_known_private;
+
+/*
+ * Helper function to make a WindowFrame for next_known.  Called at
+ * plan time.  To establish the system-generated framing information
+ * for next_known_generic.
+ */
+Datum
+next_known_frame_maker(PG_FUNCTION_ARGS)
+{
+	WindowFrame	   *frame = makeNode(WindowFrame);
+	
+	frame->system_generated = true;
+	frame->is_between = true;
+	frame->is_rows = true;
+	frame->trail = makeNode(WindowFrameEdge);
+	frame->lead = makeNode(WindowFrameEdge);
+	
+	/* No look behind, unlimited look ahead. */
+	frame->trail->kind = WINDOW_CURRENT_ROW;
+	frame->lead->kind = WINDOW_UNBOUND_FOLLOWING;
+	
+	frame->trail->val = frame->lead->val = NULL;
+	
+	PG_RETURN_POINTER(frame);
+}
+/* The actual implementation of the various type-specific declarations. */
+Datum
+next_known_generic(PG_FUNCTION_ARGS)
+{
+	WindowFuncContext	wcontext = windowGetContext(fcinfo);
+	WindowRefExprState *wrxstate = (WindowRefExprState *) wcontext;
+	WindowState *wstate = wrxstate->windowstate;
+	WindowStatePerFunction funcstate = &wstate->func_state[wrxstate->funcno];
+	next_known_private *private = NULL;
+	Datum value = (Datum)0;
+	Datum aux = (Datum)0;
+	bool isnull = true;
+	
+	Insist(PG_NARGS() == 3); /* context, x, y */
+	
+	/* If no private memory (first time thru or top of partition) allocate some. 
+	 * Also, note data type of first argument (same as datatype of result) this
+	 * time (just to avoid doing it every time).
+	 */
+	if ( funcstate->win_pure_private == NULL )
+	{
+		Oid restypid;
+		
+		win_alloc_private(funcstate, sizeof(next_known_private));
+		private = (next_known_private*)funcstate->win_pure_private;
+		Assert( private != NULL );
+		private->row_index = 0;
+		private->lead_index = -1;
+		private->isnull = true;
+		private->value = 0;
+		
+		restypid = exprType((Node*)((ExprState*)list_nth(wrxstate->args, 1))->expr);
+		get_typlenbyval(restypid, &private->typlen, &private->typbyval);
+	}
+	else
+	{
+		private = funcstate->win_pure_private;
+		private->row_index++;
+	}
+	
+	if ( private->lead_index > private->row_index  )
+	{
+	    /* We already searched far enough.  Use what we found previously by 
+		 * copying the private value into current context. 
+		 */
+	    isnull = private->isnull;
+		value = datumCopy(private->value, private->typbyval, private->typlen);
+	}	
+	else
+	{
+		/* Start a buffer cursor. */
+		WindowBufferCursor cursor = windowBufferBeginScan(wcontext, true);;
+	    int64 i = -1;
+		do
+		{
+			value = (Datum) 0;
+			isnull = true;
+			/* Don't search past frame. */
+			if (!windowBufferNext(cursor))
+				break;
+			i++;
+			/* If the auxiliary value is null, keep looking. */
+			aux = windowBufferGetArg(cursor, 2, &isnull);
+			if ( ! isnull )
+				value = windowBufferGetArg(cursor, 1, &isnull);
+		} while( isnull );
+		windowBufferEndScan(cursor);
+		
+		/* Copy the new value to private memory. Clean out old value, if any. */
+		datumClear(&private->value, &private->isnull, private->typbyval);
+		private->lead_index = private->row_index + i;
+		private->isnull = isnull;
+		private->value = datumCopy(value, private->typbyval, private->typlen);
+	}
+	
+	if ( isnull )
+		PG_RETURN_NULL();
+	
+	PG_RETURN_DATUM(value);
+}
+
+/* --- Helpers for pure window functions that need private data. --- */
+
+/* Get the private memory context for use by the window function call
+ * represented by the argument.  If necessary, allocate a new context
+ * with the owning window state's memory context as its parent.
+ *
+ * The idea is to get a relatively long-lived context to contain the
+ * private data for a pure (non-aggregate) window function call.  The
+ * function implementation manages the store as it sees fit, e.g.,
+ * by clearing it periodically (and zeroing pointers into it)  via
+ * win_clear_private_context.
+ */
+static MemoryContext
+win_get_private_context(WindowStatePerFunction wspf)
+{
+    MemoryContext wcxt = wspf->wrxstate->windowstate->win_context;
+    
+	if ( wspf->win_pure_fn_context == NULL )
+	{
+		wspf->win_pure_fn_context =
+		AllocSetContextCreate(wcxt,
+							  "WindowFunctionContext",
+							  ALLOCSET_DEFAULT_MINSIZE,
+							  ALLOCSET_DEFAULT_INITSIZE,
+							  ALLOCSET_DEFAULT_MAXSIZE);
+	}
+	return wspf->win_pure_fn_context;
+}
+
+
+/* Clear all the memory allocated in the window function call's
+ * context.  The caller is responsible for reseting pointers
+ * into the space.  (These are presumed to be in the window
+ * functions private memory at wspf->win_pure_private which is
+ * the private property of the function implementation.)
+ */
+static void
+win_clear_private_context(WindowStatePerFunction wspf)
+{	
+	if ( wspf->win_pure_fn_context )
+	{
+		MemoryContextReset(wspf->win_pure_fn_context);
+	}
+}
+
+
+/* Allocate the window function call's private storage block to the
+ * given size and store a pointer to the block at win_pure_private.
+ * This field should be NULL on entry, i.e., the caller is supposed
+ * to manage memory so we don't reallocate here.  The private block
+ * goes in the same MemoryContext as the block it belongs to.
+ */
+static void
+win_alloc_private(WindowStatePerFunction wspf, size_t sz)
+{
+    MemoryContext wcxt = wspf->wrxstate->windowstate->win_context;
+    MemoryContext oldcxt = MemoryContextSwitchTo(wcxt);
+    
+	Assert( wspf->win_pure_private == NULL );
+	
+	wspf->win_pure_private = palloc0(sz);
+	MemoryContextSwitchTo(oldcxt);
+}
+
+
+/* Deallocate the window function's private storage block at
+ * win_pure_private.  Also, clear, but leave any previously
+ * allocated memory context intact for possible reuse.
+ */
+static void
+win_free_private(WindowStatePerFunction wspf)
+{
+	if ( wspf->win_pure_private )
+	{
+	    pfree(wspf->win_pure_private);
+	    wspf->win_pure_private = NULL;
+	}
+	win_clear_private_context(wspf);
+}
+
+/* --- */
+
 void
 initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 {
@@ -7984,7 +8424,7 @@ seq_set_partkey_in_synthslot(WindowState *wstate)
 		/* Free preexisting non-null attribute, if any. */
 		if (free_first && !isnull[idx]) 
 		{
-			datumFree(values[attrno], 
+			datumFree(values[idx], 
 					  wstate->seq_partkey_typbyval[i], 
 					  (int)wstate->seq_partkey_typlen[i]);
 			isnull[idx] = true;

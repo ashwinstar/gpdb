@@ -5331,6 +5331,104 @@
 
  CREATE FUNCTION last_value_any(internal, anyarray) RETURNS anyarray LANGUAGE internal IMMUTABLE STRICT AS 'last_value_generic' WITH (OID=7291, proiswin="t");
 
+ CREATE FUNCTION next_known_frame_maker ( internal ) RETURNS internal LANGUAGE internal IMMUTABLE STRICT AS 'next_known_frame_maker' WITH (OID=7699, DESCRIPTION="internal window frame maker"); 
+
+ CREATE FUNCTION last_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7700, proiswin="t", DESCRIPTION="last_known for first argument type int8"); 
+
+ CREATE FUNCTION last_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7701, proiswin="t", DESCRIPTION="last_known for first argument type int4"); 
+
+ CREATE FUNCTION last_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7702, proiswin="t", DESCRIPTION="last_known for first argument type int2"); 
+
+ CREATE FUNCTION last_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7703, proiswin="t", DESCRIPTION="last_known for first argument type float8"); 
+
+ CREATE FUNCTION last_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7704, proiswin="t", DESCRIPTION="last_known for first argument type float4"); 
+
+ CREATE FUNCTION last_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7705, proiswin="t", DESCRIPTION="last_known for first argument type date"); 
+
+ CREATE FUNCTION last_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7706, proiswin="t", DESCRIPTION="last_known for first argument type time"); 
+
+ CREATE FUNCTION last_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7707, proiswin="t", DESCRIPTION="last_known for first argument type timestamp"); 
+
+ CREATE FUNCTION last_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7708, proiswin="t", DESCRIPTION="last_known for first argument type timestamptz"); 
+
+ CREATE FUNCTION last_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7709, proiswin="t", DESCRIPTION="last_known for first argument type timetz"); 
+
+ CREATE FUNCTION last_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7710, proiswin="t", DESCRIPTION="last_known for first argument type "interval""); 
+
+ CREATE FUNCTION last_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7711, proiswin="t", DESCRIPTION="last_known for first argument type "numeric""); 
+
+ CREATE FUNCTION last_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7712, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7713, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7714, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7715, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7716, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7717, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7718, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7719, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7720, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7721, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7722, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION last_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'last_known_generic' WITH (OID=7723, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known( int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7740, proiswin="t", DESCRIPTION="next_known for first argument type int8"); 
+
+ CREATE FUNCTION next_known( int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7741, proiswin="t", DESCRIPTION="next_known for first argument type int4"); 
+
+ CREATE FUNCTION next_known( int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7742, proiswin="t", DESCRIPTION="next_known for first argument type int2"); 
+
+ CREATE FUNCTION next_known( float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7743, proiswin="t", DESCRIPTION="next_known for first argument type float8"); 
+
+ CREATE FUNCTION next_known( float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7744, proiswin="t", DESCRIPTION="next_known for first argument type float4"); 
+
+ CREATE FUNCTION next_known( date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7745, proiswin="t", DESCRIPTION="next_known for first argument type date"); 
+
+ CREATE FUNCTION next_known( time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7746, proiswin="t", DESCRIPTION="next_known for first argument type time"); 
+
+ CREATE FUNCTION next_known( timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7747, proiswin="t", DESCRIPTION="next_known for first argument type timestamp"); 
+
+ CREATE FUNCTION next_known( timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7748, proiswin="t", DESCRIPTION="next_known for first argument type timestamptz"); 
+
+ CREATE FUNCTION next_known( timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7749, proiswin="t", DESCRIPTION="next_known for first argument type timetz"); 
+
+ CREATE FUNCTION next_known( "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7750, proiswin="t", DESCRIPTION="next_known for first argument type "interval""); 
+
+ CREATE FUNCTION next_known( "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'window_dummy' WITH (OID=7751, proiswin="t", DESCRIPTION="next_known for first argument type "numeric""); 
+
+ CREATE FUNCTION next_known_int64( internal, int8, anyelement ) RETURNS int8 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7752, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_int32( internal, int4, anyelement ) RETURNS int4 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7753, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_int16( internal, int2, anyelement ) RETURNS int2 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7754, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_float8( internal, float8, anyelement ) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7755, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_float4( internal, float4, anyelement ) RETURNS float4 LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7756, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_dateadt( internal, date, anyelement ) RETURNS date LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7757, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_timeadt( internal, time, anyelement ) RETURNS time LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7758, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_timestamp( internal, timestamp, anyelement ) RETURNS timestamp LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7759, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_timestamptz( internal, timestamptz, anyelement ) RETURNS timestamptz LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7760, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_timetzadt( internal, timetz, anyelement ) RETURNS timetz LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7761, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_interval( internal, "interval", anyelement ) RETURNS "interval" LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7762, proiswin="t", DESCRIPTION="internal window variant"); 
+
+ CREATE FUNCTION next_known_numeric( internal, "numeric", anyelement ) RETURNS "numeric" LANGUAGE internal IMMUTABLE AS 'next_known_generic' WITH (OID=7763, proiswin="t", DESCRIPTION="internal window variant"); 
+
  CREATE FUNCTION cume_dist_prelim(internal) RETURNS int8 LANGUAGE internal IMMUTABLE STRICT AS 'cume_dist_prelim' WITH (OID=7204, DESCRIPTION="window preliminary function");
 -- #define CUME_DIST_PRELIM_OID 7204
 -- #define CUME_DIST_PRELIM_TYPE 20
