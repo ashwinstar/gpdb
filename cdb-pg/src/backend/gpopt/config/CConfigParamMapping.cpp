@@ -110,6 +110,17 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&gp_opt_minidump,
 		GPOS_WSZ_LIT("Produce a minidump on every optimization.")
 		},
+		{
+		EopttraceExtractDXLStats,
+		&gp_opt_extract_dxl_stats,
+		GPOS_WSZ_LIT("Extract plan stats in dxl.")
+		},
+		{
+		EopttraceExtractDXLStatsAllNodes,
+		&gp_opt_extract_dxl_stats_all_nodes,
+		GPOS_WSZ_LIT("Extract plan stats for all physical dxl nodes.")
+		},
+
 };
 
 //---------------------------------------------------------------------------

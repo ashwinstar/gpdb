@@ -669,6 +669,8 @@ int 		gp_opt_retries;
 bool  		gp_opt_xforms[GPOPT_XFORMS] = {[0 ... GPOPT_XFORMS - 1] = false}; /* array of xforms disable flags */
 char 		*gp_opt_search_strategy_path = NULL;
 char	   *gp_idf_deduplicate_str;
+bool		gp_opt_extract_dxl_stats;
+bool		gp_opt_extract_dxl_stats_all_nodes;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -3599,6 +3601,24 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_opt_local,
 		true, NULL, NULL
+	},
+	{
+		{"gp_opt_extract_dxl_stats", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Extract plan stats in dxl."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_extract_dxl_stats,
+		false, NULL, NULL
+	},
+	{
+		{"gp_opt_extract_dxl_stats_all_nodes", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Extract plan stats for all physical dxl nodes."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_opt_extract_dxl_stats_all_nodes,
+		false, NULL, NULL
 	},
 
 	{

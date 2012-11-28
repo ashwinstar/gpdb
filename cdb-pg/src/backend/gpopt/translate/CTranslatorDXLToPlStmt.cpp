@@ -467,7 +467,7 @@ CTranslatorDXLToPlStmt::PssFromDXLTblScan
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopTS->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnTblScan->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -600,7 +600,14 @@ CTranslatorDXLToPlStmt::PisFromDXLIndexScan
 	pplan->nMotionNodes = 0;
 
 	// translate operator costs
-	TranslatePlanCosts(pdxlopIndexScan->Pdxlprop()->Pdxlopcost(), &(pplan->startup_cost), &(pplan->total_cost), &(pplan->plan_rows), &(pplan->plan_width));
+	TranslatePlanCosts
+		(
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnIndexScan->Pdxlprop())->Pdxlopcost(),
+		&(pplan->startup_cost),
+		&(pplan->total_cost),
+		&(pplan->plan_rows),
+		&(pplan->plan_width)
+		);
 
 	// an index scan node must have 3 children: projection list, filter and index condition list
 	GPOS_ASSERT(3 == pdxlnIndexScan->UlArity());
@@ -720,7 +727,7 @@ CTranslatorDXLToPlStmt::PlimitFromDXLLimit
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopLimit->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnLimit->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -813,7 +820,7 @@ CTranslatorDXLToPlStmt::PhjFromDXLHJ
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopHashJoin->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnHJ->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -1002,7 +1009,7 @@ CTranslatorDXLToPlStmt::PplanFunctionScanFromDXLTVF
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopTVF->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnTVF->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -1167,7 +1174,7 @@ CTranslatorDXLToPlStmt::PnljFromDXLNLJ
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlnlj->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnNLJ->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -1261,7 +1268,7 @@ CTranslatorDXLToPlStmt::PmjFromDXLMJ
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopMergeJoin->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnMJ->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -1451,7 +1458,7 @@ CTranslatorDXLToPlStmt::PplanMotionFromDXLMotion
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopMotion->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnMotion->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -1657,7 +1664,7 @@ CTranslatorDXLToPlStmt::PplanResultHashFilters
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopMotion->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnMotion->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -1742,7 +1749,7 @@ CTranslatorDXLToPlStmt::PaggFromDXLAgg
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopAgg->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnAgg->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -1850,7 +1857,7 @@ CTranslatorDXLToPlStmt::PwindowFromDXLWindow
 	// translate the operator costs
 	TranslatePlanCosts
 		(
-		pdxlopWindow->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnWindow->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2035,7 +2042,7 @@ CTranslatorDXLToPlStmt::PsortFromDXLSort
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopSort->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnSort->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2159,7 +2166,7 @@ CTranslatorDXLToPlStmt::PsubqscanFromDXLSubqScan
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopSubqscan->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnSubqScan->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2268,7 +2275,7 @@ CTranslatorDXLToPlStmt::PresultFromDXLResult
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopResult->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnResult->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2369,7 +2376,7 @@ CTranslatorDXLToPlStmt::PappendFromDXLAppend
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopAppend->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnAppend->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2462,7 +2469,7 @@ CTranslatorDXLToPlStmt::PmatFromDXLMaterialize
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopMat->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnMaterialize->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2557,7 +2564,7 @@ CTranslatorDXLToPlStmt::PshscanFromDXLSharedScan
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopShscan->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnSharedScan->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2644,7 +2651,7 @@ CTranslatorDXLToPlStmt::PplanSequence
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlop->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnSequence->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2742,7 +2749,7 @@ CTranslatorDXLToPlStmt::PplanDTS
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlop->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnDTS->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2876,7 +2883,7 @@ CTranslatorDXLToPlStmt::PplanDML
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlop->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnDML->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2959,7 +2966,7 @@ CTranslatorDXLToPlStmt::PplanSplit
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlop->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnSplit->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -2994,13 +3001,17 @@ CTranslatorDXLToPlStmt::PplanAssert
 
 	CDXLPhysicalAssert *pdxlopAssert = CDXLPhysicalAssert::PdxlopConvert(pdxlnAssert->Pdxlop());
 
-	// TODO: antova - Nov 2, 2012; set error code
-	passert->errcode = pdxlopAssert->Eerrc();
+	// translate error code into the its internal GPDB representation
+	const CHAR *szErrorCode = pdxlopAssert->SzSQLState();
+	GPOS_ASSERT(GPOS_SQLSTATE_LENGTH == clib::UlStrLen(szErrorCode));
 	
+	passert->errcode = MAKE_SQLSTATE(szErrorCode[0], szErrorCode[1], szErrorCode[2], szErrorCode[3], szErrorCode[4]);
+	passert->errmessage = CTranslatorUtils::SzFromWsz(pdxlopAssert->Pstr()->Wsz());
+
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlopAssert->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnAssert->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),
@@ -3134,7 +3145,7 @@ CTranslatorDXLToPlStmt::PplanRowTrigger
 	// translate operator costs
 	TranslatePlanCosts
 		(
-		pdxlop->Pdxlprop()->Pdxlopcost(),
+		CDXLPhysicalProperties::PdxlpropConvert(pdxlnRowTrigger->Pdxlprop())->Pdxlopcost(),
 		&(pplan->startup_cost),
 		&(pplan->total_cost),
 		&(pplan->plan_rows),

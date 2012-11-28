@@ -885,10 +885,11 @@ _outRowTriggerOp(StringInfo str, RowTriggerOp *node)
 static void
 _outAssertOp(StringInfo str, AssertOp *node)
 {
-	WRITE_NODE_TYPE("ASSERT");
+	WRITE_NODE_TYPE("ASSERTOP");
 
-	WRITE_UINT_FIELD(errcode);
-
+	WRITE_STRING_FIELD(errmessage);
+	WRITE_INT_FIELD(errcode);
+	
 	_outPlanInfo(str, (Plan *) node);
 }
 

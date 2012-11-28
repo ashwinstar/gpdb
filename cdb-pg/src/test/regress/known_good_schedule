@@ -182,7 +182,7 @@ test: parser
 test: resource_queue_function
 test: co_nestloop_idxscan
 ignore: icudp_full
-ignore: gp_optimizer
+test: gp_optimizer
 #
 # gpcheckmirrorseg should be last to check mirror integrity
 #

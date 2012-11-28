@@ -258,10 +258,10 @@ CTranslatorPlStmtToDXL::PdxlnHashjoinFromPlan
 
 	// construct hash join operator
 	CDXLPhysicalHashJoin *pdxlopHj = New(m_pmp) CDXLPhysicalHashJoin(m_pmp, edxljt);
-	pdxlopHj->SetProperties(pdxlprop);
 
 	// construct hash join operator node
 	CDXLNode *pdxlnHJ = New(m_pmp) CDXLNode(m_pmp, pdxlopHj);
+	pdxlnHJ->SetProperties(pdxlprop);
 
 	// translate left and right child
 	Plan *pplanLeft = outerPlan(phj);
@@ -394,10 +394,10 @@ CTranslatorPlStmtToDXL::PdxlnNLJoinFromPlan
 
 	// construct hash join operator
 	CDXLPhysicalNLJoin *pdxlnlj = New(m_pmp) CDXLPhysicalNLJoin(m_pmp, edxljt);
-	pdxlnlj->SetProperties(pdxlprop);
 
 	// construct hash join operator node
 	CDXLNode *pdxlnNLJ = New(m_pmp) CDXLNode(m_pmp, pdxlnlj);
+	pdxlnNLJ->SetProperties(pdxlprop);
 
 	// translate left and right child
 	Plan *pplanLeft = outerPlan(pnlj);
@@ -482,10 +482,10 @@ CTranslatorPlStmtToDXL::PdxlnMergeJoinFromPlan
 
 	// construct hash join operator
 	CDXLPhysicalMergeJoin *pdxlopMj = New(m_pmp) CDXLPhysicalMergeJoin(m_pmp, edxljt, pmj->unique_outer);
-	pdxlopMj->SetProperties(pdxlprop);
 
 	// construct merge join operator node
 	CDXLNode *pdxlnMJ = New(m_pmp) CDXLNode(m_pmp, pdxlopMj);
+	pdxlnMJ->SetProperties(pdxlprop);
 
 	// translate left and right child
 	Plan *pplanLeft = outerPlan(pmj);
@@ -601,7 +601,6 @@ CTranslatorPlStmtToDXL::PdxlnResultFromPlan
 
 	// construct result operator
 	CDXLPhysicalResult *pdxlopResult = New(m_pmp) CDXLPhysicalResult(m_pmp);
-	pdxlopResult->SetProperties(pdxlprop);
 
 	GPOS_ASSERT(innerPlan(pnresult) == NULL && "Result node cannot have right child");
 
@@ -654,6 +653,7 @@ CTranslatorPlStmtToDXL::PdxlnResultFromPlan
 
 	// construct motion operator node
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlopResult);
+	pdxln->SetProperties(pdxlprop);
 
 	// add children in the right order
 	pdxln->AddChild(pdxlnPrL);				// proj list
@@ -720,12 +720,12 @@ CTranslatorPlStmtToDXL::PdxlnMotionFromPlan
 
 	TranslateMotionSegmentInfo(pmotion, pdrgpiInputSegIds, pdrgpiOutputSegIds);
 
-	pdxlopMotion->SetProperties(pdxlprop);
 	pdxlopMotion->SetInputSegIds(pdrgpiInputSegIds);
 	pdxlopMotion->SetOutputSegIds(pdrgpiOutputSegIds);
 
 	// construct motion operator node
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlopMotion);
+	pdxln->SetProperties(pdxlprop);
 
 	// translate child of motion node
 	Plan *pplanChild = (pmotion->plan).lefttree;
@@ -828,7 +828,6 @@ CTranslatorPlStmtToDXL::PdxlnAggFromPlan
 	}
 
 	CDXLPhysicalAgg *pdxlopAgg = New(m_pmp) CDXLPhysicalAgg(m_pmp, edxlaggstr);
-	pdxlopAgg->SetProperties(pdxlprop);
 
 	// translate child of aggregate operator
 	Plan *pplanChild = (pagg->plan).lefttree;
@@ -883,6 +882,7 @@ CTranslatorPlStmtToDXL::PdxlnAggFromPlan
 
 	// construct aggregate operator node
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlopAgg);
+	pdxln->SetProperties(pdxlprop);
 
 	// add children in the right order
 	pdxln->AddChild(pdxlnPrL);		// proj list
@@ -999,7 +999,7 @@ CTranslatorPlStmtToDXL::PdxlnWindowFromPlan
 	// extract plan properties
 	CDXLPhysicalProperties *pdxlprop = PdxlpropFromPlan(pplan);
 	GPOS_ASSERT(NULL != pdxlprop);
-	pdxlopWindow->SetProperties(pdxlprop);
+	pdxln->SetProperties(pdxlprop);
 
 	// add children in the right order
 	pdxln->AddChild(pdxlnPrL);		// proj list
@@ -1092,7 +1092,6 @@ CTranslatorPlStmtToDXL::PdxlnSortFromPlan
 	GPOS_ASSERT(NULL == psort->nullsFirst);
 
 	CDXLPhysicalSort *pdxlopSort = New(m_pmp) CDXLPhysicalSort(m_pmp, psort->noduplicates);
-	pdxlopSort->SetProperties(pdxlprop);
 
 	// translate child of sort operator
 	Plan *pplanChild = (psort->plan).lefttree;
@@ -1164,6 +1163,7 @@ CTranslatorPlStmtToDXL::PdxlnSortFromPlan
 
 	// construct sort operator node
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlopSort);
+	pdxln->SetProperties(pdxlprop);
 
 	// add children in the right order
 	pdxln->AddChild(pdxlnPrL);			// proj list
@@ -1212,7 +1212,6 @@ CTranslatorPlStmtToDXL::PdxlnSubqueryScanFromPlan
 
 	// construct DXL subquery scan operator
 	CDXLPhysicalSubqueryScan *pdxlopSubqScan = New(m_pmp) CDXLPhysicalSubqueryScan(m_pmp, pmdnameSubqScan);
-	pdxlopSubqScan->SetProperties(pdxlprop);
 
 	// translate child of subquery operator
 	Plan *pplanChild = psubqscan->subplan;
@@ -1299,6 +1298,7 @@ CTranslatorPlStmtToDXL::PdxlnSubqueryScanFromPlan
 
 	// construct sort operator node
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlopSubqScan);
+	pdxln->SetProperties(pdxlprop);
 
 	// add children in the right order
 	pdxln->AddChild(pdxlnPrL);			// proj list
@@ -1341,9 +1341,8 @@ CTranslatorPlStmtToDXL::PdxlnAppendFromPlan
 
 	// construct DXL Append operator
 	CDXLPhysicalAppend *pdxlopAppend = New(m_pmp) CDXLPhysicalAppend(m_pmp, pappend->isTarget, pappend->isZapped);
-	pdxlopAppend->SetProperties(pdxlprop);
-
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlopAppend);
+	pdxln->SetProperties(pdxlprop);
 
 	// translate first child of append operator so we can translate the project list
 	// and the filter
@@ -1428,8 +1427,6 @@ CTranslatorPlStmtToDXL::PdxlnResultFromFoldedFuncExpr
 	pdxlnPrL->AddChild(pdxlnPrEl);
 
 	CDXLPhysicalResult *pdxlopResult = New(m_pmp) CDXLPhysicalResult(m_pmp);
-	pdxlopResult->SetProperties(pdxlprop);
-
 	CDXLNode *pdxlnFilter = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarFilter(m_pmp));
 
 	pmapvarcolid->LoadProjectElements(DEFAULT_QUERY_LEVEL, OUTER, pdxlnPrL);
@@ -1437,6 +1434,7 @@ CTranslatorPlStmtToDXL::PdxlnResultFromFoldedFuncExpr
 	CDXLNode *pdxlnOneTimeFilter = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarOneTimeFilter(m_pmp));
 
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlopResult);
+	pdxln->SetProperties(pdxlprop);
 
 	pdxln->AddChild(pdxlnPrL);
 	pdxln->AddChild(pdxlnFilter);
@@ -1501,10 +1499,9 @@ CTranslatorPlStmtToDXL::PdxlnFunctionScanFromPlan
 	delete pstrAlias;
 	CDXLPhysicalTVF *pdxlop = New(m_pmp) CDXLPhysicalTVF(m_pmp, pmdid, pstrFunc);
 
-	// add properties
-	pdxlop->SetProperties(pdxlprop);
-
 	CDXLNode *pdxlnTVF = New(m_pmp) CDXLNode(m_pmp, pdxlop);
+	// add properties
+	pdxlnTVF->SetProperties(pdxlprop);
 
 	// construct and add projection list
 	mapvarcolid.Load(DEFAULT_QUERY_LEVEL, iRel, m_pidgtor, palias->colnames);
@@ -1565,9 +1562,8 @@ CTranslatorPlStmtToDXL::PdxlnTblScanFromPlan
 	CDXLPhysicalProperties *pdxlprop = PdxlpropFromPlan(pplan);
 
 	CDXLPhysicalTableScan *pdxlopTS = New(m_pmp) CDXLPhysicalTableScan(m_pmp, pdxltabdesc);
-	pdxlopTS->SetProperties(pdxlprop);
-
 	CDXLNode *pdxlnTblScan = New(m_pmp) CDXLNode(m_pmp, pdxlopTS);
+	pdxlnTblScan->SetProperties(pdxlprop);
 
 	// construct projection list and filter
 	CDXLNode *pdxlnPrL = NULL;
@@ -1702,7 +1698,7 @@ CTranslatorPlStmtToDXL::PdxlnIndexScanFromGPDBIndexScan
 
 	// get plan costs
 	CDXLPhysicalProperties *pdxlprop = PdxlpropFromPlan((Plan *)pindexscan);
-	pdxlop->SetProperties(pdxlprop);
+	pdxlnIndexScan->SetProperties(pdxlprop);
 
 	// translate the index condition
 	CMappingVarColId mapvarcolidForIndex(m_pmp);
@@ -1776,9 +1772,9 @@ CTranslatorPlStmtToDXL::PdxlnLimitFromPlan
 	CDXLPhysicalProperties *pdxlprop = PdxlpropFromPlan(pplan);
 
 	CDXLPhysicalLimit *pdxlopLimit = New(m_pmp) CDXLPhysicalLimit(m_pmp);
-	pdxlopLimit->SetProperties(pdxlprop);
-
 	CDXLNode *pdxlnLimit = New(m_pmp) CDXLNode(m_pmp, pdxlopLimit);
+	pdxlnLimit->SetProperties(pdxlprop);
+
 	Plan *pplanChildPlan = outerPlan(plimit);
 
 	GPOS_ASSERT(NULL != pplanChildPlan);
@@ -1863,9 +1859,8 @@ CTranslatorPlStmtToDXL::PdxlnMaterializeFromPlan
 		pdxlopMat = New(m_pmp) CDXLPhysicalMaterialize(m_pmp, pmat->cdb_strict, pmat->share_id, pmat->driver_slice, pmat->nsharer_xslice);
 	}
 
-	pdxlopMat->SetProperties(pdxlprop);
-
 	CDXLNode *pdxlnMaterialize = New(m_pmp) CDXLNode(m_pmp, pdxlopMat);
+	pdxlnMaterialize->SetProperties(pdxlprop);
 
 	Plan *pplanChildPlan = outerPlan(pmat);
 	GPOS_ASSERT(NULL != pplanChildPlan);
@@ -1924,9 +1919,9 @@ CTranslatorPlStmtToDXL::PdxlnSharedScanFromPlan
 
 	CDXLSpoolInfo *pspoolinfo = PspoolinfoFromSharedScan(pshscan);
 	pdxlopShScan = New(m_pmp) CDXLPhysicalSharedScan(m_pmp, pspoolinfo);
-	pdxlopShScan->SetProperties(pdxlprop);
-
 	CDXLNode *pdxlnSharedScan = New(m_pmp) CDXLNode(m_pmp, pdxlopShScan);
+	pdxlnSharedScan->SetProperties(pdxlprop);
+
 	Plan *pplanChildPlan = outerPlan(pshscan);
 
 	// project list of child operator
@@ -2021,10 +2016,8 @@ CTranslatorPlStmtToDXL::PdxlnSequence
 
 	// construct DXL sequence operator
 	CDXLPhysicalSequence *pdxlop = New(m_pmp) CDXLPhysicalSequence(m_pmp);
-
-	pdxlop->SetProperties(pdxlprop);
-
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlop);
+	pdxln->SetProperties(pdxlprop);
 
 	// translate last child of sequence operator so we can translate the project list
 	// and the filter
@@ -2097,10 +2090,8 @@ CTranslatorPlStmtToDXL::PdxlnDynamicTableScan
 	CDXLTableDescr *pdxltabdesc = CTranslatorUtils::Pdxltabdesc(m_pmp, m_pmda, m_pidgtor, prte);
 
 	CDXLPhysicalDynamicTableScan *pdxlop = New(m_pmp) CDXLPhysicalDynamicTableScan(m_pmp, pdxltabdesc, pdts->partIndex);
-
-	pdxlop->SetProperties(pdxlprop);
-
 	CDXLNode *pdxln = New(m_pmp) CDXLNode(m_pmp, pdxlop);
+	pdxln->SetProperties(pdxlprop);
 
 	// construct projection list
 

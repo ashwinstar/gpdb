@@ -1074,7 +1074,8 @@ _copyAssertOp(const AssertOp *from)
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
 
 	COPY_SCALAR_FIELD(errcode);
-		
+	COPY_STRING_FIELD(errmessage);
+	
 	return newnode;
 }
 

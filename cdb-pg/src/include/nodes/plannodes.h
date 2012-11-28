@@ -1114,8 +1114,9 @@ typedef struct SplitUpdate
 typedef struct AssertOp
 {
 	
-	Plan		plan;
-	unsigned int	errcode;		/* Error message code to process if assertion fails */
+	Plan 			plan;
+	int				errcode;		/* SQL error code */
+	char 			*errmessage;	/* error message */
 
 } AssertOp;
 

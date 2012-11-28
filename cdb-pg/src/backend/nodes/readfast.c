@@ -3489,7 +3489,8 @@ _readAssertOp(const char ** str)
 {
 	READ_LOCALS(AssertOp);
 
-	READ_UINT_FIELD(errcode);
+	READ_STRING_FIELD(errmessage);  
+	READ_INT_FIELD(errcode);
 
 	readPlanInfo(str, (Plan *)local_node);
 
