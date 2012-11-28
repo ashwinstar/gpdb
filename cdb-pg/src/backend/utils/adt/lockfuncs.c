@@ -400,6 +400,19 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				nulls[7] = true;
 				nulls[8] = true;
 				break;
+			case LOCKTAG_CATQUERY:
+				values[1] = ObjectIdGetDatum(lock->tag.locktag_field1);
+
+				/* store the relid in two places */
+				values[2] = ObjectIdGetDatum(lock->tag.locktag_field2); 
+				values[6] = ObjectIdGetDatum(lock->tag.locktag_field2);
+
+				values[7] = ObjectIdGetDatum(lock->tag.locktag_field3);
+				values[8] = Int16GetDatum(lock->tag.locktag_field4);
+				nulls[3] = true;
+				nulls[4] = true;
+				nulls[5] = true;
+				break;
 			case LOCKTAG_OBJECT:
 			case LOCKTAG_USERLOCK:
 			case LOCKTAG_ADVISORY:

@@ -1090,7 +1090,6 @@ LockGetGrantMask(const LOCKTAG *locktag,
 	LOCALLOCK			*locallock	  = NULL;
 	LOCK				*lock;
 	bool				 found;
-	ResourceOwner		 owner;
 	uint32				 hashcode;
 	int					 partition;
 	LWLockId			 partitionLock;
@@ -1101,13 +1100,6 @@ LockGetGrantMask(const LOCKTAG *locktag,
 	lockMethodTable = LockMethods[lockmethodid];
 	if (lockmode <= 0 || lockmode > lockMethodTable->numLockModes)
 		elog(ERROR, "unrecognized lock mode: %d", lockmode);
-
-	/* XXX XXX: unnecessary */
-	/* Session locks are never transactional, else check table */
-	if (!sessionLock && lockMethodTable->transactional)
-		owner = CurrentResourceOwner;
-	else
-		owner = NULL;
 
 	/*
 	 * Find a LOCALLOCK entry for this lock and lockmode

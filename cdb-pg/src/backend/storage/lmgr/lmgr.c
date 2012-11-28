@@ -791,3 +791,35 @@ UnlockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode)
 	LockRelease(&tag, lockmode, false);
 }
 
+/*
+ *		LockCatQuery
+ *
+ * Lock a cat for query
+ */
+void
+LockCatQuery(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
+			 LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_CATQUERY(tag, dbid, relid, keyoid, indexid);
+
+	LockAcquire(&tag, lockmode, false, false);
+}
+
+/*
+ *		UnlockCatQuery
+ *
+ * Unlock for query a cat
+ */
+void
+UnlockCatQuery(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
+			   LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_CATQUERY(tag, dbid, relid, keyoid, indexid);
+
+	LockRelease(&tag, lockmode, false);
+}
+

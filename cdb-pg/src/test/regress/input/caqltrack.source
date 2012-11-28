@@ -370,6 +370,24 @@ u.uniqquery_code not in
 (select caql_uniqquery_code from cq_logall) 
 order by 1,2;
 
+-- tables without insert/update/delete (overall)
+select tablename from udef group by tablename having sum(bdelete)=0
+and sum(binsert)=0 and sum(bupdate)=0;
+
+-- tables without insert/update/delete (as logged)
+select tablename 
+from udef u
+where
+u.uniqquery_code in
+(select caql_uniqquery_code from cq_logall) 
+group by tablename 
+having 
+sum(bdelete)=0 and 
+sum(binsert)=0 and 
+sum(bupdate)=0
+order by 1;
+
+
 -- track caql usage for particular statements on master
 select logdebug, tablename, base_qry, uniq_qry, caql_firstarg
 from udef u, cq_logall la 

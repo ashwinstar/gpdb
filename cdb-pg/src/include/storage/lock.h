@@ -193,7 +193,7 @@ typedef enum LockTagType
 	"object", \
 	"resource queue", \
 	"database maintenance", \
-	"catquery", \
+	"catalog", \
 	"userlock", \
 	"advisory"
 

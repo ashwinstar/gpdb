@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 54 of calico.pl, released
- Fri Nov 16 15:05:21 2012.
+ This document describes version 56 of calico.pl, released
+ Wed Nov 21 14:32:10 2012.
 
 =head1 SYNOPSIS
 
@@ -332,8 +332,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '54';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1353107121';
+	$glob_glob->{_sleazy_properties}->{version} = '56';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1353537130';
 	$glob_glob->{_sleazy_properties}->{slzy_argv_str} = $slzy_argv_str;
 	
 	    die ("missing required argument for 'metadata'")
@@ -495,10 +495,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1353107121
+      "slzy_date" : 1353537130
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "54"
+   "version" : "56"
 }
 
 EOF_bigstr
@@ -950,6 +950,7 @@ if (pCtx->cq_setpklock)
 				  pklockmode, NULL,
 				  "{LW_TNAME}",
 				  "{COLSTR}",
+				  {LW_OIDONLY},
 				  {INDEX},
 				  newhash,
 				  dontWait,
@@ -2269,6 +2270,8 @@ sub dothing
 					$prefixidx->{pktname} . "\n\tinstead of " .
 					$real_iname . "\n";
 			}
+			$basicargs->{LW_OIDONLY} = ($basicargs->{COLSTR} eq "oid") ?
+				"true" : "false";
 
 			$basicargs->{GET_READPK} = 
 				doformat(get_readpk(),
@@ -2532,14 +2535,15 @@ sub do_iud
 					}
 
 
-					my $lockwellh = {
-#						TABLERELID => "RelationGetRelid(pCtx->cq_heap_rel)",
-						TABLERELID => $bigh->{$tname}->{CamelCaseRelationId},
-#						LOCKMODE => "AccessExclusiveLock",
-						LOCKMODE => "pklockmode",
-						LW_TNAME =>  $tname,
-						COLSTR =>  $idxl,
-						LOCKWELL_IDX => $lockwellidxid,
+					my $lockwellh	  =	 {
+#						TABLERELID	 => "RelationGetRelid(pCtx->cq_heap_rel)",
+						TABLERELID	 => $bigh->{$tname}->{CamelCaseRelationId},
+#						LOCKMODE	 => "AccessExclusiveLock",
+						LOCKMODE	 => "pklockmode",
+						LW_TNAME	 => $tname,
+						COLSTR		 => $idxl,
+						LW_OIDONLY	 => ($idxl eq "oid") ? "true" : "false",
+						LOCKWELL_IDX	  => $lockwellidxid,
 						LOCKWELL_MAKEHASH => $lw_makehash,
 					};
 
@@ -2581,6 +2585,7 @@ sub do_iud
 
 	}
 
+	my $bException = 0;
 	my $rex1 = '(gp\_distribution\_policy)|(pg\_authid)';
 
 	# XXX XXX NOTE: IUD Exceptions
@@ -2593,7 +2598,9 @@ sub do_iud
 		@pktablist = ();
 		$xlockwell_str = "/* $tname: do not get exclusive lock */";
 	}
-	if ($tname =~ m/$rex1/)
+
+	$bException = check_locking_exception($tname);
+	if ($bException)
 	{
 		$xlockwell_str = "/* $tname: do not get exclusive lock */";
 	}
@@ -2625,6 +2632,12 @@ sub do_iud
 			# tricky nomenclature -- tname is our table, fktname is the
 			# foreign key table, but we need the primary key of that table.
 			my $fktname = $foo[0];
+
+			if (check_locking_exception($fktname))
+			{
+				$shlockwell_str .= "/* skip $fktname */\n";
+				next;
+			}
 
 			my $fkrelid = $bigh->{$fktname}->{CamelCaseRelationId};
 
@@ -2764,6 +2777,7 @@ sub do_iud
 				LOCKMODE		  => "AccessShareLock",
 				LW_TNAME		  => $fktname,
 				COLSTR			  => $pk_colstr,
+				LW_OIDONLY		  => ($pk_colstr eq "oid") ? "true" : "false",
 				LOCKWELL_IDX	  => $lockwellidxid,
 				LOCKWELL_MAKEHASH => $lw_makehash,
 				LW_GETDATUM		  => "DatumGetPointer", # for oidvector case
@@ -3679,6 +3693,7 @@ static void caql_lockwell(cqContext		*pCtx,
 						  HeapTuple		 tup,
 						  char			*tablenbame,
 						  char			*colstr,
+						  bool			 bOidOnly,
 						  Oid			 indexid,
 						  Oid			 hashoid,
 						  bool			 dontWait,
@@ -3738,6 +3753,7 @@ static void caql_lockwell(cqContext		*pCtx,
 						  HeapTuple		 tup,
 						  char			*tablenbame,
 						  char			*colstr,
+						  bool			 bOidOnly,
 						  Oid			 indexid,
 						  Oid			 hashoid,
 						  bool			 dontWait,
@@ -3784,9 +3800,12 @@ static void caql_lockwell(cqContext		*pCtx,
 	if (!OidIsValid(keyoid))
 		return;
 
+	/* XXX XXX: don't lock oids for "pinned" values
+	 */
+	if ((relid < 10000) && (keyoid < 10000) && bOidOnly)
+		return;
+
 	SET_LOCKTAG_CATQUERY(tag, dbid, relid, keyoid, indexid);
-//	 tag.locktag_field3 = keyoid;  /* 32 bit for Oid */
-//	 tag.locktag_field4 = indexid; /* 16 bit for indexid (less than 64k) */
 
 	 /* get a lock (and don't wait) */
     res = LockAcquire(&tag, lockmode, false, dontWait);
@@ -3948,6 +3967,7 @@ static void caql_lock_entiretable(cqContext		*pCtx,
 				  lockmode, NULL,
 				  "pg_class",
 				  "oid",
+				  false,
 				  ClassOidIndexId,
 				  newhash,
 				  dontWait,
@@ -3976,6 +3996,7 @@ if (HeapTupleIsValid({TUPLE}))
 				  {LOCKMODE}, {TUPLE},
 				  "{LW_TNAME}",
 				  "{COLSTR}",
+				  {LW_OIDONLY},
 				  {LOCKWELL_IDX},
 				  {LOCKWELL_HASHKEY},
 				  dontWait,
@@ -4018,6 +4039,7 @@ if (HeapTupleIsValid({TUPLE}))
 						  {LOCKMODE}, {TUPLE},
 						  "{LW_TNAME}",
 						  "{COLSTR}",
+						  true,
 						  {LOCKWELL_IDX},
 						  {LOCKWELL_HASHKEY},
 						  dontWait,
