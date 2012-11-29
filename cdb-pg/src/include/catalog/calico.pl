@@ -3800,14 +3800,16 @@ static void caql_lockwell(cqContext		*pCtx,
 	if (!OidIsValid(keyoid))
 		return;
 
-	/* XXX XXX: don't lock oids for "pinned" values
+	/*
+	 * XXX XXX: don't lock oids for "pinned" values
 	 */
-	if ((relid < 10000) && (keyoid < 10000) && bOidOnly)
+	if ((relid < FirstBootstrapObjectId) && (keyoid < FirstBootstrapObjectId)
+		&& bOidOnly)
 		return;
 
-	SET_LOCKTAG_CATQUERY(tag, dbid, relid, keyoid, indexid);
+	SET_LOCKTAG_CATALOG_OBJECT(tag, dbid, relid, keyoid, indexid);
 
-	 /* get a lock (and don't wait) */
+	/* get a lock (and don't wait) */
     res = LockAcquire(&tag, lockmode, false, dontWait);
 
 	if (LOCKACQUIRE_NOT_AVAIL == res)

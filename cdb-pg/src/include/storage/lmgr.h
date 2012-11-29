@@ -88,9 +88,9 @@ extern void LockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode);
 extern void UnlockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode);
 
 /* Lock a catalog object by unique (pk) index -- see catquery.c */
-extern void LockCatQuery(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
-						 LOCKMODE lockmode);
-extern void UnlockCatQuery(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
-						   LOCKMODE lockmode);
+extern void LockCatalogObject(Oid dbid, Oid relid, Oid keyoid, uint16 indexid,
+				  LOCKMODE lockmode);
+extern void UnlockCatalogObject(Oid dbid, Oid relid, Oid keyoid, uint16 indexid,
+					LOCKMODE lockmode);
 
 #endif   /* LMGR_H */

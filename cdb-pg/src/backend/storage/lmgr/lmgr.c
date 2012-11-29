@@ -792,34 +792,31 @@ UnlockDatabaseMaintenance(Oid dbid, LOCKMODE lockmode)
 }
 
 /*
- *		LockCatQuery
+ *		LockCatalogObject
  *
- * Lock a cat for query
+ * Lock an object in the catalog.
  */
 void
-LockCatQuery(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
-			 LOCKMODE lockmode)
+LockCatalogObject(Oid dbid, Oid relid, Oid keyoid, uint16 indexid,
+				  LOCKMODE lockmode)
 {
 	LOCKTAG		tag;
 
-	SET_LOCKTAG_CATQUERY(tag, dbid, relid, keyoid, indexid);
+	SET_LOCKTAG_CATALOG_OBJECT(tag, dbid, relid, keyoid, indexid);
 
 	LockAcquire(&tag, lockmode, false, false);
 }
 
 /*
- *		UnlockCatQuery
- *
- * Unlock for query a cat
+ *		UnlockCatalogObject
  */
 void
-UnlockCatQuery(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
-			   LOCKMODE lockmode)
+UnlockCatalogObject(Oid dbid, Oid relid, Oid keyoid, uint16 indexid, 
+					LOCKMODE lockmode)
 {
 	LOCKTAG		tag;
 
-	SET_LOCKTAG_CATQUERY(tag, dbid, relid, keyoid, indexid);
+	SET_LOCKTAG_CATALOG_OBJECT(tag, dbid, relid, keyoid, indexid);
 
 	LockRelease(&tag, lockmode, false);
 }
-

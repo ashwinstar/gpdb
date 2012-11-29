@@ -1075,7 +1075,7 @@ RemoveLocalLock(LOCALLOCK *locallock)
  * Returns:
  *  grantmask if lock exists, else zero (equivalent of no locks granted)
  *  NOTE: for "fake" locks, returns a grantmask equivalent to highest
- *        locallock.  
+ *        locallock.
  *
  */
 LOCKMASK
@@ -1083,7 +1083,8 @@ LockGetGrantMask(const LOCKTAG *locktag,
 				 bool sessionLock,
 				 char *comment)
 {
-	LOCKMODE			 lockmode	  = 1;	/* start with AccessShareLock */
+	/* start with AccessShareLock */
+	LOCKMODE			 lockmode	  = AccessShareLock;
 	LOCKMETHODID		 lockmethodid = locktag->locktag_lockmethodid;
 	LockMethod			 lockMethodTable;
 	LOCALLOCKTAG		 localtag;
@@ -1104,7 +1105,6 @@ LockGetGrantMask(const LOCKTAG *locktag,
 	/*
 	 * Find a LOCALLOCK entry for this lock and lockmode
 	 */
-
 	MemSet(&localtag, 0, sizeof(localtag));		/* must clear padding */
 	localtag.lock = *locktag;
 
@@ -1116,7 +1116,7 @@ LockGetGrantMask(const LOCKTAG *locktag,
 		locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
 											  (void *) &localtag,
 											  HASH_FIND, &found);
-		
+
 		if (found)
 			break;
 
@@ -1124,7 +1124,33 @@ LockGetGrantMask(const LOCKTAG *locktag,
 	}
 
 	if (!found)
-		return (0);
+		return 0;
+
+	if (locallock->isFake)
+	{
+		/*
+		 * For the case of a "fake" lock, find the *highest* local
+		 * lockmode, not the first, and synthesize a grantmask for it.
+		 */
+		for (lockmode = lockMethodTable->numLockModes;
+			 lockmode > 0; lockmode--)
+		{
+			localtag.mode = lockmode;
+
+			locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
+												  (void *) &localtag,
+												  HASH_FIND, &found);
+
+			if (found)
+				break;
+		}
+		 /* we found a local lock once, so it should still be there !!  */
+		Assert(found);
+
+		grantmask = LOCKBIT_ON(lockmode);
+
+		return grantmask;
+	}
 
 	/*
 	 * Use the local lock to find the shared lock
@@ -1155,47 +1181,19 @@ LockGetGrantMask(const LOCKTAG *locktag,
 
 	if (!found)
 	{
-		if (locallock->isFake)
-		{
-			/* 
-			   For the case of a "fake" lock, find the *highest* local
-			   lockmode, not the first, and synthesize a grantmask for it.
-			 */
+		/* this is bad -- local lock, but no shared lock */
 
-			for (lockmode = lockMethodTable->numLockModes; 
-				 lockmode > 0; lockmode--)
-			{
-				localtag.mode = lockmode;
-			
-				locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
-													  (void *) &localtag,
-													  HASH_FIND, &found);
-		
-				if (found)
-					break;
-			}
-			Assert(found); /* we found a local lock once, so it should
-							  still be there !!
-							*/
-
-			grantmask = LOCKBIT_ON(lockmode);
-		}
+		if (comment)
+			elog(LOG, "found local but no shared lock for mode: %d - %s",
+				 lockmode, comment);
 		else
-		{
-			/* this is bad -- local lock, but no shared lock */
+			elog(LOG, "found local but no shared lock for mode: %d",
+				 lockmode);
 
-			if (comment)
-				elog(LOG, "found local but no shared lock for mode: %d - %s", 
-					 lockmode, comment);
-			else
-				elog(LOG, "found local but no shared lock for mode: %d", 
-					 lockmode);
-
-			grantmask = 0;
-		}
+		grantmask = 0;
 	}
 
-	return (grantmask);
+	return grantmask;
 } /* end LockGetGrantMask */
 
 /*
