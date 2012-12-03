@@ -31,6 +31,7 @@ volatile bool QueryCancelPending = false;
 volatile bool QueryCancelErrorless = false;
 volatile bool QueryCancelCleanup = false;
 volatile bool ProcDiePending = false;
+volatile bool ClientConnectionLost = false;
 volatile bool ImmediateInterruptOK = false;
 
 // Make these signed integers (instead of uint32) to detect garbage negative values.
