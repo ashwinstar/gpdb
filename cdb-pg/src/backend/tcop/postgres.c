@@ -3775,7 +3775,7 @@ AppendGucSetting(List **gucNames,
 				 const char *value)
 {
 	Assert(gucNames != NULL && gucValues != NULL);
-	
+
 	*gucNames = lappend(*gucNames, pstrdup(name));
 	*gucValues = lappend(*gucValues, pstrdup(value));
 }
@@ -3801,15 +3801,15 @@ ProcessStartupConfigOptions(List *options,
 							List **dependGucValues)
 {
 	ListCell *gucOpts = list_head(options);
-	
+
 	while (gucOpts)
 	{
 		char *name = lfirst(gucOpts);
 		gucOpts = lnext(gucOpts);
-		
+
 		char *value = lfirst(gucOpts);
 		gucOpts = lnext(gucOpts);
-		
+
 		if (IsSuperuserConfigOption(name))
 		{
 			AppendGucSetting(susetGucNames, susetGucValues, name, value);
@@ -3837,12 +3837,12 @@ SetConfigOptionList(List *names,
 {
 	ListCell *nameCell = NULL;
 	ListCell *valueCell = NULL;
-	
+
 	forboth(nameCell, names, valueCell, values)
 	{
 		char *name = (char *) lfirst(nameCell);
 		char *value = (char *) lfirst(valueCell);
-		
+
 		SetConfigOption(name, value, context, source);
 	}
 }
@@ -3852,7 +3852,7 @@ SetConfigOptionList(List *names,
  *   Process a GUC setting passed through command line arguments.
  *
  * The command line argument is passed by getopt() into 'optionArg', and
- * the next option character 'nextOption'. 
+ * the next option character 'nextOption'.
  *
  * Guc settings are handled as follows:
  * (1) For super-user settable GUCs, it is appended into susetGucNames/susetGucValues.
@@ -3883,7 +3883,7 @@ ProcessCommandLineConfigOption(const char *optionArg,
 					 errmsg("--%s requires a value",
 							optionArg)));
 		}
-		
+
 		else
 		{
 			ereport(ERROR,
@@ -3901,7 +3901,7 @@ ProcessCommandLineConfigOption(const char *optionArg,
 	{
 		AppendGucSetting(susetGucNames, susetGucValues, name, value);
 	}
-					
+
 	else if (ctx == PGC_BACKEND && IsSusetDependOption(name))
 	{
 		AppendGucSetting(dependGucNames, dependGucValues, name, value);
@@ -3910,7 +3910,7 @@ ProcessCommandLineConfigOption(const char *optionArg,
 	{
 		SetConfigOption(name, value, ctx, gucsource);
 	}
-					
+
 	free(name);
 	if (value)
 	{
@@ -4269,7 +4269,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 		ProcessStartupConfigOptions(MyProcPort->guc_options,
 									&susetGucNames, &susetGucValues,
 									&dependGucNames, &dependGucValues);
-	
+
 	}
 
 	/* Acquire configuration parameters, unless inherited from postmaster */
@@ -6321,6 +6321,8 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	 * Non-error queries loop here.
 	 */
 
+	initStringInfo(&input_message);
+
 	for (;;)
 	{
 		/*
@@ -6328,8 +6330,6 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 		 * errors encountered in "idle" state don't provoke skip.
 		 */
 		doing_extended_query_message = false;
-
-		initStringInfo(&input_message);
 
 		/*
 		 * (1) If we've reached idle state, tell the frontend we're ready
