@@ -830,7 +830,17 @@ ExecFetchSlotHeapTuple(TupleTableSlot *slot)
 	if(!htup)
 	{
 		if(slot->PRIVATE_tts_htup_buf)
+		{
 			pfree(slot->PRIVATE_tts_htup_buf);
+			/*
+			 * After pfree, also set the pointer to NULL. In case the MemoryContextAlloc
+			 * below fails (e.g. out of memory), then we'll jump to AbortTransaction
+			 * and eventually we'll try to free this buffer again if it's not NULL
+			 */
+			slot->PRIVATE_tts_htup_buf = NULL;
+			slot->PRIVATE_tts_htup_buf_len = 0;
+		}
+
 		slot->PRIVATE_tts_htup_buf = (HeapTuple) MemoryContextAlloc(slot->tts_mcxt, tuplen);
 		slot->PRIVATE_tts_htup_buf_len = tuplen;
 
@@ -882,7 +892,16 @@ MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot, bool inline_toast)
 	if(!newTuple)
 	{
 		if(slot->PRIVATE_tts_mtup_buf)
+		{
 			pfree(slot->PRIVATE_tts_mtup_buf);
+			/*
+			 * After pfree, also set the pointer to NULL. In case the MemoryContextAlloc
+			 * below fails (e.g. out of memory), then we'll jump to AbortTransaction
+			 * and eventually we'll try to free this buffer again if it's not NULL
+			 */
+			slot->PRIVATE_tts_mtup_buf = NULL;
+			slot->PRIVATE_tts_mtup_buf_len = 0;
+		}
 
 		slot->PRIVATE_tts_mtup_buf = MemoryContextAlloc(slot->tts_mcxt, tuplen);
 		slot->PRIVATE_tts_mtup_buf_len = tuplen;
