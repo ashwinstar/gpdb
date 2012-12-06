@@ -1478,7 +1478,7 @@ ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
 	@echo ""
 else
 	for source in $(GPPKG_SOURCES); do \
-		$(MAKE) -C $${source}/package INSTLOC=$(INSTLOC); \
+		$(MAKE) -C $${source}/package INSTLOC=$(INSTLOC) BLD_ARCH=`$(BLD_TOP)/releng/set_bld_arch.sh`; \
 		cp $${source}/package/*.gppkg $(GPPKGINSTLOC); \
 	done
 endif
