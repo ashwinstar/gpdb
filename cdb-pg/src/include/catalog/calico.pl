@@ -26,8 +26,8 @@ B<calico.pl> - CaQL catalog query code generation
 
 =head1 VERSION
 
- This document describes version 60 of calico.pl, released
- Wed Dec  5 12:51:40 2012.
+ This document describes version 61 of calico.pl, released
+ Mon Dec 10 15:38:44 2012.
 
 =head1 SYNOPSIS
 
@@ -336,8 +336,8 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '60';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1354740700';
+	$glob_glob->{_sleazy_properties}->{version} = '61';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1355182724';
 	$glob_glob->{_sleazy_properties}->{slzy_argv_str} = $slzy_argv_str;
 	
 	    die ("missing required argument for 'metadata'")
@@ -499,10 +499,10 @@ if (0)
    ],
    "long" : "$toplong",
    "properties" : {
-      "slzy_date" : 1354740700
+      "slzy_date" : 1355182724
    },
    "short" : "CaQL catalog query code generation",
-   "version" : "60"
+   "version" : "61"
 }
 
 EOF_bigstr
@@ -1520,6 +1520,11 @@ sub anum_key
 	{
 		$atname = "pg_aoseg";
 	}
+	# fix gp_aocsseg more
+	if ($tname =~ m/^gp\_aocsseg$/)
+	{
+		$atname = "pg_aocs"; # not pg_aocsseg!
+	}
 
 	# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
 	# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
@@ -1997,6 +2002,8 @@ sub dothing
 		$heaptupdef		= $segpa->{heaptupdef};
 		$relationid		= $segpa->{relationid};
 		$indexname		= $segpa->{indexname};
+		$indexok		= $segpa->{indexOK};
+		$bqh->{func_note} .= "$tname is \"segment-partitioned\" table - actual relation is supplied by childrelid\n";
 	}
 
 	# for optional arguments, strip out these lines from the final string
@@ -3286,7 +3293,7 @@ sub get_caql
 			{
 				my $jj = $ii+1;
 
-				# need to split undefs, blanks
+				# need to skip undefs, blanks
 				while ($jj < scalar(@bigsplit))
 				{
 					if (!defined($bigsplit[$jj]))
@@ -5061,6 +5068,39 @@ Oid caql_insert(cqContext *pCtx, HeapTuple tup)
 }
 
 /* ----------------------------------------------------------------
+ * frozen_caql_insert()
+ * during beginscan/endscan iteration, insert a tuple and 
+ * freeze it (always visible). NOT FOR STANDARD USE!!
+ *
+ * Currently, this routine differs from caql_heap_insert in supplying
+ * a frozen transaction id. Also, the committed bit of the tuple is
+ * set. This function is currently used for data that goes into error
+ * tables and need to stay there even if transaction aborts.
+ *
+ * NOTE: a separate call to CatalogUpdateIndexes after this will 
+ * cause an error
+ * ----------------------------------------------------------------
+ */
+Oid frozen_caql_insert(cqContext *pCtx, HeapTuple tup)
+{
+	Relation		 rel;
+	Oid				 result;
+
+	rel  = pCtx->cq_heap_rel;
+	Assert(RelationIsValid(rel));
+
+	{
+		caql_iud_switch(pCtx, 1, NULL, tup, true /* dontWait */);
+		result = frozen_heap_insert(rel, tup);
+
+		/* keep the catalog indexes up to date (if has any) */
+		caql_UpdateIndexes(pCtx, rel, tup);
+	}
+	return (result);
+}
+
+
+/* ----------------------------------------------------------------
  * caql_update_current()
  * during beginscan/endscan iteration, update current tuple,
  * and update catalog indexes if necessary 
@@ -6014,6 +6054,9 @@ sub do_gperf
 			next # ignore gp_aoseg
 				if ($projtname =~ m/^gp\_aoseg$/);
 
+			next # ignore gp_aocsseg
+				if ($projtname =~ m/^gp\_aocsseg$/);
+
 			next
 				unless (exists($alltabh{$projtname}));
 
@@ -6523,6 +6566,50 @@ EOF_bigstr
 	my $th = JSON::from_json($bigstr);
 
 	$bigh->{gp_aoseg} = $th;
+
+	$bigstr = <<'EOF_bigstr2';
+	{
+      "CamelCaseRelationId" : "GpFaultStrategyRelationId",
+      "UppercaseReltypeOid" : "GP_FAULT_STRATEGY_RELTYPE_OID",
+      "colh" : {
+         "_childrelid" : "Oid",
+         "_indexid" : "Oid",
+         "segno" : "int4"
+      },
+      "cols" : [
+         {
+            "colname" : "_childrelid",
+            "ctype" : "Oid",
+            "sqltype" : "oid"
+         },
+         {
+            "colname" : "_indexid",
+            "ctype" : "Oid",
+            "sqltype" : "oid"
+         },
+         {
+            "colname" : "segno",
+            "ctype" : "int4",
+            "sqltype" : "integer"
+         }
+      ],
+      "filename" : "gp_san_config.h",
+      "with" : {
+         "bootstrap" : 0,
+         "camelcase" : "GpFaultStrategy",
+         "content" : "SEGMENT_PARTITION",
+         "oid" : "",
+         "relid" : "5039",
+         "reltype_oid" : "6443",
+         "shared" : "0"
+      }
+}
+EOF_bigstr2
+
+	my $th2 = JSON::from_json($bigstr);
+
+	$bigh->{gp_aocsseg} = $th2;
+
 }
 
 # fix gp_aoseg and other segment partitioned tables:
@@ -6538,7 +6625,7 @@ sub segment_partition_table_fixup
 	my $segpartnoffset = 0;
 
 	return undef
-		unless ($tname =~ m/^gp\_aoseg$/);
+		unless ($tname =~ m/^(gp\_aoseg|gp\_aocsseg)$/);
 
 	my $wpred3 = [];
 
@@ -6589,10 +6676,12 @@ sub segment_partition_table_fixup
 
 	# update the "HEAPTUPLEDEF" to define Oid variables to hold the
 	# relid/indexid, 
-	# then reset the "RELATIONID" and "INDEX" to use
+	# then reset the "RELATIONID", "INDEX" and "INDEXOK" to use
 	# these variables instead of constants
 	my $heaptupdef = 
-		doformat("Oid childrelid = {CHILD};\nOid indexId    = {IDX};",
+		doformat(
+			"Oid childrelid = {CHILD};" . 
+	    	"\nOid indexId    = {IDX};\nbool indexOK   = OidIsValid(indexId);",
 				 {
 					 CHILD => $relid,
 					 IDX   => $indid
@@ -6604,6 +6693,7 @@ sub segment_partition_table_fixup
 		heaptupdef	   => $heaptupdef, 
 		relationid	   => "childrelid",
 		indexname	   => "indexId",
+		indexOK		   => "indexOK",
 		wpred		   => $wpred3
 	};
 
@@ -6783,7 +6873,7 @@ if (1)
 				
 				# XXX XXX: pg_aoseg - skip segrelid/segidxid
 				# NOTE: kind of gross
-				if ($bq->{tablename} eq "gp_aoseg")
+				if ($bq->{tablename} =~ m/^(gp\_aoseg|gp\_aocsseg)$/)
 				{
 					while (scalar(@args))
 					{

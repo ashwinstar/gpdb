@@ -7,6 +7,8 @@
 #ifndef AOCS_SEGFILES_H
 #define AOCS_SEGFILES_H
 
+#include "storage/lock.h"
+
 #define Natts_pg_aocsseg 5
 #define Anum_pg_aocs_segno 1
 #define Anum_pg_aocs_tupcount 2
@@ -139,6 +141,7 @@ GetAllAOCSFileSegInfo_pg_aocsseg_rel(
 	AppendOnlyEntry 	*aoEntry, 
 	Relation 			pg_aocsseg_rel, 
 	Snapshot 			appendOnlyMetaDataSnapshot, 
+	LOCKMODE 			lm, 
 	int32 				*totalseg);
 
 extern void FreeAllAOCSSegFileInfo(AOCSFileSegInfo **allAOCSSegInfo, int totalSegFiles);

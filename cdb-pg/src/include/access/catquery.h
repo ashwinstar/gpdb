@@ -115,10 +115,14 @@ extern struct catclist *caql_begin_CacheList(cqContext *pCtx,
 */
 /* delete current tuple */
 void		 caql_delete_current(cqContext *pCtx);
+
 /* insert tuple */
 Oid			 caql_insert(cqContext *pCtx, HeapTuple tup);
+Oid			 frozen_caql_insert(cqContext *pCtx, HeapTuple tup);
+
 /* update current tuple */
 void		 caql_update_current(cqContext *pCtx, HeapTuple tup);
+
 /* modify current tuple */
 HeapTuple	 caql_modify_current(cqContext *pCtx, Datum *replValues,
 								 bool *replIsnull,

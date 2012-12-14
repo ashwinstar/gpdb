@@ -68,38 +68,40 @@ void
 InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 						int segno)
 {
-	Relation	pg_aoseg_rel;
-	Relation	pg_aoseg_idx;
-	TupleDesc	pg_aoseg_dsc;
 	HeapTuple	pg_aoseg_tuple = NULL;
-	int			natts = 0;
-	bool	   *nulls;
-	Datum	   *values;
+	bool	    nulls[Natts_pg_aoseg];
+	Datum	    values[Natts_pg_aoseg];
 	ItemPointerData tid;
+	cqContext	*pcqCtx;
 
 	Assert(aoEntry != NULL);
+
+	MemSet(nulls, 0, sizeof(bool) * Natts_pg_aoseg);
 
 	InsertFastSequenceEntry(aoEntry->segrelid,
 							(int64)segno,
 							0,
 							&tid);
 
-	/* XXX XXX XXX XXX XXX XXX XXX XXX 
-
+	/*
 	   "INSERT INTO gp_aoseg"
 
-	   XXX XXX XXX XXX XXX XXX XXX XXX 
+	   NOTE: Use SELECT...FOR UPDATE instead because this opens the
+	   correct child table during caql_beginscan().
 	*/
 
-	pg_aoseg_rel = heap_open(aoEntry->segrelid, RowExclusiveLock);
+	pcqCtx = caql_beginscan(
+			NULL,
+			cql("SELECT * FROM gp_aoseg "
+				" WHERE _childrelid = :1 "
+				" AND segno = :2 "
+				" FOR UPDATE ",
+				ObjectIdGetDatum(aoEntry->segrelid),
+				Int32GetDatum(segno)));
 
-	pg_aoseg_dsc = RelationGetDescr(pg_aoseg_rel);
-	natts = pg_aoseg_dsc->natts;
-	nulls = palloc(sizeof(bool) * natts);
-	values = palloc0(sizeof(Datum) * natts);
-	MemSet(nulls, false, sizeof(char) * natts);
-
-	pg_aoseg_idx = index_open(aoEntry->segidxid, RowExclusiveLock);
+	/* NOTE: don't need to fetch a tuple because it doesn't exist 
+	 * (if we did fetch it, should check that it is invalid)
+	 */
 
 	values[Anum_pg_aoseg_segno - 1] = Int32GetDatum(segno);
 	values[Anum_pg_aoseg_tupcount - 1] = Float8GetDatum(0);
@@ -110,17 +112,16 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 	/*
 	 * form the tuple and insert it
 	 */
-	pg_aoseg_tuple = heap_form_tuple(pg_aoseg_dsc, values, nulls);
+	pg_aoseg_tuple = caql_form_tuple(pcqCtx, values, nulls);
 	if (!HeapTupleIsValid(pg_aoseg_tuple))
 		elog(ERROR, "failed to build AO file segment tuple");
 
-	frozen_heap_insert(pg_aoseg_rel, pg_aoseg_tuple);
-	CatalogUpdateIndexes(pg_aoseg_rel, pg_aoseg_tuple);
+	frozen_caql_insert(pcqCtx, pg_aoseg_tuple);
+	/* and Update indexes (implicit) */
 
 	heap_freetuple(pg_aoseg_tuple);
 
-	index_close(pg_aoseg_idx, RowExclusiveLock);
-	heap_close(pg_aoseg_rel, RowExclusiveLock);
+	caql_endscan(pcqCtx);
 }
 
 /*

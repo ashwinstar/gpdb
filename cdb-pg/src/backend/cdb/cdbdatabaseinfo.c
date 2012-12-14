@@ -1092,6 +1092,8 @@ DatabaseInfo_HandleAppendOnly(
 																aoEntry, 
 																pg_aocsseg_rel,
 																SnapshotNow, 
+										// XXX XXX or AccessShareLock - who knows?
+																NoLock,
 																&totalAocsSegFiles);
 				for (i = 0; i < totalAocsSegFiles; i++)
 				{
