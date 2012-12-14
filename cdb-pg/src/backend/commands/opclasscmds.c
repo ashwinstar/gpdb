@@ -747,7 +747,7 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 					" AND opcnamespace = :3 "
 					" FOR UPDATE ",
 					ObjectIdGetDatum(amID),
-					PointerGetDatum(opcname),
+					CStringGetDatum(opcname),
 					ObjectIdGetDatum(namespaceId)));
 	}
 	else
@@ -911,7 +911,7 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 					" AND opcnamespace = :3 "
 					" FOR UPDATE ",
 					ObjectIdGetDatum(amOid),
-					PointerGetDatum(opcname),
+					CStringGetDatum(opcname),
 					ObjectIdGetDatum(namespaceOid)));
 
 		if (!HeapTupleIsValid(tup))
@@ -1060,7 +1060,7 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 					" AND opcnamespace = :3 "
 					" FOR UPDATE ",
 					ObjectIdGetDatum(amOid),
-					PointerGetDatum(opcname),
+					CStringGetDatum(opcname),
 					ObjectIdGetDatum(namespaceOid)));
 
 		if (!HeapTupleIsValid(tup))

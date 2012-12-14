@@ -438,7 +438,7 @@ InitializeSessionUserId(const char *rolename)
 			NULL,
 			cql("SELECT * FROM pg_authid "
 				" WHERE rolname = :1 ",
-				PointerGetDatum((char *) rolename)));
+				CStringGetDatum((char *) rolename)));
 
 	roleTup = caql_getnext(pcqCtx);
 

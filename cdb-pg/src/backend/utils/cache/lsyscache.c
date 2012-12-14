@@ -1540,7 +1540,7 @@ get_relname_relid(const char *relname, Oid relnamespace)
 			cql("SELECT oid FROM pg_class "
 				" WHERE relname = :1 "
 				" AND relnamespace = :2 ",
-				PointerGetDatum((char *) relname),
+				CStringGetDatum((char *) relname),
 				ObjectIdGetDatum(relnamespace)));
 
 	if (!fetchCount)
@@ -2481,7 +2481,7 @@ get_array_type(Oid typid)
 				cql("SELECT * FROM pg_type "
 					" WHERE typname = :1 "
 					" AND typnamespace = :2 ",
-					PointerGetDatum(array_typename),
+					CStringGetDatum(array_typename),
 					ObjectIdGetDatum(namespaceId)));
 
 		tp = caql_getnext(namcqCtx);
@@ -3068,7 +3068,7 @@ get_roleid(const char *rolname)
 			NULL,
 			cql("SELECT * FROM pg_authid "
 				" WHERE rolname = :1 ",
-				PointerGetDatum((char *) rolname)));
+				CStringGetDatum((char *) rolname)));
 
 	if (!fetchCount)
 		return InvalidOid;

@@ -1302,8 +1302,8 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	 * Close pg_database, but keep lock till commit (this is important to
 	 * prevent any risk of deadlock failure while updating flat file)
 	 */
-	heap_close(pg_database_rel, NoLock);
 	caql_endscan(pcqCtx);
+	heap_close(pg_database_rel, NoLock);
 
 	/*
 	 * Set flag to update flat database file at commit.

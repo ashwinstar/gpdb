@@ -12,6 +12,7 @@
 
 #include "utils/rel.h"
 #include "utils/tqual.h"
+#include "storage/lock.h"
 #include "catalog/pg_appendonly.h"
 
 #define Natts_pg_aoseg					6
@@ -119,7 +120,7 @@ extern FileSegInfo **
 GetAllFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot appendOnlyMetaDataSnapshot, int *totalsegs);
 
 extern FileSegInfo **
-GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot appendOnlyMetaDataSnapshot, int *totalsegs);
+GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot appendOnlyMetaDataSnapshot, LOCKMODE lm, int *totalsegs);
 
 extern void
 UpdateFileSegInfo(Relation parentrel,

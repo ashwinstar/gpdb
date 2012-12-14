@@ -146,7 +146,7 @@ OperatorGet(const char *operatorName,
 				" AND oprleft = :2 "
 				" AND oprright = :3 "
 				" AND oprnamespace = :4 ",
-				PointerGetDatum((char *) operatorName),
+				CStringGetDatum((char *) operatorName),
 				ObjectIdGetDatum(leftObjectId),
 				ObjectIdGetDatum(rightObjectId),
 				ObjectIdGetDatum(operatorNamespace)));

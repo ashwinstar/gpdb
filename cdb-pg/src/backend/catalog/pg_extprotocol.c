@@ -97,7 +97,7 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 				caql_addrel(cqclr(&cqc2), rel),
 				cql("SELECT COUNT(*) FROM pg_extprotocol "
 					" WHERE ptcname = :1 ",
-					PointerGetDatum((char *) protocolName))))
+					CStringGetDatum((char *) protocolName))))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),

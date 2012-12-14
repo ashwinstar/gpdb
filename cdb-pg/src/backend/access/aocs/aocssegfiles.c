@@ -8,6 +8,7 @@
 
 #include "cdb/cdbappendonlystorage.h"
 #include "access/aomd.h"
+#include "access/catquery.h"
 #include "access/heapam.h"
 #include "access/genam.h"
 #include "access/hio.h"
@@ -126,7 +127,7 @@ GetAOCSFileSegInfo(
     segrel = heap_open(aoEntry->segrelid, AccessShareLock);
     segidx = index_open(aoEntry->segidxid, AccessShareLock);
 
-    ScanKeyInit(&scankey, 1, BTEqualStrategyNumber, F_OIDEQ, Int32GetDatum(segno));
+    ScanKeyInit(&scankey, 1, BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(segno));
 
     scan = index_beginscan(segrel, segidx, appendOnlyMetaDataSnapshot, 1, &scankey);
 
@@ -427,7 +428,7 @@ void UpdateAOCSFileSegInfo(AOCSInsertDesc idesc)
     segidx = index_open(aoEntry->segidxid, RowExclusiveLock);
     tupdesc = segrel->rd_att;
 
-    ScanKeyInit(&key, 1, BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(idesc->cur_segno)); 
+    ScanKeyInit(&key, 1, BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(idesc->cur_segno)); 
     scan = index_beginscan(segrel, segidx, usesnapshot, 1, &key);
 
     oldtup = index_getnext(scan, ForwardScanDirection);
@@ -524,7 +525,7 @@ void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segn
 
     tupdesc = segrel->rd_att;
 
-    ScanKeyInit(&key, 1, BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(segno));
+    ScanKeyInit(&key, 1, BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(segno));
     scan = index_beginscan(segrel, segidx, usesnapshot, 1, &key);
 
     oldtup = index_getnext(scan, ForwardScanDirection);

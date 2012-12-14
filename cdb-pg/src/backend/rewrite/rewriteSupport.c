@@ -34,7 +34,7 @@ IsDefinedRewriteRule(Oid owningRel, const char *ruleName)
 						" WHERE ev_class = :1 "
 						" AND rulename = :2 ",
 						ObjectIdGetDatum(owningRel),
-						PointerGetDatum((char *) ruleName))) > 0);
+						CStringGetDatum((char *) ruleName))) > 0);
 
 }
 

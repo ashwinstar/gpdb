@@ -25,8 +25,8 @@ B<tidycat.pl> - generate catalog entries
 
 =head1 VERSION
 
- This document describes version 34 of tidycat.pl, released
- Thu Oct 18 15:24:46 2012.
+ This document describes version 35 of tidycat.pl, released
+ Thu Nov 29 16:30:31 2012.
 
 =head1 SYNOPSIS
 
@@ -57,8 +57,8 @@ Options:
 
         
 Specify an optional filename to hold a dump of the serialized catalog
-data structures.  The format of the dump file is determined by
-dumpformat
+data structures (eg "catdump.json").  The format of the dump file is
+determined by dumpformat.
 
 =item B<-dumpformat> <filename>
 
@@ -293,9 +293,10 @@ In src/include/catalog, the command:
 
    perl tidycat.pl -dd foo.json -df json *.h
 
-will generate a JSON document describing all of the catalog tables.
-This file is installed under gpMgmt/bin/gppylib/data, and gpcheckcat
-uses this data to generate check queries for foreign key constraint.
+will generate a JSON document ("catdump") describing all of the
+catalog tables.  This file is installed under gpMgmt/bin/gppylib/data,
+and gpcheckcat uses this data to generate check queries for foreign
+key constraint.
 
 =head1 CAVEATS
 
@@ -390,9 +391,9 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '34';
+	$glob_glob->{_sleazy_properties}->{version} = '35';
 	$glob_glob->{_sleazy_properties}->{COPYDATES} = '2009-2012';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1350599086';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1354235431';
 	$glob_glob->{_sleazy_properties}->{slzy_argv_str} = $slzy_argv_str;
 	
 	$glob_glob->{dumpdef}        =  $s_dumpdef      if (defined($s_dumpdef));
@@ -3585,10 +3586,10 @@ if (0)
    "long" : "$toplong",
    "properties" : {
       "COPYDATES" : "2009-2012",
-      "slzy_date" : 1350599086
+      "slzy_date" : 1354235431
    },
    "short" : "generate catalog entries",
-   "version" : "34"
+   "version" : "35"
 }
 
 EOF_bigstr
@@ -3601,8 +3602,8 @@ if (0)
 	my $ddlong = <<'EOF_ddlong';
     
 Specify an optional filename to hold a dump of the serialized catalog
-data structures.  The format of the dump file is determined by
-dumpformat
+data structures (eg "catdump.json").  The format of the dump file is
+determined by dumpformat.
 EOF_ddlong
 
 my $syscachelong = <<'EOF_syscachelong';
@@ -3830,9 +3831,10 @@ In src/include/catalog, the command:
 
    perl tidycat.pl -dd foo.json -df json *.h
 
-will generate a JSON document describing all of the catalog tables.
-This file is installed under gpMgmt/bin/gppylib/data, and gpcheckcat
-uses this data to generate check queries for foreign key constraint.
+will generate a JSON document ("catdump") describing all of the
+catalog tables.  This file is installed under gpMgmt/bin/gppylib/data,
+and gpcheckcat uses this data to generate check queries for foreign
+key constraint.
 
 {HEAD1} CAVEATS
 

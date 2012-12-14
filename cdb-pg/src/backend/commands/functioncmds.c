@@ -999,7 +999,7 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 			NULL,
 			cql("SELECT * FROM pg_language "
 				" WHERE lanname = :1 ",
-				PointerGetDatum(languageName)));
+				CStringGetDatum(languageName)));
 
 	languageTuple = caql_getnext(pcqCtx);
 

@@ -839,7 +839,7 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 			caql_addrel(cqclr(&cqc), gp_db_interface_rel),
 			cql("SELECT * FROM gp_db_interfaces "
 				" WHERE dbid = :1 ",
-				ObjectIdGetDatum(c->dbid)));
+				Int16GetDatum(c->dbid)));
 
 	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
 	{
@@ -903,7 +903,7 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 					caql_addrel(cqclr(&cqc), gp_interface_rel),
 					cql("SELECT * FROM gp_interfaces "
 						" WHERE interfaceid = :1 ",
-						ObjectIdGetDatum(ifaces[i].interface_id)));
+						Int16GetDatum(ifaces[i].interface_id)));
 
 			Assert(HeapTupleIsValid(tuple));
 
@@ -1267,7 +1267,7 @@ my_mirror_dbid(void)
 			cql("SELECT dbid FROM gp_segment_configuration "
 				" WHERE content = :1 "
 				" AND role = :2 ",
-				ObjectIdGetDatum(contentid),
+				Int16GetDatum(contentid),
 				CharGetDatum('m')));
 
 	if (HeapTupleIsValid(tup))

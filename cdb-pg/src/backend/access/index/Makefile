@@ -23,6 +23,8 @@ include $(top_srcdir)/src/backend/common.mk
 # needed with latest contents of caql.files to improve Makefile
 # dependencies for catquery.c regeneration
 CAQL_CQL_SRCS := $(addprefix $(top_srcdir)/src/backend/,\
+	access/appendonly/aosegfiles.c \
+	access/aocs/aocssegfiles.c \
 	access/common/tupdesc.c \
 	access/heap/heapam.c \
 	catalog/aclchk.c \

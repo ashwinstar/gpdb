@@ -412,10 +412,7 @@ aocs_beginscan(Relation relation, Snapshot appendOnlyMetaDataSnapshot, TupleDesc
 	ValidateAppendOnlyMetaDataSnapshot(&appendOnlyMetaDataSnapshot);
 	
     if (!relationTupleDesc)
-    {
-        relationTupleDesc = relation->rd_att;
-    }
-
+		relationTupleDesc = RelationGetDescr(relation);
 
     int nvp = relationTupleDesc->natts;
 

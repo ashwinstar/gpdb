@@ -53,7 +53,7 @@ RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior,
 				" AND rulename = :2 "
 				" FOR UPDATE ",
 				ObjectIdGetDatum(owningRel),
-				PointerGetDatum((char *) ruleName)));
+				CStringGetDatum((char *) ruleName)));
 
 	tuple = caql_getnext(pcqCtx);
 

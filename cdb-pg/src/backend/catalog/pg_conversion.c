@@ -67,7 +67,7 @@ ConversionCreate(const char *conname, Oid connamespace,
 				cql("SELECT COUNT(*) FROM pg_conversion "
 					" WHERE conname = :1 "
 					" AND connamespace = :2 ",
-					PointerGetDatum((char *) conname),
+					CStringGetDatum((char *) conname),
 					ObjectIdGetDatum(connamespace))))
 	{
 		ereport(ERROR,
@@ -280,7 +280,7 @@ FindConversion(const char *conname, Oid connamespace)
 			cql("SELECT * FROM pg_conversion "
 				" WHERE conname = :1 "
 				" AND connamespace = :2 ",
-				PointerGetDatum((char *) conname),
+				CStringGetDatum((char *) conname),
 				ObjectIdGetDatum(connamespace)));
 
 	tuple = caql_getnext(pcqCtx);
