@@ -271,7 +271,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		}
 		else
 		{
-			if (xlrec->objtype == MM_OBJ_FILESPACE)
+			if (xlrec->objtype == MM_OBJ_FILESPACE && GPStandby())
 			{
 				if (filespace_map_ht == NULL)
 					elog(ERROR, "Master mirroring hash table for filespaces not initialized");
@@ -285,7 +285,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 						 "Master mirroring hash table entry for filespace %u not found",
 						 xlrec->filespace);
 			}
-			else if (xlrec->objtype == MM_OBJ_TABLESPACE)
+			else if (xlrec->objtype == MM_OBJ_TABLESPACE && GPStandby())
 			{
 				if (tablespace_map_ht == NULL)
 					elog(ERROR, "Master mirroring hash table for tablespaces not initialized");
