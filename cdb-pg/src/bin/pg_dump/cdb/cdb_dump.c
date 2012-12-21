@@ -764,7 +764,7 @@ void addFileNameParam(const char* flag, char* file_name, InputOptions* pInputOpt
 	short_file_name = getRelativeFileName(file_name);
 	tmp_name = MakeString("%s%s", directory_name, short_file_name);
 	pInputOpts->pszPassThroughParms =
-			addPassThroughLongParm("table-file", tmp_name, pInputOpts->pszPassThroughParms);
+			addPassThroughLongParm(flag, tmp_name, pInputOpts->pszPassThroughParms);
 	tableFileName = Safe_strdup(file_name);
 	free(tmp_name);
 }
