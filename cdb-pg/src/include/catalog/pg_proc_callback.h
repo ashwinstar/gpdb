@@ -28,7 +28,7 @@
    create unique index on pg_proc_callback(profnoid, promethod) with (indexid=3126, CamelCase=ProcCallbackProfnoidPromethod);
 
    alter table pg_proc_callback add fk profnoid  on pg_proc(oid);
-   alter table pg_proc_callback add fk promethod on pg_proc(oid);
+   alter table pg_proc_callback add fk procallback on pg_proc(oid);
 
    TIDYCAT_ENDDEF
 */
