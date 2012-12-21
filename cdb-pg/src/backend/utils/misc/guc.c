@@ -5255,7 +5255,7 @@ static struct config_real ConfigureNamesReal[] =
 			NULL
 		},
 		&gp_resqueue_priority_cpucores_per_segment,
-		4.0, 0.1, 25.0, NULL, NULL
+		4.0, 0.1, 32.0, NULL, NULL
 	},
 
 	{
