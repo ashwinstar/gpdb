@@ -8,7 +8,6 @@ Prefix:         /temp
 AutoReq:        no
 AutoProv:       no
 Provides:       plperl = %{plperl_ver} 
-Requires:       perl = %{perl_ver}
 
 %description
 The PL/Perl package provides Procedural language implementation of Perl for Greenplum Database.
