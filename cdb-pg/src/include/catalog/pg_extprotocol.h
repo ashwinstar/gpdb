@@ -112,7 +112,6 @@ typedef enum ExtPtcFuncType
 
 extern Oid
 ExtProtocolCreateWithOid(const char			*protocolName,
-						 Oid				 protNamespace,
 						 List				*readfuncName,
 						 List				*writefuncName,
 						 List				*validatorfuncName,						 

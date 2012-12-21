@@ -5773,13 +5773,13 @@ DefineStmt:
 					n->comptypeOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_trusted PROTOCOL any_name definition
+			| CREATE opt_trusted PROTOCOL name definition
 				{
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_EXTPROTOCOL;
 					n->oldstyle = false;
 					n->trusted = $2;
-					n->defnames = $4;
+					n->defnames = list_make1(makeString($4));
 					n->args = NIL;
 					n->newOid = 0;
 					n->definition = $5;
@@ -7587,11 +7587,11 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
-			| ALTER PROTOCOL any_name OWNER TO RoleId
+			| ALTER PROTOCOL name OWNER TO RoleId
 				{
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_EXTPROTOCOL;
-					n->object = $3;
+					n->object = list_make1(makeString($3));
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}

@@ -40,22 +40,13 @@ void
 DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 {
 	char	   *protName;
-	Oid			protNamespace;
-	AclResult	aclresult;
 	List	   *readfuncName = NIL;
 	List	   *writefuncName = NIL;
 	List	   *validatorfuncName = NIL;
 	ListCell   *pl;
 	Oid			protOid;
 
-	/* Convert list of names to a name and namespace */
-	protNamespace = QualifiedNameGetCreationNamespace(name, &protName);
-
-	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(protNamespace, GetUserId(), ACL_CREATE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
-					   get_namespace_name(protNamespace));
+	protName = strVal(linitial(name));
 
 	foreach(pl, parameters)
 	{
@@ -93,7 +84,6 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 	 * Most of the argument-checking is done inside of ExtProtocolCreate
 	 */
 	protOid = ExtProtocolCreateWithOid(protName,			/* protocol name */
-									   protNamespace,		/* namespace */
 									   readfuncName,		/* read function name */
 									   writefuncName,		/* write function name */
 									   validatorfuncName, 	/* validator function name */

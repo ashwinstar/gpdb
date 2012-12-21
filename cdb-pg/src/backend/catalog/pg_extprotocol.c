@@ -40,7 +40,6 @@ static int func_type_to_attnum(ExtPtcFuncType ftype);
  */
 Oid
 ExtProtocolCreateWithOid(const char		*protocolName,
-					     Oid			 protNamespace,
 					     List			*readfuncName,
 					     List			*writefuncName,
 					     List			*validatorfuncName,					   
