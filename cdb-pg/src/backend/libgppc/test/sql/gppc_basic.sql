@@ -19,6 +19,9 @@ CREATE FUNCTION errfunc1(text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c IM
 CREATE FUNCTION argisnullfunc(int) RETURNS bool AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE;
 CREATE FUNCTION byteafunc1(bytea) RETURNS bytea AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION numericfunc1(numeric) RETURNS numeric AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION numericfunc2(numeric) RETURNS float8 AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION numericfunc3(float8) RETURNS numeric AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
+CREATE FUNCTION numericdef1(int4) RETURNS text AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION datefunc1(date) RETURNS date AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION timefunc1(time) RETURNS time AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE STRICT;
 CREATE FUNCTION timetzfunc1(timetz) RETURNS timetz AS '$libdir/gppc_test' LANGUAGE c STABLE STRICT;
@@ -30,6 +33,12 @@ CREATE FUNCTION spifunc3(text, int) RETURNS text AS '$libdir/gppc_test' LANGUAGE
 CREATE FUNCTION spifunc4(text, text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
 CREATE FUNCTION errorcallbackfunc1(text) RETURNS text AS '$libdir/gppc_test' LANGUAGE c STRICT;
 CREATE FUNCTION test_encoding_name() RETURNS text AS '$libdir/gppc_test' LANGUAGE c IMMUTABLE;
+
+CREATE TABLE numerictable(
+	a numeric(5, 2),
+	b numeric(3),
+	c numeric
+);
 
 SELECT oidcheckfunc('bool'),
 	oidcheckfunc('char'),
@@ -67,6 +76,10 @@ SELECT errfunc1('The quick brown fox jumps over the lazy dog');
 SELECT argisnullfunc(0), argisnullfunc(NULL);
 SELECT byteafunc1(E'\\244\\233abc');
 SELECT numericfunc1(1000);
+SELECT numericfunc2(1000.00001);
+SELECT numericfunc3(1000.00001);
+SELECT attname, numericdef1(atttypmod) FROM pg_attribute
+	WHERE attrelid = 'numerictable'::regclass and atttypid = 'numeric'::regtype;
 SELECT datefunc1('2011-02-24');
 SELECT timefunc1('15:00:01');
 SELECT timetzfunc1('15:00:01 UTC');

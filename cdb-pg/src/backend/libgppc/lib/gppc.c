@@ -682,6 +682,35 @@ GppcCStringGetNumeric(const char *s)
 		DirectFunctionCall3(numeric_in, CStringGetDatum(s), NUMERICOID, -1));
 }
 
+bool
+GppcGetNumericDef(int32_t typmod, int16_t *precision, int16_t *scale)
+{
+	*precision = 0;
+	*scale = 0;
+	if (typmod < (int32_t) (VARHDRSZ))
+		return false;
+
+	typmod -= VARHDRSZ;
+	*precision = (typmod >> 16) & 0xffff;
+	*scale = typmod & 0xffff;
+
+	return true;
+}
+
+GppcFloat8
+GppcNumericGetFloat8(GppcNumeric n)
+{
+	return DatumGetFloat8(
+			DirectFunctionCall1(numeric_float8, NumericGetDatum((Numeric *) n)));
+}
+
+GppcNumeric
+GppcFloat8GetNumeric(GppcFloat8 f)
+{
+	return (GppcNumeric) DatumGetPointer(
+			DirectFunctionCall1(float8_numeric, Float8GetDatum(f)));
+}
+
 static void
 timestamp2gppctm(Timestamp ts, GppcTm *tm)
 {
