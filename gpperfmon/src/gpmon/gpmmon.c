@@ -60,6 +60,7 @@ struct
 	int health_harvest_interval;
 	int warning_disk_space_percentage;
 	int error_disk_space_percentage;
+	int iterator_aggregate;
 } opt = { 0 };
 
 /* gpmmon host */
@@ -116,13 +117,16 @@ static apr_thread_t* snmp_th = NULL;
 sigset_t unblocksig;
 sigset_t blocksig;
 
+/* Temporary global memory to store the qexec line upon a receive until it is copied into a mmon_qexec_t struct; only use in main receive thread*/
+char	qexec_mmon_temp_line[QEXEC_MAX_ROW_BUF_SIZE];
+
 
 /* Function defs */
 static int read_conf_file(char *conffile);
 static void gethostlist();
 static void getconfig(void);
-static apr_status_t sendpkt(int sock, const gpmon_packet_t* pkt);
-static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt);
+static apr_status_t sendpkt(int sock, const gp_smon_to_mmon_packet_t* pkt);
+static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_until_all_recv);
 
 
 #define MMON_LOG_FILENAME_SIZE (MAXPATHLEN+1)
@@ -241,8 +245,8 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 {
 	host_t* h = arg;
 	int e;
-	gpmon_packet_t pktbuf;
-	gpmon_packet_t* pkt = 0;
+	gp_smon_to_mmon_packet_t pktbuf;
+	gp_smon_to_mmon_packet_t* pkt = 0;
 	TR2(("recv_from_gx sock %d host %s port %d\n", sock, h->hostname, ax.port));
 
 	if (!(event & EV_READ))
@@ -254,29 +258,13 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 	{
 		if (!h->eflag)
 		{
-			char* p = (char*) &pktbuf;
-			char* q = p + sizeof(pktbuf);
-			while (p < q)
-			{
-				int n = recv(sock, p, q - p, 0);
-				if (n == -1)
-				{
-					switch (errno)
-					{
-					case EINTR:
-					case EAGAIN:
-						continue;
-					}
-					gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "cannot get packet from host %s port %d", h->hostname, ax.port);
-					break;
-				}
-				p += n;
-				if (p == (char*) &pktbuf)
-				{
-					TR1(("at %s: connection dropped by host %s port %d [set eflag]\n", FLINE, h->hostname, ax.port));
-					h->eflag = 1;
-					break;
-				}
+			e = recvpkt(sock, &pktbuf, true);
+			if (e == APR_FROM_OS_ERROR(EINTR)) {
+				TR1(("at %s: connection dropped by host %s port %d [set eflag]\n", FLINE, h->hostname, ax.port));
+				h->eflag = 1;
+			} else if( e != 0 ) {
+				gpmon_warningx(FLINE, e, "cannot get packet from host %s port %d", h->hostname, ax.port);
+				h->eflag = 1;
 			}
 		}
 		if (h->eflag)
@@ -287,9 +275,10 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 		else
 		{
 			pkt = &pktbuf;
-			TR2(("received packet %d from %s:%d\n", pkt->pkttype, h->hostname, ax.port));
+			TR2(("received packet %d from %s:%d\n", pkt->header.pkttype, h->hostname, ax.port));
 		}
 	}
+
 	apr_thread_mutex_unlock(h->mutex);
 	if (pkt)
 	{
@@ -430,11 +419,14 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 	struct sockaddr_in sa;
 	struct sockaddr_in6 sa6;
 	SOCKET sock = -1;
-	gpmon_packet_t pkt = { 0 };
+	gp_smon_to_mmon_packet_t pkt;
 	int e = 0;
 	unsigned short family = 0;
 	struct sockaddr * sockaddrlive = NULL;
 	size_t length = 0;
+
+	memset(&pkt, 0, sizeof(gp_smon_to_mmon_packet_t));
+
 
 	if (ipv6)
 	{
@@ -472,9 +464,7 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 		goto bail;
 	}
 
-	pkt.magic = GPMON_MAGIC;
-	pkt.version = GPMON_PACKET_VERSION;
-	pkt.pkttype = GPMON_PKTTYPE_HELLO;
+	gp_smon_to_mmon_set_header(&pkt, GPMON_PKTTYPE_HELLO);
 	pkt.u.hello.signature = ax.signature;
 	if (0 != (e = sendpkt(sock, &pkt)))
 	{
@@ -482,13 +472,17 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 		goto bail;
 	}
 
-	if (0 != (e = recvpkt(sock, &pkt)))
-	{
+	if (0 != (e = recvpkt(sock, &pkt, false))) {
 		gpmon_warningx(FLINE, 0, "error %d from recvpkt system call", e);
 		goto bail;
 	}
 
-	if (pkt.pkttype != GPMON_PKTTYPE_HELLO)
+	if (0 != (e = gpmon_ntohpkt(pkt.header.magic, pkt.header.version, pkt.header.pkttype))) {
+		gpmon_warningx(FLINE, 0, "error %d from recvpkt gpmon_ntohpkt", e);
+		goto bail;
+	}
+
+	if (pkt.header.pkttype != GPMON_PKTTYPE_HELLO)
 	{
 		gpmon_warning(FLINE, "invalid packet type");
 		e = APR_EINVAL;
@@ -589,8 +583,9 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 					}
 
 					snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %d ",
-							active_hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v, ax.port);
+							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %s%d ",
+							active_hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+							((opt.iterator_aggregate)?"-a ":""), ax.port);
 
 					if (h->ever_connected)
 					{
@@ -752,12 +747,17 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 
 	gpdb_check_partitions();
 
+	if (opt.iterator_aggregate) {
+		remove_segid_constraint();
+	}
+
 	for (loop = 1; !ax.exit; loop++)
 	{
 		apr_sleep(apr_time_from_sec(1));
 
 		if (0 == (loop % opt.harvest_interval))
 		{
+			int e;
 			/* 	
 				PROCESS:
 				1) WITH TAIL MUTEX: rename tail files to stage files
@@ -778,20 +778,29 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				   will still be reading the tail files for an entire harvest cycle.  (this is not perfect logic but ok)
 			*/
 
+			apr_pool_t* pool; /* create this pool so we can destroy it each loop */
+
+
+			if (0 != (e = apr_pool_create(&pool, ax.pool))) {
+				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+				gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+				return (void*)1;
+			}
+
 			/* LOCK TAIL MUTEX ****************************************/
 			apr_thread_mutex_lock(ax.tailfile_mutex);
 
 			ax._tail_buffer_bytes += ax.tail_buffer_bytes;
 			ax.tail_buffer_bytes = 0;
 
-			status = gpdb_rename_tail_files(ax.pool);
+			status = gpdb_rename_tail_files(pool);
 
-			status = gpdb_truncate_tail_files(ax.pool);
+			status = gpdb_truncate_tail_files(pool);
 
 			apr_thread_mutex_unlock(ax.tailfile_mutex);
 			/* UNLOCK TAIL MUTEX ****************************************/
 
-			status = gpdb_copy_stage_to_harvest_files(ax.pool);
+			status = gpdb_copy_stage_to_harvest_files(pool);
 
 			if (status == APR_SUCCESS)
 			{
@@ -812,7 +821,7 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 					better to lose some perf data and self fix than calling support to have them manually find the corrupted perf data and clear it themselves
 					we also delete the data if the size of the data is greater than our max data size
 				*/
-				status = gpdb_empty_harvest_files(ax.pool);
+				status = gpdb_empty_harvest_files(pool);
 
 				if (status != APR_SUCCESS)
 				{
@@ -821,6 +830,8 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				consecutive_failures = 0;
 				ax._tail_buffer_bytes = 0;
 			}
+
+			apr_pool_destroy(pool); /*destroy the pool since we are done with it*/
 		}
 		if (0 == (loop % partition_check_interval))
 		{
@@ -981,7 +992,7 @@ static void gpmmon_main(void)
 	/* spawn harvest thread */
 	if (0 != (e = apr_thread_create(&harvest_th, ta, harvest_main, 0, ax.pool)))
 	{
-        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
@@ -1081,6 +1092,7 @@ static void gpmmon_main(void)
 		if (!opt.console && (ticks_since_last_log_check > log_check_interval))
 		{
 			apr_finfo_t finfo;
+			//it is ok to use the parent pool here b/c it is not for used for allocation in apr_stat
 			if (0 == apr_stat(&finfo, mmon_log_filename, APR_FINFO_SIZE, ax.pool))
 			{
 				if (opt.max_log_size != 0 && finfo.size > opt.max_log_size)
@@ -1234,6 +1246,9 @@ static int read_conf_file(char *conffile)
 			} 
 			else if (apr_strnatcasecmp(pName, "error_disk_space_percentage") == 0) {
 				opt.error_disk_space_percentage = atoi(pVal);
+			}
+			else if (apr_strnatcasecmp(pName, "iterator_aggregate") == 0) {
+				opt.iterator_aggregate = atoi(pVal);
 			}
 			else
 			{
@@ -1695,7 +1710,7 @@ static void gethostlist()
 }
 
 /* send a packet thru sock */
-static apr_status_t sendpkt(int sock, const gpmon_packet_t* pkt)
+static apr_status_t sendpkt(int sock, const gp_smon_to_mmon_packet_t* pkt)
 {
 	const char* p = (const char*) pkt;
 	const char* q = p + sizeof(*pkt);
@@ -1716,17 +1731,14 @@ static apr_status_t sendpkt(int sock, const gpmon_packet_t* pkt)
 	}
 	return 0;
 }
-
-/* recv a packet thru sock */
-static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt)
+/* recv data through a sock */
+static apr_status_t recv_data(int sock, char* data, size_t data_size, bool loop_until_all_recv )
 {
-	char* p = (char*) pkt;
-	char* q = p + sizeof(*pkt);
-	while (p < q)
-	{
+	char* p = data;
+	char* q = p + data_size;
+	while (p < q) {
 		int n = recv(sock, p, q - p, 0);
-		if (n == -1)
-		{
+		if (n == -1) {
 			switch (errno)
 			{
 			case EINTR:
@@ -1736,12 +1748,46 @@ static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt)
 			return APR_FROM_OS_ERROR(errno);
 		}
 		p += n;
-		if (n == 0)
+		if (loop_until_all_recv) { // loop until we get all the data
+			if (p == (char*) &data) {
+				return APR_FROM_OS_ERROR(EINTR);
+			}
+		} else if (n == 0) { // didn't get data this time so return an error
 			return APR_FROM_OS_ERROR(EINTR);
+		}
 	}
 
-	TR2(("read packet from sock %d\n", sock));
-	return gpmon_ntohpkt(pkt);
+	TR2(("read data from sock %d\n", sock));
+	return 0;
+}
+
+/* recv a packet thru sock */
+static apr_status_t recvpkt(int sock, gp_smon_to_mmon_packet_t* pkt, bool loop_until_all_recv)
+{
+	int e = 0;
+
+	//receive the header
+	if (0 != (e = recv_data(sock, (char *)&pkt->header, sizeof(gp_smon_to_mmon_header_t), loop_until_all_recv))) {
+		return e;
+	}
+
+	if (pkt->header.pkttype == GPMON_PKTTYPE_QEXEC) {
+		// Get the data portion, then get the line
+		if (0 != (e = recv_data(sock, (char *)&pkt->u.qexec_packet.data, sizeof(qexec_packet_data_t), loop_until_all_recv))) {
+			return e;
+		}
+		if (0 != (e = recv_data(sock, qexec_mmon_temp_line, pkt->u.qexec_packet.data.size_of_line, loop_until_all_recv))) {
+			return e;
+		}
+		pkt->u.qexec_packet.line = qexec_mmon_temp_line;
+		TR2(("received qexec line size %d, %s\n", pkt->u.qexec_packet.data.size_of_line, pkt->u.qexec_packet.line));
+	} else {
+		//receive the union packet
+		if (0 != (e = recv_data(sock, (char *)&pkt->u, get_size_by_pkttype_smon_to_mmon(pkt->header.pkttype), loop_until_all_recv))) {
+			return e;
+		}
+	}
+	return 0;
 }
 
 

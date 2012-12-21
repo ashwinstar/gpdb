@@ -54,7 +54,7 @@ extern int verbose;
 /* Architecture specific limits for metrics */
 #if defined(osx104_x86) || defined(osx105_x86) || defined(rhel4_x86_32) || defined(rhel5_x86_32)
 	#define GPSMON_METRIC_MAX 0xffffffffUL
-#elif defined(rhel4_x86_64) || defined(rhel5_x86_64) || defined(sol10_x86_64) || defined(suse10_x86_64)
+#elif defined(rhel4_x86_64) || defined(rhel5_x86_64) || defined(rhel6_x86_64) || defined(sol10_x86_64) || defined(suse10_x86_64)
 	#define GPSMON_METRIC_MAX 0xffffffffffffffffULL
 #else
 	#define GPSMON_METRIC_MAX 0xffffffffUL
@@ -75,7 +75,10 @@ extern int gpsmon_fatal(const char* fline, const char* fmt, ...);
 extern int gpsmon_fatalx(const char* fline, int e, const char* fmt, ...);
 
 /* convert packets to host order */
-extern apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt);
+extern apr_status_t gpmon_ntohpkt(apr_int32_t magic, apr_int16_t version, apr_int16_t pkttype);
+
+/* get the size of the union packet for smon_to_mon packets*/
+inline size_t get_size_by_pkttype_smon_to_mmon(apr_int16_t pkttype);
 
 /* strings */
 extern char* gpmon_trim(char* s);
@@ -114,8 +117,7 @@ struct multi_interface_holder_t
 
 
 /* segment host */ 
-typedef struct host_t host_t; 
-struct host_t
+typedef struct host_t
 {
 	apr_thread_mutex_t *mutex; 
 	int sock; /* socket connected to gpsmon on this host */ 
@@ -140,7 +142,45 @@ struct host_t
 	unsigned char is_hbw; 
 	unsigned char is_etl; 
 	char ever_connected; /* set to non-zero after first connection attempt */
-};
+} host_t;
+
+#define QEXEC_MAX_ROW_BUF_SIZE (2048)
+
+typedef struct qexec_packet_data_t
+{
+	gpmon_qexeckey_t 	key;
+	apr_uint64_t 		rowsout;
+	apr_uint64_t		_cpu_elapsed; /* CPU elapsed for iter */
+	apr_uint64_t 		measures_rows_in;
+	apr_uint16_t		size_of_line; //the size of the string plus the null terminator
+} qexec_packet_data_t;
+
+typedef struct qexec_packet_t
+{
+	qexec_packet_data_t data;
+	char* 				line;
+
+} qexec_packet_t;
+
+typedef struct gp_smon_to_mmon_header_t {
+	/* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+	apr_int16_t pkttype;
+	apr_int32_t magic;
+	apr_int16_t version;
+} gp_smon_to_mmon_header_t;
+
+typedef struct gp_smon_to_mmon_packet_t {
+	gp_smon_to_mmon_header_t header;
+	union {
+		gpmon_hello_t   hello;
+		gpmon_metrics_t metrics;
+		gpmon_qlog_t    qlog;
+		qexec_packet_t  qexec_packet;
+		gpmon_seginfo_t seginfo;
+		gpmon_filerepinfo_t filerepinfo;
+		gpmon_fsinfo_t fsinfo;
+	} u;
+} gp_smon_to_mmon_packet_t;
 
 char* get_connection_hostname(host_t* host);
 char* get_connection_ip(host_t* host);
@@ -165,12 +205,16 @@ struct snmp_module_params_t
 double subtractTimeOfDay(struct timeval* begin, struct timeval* end);
 
 
-extern const char* gpdb_getnodename(PerfmonNodeType type);
-extern const char* gpdb_getnodestatus(PerfmonNodeStatus status);
-extern apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit);
-extern apr_status_t gpdb_debug_string_lookup_table();
-extern void gpdb_get_single_string_from_query(const char* QUERY, char** resultstring, apr_pool_t* pool);
-extern int snmp_report(host_t* tab, int tabsz);
-extern apr_status_t gpmmon_init_snmp(snmp_module_params_t* params);
-extern bool is_healthmon_running_separately();
+/* Set header*/
+inline void gp_smon_to_mmon_set_header(gp_smon_to_mmon_packet_t* pkt, apr_int16_t pkttype);
+
+unsigned int gpdb_getnode_number_metrics(PerfmonNodeType type);
+const char* gpdb_getnodename(PerfmonNodeType type);
+const char* gpdb_getnodestatus(PerfmonNodeStatus status);
+apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit);
+apr_status_t gpdb_debug_string_lookup_table();
+void gpdb_get_single_string_from_query(const char* QUERY, char** resultstring, apr_pool_t* pool);
+int snmp_report(host_t* tab, int tabsz);
+apr_status_t gpmmon_init_snmp(snmp_module_params_t* params);
+bool is_healthmon_running_separately();
 #endif /* GPMONLIB_H */
