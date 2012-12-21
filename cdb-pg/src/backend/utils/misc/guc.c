@@ -5921,13 +5921,13 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"gp_hadoop_connector_version", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("The Hadoop connector version that external table should use."),
-			gettext_noop("Valid values are HD_1.0.0.0, MR_1.0.0.0. See admin guide for details."),
+		{"gp_hadoop_xnet_version", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("The Hadoop Cross Connect version that external table should use."),
+			gettext_noop("Valid values are gphd_xnet_1.0.0.0, gpmr_xnet_1.0.0.0. See admin guide for details."),
 			GUC_GPDB_ADDOPT
 		},
 		&gp_hadoop_connector_version,
-		"HD_1.0.0.0", NULL, NULL
+		"gphd-xnet-1.0.0.0", NULL, NULL
 	},
 
 	{
