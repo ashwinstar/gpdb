@@ -1230,6 +1230,37 @@ min_query_time = 20
 # Minimum value is 10 seconds.
 min_detailed_query_time = 60
 
+# This should be a percentage between 0 and 100 and should be
+# less than the error_disk_space_percentage.  If a filesystem’s 
+# disk space used percentage equals or exceeds this value a 
+# warning will be logged and a warning email/snmp trap may be 
+# sent.  If this configuration is set to 0 or not specified, no 
+# warnings are sent.
+#warning_disk_space_percentage = 80
+
+# This should be a percentage between 0 and 100 and should be 
+# greater than the warning_disk_space_percentage. If a 
+# filesystem’s disk space used percentage equals or exceeds 
+# this value an error will be logged and a error email/snmp 
+# trap may be sent.  If this configuration is set to 0 or not 
+# specified, no errors are sent.
+#error_disk_space_percentage = 90
+
+#This is the interval in minutes that limits the number of 
+#error/warning messages that are sent. The minimum value for 
+#this configuration is 1.  Setting this to 0 or not specifying 
+#this configuration results in it getting set to the minimum.  
+disk_space_interval = 60
+
+#This is the maximum number of error/warning messages that 
+#will be sent in the disk_space_interval.  The maximum value
+#for this configuration is 50.  The minimum value for this 
+#configuration is 1.  Setting this configuration to greater 
+#than 50 or not specifying this configuration results in it 
+#getting set to the maximum.
+max_disk_space_messages_per_interval = 10
+
+
 log_location = $GP_DIR/gpperfmon/logs
 _EOF_
 }
