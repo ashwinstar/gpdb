@@ -752,7 +752,7 @@ dumpRoles(PGconn *conn)
 
 	/*
 	 * Query to select role info get resqueue if version support it get
-	 * external table auth on gpfdist and http if version support it get
+	 * external table auth on gpfdist, gpfdists and http if version support it get
 	 * external table auth on gphdfs if version support it note: rolconfig is
 	 * dumped later
 	 */
@@ -761,7 +761,7 @@ dumpRoles(PGconn *conn)
 					  "rolcreaterole, rolcreatedb, rolcatupdate, "
 					  "rolcanlogin, rolconnlimit, rolpassword, "
 					  "rolvaliduntil, "
-			  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
+					  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
 					  " %s %s %s"
 					  "FROM pg_authid "
 					  "ORDER BY 1",
@@ -867,6 +867,7 @@ dumpRoles(PGconn *conn)
 
 		if (exttab_auth)
 		{
+			/* we use the same privilege for gpfdist and gpfdists */
 			if (!PQgetisnull(res, i, i_rolcreaterextgpfd) &&
 				strcmp(PQgetvalue(res, i, i_rolcreaterextgpfd), "t") == 0)
 				appendPQExpBuffer(buf, " CREATEEXTTABLE (protocol='gpfdist', type='readable')");

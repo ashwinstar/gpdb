@@ -2020,6 +2020,7 @@ static void CheckValueBelongsToKey(char *key, char *val, const char **keys, cons
 					 errOmitLocation(true)));
 
 		if(strcasecmp(val, "gpfdist") != 0 && 
+		   strcasecmp(val, "gpfdists") != 0 &&
 		   strcasecmp(val, "http") != 0 &&
 		   strcasecmp(val, "gphdfs") != 0)
 			ereport(ERROR,
@@ -2050,10 +2051,10 @@ static void TransformExttabAuthClause(DefElem *defel, extAuthPair *extauth)
 	genericPair *genpair = (genericPair *) palloc0 (4 * sizeof(char *));
 	
 	const int	numkeys = 2;
-	const int	numvals = 5;
+	const int	numvals = 6;
 	const char *keys[] = { "type", "protocol"};	 /* order matters for validation. don't change! */
 	const char *vals[] = { /* types     */ "readable", "writable", 
-						   /* protocols */ "gpfdist" , "http", "gphdfs"};
+						   /* protocols */ "gpfdist", "gpfdists" , "http", "gphdfs"};
 
 	if(list_length(l) > 2)
 		ereport(ERROR,
@@ -2171,8 +2172,10 @@ static void SetCreateExtTableForRole(List* allow,
 		foreach(lc, allow)
 		{
 			extAuthPair* extauth = (extAuthPair*) lfirst(lc);
-				
-			if(strcasecmp(extauth->protocol, "gpfdist") == 0)
+			
+			/* we use the same privilege for gpfdist and gpfdists */
+			if ((strcasecmp(extauth->protocol, "gpfdist") == 0) ||
+			    (strcasecmp(extauth->protocol, "gpfdists") == 0))
 			{
 				if(strcasecmp(extauth->type, "readable") == 0)
 				{
@@ -2229,8 +2232,10 @@ static void SetCreateExtTableForRole(List* allow,
 		foreach(lc, disallow)
 		{
 			extAuthPair* extauth = (extAuthPair*) lfirst(lc);
-				
-			if(strcasecmp(extauth->protocol, "gpfdist") == 0)
+			
+			/* we use the same privilege for gpfdist and gpfdists */
+			if ((strcasecmp(extauth->protocol, "gpfdist") == 0) ||
+				(strcasecmp(extauth->protocol, "gpfdists") == 0))
 			{
 				if(strcasecmp(extauth->type, "readable") == 0)
 				{

@@ -543,7 +543,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			return NULL;
 		}
     }
-    else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url))
+    else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url) || IS_GPFDISTS_URI(url))
     {
 		int sz = make_url(file->url, ev, 0);
 
@@ -559,7 +559,8 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
 		file->u.curl.curl_url = palloc(sz);
 		make_url(file->url, ev, file->u.curl.curl_url);
-		if (IS_GPFDIST_URI(file->u.curl.curl_url))
+		
+		if (IS_GPFDIST_URI(file->u.curl.curl_url) || IS_GPFDISTS_URI(file->u.curl.curl_url))
 		{
 			/* replace gpfdist:// with http:// */
 			file->u.curl.curl_url += 3;

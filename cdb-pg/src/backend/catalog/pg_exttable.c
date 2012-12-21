@@ -205,7 +205,7 @@ GetExtTableEntry(Oid relid)
 			extentry->locations = lappend(extentry->locations, makeString(pstrdup(loc_str)));
 		}
 		
-		if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str)) )
+		if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str) || IS_GPFDISTS_URI(loc_str)))
 			extentry->isweb = false;
 		else
 			extentry->isweb = true;

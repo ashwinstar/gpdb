@@ -941,7 +941,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 *
 	 * - Always allow if superuser.
 	 * - Never allow EXECUTE or 'file' exttables if not superuser.
-	 * - Allow http or gpfdist tables if pg_auth has the right permissions
+	 * - Allow http, gpfdist or gpfdists tables if pg_auth has the right permissions
 	 *   for this role and for this type of table, or if gp_external_grant_privileges 
 	 *   is on (gp_external_grant_privileges should be deprecated at some point).
 	 */
@@ -973,7 +973,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 			else if(!gp_external_grant_privileges)
 			{
 				/*
-				 * Check if this role has the proper 'gpfdist' or 'http'
+				 * Check if this role has the proper 'gpfdist', 'gpfdists' or 'http'
 				 * permissions in pg_auth for creating this table.
 				 */
 
@@ -991,18 +991,18 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 							 errmsg("role \"%s\" does not exist (in DefineExternalRelation)", 
 									 GetUserNameFromId(userid))));
 
-				if (uri->protocol == URI_GPFDIST && iswritable)
+				if ( (uri->protocol == URI_GPFDIST || uri->protocol == URI_GPFDISTS) && iswritable)
 				{
 					Datum 	d_wextgpfd = heap_getattr(tuple, Anum_pg_authid_rolcreatewextgpfd, pg_authid_dsc, &isnull);
 					bool	createwextgpfd = (isnull ? false : DatumGetBool(d_wextgpfd));
-					
+
 					if (!createwextgpfd)
 						ereport(ERROR,
 								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-								errmsg("permission denied: no privilege to create a writable gpfdist external table"),
+								errmsg("permission denied: no privilege to create a writable gpfdist(s) external table"),
 										errOmitLocation(true)));
 				}
-				else if (uri->protocol == URI_GPFDIST && !iswritable)
+				else if ( (uri->protocol == URI_GPFDIST || uri->protocol == URI_GPFDISTS) && !iswritable)
 				{
 					Datum 	d_rextgpfd = heap_getattr(tuple, Anum_pg_authid_rolcreaterextgpfd, pg_authid_dsc, &isnull);
 					bool	createrextgpfd = (isnull ? false : DatumGetBool(d_rextgpfd));
@@ -1010,7 +1010,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 					if (!createrextgpfd)
 						ereport(ERROR,
 								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-								errmsg("permission denied: no privilege to create a readable gpfdist external table"),
+								errmsg("permission denied: no privilege to create a readable gpfdist(s) external table"),
 										errOmitLocation(true)));
 
 				}
@@ -16843,10 +16843,11 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 		 * in here edit the uri string if needed
 		 */
 
-		/* no port was specified for gpfdist or hdfs. add the default */
-		if(uri->protocol == URI_GPFDIST && uri->port == -1)
+		/* no port was specified for gpfdist, gpfdists or hdfs. add the default */
+		if ((uri->protocol == URI_GPFDIST || uri->protocol == URI_GPFDISTS) && uri->port == -1)
 		{
-			char *at_hostname = (char *) uri_str_orig + strlen("gpfdist://");
+			char *at_hostname = (char *) uri_str_orig
+					+ strlen(uri->protocol == URI_GPFDIST ? "gpfdist://" : "gpfdists://");
 			char *after_hostname = strchr(at_hostname, '/');
 			int  len = after_hostname - at_hostname;
 			char *hostname = pstrdup(at_hostname);
@@ -16854,7 +16855,9 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 			hostname[len] = '\0';
 
 			/* add the default port number to the uri string */
-			sprintf(uri_str_final, "%s%s:%d%s", PROTOCOL_GPFDIST, hostname,
+			sprintf(uri_str_final, "%s%s:%d%s",
+					(uri->protocol == URI_GPFDIST ? PROTOCOL_GPFDIST : PROTOCOL_GPFDISTS),
+					hostname,
 					FDIST_DEF_PORT, after_hostname);
 
 			pfree(hostname);
@@ -16908,7 +16911,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("URI protocols must be the same for all data sources"),
-					 errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"),
+					 errhint("Available protocols are 'http', 'file', 'gphdfs', 'gpfdist' and 'gpfdists'"),
 							   errOmitLocation(true)));
 
 		}
@@ -16932,7 +16935,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unsupported URI protocol \'%s\' for writable external table", 
 							(uri->protocol == URI_HTTP ? "http" : "file")),
-					 errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."),
+					 errhint("Writable external tables may use \'gpfdist\', \'gpfdists\' or \'gphdfs\' URIs only."),
 							   errOmitLocation(true)));
 
 		if(uri->protocol != URI_CUSTOM && iswritable && strchr(uri->path, '*'))
@@ -16942,10 +16945,10 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 							"\'%s\'", uri_str_final),
 					errhint("Specify the explicit path and file name to write into.")));
 		
-		if(uri->protocol == URI_GPFDIST && iswritable && uri->path[strlen(uri->path) - 1] == '/')
+		if ((uri->protocol == URI_GPFDIST || uri->protocol == URI_GPFDISTS) && iswritable && uri->path[strlen(uri->path) - 1] == '/')
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					errmsg("Unsupported use of a directory name in a writable gpfdist external table : "
+					errmsg("Unsupported use of a directory name in a writable gpfdist(s) external table : "
 							"\'%s\'", uri_str_final),
 					errhint("Specify the explicit path and file name to write into."),
 							   errOmitLocation(true)));
