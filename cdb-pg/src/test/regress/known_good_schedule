@@ -168,3 +168,4 @@ test: rle
 test: portals_updatable
 test: plpgsql_cache
 test: percentile
+test: resource_queue_function

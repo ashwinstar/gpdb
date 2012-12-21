@@ -21,6 +21,8 @@
 #include "libpq/hba.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
+#include "utils/resscheduler.h"
+#include "cdb/memquota.h"
 
 #define P_MAXDIG 12
 #define LDELIM			'('
@@ -61,6 +63,8 @@ extern Datum userdata_describe(PG_FUNCTION_ARGS);
 extern Datum userdata_project(PG_FUNCTION_ARGS);
 extern Datum noop_project(PG_FUNCTION_ARGS);
 
+/* resource queue support */
+extern Datum checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -2324,4 +2328,44 @@ check_auth_time_constraints(PG_FUNCTION_ARGS)
 	 */
 	force_load_role();
 	PG_RETURN_BOOL(check_auth_time_constraints_internal(rolname, timestamp));
+}
+
+/*
+ * Checks if memory limit of resource queue is in sync across
+ * shared memory and catalog.
+ * This function should ONLY be used for unit testing.
+ */
+PG_FUNCTION_INFO_V1(checkResourceQueueMemoryLimits);
+Datum 
+checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS)
+{
+	char *queueName = PG_GETARG_CSTRING(0);
+	Oid queueId;
+	ResQueue queue;
+	double v1, v2;
+
+	if (queueName == NULL)
+		return (Datum)0;
+
+	/* get OID for queue */
+	queueId = GetResQueueIdForName(queueName);
+
+	if (queueId == InvalidOid)
+		return (Datum)0;
+
+	/* ResQueueHashFind needs a lock */
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+	/* get shared memory version of queue */
+	queue = ResQueueHashFind(queueId);
+
+	LWLockRelease(ResQueueLock);
+
+	if (!queue)
+		return (Datum) 0;
+
+	v1 = ceil(queue->limits[RES_MEMORY_LIMIT].threshold_value);
+	v2 = ceil((double) ResourceQueueGetMemoryLimitInCatalog(queueId));
+
+	PG_RETURN_BOOL(v1 == v2);
 }

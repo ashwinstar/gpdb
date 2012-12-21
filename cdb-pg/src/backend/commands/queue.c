@@ -1428,6 +1428,12 @@ AlterQueue(AlterQueueStmt *stmt)
 				AlterResqueueCapabilityEntry(stmt->optids, 
 											 queueid, pWithList, false);
 
+	/* 
+	 * We must bump the command counter to make the altered memory limit 
+	 * in the pg_resqueuecapability table visible 
+	 */
+	CommandCounterIncrement();
+
 	/** Get new memory limit if changed */
 	thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
 
