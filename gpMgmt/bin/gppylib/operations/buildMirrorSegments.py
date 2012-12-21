@@ -194,7 +194,7 @@ class GpMirrorListToBuild:
         pg_system_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(gparray,
                                                                                   PG_SYSTEM_FILESPACE).run()).run()
         cur_filespace_name = gparray.getFileSpaceName(int(cur_filespace_entries[1][0]))
-        segments = [target_segment] 
+        segments = [target_segment] + [seg for seg in gparray.getDbList() if seg.getSegmentContentId() == target_segment.getSegmentContentId() and seg.getSegmentDbId() != target_segment.getSegmentDbId()] 
         
         logger.info('Starting file move procedure for %s' % target_segment)
 
@@ -334,6 +334,13 @@ class GpMirrorListToBuild:
         if actionName == "add":
             try:
                 UpdateFlatFiles(gpArray, primaries=True).run()
+            except MoveFilespaceError, e:
+                logger.error(str(e))
+                raise
+        else:
+            try:
+                print 'updating flat files'
+                UpdateFlatFiles(gpArray, primaries=False).run()
             except MoveFilespaceError, e:
                 logger.error(str(e))
                 raise
