@@ -115,6 +115,9 @@ def sigint_handle(signum, frame):
     print '\n[Exiting...]'
     sys.exit(1)
 
+def sighup_handle(signum, frame):
+    sys.exit(1)
+
 def interactive():
     try:
         import readline
@@ -141,6 +144,7 @@ def interactive():
 
     atexit.register(sessionCleanup)
     signal.signal(signal.SIGINT, sigint_handle)
+    signal.signal(signal.SIGHUP, sighup_handle)
     while True:
         try:
             if not GV.session:
