@@ -16,6 +16,7 @@
 #define ELOG_H
 
 #include "c.h"
+#include <sys/time.h>
 #include <setjmp.h>
 
 /* Error level codes */
