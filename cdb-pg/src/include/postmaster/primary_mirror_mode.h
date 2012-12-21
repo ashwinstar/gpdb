@@ -364,6 +364,8 @@ extern bool isFilespaceInfoConsistent(void);
 extern void populateFilespaceInfo(void);
 extern void primaryMirrorPopulateFilespaceInfo(void);
 extern bool isTxnDir(char *path);
+extern bool isFilespaceUsedForTempFiles(Oid fsoid);
+extern bool isFilespaceUsedForTxnFiles(Oid fsoid);
 
 #define getCurrentTempFilePath                                 \
         primaryMirrorIsUsingDefaultFilespaceForTempFiles()?    \

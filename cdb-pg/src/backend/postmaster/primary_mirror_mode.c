@@ -2602,3 +2602,22 @@ isAbsolutePath(const char *path)
         return 0;
 }
 
+bool 
+isFilespaceUsedForTempFiles(Oid fsoid)
+{
+	assertModuleInitialized();
+	if ((!pmModuleState->isUsingDefaultFilespaceForTempFiles) && (fsoid == pmModuleState->tempFilespaceOID))
+		return true;
+
+	return false;
+}
+
+bool 
+isFilespaceUsedForTxnFiles(Oid fsoid)
+{
+	assertModuleInitialized();
+	if ((!pmModuleState->isUsingDefaultFilespaceForTxnFiles) && (fsoid == pmModuleState->txnFilespaceOID))
+		return true;
+
+	return false;
+}

@@ -36,6 +36,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
 #include "access/genam.h"
+#include "postmaster/primary_mirror_mode.h"
 
 static void checkPathFormat(char *path);
 static void checkPathPermissions(char *path);
@@ -554,6 +555,24 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 						"by the database system", fsname)));
 
 	/* 
+	 * Disallow drop of filespace if it is used for transaction files or
+	 * temporary files.
+	 */
+	if (isFilespaceUsedForTempFiles(fsoid))
+		ereport(ERROR,
+				(errmsg("cannot drop filespace %s because it is used "
+						"by temporary files \n"
+						"Use gpfilespace --movetempfilespace <newFilespaceName>	to move temporary files to a different filespace\n"
+						"and then attempt DROP FILESPACE", fsname)));
+
+	if (isFilespaceUsedForTxnFiles(fsoid))
+		ereport(ERROR,
+                                (errmsg("cannot drop filespace %s because it is used "
+                                                "by transaction files\n"
+						"Use gpfilespace --movetransfilespace <newFilespaceName> to move transaction files to a different filespace\n"
+						"and then attempt DROP FILESPACE", fsname)));
+
+	/*
 	 * performDeletion only drops things that have dependencies in
 	 * pg_depend/pg_shdepend which does NOT include dependencies on tablespaces
 	 * (perhaps pg_shdepend should).  So we look for these dependencies by
