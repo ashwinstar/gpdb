@@ -450,6 +450,37 @@ create table ccddl
 execute ccddlcheck;
 drop table ccddl;
 
+-- MPP-16875: ensure that WITH () is honoured
+CREATE TABLE ccddl (a int, b text)
+with (appendonly=true, orientation=column,
+	  compresstype=quicklz, compresslevel=1)
+partition by list(b)
+(partition s_abc values ('abc')
+	with (appendonly=true, orientation=column, compresstype=quicklz,
+		  compresslevel=1));
+
+alter table ccddl add partition "s_xyz" values ('xyz')
+	WITH (appendonly=true, orientation=column,
+		  compresstype=quicklz, compresslevel=1);
+execute ccddlcheck;
+drop table ccddl;
+
+-- Ensure that WITH () and subpartition template column encoding rules
+-- play well together
+create table ccddl (i int, d date, j int)
+  WITH (APPENDONLY=TRUE, ORIENTATION=COLUMN)
+  partition by range(d) subpartition by list(j)
+  	subpartition template (subpartition sp1 values(1),
+						   default column encoding (compresstype=zlib))
+  (start('2010-01-01') end('2010-01-05') every('1 day'::interval));
+
+alter table ccddl add partition newp 
+	start('2010-01-06') end('2010-01-07')
+	with (appendonly=true, orientation=column, compresstype=quicklz); 
+
+execute ccddlcheck;
+drop table ccddl;
+
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: failure

@@ -5789,8 +5789,6 @@ atpxPartAddList(Relation rel,
 		
 		ct->partitionBy = (Node *)pBy;
 
-		attr_encodings = ct->attr_encodings;
-		
 		/* this parse_analyze expands the phony create of a partitioned table
 		 * that we just build into the constituent commands we need to create
 		 * the new part.  (This will include some commands for the parent that
@@ -5799,6 +5797,12 @@ atpxPartAddList(Relation rel,
 		
 		l1 = parse_analyze((Node *)ct, NULL, NULL, 0);
 		
+		/* 
+		 * Must reference ct->attr_encodings after parse_analyze() since that
+		 * stage by change the attribute encodings via expansion.
+		 */
+		attr_encodings = ct->attr_encodings;
+
 		/*
 		 * Look for the first CreateStmt and generate a GrantStmt
 		 * based on the RangeVar in it.

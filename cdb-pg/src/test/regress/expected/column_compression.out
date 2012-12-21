@@ -1098,11 +1098,15 @@ execute ccddlcheck;
  ccddl_1_prt_p2_2_prt_sp1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3           |      1 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_p3           |      2 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_p3           |      3 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_p3           |      4 | {compresstype=none,blocksize=32768,compresslevel=0}
  ccddl_1_prt_p3_2_prt_sp1 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p3_2_prt_sp1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p3_2_prt_sp1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p3_2_prt_sp1 |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
-(24 rows)
+(28 rows)
 
 drop table ccddl;
 -- Make sure the AO/CO case didn't screw up the non CO case
@@ -1536,6 +1540,91 @@ execute ccddlcheck;
  ccddl_1_prt_p2 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (4 rows)
+
+drop table ccddl;
+-- MPP-16875: ensure that WITH () is honoured
+CREATE TABLE ccddl (a int, b text)
+with (appendonly=true, orientation=column,
+	  compresstype=quicklz, compresslevel=1)
+partition by list(b)
+(partition s_abc values ('abc')
+	with (appendonly=true, orientation=column, compresstype=quicklz,
+		  compresslevel=1));
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_s_abc" for table "ccddl"
+alter table ccddl add partition "s_xyz" values ('xyz')
+	WITH (appendonly=true, orientation=column,
+		  compresstype=quicklz, compresslevel=1);
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_s_xyz" for table "ccddl"
+execute ccddlcheck;
+      relname      | attnum |                       attoptions                       
+-------------------+--------+--------------------------------------------------------
+ ccddl             |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl             |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_s_abc |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_s_abc |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_s_xyz |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_s_xyz |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(6 rows)
+
+drop table ccddl;
+-- Ensure that WITH () and subpartition template column encoding rules
+-- play well together
+create table ccddl (i int, d date, j int)
+  WITH (APPENDONLY=TRUE, ORIENTATION=COLUMN)
+  partition by range(d) subpartition by list(j)
+  	subpartition template (subpartition sp1 values(1),
+						   default column encoding (compresstype=zlib))
+  (start('2010-01-01') end('2010-01-05') every('1 day'::interval));
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_2" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_3" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_4" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1_2_prt_sp1" for table "ccddl_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_2_2_prt_sp1" for table "ccddl_1_prt_2"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_3_2_prt_sp1" for table "ccddl_1_prt_3"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_4_2_prt_sp1" for table "ccddl_1_prt_4"
+alter table ccddl add partition newp 
+	start('2010-01-06') end('2010-01-07')
+	with (appendonly=true, orientation=column, compresstype=quicklz); 
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_newp" for table "ccddl"
+NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_newp_2_prt_sp1" for table "ccddl_1_prt_newp"
+execute ccddlcheck;
+          relname           | attnum |                       attoptions                       
+----------------------------+--------+--------------------------------------------------------
+ ccddl                      |      1 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl                      |      2 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl                      |      3 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_1              |      1 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_1              |      2 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_1              |      3 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_1_2_prt_sp1    |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1_2_prt_sp1    |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1_2_prt_sp1    |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_2              |      1 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_2              |      2 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_2              |      3 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_2_2_prt_sp1    |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_2_2_prt_sp1    |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_2_2_prt_sp1    |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_3              |      1 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_3              |      2 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_3              |      3 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_3_2_prt_sp1    |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_3_2_prt_sp1    |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_3_2_prt_sp1    |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_4              |      1 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_4              |      2 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_4              |      3 | {compresstype=none,blocksize=32768,compresslevel=0}
+ ccddl_1_prt_4_2_prt_sp1    |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_4_2_prt_sp1    |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_4_2_prt_sp1    |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_newp           |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_newp           |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_newp           |      3 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_newp_2_prt_sp1 |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_newp_2_prt_sp1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_newp_2_prt_sp1 |      3 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(33 rows)
 
 drop table ccddl;
 -----------------------------------------------------------------------

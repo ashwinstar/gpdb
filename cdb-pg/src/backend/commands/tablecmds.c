@@ -15247,6 +15247,30 @@ rel_get_column_encodings(Relation rel)
 	return out;
 }
 
+/*
+ * Depending on whether a table is heap, append only or append only column
+ * oriented, return NIL, (appendonly=true) or (appendonly=true,
+ * orientation=column) respectively.
+ */
+static List *
+make_orientation_options(Relation rel)
+{
+	List *l = NIL;
+
+	if (RelationIsAoRows(rel) ||
+		RelationIsAoCols(rel))
+	{
+		l = lappend(l, makeDefElem("appendonly", (Node *)makeString("true")));
+
+		if (RelationIsAoCols(rel))
+		{
+			l = lappend(l, makeDefElem("orientation",
+									   (Node *)makeString("column")));
+		}
+	}
+	return l;
+}
+
 static void
 ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
@@ -15294,6 +15318,7 @@ ATPExecPartSplit(Relation rel,
 		char *defparname = NULL; /* name of default partition (if specified) */
 		List *distro = NIL;
 		List *colencs = NIL;
+		List *orient = NIL;
 
 		/* Get target meta data */
 		prule = get_part_rule(rel, pid, true, true,
@@ -15510,6 +15535,7 @@ ATPExecPartSplit(Relation rel,
 		existstorage_opts = reloptions_list(RelationGetRelid(existrel));
 		distro = make_dist_clause(existrel);
 		colencs = rel_get_column_encodings(existrel);
+		orient = make_orientation_options(existrel);
 
 		heap_close(existrel, NoLock);
 
@@ -15746,8 +15772,20 @@ ATPExecPartSplit(Relation rel,
 			mycs->relation = makeRangeVar(NULL, "fake_partition_name", -1);
 			mycs->relKind = RELKIND_RELATION;
 
-			mycs->attr_encodings = colencs;
-			
+			/*
+			 * If the new partition is column oriented, initialize the column
+			 * entity list to the set of column encodings. Latter in parse
+			 * analysis of this statement, we will append to this list a LIKE
+			 * clause to clone the other column attributes.
+			 *
+			 * Be careful to copy the list since it is modified by parse
+			 * analysis.
+			 */
+			if (colencs)
+				mycs->tableElts = list_copy(colencs);
+
+			mycs->options = orient;
+
 			mypid->idtype = AT_AP_IDNone;
 			mypid->location = -1;
 			mypid->partiddef = NULL;

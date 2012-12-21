@@ -11313,7 +11313,25 @@ transformAlterTable_all_PartitionStmt(
 				 * the new partition is LIKE the parent and it
 				 * inherits from it
 				 */
-				ct->tableElts = list_make1(inh);
+				ct->tableElts = lappend(ct->tableElts, inh);
+
+				/*
+				 * If this is an AOCO ADD PARTITION, add in the
+				 * DEFAULT ENCODING provided in the ADD PARTITION WITH clause.
+				 */
+				if (is_aocs(ct->options))
+				{
+					List *stenc = form_default_storage_directive(ct->options);
+					ColumnReferenceStorageDirective *deflt =
+						makeNode(ColumnReferenceStorageDirective);
+
+					stenc = transformStorageEncodingClause(stenc);
+
+					deflt->deflt = true;
+					deflt->encoding = stenc;
+
+					ct->attr_encodings = list_make1(deflt);
+				}
 
 				cl = list_make1(ct);
 
