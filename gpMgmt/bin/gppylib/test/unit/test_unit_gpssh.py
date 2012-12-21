@@ -1,49 +1,49 @@
 #!/usr/bin/env python
 
-import os, signal, time
+import os, signal, time, re
 import unittest2 as unittest
-
-from gppylib.commands.base import Command, WorkerPool
-from gppylib.commands.unix import getUserName
+import psi.process, subprocess
 
 class GpsshTestCase(unittest.TestCase):
 
-    SECONDS_TO_SLEEP = 5 
-    SSH_COMMAND = '/usr/bin/ssh -o BatchMode yes -o StrictHostKeyChecking no -l %s localhost' % getUserName() 
-    def getpid(self, cmd):
+    # return true if any processes remaining
+    def searchForProcessOrChildren(self):
 
-        ps_cmd = Command(name='grep for cmd', cmdStr='ps aux | grep "%s$"' % cmd)
+        euid = os.getuid()
 
-        try:
-            ps_cmd.run(validateAfter=True)
-        except Exception, e:
-            pass
+        for p in psi.process.ProcessTable().values():
+            if p.euid != euid:
+                continue
+            if not re.search('ssh', p.command):
+                continue
+            if p.ppid != 1:
+                continue
 
-        if ps_cmd.get_results().rc != 0:
-            return None
+            return p.pid
 
-        ps_info = ps_cmd.get_results().stdout.strip() 
-        return ps_info.split()[1]
 
     def test00_gpssh_sighup(self):
         """Verify that gppsh handles sighup 
            and terminates cleanly.
         """
-        cmd = Command(name='run ssh', cmdStr='gpssh -h localhost', stdin='sleep %s' % self.SECONDS_TO_SLEEP)
 
-        pool = WorkerPool()
-        pool.addCommand(cmd)
+        p = subprocess.Popen("gpssh -h localhost", shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        pid = p.pid
 
-        pid = self.getpid(cmd.cmdStr)
-        self.assertNotEqual(pid, None) 
-        #Wait for ssh process to get spawned
-        time.sleep(2)
-        self.assertNotEqual(None, self.getpid(self.SSH_COMMAND))
-        os.kill(int(pid), signal.SIGHUP)
+        time.sleep(3)
 
-        #Wait for the gpssh process to complete
-        time.sleep(self.SECONDS_TO_SLEEP)
-        self.assertEqual(None, self.getpid(self.SSH_COMMAND))
+        try:
+            os.kill(int(pid), signal.SIGHUP)
+        except Exception:
+            pass
 
+        max_attempts = 6
+        for i in range(max_attempts):
+            pid = self.searchForProcessOrChildren()
+            if pid:
+                if (i + 1) == max_attempts:
+                    self.fail("Found stranded gpssh process %s after issuing sig HUP" % pid)
+                time.sleep(.5)
+ 
 if __name__ == "__main__":
     unittest.main()
