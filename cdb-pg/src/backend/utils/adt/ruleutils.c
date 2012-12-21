@@ -6346,7 +6346,6 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 	char				*reloptions	   = NULL;
 	char				*tspaceoptions = NULL;
 	bool				 needspace	   = false;
-	char 				*colenc = NULL;
 
 	if (OidIsValid(rule->parchildrelid))
 	{
@@ -6424,12 +6423,6 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			reloptions = sid1.data;
 		}
 
-		/* COLUMN ... ENCODING ( ) for the partition */
-		if (prettyFlags & PRETTYFLAG_INDENT)
-			indent += PRETTYINDENT_STD;
-
-		colenc = make_partition_column_encoding_str(rule->parchildrelid,
-													indent);
 	}
 	else if ((PointerIsValid(rule->parreloptions) ||
 			  OidIsValid(rule->partemplatespaceId))
@@ -6496,8 +6489,6 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 
 			tspaceoptions = sid3.data;
 		}
-
-		/* We do not dump per partition column encodings for templates */
 	}
 
 	initStringInfo(&str);
@@ -6605,12 +6596,12 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 						 tspaceoptions);
 	}
 
-	if (colenc && strlen(colenc) > 0)
-		appendStringInfo(&str, " %s", colenc);
-
 	return str.data;
 }
 
+/*
+ * Writes out rule of partition, as well as column compression if any.
+ */
 static void
 write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, 
 			   Node *end,
@@ -6639,12 +6630,13 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 	 * because for an EVERY clause inclusivity/exclusivity
 	 * can differ 
 	 */
-   	str = partition_rule_def_worker(rule, start, 
-									end, end_rule, 
+	str = partition_rule_def_worker(rule, start,
+									end, end_rule,
 									every, pn->part, handleevery,
 									body->prettyFlags,
 									bLeafTablename,
 									body->indentLevel);
+
 	if (str && strlen(str))
 	{
 		if (strlen(body->buf->data) && !first_rule && 
@@ -6654,7 +6646,34 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 		appendStringInfoString(body->buf, str);
 		*needcomma = true;
 	}
-	pfree(str);
+
+	if (str)
+		pfree(str);
+
+	/*
+	 * We dump per partition column encoding for non-templates,
+	 * and do not dump them for templates.
+	 */
+	if (OidIsValid(rule->parchildrelid))
+	{
+		int		indent_enc = body->indentLevel;
+		char   *col_enc;
+
+		/* COLUMN ... ENCODING ( ) for the partition */
+		if (PRETTY_INDENT(body))
+			indent_enc += PRETTYINDENT_STD;
+		col_enc = make_partition_column_encoding_str(rule->parchildrelid,
+													 indent_enc);
+
+		if (col_enc && strlen(col_enc) > 0)
+		{
+			appendStringInfo(body->buf, " %s", col_enc);
+			*needcomma = true;
+		}
+
+		if (col_enc)
+			pfree(col_enc);
+	}
 
 	get_partition_recursive(children, head, body, leveldone, bLeafTablename);
 
