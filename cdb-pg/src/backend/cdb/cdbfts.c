@@ -56,12 +56,6 @@ static LWLockId ftsQDMirrorLock;
 static LWLockId ftsQDMirrorUpdateConfigLock;
 static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
 
-/*
- * This is a per-process global to indicate if that backend has been warned
- * about master mirroring not being synchronized.
- */
-static bool QDMirroringNotSynchronizedWarningGiven = false;
-
 static char *QDMirroringDisabledReasonToString(QDMIRRORDisabledReason disabledReason);
 
 /*
@@ -113,7 +107,7 @@ FtsShmemInit(void)
 
 		shared->ftsQDMirrorLock = LWLockAssign();
 		ftsQDMirrorLock = shared->ftsQDMirrorLock;
-		
+
 		shared->ftsQDMirrorUpdateConfigLock = LWLockAssign();
 		ftsQDMirrorUpdateConfigLock = shared->ftsQDMirrorUpdateConfigLock;
 
@@ -127,6 +121,7 @@ FtsShmemInit(void)
 		memset(&ftsQDMirrorInfo->newCheckpointLocation, 0, sizeof(XLogRecPtr));
 		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
 		ftsQDMirrorInfo->port = 0;
+		ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven = false;
 
 		/* initialize */
 		shared->ftsReadOnlyFlag = gp_set_read_only;
@@ -287,7 +282,7 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 
 	if (dbName == NULL)
 		dbName = MyProcPort->database_name;
-	
+
 	/*
 	 * Build the connection string
 	 */
@@ -542,7 +537,7 @@ QDMirroringUpdate(
 					else
 					{
 						size_t escapedLen;
-					
+
 						errorMessageQuoted[0] = '\'';
 						escapedLen = PQescapeString(&errorMessageQuoted[1], errorMessage, errorMessageLen);
 						errorMessageQuoted[escapedLen + 1] = '\'';
@@ -612,7 +607,7 @@ CheckForQDMirroringWork(void)
 	QDMIRRORDisabledReason	disabledReason;
 	struct timeval          lastLogTimeVal;
 	char					errorMessage[QDMIRRORErrorMessageSize];
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return;
 	/*
@@ -629,9 +624,9 @@ CheckForQDMirroringWork(void)
 	 */
 	if (!LWLockConditionalAcquire(ftsQDMirrorUpdateConfigLock, LW_EXCLUSIVE))
 		return;
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	
+
 	if (ftsQDMirrorInfo->updateMask == QDMIRROR_UPDATEMASK_NONE)
 	{
 		LWLockRelease(ftsQDMirrorLock);
@@ -682,10 +677,11 @@ bool QDMirroringWriteCheck(void)
 		return true;
 	}
 
-	if (!QDMirroringNotSynchronizedWarningGiven &&
+	if (ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven == false &&
 		ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
 	{
 		giveWarning = true;
+		ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven = true;
 		disabledReason = ftsQDMirrorInfo->disabledReason;
 		lastLogTimeVal = ftsQDMirrorInfo->lastLogTimeVal;
 	}
@@ -706,8 +702,6 @@ bool QDMirroringWriteCheck(void)
 				        logTimeStr,
 				        QDMirroringDisabledReasonToString(disabledReason)),
 				 errSendAlert(true)));
-
-		QDMirroringNotSynchronizedWarningGiven = true;
 	}
 
 	return false;
@@ -750,7 +744,7 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 
 				gettimeofday(&lastLogTimeVal, NULL);
 
-				QDMirroringNotSynchronizedWarningGiven = true;
+				ftsQDMirrorInfo->QDMirroringNotSynchronizedWarningGiven = true;
 
 				if (ftsQDMirrorInfo->valid)
 				{
@@ -1293,7 +1287,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	/* Get the log message time from the NOTICE we just issued. */
 
 	gettimeofday(&ftsQDMirrorInfo->lastLogTimeVal, NULL);
-										
+
 	LWLockRelease(ftsQDMirrorLock);
 
 	connectedToWalSendServer = WalSendServerClientConnect(/* complain */ true);

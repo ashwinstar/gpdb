@@ -54,7 +54,7 @@ struct FtsQDMirrorInfo
 	QDMIRRORState 	state;
 
 	QDMIRRORUpdateMask	updateMask;
-	
+
 	QDMIRRORDisabledReason	disabledReason;
 
 	struct timeval lastLogTimeVal;
@@ -63,7 +63,7 @@ struct FtsQDMirrorInfo
 
 	bool			haveNewCheckpointLocation;
 	XLogRecPtr		newCheckpointLocation;
-	
+
 	/* stored copies of QD parameters, required so that WalSendServer
 	 * process knows how to connect */
 	char			name[256];
@@ -74,6 +74,11 @@ struct FtsQDMirrorInfo
 	 */
 	int2			dbid;
 	bool			valid;
+
+	/*
+	 * Indicates if an alert message has been sent for failure in master mirroring synchronization.
+	 */
+	bool QDMirroringNotSynchronizedWarningGiven;
 };
 
 
