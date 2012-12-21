@@ -4,13 +4,12 @@
 #include "cmockery.h"
 
 #include "c.h"
-#include "postgres.h"
-#include "access/aomd.h"
-
 #include "../aomd.c"
 
 
-void test_aomd_AOSegmentFilePathNameLen(void **state) {
+void 
+test__AOSegmentFilePathNameLen(void **state) 
+{
 	RelationData reldata;
 	char* basepath = "base/21381/123";
 
@@ -22,7 +21,9 @@ void test_aomd_AOSegmentFilePathNameLen(void **state) {
 	assert_in_range(r, strlen(basepath) + 3, strlen(basepath) + 10);
 }
 
-void test_aomd_FormatAOSegmentFileName(void **state) {
+void 
+test__FormatAOSegmentFileName(void **state) 
+{
 	char* basepath = "base/21381/123";
 	int32 fileSegNo;
 	char filepathname[256];
@@ -54,7 +55,9 @@ void test_aomd_FormatAOSegmentFileName(void **state) {
 }
 
 
-void test_aomd_MakeAOSegmentFileName(void **state) {
+void 
+test__MakeAOSegmentFileName(void **state) 
+{
 	char* basepath = "base/21381/123";
 	int32 fileSegNo;
 	char filepathname[256];
@@ -94,13 +97,15 @@ void test_aomd_MakeAOSegmentFileName(void **state) {
 }
 
 
-int main(int argc, char* argv[]) {
+int 
+main(int argc, char* argv[]) 
+{
 	cmockery_parse_arguments(argc, argv);
 
 	const UnitTest tests[] = {
-			unit_test(test_aomd_AOSegmentFilePathNameLen),
-			unit_test(test_aomd_FormatAOSegmentFileName),
-			unit_test(test_aomd_MakeAOSegmentFileName)
+			unit_test(test__AOSegmentFilePathNameLen),
+			unit_test(test__FormatAOSegmentFileName),
+			unit_test(test__MakeAOSegmentFileName)
 	};
 	return run_tests(tests);
 }
