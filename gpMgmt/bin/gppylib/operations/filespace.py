@@ -147,6 +147,7 @@ class CheckFilespaceEntriesLocally(Operation):
             return is_consistent
 
         #Read flat file entries and check if the directories exist
+        dbid_set = set()
         with open(flat_file_location) as file:
             for line in file:
                 entries = line.split()
@@ -157,9 +158,11 @@ class CheckFilespaceEntriesLocally(Operation):
                     logger.info('dbid = %s' % entries[0].strip())
                     if not os.path.exists(entries[1].strip()):
                         is_consistent = False
-                    if int(entries[0].strip()) != self.dbid:
-                        is_consistent = False
-            
+                    dbid_set.add(int(entries[0].strip())) 
+       
+        if self.dbid not in dbid_set:
+            is_consistent = False
+
         return is_consistent 
 
 class CheckFilespaceConsistency(Operation):
