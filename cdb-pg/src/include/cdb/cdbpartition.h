@@ -76,6 +76,8 @@ typedef struct part_rule_cxt
 
 extern bool rel_is_partitioned(Oid relid);
 
+extern List *rel_partition_key_attrs(Oid relid);
+
 extern bool rel_is_child_partition(Oid relid);
 
 extern bool rel_is_leaf_partition(Oid relid);

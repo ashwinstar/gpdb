@@ -224,6 +224,66 @@ rel_is_partitioned(Oid relid)
 	return found;
 }
 
+/* 
+ * Return an integer list of the attribute numbers of the partitioning
+ * key of the partitioned table identified by the argument or NIL.
+ *
+ * This is similar to get_partition_attrs but is driven by OID and 
+ * the partition catalog, not by a PartitionNode.
+ *
+ * Note: Only returns a non-empty list of keys for partitioned table
+ *       as a whole.  Returns empty for non-partitioned tables or for
+ *       parts of partitioned tables.  Key attributes are attribute
+ *       numbers in the partitioned table.
+ */
+List *
+rel_partition_key_attrs(Oid relid)
+{
+	Relation rel;
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple tuple;
+	List *pkeys = NIL;
+	
+	/* Table pg_partition is only populated on the entry database, 
+	 * however, we disable calls from outside dispatch to foil use
+	 * of utility mode.  (Full UCS may may this test obsolete.)
+	 */
+	if (Gp_session_role != GP_ROLE_DISPATCH )
+		elog(ERROR, "mode not dispatch");
+	
+	rel = heap_open(PartitionRelationId, AccessShareLock);
+	
+	ScanKeyInit(&key,
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	
+	
+	scan = systable_beginscan(rel, PartitionParrelidIndexId, true,
+							  SnapshotNow, 1, &key);
+	
+	tuple = systable_getnext(scan);
+
+	while ( HeapTupleIsValid(tuple) ) 
+	{
+		Index i;
+		Form_pg_partition p = (Form_pg_partition) GETSTRUCT(tuple);
+		
+		for ( i = 0; i < p->parnatts; i++ )
+		{
+			pkeys = lappend_int(pkeys, (Oid)p->paratts.values[i]);
+		}
+		
+		tuple = systable_getnext(scan);
+	}
+		
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	
+	return pkeys;
+}
+
 /*
  * Is relid a child in a partitioning hierarchy? 
  *
