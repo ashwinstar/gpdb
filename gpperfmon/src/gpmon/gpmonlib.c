@@ -1013,6 +1013,10 @@ char* get_connection_ip(host_t* host)
 	return host->connection_hostname.current->ipstr;
 }
 
+bool get_connection_ipv6_status(host_t* host)
+{
+	return host->connection_hostname.current->ipv6;
+}
 
 char* get_snmp_hostname(host_t* host)
 {
