@@ -245,37 +245,54 @@ generate-pulse-installer-header(){
 		installPath=
 		defaultInstallPath=${DEFAULT_INSTALL_PATH}
 		while [ -z "\${installPath}" ] ; do
-		    cat << EOF
-		
-		********************************************************************************
-		Provide the installation path for Greenplum Database or press ENTER to 
-		accept the default installation path: ${DEFAULT_INSTALL_PATH}
-		********************************************************************************
-		
-		EOF
+		    cat <<-EOF
+				
+				********************************************************************************
+				Provide the installation path for Greenplum Database or press ENTER to 
+				accept the default installation path: ${DEFAULT_INSTALL_PATH}
+				********************************************************************************
+				
+			EOF
+
 		    read installPath leftover
-		        if [ -z "\${installPath}" ] ; then
-		            installPath=\${defaultInstallPath}
-		        fi 
-		        pathVerification=
-		        while [ -z "\${pathVerification}" ] ; do
-		            cat << EOF
-		
-		********************************************************************************
-		Install Greenplum Database into <\${installPath}>? [yes|no]
-		********************************************************************************
-		
-		EOF
-		            read pathVerification leftover
-		                case \$pathVerification in
-		                    [yY] | [yY][eE][sS])
-		                        pathVerification=1
-		                        ;;
-		                    [nN] | [nN][oO])
-		                        installPath=
-		                       ;;
-		                esac
-		        done
+
+		    if [ -z "\${installPath}" ] ; then
+		        installPath=\${defaultInstallPath}
+		    fi
+
+		    if echo "\${installPath}" | grep ' ' > /dev/null; then
+			    cat <<-EOF
+					
+					********************************************************************************
+					WARNING: Spaces are not allowed in the installation path.  Please specify
+					         an installation path without an embedded space.
+					********************************************************************************
+					
+				EOF
+                installPath=
+		    else
+			    pathVerification=
+			    while [ -z "\${pathVerification}" ] ; do
+			        cat <<-EOF
+						
+						********************************************************************************
+						Install Greenplum Database into <\${installPath}>? [yes|no]
+						********************************************************************************
+						
+					EOF
+	
+			        read pathVerification leftover
+	
+			        case \$pathVerification in
+			            [yY] | [yY][eE][sS])
+			                pathVerification=1
+			                ;;
+			            [nN] | [nN][oO])
+			                installPath=
+			               ;;
+			        esac
+			    done
+			fi
 		done
 		
 		if [ ! -d "\${installPath}" ] ; then
