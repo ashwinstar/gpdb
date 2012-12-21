@@ -144,6 +144,11 @@ typedef enum FaultInjectorIdentifier_e {
 
 	SegmentProbeResponse,
 
+	SubtransactionFlushToFile,
+	SubtransactionReadFromFile,
+	SubtransactionRelease,
+	SubtransactionRollback,
+	
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
