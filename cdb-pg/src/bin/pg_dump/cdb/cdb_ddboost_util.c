@@ -414,7 +414,7 @@ usage(void)
     printf("  To create a fake backup file containing only the data for the specified table. \n");
     printf("  The destination directory should exist on the local disk.\n\n\n");        
     printf("  --setCredential  --hostname <DD_host>  --user=<DD_user>"); 
-    printf("                   [--password=<DD_password>  --logLevel=<INFO,WARN,DEBUG,ERROR,NONE> --logSize=<2-50 (MB)>]\n");  
+    printf("                   [--password=<DD_password>  --logLevel=<INFO,WARN,DEBUG,ERROR,NONE> --logSize=<1-1000 (MB)>]\n");
     printf("  Set the ddboost login credentials. Hostname and user are required.\n");
     printf("  If the password option is not specified, it will be interactivly requested.\n");
     printf("  If the log options are not specified, the default values will be used (level will be INFO and size 50 MB).\n\n\n");
