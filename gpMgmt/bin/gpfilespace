@@ -680,7 +680,7 @@ class GPFilespace:
             raise GPDatabaseError(str(e))
 
         if not is_super:
-            error = "gpfilespace requires database superuser privledges"
+            error = "gpfilespace requires database superuser privileges"
             raise GPPrivilegeError(error)
 
         self.dburl = dburl
@@ -698,9 +698,6 @@ class GPFilespace:
     def validate_superuser(self):
         try:
             self.connect()
-        except GPPrivilegeError, e:
-            logger.error(e)
-            raise
         finally:
             self.close_conn()
 
@@ -1200,7 +1197,6 @@ Once a filespace is created, it can be used by one or more tablespaces.
             #    logger.error("퀙퀠퀩퀘ㄲㄸㅉㅃ12ㅁavb")  => UnicodeDecodeError
             err = unicode(str(e), 'UTF-8')
             logger.error(err)
-            logger.info('[Error]: %s' % str(e))
             logger.debug("exit(1)")
         except BaseException, e:
             sys.stderr.write("[Error] %s\n" % str(e))
