@@ -38,7 +38,7 @@ static bool createBackupDirectory(char *pszPathName);
 static char *findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, int segid);
 static char *formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress, bool isPostData);
 static char *formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBackup);
-static char *formThrottleCmd(char *pszBackupFileName, char *pszStatusFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled);
+static char *formThrottleCmd(char *pszBackupFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled);
 static char *relativeToAbsolute(char *pszRelativeDirectory);
 static void testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram);
 static char *testProgramExists(char *pszProgramName);
@@ -283,12 +283,12 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 							errmsg("throttlingD.py not found in GPHOME\\bin (GPHOME: %s)", gp_home)));
 		}
 
-		pszThrottleCmd = formThrottleCmd(pszBackupFileName, pszStatusFileName, gp_backup_directIO_read_chunk_mb, true);
+		pszThrottleCmd = formThrottleCmd(pszBackupFileName, gp_backup_directIO_read_chunk_mb, true);
 	}
 	else
 	{
 		// when directIO is disabled --> need to pipe the dump to backupFile (No throttling will be done)
-		pszThrottleCmd = formThrottleCmd(pszBackupFileName, pszStatusFileName, 0, false);
+		pszThrottleCmd = formThrottleCmd(pszBackupFileName, 0, false);
 	}
 
 #ifdef USE_DDBOOST
@@ -524,11 +524,11 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 		if(gp_backup_directIO)
 		{
-			pszThrottleCmd = formThrottleCmd(pszBackupFileName, pszStatusFileName, gp_backup_directIO_read_chunk_mb, true);
+			pszThrottleCmd = formThrottleCmd(pszBackupFileName, gp_backup_directIO_read_chunk_mb, true);
 		}
 		else
 		{
-			pszThrottleCmd = formThrottleCmd(pszBackupFileName, pszStatusFileName, 0, false);
+			pszThrottleCmd = formThrottleCmd(pszBackupFileName, 0, false);
 		}
 
 		/* Delete the old command */
@@ -1568,13 +1568,13 @@ formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBac
 	return pszFileName;
 }
 
-/* formThrottleCmd(char *pszBackupFileName, char *pszStatusFileName) returns char*
+/* formThrottleCmd(char *pszBackupFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled) returns char*
  *
- * This function takes the backup file name and ststus file name and creates
+ * This function takes the backup file name and creates
  * the throttlin command
  */
 char *
-formThrottleCmd(char *pszBackupFileName, char *pszStatusFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled)
+formThrottleCmd(char *pszBackupFileName, int directIO_read_chunk_mb, bool bIsThrottlingEnabled)
 {
 	int 	throttleCMDLen = 0;
 	char	*pszThrottleCmd;
@@ -1584,8 +1584,6 @@ formThrottleCmd(char *pszBackupFileName, char *pszStatusFileName, int directIO_r
 		throttleCMDLen = strlen("| throttlingD.py ")
 				+ 3 + 1     /* gp_backup_directIO_read_chunk_mb */
 				+ strlen(pszBackupFileName)
-				+ 2 + 1     /* 2> */
-				+ strlen(pszStatusFileName)
 				+ 1;
 
 		/* Create the throttlingD.py string */
@@ -1595,7 +1593,7 @@ formThrottleCmd(char *pszBackupFileName, char *pszStatusFileName, int directIO_r
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory")));
 		}
-		sprintf(pszThrottleCmd, "| throttlingD.py %d %s 2> %s",directIO_read_chunk_mb ,pszBackupFileName, pszStatusFileName);
+		sprintf(pszThrottleCmd, "| throttlingD.py %d %s",directIO_read_chunk_mb ,pszBackupFileName);
 	}
 	else
 	{
