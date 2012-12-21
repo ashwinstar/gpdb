@@ -1824,12 +1824,11 @@ static void checkPgDir2(const char *dir)
 	Assert(DataDir);
 
 	struct stat st;
-	char buf[strlen(DataDir) + strlen(dir) + 32];
+	char buf[MAXPGPATH];
 	char *path = makeRelativeToTxnFilespace((char*)dir);
 
-	snprintf(buf, ARRAY_SIZE(buf), "%s", path);
+	snprintf(buf, MAXPGPATH, "%s", path);
 	buf[ARRAY_SIZE(buf) - 1] = '\0';
-	pfree(path);
 
 	if (stat(buf, &st) != 0)
 	{
@@ -1837,12 +1836,15 @@ static void checkPgDir2(const char *dir)
 		snprintf(buf, ARRAY_SIZE(buf), "%s%s", DataDir, "/pg_log");
 		if (stat(buf, &st) == 0)
 		{
-			elog(LOG, "System file or directory missing (%s), shutting down segment", buf);
+			elog(LOG, "System file or directory missing (%s), shutting down segment", path);
 		}
 
+		pfree(path);
 		/* quit all processes and exit */
 		pmdie(SIGQUIT);
 	}
+	
+	pfree(path);
 }
 
 
