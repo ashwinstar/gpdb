@@ -258,7 +258,7 @@ usage(void)
 
 	printf(("\nOptions controlling the output content:\n"));
 	printf(("  -a, --data-only          restore only the data, no schema\n"));
-	printf(("  -c, --clean              clean (drop) schema prior to create\n"));
+	//printf(("  -c, --clean              clean (drop) schema prior to create\n"));
 	//printf(("  -C, --create             issue commands to create the database\n"));
 	//printf(("  -I, --index=NAME         restore named index\n"));
 	//printf(("  -L, --use-list=FILENAME  use specified table of contents for ordering\n"
@@ -314,7 +314,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 
 	struct option cmdopts[] = {
-		{"clean", 0, NULL, 'c'},
+		/*{"clean", 0, NULL, 'c'}, */
 		/* {"create", 0, NULL, 'C'}, */
 		{"data-only", 0, NULL, 'a'},
 		{"dbname", 1, NULL, 'd'},
@@ -458,10 +458,11 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				dataOnly = true;
 				pInputOpts->pszPassThroughParms = addPassThroughParm(c, NULL, pInputOpts->pszPassThroughParms);
 				break;
-			case 'c':			/* clean (i.e., drop) schema prior to create */
-				opts->dropSchema = 1;
+/*			case 'c':		*/	/* clean (i.e., drop) schema prior to create */
+/*				opts->dropSchema = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm(c, NULL, pInputOpts->pszPassThroughParms);
 				break;
+*/
 /*			case 'C':
 				opts->create = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
