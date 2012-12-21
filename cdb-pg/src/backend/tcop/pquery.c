@@ -230,6 +230,21 @@ ProcessQuery(Portal portal,
 				GetResqueuePriority(portal->queueId));
 	}
 
+	if (gp_enable_resqueue_priority
+			&& Gp_role == GP_ROLE_DISPATCH
+			&& gp_session_id > -1)
+	{
+		if (superuser())
+		{
+			queryDesc->plannedstmt->backoff_weight = BackoffSuperuserStatementWeight();
+
+		} else
+		{
+			queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
+		}
+		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
+	}
+
 	/*
 	 * If resource scheduling is enabled and we are locking non SELECT queries,
 	 * or this is a SELECT INTO then lock the portal here. 
@@ -251,22 +266,6 @@ ProcessQuery(Portal portal,
 	}
 
 	PortalSetStatus(portal, PORTAL_ACTIVE);
-	
-
-	if (gp_enable_resqueue_priority 
-			&& Gp_role == GP_ROLE_DISPATCH 
-			&& gp_session_id > -1)
-	{
-		if (superuser())
-		{
-			queryDesc->plannedstmt->backoff_weight = BackoffSuperuserStatementWeight();
-
-		} else
-		{
-			queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
-		}
-		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
-	}
 	
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 			&& Gp_role == GP_ROLE_DISPATCH
@@ -771,6 +770,21 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 					queryDesc->portal_name = (portal->name ? pstrdup(portal->name) : (char *) NULL);
 				}
 
+				if (gp_enable_resqueue_priority &&
+					Gp_role == GP_ROLE_DISPATCH  &&
+					gp_session_id > -1)
+				{
+					if (superuser())
+					{
+						queryDesc->plannedstmt->backoff_weight = BackoffSuperuserStatementWeight();
+
+					} else
+					{
+						queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
+					}
+					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
+				}
+
 				/*
 				 * If resource scheduling is enabled, lock the portal here.
 				 * Skip this if we are superuser!
@@ -789,21 +803,6 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 
 				PortalSetStatus(portal, PORTAL_ACTIVE);
 				
-				if (gp_enable_resqueue_priority &&
-					Gp_role == GP_ROLE_DISPATCH  &&
-					gp_session_id > -1)
-				{
-					if (superuser())
-					{
-						queryDesc->plannedstmt->backoff_weight = BackoffSuperuserStatementWeight();
-
-					} else
-					{
-						queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
-					}
-					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
-				}
-
 				if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 						&& Gp_role == GP_ROLE_DISPATCH
 						&& gp_session_id > -1
