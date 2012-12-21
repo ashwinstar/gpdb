@@ -77,7 +77,7 @@ typedef struct
 #define PIPE_HEADER_UNALIGNED_SIZE  sizeof(PipeProtoHeader)
 #define PIPE_MAX_PAYLOAD  ((int) (PIPE_CHUNK_SIZE - MAXALIGN(PIPE_HEADER_UNALIGNED_SIZE)))
 
-#define CHUNK_SLOTS 20
+#define CHUNK_SLOTS 400
 
 typedef struct 
 {
