@@ -587,6 +587,11 @@ static bool DatabaseInfo_AddGpRelationNode(
 								(void *) &relfilenode,
 								HASH_FIND,
 								&found);
+
+	//Changes to solve MPP-16346
+	if(!dbInfoRel)
+			return found;
+
 	if (found)
 	{
 		if (dbInfoRel->gpRelationNodesCount >= dbInfoRel->gpRelationNodesMaxCount)
