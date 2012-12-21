@@ -276,6 +276,7 @@ transformExpr(ParseState *pstate, Node *expr)
 				c->cvarno = RTERangeTablePosn(pstate,
 											  pstate->p_target_rangetblentry,
 											  &sublevels_up);
+				c->target_relid = pstate->p_target_rangetblentry->relid;
 				Assert(sublevels_up == 0);
 				result = expr;
 				break;

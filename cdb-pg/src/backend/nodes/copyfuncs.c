@@ -1570,6 +1570,7 @@ _copyCurrentOfExpr(CurrentOfExpr *from)
 
 	COPY_STRING_FIELD(cursor_name);
 	COPY_SCALAR_FIELD(cvarno);
+	COPY_SCALAR_FIELD(target_relid);
 	COPY_SCALAR_FIELD(gp_segment_id);
 	COPY_BINARY_FIELD(ctid, sizeof(ItemPointerData));
 	COPY_SCALAR_FIELD(tableoid);

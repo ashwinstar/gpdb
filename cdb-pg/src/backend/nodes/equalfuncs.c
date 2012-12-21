@@ -618,6 +618,7 @@ _equalCurrentOfExpr(CurrentOfExpr *a, CurrentOfExpr *b)
 {
 	COMPARE_STRING_FIELD(cursor_name);
 	COMPARE_SCALAR_FIELD(cvarno);
+	COMPARE_SCALAR_FIELD(target_relid);
 
 	/* some attributes omitted as they're bound only just before executor dispatch */
 
