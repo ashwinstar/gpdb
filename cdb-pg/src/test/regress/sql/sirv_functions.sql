@@ -174,3 +174,12 @@ select * from t1;
 
 drop table if exists t1;
 
+--
+-- MPP-16071. Multiple sirvfs in the from clause
+--
+
+create table t1 as select * from f1_dist('booya1') a, f1_dist('booya2');
+
+select * from t1;
+
+drop table if exists t1;
