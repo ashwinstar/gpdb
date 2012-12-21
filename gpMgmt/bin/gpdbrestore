@@ -289,7 +289,14 @@ class GpdbRestore(Operation):
         return (restore_timestamp, restore_db, compress)
 
     def _validate_db_host_path(self):
-        host, path = self.db_host_path
+        # The format of the -R option should be 'hostname:path_to_dumpset', hence the length should be 2 (hostname, path_to_dumpset)
+        if len(self.db_host_path) != 2:
+            raise ProgramArgumentValidationException("The arguments of the -R flag are incorrect. The correct form should be as follows:\nIPv4_address:path_to_dumpset\n-OR-\n[IPv6_address]:path_to_dumpset\n", False)
+        
+        host, path = self.db_host_path       
+        logger.debug("The host is %s" % host)
+        logger.debug("The path is %s" % path)    
+
         Ping.local('Pinging %s' % host, host)
         matching = ListRemoteFilesByPattern(path, "%s*" % CREATEDB_PREFIX, host).run()
         if len(matching) == 0:
