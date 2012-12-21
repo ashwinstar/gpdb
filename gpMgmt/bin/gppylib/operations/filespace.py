@@ -122,7 +122,7 @@ class CheckConnectivity(Operation):
     def execute(self):
         logger.info('Checking for connectivity')
 
-        host_set = set([seg.getSegmentHostName() for seg in self.gparray.getSegDbList()])
+        host_set = self.gparray.getHostList()
     
         for host in host_set:
             try:
@@ -132,6 +132,7 @@ class CheckConnectivity(Operation):
                 return False
 
         return True
+
 class CheckFilespaceOidLocally(Operation):
     """
         Returns the oid present in the flat files
