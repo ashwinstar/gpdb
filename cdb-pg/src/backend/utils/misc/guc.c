@@ -1925,7 +1925,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_fts_transition_parallel,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
@@ -4288,7 +4288,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_S
 		},
 		&gp_fts_probe_timeout,
-		10, 0, INT_MAX, NULL, NULL
+		20, 0, INT_MAX, NULL, NULL
 	},
 
 	{
@@ -4308,7 +4308,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&gp_fts_probe_threadcount,
-		5, 1, 128, NULL, NULL
+		16, 1, 128, NULL, NULL
 	},
 
 	{
