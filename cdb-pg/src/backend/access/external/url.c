@@ -92,6 +92,10 @@ char extssl_key_full[MAXPGPATH] = {0};
 char extssl_cer_full[MAXPGPATH] = {0};
 char extssl_cas_full[MAXPGPATH] = {0};
 
+/* Will hold the last curl error					*/
+/* Currently it is in use only for SSL connection,	*/
+/* but we should consider using it always			*/
+static char curl_Error_Buffer[CURL_ERROR_SIZE];
 
 static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, size_t errlen);
 static const char *getSignalNameFromCode(int signo);
@@ -302,11 +306,12 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 					snprintf(connmsg, sizeof connmsg, "error code = %d (%s)", 
 							 (int) oserrno, strerror((int)oserrno));
 			}
-			
+
 			ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
 							errmsg("connection with gpfdist failed for %s. "
-									"effective url: %s. %s", file->url, effective_url,
-									(oserrno != 0 ? connmsg : "")),
+									"effective url: %s. %s\n%s", file->url, effective_url,
+									(oserrno != 0 ? connmsg : ""),
+									(curl_Error_Buffer[0] != '\0' ? curl_Error_Buffer : "")),
 						    errOmitLocation(true)));
 		}
 		else
@@ -831,6 +836,9 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 	file->url = ((char *) file) + sizeof(URL_FILE);
 	strcpy(file->url, url);
 
+	/* Reset curl_Error_Buffer */
+	curl_Error_Buffer[0] = '\0';
+
     if (IS_FILE_URI(url))
     {
 		char*	path = strchr(url + strlen(PROTOCOL_FILE), '/');
@@ -1103,6 +1111,14 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			Insist(PointerIsValid(DataDir));
 			elog(LOG,"trying to load certificates from %s", DataDir);
 			
+			/* curl will save its last error in curlErrorBuffer */
+			if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_ERRORBUFFER, curl_Error_Buffer)))
+			{
+				url_fclose(file, false, pstate->cur_relname);
+				elog(ERROR, "internal error: curl_easy_setopt CURLOPT_ERRORBUFFER error (%d - %s)",
+					 e, curl_easy_strerror(e));
+			}
+
 			/* cert is stored PEM coded in file... */
 			if ( CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_SSLCERTTYPE, "PEM")))
 			{
