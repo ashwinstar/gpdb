@@ -8,8 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gp_dump [-a | -s] [-c] [-d] [-D] [-n <schema>] [-o] [-O] 
-[-t <table_name>] [-T table_name] 
-[--table-file="<filename>" | --exclude-table-file="<filename>"] 
+[-t <table_name>] [-T table_name]  
 [-x] [-h <hostname>] 
 [-p <port>] [-U <username>] [-W] [-i] [-v] 
 [--gp-c] [--gp-d=<backup_directory>] 
@@ -191,18 +190,6 @@ When both -t and -T are given, the behavior is to dump just the tables
 that match at least one -t switch but no -T switches. If -T appears 
 without -t, then tables matching -T are excluded from what is otherwise 
 a normal dump.
-
---exclude-table-file="<filename>"
-
-  Exclude all tabes listed in <filename> from the 
-  database dump. The file <filename> contains any 
-  number of tables, listed one per line.
-
---table-file="<filename>"
-
-  Dump only the tables listed in <filename>.
-  The file <filename> contains any 
-  number of tables, listed one per line.
 
 -x
 --no-privileges
