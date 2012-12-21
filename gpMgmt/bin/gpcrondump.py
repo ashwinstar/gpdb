@@ -215,9 +215,7 @@ class GpCronDump(Operation):
                           % (dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
 
         if self.dump_config:
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            DumpConfig(timestamp = timestamp,
-                       backup_dir = self.backup_dir,
+            DumpConfig(backup_dir = self.backup_dir,
                        master_datadir = self.master_datadir,
                        master_port = self.master_port,
                        ddboost = self.ddboost).run()

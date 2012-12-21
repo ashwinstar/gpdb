@@ -720,25 +720,24 @@ class DumpGlobal(Operation):
 class DumpConfig(Operation):
     # TODO: Should we really just give up if one of the tars fails? 
     # TODO: WorkerPool
-    def __init__(self, timestamp, backup_dir, master_datadir, master_port, ddboost):
-        self.timestamp = timestamp
+    def __init__(self, backup_dir, master_datadir, master_port, ddboost):
         self.backup_dir = backup_dir
         self.master_datadir = master_datadir
         self.master_port = master_port
         self.ddboost = ddboost
     def execute(self):
-        dump_date = self.timestamp[0:8]
-        config_backup_file = "gp_master_config_files_%s.tar" % self.timestamp
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        config_backup_file = "gp_master_config_files_%s.tar" % timestamp
         if self.backup_dir is not None:
-            path = os.path.join(self.backup_dir, DUMP_DIR, dump_date, config_backup_file)
+            path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
         else:
-            path = os.path.join(self.master_datadir, DUMP_DIR, dump_date, config_backup_file)
+            path = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE, config_backup_file)
         logger.info("Dumping master config files")
         Command("Dumping master configuration files",
                 "tar cf %s %s/*.conf" % (path, self.master_datadir)).run(validateAfter=True)
         if self.ddboost:
             abspath = path
-            relpath = os.path.join(DUMP_DIR, dump_date, config_backup_file)
+            relpath = os.path.join(DUMP_DIR, DUMP_DATE, config_backup_file)
             logger.debug('Copying %s to DDBoost' % abspath)
             cmd = Command('DDBoost copy of %s' % abspath,
                           'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath))
@@ -748,11 +747,11 @@ class DumpConfig(Operation):
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
         primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in primaries:
-            config_backup_file = "gp_segment_config_files_0_%d_%s.tar" % (seg.getSegmentDbId(), self.timestamp)
+            config_backup_file = "gp_segment_config_files_0_%d_%s.tar" % (seg.getSegmentDbId(), timestamp)
             if self.backup_dir is not None:
-                path = os.path.join(self.backup_dir, DUMP_DIR, dump_date, config_backup_file)
+                path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE, config_backup_file)
             else:
-                path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, dump_date, config_backup_file)
+                path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, DUMP_DATE, config_backup_file)
             host = seg.getSegmentHostName()
             Command("Dumping segment config files",
                     "tar cf %s %s/*.conf" % (path, seg.getSegmentDataDirectory()),
@@ -760,7 +759,7 @@ class DumpConfig(Operation):
                     remoteHost=host).run(validateAfter=True)
             if self.ddboost:
                 abspath = path
-                relpath = os.path.join(DUMP_DIR, dump_date, config_backup_file)
+                relpath = os.path.join(DUMP_DIR, DUMP_DATE, config_backup_file)
                 logger.debug('Copying %s to DDBoost' % abspath)
                 cmd = Command('DDBoost copy of %s' % abspath,
                               'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath),
