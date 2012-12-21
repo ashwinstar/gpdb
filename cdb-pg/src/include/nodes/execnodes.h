@@ -402,8 +402,20 @@ typedef struct EState
 	 * The slice number for the current node that is
 	 * being processed. During the tree traversal, 
 	 * this value is set by Motion and InitPlan nodes.
+	 *
+	 * currentSliceIdInPlan and currentExecutingSliceId
+	 * are basically the same, except for InitPlan nodes.
+	 * For InitPlan nodes, the nodes in the top slice have
+	 * an assigned slice id in the plan, while the executing
+	 * slice id for these nodes is the root slice id.
 	 */
-	int current_slice_no;
+	int currentSliceIdInPlan;
+	int currentExecutingSliceId;
+
+	/*
+	 * The root slice id for this EState.
+	 */
+	int rootSliceId;
 
 	struct PlanState *planstate;        /* plan's state tree */
 

@@ -153,6 +153,34 @@ static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result
   			        void           *context,
   			        int flags);
 
+/*
+ * setSubplanSliceId
+ *   Set the slice id info for the given subplan.
+ */
+static void
+setSubplanSliceId(SubPlan *subplan, EState *estate)
+{
+	Assert(subplan!= NULL && IsA(subplan, SubPlan) && estate != NULL);
+	
+	estate->currentSliceIdInPlan = subplan->qDispSliceId;
+	/*
+	 * The slice that the initPlan will be running
+	 * is the same as the root slice. Depending on
+	 * the location of InitPlan in the plan, the root slice is
+	 * the root slice of the whole plan, or the root slice
+	 * of the parent subplan of this InitPlan.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		estate->currentExecutingSliceId = RootSliceIndex(estate);
+	}
+	else
+	{
+		estate->currentExecutingSliceId = estate->rootSliceId;
+	}
+}
+
+
 /* ------------------------------------------------------------------------
  *		ExecInitNode
  *
@@ -173,7 +201,6 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	PlanState  *result;
 	List	   *subps;
 	ListCell   *l;
-	int current_slice_no;
 
 	/*
 	 * do nothing when we get to the end of a leaf on tree.
@@ -182,7 +209,8 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		return NULL;
 
 	Assert(estate != NULL);
-	current_slice_no = estate->current_slice_no;
+	int origSliceIdInPlan = estate->currentSliceIdInPlan;
+	int origExecutingSliceId = estate->currentExecutingSliceId;
 
 	switch (nodeTag(node))
 	{
@@ -359,7 +387,8 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			break;
 	}
 
-	estate->current_slice_no = current_slice_no;
+	estate->currentSliceIdInPlan = origSliceIdInPlan;
+	estate->currentExecutingSliceId = origExecutingSliceId;
 
 	/*
 	 * Initialize any initPlans present in this node.  The planner put them in
@@ -371,22 +400,18 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
 
-		Assert(IsA(subplan, SubPlan));
-
-		estate->current_slice_no = subplan->qDispSliceId;
+		setSubplanSliceId(subplan, estate);
 
 		sstate = ExecInitExprInitPlan(subplan, result);
 		ExecInitSubPlan(sstate, estate, eflags);
-
-
-		estate->current_slice_no = current_slice_no;
 
 		subps = lappend(subps, sstate);
 	}
 	if (result != NULL)
 		result->initPlan = subps;
 
-	estate->current_slice_no = current_slice_no;
+	estate->currentSliceIdInPlan = origSliceIdInPlan;
+	estate->currentExecutingSliceId = origExecutingSliceId;
 
 	/*
 	 * Initialize any subPlans present in this node.  These were found by
@@ -1099,11 +1124,24 @@ ExecEndNode(PlanState *node)
 	if (node == NULL)
 		return;
 
+	EState *estate = node->state;
+	Assert(estate != NULL);
+	int origSliceIdInPlan = estate->currentSliceIdInPlan;
+	int origExecutingSliceId = estate->currentExecutingSliceId;
+
 	/* Clean up initPlans and subPlans */
 	foreach(subp, node->initPlan)
-		ExecEndSubPlan((SubPlanState *) lfirst(subp));
+	{
+		ExecEndSubPlan((SubPlanState *)lfirst(subp));
+	}
+	
+	estate->currentSliceIdInPlan = origSliceIdInPlan;
+	estate->currentExecutingSliceId = origExecutingSliceId;
+
 	foreach(subp, node->subPlan)
+	{
 		ExecEndSubPlan((SubPlanState *) lfirst(subp));
+	}
 
 	if (node->chgParam != NULL)
 	{
@@ -1265,6 +1303,9 @@ ExecEndNode(PlanState *node)
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
 	}
+
+	estate->currentSliceIdInPlan = origSliceIdInPlan;
+	estate->currentExecutingSliceId = origExecutingSliceId;
 }
 
 

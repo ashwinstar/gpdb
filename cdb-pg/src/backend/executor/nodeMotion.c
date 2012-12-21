@@ -921,7 +921,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     Slice      *recvSlice = NULL;
     SliceTable *sliceTable = estate->es_sliceTable;
 
-	int			parentSliceIndex = estate->current_slice_no;
+	int			parentSliceIndex = estate->currentSliceIdInPlan;
 
 #ifdef CDB_MOTION_DEBUG
 	int			i;
@@ -930,7 +930,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	Assert(node->motionID > 0);
 	Assert(node->motionID <= sliceTable->nMotions);
 
-	estate->current_slice_no = node->motionID;
+	estate->currentSliceIdInPlan = node->motionID;
+	int parentExecutingSliceId = estate->currentExecutingSliceId;
+	estate->currentExecutingSliceId = node->motionID;
 
 	/*
 	 * create state structure
@@ -1147,7 +1149,13 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     }
 #endif
 
+	/*
+	 * Temporarily set currentExecutingSliceId to the parent value, since
+	 * this motion might be in the top slice of an InitPlan.
+	 */
+	estate->currentExecutingSliceId = parentExecutingSliceId;
 	initGpmonPktForMotion((Plan *)node, &motionstate->ps.gpmon_pkt, estate);
+	estate->currentExecutingSliceId = node->motionID;
 
 	return motionstate;
 }
@@ -1186,6 +1194,14 @@ ExecEndMotion(MotionState * node)
 	 * clean out the tuple table
 	 */
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
+
+	/*
+	 * Set the slice no for the nodes under this motion.
+	 */
+	Assert(node->ps.state != NULL);
+	node->ps.state->currentSliceIdInPlan = motNodeID;
+	int parentExecutingSliceId = node->ps.state->currentExecutingSliceId;
+	node->ps.state->currentExecutingSliceId = motNodeID;
 
 	/*
 	 * shut down the subplan
@@ -1281,7 +1297,13 @@ ExecEndMotion(MotionState * node)
         pfree(node->outputFunArray);
 #endif
 
+	/*
+	 * Temporarily set currentExecutingSliceId to the parent value, since
+	 * this motion might be in the top slice of an InitPlan.
+	 */
+	node->ps.state->currentExecutingSliceId = parentExecutingSliceId;
 	EndPlanStateGpmonPkt(&node->ps);
+	node->ps.state->currentExecutingSliceId = motNodeID;
 }
 
 

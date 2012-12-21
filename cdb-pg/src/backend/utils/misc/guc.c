@@ -527,6 +527,9 @@ bool gp_debug_resqueue_priority = false;
 /* Perfmon segment GUCs */
 int gp_perfmon_segment_interval;
 
+/* Perfmon debug GUC */
+bool gp_perfmon_print_packet_info;
+
 /* Simulator of Exceptions (SimEx) GUCs */
 bool gp_simex_init;
 bool gp_simex_run;
@@ -3182,6 +3185,16 @@ static struct config_bool ConfigureNamesBool[] =
 		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_cancel_query_print_log,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_perfmon_print_packet_info", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Print out debugging info for a Perfmon packet"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_perfmon_print_packet_info,
 		false, NULL, NULL
 	},
 

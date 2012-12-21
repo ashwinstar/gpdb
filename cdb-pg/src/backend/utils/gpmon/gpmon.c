@@ -176,6 +176,16 @@ void gpmon_send(gpmon_packet_t* p)
 	if (p->pkttype == GPMON_PKTTYPE_QEXEC) {
 		p->u.qexec.p_mem = TopMemoryContext->allBytesAlloc - TopMemoryContext->allBytesFreed;
 		p->u.qexec.p_memmax = TopMemoryContext->maxBytesHeld;
+
+		if (gp_perfmon_print_packet_info)
+		{
+			elog(LOG,
+				 "Perfmon Executor Packet: (tmid, ssid, ccnt, segid, pid, nid, pnid, status) = "
+				 "(%d, %d, %d, %d, %d, %d, %d, %d)",
+				 p->u.qexec.key.tmid, p->u.qexec.key.ssid, p->u.qexec.key.ccnt,
+				 p->u.qexec.key.hash_key.segid, p->u.qexec.key.hash_key.pid, p->u.qexec.key.hash_key.nid,
+				 p->u.qexec.pnid, p->u.qexec.status);
+		}
 	}
 	
 	if (gpmon.gxsock > 0) {
