@@ -1,11 +1,4 @@
-%define maindir     %(echo `cd ../../../../..;pwd`)
-%define _topdir     %{maindir}/cdb-pg/src/pl/plr/package 
-%define buildroot   %{_topdir}/R-%{r_ver}.%{r_rel} 
-%define buildarch   %(uname -p) 
-%define __os_install_post %{nil}
-
-BuildRoot:      %{buildroot}
-SUmmary:        R statistics language 
+Summary:        R statistics language 
 License:        GPLv2        
 Name:           R
 Version:        %{r_ver}
@@ -15,13 +8,10 @@ Prefix:         /temp
 AutoReq:        no
 AutoProv:       no
 BuildArch:      %{buildarch} 
-Provides:       R-%{r_ver}-%{r_rel}.%{buildarch}.rpm 
+Provides:       R = %{r_ver}, /bin/sh
 
 %description
 The R module provides the R statistics language.
-
-%prep
-rm -rf %{buildroot}
 
 %install
 mkdir -p %{buildroot}/temp/ext/R-%{r_ver}

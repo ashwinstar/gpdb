@@ -11,42 +11,26 @@ ARCH=$(shell uname -p)
 PERL_VER=5.12.4
 PERL_REL=1
 PERL_DIR=$(RELENG_TOOLS)/perl-$(PERL_VER)
+PERL_RPM_FLAGS="--define 'perl_dir $(PERL_DIR)' --define 'perl_ver $(PERL_VER)' --define 'perl_rel $(PERL_REL)'"
 PERL_RPM=perl-$(PERL_VER)-$(PERL_REL).$(ARCH).rpm
 
 PLPERL_VER=1.0
 PLPERL_REL=1
+PLPERL_DIR=`cd .. && pwd`
+PLPERL_RPM_FLAGS="--define 'plperl_dir $(PLPERL_DIR)' --define 'plperl_ver $(PLPERL_VER)' --define 'plperl_rel $(PLPERL_REL)' --define 'perl_ver $(PERL_VER)'"
 PLPERL_RPM=plperl-$(PLPERL_VER)-$(PLPERL_REL).$(ARCH).rpm
 PLPERL_GPPKG=plperl-$(PLPERL_VER)-$(OS)-$(ARCH).gppkg
 
-gppkg: $(PLPERL_GPPKG)
+EXTRA_CLEAN+=$(PERL_RPM) $(PLPERL_RPM) $(PLPERL_GPPKG)
 
-# e.g. 
-# postgis-1.4.2-1-x86_64.rpm
-RPM_ARGS=$(subst -, ,$*)
-RPM_NAME=$(word 1,$(RPM_ARGS))
-%.rpm:
-	mkdir RPMS SOURCES BUILD SRPMS
-	rpmbuild -bb SPECS/$(RPM_NAME).spec --define "perl_ver $(PERL_VER)" --define "plperl_ver $(PLPERL_VER)" \
-										--define "perl_rel $(PERL_REL)" --define "plperl_rel $(PLPERL_REL)" \
-										--define "perl_dir $(PERL_DIR)"
-	mv RPMS/$(ARCH)/$*.rpm .
-	rm -rf RPMS SOURCES BUILD SRPMS
+#
+# Generic rules to build gppkgs included here
+#
+include $(BLD_TOP)/releng/gppkg.mk
 
-gppkg/gppkg_spec.yml: gppkg/gppkg_spec.yml.bk
-	cat $< | sed "s/#arch/$(ARCH)/g" | sed "s/#os/$(OS)/g" > $@
+gppkg: $(PERL_DIR)
+	$(MAKE) $(PERL_RPM) RPM_FLAGS=$(PERL_RPM_FLAGS)
+	$(MAKE) $(PLPERL_RPM) RPM_FLAGS=$(PLPERL_RPM_FLAGS)
+	$(MAKE) $(PLPERL_GPPKG) MAIN_RPM=$(PLPERL_RPM) DEPENDENT_RPMS=$(PERL_RPM)
 
-$(PLPERL_GPPKG): gppkg/gppkg_spec.yml $(PERL_DIR) $(PERL_RPM) $(PLPERL_RPM)
-	rm -rf gppkg/deps
-	mkdir gppkg/deps
-	cp $(PERL_RPM) gppkg/deps
-	cp $(PLPERL_RPM) gppkg/
-	source $(INSTLOC)/greenplum_path.sh && $(GPMGMT)/bin/gppkg -b gppkg
-
-clean:
-	rm -rf RPMS SRPMS SOURCES BUILD
-	rm -rf gppkg/deps
-	rm -rf install
-	rm -rf perl-$(PLPERL_VER).$(PLPERL_REL)
-	rm -f $(PERL_GPPKG) $(PERL_RPM) $(PLPERL_RPM)
-
-.PHONY: gppkg clean
+.PHONY: gppkg

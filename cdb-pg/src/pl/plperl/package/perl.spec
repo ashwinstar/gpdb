@@ -1,10 +1,3 @@
-%define maindir     %(echo `cd ../../../../..;pwd`)
-%define _topdir     %{maindir}/cdb-pg/src/pl/plperl/package 
-%define buildroot   %{_topdir}/perl-%{version}.%{release} 
-%define buildarch   %(uname -p) 
-%define __os_install_post   %{nil}
-
-BuildRoot:      %{buildroot}
 Summary:        Perl 
 License:        Artistic License        
 Name:           perl
@@ -14,14 +7,10 @@ Group:          Development/Tools
 Prefix:         /temp
 AutoReq:        no
 AutoProv:       no
-BuildArch:      %{buildarch} 
-Provides:       perl-%{perl_ver}-%{perl_rel}.%{buildarch}.rpm 
+Provides:       perl = %{perl_ver}, /bin/sh 
 
 %description
 The Perl package provides Perl for PL/Perl. 
-
-%prep
-rm -rf %{buildroot}
 
 %install
 mkdir -p %{buildroot}/temp/ext/perl-%{perl_ver}
