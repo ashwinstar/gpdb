@@ -8,14 +8,14 @@ include $(BLD_TOP)/Makefile.global
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
 ARCH=$(shell uname -p)
 
-JRE_VER=1.6.0_26
+JRE_VER=1.6.0_32
 JRE_REL=1
 JRE_DIR=$(RELENG_TOOLS)/jre-$(JRE_VER)
 JRE_RPM_FLAGS="--define 'jre_dir $(JRE_DIR)' --define 'jre_ver $(JRE_VER)' --define 'jre_rel $(JRE_REL)'" 
 JRE_RPM=jre-$(JRE_VER)-$(JRE_REL).$(ARCH).rpm
 
 PLJAVA_DIR=`cd .. && pwd`
-PLJAVA_VER=1.0
+PLJAVA_VER=1.1
 PLJAVA_REL=1
 PLJAVA_RPM_FLAGS="--define 'pljava_dir $(PLJAVA_DIR)' --define 'pljava_ver $(PLJAVA_VER)' --define 'pljava_rel $(PLJAVA_REL)' --define 'jre_ver $(JRE_VER)'"
 PLJAVA_RPM=pljava-$(PLJAVA_VER)-$(PLJAVA_REL).$(ARCH).rpm
