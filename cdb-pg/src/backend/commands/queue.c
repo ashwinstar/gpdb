@@ -879,7 +879,7 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	if(dovercommit)
 	{
-		overcommit = intVal(dovercommit->arg);
+		overcommit = defGetBoolean(dovercommit);
 	}
 
 	if(dignorelimit)
@@ -1269,7 +1269,7 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	if (dovercommit)
 	{
-		overcommit = intVal(dovercommit->arg);
+		overcommit = defGetBoolean(dovercommit);
 	}
 
 	if(dignorelimit)

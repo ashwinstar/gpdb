@@ -1278,62 +1278,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	heap_close(rel, RowExclusiveLock);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-
-		StringInfoData buffer;
-
-		initStringInfo(&buffer);
-
-		appendStringInfo(&buffer, "ALTER ROLE \"%s\" ", stmt->role);
-		
-		if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
-		{
-			appendStringInfo(&buffer, "RESET ALL");
-		}
-		else if (valuestr == NULL)
-		{
-			appendStringInfo(&buffer, "RESET \"%s\"", stmt->variable);
-		}
-		else
-		{
-			List	   *namelist;
-			ListCell   *l;
-			char * 	rawname;
-			
-			appendStringInfo(&buffer, "SET \"%s\" TO ",stmt->variable);
-		
-			/* Need a modifiable copy of string */
-			rawname = pstrdup(valuestr);
-		
-			/* Parse string into list of identifiers */
-			if (!SplitIdentifierString(rawname, ',', &namelist))
-			{
-				appendStringInfo(&buffer, "%s", valuestr);
-			}
-			else
-			{
-				bool first = true;
-				foreach(l, namelist)
-				{
-					char	   *curname = (char *) lfirst(l);
-					if (!first)
-						appendStringInfo(&buffer, ",");
-					first = false;
-					
-					if (curname[0] == '-' || curname[0] == '"' || curname[0] == '\'' || (curname[0] >= '0' && curname[0] <= '9'))
-						appendStringInfo(&buffer, "%s", curname);
-					else
-						appendStringInfo(&buffer, "\"%s\"", curname);
-					
-				}
-				
-			}
-			
-			pfree(rawname);
-			list_free(namelist);
-		}
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
-	} /* end if dispatch */
+		CdbDispatchUtilityStatement((Node *) stmt, "AlterRoleSetStmt");
 }
 
 
