@@ -229,6 +229,9 @@ static void transformFKConstraints(ParseState *pstate,
 					   bool skipValidation,
 					   bool isAddConstraint);
 static void applyColumnNames(List *dst, List *src);
+static bool isSetopLeaf(SelectStmt *stmt);
+static void collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
+							  List **types, List **typmods);
 static void getSetColTypes(ParseState *pstate, Node *node,
 			   List **colTypes, List **colTypmods);
 static void transformLockingClause(Query *qry, LockingClause *lc);
@@ -10213,6 +10216,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 			   *sv_rtable;
 	RangeTblEntry *jrte;
 	int			tllen;
+	List	   *colTypes, *colTypmods;
 
 	qry->commandType = CMD_SELECT;
 
@@ -10267,6 +10271,92 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"),
 						 errOmitLocation(true)));
+
+	/*
+	 * Before transforming the subtrees, we collect all the data types
+	 * and typmods by searching their targetList (ResTarget) or valuesClause.
+	 * This is necessary because choosing column types in leaf query
+	 * without knowing whole of tree may result in a wrong type. And this
+	 * situation goes an error that is against user's instinct. Instead,
+	 * we want to look at all the leavs at one time, and decide each column
+	 * types. The resjunk columns are not interesting, because type coercion
+	 * between queries is done only for each non-resjunk column in set operations.
+	 */
+	colTypes = NIL;
+	colTypmods = NIL;
+	pstate->p_setopTypes = NIL;
+	pstate->p_setopTypmods = NIL;
+	collectSetopTypes(pstate, stmt, &colTypes, &colTypmods);
+	Insist(list_length(colTypes) == list_length(colTypmods));
+	forboth (lct, colTypes, lcm, colTypmods)
+	{
+		List	   *types = (List *) lfirst(lct);
+		List	   *typmods = (List *) lfirst(lcm);
+		ListCell   *lct2, *lcm2;
+		Oid			ptype;
+		int32		ptypmod;
+		Oid			restype;
+		int32		restypmod;
+		bool		allsame;
+		char	   *context;
+
+		Insist(list_length(types) == list_length(typmods));
+
+		context = (stmt->op == SETOP_UNION ? "UNION" :
+				   stmt->op == SETOP_INTERSECT ? "INTERSECT" :
+				   "EXCEPT");
+		allsame = true;
+		ptype = linitial_oid(types);
+		ptypmod = linitial_int(typmods);
+		forboth (lct2, types, lcm2, typmods)
+		{
+			Oid		ntype = lfirst_oid(lct2);
+			int32	ntypmod = lfirst_int(lcm2);
+
+			/*
+			 * In the first iteration, ntype and ptype is the same element,
+			 * but we ignore it as it's not a big problem here.
+			 */
+			if (!(ntype == ptype && ntypmod == ptypmod))
+			{
+				/* if any is different, false */
+				allsame = false;
+				break;
+			}
+		}
+
+		/*
+		 * Even if the types are all the same, we resolve the type
+		 * by select_common_type(), which casts domains to base types.
+		 * Ideally, the domain types should be preserved, but to keep
+		 * compatibility with older GPDB views, currently we don't change it.
+		 * This restriction will be solved once upgrade/view issues get clean.
+		 * See MPP-7509 for the issue.
+		 */
+		restype = select_common_type(types, context);
+		/*
+		 * If there's no common type, the last resort is TEXT.
+		 * See also select_common_type().
+		 */
+		if (restype == UNKNOWNOID)
+		{
+			restype = TEXTOID;
+			restypmod = -1;
+		}
+		else
+		{
+			/*
+			 * Essentially we preserve typmod only when all elements
+			 * are identical, otherwise default (-1).
+			 */
+			if (allsame)
+				restypmod = ptypmod;
+			else
+				restypmod = -1;
+		}
+		pstate->p_setopTypes = lappend_oid(pstate->p_setopTypes, restype);
+		pstate->p_setopTypmods = lappend_int(pstate->p_setopTypmods, restypmod);
+	}
 
 	/*
 	 * Recursively transform the components of the tree.
@@ -10434,8 +10524,6 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 static Node *
 transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 {
-	bool		isLeaf;
-
 	Assert(stmt && IsA(stmt, SelectStmt));
 
 	/*
@@ -10453,28 +10541,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 				 errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"),
 						 errOmitLocation(true)));
 
-	/*
-	 * If an internal node of a set-op tree has ORDER BY, UPDATE, or LIMIT
-	 * clauses attached, we need to treat it like a leaf node to generate an
-	 * independent sub-Query tree.	Otherwise, it can be represented by a
-	 * SetOperationStmt node underneath the parent Query.
-	 */
-	if (stmt->op == SETOP_NONE)
-	{
-		Assert(stmt->larg == NULL && stmt->rarg == NULL);
-		isLeaf = true;
-	}
-	else
-	{
-		Assert(stmt->larg != NULL && stmt->rarg != NULL);
-		if (stmt->sortClause || stmt->limitOffset || stmt->limitCount ||
-			stmt->lockingClause)
-			isLeaf = true;
-		else
-			isLeaf = false;
-	}
-
-	if (isLeaf)
+	if (isSetopLeaf(stmt))
 	{
 		/* Process leaf SELECT */
 		List	   *selectList;
@@ -10539,9 +10606,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 		List	   *lcoltypmods;
 		List	   *rcoltypmods;
 		ListCell   *lct;
-		ListCell   *rct;
 		ListCell   *lcm;
-		ListCell   *rcm;
 		const char *context;
 
 		context = (stmt->op == SETOP_UNION ? "UNION" :
@@ -10560,6 +10625,10 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 		/*
 		 * Verify that the two children have the same number of non-junk
 		 * columns, and determine the types of the merged output columns.
+		 * At one time in past, this information was used to deduce
+		 * common data type, but now we don't; predict it beforehand,
+		 * since in some cases transformation of individual leaf query
+		 * hides what type the column should be from the whole of tree view.
 		 */
 		getSetColTypes(pstate, op->larg, &lcoltypes, &lcoltypmods);
 		getSetColTypes(pstate, op->rarg, &rcoltypes, &rcoltypmods);
@@ -10574,34 +10643,132 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 
 		op->colTypes = NIL;
 		op->colTypmods = NIL;
-		/* don't have a "foreach4", so chase two of the lists by hand */
-		lcm = list_head(lcoltypmods);
-		rcm = list_head(rcoltypmods);
-		forboth(lct, lcoltypes, rct, rcoltypes)
+		/* We should have predicted types and typmods up to now */
+		Assert(pstate->p_setopTypes && pstate->p_setopTypmods);
+		Assert(list_length(pstate->p_setopTypes) ==
+			   list_length(pstate->p_setopTypmods));
+		forboth(lct, pstate->p_setopTypes, lcm, pstate->p_setopTypmods)
 		{
-			Oid			lcoltype = lfirst_oid(lct);
-			Oid			rcoltype = lfirst_oid(rct);
-			int32		lcoltypmod = lfirst_int(lcm);
-			int32		rcoltypmod = lfirst_int(rcm);
-			Oid			rescoltype;
-			int32		rescoltypmod;
-
-			/* select common type, same as CASE et al */
-			rescoltype = select_common_type(list_make2_oid(lcoltype, rcoltype),
-											context);
-			/* if same type and same typmod, use typmod; else default */
-			if (lcoltype == rcoltype && lcoltypmod == rcoltypmod)
-				rescoltypmod = lcoltypmod;
-			else
-				rescoltypmod = -1;
-			op->colTypes = lappend_oid(op->colTypes, rescoltype);
-			op->colTypmods = lappend_int(op->colTypmods, rescoltypmod);
-
-			lcm = lnext(lcm);
-			rcm = lnext(rcm);
+			op->colTypes = lappend_oid(op->colTypes, lfirst_oid(lct));
+			op->colTypmods = lappend_int(op->colTypmods, lfirst_int(lcm));
 		}
 
 		return (Node *) op;
+	}
+}
+
+/*
+ * isSetopLeaf
+ *  returns true if the statement is set operation tree leaf.
+ */
+static bool
+isSetopLeaf(SelectStmt *stmt)
+{
+	Assert(stmt && IsA(stmt, SelectStmt));
+	/*
+	 * If an internal node of a set-op tree has ORDER BY, UPDATE, or LIMIT
+	 * clauses attached, we need to treat it like a leaf node to generate an
+	 * independent sub-Query tree.	Otherwise, it can be represented by a
+	 * SetOperationStmt node underneath the parent Query.
+	 */
+	if (stmt->op == SETOP_NONE)
+	{
+		Assert(stmt->larg == NULL && stmt->rarg == NULL);
+		return true;
+	}
+	else
+	{
+		Assert(stmt->larg != NULL && stmt->rarg != NULL);
+		if (stmt->sortClause || stmt->limitOffset || stmt->limitCount ||
+			stmt->lockingClause)
+			return true;
+		else
+			return false;
+	}
+}
+
+/*
+ * collectSetopTypes
+ *  transforms the statement partially and collect data type oid
+ * and typmod from targetlist recursively. In set operations, the
+ * final data type should be determined from the total tree view,
+ * so we traverse the tree and collect types naively (without coercing)
+ * and use the information for later column type decision.
+ * types and typmods are output parameter, and the returned values
+ * are List of List which contain column number of elements as the
+ * first dimension, and leaf number of elements as the second dimension.
+ */
+static void
+collectSetopTypes(ParseState *pstate, SelectStmt *stmt,
+				  List **types, List **typmods)
+{
+	if (isSetopLeaf(stmt))
+	{
+		ParseState	   *parentstate = pstate;
+		SelectStmt	   *select_stmt = stmt;
+		List		   *tlist;
+		ListCell	   *lc, *lct, *lcm;
+
+		/* Copy them just in case */
+		pstate = make_parsestate(parentstate);
+		stmt = copyObject(select_stmt);
+
+		if (stmt->valuesLists)
+		{
+			/* in VALUES query, we can transform all */
+			tlist = transformValuesClause(pstate, stmt)->targetList;
+		}
+		else
+		{
+			/* transform only tragetList */
+			transformFromClause(pstate, stmt->fromClause);
+			tlist = transformTargetList(pstate, stmt->targetList);
+		}
+
+		if (*types == NIL)
+		{
+			Assert(*typmods == NIL);
+			/* Construct List of List for numbers of tlist */
+			foreach(lc, tlist)
+			{
+				*types = lappend(*types, NIL);
+				*typmods = lappend(*typmods, NIL);
+			}
+		}
+		else if (list_length(*types) != list_length(tlist))
+		{
+			/*
+			 * Must be an error in later process.
+			 * Nothing to do in this preprocess (not an assert.)
+			 */
+			free_parsestate(&pstate);
+			pfree(stmt);
+			return;
+		}
+		lct = list_head(*types);
+		lcm = list_head(*typmods);
+		foreach (lc, tlist)
+		{
+			TargetEntry	   *tle = (TargetEntry *) lfirst(lc);
+			List		   *typelist = (List *) lfirst(lct);
+			List		   *typmodlist = (List *) lfirst(lcm);
+
+			/* Keep back to the original List */
+			lfirst(lct) = lappend_oid(typelist, exprType((Node *) tle->expr));
+			lfirst(lcm) = lappend_int(typmodlist, exprTypmod((Node *) tle->expr));
+
+			lct = lnext(lct);
+			lcm = lnext(lcm);
+		}
+		/* They're not needed anymore */
+		free_parsestate(&pstate);
+		pfree(stmt);
+	}
+	else
+	{
+		/* just recurse to the leaf */
+		collectSetopTypes(pstate, stmt->larg, types, typmods);
+		collectSetopTypes(pstate, stmt->rarg, types, typmods);
 	}
 }
 
