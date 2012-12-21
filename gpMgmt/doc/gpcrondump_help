@@ -109,10 +109,17 @@ OPTIONS
 --ddboost
  Use Data Domain DD Boost for this backup. Before using DD Boost 
  make sure the one-time DD Boost credential setup is completed.
+
  The following options are recommended if --ddboost is specified.
 
-    * Use the --rsyncable option with DD Boost
-    
+    * -z option (uncompressed)
+      Optimal performance of subsequent backups if change rate 
+      is low.
+
+    * --rsyncable option
+      Optimal performance for initial backup and subsequent 
+      backups if change rate is high.
+
     * When running a mixed backup that backs up to both
       a local disk and to Data Domain, use the -u option
       to specify that the backup to the local disk does not
@@ -121,6 +128,11 @@ OPTIONS
   The -f, -G, -g, -R, and -u options change if 
   --ddboost is specified. See the options for details.
 
+  Important: Never use the Greenplum Database default backup 
+             options with Data Domain Boost.  
+
+  To maximize Data Domain deduplication benefits, retain at 
+  least 30 days of backups.
 
 -E encoding
 

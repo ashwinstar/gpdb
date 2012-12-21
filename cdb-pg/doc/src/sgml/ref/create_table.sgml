@@ -593,6 +593,17 @@ and subpartition_element is:
       If a constraint name is not specified, the system generates a name.
 
      </para>
+ 
+     <para>
+
+     Note: The specified constraint_name is used for the constraint, but a 
+
+     system-generated unique name is used for the index name. In some prior 
+  
+     releases, the provided name was used for both the constraint name 
+     and the index name. 
+     
+    </para>
 
     </listitem>
 

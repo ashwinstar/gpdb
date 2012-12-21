@@ -22,10 +22,11 @@ PostgreSQL documentation
 <synopsis> 
 
 CREATE [READABLE] EXTERNAL TABLE table_name 
-      ( column_name data_type [, ...] | LIKE other_table )
+     ( column_name data_type [, ...] | LIKE other_table )
       LOCATION ('file://seghost[:port]/path/file' [, ...])
-          | ('gpfdist://filehost[:port]/file_pattern' [, ...])
-          | ('gphdfs://hdfs_host[:port]/path/file')
+         | ('gpfdist://filehost[:port]/file_pattern[#transform]'
+           [, ...])
+         | ('gphdfs://hdfs_host[:port]/path/file')
       FORMAT 'TEXT' 
             [( [HEADER]
                [DELIMITER [AS] 'delimiter' | 'OFF']
@@ -33,7 +34,7 @@ CREATE [READABLE] EXTERNAL TABLE table_name
                [ESCAPE [AS] 'escape' | 'OFF']
                [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
-             | 'CSV'
+           | 'CSV'
             [( [HEADER]
                [QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
@@ -42,11 +43,12 @@ CREATE [READABLE] EXTERNAL TABLE table_name
                [ESCAPE [AS] 'escape']
                [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
+           | 'CUSTOM' (Formatter=<formatter specifications>)
      [ ENCODING 'encoding' ]
      [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
        [ROWS | PERCENT] ]
 CREATE [READABLE] EXTERNAL WEB TABLE table_name 
-    ( column_name data_type [, ...] | LIKE other_table )
+     ( column_name data_type [, ...] | LIKE other_table )
       LOCATION ('http://webhost[:port]/path/file' [, ...])
     | EXECUTE 'command' [ON ALL 
                           | MASTER
@@ -60,7 +62,7 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
                [ESCAPE [AS] 'escape' | 'OFF']
                [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
-            | 'CSV'
+           | 'CSV'
             [( [HEADER]
                [QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
@@ -69,23 +71,26 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
                [ESCAPE [AS] 'escape']
                [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
+           | 'CUSTOM' (Formatter=<formatter specifications>)
      [ ENCODING 'encoding' ]
      [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
        [ROWS | PERCENT] ]
 CREATE WRITABLE EXTERNAL TABLE table_name
     ( column_name data_type [, ...] | LIKE other_table )
-      LOCATION ('gpfdist://outputhost[:port]/filename' [, ...])
-          |    ('gphdfs://hdfs_host[:port]/path')
+     LOCATION('gpfdist://outputhost[:port]/filename[#transform]'
+              [, ...])
+         | ('gphdfs://hdfs_host[:port]/path')
       FORMAT 'TEXT' 
                [( [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF'] )]
-           | 'CSV'
+          | 'CSV'
                [([QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
                [FORCE QUOTE column [, ...]] ]
                [ESCAPE [AS] 'escape'] )]
+           | 'CUSTOM' (Formatter=<formatter specifications>)
     [ ENCODING 'write_encoding' ]
     [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
 CREATE WRITABLE EXTERNAL WEB TABLE table_name
@@ -95,15 +100,16 @@ CREATE WRITABLE EXTERNAL WEB TABLE table_name
                [( [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF'] )]
-         | 'CSV'
+          | 'CSV'
                [([QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
                [FORCE QUOTE column [, ...]] ]
                [ESCAPE [AS] 'escape'] )]
+           | 'CUSTOM' (Formatter=<formatter specifications>)
     [ ENCODING 'write_encoding' ]
     [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
- 
+
 </synopsis>
 
  </refsynopsisdiv>

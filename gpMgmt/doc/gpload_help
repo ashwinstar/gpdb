@@ -28,6 +28,9 @@ The client machine where gpload is executed must have the following:
   you have Greenplum Database installed on the machine where gpload 
   is running, you do not need a separate Python installation.
 
+  Note: Greenplum Loaders for Windows supports only Python 2.5
+  (available from www.python.org).
+
 * The gpfdist parallel file distribution program installed and in 
   your $PATH. This program is located in $GPHOME/bin of your 
   Greenplum Database server installation.
