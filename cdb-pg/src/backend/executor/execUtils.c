@@ -2103,6 +2103,16 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	}
 
 	/*
+	 * Delaying the cancellation for a specified time.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH &&
+		QueryCancelCleanup &&
+		gp_cancel_query_delay_time > 0)
+	{
+		pg_usleep(gp_cancel_query_delay_time * 1000);
+	}
+
+	/*
 	 * Request any commands still executing on qExecs to stop.
 	 * Wait for them to finish and clean up the dispatching structures.
 	 * Replace current error info with QE error info if more interesting.

@@ -542,6 +542,7 @@ static char *gp_test_deadlock_hazard_report_level_str;
 
 /* query cancellation GUC */
 bool gp_cancel_query_print_log;
+int gp_cancel_query_delay_time;
 
 /* Upgrade & maintenance GUCs */
 bool gp_upgrade_mode;
@@ -3343,6 +3344,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&DeadlockTimeout,
 		1000, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_cancel_query_delay_time", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("The time in milliseconds to delay a query cancellation."),
+			NULL,
+			GUC_UNIT_MS | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_cancel_query_delay_time,
+		0, 0, INT_MAX, NULL, NULL
 	},
 
 	/*
