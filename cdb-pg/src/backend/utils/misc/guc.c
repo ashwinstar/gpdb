@@ -4215,13 +4215,13 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_interconnect_setup_timeout", PGC_USERSET, GP_ARRAY_TUNING,
+		{"gp_interconnect_setup_timeout", PGC_USERSET, DEPRECATED_OPTIONS,
 			gettext_noop("Timeout (in seconds) on interconnect setup that occurs at query start"),
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric."),
 			GUC_UNIT_S | GUC_GPDB_ADDOPT
 		},
 		&interconnect_setup_timeout,
-		20, 0, 3600, NULL, NULL
+		7200, 0, 7200, NULL, NULL
 	},
 
 	{
