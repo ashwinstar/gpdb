@@ -1239,6 +1239,9 @@ copylibs : thirdparty-dist
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
 	    echo "Copying python, $(BLD_PYTHON_FILESET), from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
 	    (cd $(BLD_PYTHON) && $(TAR) cf - $(BLD_PYTHON_FILESET)) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
+	    echo "Adjusting python..."; \
+	    mv $(INSTLOC)/ext/python/bin/python $(INSTLOC)/ext/python/bin/gp-python; \
+	    cp -p $(GPMGMT)/bin/lib/gpkill-python $(INSTLOC)/ext/python/bin/python; \
 	    echo "...DONE"; \
 	else \
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
@@ -1261,6 +1264,8 @@ else
 	cp -rp /System/Library/OpenSSL/openssl.cnf $(INSTLOC)/etc/
 endif
 endif
+	# Copy glider stack trace capture tool
+	-cp -rp $(BLD_THIRDPARTY_BIN_DIR)/glider $(INSTLOC)/sbin/
 
 greenplum_path:
 	mkdir -p $(INSTLOC)
@@ -1407,13 +1412,13 @@ authlibs:
 
 
 
-GPPKG_TARGETS = \
-	cdb-pg/contrib/pgcrypto/package \
-	cdb-pg/contrib/postgis/package \
-	cdb-pg/src/pl/plr/package \
-	cdb-pg/src/pl/plperl/package \
-	cdb-pg/src/pl/pljava/package \
-	cdb-pg/src/bin/gphdfs/package \
+GPPKG_SOURCES = \
+	cdb-pg/contrib/pgcrypto \
+	cdb-pg/contrib/postgis \
+	cdb-pg/src/pl/plr \
+	cdb-pg/src/pl/plperl \
+	cdb-pg/src/pl/pljava \
+	cdb-pg/src/bin/gphdfs \
 	$(NULL)
 
 ## ----------------------------------------------------------------------
@@ -1429,10 +1434,39 @@ ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
 	@echo "on this platform: $(BLD_ARCH)"
 	@echo ""
 else
-	@for target in $(GPPKG_TARGETS); do \
-		$(MAKE) -C $${target} INSTLOC=$(INSTLOC); \
-		cp $${target}/*.gppkg $(GPPKGINSTLOC); \
-	done || true
+	for source in $(GPPKG_SOURCES); do \
+		$(MAKE) -C $${source}/package INSTLOC=$(INSTLOC); \
+		cp $${source}/package/*.gppkg $(GPPKGINSTLOC); \
+	done
+endif
+endif
+
+INSTALLCHECK_GPPKG_SOURCES = \
+	cdb-pg/contrib/pgcrypto \
+	cdb-pg/contrib/postgis \
+	cdb-pg/src/pl/plperl \
+	cdb-pg/src/pl/plr \
+	$(NULL)
+
+installcheck-gppkg:
+	touch installcheck-gppkg.log
+ifeq "$(findstring gppkg,$(BLD_TARGETS))" ""
+    # ---- build and packaging of gppkgs are currently disabled
+    # ---- set BLD_TARGETS="gppkg" to enable them.
+else
+ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
+	@echo ""
+	@echo "The gppkg build and packaging processes are not supported"
+	@echo "on this platform: $(BLD_ARCH)"
+	@echo ""
+else
+	for source in $(INSTALLCHECK_GPPKG_SOURCES); do \
+		$(MAKE) -C $${source}/package install; \
+	done
+	source $$GPHOME/greenplum_path.sh && gpstop -a && gpstart -a
+	for source in $(INSTALLCHECK_GPPKG_SOURCES); do \
+		source $$GPHOME/greenplum_path.sh && $(MAKE) -C $${source} installcheck >> installcheck-gppkg.log; \
+	done
 endif
 endif
 

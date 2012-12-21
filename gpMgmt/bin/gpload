@@ -9,4 +9,9 @@ if [ `uname -s` = "AIX" -a ! -z "$GP_LIBPATH_FOR_PYTHON" ]; then
     LIBPATH=$GP_LIBPATH_FOR_PYTHON:$LIBPATH
     export LIBPATH
 fi
+
+# MPP-15405
+GPKILL=CONFIRM
+export GPKILL
+
 gpload.py $*

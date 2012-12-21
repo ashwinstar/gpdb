@@ -1,0 +1,311 @@
+#!/usr/bin/env python
+# Line too long - pylint: disable=C0301
+# Invalid name  - pylint: disable=C0103
+
+"""
+  gpkill
+  Copyright (c) EMC/Greenplum Inc 2011. All Rights Reserved. 
+"""
+import os, signal, time
+
+from psi import AttrInsufficientPrivsError
+from psi.process import Process, NoSuchProcessError
+
+from gppylib.mainUtils import YamlMain, Exit
+from gppylib.commands.unix import check_pid
+from gppylib.commands.base import Command, ExecutionError
+
+
+class GpKillMain(YamlMain):
+    """
+    Main class for the gpkill utility.  The yaml document below specifies
+
+    * how command line options are parsed
+    * expected execution scenarios
+    * expected error conditions and messages
+
+    %YAML 1.1
+    ---
+
+    #
+    # arguments
+    #
+    Usage: 'usage: %prog [options] pid'
+    Description: Check or Terminate a GBDB process
+    Options:
+      Groups:
+      - Help Options
+      - Tool Options
+      - Check Options
+
+      Help Options:
+        -h,-?,--help,--usage:
+          help: Show help message and exit.
+          action: help
+      Tool Options:
+        -q: Quiet Mode - only show problems on stdout
+        -v: Verbose Mode - include verbose debugging information
+      Check Options:
+        --check: 
+          help: Only check pid to verify it is a GPDB process
+          action: store_const
+          dest: scenario
+          const: Check Process
+  
+        # we also parse the following options to ensure our alias for kill
+        # which  invokes 'gpkill -q --check $*' won't improperly raise an error.
+  
+        -l: hidden - list signals
+        -s:
+          help: hidden - explicit signal name
+          dest: sigspec
+        -n: 
+          help: hidden - explicit signal number
+          dest: signum
+        -1,-2,-3,-4,-5,-6,-7,-8,-9: hidden
+        -A,-B,-C,-D,-E,-F,-G,-H,-I,-J,-K,-L,-M: hidden
+        -N,-O,-P,-Q,-R,-S,-T,-U,-V,-W,-X,-Y,-Z: hidden
+        -a,-b,-c,-d,-e,-f,-g,-i,-j,-k,-m: hidden
+        -o,-p,-r,-t,-u,-w,-x,-y,-z: hidden
+
+    #
+    # scenarios
+    #
+    Default Scenario: Kill Process
+
+    Scenarios:
+      Check Process:
+      - 1. On Current Host:
+        - 1.1. Validate Arguments
+        - 1.2. Examine Process
+        - 1.3. Validate Attempt
+
+      Kill Process:
+      - 1. On Current Host:
+        - 1.1. Validate Arguments
+        - 1.2. Examine Process
+        - 1.3. Validate Attempt
+        - 1.4. Troubleshoot Process
+        - 1.5. Confirm
+        - 1.6. Kill Process
+
+    #
+    # errors and messages
+    #
+    Errors:
+      nopid:      'no pid specified, consider --help'
+      badpid:     'invalid pid: %(pid)s'
+      nosuchpid:  'no such process: pid: %(pid)s'
+      badpriv:    'no privilege to read environment of pid: %(pid)s'
+      notgpproc:  'process %(pid)s ignored by gpkill as it not a greenplum process'
+      disallowed: 'process %(pid)s may not be killed'
+      usegpkill:  'process %(pid)s may only be killed with gpkill'
+      command:    'process %(pid)s is %(command)s'
+      notstuck:   'process %(pid)s may not be killed without evidence it is stuck'
+      badgpkill:  'process %(pid)s gpkill %(gpkill)s is unrecognized'
+      aborted:    'operation aborted'
+      sigterm:    'Sending SIGTERM to process %(pid)s (smart shutdown)'
+      sigint:     'Sending SIGINT to process %(pid)s (fast shutdown)'
+      sigquit:    'Sending SIGQUIT to process %(pid)s (immediate shutdown)'
+      sigabrt:    'Sending SIGABRT to process %(pid)s'
+      confirm:    'Confirm [N/y]> '
+      failed:     'failed to kill process %(pid)s'
+    """
+
+
+    # GpKillMain constructor
+    #
+    def __init__(self):
+        "Here we go..."
+        YamlMain.__init__(self)
+
+        # generic state set by YamlMain.run() we also set here mainly to make code clearer
+        #
+        self.scenario_name = None	 # what we call what we're doing, e.g. 'Check Process'
+        self.plan          = None        # plan object built from the yaml above
+        self.logger        = None        # helpful logger object reference
+        self.errmsg        = None        # helpful errmsg function reference
+
+        # additional state we update during execution
+        #
+        self.pid           = None        # process id we're working with
+        self.proc          = None        # Process object we use to examine the process
+        self.envdict       = None        # dictionary built from process environment
+        self.gpkill        = None        # the specific value of GPKILL we observe in the env
+
+
+    #
+    # Scenario task methods - the name of each task in the yaml scenarios above 
+    # must match one of the following methods after lower().replace(' ','_').  
+    # E.g. validate_arguments() is called to execute task 'Validate Arguments'.
+    #
+    # Note the first three methods are used by both 'Check Process' and 'Kill Process'
+    #
+
+    def validate_arguments(self):
+        ""
+
+        # don't let --check get confused by special kill options 
+        # we can let ordinary kill handle "kill -l"
+        if self.scenario_name == 'Check Process':
+            if self.options.l:
+                raise Exit(0)
+                
+        # user has to give us an argument
+        if len(self.args) != 1:
+            raise Exit(1, 'nopid')
+
+        # the argument had better be a valid integer
+        pid = self.args[0]
+        try:
+            self.pid = int(pid)
+        except (ValueError), e:
+
+            # ... unless it's a jobspec
+            if pid.startswith('%'):
+                if self.scenario_name == 'Check Process':
+                    raise Exit(0)
+
+            raise Exit(1,'badpid')
+
+
+    def examine_process(self):
+        ""
+
+        # create psi object, error out if pid doesn't exist
+        pid = self.pid
+        try:
+            self.proc = Process(pid=pid)
+        except NoSuchProcessError:
+            raise Exit(1,'nosuchpid')
+
+        # report type of process we've found
+        command = self.proc.command.strip()
+        self.logger.info(self.errmsg('command', locals()))
+
+        # attempt to read environment, error out if we can't
+        try:
+            self.envdict = dict(self.proc.env)
+        except AttrInsufficientPrivsError:
+            raise Exit(1,'badpriv')
+
+        # get the GPKILL value
+        self.gpkill = self.envdict.get('GPKILL')
+
+
+    def validate_attempt(self):
+        ""
+        pid    = self.pid
+        gpkill = self.gpkill
+
+        # this is as far as we go if proc doesn't have GPKILL in it's environment
+        # if we're only checking we exit with status 0, otherwise tell the user
+        # that gpkill isn't appropriate for this process.
+        
+        if gpkill is None:
+            if self.scenario_name == 'Check Process':
+                raise Exit(0)
+            else:
+                raise Exit(1,'notgpproc')
+
+        # the process has GPKILL in the environment.
+        # if it's set to NEVER then user shouldn't kill this process
+
+        if gpkill == 'NEVER':
+            raise Exit(1,'disallowed', call_support=True)
+
+        # GPKILL is set to something other than 'NEVER' (i.e. STUCK or CONFIRM)
+        # if we're just checking on the process we're done.
+
+        if self.scenario_name == 'Check Process':
+            raise Exit(1,'usegpkill', call_support=True)
+
+        # if GPKILL is 'STUCK' then look for more proof
+
+        if gpkill == 'STUCK':
+            raise Exit(1,'notstuck', call_support=True)
+
+        # if we get here GPKILL should be 'CONFIRM'
+
+        if gpkill != 'CONFIRM':
+            raise Exit(1,'badgpkill', call_support=True)
+
+
+
+    #
+    # The following methods are only used by 'Kill Process'
+    #
+
+    def troubleshoot_process(self):
+
+        # use glider to capture the stack of the target process.
+        # we run it from a shell with an explicit ulimit to prevent
+        # this from taking too long (occasionally observed on osx).
+        #
+        pid     = self.pid
+        shcmd   = 'ulimit -t 4; $GPHOME/sbin/glider %(pid)s' % locals()
+        command = Command('Troubleshooting', shcmd)
+
+        self.logger.info(command)
+        command.run(validateAfter = False)
+
+        # log whatever output we get, stderr as error and stdout as info
+        #
+        for line in command.get_results().stderr.splitlines():
+            self.logger.error(line)
+        for line in command.get_results().stdout.splitlines():
+            self.logger.info(line)
+
+
+    def confirm(self):
+        pid = self.pid
+        msg = self.errmsg('confirm', locals())
+
+        # ask once if they want to kill the process
+        #
+        if raw_input(msg).upper().rstrip() in ('Y', 'YES'):
+            return
+        raise Exit(0,'aborted')
+
+
+    def kill_process(self):
+        pid = self.pid
+
+        # now try to terminate the process, first trying with
+        # SIGTERM and working our way up to SIGABRT sleeping
+        # in between to give the process a moment to exit
+        #
+        if check_pid(pid):
+            self.logger.info(self.errmsg('sigterm', locals()))
+            os.kill(pid, signal.SIGTERM)
+
+        if check_pid(pid): time.sleep(1)
+        if check_pid(pid): time.sleep(1)
+        if check_pid(pid): time.sleep(1)
+
+        if check_pid(pid):
+            self.logger.info(self.errmsg('sigint', locals()))
+            os.kill(pid, signal.SIGINT)
+
+        if check_pid(pid): time.sleep(1)
+        if check_pid(pid): time.sleep(1)
+        if check_pid(pid): time.sleep(1)
+
+        if check_pid(pid):
+            self.logger.info(self.errmsg('sigquit', locals()))
+            os.kill(pid, signal.SIGQUIT)
+
+        if check_pid(pid): time.sleep(1)
+        if check_pid(pid): time.sleep(1)
+        if check_pid(pid): time.sleep(1)
+
+        if check_pid(pid):
+            self.logger.info(self.errmsg('sigabrt', locals()))
+            os.kill(pid, signal.SIGABRT)
+
+        if check_pid(pid):
+            raise Exit(1,'failed')
+
+
+if __name__ == '__main__':
+    GpKillMain().simple()
