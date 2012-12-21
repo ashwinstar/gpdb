@@ -2483,7 +2483,7 @@ RemoveSubtransactionsFromSharedSnapshot(DistributedTransactionId dxid,
 					volatile SharedSnapshotSlot *shared_snapshot)
 {
 	uint32 removed;
-	TransactionId subxids[MAX_XIDBUF_SIZE];
+	TransactionId *subxids = NULL;
 	int64 offset;
 	int32 index = 0;
 	int64 size;
@@ -2523,6 +2523,8 @@ RemoveSubtransactionsFromSharedSnapshot(DistributedTransactionId dxid,
 	Assert(subxip_file != 0);
 	total_size = 0;
 	offset = FileSeek(subxip_file, 0, SEEK_SET);
+
+	subxids = palloc(MAX_XIDBUF_SIZE);
 	while (size > 0)
 	{
 		read_size = size > MAX_XIDBUF_SIZE ? MAX_XIDBUF_SIZE : size;
@@ -2547,6 +2549,7 @@ RemoveSubtransactionsFromSharedSnapshot(DistributedTransactionId dxid,
 		total_size += read_size;
 		size -= read_size;
 	}
+	pfree(subxids);
 
 	FileTruncate(subxip_file, total_size);
 	shared_snapshot->total_subcnt = total_size/sizeof(TransactionId);
@@ -2617,7 +2620,7 @@ UpdateSubtransactionsInSharedSnapshot(DistributedTransactionId dxid)
 void
 GetSubXidsInXidBuffer(void)
 {
-	TransactionId subxids[MAX_XIDBUF_XIDS];
+	TransactionId* subxids = NULL;
 	int64 offset;
 	int64 size;
 	int64 read_size;
@@ -2655,6 +2658,8 @@ GetSubXidsInXidBuffer(void)
 		size = (SharedLocalSnapshotSlot->total_subcnt -
 			SharedLocalSnapshotSlot->inmemory_subcnt) *
 			sizeof(TransactionId);
+
+		subxids = palloc(MAX_XIDBUF_SIZE);
 		while (size > 0)
 		{
 			read_size = size > MAX_XIDBUF_SIZE ?
@@ -2669,6 +2674,7 @@ GetSubXidsInXidBuffer(void)
 					     read_size/sizeof(TransactionId));
 			size -= read_size;
 		}
+		pfree(subxids);
 	}
 
 	AddSortedToXidBuffer(&subxbuf,
@@ -2683,7 +2689,7 @@ void
 ShowSubtransactionsForSharedSnapshot(void)
 {
 	int i;
-	TransactionId subxids[MAX_XIDBUF_XIDS];
+	TransactionId* subxids = NULL;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 	     "Reader qExec count of subtransaction ids %u",
@@ -2714,6 +2720,8 @@ ShowSubtransactionsForSharedSnapshot(void)
 		size = (SharedLocalSnapshotSlot->total_subcnt -
 			SharedLocalSnapshotSlot->inmemory_subcnt) *
 			sizeof(TransactionId);
+		
+		subxids = palloc(MAX_XIDBUF_SIZE);
 		do
 		{
 			read_size = size > MAX_XIDBUF_SIZE ? MAX_XIDBUF_SIZE : size;
@@ -2726,11 +2734,13 @@ ShowSubtransactionsForSharedSnapshot(void)
 			for (i = 0; i < read_size/sizeof(TransactionId); i++)
 			{
 				elog((Debug_print_full_dtm ? LOG : DEBUG5), "subxid %u",
-				     SharedLocalSnapshotSlot->subxids[i]);
+				     subxids[i]);
 			}
 
 			size -= read_size;
 		} while (size > 0);
+
+		pfree(subxids);
 	}
 
 	for (i = 0; i < SharedLocalSnapshotSlot->inmemory_subcnt; i++)
