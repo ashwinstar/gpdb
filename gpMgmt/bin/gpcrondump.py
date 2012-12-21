@@ -81,6 +81,9 @@ class GpCronDump(Operation):
         self.ddboost_hosts = options.ddboost_hosts
         self.ddboost_user = options.ddboost_user
         self.ddboost_config_remove = options.ddboost_config_remove
+        self.ddboost_verify = options.ddboost_verify
+        # This variable indicates whether we need to exit after verifying the DDBoost credentials 
+        self.ddboost_verify_and_exit = False
     
         # TODO: if action is 'append', wouldn't you expect a lack of input to result in [], as opposed to None?
         if self.include_dump_tables is None: self.include_dump_tables = []
@@ -95,7 +98,13 @@ class GpCronDump(Operation):
                 self.dump_databases = [os.environ['PGDATABASE']]
                 logger.info("Setting dump database to value of $PGDATABASE which is %s" % self.dump_databases[0])
             else:
-                 raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
+                if self.ddboost_verify is True:
+                    # We would expect to verify the credentials here and return some exit code,
+                    # but __init__() should return None, not 'int' - hence we are forced to use
+                    # some kind of flag  
+                    self.ddboost_verify_and_exit = True
+                else:
+                    raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
 
         if options.bypass_disk_check:
             self.free_space_percent = None
@@ -179,6 +188,7 @@ class GpCronDump(Operation):
             # Note: the password can't be printed to log/stdout and therefore was concatenated to ddcmd only after priniting it to log
             ddcmd += " --password=" + re.escape(password)
             cmdline = 'gpssh -h %s \'%s\'' % (host, ddcmd)
+            # TODO: capture the output of the 'gpddboost' (e.g. with 'subprocess.Popen()' istead of 'os.system()')
             if not os.system(cmdline):
                 logger.info("config delivered successfully to %s " % host)
             else:
@@ -186,7 +196,19 @@ class GpCronDump(Operation):
 
         logger.debug("done with sshToHosts. credentials were set on all servers")
 
-    def execute(self):
+
+    # Verify the DDBoost credentials using the credentials that stored on the Master
+    # TODO: verify also all the hosts in self.ddboost_hosts (ping to the hosts, I think there is some Python function for that)
+    def _ddboostVerify(self):
+        verifyCmdLine = os.environ['GPHOME'] + '/bin/gpddboost --verify'
+        logger.debug("Executing gpddboost to verify DDBoost credentials: %s" % verifyCmdLine)
+        if not os.system(verifyCmdLine):
+            logger.info("The specified DDBoost credentials are OK")
+        else:
+            raise ExceptionNoStackTraceNeeded('Failed to connect to DD_host with DD_user and the DD_password')
+
+        
+    def execute(self):    
         if bool(self.ddboost_hosts) or bool(self.ddboost_user):
             # check that both options are specified
             if not (bool(self.ddboost_hosts) and bool(self.ddboost_user)):
@@ -199,9 +221,23 @@ class GpCronDump(Operation):
                 p = getpass()
                 self.validatePassword(password = p)
                 self.sshToHosts(hostset, self.ddboost_hosts, self.ddboost_user, p)
-                return 0;
+                # Since --ddboost-host and --ddboost-user are standalone - verify and then exit
+                if self.ddboost_verify is True:
+                    self.ddboost_verify_and_exit = True
+                else:
+                    # If no verification is needed - just exit
+                    return 0
             else:
-                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options.')
+                raise ExceptionNoStackTraceNeeded('The options --ddboost-host and --ddboost-user are standalone. They are NOT used in conjunction with any other gocrondump options (only with --ddboost-verify).')
+
+        # If --ddboost-verify or --ddboost is specified, we check the credentials that stored on the Master
+		# In case of --ddboost we force the verification (MPP-17510)
+        if bool(self.ddboost_verify) or bool(self.ddboost):
+            self._ddboostVerify()
+
+            # Check if we need to exit now
+            if self.ddboost_verify_and_exit is True:
+                return 0
 
         # The ddboost_config_remove actually configures the ddboost with dummy values
         if self.ddboost_config_remove:
@@ -608,6 +644,8 @@ def create_parser():
                            help="Configuration of ddboost user.")
     ddConfigOpt.add_option('--ddboost-config-remove', dest='ddboost_config_remove', action='store_true', default=False,
                            help="Remove ~/.ddconfig file.")
+    ddConfigOpt.add_option('--ddboost-verify', dest='ddboost_verify', action='store_true', default=False, 
+                           help="Verify DDBoost credentials on DDBoost host.")
 
     parser.add_option_group(ddConfigOpt)
     

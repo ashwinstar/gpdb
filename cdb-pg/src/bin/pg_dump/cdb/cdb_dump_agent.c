@@ -705,7 +705,9 @@ main(int argc, char **argv)
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
-		ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, true);
+		/* The storage unit is created by the gpcrondump.py, before all the agents are executed */
+		/* Hence it is always false here														*/
+		ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false);
 		if (ret)
 		{
 			mpp_err_msg(logError, progname, "Error connecting to DDboost. Check parameters\n");
