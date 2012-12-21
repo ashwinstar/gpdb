@@ -32,6 +32,9 @@ external table definition (as defined by CREATE EXTERNAL TABLE) must
 specify the directory name that contains the external table data 
 using the gpfdist:// protocol. 
 
+Note: If the --ssl option is specified to enable SSL security, 
+create the external table with the gpfdists:// protocol.
+
 When Greenplum Database users select from an external table, gpfdist 
 parses and serves the data files evenly to all the segment instances in 
 the Greenplum Database system.
@@ -92,16 +95,17 @@ physically written to the underlying hardware.
 
 --ssl certificate_path
 
-Adds SSL encryption to data transfered with gpfdist. In addition 
-to specifying SSL encryption here, you can also use SSL encryption 
-with the gpfdists protocol and with gpload. The location specified 
-in certificate_path must contain the following files:
+Adds SSL encryption to data transfered with gpfdist. In After executing 
+gpfdist with the -ssl <certificate_path> option, the only way 
+to load data from this file server is with the gpfdists protocol. 
+The location specified in certificate_path must 
+contain the following files:
 
 - The server certificate file, server.crt
 - The server private key file, server.key
 - The trusted certificate authorities, root.crt
 
-The root directory (/) cannot be specified in certificate_path.
+The root directory (/) cannot be specified as certificate_path.
  
 
 -v (verbose)
