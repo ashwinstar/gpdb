@@ -367,7 +367,8 @@ void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
 	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START ||
-		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_SUBMIT);
+		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_SUBMIT ||
+		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_CANCELING);
 
 	gettimeofday(&tv, 0);
 	
@@ -382,4 +383,24 @@ void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 	gpmon_send(gpmonPacket);
 }
 
+/*
+ * gpmon_qlog_query_canceling
+ *    Record that the query is being canceled.
+ */
+void
+gpmon_qlog_query_canceling(gpmon_packet_t *gpmonPacket)
+{
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START ||
+		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_SUBMIT);
+
+	gpmonPacket->u.qlog.status = GPMON_QLOG_STATUS_CANCELING;
+	
+	gpmon_record_update(gpmonPacket->u.qlog.key.tmid,
+			gpmonPacket->u.qlog.key.ssid,
+			gpmonPacket->u.qlog.key.ccnt,
+			gpmonPacket->u.qlog.status);
+	
+	gpmon_send(gpmonPacket);
+}
 
