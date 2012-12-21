@@ -820,8 +820,10 @@ default_column_encoding_clause(void)
 	DefElem *e1 = makeDefElem("compresstype", (Node *)makeString("none"));
 	DefElem *e2 = makeDefElem("blocksize",
 					(Node *)makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
+	DefElem *e3 = makeDefElem("compresslevel",
+							  (Node *)makeInteger(0));
 
-	return list_make2(e1, e2);
+	return list_make3(e1, e2, e3);
 }
 
 bool
