@@ -157,7 +157,8 @@ $$ language plperlu;
 -- function in select clause
 --   Fails: plperl does not support SFRM_Materialize
 select foor(1);
-ERROR:  function returning record called in context that cannot accept type record
+ERROR:  Unsupported Perl function "foor"
+DETAIL:  function returning record called in context that cannot accept type record
 -- expanding columns in the select list
 --    Fails: record type not registered
 select (foor(1)).*;
@@ -181,7 +182,8 @@ select * from foor(1) as (fooid int, f2 int);
 -- function over function (executed on master) 
 --    Fails: plperl does not support SFRM_Materialize
 select foor(fooid), * from foor(3) as (fooid int, f2 int);
-ERROR:  function returning record called in context that cannot accept type record
+ERROR:  Unsupported Perl function "foor"
+DETAIL:  function returning record called in context that cannot accept type record
 -- function over table (executed on segments)
 --    Fails: record + motion and plperl does not support SFRM_Materialize
 select foor(fooid), * from foo2;
