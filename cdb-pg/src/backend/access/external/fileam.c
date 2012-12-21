@@ -88,6 +88,7 @@ static void close_external_source(FILE *dataSource, bool failOnError, const char
 static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom);
 static void justifyDatabuf(StringInfo buf);
 
+void base16_encode(char* raw, int len, char* encoded);
 
 /* ----------------------------------------------------------------
 *				   external_ interface functions
@@ -2600,9 +2601,19 @@ external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char*
 	external_set_env_vars_ext(extvar, uri, csv, escape, quote, header, scancounter, "", "-1");
 }
 
+void base16_encode(char* raw, int len, char* encoded) {
+    const char* raw_bytes = raw;
+    char *encoded_bytes = encoded;
+    int remaining = len;
+    for ( ; remaining-- ; encoded_bytes += 2 ) {
+        sprintf ( encoded_bytes, "%02x", *(raw_bytes++) );
+    }
+}
+
 void
 external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter, char* line_delim_str, char* buffer_delim_length)
 {
+
 	time_t 		now = time(0);
 	struct tm* 	tm = localtime(&now);
 	char*		result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
@@ -2670,6 +2681,10 @@ external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, c
  	extvar->GP_HADOOP_CONN_JARDIR  = gp_hadoop_connector_jardir;
  	extvar->GP_HADOOP_CONN_VERSION = gp_hadoop_connector_version;
  	extvar->GP_HADOOP_HOME         = gp_hadoop_home;
- 	extvar->GP_LINE_DELIM_STR      = line_delim_str;
+
+ 	int length = (int)strlen(line_delim_str);
+ 	char* encoded_delim = (char*)(malloc(length*2+1));
+ 	base16_encode(line_delim_str, length, encoded_delim);
+ 	extvar->GP_LINE_DELIM_STR      = encoded_delim;
  	extvar->GP_LINE_DELIM_LENGTH   = buffer_delim_length;
 }
