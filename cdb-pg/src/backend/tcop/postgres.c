@@ -3113,21 +3113,31 @@ IsTransactionExitStmt(Node *parsetree)
 }
 
 /*
- * Yes, if this is a singleton list of Query wrapping a transaction ending statement.
+ * IsTransactionExitStmtList
+ *    Return true if this is a singleton list of Query wrapping a transaction
+ * ending statement, or a singleton list of transaction ending statement.
  */
 static bool
 IsTransactionExitStmtList(List *parseTrees)
 {
 	if (list_length(parseTrees) == 1)
 	{
-		Query	   *query = (Query *) linitial(parseTrees);
-
-		if ( ! IsA(query, Query) )
-			return false;
+		Node *node = linitial(parseTrees);
 		
-		if (query->commandType == CMD_UTILITY &&
-			IsTransactionExitStmt(query->utilityStmt))
+		if (IsTransactionExitStmt(node))
+		{
 			return true;
+		}
+
+		if (IsA(node, Query))
+		{
+			Query *query = (Query *)node;
+			if (query->commandType == CMD_UTILITY &&
+				IsTransactionExitStmt(query->utilityStmt))
+			{
+				return true;
+			}
+		}
 	}
 	return false;
 }
