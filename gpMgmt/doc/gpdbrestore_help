@@ -61,6 +61,13 @@ additional functionality on top of gp_restore:
 * Allows you to drop the target database before a restore in a 
   single operation. 
 
+Error Reporting
+
+gpdbrestore does not report errors automatically. After the restore 
+is completed, check the report status files to verify that there 
+are no errors. The restore status files are stored in the 
+db_dumps/<date>/ directory by default. 
+
 
 *****************************************************
 OPTIONS
