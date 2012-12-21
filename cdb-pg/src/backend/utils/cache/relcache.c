@@ -538,6 +538,7 @@ RelationFetchSegFile0GpRelationNode(
 			relation->rd_segfile0_relationnodeinfo.persistentSerialNum = 0;
 		
 			relation->rd_segfile0_relationnodeinfo.isPresent = true;
+			relation->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = true;
 			
 			return; // The initdb process will load the persistent table once we out of bootstrap mode.
 		}
@@ -552,6 +553,19 @@ RelationFetchSegFile0GpRelationNode(
 				 relation->rd_rel->relname.data,
 				 relation->rd_id,
 				 relation->rd_node.relNode);
+		}
+
+		Assert(!Persistent_BeforePersistenceWork());
+		if (Debug_check_for_invalid_persistent_tid &&
+			PersistentStore_IsZeroTid(&relation->rd_segfile0_relationnodeinfo.persistentTid))
+		{	
+			elog(ERROR, 
+				 "RelationFetchSegFile0GpRelationNode has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT,
+				 relation->rd_node.spcNode,
+				 relation->rd_node.dbNode,
+				 relation->rd_node.relNode,
+				 NameStr(relation->rd_rel->relname),
+				 relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 		}
 
 		relation->rd_segfile0_relationnodeinfo.isPresent = true;
@@ -638,6 +652,7 @@ AllocateRelationDesc(Form_pg_class relp)
 	 * needing it to open pg_class and then relation_open does infinite recursion...
 	 */
 	relation->rd_segfile0_relationnodeinfo.isPresent = false;
+	relation->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = false;
 
 	/* and allocate attribute tuple form storage */
 	relation->rd_att = CreateTemplateTupleDesc(relationForm->relnatts,
@@ -1680,6 +1695,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	 * Physical file-system information.
 	 */
 	relation->rd_segfile0_relationnodeinfo.isPresent = false;
+	relation->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = false;
 	
 	/*
 	 * initialize attribute tuple form
@@ -2714,6 +2730,7 @@ RelationBuildLocalRelation(const char *relname,
 	 * disk file is created.
 	 */
 	rel->rd_segfile0_relationnodeinfo.isPresent = false;
+	rel->rd_segfile0_relationnodeinfo.tidAllowedToBeZero = false;
 
 	/*
 	 * Insert relation physical and logical identifiers (OIDs) into the right

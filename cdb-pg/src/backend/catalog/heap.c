@@ -82,6 +82,8 @@
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "catalog/gp_persistent.h"
 
+#include "utils/guc.h"
+
 static void MetaTrackAddUpdInternal(Oid			classid, 
 									Oid			objoid, 
 									Oid			relowner,
@@ -407,6 +409,19 @@ heap_create(const char *relname,
 			}
 		}
 		
+
+		if (Debug_check_for_invalid_persistent_tid &&
+			!Persistent_BeforePersistenceWork() &&
+			PersistentStore_IsZeroTid(&rel->rd_segfile0_relationnodeinfo.persistentTid))
+		{	
+			elog(ERROR, 
+				 "setNewRelfilenodeCommon has invalid TID (0,0) into relation %u/%u/%u '%s', serial number " INT64_FORMAT,
+				 rel->rd_node.spcNode,
+				 rel->rd_node.dbNode,
+				 rel->rd_node.relNode,
+				 NameStr(rel->rd_rel->relname),
+				 rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+		}
 
 		rel->rd_segfile0_relationnodeinfo.isPresent = true;
 
@@ -1228,7 +1243,7 @@ UpdateGpRelationNodeTuple(
 		PersistentStore_IsZeroTid(persistentTid))
 	{	
 		elog(ERROR, 
-			 "Updating with invalid TID (0,0), relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
+			 "Updating with invalid TID (0,0) in relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
 			 relfilenode,
 			 segmentFileNum,
 			 persistentSerialNum);
@@ -3429,6 +3444,19 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 											/* doJustInTimeDirCreate */ true,
 											&relation->rd_segfile0_relationnodeinfo.persistentTid,
 											&relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
+	}
+
+	if (Debug_check_for_invalid_persistent_tid &&
+		!Persistent_BeforePersistenceWork() &&
+		PersistentStore_IsZeroTid(&relation->rd_segfile0_relationnodeinfo.persistentTid))
+	{	
+		elog(ERROR, 
+			 "setNewRelfilenodeCommon has invalid TID (0,0) for relation %u/%u/%u '%s', serial number " INT64_FORMAT,
+			 newrnode.spcNode,
+			 newrnode.dbNode,
+			 newrnode.relNode,
+			 NameStr(relation->rd_rel->relname),
+			 relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 	}
 
 	relation->rd_segfile0_relationnodeinfo.isPresent = true;
