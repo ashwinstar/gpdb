@@ -23,6 +23,8 @@
 #include <time.h>
 
 #define FMT64 APR_INT64_T_FMT
+#define APPLIANCE_FILE "/etc/gpdb-appliance-version"
+#define APPLIANCE_HOSTNAME_FILE "/etc/gpnode"
 
 // no locking of log file in smon because it is single threaded
 apr_thread_mutex_t *logfile_mutex = NULL;
@@ -62,11 +64,17 @@ struct gx_t
 	apr_int64_t signature;
 	apr_int64_t tick;
 	time_t now;
+	int is_appliance;
 
 	sigar_t* sigar;
+	
+	/*fslist Does not incude remote filesystems and used for reporting metrics, not space avaliable & free.*/
 	const char** fslist;
 	const char** devlist;
 	const char** netlist;
+	
+	/*This fs list includes remote filesystems and is used for reporting space avaliable & free. */
+	const char** allfslist;
 
 	SOCKET listen_sock;
 	struct event listen_event;
@@ -250,6 +258,18 @@ static void get_pid_metrics(apr_int32_t pid, apr_int32_t tmid, apr_int32_t ssid,
 	rec->cpu_elapsed = cpu.total;
 }
 
+int is_appliance(){
+	FILE* fp = fopen(APPLIANCE_FILE, "r");
+	if (fp){
+		fclose(fp);
+		return 1;
+	}
+	else{
+		return 0;
+	}
+}
+
+
 #if defined (sun)
 /* Takes a kstat entry and determines if it is
  * and active network card on the system.
@@ -271,6 +291,45 @@ int is_active_nic(kstat_t *ksp)
 	return 0;
 }
 #endif /* sun */
+
+#define FSUSAGE_TOBYTES(X) (X * 1024)
+
+static void send_fsinfo(SOCKET sock)
+{
+	sigar_file_system_usage_t fsusage;
+	gpmon_packet_t            pkt;
+	const char**              fsdir;
+	int                       status = 0;
+	
+	memset(&fsusage, 0, sizeof(sigar_file_system_usage_t));
+	
+	for (fsdir = gx.fslist; *fsdir; fsdir++)
+	{	
+		status = sigar_file_system_usage_get(gx.sigar, *fsdir, &fsusage);
+		if (status == SIGAR_OK)
+		{
+			TR2(("sigar_file_system_usage_get() succeeded. fsdir: %s total: %lu free: %lu used: %lu \n", *fsdir, fsusage.total, fsusage.free, fsusage.used));
+			memset(&pkt, 0, sizeof(gpmon_packet_t));
+			
+			pkt.magic = GPMON_MAGIC;
+			pkt.version = GPMON_PACKET_VERSION;
+			pkt.pkttype = GPMON_PKTTYPE_FSINFO;
+			strncpy(pkt.u.fsinfo.key.fsname, *fsdir, sizeof(pkt.u.fsinfo.key.fsname) - 1);
+			
+			pkt.u.fsinfo.bytes_used = FSUSAGE_TOBYTES(fsusage.used);
+			pkt.u.fsinfo.bytes_available = FSUSAGE_TOBYTES(fsusage.free);
+			pkt.u.fsinfo.bytes_total = FSUSAGE_TOBYTES(fsusage.total);
+			
+			strncpy(pkt.u.fsinfo.key.hostname, gx.hostname, sizeof(pkt.u.fsinfo.key.hostname) - 1);
+
+			send_fully(sock, &pkt, sizeof(pkt));
+		} 
+		else
+		{
+			TR2(("sigar_file_system_usage_get() failed.  fsdir: %s status: %i \n", *fsdir, status));
+		}
+	}
+}
 
 static void send_machine_metrics(SOCKET sock)
 {
@@ -781,7 +840,8 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 
 	/* push out a metric of the machine */
 	send_machine_metrics(sock);
-
+	send_fsinfo(sock);
+	
 	/* push out records */
 	{
 		void* vptr;
@@ -1557,10 +1617,74 @@ static void setup_udp()
 	}
 }
 
+// return pointer to trimmed hostname 
+// pass in an allocated buffer and its size
+// return NULL if fails to get name
+char* get_dca_hostname(char* buffer, size_t buffer_size){
+
+    char* trimmed_hostname;
+
+    FILE* fd = fopen(APPLIANCE_HOSTNAME_FILE, "r");
+    if (!fd){
+		gpmon_warningx(FLINE, 0, "Cannot open file %s", APPLIANCE_HOSTNAME_FILE);
+        return NULL;
+    }   
+
+    size_t bytes = fread(buffer, 1, buffer_size, fd);
+    if (bytes < 1){ 
+		gpmon_warningx(FLINE, 0, "Cannot read hostname from file %s", APPLIANCE_HOSTNAME_FILE);
+        return NULL;
+    }   
+
+    if (bytes >= buffer_size){
+		gpmon_warningx(FLINE, 0, "hostname in file %s is too long", APPLIANCE_HOSTNAME_FILE);
+        return NULL;
+    }   
+
+    // ensure we have a null terminated string regardless
+    buffer[buffer_size-1] = 0;
+
+    trimmed_hostname = gpmon_trim(buffer);
+    
+    fclose(fd);
+
+    return trimmed_hostname;
+}
+
+
+static const char* get_and_allocate_hostname()
+{
+	char hname[256] = { 0 };
+
+	if (gx.is_appliance){
+		TR0(("Appliance host detected\n"));
+		char* trimmed_hostname = get_dca_hostname(hname, sizeof(hname));
+		if (trimmed_hostname)
+			gx.hostname = strdup(trimmed_hostname);
+		else
+			gx.hostname = strdup("unknown");
+	}
+	else{
+		TR0(("Non-Appliance host detected\n"));
+		if (gethostname(hname, sizeof(hname) - 1))
+		{
+			gx.hostname = strdup("unknown");
+			gpmon_warningx(FLINE, 0, "gethostname failed");
+		}
+		else
+		{
+			hname[sizeof(hname) - 1] = 0;
+			gx.hostname = strdup(hname);
+		}
+	}
+
+	return gx.hostname;
+
+}
+
 static void setup_gx(int port, apr_int64_t signature)
 {
 	int e;
-	char hname[255 + 1];
 	apr_pool_t* subpool;
 
 	/* set up pool */
@@ -1568,14 +1692,6 @@ static void setup_gx(int port, apr_int64_t signature)
 	{
 		gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
-
-	/* set up hostname */
-	if (gethostname(hname, sizeof(hname) - 1))
-		snprintf(hname, sizeof(hname), "unknown");
-	hname[sizeof(hname) - 1] = 0;
-	gx.hostname = apr_pstrdup(gx.pool, hname);
-	CHECKMEM(gx.hostname);
-	TR1(("hostname = %s\n", gx.hostname));
 
 	/* set up port, event */
 	gx.port = port;
@@ -1685,6 +1801,32 @@ static void setup_sigar(void)
 			cnt++;
 		}
 	}
+	
+	cnt = 0;
+	for (i = 0; i < sigar_fslist.number; i++)
+	{
+		if (sigar_fslist.data[i].type == SIGAR_FSTYPE_LOCAL_DISK || sigar_fslist.data[i].type == SIGAR_FSTYPE_NETWORK)
+		{
+			TR2(("sigar cnt: %d\n", cnt + 1));
+			cnt++;
+		}
+	}
+	gx.allfslist = apr_pcalloc(gx.pool, sizeof(const char*) * (cnt + 1));
+	CHECKMEM(gx.allfslist);
+	
+	cnt = 0;
+	for (i = 0; i < sigar_fslist.number; i++)
+	{
+		if (sigar_fslist.data[i].type == SIGAR_FSTYPE_LOCAL_DISK || sigar_fslist.data[i].type == SIGAR_FSTYPE_NETWORK)
+		{
+			gx.allfslist[cnt]
+					= apr_pstrdup(gx.pool, sigar_fslist.data[i].dir_name);
+			CHECKMEM(gx.allfslist[cnt]);
+			TR2(("allfs: %s\n", gx.allfslist[cnt]));
+			cnt++;
+		}
+	}
+	
 	if (do_destroy)
 		sigar_file_system_list_destroy(gx.sigar, &sigar_fslist);
 }
@@ -1711,6 +1853,13 @@ void gx_main(int port, apr_int64_t signature)
 	update_log_filename();
 	freopen(log_filename, "w", stdout);
 	setlinebuf(stdout);
+
+	gx.is_appliance = is_appliance();
+	if (!get_and_allocate_hostname())
+		gpsmon_fatalx(FLINE, 0, "failed to allocate memory for hostname");
+	TR0(("HOSTNAME = '%s'\n", gx.hostname));
+
+
 
 	// first chace to write to log file
 	TR2(("signature = %" FMT64 "\n", signature));
