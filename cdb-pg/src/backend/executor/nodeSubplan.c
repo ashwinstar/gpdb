@@ -1316,8 +1316,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         if (planstate->instrument)
         {
             cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
-            if (!explainRecvStats)
+            if (!explainRecvStats &&
+				shouldDispatch)
             {
+				Assert(queryDesc != NULL &&
+					   queryDesc->estate != NULL);
                 /* Wait for all gangs to finish.  Cancel slowpokes. */
                 CdbCheckDispatchResult(queryDesc->estate->dispatcherState, true);
 
