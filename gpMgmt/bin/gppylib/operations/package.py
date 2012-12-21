@@ -17,7 +17,7 @@ try:
     from gppylib.mainUtils import ExceptionNoStackTraceNeeded
     from gppylib.operations import Operation
     from gppylib.operations.utils import RemoteOperation, ParallelOperation
-    from gppylib.operations.unix import CheckDir, MakeDir, RemoveFile, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFiles, ListFilesByPattern
+    from gppylib.operations.unix import CheckFile, CheckDir, MakeDir, RemoveFile, RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFiles, ListFilesByPattern
 
     import yaml   
     from yaml.scanner import ScannerError
@@ -33,10 +33,17 @@ SPECFILE_NAME = 'gppkg_spec.yml'
 SPECFILE_REQUIRED_TAGS = ['pkgname', 'version', 'architecture', 'os', 'description', 'gpdbversion']
 SPECFILE_OPTIONAL_TAGS = ['preinstall', 'postinstall', 'preuninstall', 'postuninstall']
 
+# TODO: AK: Our interactions with the internal RPM database could benefit from an abstraction layer
+# that hides the underlying commands used for installation, uninstallation, queries, etc.
 RPM_DATABASE_PATH = 'share/packages/database'
 RPM_DATABASE = os.path.join(GPHOME, RPM_DATABASE_PATH)
 RPM_INSTALLATION_PATH = GPHOME
 
+# TODO: AK: Our interactions with the archive could benefit from an abstraction layer
+# that hides the implementations of archival, unarchival, queries, etc.
+# That is, consider the query "is this package already archived?" Currently, this is implemented
+# with a CheckFile. Rather, it should be a call to Archive.contains(package), where package
+# is instanceof Gppkg.
 ARCHIVE_PATH = 'share/packages/archive'
 GPPKG_ARCHIVE_PATH = os.path.join(GPHOME, ARCHIVE_PATH)
 
@@ -414,6 +421,9 @@ class ValidateInstallPackage(Operation):
     Note: install and update share this code, because there is extensive commonality in regards
     to the version, os, arch. checking, in addition to the 3 code paths enumerated just above.
 
+    Lastly, for an edge case, if we determine that all of the relevant rpms are currently installed
+    *and* the archive package already exists we declare the package is already installed.
+
     TODO: This is depending on ExtractPackage having put the dependencies in this same directory.
     TODO: Use regexes for more reliable string matching. CR-2865#c20112
     """
@@ -478,8 +488,15 @@ class ValidateInstallPackage(Operation):
                 else:
                     # This is unexpected, so bubble up the ExecutionError.
                     raise
-            if not rpm_set:
-                raise AlreadyInstalledError(self.gppkg.pkg)
+
+        # MPP-14359 - installation and uninstallation prechecks must also consider
+        # the archive. That is, if a partial installation had added all rpms
+        # but failed to add the archive package, then for our purposes, we consider
+        # the package not yet installed and still in need of InstallPackageLocally.
+        archive_package_exists = CheckFile(os.path.join(GPPKG_ARCHIVE_PATH, self.gppkg.pkg)).run()
+        package_already_installed = (not rpm_set) and archive_package_exists
+        if package_already_installed:
+            raise AlreadyInstalledError(self.gppkg.pkg)
                     
         # Code path 1 (See docstring)
         return rpm_set
@@ -495,6 +512,9 @@ class ValidateUninstallPackage(Operation):
        We simply omit such rpms from the returned list of rpms, indicating to the caller
        that to be successful, uninstallation should only be attempted on the filtered list of rpms.
     3) A non-zero return code, and stderr indicating that dependencies remain.
+
+    Lastly, for an edge case, if we determine that none of the relevant rpms are currently installed
+    *and* the archive package does not exist, we declare the package is not installed.
     
     TODO: Use regexes for more reliable string matching.
     """
@@ -549,8 +569,14 @@ class ValidateUninstallPackage(Operation):
                     # This is unexpected, so bubble up the ExecutionError.
                     raise
 
-            if not rpm_set:
-                raise NotInstalledError(self.gppkg.pkg)
+        # MPP-14359 - installation and uninstallation prechecks must also consider
+        # the archive. That is, if a partial uninstallation had removed all rpms
+        # but failed to remove the archive package, then for our purposes, we consider
+        # the package installed and still in need of UninstallPackageLocally.
+        archive_package_exists = CheckFile(os.path.join(GPPKG_ARCHIVE_PATH, self.gppkg.pkg)).run()
+        package_not_installed = (not rpm_set) and (not archive_package_exists)
+        if package_not_installed:
+            raise NotInstalledError(self.gppkg.pkg)
                     
         # Code path 1 (See docstring)
         return rpm_set
@@ -611,24 +637,21 @@ class InstallPackageLocally(Operation):
         ExtractPackage(gppkg).run()
 
         rpm_set = ValidateInstallPackage(gppkg, is_update = self.is_update).run()
-        if self.is_update:
-            rpm_install_command = 'rpm -U %s --dbpath %s --prefix=%s'
-        else:
-            rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s'
-        rpm_install_command = rpm_install_command % \
-                              (" ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set]), 
-                               RPM_DATABASE, 
-                               RPM_INSTALLATION_PATH)
-        cmd = Command('Installing rpms', rpm_install_command)
-        logger.info(cmd)
-        cmd.run(validateAfter = True)
-
-        # TODO: AK: Here, we are not being resilient to the package archive already
-        # residing at final_package_location. This is technically not a bug, because
-        # SyncPackages will not trigger an InstallPackageLocally if the package archive already exists. 
-        # However, this assumption may not necessarily hold with later design improvements.
+        if rpm_set:
+            if self.is_update:
+                rpm_install_command = 'rpm -U %s --dbpath %s --prefix=%s'
+            else:
+                rpm_install_command = 'rpm -i %s --dbpath %s --prefix=%s'
+            rpm_install_command = rpm_install_command % \
+                                  (" ".join([os.path.join(TEMP_EXTRACTION_PATH, rpm) for rpm in rpm_set]), 
+                                   RPM_DATABASE, 
+                                   RPM_INSTALLATION_PATH)
+            cmd = Command('Installing rpms', rpm_install_command)
+            logger.info(cmd)
+            cmd.run(validateAfter = True)
 
         # TODO: AK: MPP-15568
+        # TODO: AK: abstraction layer for archive interactions... to hide use of shutil.copy, RemoveFile, etc.
         MakeDir(GPPKG_ARCHIVE_PATH).run()
         shutil.copy(current_package_location, final_package_location)
         logger.info("Completed local installation of %s." % package_name)
@@ -648,11 +671,13 @@ class UninstallPackageLocally(Operation):
         gppkg = Gppkg.from_package_path(current_package_location)
 
         rpm_set = ValidateUninstallPackage(gppkg).run()
-        rpm_uninstall_command = 'rpm -e %s --dbpath %s' % (" ".join(rpm_set), RPM_DATABASE)
-        cmd = Command('Uninstalling rpms', rpm_uninstall_command)
-        logger.info(cmd)
-        cmd.run(validateAfter = True)
+        if rpm_set:
+            rpm_uninstall_command = 'rpm -e %s --dbpath %s' % (" ".join(rpm_set), RPM_DATABASE)
+            cmd = Command('Uninstalling rpms', rpm_uninstall_command)
+            logger.info(cmd)
+            cmd.run(validateAfter = True)
 
+        # TODO: AK: abstraction layer for archive interactions... to hide use of shutil.copy, RemoveFile, etc.
         MakeDir(GPPKG_ARCHIVE_PATH).run()
         RemoveFile(current_package_location).run()
         logger.info("Completed local uninstallation of %s." % self.package_name)
