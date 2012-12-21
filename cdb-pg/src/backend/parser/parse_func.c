@@ -1093,6 +1093,7 @@ func_get_detail(List *funcname,
 	{
 		HeapTuple	ftup;
 		Form_pg_proc pform;
+		bool isagg = false;
 
 		*funcid = best_candidate->oid;
 		*true_typeids = best_candidate->args;
@@ -1108,13 +1109,14 @@ func_get_detail(List *funcname,
 		*retset = pform->proretset;
 		*retstrict = pform->proisstrict;
 		*retordered = false;
+		isagg = pform->proisagg;
 		ReleaseSysCache(ftup);
 
 		/* 
 		 * For aggregate functions STRICTness is defined by the 
 		 * transition function 
 		 */
-		if (pform->proisagg)
+		if (isagg)
 		{
 		    Form_pg_aggregate	aggform;
 			FmgrInfo			transfn;
