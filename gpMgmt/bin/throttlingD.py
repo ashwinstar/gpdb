@@ -163,6 +163,13 @@ def main(argv):
 			#In case that the log file cannot be opened --> Ignore the log
 			pass
 
+	# DirectI/O should be enabled in RHEL only
+	if(config_values['EnableDirectIO']=='1'):
+		# Check that we are running on RHEL. Otherwise disable directIO
+		RHEL_file_exist = os.path.isfile('/etc/redhat-release')
+		if (not RHEL_file_exist):
+			config_values['EnableDirectIO']='0'
+	
 	backup_file_handle = BackupFileHandle(backup_file_name, config_values, log_file_handle)
 	before_time=datetime.datetime.now()
 
