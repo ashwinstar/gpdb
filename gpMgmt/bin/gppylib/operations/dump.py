@@ -16,6 +16,11 @@ from gppylib.operations.utils import RemoteOperation, ParallelOperation
 
 logger = gplog.get_default_logger()
 
+# MPP-15307
+# DUMP_DATE dictates the db_dumps/ subdirectory to which gpcrondump will dump.
+# It is computed just once to ensure different pieces of logic herein operate on the same subdirectory.
+DUMP_DATE = datetime.now().strftime("%Y%m%d")
+
 DUMP_DIR = 'db_dumps'
 GLOBAL_PREFIX = 'gp_global_1_1_'
 MASTER_DBDUMP_PREFIX = 'gp_dump_1_1_'
@@ -58,15 +63,14 @@ class DumpDatabase(Operation):
                                                         master_datadir = self.master_datadir,
                                                         master_port = self.master_port).run()
 
-        dump_date = datetime.now().strftime("%Y%m%d")
         if self.backup_dir is not None:
-            dump_path = os.path.join(self.backup_dir, DUMP_DIR, dump_date) 
+            dump_path = os.path.join(self.backup_dir, DUMP_DIR, DUMP_DATE) 
         else:
-            dump_path = os.path.join(DUMP_DIR, dump_date)
+            dump_path = os.path.join(DUMP_DIR, DUMP_DATE)
         if self.report_dir is not None:
-            report_path = os.path.join(self.report_dir, DUMP_DIR, dump_date)
+            report_path = os.path.join(self.report_dir, DUMP_DIR, DUMP_DATE)
         else:
-            report_path = os.path.join(self.master_datadir, DUMP_DIR, dump_date)
+            report_path = os.path.join(self.master_datadir, DUMP_DIR, DUMP_DATE)
         dump_line = "gp_dump -p %d -U %s --gp-d=%s --gp-r=%s --gp-s=p" % (self.master_port, getUserName(), dump_path, report_path) 
         if self.ddboost:
             dump_line += " --ddboost"
@@ -131,9 +135,8 @@ class PostDumpDatabase(Operation):
         self.ddboost = ddboost
     def execute(self):
         # First, get timestamp from .rpt file
-        dump_date = datetime.now().strftime("%Y%m%d")
         path = self.report_dir if self.report_dir is not None else self.master_datadir
-        path = os.path.join(path, DUMP_DIR, dump_date)
+        path = os.path.join(path, DUMP_DIR, DUMP_DATE)
         reports = ListFilesByPattern(path, "gp_dump_*.rpt").run()
         if not reports:
             logger.error("Could not locate a report file on master.")
@@ -458,12 +461,10 @@ class ValidateAllDumpDirs(Operation):
 
 
 class ValidateDumpDirs(Operation):
-    # TODO: go one level deeper with dump_date
     def __init__(self, dir):
         self.dir = dir
     def execute(self):
-        dump_date = datetime.now().strftime("%Y%m%d")
-        path = os.path.join(self.dir, DUMP_DIR, dump_date)
+        path = os.path.join(self.dir, DUMP_DIR, DUMP_DATE)
         exists = CheckDir(path).run()
         if exists:
             logger.info("Directory %s exists" % path)
@@ -840,10 +841,9 @@ class DeleteOldestDumps(Operation):
             old_dates = cmd.get_results().stdout.splitlines()
         else:
             old_dates = ListFiles(os.path.join(self.master_datadir, DUMP_DIR)).run()
-        dump_date = datetime.now().strftime("%Y%m%d")
         try: 
-            old_dates.remove(dump_date)
-        except ValueError, e:            # dump_date was not found in old_dates
+            old_dates.remove(DUMP_DATE)
+        except ValueError, e:            # DUMP_DATE was not found in old_dates
             pass
         if len(old_dates) == 0:
             logger.info("No old backup sets to remove")
