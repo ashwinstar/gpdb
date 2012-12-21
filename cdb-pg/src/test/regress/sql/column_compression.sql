@@ -305,7 +305,7 @@ with (appendonly=true, orientation=column)
 partition by range(i) subpartition by range(j)
 subpartition template (subpartition sp1 start(1) end(20),
 	column i encoding (compresstype=zlib),
-	column j encoding (compresstype=rle_type))
+	column j encoding (compresstype=quicklz))
 (partition p1 start(1) end(20));
 
 execute ccddlcheck;
@@ -332,13 +332,13 @@ CREATE TABLE ccddl (id int, year int, month int, day int, region text)
 			SUBPARTITION TEMPLATE
 			(
 				START (1) END (13),
-				COLUMN month ENCODING (compresstype=rle_type)
+				COLUMN month ENCODING (compresstype=quicklz)
 			)
 		SUBPARTITION BY LIST (region)
 		SUBPARTITION TEMPLATE
 		(
 			SUBPARTITION usa VALUES ('usa'),
-			COLUMN region ENCODING (compresstype=rle_type)
+			COLUMN region ENCODING (compresstype=quicklz)
 		)
 	( START (2008) END (2010) );
 execute ccddlcheck;
@@ -359,9 +359,9 @@ create table ccddl (
 	partition by range(i)
 	(
 		partition p1 start(1) end(2) column i encoding(compresstype=zlib),
-	 	partition p2 start(2) end(3) column j encoding(compresstype=rle_type)
+	 	partition p2 start(2) end(3) column j encoding(compresstype=quicklz)
 									 column k encoding(blocksize=8192),
-	 	partition p3 start(3) end(4) column i encoding(compresstype=rle_type)
+	 	partition p3 start(3) end(4) column i encoding(compresstype=quicklz)
 									 column j encoding(blocksize=8192)
 									 default column encoding
 									 	(compresstype=zlib),
@@ -384,7 +384,7 @@ partition by range(i) subpartition by range(j)
 		),
  partition p2 start(2) end(3)
  		(subpartition sp1 start(1) end(2)
-			column j encoding(compresstype=rle_type)
+			column j encoding(compresstype=zlib)
 			column k encoding(blocksize=8192),
 		 column i encoding (blocksize=65536),
 		 default column encoding (compresstype=quicklz)
@@ -395,16 +395,16 @@ execute ccddlcheck;
 drop table ccddl;
 
 
--- Precedence test: c3 in the partition child must be zlib, not rle_type
+-- Precedence test: c3 in the partition child must be zlib, not quicklz
 CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
                      c2 char ENCODING (compresstype=quicklz, blocksize=65536),
 				     c3 date,
-					 COLUMN c3 ENCODING (compresstype=RLE_TYPE))
+					 COLUMN c3 ENCODING (compresstype=quicklz))
 WITH (appendonly=true, orientation=column)
 	PARTITION BY RANGE (c3) (
 		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
 		        COLUMN c3 ENCODING (compresstype=zlib),
-				COLUMN c2 ENCODING (compresstype=rle_type)
+				COLUMN c2 ENCODING (compresstype=quicklz)
 	);
 
 execute ccddlcheck;
@@ -521,7 +521,7 @@ alter type character set default encoding (compresstype=zlib);
 select typoptions from pg_type t, pg_type_encoding e where
   t.typname = 'bpchar' and t.oid = e.typid;
 
-alter type timestamp with time zone set default encoding(compresstype=rle_type);
+alter type timestamp with time zone set default encoding(compresstype=quicklz);
 select typoptions from pg_type t, pg_type_encoding e where
   t.typname = 'timestamptz' and t.oid = e.typid;
 
@@ -534,18 +534,15 @@ select typoptions from pg_type t, pg_type_encoding e where
 -- Type support
 -- Expect: failure
 -----------------------------------------------------------------------
-
 -- We should reject any extraneous type information during alter type
 alter type numeric(10, 2) set default encoding(compresstype=zlib);
-alter type int[2][3] set default encoding(compresstype=rle_type);
-
+alter type int[2][3] set default encoding(compresstype=quicklz);
 -- permissions checks
 create role typcheck;
 set session authorization typcheck;
 alter type int42 set default encoding (compresstype=zlib, compresslevel=1);
 reset session authorization;
 drop role typcheck;
-
 -- Verify that we validate the storage clause
 alter type text set default encoding (a=b);
 alter type text set default encoding (compresstype=10);
@@ -565,7 +562,7 @@ deallocate ccddlcheck;
 -- Expect: failure
 -----------------------------------------------------------------------
 
--- RLE_TYPE is not supported on AO (non-CO) tables
+-- RLE_TYPE is not supported 
 create table ccddl (i int) with(appendonly = true, compresstype = rle_type);
 
 -----------------------------------------------------------------------

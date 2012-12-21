@@ -1025,7 +1025,7 @@ execute ccddlcheck;
 (2 rows)
 
 alter table ccddl split partition p1 at (5) into (partition p2, partition p3);
-NOTICE:  exchanged partition "p1" of relation "ccddl" with relation "pg_temp_5587904"
+NOTICE:  exchanged partition "p1" of relation "ccddl" with relation "pg_temp_52723"
 NOTICE:  dropped partition "p1" for relation "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p2" for table "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p3" for table "ccddl"
@@ -1044,59 +1044,59 @@ with (appendonly=true, orientation=column)
 partition by range(i) subpartition by range(j)
 subpartition template (subpartition sp1 start(1) end(20),
 	column i encoding (compresstype=zlib),
-	column j encoding (compresstype=rle_type))
+	column j encoding (compresstype=quicklz))
 (partition p1 start(1) end(20));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1" for table "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp1" for table "ccddl_1_prt_p1"
 execute ccddlcheck;
-         relname          | attnum |                       attoptions                        
---------------------------+--------+---------------------------------------------------------
+         relname          | attnum |                       attoptions                       
+--------------------------+--------+--------------------------------------------------------
  ccddl                    |      1 | {compresstype=none,blocksize=32768}
  ccddl                    |      2 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1           |      1 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1           |      2 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1_2_prt_sp1 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p1_2_prt_sp1 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p1_2_prt_sp1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (6 rows)
 
 alter table ccddl alter partition p1 split partition sp1 at (10) into (partition sp2, partition sp3);
-NOTICE:  exchanged partition "sp1" of partition "p1" of relation "ccddl" with relation "pg_temp_5588123"
+NOTICE:  exchanged partition "sp1" of partition "p1" of relation "ccddl" with relation "pg_temp_52942"
 NOTICE:  dropped partition "sp1" for partition "p1" of relation "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp2" for table "ccddl_1_prt_p1"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp3" for table "ccddl_1_prt_p1"
 execute ccddlcheck;
-         relname          | attnum |                       attoptions                        
---------------------------+--------+---------------------------------------------------------
+         relname          | attnum |                       attoptions                       
+--------------------------+--------+--------------------------------------------------------
  ccddl                    |      1 | {compresstype=none,blocksize=32768}
  ccddl                    |      2 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1           |      1 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1           |      2 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1_2_prt_sp2 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p1_2_prt_sp2 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p1_2_prt_sp2 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p1_2_prt_sp3 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p1_2_prt_sp3 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p1_2_prt_sp3 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (8 rows)
 
 alter table ccddl alter partition p1 split partition sp2 at (5) into (partition sp2, partition sp2_5);
-NOTICE:  exchanged partition "sp2" of partition "p1" of relation "ccddl" with relation "pg_temp_5588123"
+NOTICE:  exchanged partition "sp2" of partition "p1" of relation "ccddl" with relation "pg_temp_52942"
 NOTICE:  dropped partition "sp2" for partition "p1" of relation "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp2" for table "ccddl_1_prt_p1"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp2_5" for table "ccddl_1_prt_p1"
 execute ccddlcheck;
-          relname           | attnum |                       attoptions                        
-----------------------------+--------+---------------------------------------------------------
+          relname           | attnum |                       attoptions                       
+----------------------------+--------+--------------------------------------------------------
  ccddl                      |      1 | {compresstype=none,blocksize=32768}
  ccddl                      |      2 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1             |      1 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1             |      2 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p1_2_prt_sp3   |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p1_2_prt_sp3   |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p1_2_prt_sp3   |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p1_2_prt_sp2   |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p1_2_prt_sp2   |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p1_2_prt_sp2   |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p1_2_prt_sp2_5 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p1_2_prt_sp2_5 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p1_2_prt_sp2_5 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (10 rows)
 
 drop table ccddl;
@@ -1112,21 +1112,21 @@ CREATE TABLE ccddl (id int, year int, month int, day int, region text)
 			SUBPARTITION TEMPLATE
 			(
 				START (1) END (13),
-				COLUMN month ENCODING (compresstype=rle_type)
+				COLUMN month ENCODING (compresstype=quicklz)
 			)
 		SUBPARTITION BY LIST (region)
 		SUBPARTITION TEMPLATE
 		(
 			SUBPARTITION usa VALUES ('usa'),
-			COLUMN region ENCODING (compresstype=rle_type)
+			COLUMN region ENCODING (compresstype=quicklz)
 		)
 	( START (2008) END (2010) );
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1" for table "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1_2_prt_1" for table "ccddl_1_prt_1"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1_2_prt_1_3_prt_usa" for table "ccddl_1_prt_1_2_prt_1"
 execute ccddlcheck;
-             relname             | attnum |                       attoptions                        
----------------------------------+--------+---------------------------------------------------------
+             relname             | attnum |                       attoptions                       
+---------------------------------+--------+--------------------------------------------------------
  ccddl                           |      1 | {compresstype=none,blocksize=32768}
  ccddl                           |      2 | {compresstype=none,blocksize=32768}
  ccddl                           |      3 | {compresstype=none,blocksize=32768}
@@ -1139,14 +1139,14 @@ execute ccddlcheck;
  ccddl_1_prt_1                   |      5 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_1_2_prt_1           |      1 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_1_2_prt_1           |      2 | {compresstype=none,blocksize=32768}
- ccddl_1_prt_1_2_prt_1           |      3 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1           |      3 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_1_2_prt_1           |      4 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_1_2_prt_1           |      5 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_1_2_prt_1_3_prt_usa |      1 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_1_2_prt_1_3_prt_usa |      2 | {compresstype=none,blocksize=32768}
- ccddl_1_prt_1_2_prt_1_3_prt_usa |      3 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1_3_prt_usa |      3 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_1_2_prt_1_3_prt_usa |      4 | {compresstype=none,blocksize=32768}
- ccddl_1_prt_1_2_prt_1_3_prt_usa |      5 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1_2_prt_1_3_prt_usa |      5 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (20 rows)
 
 -- Ensure we can read and write
@@ -1268,9 +1268,9 @@ create table ccddl (
 	partition by range(i)
 	(
 		partition p1 start(1) end(2) column i encoding(compresstype=zlib),
-	 	partition p2 start(2) end(3) column j encoding(compresstype=rle_type)
+	 	partition p2 start(2) end(3) column j encoding(compresstype=quicklz)
 									 column k encoding(blocksize=8192),
-	 	partition p3 start(3) end(4) column i encoding(compresstype=rle_type)
+	 	partition p3 start(3) end(4) column i encoding(compresstype=quicklz)
 									 column j encoding(blocksize=8192)
 									 default column encoding
 									 	(compresstype=zlib),
@@ -1283,8 +1283,8 @@ NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1" for table "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p2" for table "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p3" for table "ccddl"
 execute ccddlcheck;
-    relname     | attnum |                       attoptions                        
-----------------+--------+---------------------------------------------------------
+    relname     | attnum |                       attoptions                       
+----------------+--------+--------------------------------------------------------
  ccddl          |      1 | {compresstype=none,blocksize=32768}
  ccddl          |      2 | {compresstype=none,blocksize=32768}
  ccddl          |      3 | {compresstype=none,blocksize=32768}
@@ -1294,10 +1294,10 @@ execute ccddlcheck;
  ccddl_1_prt_p1 |      3 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p1 |      4 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2 |      1 | {blocksize=65536,compresstype=none,compresslevel=0}
- ccddl_1_prt_p2 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p2 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2 |      3 | {blocksize=8192,compresstype=none,compresslevel=0}
  ccddl_1_prt_p2 |      4 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
- ccddl_1_prt_p3 |      1 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p3 |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p3 |      2 | {blocksize=8192,compresstype=none,compresslevel=0}
  ccddl_1_prt_p3 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p3 |      4 | {compresstype=zlib,compresslevel=1,blocksize=32768}
@@ -1315,7 +1315,7 @@ partition by range(i) subpartition by range(j)
 		),
  partition p2 start(2) end(3)
  		(subpartition sp1 start(1) end(2)
-			column j encoding(compresstype=rle_type)
+			column j encoding(compresstype=zlib)
 			column k encoding(blocksize=8192),
 		 column i encoding (blocksize=65536),
 		 default column encoding (compresstype=quicklz)
@@ -1328,8 +1328,8 @@ NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p2" for table "ccddl"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p1_2_prt_sp1" for table "ccddl_1_prt_p1"
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_p2_2_prt_sp1" for table "ccddl_1_prt_p2"
 execute ccddlcheck;
-         relname          | attnum |                       attoptions                        
---------------------------+--------+---------------------------------------------------------
+         relname          | attnum |                       attoptions                       
+--------------------------+--------+--------------------------------------------------------
  ccddl                    |      1 | {compresstype=none,blocksize=32768}
  ccddl                    |      2 | {compresstype=none,blocksize=32768}
  ccddl                    |      3 | {compresstype=none,blocksize=32768}
@@ -1347,34 +1347,34 @@ execute ccddlcheck;
  ccddl_1_prt_p2           |      3 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p2           |      4 | {compresstype=none,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      1 | {blocksize=65536,compresstype=none,compresslevel=0}
- ccddl_1_prt_p2_2_prt_sp1 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_p2_2_prt_sp1 |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl_1_prt_p2_2_prt_sp1 |      3 | {blocksize=8192,compresstype=none,compresslevel=0}
  ccddl_1_prt_p2_2_prt_sp1 |      4 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (20 rows)
 
 drop table ccddl;
--- Precedence test: c3 in the partition child must be zlib, not rle_type
+-- Precedence test: c3 in the partition child must be zlib, not quicklz
 CREATE TABLE ccddl ( c1 int ENCODING (compresstype=zlib),
                      c2 char ENCODING (compresstype=quicklz, blocksize=65536),
 				     c3 date,
-					 COLUMN c3 ENCODING (compresstype=RLE_TYPE))
+					 COLUMN c3 ENCODING (compresstype=quicklz))
 WITH (appendonly=true, orientation=column)
 	PARTITION BY RANGE (c3) (
 		START ('1900-01-01'::DATE)   END ('2100-12-31'::DATE),
 		        COLUMN c3 ENCODING (compresstype=zlib),
-				COLUMN c2 ENCODING (compresstype=rle_type)
+				COLUMN c2 ENCODING (compresstype=quicklz)
 	);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "ccddl_1_prt_1" for table "ccddl"
 execute ccddlcheck;
-    relname    | attnum |                       attoptions                        
----------------+--------+---------------------------------------------------------
+    relname    | attnum |                       attoptions                       
+---------------+--------+--------------------------------------------------------
  ccddl         |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
  ccddl         |      2 | {compresstype=quicklz,blocksize=65536,compresslevel=1}
- ccddl         |      3 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl         |      3 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_1 |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
- ccddl_1_prt_1 |      2 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+ ccddl_1_prt_1 |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
  ccddl_1_prt_1 |      3 | {compresstype=zlib,compresslevel=1,blocksize=32768}
 (6 rows)
 
@@ -1545,12 +1545,12 @@ select typoptions from pg_type t, pg_type_encoding e where
  {compresstype=zlib,compresslevel=1,blocksize=32768}
 (1 row)
 
-alter type timestamp with time zone set default encoding(compresstype=rle_type);
+alter type timestamp with time zone set default encoding(compresstype=quicklz);
 select typoptions from pg_type t, pg_type_encoding e where
   t.typname = 'timestamptz' and t.oid = e.typid;
-                       typoptions                        
----------------------------------------------------------
- {compresstype=rle_type,compresslevel=1,blocksize=32768}
+                       typoptions                       
+--------------------------------------------------------
+ {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (1 row)
 
 -- schema qualification
@@ -1569,9 +1569,9 @@ select typoptions from pg_type t, pg_type_encoding e where
 -- We should reject any extraneous type information during alter type
 alter type numeric(10, 2) set default encoding(compresstype=zlib);
 ERROR:  type precision cannot be specified when setting DEFAULT ENCODING
-alter type int[2][3] set default encoding(compresstype=rle_type);
+alter type int[2][3] set default encoding(compresstype=quicklz);
 ERROR:  syntax error at or near "["
-LINE 1: alter type int[2][3] set default encoding(compresstype=rle_t...
+LINE 1: alter type int[2][3] set default encoding(compresstype=quick...
                       ^
 -- permissions checks
 create role typcheck;
@@ -1593,11 +1593,11 @@ drop type int42 cascade;
 NOTICE:  drop cascades to function int42_out(int42)
 NOTICE:  drop cascades to function int42_in(cstring)
 select * from pg_type_encoding;
- typid |                       typoptions                        
--------+---------------------------------------------------------
+ typid |                       typoptions                       
+-------+--------------------------------------------------------
   1043 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
   1042 | {compresstype=zlib,compresslevel=1,blocksize=32768}
-  1184 | {compresstype=rle_type,compresslevel=1,blocksize=32768}
+  1184 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
     25 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (4 rows)
 
@@ -1607,11 +1607,9 @@ deallocate ccddlcheck;
 -- RLE sanity checks
 -- Expect: failure
 -----------------------------------------------------------------------
--- RLE_TYPE is not supported on AO (non-CO) tables
+-- RLE_TYPE is not supported 
 create table ccddl (i int) with(appendonly = true, compresstype = rle_type);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  rle_type cannot be used with Append Only relations row orientation
+ERROR:  unknown compresstype "rle_type"
 -----------------------------------------------------------------------
 -- MPP-14381 cdbfast regression: Dropping and adding a column to AO partitioned tables fails with SIGSEGV
 -- Expect: success
