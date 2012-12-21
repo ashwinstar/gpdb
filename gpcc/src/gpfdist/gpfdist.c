@@ -254,7 +254,6 @@ static struct
 	int 			total_sessions;
 	BIO 			*bio_err;	/* for SSL */
 	SSL_CTX 		*server_ctx;/* for SSL */
-
 } gcb;
 
 /*  A session */
@@ -2054,12 +2053,7 @@ http_setup(void)
 			}
 			gcb.listen_socks[gcb.listen_sock_count++] = f;
 
-			/*
-			 * if we got here, it means that for this given socket we succeeded to do bind and listen
-			 * and since we can only bind to one listening socket on a given port - it's time to live this iteration
-			 */
 			gprint("Opening listening socket succeeded\n");
-			break;
 		}
 
 		/* When we get here, we have either succeeded, or tried all address families for this port */
@@ -2080,7 +2074,6 @@ http_setup(void)
 		opt.p++;
 	}
 
-
 	for (i = 0; i < gcb.listen_sock_count; i++)
 	{
 		/* when this socket is ready, do accept */
@@ -2096,7 +2089,6 @@ http_setup(void)
 			gfatal(FLINE, "cannot set up event on listen socket: %s",
 						   strerror(errno));
 	}
-
 }
 
 void
