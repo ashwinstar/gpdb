@@ -304,6 +304,8 @@ struct request_t
 	} in;
 
 	block_t outblock; /* next block to send out */
+	char*           line_delim_str;
+	int             line_delim_length;
 };
 
 /* send gp-proto==1 ctl info */
@@ -915,7 +917,7 @@ static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
  * header (metadata for client such as filename, etc) and the data itself.
  */
 static const char*
-session_get_block(session_t* session, block_t* retblock)
+session_get_block(session_t* session, block_t* retblock, char* line_delim_str, int line_delim_length)
 {
 	int 		size;
 	const int 	whole_rows = 1; /* gpfdist must not read data with partial rows */
@@ -932,7 +934,7 @@ session_get_block(session_t* session, block_t* retblock)
 	gcb.read_bytes -= fstream_get_compressed_position(session->fstream);
 
 	/* read data from our filestream as a chunk with whole data rows */
-	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows);
+	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows, line_delim_str, line_delim_length);
 
 	if (size == 0)
 	{
@@ -1333,7 +1335,7 @@ static void do_write(int fd, short event, void* arg)
 		/* get a block (or find a remaining block) */
 		if (r->outblock.top == r->outblock.bot)
 		{
-			const char* ferror = session_get_block(r->session, &r->outblock);
+			const char* ferror = session_get_block(r->session, &r->outblock, r->line_delim_str, r->line_delim_length);
 
 			if (ferror)
 			{
@@ -2268,7 +2270,6 @@ static void handle_post_request(request_t *r, int header_end)
 
 	/* if some data come along with the request, copy it first */
 	data_start = strstr(r->in.hbuf, "\r\n\r\n");
-
 	if(data_start)
 	{
 		data_start += 4;
@@ -2284,7 +2285,7 @@ static void handle_post_request(request_t *r, int header_end)
 
 		/* only write it out if no more data is expected */
 		if(r->in.davailable == 0)
-			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1);
+			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1, r->line_delim_str, r->line_delim_length);
 	}
 
 	/*
@@ -2337,7 +2338,7 @@ static void handle_post_request(request_t *r, int header_end)
 			if (r->in.dbufmax == r->in.dbuftop || r->in.davailable == 0)
 			{
 				/* only write up to end of last row */
-				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1);
+				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1, r->line_delim_str, r->line_delim_length);
 				gprint("wrote %d bytes to file\n", wrote);
 
 				if(wrote == -1)
@@ -2502,6 +2503,10 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->totalsegs = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-SEGMENT-ID", r->in.req->hname[i]))
 			r->segid = atoi(r->in.req->hvalue[i]);
+		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i]))
+			r->line_delim_str = r->in.req->hvalue[i];
+		else if (0 == strcmp("X-GP-LINE-DELIM-LENGTH", r->in.req->hname[i]))
+			r->line_delim_length = atoi(r->in.req->hvalue[i]);
 #ifdef GPFXDIST
 		else if (0 == strcmp("X-GP-TRANSFORM", r->in.req->hname[i]))
 			r->trans.name = r->in.req->hvalue[i];

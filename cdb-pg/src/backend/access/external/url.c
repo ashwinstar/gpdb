@@ -941,8 +941,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			extract_http_domain(file->url, domain, HOST_NAME_SIZE);
 			set_httpheader(file, "Host", domain);
 		}
-		
-		
+		set_httpheader(file, "X-GP-LINE-DELIM-STR", ev->GP_LINE_DELIM_STR);
+		set_httpheader(file, "X-GP-LINE-DELIM-LENGTH", ev->GP_LINE_DELIM_LENGTH);
 		if (set_httpheader(file, "X-GP-XID", ev->GP_XID) ||
 			set_httpheader(file, "X-GP-CID", ev->GP_CID) ||
 			set_httpheader(file, "X-GP-SN", ev->GP_SN) ||
@@ -1761,7 +1761,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 
 			assert(size == 1);
 
-			n = fstream_read(file->u.file.fp, ptr, nmemb, &fo, whole_rows);
+			n = fstream_read(file->u.file.fp, ptr, nmemb, &fo, whole_rows, "", -1);
 			want = n > 0 ? n : 0;
 
 			if (n > 0 && fo.line_number)
