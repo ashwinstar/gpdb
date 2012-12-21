@@ -153,6 +153,8 @@ LOGILAB_ASTNG_DIR=logilab-astng-$(LOGILAB_ASTNG_VERSION)
 LOGILAB_COMMON_VERSION=0.50.1
 LOGILAB_COMMON_DIR=logilab-common-$(LOGILAB_COMMON_VERSION)
 PYLINT_PYTHONPATH=$(PYLIB_DIR):$(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/
+MOCK_VERSION=1.0.1
+MOCK_DIR=mock-$(MOCK_VERSION)
 
 pylint:
 	@echo "--- pylint"
@@ -166,6 +168,42 @@ pylint:
 	@cp -r $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/build/lib/logilab $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/
 	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/__init__.py
 	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/logilab/__init__.py
+
+mock: 
+	@echo "--- mock"
+	@mkdir -p $(PYTHONSRC_INSTALL_SITE)
+	@cd $(PYLIB_SRC)/ && $(TAR) xzf $(MOCK_DIR).tar.gz
+	@cd $(PYLIB_SRC)/$(MOCK_DIR)/ && PYTHONPATH=$(PYTHONSRC_INSTALL_PYTHON_PATH) python setup.py install --prefix $(PYTHONSRC_INSTALL)
+
+#
+# BEHAVE 
+#
+
+BEHAVE_VERSION=1.2.2
+SETUP_TOOLS_VERSION=0.6c11
+PARSE_VERSION=1.5.3
+ARG_PARSE_VERSION=1.2.1
+BEHAVE_DIR=behave-$(BEHAVE_VERSION)
+SETUP_TOOLS_DIR=setuptools-$(SETUP_TOOLS_VERSION)
+PARSE_DIR=parse-$(PARSE_VERSION)
+ARG_PARSE_DIR=argparse-$(ARG_PARSE_VERSION)
+PYTHONSRC_INSTALL=$(PYLIB_SRC)/install
+PYTHONSRC_INSTALL_SITE=$(PYLIB_SRC)/install/lib/python2.6/site-packages
+PYTHONSRC_INSTALL_PYTHON_PATH=$(PYTHONPATH):$(PYTHONSRC_INSTALL_SITE)
+BEHAVE_BIN=$(PYTHONSRC_INSTALL)/bin/behave
+
+$(BEHAVE_BIN):
+	@echo "--- build $(BEHAVE_BIN)"
+	@mkdir -p $(PYTHONSRC_INSTALL_SITE)
+	@cd $(PYLIB_SRC)/ && $(TAR) xzf $(BEHAVE_DIR).tar.gz
+	@cd $(PYLIB_SRC)/ && $(TAR) xzf $(SETUP_TOOLS_DIR).tar.gz
+	@cd $(PYLIB_SRC)/ && $(TAR) xzf $(PARSE_DIR).tar.gz
+	@cd $(PYLIB_SRC)/ && $(TAR) xzf $(ARG_PARSE_DIR).tar.gz
+	@cd $(PYLIB_SRC)/$(SETUP_TOOLS_DIR)/ && PYTHONPATH=$(PYTHONSRC_INSTALL_PYTHON_PATH) python setup.py install --prefix $(PYTHONSRC_INSTALL)
+	@cd $(PYLIB_SRC)/$(PARSE_DIR)/ && PYTHONPATH=$(PYTHONSRC_INSTALL_PYTHON_PATH) python setup.py install --prefix $(PYTHONSRC_INSTALL)
+	@cd $(PYLIB_SRC)/$(ARG_PARSE_DIR)/ && PYTHONPATH=$(PYTHONSRC_INSTALL_PYTHON_PATH) python setup.py install --prefix $(PYTHONSRC_INSTALL)
+	@cd $(PYLIB_SRC)/$(BEHAVE_DIR)/ && PYTHONPATH=$(PYTHONSRC_INSTALL_PYTHON_PATH) python setup.py install --prefix $(PYTHONSRC_INSTALL)
+	@echo "--- behave done"
 
 UNITTEST2_VERSION=0.5.1
 UNITTEST2_DIR=unittest2-${UNITTEST2_VERSION}
@@ -181,6 +219,14 @@ PYTHON_FILES=`grep -l --exclude=Makefile --exclude=gplogfilter "/bin/env python"
 			 `find ./gppylib -name "*.py"`\
 			 `find $(SRC)/../sbin -name "*.py"`
 
+behave: $(BEHAVE_BIN)
+	@echo "Running behave on management scripts..."
+	@if [ -n ""$(tags)"" ]; then \
+		PYTHONPATH=$(PYTHONSRC_INSTALL_PYTHON_PATH) $(BEHAVE_BIN) $(SRC)/gppylib/test/behave/* --no-color --tags=$(tags) 2>&1 ; \
+	else \
+		PYTHONPATH=$(PYTHONSRC_INSTALL_PYTHON_PATH) $(BEHAVE_BIN) $(SRC)/gppylib/test/behave/* --no-color 2>&1; \
+	fi
+
 checkcode: pylint
 	@echo "Running pylint on management scripts..."
 	@PYTHONPATH=$(PYTHONPATH):$(PYLINT_PYTHONPATH) $(PYLIB_SRC)/$(PYLINT_DIR)/bin/pylint -i y $(PYTHON_FILES) --rcfile=.rcfile > $(SRC)/../pylint.txt || true
@@ -192,9 +238,9 @@ check-regress:
 	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
 	gppylib/gpunit discover --verbose -s gppylib -p "test_regress*.py" 2> $(SRC)/../gpMgmt_testregress_results.log 1> $(SRC)/../gpMgmt_testregress_output.log
 
-check:
+check: mock
 	@echo "Running unit tests..."
-	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH) \
+	@PYTHONPATH=$(SRC):$(SRC)/ext:$(PYTHONPATH):$(PYTHONSRC_INSTALL_PYTHON_PATH) \
 	gppylib/gpunit discover --verbose -s gppylib -p "test_unit*.py" 2> $(SRC)/../gpMgmt_testunit_results.log 1> $(SRC)/../gpMgmt_testunit_output.log
 
 solarisTest:

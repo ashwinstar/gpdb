@@ -25,6 +25,16 @@ PG_SYSTEM_FILESPACE = 'pg_system'
 MASTER_DATA_DIR = os.environ.get('MASTER_DATA_DIRECTORY')
 NUM_WORKERS = 16  #Number of simultaneous parallel process that are started by ParallelOperation
 
+def is_filespace_configured():
+    if MASTER_DATA_DIR is None:
+        raise Exception('MASTER_DATA_DIRECTORY is not set')
+
+    if os.path.exists(os.path.join(MASTER_DATA_DIR, GP_TRANSACTION_FILES_FILESPACE)) or \
+       os.path.exists(os.path.join(MASTER_DATA_DIR, GP_TEMPORARY_FILES_FILESPACE)):
+        return True
+    
+    return False
+ 
 class FileType:
     """
         This class is to emulate an enum
