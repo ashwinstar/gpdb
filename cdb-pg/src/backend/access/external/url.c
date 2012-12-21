@@ -1020,8 +1020,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			extract_http_domain(file->url, domain, HOST_NAME_SIZE);
 			set_httpheader(file, "Host", domain);
 		}
-		
-		
+		set_httpheader(file, "X-GP-LINE-DELIM-STR", ev->GP_LINE_DELIM_STR);
+		set_httpheader(file, "X-GP-LINE-DELIM-LENGTH", ev->GP_LINE_DELIM_LENGTH);
 		if (set_httpheader(file, "X-GP-XID", ev->GP_XID) ||
 			set_httpheader(file, "X-GP-CID", ev->GP_CID) ||
 			set_httpheader(file, "X-GP-SN", ev->GP_SN) ||
