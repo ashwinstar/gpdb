@@ -24,7 +24,7 @@ try:
     from gppylib.commands.base import Command
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.operations import Operation
-    from gppylib.operations.dump import DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
+    from gppylib.operations.dump import ValidateDatabaseExists, ValidateSchemaExists, DeleteCurrentDump, DeleteOldestDumps, DumpDatabase, DumpConfig, DumpGlobal, MailDumpEvent, PostDumpDatabase, UpdateHistoryTable, VacuumDatabase
     from gppylib.operations.utils import DEFAULT_NUM_WORKERS
     from gppylib.gparray import GpArray
     from gppylib.db import dbconn
@@ -259,7 +259,7 @@ class GpCronDump(Operation):
             self._validate_run_program()
 
         self._validate_dump_target()
-
+        
         # final_exit_status := numeric outcome of this python program
         # current_exit_status := numeric outcome of one particular dump,
         #                        in this loop over the -x arguments
@@ -507,7 +507,7 @@ class GpCronDump(Operation):
             
 
     def _validate_dump_target(self):
-         if len(self.dump_databases) > 1:
+        if len(self.dump_databases) > 1:
             if self.dump_schema is not None:
                 raise ExceptionNoStackTraceNeeded("Cannot supply schema name if multiple database dumps are requested")
             if len(self.include_dump_tables) > 0 or self.include_dump_tables_file is not None:
@@ -515,7 +515,14 @@ class GpCronDump(Operation):
             if len(self.exclude_dump_tables) > 0 or self.exclude_dump_tables_file is not None:
                 raise ExceptionNoStackTraceNeeded("Cannot exclude specific tables if multiple database dumps are requested")
             logger.info("Configuring for multiple database dump")
-            
+        
+        for dump_database in self.dump_databases:              
+            ValidateDatabaseExists(database = dump_database, master_port = self.master_port).run()
+                               
+        if self.dump_schema is not None:
+            ValidateSchemaExists(database = self.dump_databases[0], schema = self.dump_schema,
+                                 master_port = self.master_port).run() 
+    
     def _validate_run_program(self):
         #Check to see if the file exists
         cmd = Command('Seeking post script', "which %s" % self.post_script)
