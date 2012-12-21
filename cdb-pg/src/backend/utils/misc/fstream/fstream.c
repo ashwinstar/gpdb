@@ -713,7 +713,7 @@ int fstream_read(fstream_t *fs,
 				p = scan_csv_records(p, q, 1, fs);
 			}
 			/* \n is the default delimiter, the length of \n is defined to be -1*/
-			else if(line_delim_length >= 0 && line_delim_str != NULL)
+			else if(line_delim_length > 0)
 			{
 				/* text header with defined EOL*/
 				p = find_first(p, size, line_delim_str, line_delim_length);
@@ -825,7 +825,7 @@ int fstream_read(fstream_t *fs,
 				/* CSV: go slow, scan byte-by-byte for record boundary */
 				p = scan_csv_records(dest, (char*)dest + size, 0, fs);
 			}
-			else if (line_delim_length >= 0 && line_delim_str != NULL)
+			else if (line_delim_length > 0)
 			{
 				/*
 				 * TEXT: go fast, scan for end of line delimiter for record boundary
@@ -938,7 +938,7 @@ int fstream_write(fstream_t *fs,
 	if (write_whole_lines)
 	{
 		/* \n is the default delimiter, the length of \n is defined to be -1*/
-		if(line_delim_length >= 0 && line_delim_str != NULL) //eolDelim exists
+		if(line_delim_length > 0) //eolDelim exists
 		{
 			/*
 			* scan for EOL Delimiter for record boundary

@@ -2683,7 +2683,7 @@ external_set_env_vars_ext(extvar_t *extvar, char* uri, bool csv, char* escape, c
  	extvar->GP_HADOOP_HOME         = gp_hadoop_home;
 
  	int length = (int)strlen(line_delim_str);
- 	char* encoded_delim = (char*)(malloc(length*2+1));
+ 	char* encoded_delim = (char*)(palloc(length*2+1));
  	base16_encode(line_delim_str, length, encoded_delim);
  	extvar->GP_LINE_DELIM_STR      = encoded_delim;
  	extvar->GP_LINE_DELIM_LENGTH   = buffer_delim_length;
