@@ -199,9 +199,9 @@ generate_gpdb_installer_header() {
 	EOF_HEADER
 
     if [ "${RELEASE_TYPE}" = "ce" ]; then
-        cat ${BLDWRAP_TOP}/../../licenses/GPDB-CE-LICENSE.txt
+        cat ${BLDWRAP_TOP}/licenses/GPDB-CE-LICENSE.txt
     else
-        cat ${BLDWRAP_TOP}/../../licenses/GPDB-LICENSE.txt
+        cat ${BLDWRAP_TOP}/licenses/GPDB-LICENSE.txt
     fi
 
 	cat <<-EOF_HEADER
