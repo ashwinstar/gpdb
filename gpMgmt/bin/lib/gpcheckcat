@@ -341,6 +341,23 @@ class execThread(Thread):
             self.error = e
     
 
+def processThread(threads):
+    batch = []
+    for th in threads:
+        logger.debug('waiting on thread %s' % th.getName())
+        th.join()
+        if th.error:
+            setError(ERROR_NOREPAIR)
+            myprint("%s:%d:%s : %s" % 
+                     (th.cfg['hostname'],
+                      th.cfg['port'],
+                      th.cfg['datadir'],
+                      str(th.error)))
+        else:
+            batch.append([th.cfg, th.curs])
+    return batch
+
+
 #############
 def connect2run(qry, col=None):
     logger.debug('%s' % qry)
@@ -362,31 +379,14 @@ def connect2run(qry, col=None):
 
         # we don't want too much going on at once
         if (i % GV.opt['-B']) == 0:
-            for th in threads:
-                logger.debug('waiting on thread %s' % th.getName())
-                th.join()
-                batch.append([th.cfg, th.curs])
-
+            # process this batch of threads
+            batch.extend(processThread(threads))
             threads = []
 
         i += 1
 
-    for th in threads:
-        logger.debug('waiting on thread %s' % th.getName())
-        th.join()
-
-        # XXX - this is not a good way to report the error due to the way that
-        # this function is usually called - the error gets reported before the
-        # test message and the test reports as "passing".
-        if th.error:
-            setError(ERROR_NOREPAIR)
-            myprint("%s:%d:%s : %s" % 
-                         (th.cfg['hostname'],
-                          th.cfg['port'],
-                          th.cfg['datadir'],
-                          str(th.error)))
-        else:
-            batch.append([th.cfg, th.curs])
+    # process the rest of threads
+    batch.extend(processThread(threads))
 
     err = []
     for [cfg, curs] in batch:
@@ -552,7 +552,7 @@ def checkPartitionIntegrity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('[ERROR] executing test: checkPartitionIntegrity')
         myprint('  Execution error: ' + str(e))
 
     # MPP-9283: look for partitions create "with oids".
@@ -587,7 +587,7 @@ def checkPartitionIntegrity():
                 logger.error("...")
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('[ERROR] executing test: checkPartitionIntegrity')
         myprint('  Execution error: ' + str(e))
 
         # TODO: add repair script
@@ -702,7 +702,7 @@ def checkPartitionIntegrity():
 
     except Exception, e:
         setError(ERROR_NOREPAIR)
-        myprint('[ERROR] executing test: checkPartitionInterity')
+        myprint('[ERROR] executing test: checkPartitionIntegrity')
         myprint('  Execution error: ' + str(e))
 
 
