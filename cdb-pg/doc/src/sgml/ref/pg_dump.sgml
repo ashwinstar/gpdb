@@ -455,7 +455,9 @@ PostgreSQL documentation
       <term><option>--table=<replaceable class="parameter">table</replaceable></option></term>
       <listitem>
        <para>
-       Dump only tables (or views or sequences) matching the table pattern. 
+       Dump only tables (or views or sequences) matching the table pattern.
+       Specify the table in the format schema.table.
+ 
        Multiple tables can be selected by writing multiple -t switches. 
        Also, the table parameter is interpreted as a pattern according 
        to the same rules used by the <literal>\d</> commands in psql, so multiple tables 
