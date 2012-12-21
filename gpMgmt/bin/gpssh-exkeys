@@ -176,7 +176,6 @@ class Host:
         except paramiko.SSHException, e:
             if not silence: print >> sys.stderr, '[ERROR %s] %s' % (self.m_host, str(e))
             return False
-        
 
     def sendLocalID(self, ID, passwd, tempDir):
         '''
@@ -743,7 +742,15 @@ try:
         for h in GV.allHosts:
             print '  ... send to', h.host()
             isExistingHost = ( h in GV.existingHosts )
-            if not h.sendLocalID(localID, GV.passwd, tempDir if isExistingHost else None): 
+            send_local_id = False
+            try:
+                send_local_id = h.sendLocalID(localID, GV.passwd, tempDir if isExistingHost else None)
+            except socket.error, e:
+                errmsg = '[ERROR %s] %s' % (h.host(), e)
+                print >> sys.stderr, errmsg 
+            if not send_local_id: 
+                errmsg = '[ERROR %s] skipping key exchange for %s' % (h.host(), h.host())
+                print >> sys.stderr, errmsg
                 errmsg = '[ERROR %s] unable to authorize current user' % h.host()
                 print >> sys.stderr, errmsg
             else:
