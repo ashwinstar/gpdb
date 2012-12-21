@@ -1,6 +1,7 @@
 COMMAND NAME: gpfdist
 
-Serves external table files to Greenplum Database segments.
+Serves data files to or writes data files out from Greenplum
+Database segments.
 
 *****************************************************
 SYNOPSIS
@@ -72,8 +73,9 @@ OPTIONS
 
 -d <directory>
 
-The directory from which gpfdist will serve files. If not specified, 
-defaults to the current directory.
+The directory from which gpfdist will serve files for 
+readable external tables or create output files for writable
+external tables. If not specified, defaults to the current directory.
 
 
 -l <log_file>
@@ -224,3 +226,4 @@ SEE ALSO
 *****************************************************
 
 CREATE EXTERNAL TABLE
+gpload
