@@ -692,6 +692,7 @@ static bool AreFileReplicationStructuresRequired = false;
 /* Macros to check exit status of a child process */
 #define EXIT_STATUS_0(st)  ((st) == 0)
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
+#define EXIT_STATUS_2(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 2)
 
 /* if we are a QD postmaster or not */
 extern bool Gp_entry_postmaster;
@@ -4871,7 +4872,9 @@ static void do_reaper()
 				 * if filerep exited unexpectedly on the mirror, the mirror
 				 * is no longer usable so it is shut down
 				 */
-				if (!EXIT_STATUS_0(exitstatus) && pm_mode == PMModeMirrorSegment)
+				if (!EXIT_STATUS_0(exitstatus) &&
+				    !EXIT_STATUS_2(exitstatus) &&
+				    pm_mode == PMModeMirrorSegment)
 				{
 					elog(LOG, "postmaster reset on mirror, shutting down mirror");
 
@@ -4881,6 +4884,7 @@ static void do_reaper()
 				/* filerep died, we mark a fault */
 				updateSegmentState(SegmentStateFault, FaultTypeMirror);
 			}
+
 
             /* PostmasterStateMachine logic does the rest */
 			continue;
@@ -5428,7 +5432,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
              * Note that this is not ideal from a "don't touch shared memory during reset"
              *     perspective.
              */
-            signal_filerep_to_shutdown(SegmentStateShutdown);
+            signal_filerep_to_shutdown(SegmentStateImmediateShutdown);
         }
     }
 

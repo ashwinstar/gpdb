@@ -1081,21 +1081,11 @@ primaryMirrorHandlePostmasterReset(void)
 		 "PrimaryMirrorMode: Processing postmaster reset with recent mode of %d",
 		 pmLocalState.mostRecentTransition.mode);
 
-	if (pmLocalState.mostRecentTransition.mode == PMModeMirrorSegment)
+	if (pmLocalState.mostRecentTransition.mode == PMModePrimarySegment &&
+	    pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking)
 	{
+		/* transition to fault, FTS will pick this up and take proper action */
 		transitionToFault = pmLocalState.doNextResetToFault;
-	}
-	else if (pmLocalState.mostRecentTransition.mode == PMModePrimarySegment)
-	{
-		if (pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking)
-		{
-			/*
-			 * transition to fault if needed, to let fault prober
-			 * decide what to do. Otherwise, the peer has been reset
-			 * successfully and we can do a simple reset instead
-			 */
-			transitionToFault = pmLocalState.doNextResetToFault;
-		}
 	}
 	else
 	{
