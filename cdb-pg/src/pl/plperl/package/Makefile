@@ -14,7 +14,7 @@ PERL_DIR=$(RELENG_TOOLS)/perl-$(PERL_VER)
 PERL_RPM_FLAGS="--define 'perl_dir $(PERL_DIR)' --define 'perl_ver $(PERL_VER)' --define 'perl_rel $(PERL_REL)'"
 PERL_RPM=perl-$(PERL_VER)-$(PERL_REL).$(ARCH).rpm
 
-PLPERL_VER=1.0
+PLPERL_VER=1.1
 PLPERL_REL=1
 PLPERL_DIR=`cd .. && pwd`
 PLPERL_RPM_FLAGS="--define 'plperl_dir $(PLPERL_DIR)' --define 'plperl_ver $(PLPERL_VER)' --define 'plperl_rel $(PLPERL_REL)' --define 'perl_ver $(PERL_VER)'"
