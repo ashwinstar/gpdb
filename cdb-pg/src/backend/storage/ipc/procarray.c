@@ -483,35 +483,6 @@ GetOldestXmin(bool allDbs)
 	return result;
 }
 
-char *DebugGetSnapshotString(const Snapshot snapshot)
-{
-	static char buffer[200];
-
-	int index;
-	int len;
-
-	sprintf(buffer, "Local snapshot xmin %u, xmax %u, xcnt %d (", 
-		    snapshot->xmin, snapshot->xmax, snapshot->xcnt);
-	for (index = 0; index < snapshot->xcnt; index++)
-	{
-		if (index > 0)
-			strcat(buffer, ", ");
-		len = strlen(buffer);
-		sprintf(&buffer[len], 
-			    "%u",
-			    snapshot->xip[index]);
-
-		if (len > sizeof(buffer) - 25)
-		{
-			strcat(buffer, " ... ");
-			break;
-		}
-	}
-	strcat(buffer, ")");
-
-	return buffer;
-}
-
 void
 updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char *debugCaller)
 {
@@ -596,10 +567,6 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 		SharedLocalSnapshotSlot->slotid,
 		debugCaller,
 		DtxContextToString(DistributedTransactionContext));
-	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Local* %s)", 
-	 	  QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
-	 	  DebugGetSnapshotString((const Snapshot)&SharedLocalSnapshotSlot->snapshot));
-
 }
 
 static int

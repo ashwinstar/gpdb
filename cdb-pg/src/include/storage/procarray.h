@@ -45,7 +45,6 @@ extern void UpdateSerializableCommandId(void);
 
 extern struct SnapshotData* GetSnapshotData(struct SnapshotData *snapshot, bool serializable);
 extern void updateSharedLocalSnapshot(struct DtxContextInfo *dtxContextInfo, struct SnapshotData *snapshot, char* debugCaller);
-extern char* DebugGetSnapshotString(struct SnapshotData * const snapshot);
 
 extern void GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots);
 
