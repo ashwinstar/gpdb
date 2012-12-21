@@ -38,6 +38,7 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
+#include "sendalert_common.h"
 
 
 
