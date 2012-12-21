@@ -1561,6 +1561,26 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 	if (!stenc)
 		return;
 
+	/* See if the storage encoding clauses conflict with the WITH clause */
+	foreach(lc, stenc)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+
+		if (c->deflt)
+			continue;
+
+		/*
+		 * We do not expect very large numbers of columns not very large numbers
+		 * of values in the encoding clause. If that assumption changes, we
+		 * should revisit this basic validation to make it more scalable.
+		 */
+		if (encodings_overlap(c->encoding, stmt->options, true))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("ENCODING clause conflicts with table WITH clause")));
+
+	}
+
 	/* Generate a hash table for all the columns */
 	foreach(lc, stmt->tableElts)
 	{
@@ -1640,7 +1660,7 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 			bool found = false;
 			char colname[NAMEDATALEN];
 			size_t collen = strlen(strVal(c->column));
-			size_t n = NAMEDATALEN < collen ? NAMEDATALEN : collen;
+			size_t n = NAMEDATALEN - 1 < collen ? NAMEDATALEN - 1 : collen;
 			MemSet(colname, 0, NAMEDATALEN);
 			memcpy(colname, strVal(c->column), n);
 			colname[n] = '\0';
@@ -1660,25 +1680,6 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 	}
 
 	hash_destroy(ht);
-
-	foreach(lc, stenc)
-	{
-		ColumnReferenceStorageDirective *c = lfirst(lc);
-
-		if (c->deflt)
-			continue;
-
-		/*
-		 * XXX: O(N^2) and O(P . N^2) where P is number of partitions. N is
-		 * assumed small but we may have to revisit this for large column
-		 * numbers.
-		 */
-		if (encodings_overlap(c->encoding, stmt->options, true))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("ENCODING clause conflicts with table WITH clause")));
-
-	}
 }
 
 /*

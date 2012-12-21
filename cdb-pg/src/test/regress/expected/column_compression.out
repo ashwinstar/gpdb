@@ -278,21 +278,6 @@ execute ccddlcheck;
 (1 row)
 
 drop table ccddl_co, ccddl;
--- storage directives when we only use LIKE
-create table ccddl (i int, j int);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
-with (appendonly=true, orientation=column, compresstype=zlib);
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-execute ccddlcheck;
- relname  | attnum |                       attoptions                       
-----------+--------+--------------------------------------------------------
- ccddl_co |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
- ccddl_co |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
-(2 rows)
-
-drop table ccddl, ccddl_co;
 -----------------------------------------------------------------------
 -- Basic syntax
 -- Expect: failure
@@ -375,6 +360,15 @@ execute ccddlcheck;
  ccddl   |      2 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
 (2 rows)
 
+drop table ccddl;
+-- MPP-15120 - ensure we detect storage encoding and WITH conflicts, even in the
+-- LIKE case.
+create table ccddl (i int, j int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
+with (appendonly=true, orientation=column, compresstype=zlib);
+ERROR:  ENCODING clause conflicts with table WITH clause
 drop table ccddl;
 -----------------------------------------------------------------------
 -- Partitioning support

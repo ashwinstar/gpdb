@@ -107,14 +107,6 @@ create table ccddl_co(LIKE ccddl)
 execute ccddlcheck;
 drop table ccddl_co, ccddl;
 
--- storage directives when we only use LIKE
-create table ccddl (i int, j int);
-create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
-with (appendonly=true, orientation=column, compresstype=zlib);
-execute ccddlcheck;
-drop table ccddl, ccddl_co;
-
-
 -----------------------------------------------------------------------
 -- Basic syntax
 -- Expect: failure
@@ -177,6 +169,13 @@ create table ccddl (a, b)
 with (appendonly=true, orientation=column, compresstype=quicklz) as
 select 1, 1;
 execute ccddlcheck;
+drop table ccddl;
+
+-- MPP-15120 - ensure we detect storage encoding and WITH conflicts, even in the
+-- LIKE case.
+create table ccddl (i int, j int);
+create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
+with (appendonly=true, orientation=column, compresstype=zlib);
 drop table ccddl;
 
 -----------------------------------------------------------------------
