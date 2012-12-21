@@ -1093,6 +1093,8 @@ Greenplum Database Performance Monitor is installed in \${installPath}
 
 To complete the environment configuration, please ensure that the
 gpperfmon_path.sh file is sourced.
+
+Greenplum documentation is available for download at http://powerlink.emc.com.
 ********************************************************************************
 EOF
 
