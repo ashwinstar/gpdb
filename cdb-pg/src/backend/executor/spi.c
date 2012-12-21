@@ -2062,7 +2062,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 			Oid	relationOid = InvalidOid; 	/* relation that is modified */
 			AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
 			autostats_get_cmdtype(queryDesc->plannedstmt, &cmdType, &relationOid);
-			auto_stats(cmdType, relationOid, queryDesc->es_processed);
+			auto_stats(cmdType, relationOid, queryDesc->es_processed, true /* inFunction */);
 		}
 	}
 	PG_CATCH();

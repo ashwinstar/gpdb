@@ -994,11 +994,15 @@ typedef enum
 } GpAutoStatsModeValue;
 extern GpAutoStatsModeValue gp_autostats_mode;
 extern char                *gp_autostats_mode_string;
+extern GpAutoStatsModeValue gp_autostats_mode_in_functions;
+extern char                *gp_autostats_mode_in_functions_string;
 extern int                  gp_autostats_on_change_threshold;
 extern bool					log_autostats;
-/* hook functions to set gp_autostats_mode */
+/* hook functions to set gp_autostats_mode and gp_autostats_mode_in_functions */
 extern const char *gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source);
 extern const char *gpvars_show_gp_autostats_mode(void);
+extern const char *gpvars_assign_gp_autostats_mode_in_functions(const char *newval, bool doit, GucSource source);
+extern const char *gpvars_show_gp_autostats_mode_in_functions(void);
 
 
 /* --------------------------------------------------------------------------------------------------

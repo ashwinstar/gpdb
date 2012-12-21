@@ -5888,6 +5888,15 @@ static struct config_string ConfigureNamesString[] =
 		"none", gpvars_assign_gp_autostats_mode, gpvars_show_gp_autostats_mode
 	},
 	{
+		{"gp_autostats_mode_in_functions", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the autostats mode for statements in procedural language functions."),
+			gettext_noop("Valid values are NONE, ON_CHANGE, ON_NO_STATS. ON_CHANGE requires setting gp_autostats_on_change_threshold."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_autostats_mode_in_functions_string,
+		"none", gpvars_assign_gp_autostats_mode_in_functions, gpvars_show_gp_autostats_mode_in_functions
+	},
+	{
 		{"gp_resqueue_priority_default_value", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Default weight when one cannot be associated with a statement."),
 			NULL,

@@ -342,6 +342,8 @@ bool 		coredump_on_memerror=false;
 /* Experimental feature for MPP-4082. Please read doc before setting this guc */
 GpAutoStatsModeValue gp_autostats_mode;
 char                *gp_autostats_mode_string;
+GpAutoStatsModeValue gp_autostats_mode_in_functions;
+char                *gp_autostats_mode_in_functions_string;
 int                  gp_autostats_on_change_threshold = 100000;
 bool				 log_autostats=true;
 /* --------------------------------------------------------------------------------------------------
@@ -916,6 +918,43 @@ gpvars_show_gp_interconnect_type(void)
 }                               /* gpvars_show_gp_log_interconnect */
 
 
+/*
+ * Parse the string value of gp_autostats_mode and gp_autostats_mode_in_functions
+ */
+static int
+gpvars_parse_gp_autostats_mode(const char *newval, bool inFunctions)
+{
+	int newtype = 0;
+
+	if (newval == NULL || newval[0] == 0 ||
+		!pg_strcasecmp("none", newval))
+	{
+		newtype = GP_AUTOSTATS_NONE;
+	}
+	else if (!pg_strcasecmp("on_change", newval) || !pg_strcasecmp("onchange", newval))
+	{
+		newtype = GP_AUTOSTATS_ON_CHANGE;
+	}
+	else if (!pg_strcasecmp("on_no_stats", newval))
+	{
+		newtype = GP_AUTOSTATS_ON_NO_STATS;
+	}
+	else
+	{
+		const char *autostats_mode_string;
+		if (inFunctions)
+		{
+			autostats_mode_string = gpvars_show_gp_autostats_mode_in_functions();
+		}
+		else
+		{
+			autostats_mode_string = gpvars_show_gp_autostats_mode();
+		}
+		elog(ERROR, "Unknown autostats mode. (current type is '%s')", autostats_mode_string);
+	}
+
+	return newtype;
+}
 
 /*
  * gpvars_assign_gp_autostats_mode
@@ -924,17 +963,7 @@ gpvars_show_gp_interconnect_type(void)
 const char *
 gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source __attribute__((unused)) )
 {
-	int newtype = 0;
-
-	if (newval == NULL || newval[0] == 0 ||
-		!pg_strcasecmp("none", newval))
-		newtype = GP_AUTOSTATS_NONE;
-	else if (!pg_strcasecmp("on_change", newval) || !pg_strcasecmp("onchange", newval))
-		newtype = GP_AUTOSTATS_ON_CHANGE;
-	else if (!pg_strcasecmp("on_no_stats", newval))
-		newtype = GP_AUTOSTATS_ON_NO_STATS;
-	else
-		elog(ERROR, "Unknown autostats mode. (current type is '%s')", gpvars_show_gp_autostats_mode());
+	int newtype = gpvars_parse_gp_autostats_mode(newval, false /* inFunctions */);
 
 	if (doit)
 	{
@@ -944,10 +973,23 @@ gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source 
 	return newval;
 }
 
-const char *
-gpvars_show_gp_autostats_mode(void)
+/*
+ * Common function to show the value of the gp_autostats_mode
+ * and gp_autostats_mode_in_functions GUCs
+ */
+static const char *
+gpvars_show_gp_autostats_mode_common(bool inFunctions)
 {
-	switch(gp_autostats_mode)
+	GpAutoStatsModeValue autostats_mode;
+	if (inFunctions)
+	{
+		autostats_mode = gp_autostats_mode_in_functions;
+	}
+	else
+	{
+		autostats_mode = gp_autostats_mode;
+	}
+	switch(autostats_mode)
 	{
 		case GP_AUTOSTATS_NONE:
 			return "NONE";
@@ -960,6 +1002,37 @@ gpvars_show_gp_autostats_mode(void)
 	}
 }
 
+const char *
+gpvars_show_gp_autostats_mode(void)
+{
+	return gpvars_show_gp_autostats_mode_common(false /* inFunctions */);
+}
+
+/*
+ * gpvars_assign_gp_autostats_mode_in_functions
+ * gpvars_show_gp_autostats_mode_in_functions
+ */
+
+const char *
+gpvars_assign_gp_autostats_mode_in_functions(const char *newval, bool doit, GucSource source __attribute__((unused)) )
+{
+	bool inFunctions = true;
+	int newtype = gpvars_parse_gp_autostats_mode(newval, inFunctions);
+
+	if (doit)
+	{
+		gp_autostats_mode_in_functions = newtype;
+	}
+
+	return newval;
+}
+
+
+const char *
+gpvars_show_gp_autostats_mode_in_functions(void)
+{
+	return gpvars_show_gp_autostats_mode_common(true /* inFunctions */);
+}
 
 /* gp_enable_gpperfmon and gp_gpperfmon_send_interval are GUCs that we'd like
  * to have propagate from master to segments but we don't want non-super users

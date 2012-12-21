@@ -83,6 +83,6 @@ typedef enum AutoStatsCmdType
 
 extern const char *autostats_cmdtype_to_string(AutoStatsCmdType cmdType);
 extern void autostats_get_cmdtype(PlannedStmt * stmt, AutoStatsCmdType * pcmdType, Oid * prelationOid);
-extern void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples);
+extern void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples, bool inFunction);
 
 #endif   /* AUTOVACUUM_H */

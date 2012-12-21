@@ -223,25 +223,30 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 	 * Disable autostats so that analyze is not called during their creation. */
 
 	GpAutoStatsModeValue autostatvalBackup = gp_autostats_mode;
+	GpAutoStatsModeValue autostatInFunctionsvalBackup = gp_autostats_mode_in_functions;
 
 	gp_autostats_mode = GP_AUTOSTATS_NONE;
+	gp_autostats_mode_in_functions = GP_AUTOSTATS_NONE;
 
 	PG_TRY();
 	{
 		analyzeStmt(stmt, relids);
 		gp_autostats_mode = autostatvalBackup;
+		gp_autostats_mode_in_functions = autostatInFunctionsvalBackup;
 	}
 
 	/* Clean up in case of error. */
 	PG_CATCH();
 	{
 		gp_autostats_mode = autostatvalBackup;
+		gp_autostats_mode_in_functions = autostatInFunctionsvalBackup;
 
 		/* Carry on with error handling. */
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 	Assert(gp_autostats_mode == autostatvalBackup);
+	Assert(gp_autostats_mode_in_functions == autostatInFunctionsvalBackup);
 }
 
 /**

@@ -1414,7 +1414,7 @@ void autostats_get_cmdtype(PlannedStmt * stmt, AutoStatsCmdType * pcmdType, Oid 
  * on_no_stats 	: 	if the operation is a ctas/insert-select and there are no stats on the modified table, 
  * 					an automatic analyze is issued.
  */
-void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples) 
+void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples, bool inFunction)
 {
 	TimestampTz start;
 	bool policyCheck = false;
@@ -1428,7 +1428,17 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples)
 	Assert (relationOid != InvalidOid);
 	Assert (cmdType >=0 && cmdType <= AUTOSTATS_CMDTYPE_SENTINEL); /* it is a valid command as per auto-stats */
 	
-	switch(gp_autostats_mode) 
+	GpAutoStatsModeValue actual_gp_autostats_mode;
+	if (inFunction)
+	{
+		actual_gp_autostats_mode = gp_autostats_mode_in_functions;
+	}
+	else
+	{
+		actual_gp_autostats_mode = gp_autostats_mode;
+	}
+
+	switch(actual_gp_autostats_mode)
 	{
 		case GP_AUTOSTATS_ON_CHANGE:
 			policyCheck = autostats_on_change_check(cmdType, ntuples);
@@ -1437,7 +1447,7 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples)
 			policyCheck = autostats_on_no_stats_check(cmdType, relationOid);
 			break;
 		default:
-			Assert(gp_autostats_mode == GP_AUTOSTATS_NONE);
+			Assert(actual_gp_autostats_mode == GP_AUTOSTATS_NONE);
 			policyCheck = false;
 			break;
 	}
@@ -1456,8 +1466,17 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples)
 
 	if (log_autostats) 
 	{
+		const char *autostats_mode;
+		if (inFunction)
+		{
+			autostats_mode = gpvars_show_gp_autostats_mode_in_functions();
+		}
+		else
+		{
+			autostats_mode = gpvars_show_gp_autostats_mode();
+		}
 		elog(LOG, "In mode %s, command %s on (dboid,tableoid)=(%d,%d) modifying %d tuples caused Auto-ANALYZE.", 
-				gpvars_show_gp_autostats_mode(),
+				autostats_mode,
 				autostats_cmdtype_to_string(cmdType), 
 				MyDatabaseId,
 				relationOid, 
