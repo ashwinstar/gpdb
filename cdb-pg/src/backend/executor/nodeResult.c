@@ -55,6 +55,8 @@
 
 #include "cdb/cdbhash.h"
 #include "cdb/cdbvars.h"
+#include "cdb/memquota.h"
+#include "executor/spi.h"
 
 static TupleTableSlot *NextInputSlot(ResultState *node);
 static bool TupleMatchesHashFilter(Result *resultNode, TupleTableSlot *resultSlot);
@@ -420,6 +422,11 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&resstate->ps);
 	ExecAssignProjectionInfo(&resstate->ps, NULL);
 
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+	{
+		SPIPushMemoryReserved(((Plan *)node)->operatorMemKB * 1024L);
+	}
+
 	initGpmonPktForResult((Plan *)node, &resstate->ps.gpmon_pkt, estate);
 
 	return resstate;
@@ -456,6 +463,11 @@ ExecEndResult(ResultState *node)
 	ExecEndNode(outerPlanState(node));
 
 	EndPlanStateGpmonPkt(&node->ps);
+
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+	{
+		SPIPopMemoryReserved();
+	}
 }
 
 void

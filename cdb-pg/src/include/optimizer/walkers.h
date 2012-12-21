@@ -65,7 +65,7 @@ extern "C" {
  * Useful functions that aggregate information from expressions or plans.
  */
 extern List *extract_nodes(PlannerGlobal *glob, Node *node, int nodeTag);
-
+extern bool contains_node_type(PlannerGlobal *glob, Node *node, int nodeTag);
 extern List *extract_nodes_plan(Plan *pl, int nodeTag, bool descendIntoSubqueries);
 
 #ifdef __cplusplus

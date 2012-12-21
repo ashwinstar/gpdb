@@ -34,7 +34,7 @@
 #include "catalog/pg_namespace.h"
 #include "cdb/cdbvars.h"
 #include "optimizer/clauses.h"
-#include "executor/nodeFunctionscan.h"
+#include "executor/spi.h"
 #include "cdb/memquota.h"
 #include "postmaster/autovacuum.h"
 
@@ -479,9 +479,9 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		
 		
     	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
-    			&& !IsEmptyMemoryReservedForFunctionScan())
+    			&& !SPIIsEmptyMemoryReserved())
     	{
-    		es->qd->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();                		
+    		es->qd->plannedstmt->query_mem = SPICurrentMemoryReserved();                		
     	}
 
     	ExecutorStart(es->qd, 0);

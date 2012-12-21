@@ -45,6 +45,7 @@
 #include "executor/functions.h"
 #include "cdb/memquota.h"
 #include "executor/nodeFunctionscan.h"
+#include "nodes/stack.h"
 
 extern char *savedSeqServerHost;
 extern int savedSeqServerPort;
@@ -1934,13 +1935,13 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 
                 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
                 	{
-                		if (IsEmptyMemoryReservedForFunctionScan())
+                		if (SPIIsEmptyMemoryReserved())
                 		{
                 			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);                		
                 		}
                 		else
                 		{
-                			queryDesc->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();
+                			queryDesc->plannedstmt->query_mem = SPICurrentMemoryReserved();
                 		}
                 		Assert(queryDesc->plannedstmt->query_mem > 0);
                 	}
@@ -2003,13 +2004,13 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 			&& superuser())
 	{
-		if (IsEmptyMemoryReservedForFunctionScan())
+		if (SPIIsEmptyMemoryReserved())
 		{
 			queryDesc->plannedstmt->query_mem = ResourceQueueGetSuperuserQueryMemoryLimit();                		
 		}
 		else
 		{
-			queryDesc->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();
+			queryDesc->plannedstmt->query_mem = SPICurrentMemoryReserved();
 		}
 		Assert(queryDesc->plannedstmt->query_mem > 0);
 	}
@@ -2307,4 +2308,80 @@ _SPI_copy_plan(SPIPlanPtr plan, int location)
 	MemoryContextSwitchTo(oldcxt);
 
 	return newplan;
+}
+
+/**
+ * These functions deal with pushing memory reservation for nested function calls. They're used to push
+ * and pop memory reservation so that SPI calls in the context of a specific node's execution knows how much memory to distribute
+ * to any subplans executed.
+ */
+
+/**
+ * Maintain stack of memory reservations for SPI calls
+ */
+
+static Stack SPIMemoryReservedStack;
+
+/**
+ * Initialize the SPI memory reservation stack. See SPIPushMemoryReserved() for detailed comments on how this stack
+ * is used.
+ */
+void SPIInitMemoryReservedStack(void)
+{
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
+	Init(&SPIMemoryReservedStack);
+}
+
+/**
+ * Push memory reserved for next SPI call. It is possible for an operator to (after several levels of nesting),
+ * result in execution of SQL statements via SPI e.g. a pl/pgsql function that issues queries. These queries must be sandboxed into
+ * the memory limits of the operator. This stack represents the nesting of these operators and each
+ * operator will push its own limit.
+ */
+void SPIPushMemoryReserved(uint64 mem_reserved)
+{
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
+	Assert(CurrentMemoryContext);
+	uint64 *mem_reserved_copy = palloc(sizeof(mem_reserved));
+	(* mem_reserved_copy) = mem_reserved;
+
+	if (gp_log_resqueue_memory)
+	{
+		elog(gp_resqueue_memory_log_level, "pushing memory reservation on stack %d", (int) mem_reserved);
+	}
+
+	Push(&SPIMemoryReservedStack, mem_reserved_copy);
+}
+
+/**
+ * What was the amount of memory reserved for the last operator? See SPIPushMemoryReserved()
+ * for details.
+ */
+uint64 SPICurrentMemoryReserved(void)
+{
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
+	uint64 *mem_reserved = (uint64 *) Peek(&SPIMemoryReservedStack);
+	return (*mem_reserved);
+}
+
+/**
+ * Pop out value since operator is done.
+ */
+void SPIPopMemoryReserved(void)
+{
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
+
+	if (!SPIIsEmptyMemoryReserved())
+	{
+		Pop(&SPIMemoryReservedStack);
+	}
+}
+
+/**
+ * Is memory reserved stack empty?
+ */
+bool SPIIsEmptyMemoryReserved(void)
+{
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
+	return IsEmpty(&SPIMemoryReservedStack);
 }

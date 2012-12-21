@@ -63,7 +63,7 @@
 #include "utils/tqual.h"
 #include "postmaster/backoff.h"
 #include "cdb/memquota.h"
-#include "executor/nodeFunctionscan.h"
+#include "executor/spi.h"
 
 shmem_startup_hook_type shmem_startup_hook = NULL;
 
@@ -400,7 +400,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	
 	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
 	{
-		InitFunctionScanMemoryReservedStack();
+		SPIInitMemoryReservedStack();
 	}
 	
 	/*

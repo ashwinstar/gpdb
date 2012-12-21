@@ -1163,6 +1163,14 @@ typedef struct extract_context
 static bool extract_nodes_walker(Node *node, extract_context *context);
 
 /**
+ * Does node contain a sub-node with the specific nodeTag?
+ */
+bool contains_node_type(PlannerGlobal *glob, Node *node, int nodeTag)
+{
+	return (list_length(extract_nodes(glob, node, nodeTag)) > 0);
+}
+
+/**
  * Extract nodes with specific tag.
  */
 List *extract_nodes(PlannerGlobal *glob, Node *node, int nodeTag)

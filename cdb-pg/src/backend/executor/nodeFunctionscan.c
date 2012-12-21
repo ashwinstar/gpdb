@@ -30,15 +30,11 @@
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-#include "nodes/stack.h"
 #include "cdb/memquota.h"
+#include "executor/spi.h"
 
 static TupleTableSlot *FunctionNext(FunctionScanState *node);
 static void ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf);
-
-static void PushMemoryReservedForFunctionScan(uint64 mem_reserved);
-static void PopMemoryReservedForFunctionScan(void);
-
 
 /* ----------------------------------------------------------------
  *						Scan Support
@@ -281,7 +277,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
-		PushMemoryReservedForFunctionScan(((Plan *)node)->operatorMemKB * 1024L);
+		SPIPushMemoryReserved(((Plan *)node)->operatorMemKB * 1024L);
 	}
 
 	return scanstate;
@@ -336,7 +332,7 @@ ExecEndFunctionScan(FunctionScanState *node)
 
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
-		PopMemoryReservedForFunctionScan();
+		SPIPopMemoryReserved();
 	}
 }
 
@@ -435,76 +431,6 @@ initGpmonPktForFunctionScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 		if (funcname && funcname != rte->eref->aliasname)
 			pfree(funcname);
 	}
-}
-
-/**
- * Maintain stack of memory reservations for function scan operator.
- */
-
-static Stack functionScanMemoryReservedStack;
-
-/**
- * Initialize the function scan stack. See PushMemoryReservedForFunctionScan() for detailed comments on how this stack
- * is used.
- */
-void InitFunctionScanMemoryReservedStack(void)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	Init(&functionScanMemoryReservedStack);
-}
-
-/**
- * Push memory reserved for current function scan. It is possible for a function scan to (after several levels of nesting),
- * result in execution of SQL statements e.g. a pl/pgsql function that issues queries. These queries must be sandboxed into
- * the limits of the functionscan operator. This stack represents the nesting of such function scan operators and each
- * operator will push its own limit. 
- */
-void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	Assert(CurrentMemoryContext);
-	uint64 *mem_reserved_copy = palloc(sizeof(mem_reserved));
-	(* mem_reserved_copy) = mem_reserved;
-	
-	if (gp_log_resqueue_memory)
-	{
-		elog(gp_resqueue_memory_log_level, "pushing memory reservation on stack %d", (int) mem_reserved);
-	}
-	
-	Push(&functionScanMemoryReservedStack, mem_reserved_copy);	
-}
-
-/**
- * Currently, what is the amount of memory reserved for function scan? See PushMemoryReservedForFunctionScan()
- * for details.
- */
-uint64 CurrentFunctionScanMemoryReserved(void)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	uint64 *mem_reserved = (uint64 *) Peek(&functionScanMemoryReservedStack);
-	return (*mem_reserved);
-}
-
-/**
- * Pop out value since functionscan is done.
- */
-void PopMemoryReservedForFunctionScan(void)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-
-	if (!IsEmptyMemoryReservedForFunctionScan())
-	{
-		Pop(&functionScanMemoryReservedStack);
-	}
-}
-
-/**
- * Is memory reserved stack empty?
- */
-bool IsEmptyMemoryReservedForFunctionScan(void)
-{
-	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
-	return IsEmpty(&functionScanMemoryReservedStack);
 }
 
 void
