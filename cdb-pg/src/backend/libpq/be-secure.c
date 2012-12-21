@@ -894,7 +894,7 @@ initialize_SSL(void)
 
 			/* Set flag to remember CA store is successfully loaded */
 			ssl_loaded_verify_locations = true;
-}
+		}
 
 		/*
 		 * Tell OpenSSL to send the list of root certs we trust to clients in

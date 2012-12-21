@@ -1,0 +1,64 @@
+
+include $(top_builddir)/src/Makefile.global
+include $(top_builddir)/src/Makefile.port
+
+CMOCKERY_DIR=$(top_builddir)/src/test/unit/cmockery
+MOCK_DIR=$(top_builddir)/src/test/unit/mock
+CMOCKERY_OBJS=$(CMOCKERY_DIR)/cmockery.o
+override CFLAGS+= -w $(PTHREAD_CFLAGS)
+override CPPFLAGS+= -I$(top_srcdir)/src/backend/libpq \
+					-I$(top_srcdir)/src/backend/gp_libpq_fe \
+					-I$(top_srcdir)/src/backend/postmaster \
+					-I. -I$(top_builddir)/src/port -I$(CMOCKERY_DIR) \
+					-DDLSUFFIX=$(DLSUFFIX) \
+					-I$(top_srcdir)/src/backend/utils/stat
+
+ALL_OBJS:=$(shell find $(top_srcdir)/src/backend -name '*.o' | grep -v /gppc | \
+			grep -v /test/ | grep -v win32 | grep -v conversion_proc | \
+			grep -v /libgpla | grep -v /bsafe_wrapper | grep -v SUBSYS.o | \
+			grep -v main.o | xargs echo)
+#ALL_OBJS:=$(patsubst %.c,%.o,$(ALL_OBJS))
+# OBJS = test case, mock objects, real objects, cmockery.o
+$(foreach target,$(TARGETS), \
+	$(eval $(target)_OBJS=$(target)_test.o $(CMOCKERY_OBJS) \
+		$(patsubst $(top_srcdir)/src/%.o,$(MOCK_DIR)/%_mock.o,\
+			$(filter-out $(top_srcdir)/$(subdir)/$(target).o $($(target)_REAL_OBJS),$(ALL_OBJS))) \
+		$($(target)_REAL_OBJS)))
+
+$(abs_top_srcdir)/src/%.c:
+
+$(MOCK_DIR)/%_mock.c: $(abs_top_srcdir)/src/%.c
+	@(cd $(MOCK_DIR) && PYTHONPATH=$(python_libdir) $(PYTHON) mocker.py $<)
+
+# For some reason, mock.o files are intermediate files sometimes.
+# Mark them as secondary in order not to be deleted automatically.
+.SECONDARY:
+$(MOCK_DIR)/%_mock.o: $(MOCK_DIR)/%_mock.c
+
+all: $(patsubst %,%.t,$(TARGETS))
+
+# The test target depends on $($(testname)_OBJ) which includes $($(testname)_MOCK_OBJ) etc.
+.SECONDEXPANSION:
+%.t: $$($$*_OBJS)
+	$(CC) $(CFLAGS) -o $@ $($*_OBJS)
+
+.PHONY:
+check: $(patsubst %,%-check,$(TARGETS))
+
+.PHONY:
+%-check: %.t
+	./$*.t
+
+.PHONY:
+clean: $(patsubst %,%-clean,$(TARGETS))
+
+.PHONY:
+%-clean:
+	rm -f $*.t $($*_OBJS)
+
+.PHONY:
+clean-mock: clean $(patsubst %,%-clean-mock,$(TARGETS))
+
+.PHONY:
+%-clean-mock:
+	rm -f $(patsubst %.o,%.c,$($*_MOCK_OBJS))

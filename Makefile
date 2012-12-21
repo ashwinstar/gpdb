@@ -1493,3 +1493,7 @@ endif
 endif
 
 ## ----------------------------------------------------------------------
+
+.PHONY : unittest-check
+unittest-check:
+	$(MAKE) -C cdb-pg/src/backend unittest-check

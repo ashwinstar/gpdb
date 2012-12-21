@@ -463,7 +463,6 @@ extern PGDLLIMPORT bool assert_enabled;
 			ExceptionalCondition(CppAsString(condition), (errorType), \
 								 __FILE__, __LINE__); \
 	} while (0)
-
 /*
  *	TrapMacro is the same as Trap but it's intended for use in macros:
  *

@@ -1034,7 +1034,7 @@ pgstat_vacuum_stat(void)
 
 				f_msg.m_nentries = 0;
 			}
-}
+		}
 
 		/*
 		 * Send the rest
@@ -1713,12 +1713,12 @@ AtEOXact_PgStat(bool isCommit)
 				tabstat->t_counts.t_new_dead_tuples += trans->tuples_deleted;
 			}
 			else
-	{
+			{
 				/* inserted tuples are dead, deleted tuples are unaffected */
 				tabstat->t_counts.t_new_dead_tuples += trans->tuples_inserted;
-	}
+			}
 			tabstat->trans = NULL;
-}
+		}
 	}
 	pgStatXactStack = NULL;
 
@@ -1868,13 +1868,13 @@ PostPrepare_PgStat(void)
 		PgStat_TableXactStatus *trans;
 
 		for (trans = xact_state->first; trans != NULL; trans = trans->next)
-	{
+		{
 			PgStat_TableStatus *tabstat;
 
 			tabstat = trans->parent;
 			tabstat->trans = NULL;
+		}
 	}
-}
 	pgStatXactStack = NULL;
 
 	/* Make sure any stats snapshot is thrown away */
