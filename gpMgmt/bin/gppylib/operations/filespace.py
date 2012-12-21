@@ -737,6 +737,38 @@ class MoveFilespace(Operation):
         self.new_filespace_name = new_filespace_name
         self.file_type = file_type
 
+    def start_master_only(self):
+        logger.info('Starting Greenplum Database in master only mode')
+        cmd = GpStart('Start Greenplum Database in master only mode', masterOnly=True)
+        cmd.run()
+        if cmd.get_results().rc != 0:
+            logger.error('Failed to start Greenplum Database in master only mode.')
+            cmd.validate()
+
+    def stop_master_only(self):
+        logger.info('Stopping Greenplum Database in master only mode')
+        cmd = GpStop('Stop Greenplum Database in master only mode', masterOnly=True)
+        cmd.run()
+        if cmd.get_results().rc != 0:
+            logger.error('Failed to stop Greenplum Database in master only mode.')
+            cmd.validate()
+        
+    def start_database(self):
+        logger.info('Starting Greenplum Database')
+        cmd = GpStart('Start Greenplum Database')
+        cmd.run()
+        if cmd.get_results().rc != 0:
+            logger.error('Failed to start Greenplum Database.')
+            cmd.validate()
+
+    def stop_database(self): 
+        logger.info('Stopping Greenplum Database')
+        cmd = GpStop('Stop Greenplum Databse')
+        cmd.run()
+        if cmd.get_results().rc != 0:
+            logger.error('Failed to stop Greenplum Database.')
+            cmd.validate()
+        
     def execute(self):
 
         #1 CheckFilespace - Check if new filespace exists
@@ -747,72 +779,58 @@ class MoveFilespace(Operation):
         if CheckFilespaceIsSame(self.new_filespace_name, self.file_type).run():
             raise InvalidFilespaceError('Filespace %s is same as the current filespace' % self.new_filespace_name)
 
-        #3 StopGPDB - Check for GPDB connections first and fail if connections exist
-        logger.info('Stopping Greenplum Database')
-        cmd = GpStop('Stop Greenplum Databse')
-        cmd.run()
-        if cmd.get_results().rc != 0:
-            logger.error('Failed to stop Greenplum Database.')
-            cmd.validate()
-
-        #4 StartGPDB in Master only mode
-        logger.info('Starting Greenplum Database in master only mode')
-        cmd = GpStart('Start Greenplum Database in master only mode', masterOnly=True)
-        cmd.run()
-        if cmd.get_results().rc != 0:
-            logger.error('Failed to start Greenplum Database in master only mode.')
-            cmd.validate()
-
-        #5 CheckFilespace - Check if the new filespace exists
-        if not CheckFilespace(self.new_filespace_name).run():
-            raise InvalidFilespaceError('Filespace %s does not exist' % self.new_filespace_name)
-
-        logger.info('Obtaining current filespace information')
-        #6 Find the filespace directory used for each segment
-        #6.1 query using pg_filespace, pg_filespace_entry, gp_segment_configuration
-        # If gp_transaction/temporary flat files exist and is not empty, then we know 
-        # the filespace being used. Otherwise, we assume that it is the pg_system 
-        # filespace by default 
-
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(), utility=True)
-
-        cur_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(gparray,
-                                                                               self.file_type).run()).run()
-        new_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(gparray,
-                                                                        self.new_filespace_name).run()).run()
-        pg_system_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(gparray,
-                                                                              PG_SYSTEM_FILESPACE).run()).run()
- 
-        cur_filespace_name = gparray.getFileSpaceName(int(cur_filespace_entries[1][0]))
-
-        logger.info('Obtaining segment information ...')
-        segments = gparray.getDbList() 
-
-        #8 Bring GPDB Offline
-        logger.info('Stopping Greenplum Database in master only mode')
-        cmd = GpStop('Stop Greenplum Database in master only mode', masterOnly=True)
-        cmd.run()
-        if cmd.get_results().rc != 0:
-            logger.error('Failed to stop Greenplum Database in master only mode.')
-            cmd.validate()
-
-        #7 MoveTemp/Trans files
-
-        try:
-            operations = GetMoveOperationList(segments,
-                                              self.file_type,
-                                              self.new_filespace_name,
-                                              new_filespace_entries,
-                                              cur_filespace_entries,
-                                              pg_system_filespace_entries
-                                             ).run()
-        except Exception, e:
-            raise MoveFilespaceError('Failed to create operations list. %s' % str(e))
-
-        logger.info('Moving %s filespace from %s to %s ...' % (FileType.lookup[self.file_type], cur_filespace_name, self.new_filespace_name))
         try:
             #Disable Ctrl+C
             signal.signal(signal.SIGINT,signal.SIG_IGN)
+
+            #3 StopGPDB - Check for GPDB connections first and fail if connections exist
+            self.stop_database()
+
+            #4 StartGPDB in Master only mode
+            self.start_master_only()
+
+            #5 CheckFilespace - Check if the new filespace exists
+            if not CheckFilespace(self.new_filespace_name).run():
+                raise InvalidFilespaceError('Filespace %s does not exist' % self.new_filespace_name)
+
+            logger.info('Obtaining current filespace information')
+            #6 Find the filespace directory used for each segment
+            #6.1 query using pg_filespace, pg_filespace_entry, gp_segment_configuration
+            # If gp_transaction/temporary flat files exist and is not empty, then we know 
+            # the filespace being used. Otherwise, we assume that it is the pg_system 
+            # filespace by default 
+
+            gparray = GpArray.initFromCatalog(dbconn.DbURL(), utility=True)
+
+            cur_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(gparray,
+                                                                               self.file_type).run()).run()
+            new_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(gparray,
+                                                                        self.new_filespace_name).run()).run()
+            pg_system_filespace_entries = GetFilespaceEntriesDict(GetFilespaceEntries(gparray,
+                                                                              PG_SYSTEM_FILESPACE).run()).run()
+ 
+            cur_filespace_name = gparray.getFileSpaceName(int(cur_filespace_entries[1][0]))
+
+            logger.info('Obtaining segment information ...')
+            segments = gparray.getDbList() 
+
+            #8 Bring GPDB Offline
+            self.stop_master_only()
+
+            #7 MoveTemp/Trans files
+
+            try:
+                operations = GetMoveOperationList(segments,
+                                                  self.file_type,
+                                                  self.new_filespace_name,
+                                                  new_filespace_entries,
+                                                  cur_filespace_entries,
+                                                  pg_system_filespace_entries
+                                                 ).run()
+            except Exception, e:
+                raise MoveFilespaceError('Failed to create operations list. %s' % str(e))
+
+            logger.info('Moving %s filespace from %s to %s ...' % (FileType.lookup[self.file_type], cur_filespace_name, self.new_filespace_name))
 
             ParallelOperation(operations).run()
 
@@ -830,9 +848,4 @@ class MoveFilespace(Operation):
             signal.signal(signal.SIGINT,signal.default_int_handler)
 
         #9 Bring GPDB online in normal mode
-        logger.info('Starting Greenplum Database')
-        cmd = GpStart('Start Greenplum Database')
-        cmd.run()
-        if cmd.get_results().rc != 0:
-            logger.error('Failed to start Greenplum Database.')
-            cmd.validate()
+        self.start_database()
