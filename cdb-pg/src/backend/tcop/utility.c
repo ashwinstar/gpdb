@@ -950,6 +950,15 @@ ProcessUtility(Node *parsetree,
 							&(((CreateStmt *) parsetree)->oidInfo.aoblkdirComptypeOid),
 							((CreateStmt *)parsetree)->is_part_child);
 				}
+				CommandCounterIncrement();
+				/*
+				 * Deferred statements should be evaluated *after* AO tables
+				 * are updated correctly.  Otherwise, they may not have
+				 * segment information yet and operations like create_index
+				 * in the deferred statements cannot see the relfile.
+				 */
+				EvaluateDeferredStatements(
+						((CreateStmt *) parsetree)->deferredStmts);
 			}
 			break;
 

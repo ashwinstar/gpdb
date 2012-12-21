@@ -8896,3 +8896,22 @@ alter table at
 ERROR:  PRIMARY KEY constraint must contain all columns in the partition key of relation "at".
 HINT:  Include the partition key or create a part-wise UNIQUE index instead.
 -- MPP-14471 end
+-- MPP-17707 start
+create table mpp17707
+( d int, p int ,x text)
+with (appendonly = true)
+distributed by (d)
+partition by range (p)
+(start (0) end (3) every (2));
+NOTICE:  CREATE TABLE will create partition "mpp17707_1_prt_1" for table "mpp17707"
+NOTICE:  CREATE TABLE will create partition "mpp17707_1_prt_2" for table "mpp17707"
+-- Create a expression index on the partitioned table
+create index idx_abc on mpp17707(upper(x));
+NOTICE:  building index for child partition "mpp17707_1_prt_1"
+NOTICE:  building index for child partition "mpp17707_1_prt_2"
+-- split partition 1 of table
+alter table mpp17707 split partition for (0) at (1)
+	into (partition x1, partition x2);
+NOTICE:  CREATE TABLE will create partition "mpp17707_1_prt_x1" for table "mpp17707"
+NOTICE:  CREATE TABLE will create partition "mpp17707_1_prt_x2" for table "mpp17707"
+-- MPP-17707 end

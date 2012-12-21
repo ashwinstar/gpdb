@@ -4416,3 +4416,20 @@ alter table at
 
 -- MPP-14471 end
 
+-- MPP-17707 start
+create table mpp17707
+( d int, p int ,x text)
+with (appendonly = true)
+distributed by (d)
+partition by range (p)
+(start (0) end (3) every (2));
+
+-- Create a expression index on the partitioned table
+
+create index idx_abc on mpp17707(upper(x));
+
+-- split partition 1 of table
+
+alter table mpp17707 split partition for (0) at (1)
+	into (partition x1, partition x2);
+-- MPP-17707 end
