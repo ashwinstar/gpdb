@@ -575,7 +575,8 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: cannot run under root (/) directory", 0);
+			usage_error("Security Error: You cannot specify the root"
+			            " directory (/) as the source files directory.", 0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -609,7 +610,8 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: cannot run under root (/) directory",
+			usage_error("Security Error: You cannot specify the root"
+			            " directory (/) as the log file directory.",
 						0);
 
 		/* strip ending / */
@@ -643,7 +645,8 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: cannot run under root (/) directory", 0);
+			usage_error("Security Error: You cannot specify the root"
+			            " directory (/) as the certificates directory.", 0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
