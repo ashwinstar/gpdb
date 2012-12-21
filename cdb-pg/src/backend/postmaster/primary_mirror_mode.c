@@ -2464,6 +2464,7 @@ primaryMirrorPopulateFilespaceInfo(void)
 
                 /* Check if there is an entry for the mirror temp filespace as well */
                 MemSet(buffer, 0, MAXPGPATH);
+		MemSet(peerFilespacePath, 0, MAXPGPATH);
                 if (fgets(buffer, MAXPGPATH, fp))
                 {
                         buffer[strlen(buffer)-1]='\0';
@@ -2493,7 +2494,8 @@ primaryMirrorPopulateFilespaceInfo(void)
                 fclose(fp);
 
 		ereport(LOG, (errmsg("temporary files filespace configuration: Filespace OID %d Filespace locations - local:%s peer:%s\n", 
-					pmModuleState->tempFilespaceOID, pmModuleState->tempFilespacePath, pmModuleState->peerTempFilespacePath)));
+					pmModuleState->tempFilespaceOID, pmModuleState->tempFilespacePath, 
+					pmModuleState->peerTempFilespacePath[0] ? pmModuleState->peerTempFilespacePath : "Mirror filespace not configured")));
         }
 	else
 		ereport(LOG, (errmsg("temporary files using default filespace")));
@@ -2507,6 +2509,7 @@ primaryMirrorPopulateFilespaceInfo(void)
                         pmModuleState->txnFilespaceOID = atoi(buffer);
 
                 MemSet(buffer, 0, BUFFER_LEN);
+		MemSet(filespacePath, 0, MAXPGPATH);
                 if (fgets(buffer, BUFFER_LEN, fp))
                 {
                         buffer[strlen(buffer)-1]='\0';
@@ -2518,6 +2521,7 @@ primaryMirrorPopulateFilespaceInfo(void)
 
                 /* Check if there is an entry for the mirror transaction filespace as well */
                 MemSet(buffer, 0, MAXPGPATH);
+		MemSet(peerFilespacePath, 0, MAXPGPATH);
                 if (fgets(buffer, MAXPGPATH, fp))
                 {
                         buffer[strlen(buffer)-1]='\0';
@@ -2551,7 +2555,7 @@ primaryMirrorPopulateFilespaceInfo(void)
 
 		ereport(LOG, (errmsg("transaction files filespace configuraton: Filespace OID %d filespace locations - local:%s peer:%s",
         				pmModuleState->txnFilespaceOID, pmModuleState->txnFilespacePath, 
-					pmModuleState->peerTxnFilespacePath ? pmModuleState->peerTxnFilespacePath : "Mirror filespace not configured")));
+					pmModuleState->peerTxnFilespacePath[0] ? pmModuleState->peerTxnFilespacePath : "Mirror filespace not configured")));
 	}
 	else
 		ereport(LOG, (errmsg("transaction files using default pg_system filespace")));
