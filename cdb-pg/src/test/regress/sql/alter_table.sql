@@ -1106,3 +1106,109 @@ select alter2.plus1(41);
 
 -- clean up
 drop schema alter2 cascade;
+
+drop schema if exists mpp17582 cascade;
+create schema mpp17582;
+set search_path=mpp17582;
+
+DROP TABLE testbug_char5;
+CREATE TABLE testbug_char5
+(
+timest character varying(6),
+user_id numeric(16,0) NOT NULL,
+to_be_drop char(5), -- Iterate through different data types
+tag1 char(5), -- Iterate through different data types
+tag2 char(5)
+)
+DISTRIBUTED BY (user_id)
+PARTITION BY LIST(timest)
+(
+PARTITION part201203 VALUES('201203') WITH (APPENDONLY=true, COMPRESSLEVEL=5, ORIENTATION=column),
+PARTITION part201204 VALUES('201204') WITH (APPENDONLY=true, COMPRESSLEVEL=5, ORIENTATION=row),
+PARTITION part201205 VALUES('201205')
+);
+
+create index testbug_char5_tag1 on testbug_char5 using btree(tag1);
+
+insert into testbug_char5 (timest,user_id,to_be_drop) select '201203',1111,'10000';
+insert into testbug_char5 (timest,user_id,to_be_drop) select '201204',1111,'10000';
+insert into testbug_char5 (timest,user_id,to_be_drop) select '201205',1111,'10000';
+
+select * from testbug_char5 order by 1,2;
+
+ALTER TABLE testbug_char5 drop column to_be_drop;
+
+select * from testbug_char5 order by 1,2;
+
+insert into testbug_char5 (timest,user_id,tag2) select '201203',2222,'2';
+insert into testbug_char5 (timest,user_id,tag2) select '201204',2222,'2';
+insert into testbug_char5 (timest,user_id,tag2) select '201205',2222,'2';
+
+select * from testbug_char5 order by 1,2;
+
+alter table testbug_char5 add PARTITION part201206 VALUES('201206') WITH (APPENDONLY=true, COMPRESSLEVEL=5, ORIENTATION=column);
+alter table testbug_char5 add PARTITION part201207 VALUES('201207') WITH (APPENDONLY=true, COMPRESSLEVEL=5, ORIENTATION=row);
+alter table testbug_char5 add PARTITION part201208 VALUES('201208');
+
+insert into testbug_char5 select '201206',3333,'1','2';
+insert into testbug_char5 select '201207',3333,'1','2';
+insert into testbug_char5 select '201208',3333,'1','2';
+
+
+select * from testbug_char5 order by 1,2;
+
+--
+-- Check index scan
+--
+
+set enable_seqscan=off;
+set enable_indexscan=on;
+
+select * from testbug_char5 where tag1='1';
+
+--
+-- Check NL Index scan plan
+--
+
+create table dim(tag1 char(5));
+insert into dim values('1');
+
+set enable_hashjoin=off;
+set enable_seqscan=off;
+set enable_nestloop=on;
+set enable_indexscan=on;
+
+select * from testbug_char5, dim where testbug_char5.tag1=dim.tag1;
+
+--
+-- Load from another table
+--
+
+DROP TABLE load;
+CREATE TABLE load
+(
+timest character varying(6),
+user_id numeric(16,0) NOT NULL,
+tag1 char(5),
+tag2 char(5)
+)
+DISTRIBUTED randomly;
+
+insert into load select '20120' || i , 1111 * (i + 2), '1','2' from generate_series(3,8) i;
+select * from load;
+
+insert into testbug_char5 select * from load;
+
+select * from testbug_char5;
+
+--
+-- Update values
+--
+
+update testbug_char5 set tag1='6' where tag1='1' and timest='201208';
+update testbug_char5 set tag2='7' where tag2='1' and timest='201208';
+
+select * from testbug_char5;
+
+set search_path=public;
+drop schema if exists mpp17582 cascade;

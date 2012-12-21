@@ -252,6 +252,7 @@ typedef struct JunkFilter
  *  aoprocessed			???
  *  partInsertMap		map input attrno to target attrno
  *  partSlot			TupleTableSlot for the target part relation
+ *  resultSlot          TupleTableSlot for the target relation
  * ----------------
  */
 typedef struct ResultRelInfo
@@ -278,6 +279,7 @@ typedef struct ResultRelInfo
 	uint64                  ri_aoprocessed; /* tuples processed for AO */
 	struct AttrMap			*ri_partInsertMap;
 	struct TupleTableSlot			*ri_partSlot;
+	struct TupleTableSlot *ri_resultSlot;
 } ResultRelInfo;
 
 typedef struct ShareNodeEntry
