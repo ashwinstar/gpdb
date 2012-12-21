@@ -1156,6 +1156,19 @@ CHK_ON_PASSIVE_STANDBY () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_CIDRADDR () {
+    # MPP-15889
+    # assuming argument is an ip address, return the address
+    # with a /32 or /128 cidr suffix based on whether or not the
+    # address contains a :
+
+    if [ `echo $1 | grep -c :` -gt 0 ]; then
+	echo $1/128
+    else
+	echo $1/32
+    fi
+}
+
 BUILD_MASTER_PG_HBA_FILE () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $# -eq 0 ];then ERROR_EXIT "[FATAL]:-Passed zero parameters, expected at least 1" 2;fi
@@ -1170,17 +1183,23 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "host     all         $USER_NAME         127.0.0.1/28    trust" >> ${GP_DIR}/$PG_HBA
         for ADDR in "${MASTER_IP_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${GP_DIR}/$PG_HBA
+        	# MPP-15889
+        	CIDRADDR=$(GET_CIDRADDR $ADDR)
+        	$ECHO "host     all         $USER_NAME         $CIDRADDR       trust" >> ${GP_DIR}/$PG_HBA
         done
         for ADDR in "${STANDBY_IP_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/32       trust" >> ${GP_DIR}/$PG_HBA
+        	# MPP-15889
+        	CIDRADDR=$(GET_CIDRADDR $ADDR)
+        	$ECHO "host     all         $USER_NAME         $CIDRADDR       trust" >> ${GP_DIR}/$PG_HBA
         done
 
         # Add all local IPV6 addresses
         for ADDR in "${MASTER_IPV6_LOCAL_ADDRESS_ALL[@]}"
         do
-        	$ECHO "host     all         $USER_NAME         $ADDR/128       trust" >> ${GP_DIR}/$PG_HBA
+        	# MPP-15889
+        	CIDRADDR=$(GET_CIDRADDR $ADDR)
+        	$ECHO "host     all         $USER_NAME         $CIDRADDR       trust" >> ${GP_DIR}/$PG_HBA
         done
         LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1924,7 +1943,8 @@ case $OS_TYPE in
 		PS_TXT="-ef"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		ZCAT=gzcat
-		PG_METHOD=trust
+		# MPP-15890
+		PG_METHOD=ident
 		HOST_ARCH_TYPE="uname -i"
 		NOLINE_ECHO=/usr/bin/echo
 		DEFAULT_LOCALE_SETTING=en_US.UTF-8

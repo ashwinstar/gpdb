@@ -43,7 +43,7 @@ PARALLELISM   = 16
 
 
 #============================================================
-__version__ = '$Revision$'
+__version__ = 'main build dev'
 
 
 
@@ -1440,10 +1440,11 @@ class GPUpgrade(GPUpgradeBase):
                                 % (self.user, self.user))
 
                 for addr in ip:
-                    file.write('host all %s %s/32 trust\n'
-                               % (MIGRATIONUSER, addr))
-                    file.write('host all %s %s/32 trust\n'
-                               % (self.user, addr))
+                    cidr_suffix = '/128' if ':' in addr else '/32'  # MPP-15889
+                    file.write('host all %s %s%s trust\n'
+                               % (MIGRATIONUSER, addr, cidr_suffix))
+                    file.write('host all %s %s%s trust\n'
+                               % (self.user, addr, cidr_suffix))
 
                 file.close()
 

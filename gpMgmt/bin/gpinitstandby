@@ -88,7 +88,7 @@ def parseargs():
     """parses and validates command line args."""
     
     parser = OptParser(option_class=OptChecker,
-                       version='%prog version $Revision$')
+                       version='%prog version main build dev')
     parser.setHelp([])
     parser.remove_option('-h')
     
@@ -528,7 +528,8 @@ def update_pg_hba_conf(options, array):
         
         new_section = ['# standby master host ip addresses\n']
         for ip in standby_ips:
-            new_section.append('host\tall\t%s\t%s/32\ttrust\n' % (current_user, ip))
+            cidr_suffix = '/128' if ':' in ip else '/32' # MPP-15889
+            new_section.append('host\tall\t%s\t%s%s\ttrust\n' % (current_user, ip, cidr_suffix))
             
         # insert new section
         pg_hba_conf[index:index] = new_section
