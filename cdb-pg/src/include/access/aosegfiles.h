@@ -24,6 +24,8 @@
 #define InvalidFileSegNumber			-1
 #define InvalidUncompressedEof			-1
 
+#define AO_FILESEGINFO_ARRAY_SIZE		8
+
 /*
  * pg_aoseg_nnnnnn table values for FormData_pg_attribute.
  *

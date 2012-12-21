@@ -249,12 +249,15 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
     int cur_seg;
     Datum *d;
     bool *null;
+	int seginfo_slot_no = AO_FILESEGINFO_ARRAY_SIZE;
 
 	Assert(aoEntry != NULL);
 
-    *totalseg = 0;
-
-    allseg = (AOCSFileSegInfo **) palloc0(sizeof(AOCSFileSegInfo*) * MAX_AOREL_CONCURRENCY);
+	/* MPP-16407:
+	 * Initialize the segment file information array, we first allocate 8 slot for the array,
+	 * then array will be dynamically expanded later if necessary.
+	 */
+    allseg = (AOCSFileSegInfo **) palloc0(sizeof(AOCSFileSegInfo*) * seginfo_slot_no);
     d = (Datum *) palloc(sizeof(Datum) * Natts_pg_aocsseg);
     null = (bool *) palloc(sizeof(bool) * Natts_pg_aocsseg);
 
@@ -263,6 +266,13 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
     scan = heap_beginscan(pg_aocsseg_rel, snapshot, 0, NULL);
     while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
     {
+		/* dynamically expand space for AOCSFileSegInfo* array */
+		if (cur_seg >= seginfo_slot_no)
+		{
+			seginfo_slot_no *= 2;
+			allseg = (AOCSFileSegInfo **) repalloc(allseg, sizeof(AOCSFileSegInfo*) * seginfo_slot_no);
+		}
+		
         seginfo = (AOCSFileSegInfo *) palloc0(aocsfileseginfo_size(nvp));
 
         allseg[cur_seg] = seginfo;
