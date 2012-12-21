@@ -48,7 +48,7 @@ typedef struct ServiceCtrl
  *				committed then PANIC is raised
  */
 #define DECLARE_SAVE_SUPPRESS_PANIC()\
-	int SaveSuppressPanic = false; \
+	volatile int SaveSuppressPanic = false; \
 	bool IsCommit = IsCommitInProgress();
 
 #define SUPPRESS_PANIC()\
