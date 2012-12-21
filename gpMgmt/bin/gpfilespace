@@ -60,8 +60,7 @@ try:
     from getpass import getpass
     from gppylib.parseutils import line_reader, parse_fspacename, parse_gpfilespace_line, \
         canonicalize_address
-    from gppylib.operations.filespace import MoveFilespace, MoveFilespaceError, GetCurrentFilespaceEntries, FileType,\
-         PG_SYSTEM_FILESPACE
+    from gppylib.operations.filespace import MoveFilespace, MoveFilespaceError, GetCurrentFilespaceEntries, FileType, CheckFilespaceConsistency, PG_SYSTEM_FILESPACE
 
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -130,7 +129,7 @@ def ParseOptions():
     parser.add_option('-h', '--host', default=pghost,
                       help=optparse.SUPPRESS_HELP)
     parser.add_option('-?', '--help', default=False,
-                      help=optparse.SUPPRESS_HELP)
+                      action='store_true', help=optparse.SUPPRESS_HELP)
     parser.add_option('-p', '--port', default=pgport,
                       help=optparse.SUPPRESS_HELP)
     parser.add_option('-U', '--username', default=pguser,
@@ -850,7 +849,13 @@ class GPFilespace:
             @return: None
         """
         logger.info('Getting filespace information for %s' % FileType.lookup[file_type])
+        
         gparray = GpArray.initFromCatalog(dbconn.DbURL()) if self.array is None else self.array
+
+        if not CheckFilespaceConsistency(gparray, file_type).run():
+            logger.error('Filespace is inconsistent')
+            return 
+
         filespace_entries = GetCurrentFilespaceEntries(gparray, file_type).run() 
         filespace_name = gparray.getFileSpaceName(int(filespace_entries[0][0]))
         logger.info('Current Filespace for %s is %s' % (FileType.lookup[file_type], filespace_name))
