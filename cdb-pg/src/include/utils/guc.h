@@ -306,6 +306,9 @@ extern char  *gp_email_smtp_userid;
 extern char  *gp_email_smtp_password;
 extern char  *gp_email_from;
 extern char  *gp_email_to;
+extern int   gp_email_connect_timeout;
+extern int   gp_email_connect_failures;
+extern int   gp_email_connect_avoid_duration; 
 #endif
 
 #if USE_SNMP

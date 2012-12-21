@@ -440,6 +440,9 @@ char	   *gp_email_smtp_userid;
 char	   *gp_email_smtp_password;
 char	   *gp_email_from;
 char	   *gp_email_to;
+int        gp_email_connect_timeout;
+int        gp_email_connect_failures;
+int        gp_email_connect_avoid_duration;
 #endif
 
 #if USE_SNMP
@@ -4947,6 +4950,35 @@ static struct config_int ConfigureNamesInt[] =
 		100, 50, INT_MAX, NULL, NULL
 	},
 
+#if USE_EMAIL
+	{
+		{"gp_email_connect_timeout", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the amount of time (in secs) after which SMTP sockets would timeout"),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_NOT_IN_SAMPLE
+		},
+		&gp_email_connect_timeout, 
+		15, 10, 120, NULL, NULL
+	},
+	{
+		{"gp_email_connect_failures", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the number of consecutive connect failures before declaring SMTP server as unavailable"),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_NOT_IN_SAMPLE
+		},
+		&gp_email_connect_failures,
+		5, 3, 100, NULL, NULL
+	},
+	{
+		{"gp_email_connect_avoid_duration", PGC_SUSET, LOGGING,
+			gettext_noop("Sets the amount of time (in secs) to avoid connecting to SMTP server"),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_NOT_IN_SAMPLE
+		},
+		&gp_email_connect_avoid_duration,
+		7200, 300, 86400, NULL, NULL
+	},
+#endif
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL
@@ -5156,6 +5188,7 @@ static struct config_real ConfigureNamesReal[] =
 		&gp_simex_rand,
 		100.0, 0.001, 100.0, NULL, NULL
 	},
+
 
 /* End-of-list marker */
 	{

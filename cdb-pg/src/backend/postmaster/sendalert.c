@@ -551,6 +551,19 @@ static int send_alert_via_email(const GpErrorData * errorData,
 	List *elemlist = NIL;
 	ListCell *l = NULL;
 	int success = 0;
+        static int num_connect_failures = 0;
+        static time_t last_connect_failure_ts = 0;
+
+
+        if (gp_email_connect_failures && num_connect_failures >= gp_email_connect_failures) {
+            if (time(0) - last_connect_failure_ts > gp_email_connect_avoid_duration) {
+                num_connect_failures = 0;
+                elog(LOG, "Retrying emails now...");
+            } else {
+                elog(LOG, "Not attempting emails as of now");
+                return -1;
+            }
+        }
 
 	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
 	{
@@ -784,8 +797,14 @@ static int send_alert_via_email(const GpErrorData * errorData,
 	/* smtp_8bitmime_set_body(message, E8bitmime_8BITMIME); */
 
 	/* Initiate a connection to the SMTP server and transfer the message. */
-	if (!smtp_start_session(session))
+        int num_smtp_failures = 0;
+        int smtp_ret = smtp_start_session_with_timeout(session, gp_email_connect_timeout, &num_smtp_failures, NULL, 0); 
+	if (smtp_ret <= 0)
 	{
+                 if (num_smtp_failures > 0) { /* SMTP server issue */
+                     num_connect_failures++;
+                     last_connect_failure_ts = time(0);  
+                 }
 		/*
 		 * If we get here, we can't talk to the SMTP server at all
 		 */
@@ -798,6 +817,7 @@ static int send_alert_via_email(const GpErrorData * errorData,
 	}
 	else
 	{
+                
 		/* I would expect this to be always zero here, but just in case it's not */
 		if (smtp_errno() != 0)
 		{
@@ -808,6 +828,7 @@ static int send_alert_via_email(const GpErrorData * errorData,
 
 			elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
 		}
+                num_connect_failures = 0;
 		/*
 		 * Report on the success or otherwise of the mail transfer.
 		 * This really only tells the "overall" status, so if an individual e-mail fails,
