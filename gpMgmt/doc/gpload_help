@@ -185,6 +185,8 @@ GPLOAD:
        | PORT_RANGE: [<start_port_range>, <end_port_range>]
          FILE: 
            - </path/to/input_file>
+         SSL: true | false
+         CERTIFICATES_PATH: /path/to/certificates
     - COLUMNS:
            - <field_name>: <data_type>
     - FORMAT: text | csv
@@ -295,6 +297,19 @@ FILE - Required. Specifies the location of a file, named pipe, or
        C-style pattern matching to denote multiple files. The files 
        specified are assumed to be relative to the current directory 
        from which gpload is executed (or you can declare an absolute path).
+
+SSL - Optional. Specifies usage of SSL encryption.
+
+CERTIFICATES_PATH - Required when SSL is true; otherwise, optional.
+                    The location specified in certificate_path 
+                    must contain the following files:
+
+                    - The server certificate file, server.crt
+                    - The server private key file, server.key
+                    - The trusted certificate authorities, root.crt
+
+                    The root directory (/) cannot be specified 
+                    in certificate_path.
 
 COLUMNS - Optional. Specifies the schema of the source data file(s) 
           in the format of field_name: data_type. The DELIMITER character 
