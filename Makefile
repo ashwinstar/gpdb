@@ -468,6 +468,9 @@ env.sh:
 	echo "export CC=\"$(strip $(BLD_CC) $(BLD_CFLAGS))\"" >> env.sh
 	echo "export PATH=$(PATH)" >> env.sh
 	echo "export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))" >> env.sh
+ifneq "$(PERL_DIR)" ""
+	echo "export PERL5LIB=$(PERL_DIR)/lib/site_perl/5.12.4/x86_64-linux:$(PERL_DIR)/lib/site_perl/5.12.4:$(PERL_DIR)/lib/5.12.4/x86_64-linux:$(PERL_DIR)/lib/5.12.4" >> env.sh
+endif
 
 #---------------------------------------------------------------------
 # rsync + build
