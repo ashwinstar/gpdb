@@ -32,6 +32,43 @@ typedef struct ServiceCtrl
 
 #define SERVER_EYE_CATCHER_LEN 6
 
+
+/*
+ * Kludge to prevent our error handling during communication with master standby by raising and
+ * catching ERROR from becoming a PANIC in critical sections... 
+ * 
+ * The reason for kludge is to avoid postmaster reset on master due to master standby issues. 
+ *
+ * However PANIC needs to be raised when transaction is in commit state.
+ * Justification 
+ *		a) to be able to recover GPDB (i.e. avoid commit and abort for the same transaction in the XLOG)
+ *		b) to have consistent behavior with other Transaction Management design/code
+ *			*) During transaction commit the code is in Critical section, any failure causes PANIC
+ *			*) After transaction commit there is a check in AbortTransaction. If transaction has been already 
+ *				committed then PANIC is raised
+ */
+#define DECLARE_SAVE_SUPPRESS_PANIC()\
+	int SaveSuppressPanic = false; \
+	bool IsCommit = IsCommitInProgress();
+
+#define SUPPRESS_PANIC()\
+{\
+	if (! IsCommit) \
+	{ \
+		SaveSuppressPanic = SuppressPanic;\
+		SuppressPanic = true;\
+	} \
+}
+
+#define RESTORE_PANIC()\
+{\
+	if (! IsCommit) \
+	{ \
+		SuppressPanic = SaveSuppressPanic;\
+	} \
+}
+
+
 typedef struct ServiceConfig
 {
 	char    eyeCatcher[SERVER_EYE_CATCHER_LEN];

@@ -360,6 +360,14 @@ IsAbortInProgress(void)
 	return (s->state == TRANS_ABORT);
 }
 
+bool
+IsCommitInProgress(void)
+{
+	TransactionState s = CurrentTransactionState;
+	
+	return (s->state == TRANS_COMMIT);
+}
+
 /*
  *	IsAbortedTransactionBlockState
  *
@@ -913,7 +921,7 @@ RecordTransactionCommit(void)
 
 	int			nchildren;
 	TransactionId *children;
-	bool		isDtxPrepared;
+	bool		isDtxPrepared = 0;
 	bool		omitCommitRecordForDirtyQEReader;
 	TMGXACT_LOG gxact_log;
 
@@ -1146,6 +1154,19 @@ RecordTransactionCommit(void)
 				pg_usleep(CommitDelay);
 
 			XLogFlush(recptr);
+						
+#ifdef FAULT_INJECTOR
+			if (isDtxPrepared == 0 &&
+				CurrentTransactionState->blockState == TBLOCK_END)
+			{
+					FaultInjector_InjectFaultIfSet(
+												   LocalTmRecordTransactionCommit,
+												   DDLNotSpecified,
+												   "",  // databaseName
+												   ""); // tableName
+			}
+#endif
+			
 			if (isDtxPrepared)
 			{
 				forcedDistributedCommitted(&recptr);
