@@ -1554,26 +1554,6 @@ validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
 	if (!stenc)
 		return;
 
-	/* See if the storage encoding clauses conflict with the WITH clause */
-	foreach(lc, stenc)
-	{
-		ColumnReferenceStorageDirective *c = lfirst(lc);
-
-		if (c->deflt)
-			continue;
-
-		/*
-		 * We do not expect very large numbers of columns not very large numbers
-		 * of values in the encoding clause. If that assumption changes, we
-		 * should revisit this basic validation to make it more scalable.
-		 */
-		if (encodings_overlap(c->encoding, stmt->options, true))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("ENCODING clause conflicts with table WITH clause")));
-
-	}
-
 	/* Generate a hash table for all the columns */
 	foreach(lc, stmt->tableElts)
 	{

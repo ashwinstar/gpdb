@@ -452,10 +452,16 @@ ERROR:  compresslevel=100000 is out of range (should be between 0 and 9)
 alter table ccddl add column j int encoding(a=b);
 ERROR:  unrecognized parameter "a"
 drop table ccddl;
--- encoding clause conflicts with WITH clause
-create table a (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
+-- encoding clause has higher precedence than WITH clause
+create table ccddl (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
 appendonly=true, orientation=column);
-ERROR:  ENCODING clause conflicts with table WITH clause
+execute ccddlcheck;
+ relname | attnum |                       attoptions
+---------+--------+--------------------------------------------------------
+ ccddl   |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+(1 row)
+
+drop table ccddl;
 -- conflicting WITH and DEFAULT COLUMN ENCODING clause
 create table t1 (i int, j int, default column encoding (compresstype=quicklz))
 with (compresstype=zlib, appendonly=true, orientation=column);
@@ -500,15 +506,22 @@ execute ccddlcheck;
 (2 rows)
 
 drop table ccddl;
--- MPP-15120 - ensure we detect storage encoding and WITH conflicts, even in the
--- LIKE case.
+-- encoding clause has higher precedence than WITH clause even in the LIKE case.
+-- (this change the behavior of MPP-15120) 
 create table ccddl (i int, j int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
 with (appendonly=true, orientation=column, compresstype=zlib);
-ERROR:  ENCODING clause conflicts with table WITH clause
+execute ccddlcheck;
+ relname  | attnum |                       attoptions                       
+----------+--------+--------------------------------------------------------
+ ccddl_co |      1 | {compresstype=quicklz,compresslevel=1,blocksize=32768}
+ ccddl_co |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+(2 rows)
+
 drop table ccddl;
+drop table ccddl_co;
 -----------------------------------------------------------------------
 -- Partitioning support
 -- Expect: success

@@ -160,9 +160,11 @@ compresslevel=100000);
 alter table ccddl add column j int encoding(a=b);
 drop table ccddl;
 
--- encoding clause conflicts with WITH clause
-create table a (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
+-- encoding clause has higher precedence than WITH clause
+create table ccddl (i int encoding(compresstype=quicklz)) with(compresstype=zlib,
 appendonly=true, orientation=column);
+execute ccddlcheck;
+drop table ccddl;
 
 -- conflicting WITH and DEFAULT COLUMN ENCODING clause
 create table t1 (i int, j int, default column encoding (compresstype=quicklz))
@@ -197,12 +199,14 @@ select 1, 1;
 execute ccddlcheck;
 drop table ccddl;
 
--- MPP-15120 - ensure we detect storage encoding and WITH conflicts, even in the
--- LIKE case.
+-- encoding clause has higher precedence than WITH clause even in the LIKE case.
+-- (this change the behavior of MPP-15120) 
 create table ccddl (i int, j int);
 create table ccddl_co (like ccddl, column i encoding(compresstype=quicklz))
 with (appendonly=true, orientation=column, compresstype=zlib);
+execute ccddlcheck;
 drop table ccddl;
+drop table ccddl_co;
 
 -----------------------------------------------------------------------
 -- Partitioning support
