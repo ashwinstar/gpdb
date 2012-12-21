@@ -25,6 +25,32 @@ select * from ccddl;
 
 drop table ccddl;
 
+-- MPP-17012 default encoding clause with extra options in with clause
+create table ccddl (
+	i int,
+	j int,
+	default column encoding (compresstype=zlib, compresslevel=5)
+) with (appendonly=true, orientation=column, oids=false);
+
+execute ccddlcheck;
+
+drop table ccddl;
+
+create table ccddl (
+	i int,
+	j int,
+	default column encoding (compresstype=zlib)
+) with (appendonly=true, orientation=column, fillfactor=11);
+
+execute ccddlcheck;
+
+-- This is enough to force compression, specially since we'll hash
+-- all to a single segment and the values are all the same.
+insert into ccddl select 1, 2 from generate_series(1, 100);
+select * from ccddl;
+
+drop table ccddl;
+
 -- Make sure we cleaned up after ourselves: should return zero rows
 -- We exclude the named tables because they're hang overs from other
 -- tests

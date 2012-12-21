@@ -131,6 +131,145 @@ select * from ccddl;
 (100 rows)
 
 drop table ccddl;
+-- MPP-17012 default encoding clause with extra options in with clause
+create table ccddl (
+	i int,
+	j int,
+	default column encoding (compresstype=zlib, compresslevel=5)
+) with (appendonly=true, orientation=column, oids=false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+execute ccddlcheck;
+ relname | attnum |                     attoptions                      
+---------+--------+-----------------------------------------------------
+ ccddl   |      1 | {compresstype=zlib,compresslevel=5,blocksize=32768}
+ ccddl   |      2 | {compresstype=zlib,compresslevel=5,blocksize=32768}
+(2 rows)
+
+drop table ccddl;
+create table ccddl (
+	i int,
+	j int,
+	default column encoding (compresstype=zlib)
+) with (appendonly=true, orientation=column, fillfactor=11);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+execute ccddlcheck;
+ relname | attnum |                     attoptions                      
+---------+--------+-----------------------------------------------------
+ ccddl   |      1 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+ ccddl   |      2 | {compresstype=zlib,compresslevel=1,blocksize=32768}
+(2 rows)
+
+-- This is enough to force compression, specially since we'll hash
+-- all to a single segment and the values are all the same.
+insert into ccddl select 1, 2 from generate_series(1, 100);
+select * from ccddl;
+ i | j 
+---+---
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+ 1 | 2
+(100 rows)
+
+drop table ccddl;
 -- Make sure we cleaned up after ourselves: should return zero rows
 -- We exclude the named tables because they're hang overs from other
 -- tests
