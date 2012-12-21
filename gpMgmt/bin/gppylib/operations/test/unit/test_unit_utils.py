@@ -7,7 +7,7 @@ import unittest
 import pickle
 from gppylib.commands.base import ExecutionError
 from gppylib.operations.utils import RemoteOperation
-from gppylib.operations.test.unit.test_utils_helper import TestOperation, RaiseOperation, RaiseOperation_Nested, RaiseOperation_Unsafe, RaiseOperation_Unpicklable, RaiseOperation_Safe, MyException, ExceptionWithArgs, ExceptionWithArgsUnsafe
+from gppylib.operations.test_utils_helper import TestOperation, RaiseOperation, RaiseOperation_Nested, RaiseOperation_Unsafe, RaiseOperation_Unpicklable, RaiseOperation_Safe, MyException, ExceptionWithArgs, ExceptionWithArgsUnsafe
 
 # TODO: much of this code could be improved with assertion context managers that 
 # exist in a later version of unit test, I believe
