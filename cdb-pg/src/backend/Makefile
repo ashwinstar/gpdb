@@ -34,9 +34,6 @@ endif
 
 OBJS = $(SUBDIROBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a
 
-# clapack is used in backend/utils/stat, so we need to include the libraries for it.
-CLAPACKLIBS = -llapack -lf2c -lblas
-
 ifeq ($(PORTNAME), darwin)
 LDOPTS = -Z
 endif
@@ -60,7 +57,10 @@ endif
 
 ##########################################################################
 
-all: submake-libpgport submake-libbsafe_wrapper postgres $(POSTGRES_IMP)
+all: submake-libpgport submake-libbsafe_wrapper submake-libgpla postgres $(POSTGRES_IMP)
+
+submake-libgpla:
+	$(MAKE) -C utils/stat/libgpla all
 
 submake-libbsafe_wrapper:
 	$(MAKE) -C libpq/bsafe_wrapper all

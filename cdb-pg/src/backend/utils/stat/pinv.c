@@ -1,5 +1,6 @@
 #include "postgres.h"
 #include "funcapi.h"
+#include "miscadmin.h"
 
 #include "pinv.h"
 
@@ -9,14 +10,67 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
+#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
-/* Includes from the clapack library */
-#include <f2c.h>
-#include <clapack.h>
+static void (*gp_dgesdd)(char *jobz, long int *m, long int *n, double *a,
+				  long int *lda, double *s, double *u, long int *ldu,
+				  double *vt, long int *ldvt, double *work,
+				  long int *lwork, long int *iwork, long int *info) = NULL;
 
+/*
+ * Load libgpla
+ *
+ * We must do this in a round-about way because libgpla links against
+ * libblas, liblapack and libf2c, and those libraries are commonly
+ * used in user defined functions shipped by MADlib and PL/R. So,
+ * we hide the symbols in the libgpla shared library and then load that with the
+ * RTLD_LOCAL flag, so that the symbols are not put into the global symbol
+ * namespace.
+ *
+ * This approach allows us to mimic two level symbol namespaces on Linux and
+ * Solaris, like what provided in Darwin.
+ */
+void *
+load_gpla(void)
+{
+	void *hdl = NULL;
+	char libdir[MAXPGPATH], libpath[MAXPGPATH];
+
+#ifdef __darwin__
+#define LIBGPLANAME "libgpla.dylib"
+#else
+#define LIBGPLANAME "libgpla.so"
+#endif
+
+	get_lib_path(my_exec_path, libdir);
+	snprintf(libpath, MAXPGPATH, "%s/%s", libdir, LIBGPLANAME);
+
+	hdl = dlopen(libpath, RTLD_NOW | RTLD_LOCAL);
+
+	if (!hdl)
+		elog(ERROR, "could not open libgpla: %s", dlerror());
+
+	return hdl;
+}
+
+/*
+ * Link in gp_dgesdd
+ */
+static void
+link_la_function(void)
+{
+	void *hdl = NULL;
+
+	if (gp_dgesdd)
+		return;
+
+	hdl = load_gpla();
+
+	gp_dgesdd = dlsym(hdl, "gp_dgesdd");
+}
 
 /*
  * Evaluating the following condition will not cause an integer overflow and is
@@ -29,7 +83,7 @@
  */
 #define IS_FEASIBLE_MATRIX_SIZE(m,n) ( \
 	(MaxAllocSize / sizeof(float8) / Max(m,n) / Max(m,n) >= 1) && \
-	(MaxAllocSize / sizeof(integer) / 8 / m / n >= 1) )
+	(MaxAllocSize / sizeof(long int) / 8 / m / n >= 1) )
 
 Datum 
 pseudoinverse(PG_FUNCTION_ARGS)
@@ -142,7 +196,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 {
 	long int    minmn;
 	long int    i, j, k, ii;
-	integer	    lwork, *iwork;
+	long int	    lwork, *iwork;
 	float8     *work, *Atemp;
 	float8      epsilon, tolerance, conditionNumber;
 	float8     *S, *U, *Vt;
@@ -154,6 +208,8 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			 errmsg("pseudoinverse: matrix dimensions too large")));
 
+	link_la_function();
+
 	/* 
 	 * Calculate the tolerance for "zero" values in the SVD 
 	 *    t = ε•max(rows,columns)•max(Σ) 
@@ -161,7 +217,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	 *   available)
 	 */
 	epsilon = pow(2,1-56); 
-	tolerance = epsilon * max(rows,columns); 
+	tolerance = epsilon * Max(rows,columns); 
 
 	/*
 	 * Precondition: IS_FEASIBLE_MATRIX_SIZE(rows,columns)
@@ -170,7 +226,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	 * U, Sdiag and Vt are the factors of the pseudo inverse of A, the 
 	 * components of the singular value decomposition of A
 	 */
-	S = (float8 *) palloc(sizeof(float8)*min(rows,columns));
+	S = (float8 *) palloc(sizeof(float8)*Min(rows,columns));
 	U = (float8 *) palloc(sizeof(float8)*rows*rows);
 	Vt = (float8 *) palloc(sizeof(float8)*columns*columns);
 
@@ -198,7 +254,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	 * First call of dgesdd is with lwork=-1 to calculate an optimal value of 
 	 * lwork 
 	 */
-	iwork = (integer *) palloc(sizeof(integer)*8*min(rows,columns));
+	iwork = (long int *) palloc(sizeof(long int)*8*Min(rows,columns));
 	lwork=-1;
 	
 	/* Need a single location in work to store the recommended value of lwork */
@@ -206,7 +262,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 #ifdef WIN32
 	elog(ERROR,"pseudoinverse: lapack routine dgesdd not available on WIN32");
 #else
-	dgesdd_( &achar, &rows, &columns, Atemp, &rows, S, U, &rows, Vt, &columns, 
+	gp_dgesdd(&achar, &rows, &columns, Atemp, &rows, S, U, &rows, Vt, &columns,
 			 work, &lwork, iwork, &i );
 
 	if (i != 0) {
@@ -223,7 +279,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	} else {
 #ifdef USE_ASSERT_CHECKING
 		Assert(MaxAllocSize / sizeof(float8) <= ULONG_MAX &&
-			sizeof(long) <= sizeof(integer));
+			sizeof(long) <= sizeof(long int));
 #endif
 
 		/* 
@@ -233,7 +289,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 		 * Postcondition:
 		 *     lwork <= MaxAllocSize / sizeof(float8)
 		 */
-		lwork = (integer) work[0];
+		lwork = (long int) work[0];
 		pfree(work);
 	}
 
@@ -243,7 +299,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	 * obtained in the first call of dgesdd_ 
 	 */
 	work = (float8 *) palloc(sizeof(float8)*lwork);
-	dgesdd_( &achar, &rows, &columns, Atemp, &rows, S, U, &rows, Vt, &columns, 
+	gp_dgesdd(&achar, &rows, &columns, Atemp, &rows, S, U, &rows, Vt, &columns, 
 			 work, &lwork, iwork, &i );
 
 #endif
@@ -253,7 +309,7 @@ float8 pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	pfree(Atemp);
 
 	/* Use the max of the eigenvalues to normalize the zero tolerance */
-	minmn = min(rows,columns); // The dimensions of S are min(rows,columns)
+	minmn = Min(rows,columns); // The dimensions of S are min(rows,columns)
 #ifdef USE_ASSERT_CHECKING
 	/* dgesdd is supposed to return singular values in descending order. */
 	/* We do the check here in case the code is ever compiled against other
