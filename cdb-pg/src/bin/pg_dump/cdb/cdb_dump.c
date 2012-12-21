@@ -1335,7 +1335,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 	bRtn = true;
 
-	mpp_msg(logInfo, progname, "Read params: %s\n", pInputOpts->pszPassThroughParms);
+	if (pInputOpts->pszPassThroughParms != NULL)
+		mpp_msg(logInfo, progname, "Read params: %s\n", pInputOpts->pszPassThroughParms);
+	else
+		mpp_msg(logInfo, progname, "Read params: <empty>\n");		
 
 	cleanup:
 
