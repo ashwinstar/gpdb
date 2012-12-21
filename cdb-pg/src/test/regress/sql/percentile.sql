@@ -69,6 +69,7 @@ select median(a), b from perct group by b order by b desc;
 select count(*) from(select median(a) from perct group by ())s;
 select median(a) from perct group by grouping sets((b)) order by b;
 select distinct median(a), count(*) from perct;
+select median(a - '2011-12-31 00:00:00 UTC'::timestamptz) from perctsz group by b order by median;
 -- view
 select * from percv;
 
@@ -128,6 +129,7 @@ select median(a), b from perct group by b order by b desc;
 select count(*) from(select median(a) from perct group by ())s;
 select median(a) from perct group by grouping sets((b)) order by b;
 select distinct median(a), count(*) from perct;
+select median(a - '2011-12-31 00:00:00 UTC'::timestamptz) from perctsz group by b order by median;
 -- view
 select * from percv;
 

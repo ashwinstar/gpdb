@@ -117,10 +117,14 @@ percentile_cont_trans(PG_FUNCTION_ARGS)
 		Oid			resulttype;
 		bool		byval;
 		int16		len;
+		MemoryContext oldcontext;
 
 		resulttype = get_fn_expr_rettype(fcinfo->flinfo);
 		get_typlenbyval(resulttype, &len, &byval);
+
+		oldcontext = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
 		info->prev_value = datumCopy(PG_GETARG_DATUM(2), byval, len);
+		MemoryContextSwitchTo(oldcontext);
 	}
 	else if (rn0 >= info->ctp)
 	{
