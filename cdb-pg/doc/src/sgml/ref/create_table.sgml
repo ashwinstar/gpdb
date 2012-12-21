@@ -44,14 +44,14 @@ PostgreSQL documentation
 
 CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE table_name ( 
        [ { column_name data_type 
-          [ ENCODING ( storage_directive [,…] ) ]
+          [ ENCODING ( storage_directive [,...] ) ]
             DEFAULT default_expr] 
            [column_constraint [ ... ]]
            | table_constraint
            | LIKE other_table [{INCLUDING | EXCLUDING} 
                                {DEFAULTS | CONSTRAINTS}] ...}
            [, ... ] ]
-           [column_reference_storage_directive [, …] ]
+           [column_reference_storage_directive [, ...] ]
            )
    [ INHERITS ( parent_table [, ... ] ) ]
    [ WITH ( storage_parameter=value [, ... ] )
@@ -76,7 +76,7 @@ where storage_parameter is:
    BLOCKSIZE={8192-2097152}
    ORIENTATION={COLUMN|ROW}
    COMPRESSTYPE={ZLIB|QUICKLZ|RLE_TYPE|NONE}
-   COMPRESSLEVEL={1-9 | 1}
+   COMPRESSLEVEL={0-9}
    FILLFACTOR={10-100}
    OIDS[=TRUE|FALSE]
 
@@ -117,7 +117,7 @@ and partition_element is:
      END ([datatype] 'end_value') [INCLUSIVE | EXCLUSIVE]
      [ EVERY ([datatype] [number | INTERVAL] 'interval_value') ]
 [ WITH ( partition_storage_parameter=value [, ... ] ) ]
-[column_reference_storage_directive [, …] ]
+[column_reference_storage_directive [, ...] ]
 
 [ TABLESPACE tablespace ]
 
@@ -138,12 +138,12 @@ and subpartition_element is:
 
 where storage_directive is:
    COMPRESSTYPE={ZLIB | QUICKLZ | RLE_TYPE | NONE} 
- | COMPRESSLEVEL={1-9 | 1} 
+ | COMPRESSLEVEL={0-9} 
  | BLOCKSIZE={8192-2097152}
 
 Where column_reference_storage_directive is:
-COLUMN column_name ENCODING ( storage_directive [, … ] ), …  |
-DEFAULT COLUMN ENCODING ( storage_directive [, … ] )
+COLUMN column_name ENCODING ( storage_directive [, ... ] ), ...  |
+DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 </synopsis>
 
 
