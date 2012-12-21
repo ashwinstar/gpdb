@@ -3785,8 +3785,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	}
 
 	/*
-	 * Cursor queries don't run on the writer-gang QEs; but they
-	 * require snapshot-synchronization to get started.
+	 * Cursor queries and bind/execute path queries don't run on the
+	 * writer-gang QEs; but they require snapshot-synchronization to
+	 * get started.
 	 *
 	 * initPlans, and other work (see the function pre-evaluation
 	 * above) may advance the snapshot "segmateSync" value, so we're
@@ -3798,7 +3799,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * For details see MPP-6533/MPP-5805. There are a large number of
 	 * interesting test cases for segmate-sync.
 	 */
-	if (queryDesc->cursor_query)
+	if (queryDesc->extended_query)
 	{
 		verify_shared_snapshot_ready();
 	}
@@ -3912,7 +3913,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * dispatch without starting a global xact.
 	 */
 	queryParms.serializedDtxContextInfo = 
-		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, queryDesc->cursor_query,
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, queryDesc->extended_query,
 								  generateTxnOptions(planRequiresTxn), "cdbdisp_dispatchPlan");
 
 	Assert(sliceTbl);

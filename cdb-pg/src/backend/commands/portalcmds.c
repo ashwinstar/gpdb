@@ -117,7 +117,7 @@ PerformCursorOpen(PlannedStmt *stmt, ParamListInfo params,
 					  list_make1(stmt),
 					  PortalGetHeapMemory(portal));
 	
-	portal->is_cursor = true; /* mark this portal as a cursor */
+	portal->is_extended_query = true; /* cursors run in extended query mode */
 
 	/* 
 	 * DeclareCursorStmt is a hybrid utility/select statement. Above, we've nullified

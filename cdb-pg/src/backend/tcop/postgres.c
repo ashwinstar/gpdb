@@ -2221,10 +2221,9 @@ exec_bind_message(StringInfo input_message)
 	if (portal_name[0] == '\0')
 		portal = CreatePortal(portal_name, true, true);
 	else
-	{
 		portal = CreatePortal(portal_name, false, false);
-		portal->is_cursor = true;
-	}
+
+	portal->is_extended_query = true;
 
 	/*
 	 * Fetch parameters, if any, and store in the portal's memory context.
