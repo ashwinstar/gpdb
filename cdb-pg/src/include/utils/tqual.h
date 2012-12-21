@@ -25,6 +25,9 @@
 
 #include "cdb/cdbdistributedsnapshot.h"  /* DistributedSnapshotWithLocalMapping */
 
+#define MAX_XIDBUF_SIZE (1024 * 1024)
+#define MAX_XIDBUF_XIDS (MAX_XIDBUF_SIZE/sizeof(uint32))
+#define MAX_XIDBUF_INIT_PAGES 16
 
 /*
  * "Regular" snapshots are pointers to a SnapshotData structure.
@@ -49,7 +52,6 @@ typedef struct SnapshotData
 	/* note: all ids in xip[] satisfy xmin <= xip[i] < xmax */
 	int32		subxcnt;		/* # of xact ids in subxip[], -1 if overflow */
 	TransactionId *subxip;		/* array of subxact IDs in progress */
-
 	/*
 	 * note: all ids in subxip[] are >= xmin, but we don't bother filtering
 	 * out any that are >= xmax
@@ -57,7 +59,7 @@ typedef struct SnapshotData
 	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 
 	bool haveDistribSnapshot;
-								/* True if this snapshot is distributed. */
+						/* True if this snapshot is distributed. */
 								
 	DistributedSnapshotWithLocalMapping	distribSnapshotWithLocalMapping;
 								/*
@@ -108,7 +110,8 @@ typedef struct SharedSnapshotSlot
 	volatile CommandId		QDcid;
 	volatile bool			ready;
 	volatile uint32			segmateSync;
-	uint32		    subcnt;		/* # of subtransaction ids in subxids[] */
+	uint32		total_subcnt;	/* Total # of subxids */
+	uint32		inmemory_subcnt;    /* subxids in memory */
 	TransactionId   subxids[MaxGpSavePoints];
 	uint32			combocidcnt;
 	ComboCidKeyData combocids[MaxComboCids];

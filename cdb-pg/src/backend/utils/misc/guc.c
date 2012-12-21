@@ -4307,6 +4307,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_subtrans_warn_limit", PGC_POSTMASTER, RESOURCES,
+			gettext_noop("Sets the warning limit on number of subtransactions in a transaction."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_subtrans_warn_limit,
+		16777216, 0, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"gp_cached_segworkers_threshold", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Sets the maximum number of segment workers to cache between statements."),
 			NULL,

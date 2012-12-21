@@ -565,7 +565,7 @@ sharedLocalSnapshot_filename(TransactionId xid, CommandId cid, uint32 segmateSyn
 {
 	int pid;
 	static char filename[MAXPGPATH];
-
+	
 	if (Gp_is_writer)
 	{
 		pid = MyProc->pid;
@@ -593,17 +593,22 @@ sharedLocalSnapshot_filename(TransactionId xid, CommandId cid, uint32 segmateSyn
 void
 dumpSharedLocalSnapshot_forCursor(void)
 {
-	SharedSnapshotSlot *src;
-	BufFile *f;
+	SharedSnapshotSlot *src = NULL;
+	char* fname = NULL;
+	BufFile *f = NULL;
 	Size count=0;
+	TransactionId *xids = NULL;
+	int64 sub_size;
+	int64 size_read;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH || (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer));
 	Assert(SharedLocalSnapshotSlot != NULL);
 
 	src = (SharedSnapshotSlot *)SharedLocalSnapshotSlot;
+	fname = sharedLocalSnapshot_filename(src->QDxid, src->QDcid, src->segmateSync);
 
 	/* Create our dump-file, this will either return a valid file, or throw an error */
-	f = BufFileCreateTemp_ReaderWriter(sharedLocalSnapshot_filename(src->QDxid, src->QDcid, src->segmateSync), true);
+	f = BufFileCreateTemp_ReaderWriter(fname, true);
 	/* we have our file. */
 
 #define FileWriteOK(file, ptr, size) (BufFileWrite(file, ptr, size) == size)
@@ -617,16 +622,18 @@ dumpSharedLocalSnapshot_forCursor(void)
 		/* Write our length as zero. (we'll fix it later). */
 		count = 0;
 
-		FileWriteFieldWithCount(count, f, count); /* write count itself */
+		/*
+		 * We write two counts here: One is count of first part,
+		 * second is size of subtransaction xids copied from
+		 * SharedLocalSnapshotSlot. This can be a big number.
+		 */
+		FileWriteFieldWithCount(count, f, count);
+		FileWriteFieldWithCount(count, f, src->total_subcnt);
+
 		FileWriteFieldWithCount(count, f, src->pid);
 		FileWriteFieldWithCount(count, f, src->xid);
 		FileWriteFieldWithCount(count, f, src->cid);
 		FileWriteFieldWithCount(count, f, src->startTimestamp);
-		FileWriteFieldWithCount(count, f, src->subcnt);
-
-		if (!FileWriteOK(f, &src->subxids, xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId)))
-			break;
-		count += xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId);
 
 		FileWriteFieldWithCount(count, f, src->combocidcnt);
 		FileWriteFieldWithCount(count, f, src->combocids);
@@ -661,9 +668,52 @@ dumpSharedLocalSnapshot_forCursor(void)
 		 *
 		 */
 
+		if (src->total_subcnt > src->inmemory_subcnt)
+		{
+			Assert(subxip_file != 0);
+
+			xids = palloc(MAX_XIDBUF_SIZE);
+
+			FileSeek(subxip_file, 0, SEEK_SET);
+			sub_size = (src->total_subcnt - src->inmemory_subcnt)
+				    * sizeof(TransactionId);
+			while (sub_size > 0)
+			{
+				size_read = (sub_size > MAX_XIDBUF_SIZE) ?
+						MAX_XIDBUF_SIZE : sub_size;
+				if (size_read != FileRead(subxip_file, (char *)xids,
+							  size_read))
+				{
+					elog(ERROR,
+					     "Error in reading subtransaction file.");
+				}
+
+				if (!FileWriteOK(f, xids, sub_size))
+				{
+					break;
+				}
+
+				sub_size -= size_read;
+			}
+
+			pfree(xids);
+			if (sub_size != 0)
+				break;
+		}
+
+		if (src->inmemory_subcnt > 0)
+		{
+			sub_size = src->inmemory_subcnt * sizeof(TransactionId);
+			if (!FileWriteOK(f, src->subxids, sub_size))
+			{
+				break;
+			}
+		}
+
 		/*
 		 * Now update our length field: seek to beginning and overwrite
-		 * our original zero-length.
+		 * our original zero-length. count does not include
+		 * subtransaction ids.
 		 */
 		if (BufFileSeek(f, 0, 0, SEEK_SET) != 0)
 			break;
@@ -689,7 +739,6 @@ dumpSharedLocalSnapshot_forCursor(void)
 void
 readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 {
-	SharedSnapshotSlot *src;
 	BufFile *f;
 	char *fname=NULL;
 	Size count=0, sanity;
@@ -702,6 +751,10 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 
 	uint32 combocidcnt;
 	ComboCidKeyData tmp_combocids[MaxComboCids];
+	uint32 sub_size;
+	uint32 read_size;
+	int64 subcnt;
+	TransactionId *subxids = NULL;
 
 	Assert(Gp_role == GP_ROLE_EXECUTE);
 	Assert(!Gp_is_writer);
@@ -710,12 +763,15 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	Assert(snapshot->subxip != NULL);
 
 	/*
-	 * Open our dump-file, this will either return a valid file, or throw an error.
+	 * Open our dump-file, this will either return a valid file, or
+	 * throw an error.
 	 *
-	 * NOTE: this is always run *after* the dump by the writer is guaranteed to have
-	 * completed.
+	 * NOTE: this is always run *after* the dump by the writer is
+	 * guaranteed to have completed.
 	 */
-	fname = sharedLocalSnapshot_filename(QEDtxContextInfo.distributedXid, QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
+	fname = sharedLocalSnapshot_filename(QEDtxContextInfo.distributedXid,
+		QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
+
 	f = BufFileCreateTemp_ReaderWriter(fname, false);
 	/* we have our file. */
 
@@ -725,7 +781,8 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	if (!FileReadOK(f, &count, sizeof(count)))
 		elog(ERROR, "Cursor snapshot: failed to read size");
 
-	elog(DEBUG1, "Reading in cursor-snapshot %u bytes", (unsigned int)count);
+	elog(DEBUG1, "Reading in cursor-snapshot %u bytes",
+		     (unsigned int)count);
 
 	buffer = palloc(count);
 
@@ -740,17 +797,18 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	if (!FileReadOK(f, buffer, count))
 		elog(ERROR, "Cursor snapshot: failed to read content");
 
-	/* we're done with file. */
-	BufFileClose(f);
-
 	/* we've got the entire snapshot read into our buffer. */
 	p = buffer;
 
 	/* sanity check count */
 	memcpy(&sanity, p, sizeof(sanity));
 	if (sanity != count)
-		elog(ERROR, "cursor snapshot failed sanity %u != %u", (unsigned int)sanity, (unsigned int)count);
+		elog(ERROR, "cursor snapshot failed sanity %u != %u",
+			    (unsigned int)sanity, (unsigned int)count);
 	p += sizeof(sanity);
+
+	memcpy(&sub_size, p, sizeof(uint32));
+	p += sizeof(uint32);
 
 	/* see dumpSharedLocalSnapshot_forCursor() for the correct order here */
 
@@ -765,13 +823,6 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 
 	memcpy(&localXactStartTimestamp, p, sizeof(localXactStartTimestamp));
 	p += sizeof(localXactStartTimestamp);
-
-	/* subcnt and subxids omitted, we don't use them anyhow. */
-	memcpy(&snapshot->subxcnt, p, sizeof(snapshot->subxcnt));
-	p += sizeof(snapshot->subxcnt);
-
-	memcpy(snapshot->subxip, p, xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
-	p += xipEntryCount * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId);
 
 	memcpy(&combocidcnt, p, sizeof(combocidcnt));
 	p += sizeof(combocidcnt);
@@ -809,10 +860,43 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 	/* zero out the slack in the xip-array */
 	memset(snapshot->xip + snapshot->xcnt, 0, (xipEntryCount - snapshot->xcnt)*sizeof(TransactionId));
 
-	memcpy(&snapshot->curcid, p, sizeof(src->snapshot.curcid));
+	memcpy(&snapshot->curcid, p, sizeof(snapshot->curcid));
 
 	/* Now we're done with the buffer */
 	pfree(buffer);
+
+	/*
+	 * Now read the subtransaction ids. This can be a big number, so cannot
+	 * allocate memory all at once.
+	 */
+	sub_size *= sizeof(TransactionId);
+
+	ResetXidBuffer(&subxbuf);
+
+	if (sub_size)
+	{
+		subxids = palloc(MAX_XIDBUF_SIZE);
+	}
+
+	while (sub_size > 0)
+	{
+		read_size = sub_size > MAX_XIDBUF_SIZE ? MAX_XIDBUF_SIZE : sub_size;
+		if (!FileReadOK(f, (char *)subxids, read_size))
+		{
+			elog(ERROR, "Error in Reading Subtransaction file.");
+		}
+		subcnt = read_size/sizeof(TransactionId);
+		AddSortedToXidBuffer(&subxbuf, subxids, subcnt);
+		sub_size -= read_size;
+	}
+
+	if (subxids)
+	{
+		pfree(subxids);
+	}
+
+	/* we're done with file. */
+	BufFileClose(f);
 
 	SetSharedTransactionId_reader(localXid, snapshot->curcid);
 

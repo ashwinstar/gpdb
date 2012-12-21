@@ -816,7 +816,8 @@ ProcessUtility(Node *parsetree,
 								sendDtxExplicitBegin();
 							}
 
-							DefineSavepoint(name);
+							DefineDispatchSavepoint(
+									name);
 						}
 						break;
 
