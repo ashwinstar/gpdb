@@ -344,9 +344,11 @@ CheckPointSUBTRANS(void)
 void
 ExtendSUBTRANS(TransactionId newestXact)
 {
-	MIRRORED_LOCK_DECLARE;
-
 	int			pageno;
+
+	/*
+	 * Caller must have already taken mirrored lock shared.
+	 */
 
 	/*
 	 * No work except at first XID of a page.  But beware: just after
@@ -358,8 +360,6 @@ ExtendSUBTRANS(TransactionId newestXact)
 
 	pageno = TransactionIdToPage(newestXact);
 
-	MIRRORED_LOCK;
-
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
 	/* Zero the page */
@@ -367,7 +367,6 @@ ExtendSUBTRANS(TransactionId newestXact)
 
 	LWLockRelease(SubtransControlLock);
 
-	MIRRORED_UNLOCK;
 }
 
 
