@@ -386,6 +386,7 @@ class YamlMain:
         self.plan          = None
         self.scenario_name = None
         self.logger        = None
+        self.logfilename   = None
         self.errmsg        = None
 
         self.parser = YamlOptions(self).parser
@@ -407,11 +408,12 @@ class YamlMain:
 
     def run(self):
         "Called by simple_main to execute the program returned by create_program"
-        self.plan    = Plan(self)
+        self.plan = Plan(self)
         self.scenario_name = self.plan.name
-        self.logger  = self.plan.logger
-        self.errmsg  = self.plan.errmsg
-        self.current = []
+        self.logger        = self.plan.logger
+        self.logfilename   = self.plan.logfilename
+        self.errmsg        = self.plan.errmsg
+        self.current       = []
         self.plan.run()
 
     def cleanup(self):
@@ -542,16 +544,17 @@ class Plan:
         # main - object with yaml scenarios (input)
         # sy   - Stage yaml
 
-        self.logger     = gplog.get_default_logger()
+        self.logger      = gplog.get_default_logger()
+        self.logfilename = gplog.get_logfile()
 
-        self.main       = main
-        self.y          = get_yaml(main.__class__)
-        self.name       = main.options.scenario
+        self.main        = main
+        self.y           = get_yaml(main.__class__)
+        self.name        = main.options.scenario
         if not self.name:
-            self.name   = self.y['Default Scenario']
-        self.scenario   = self.y['Scenarios'][self.name]
-        self.errors     = self.y['Errors']
-        self.Tasks      = [ self._task(ty) for ty in self.scenario ]
+            self.name    = self.y['Default Scenario']
+        self.scenario    = self.y['Scenarios'][self.name]
+        self.errors      = self.y['Errors']
+        self.Tasks       = [ self._task(ty) for ty in self.scenario ]
 
 
     def _task(self, ty):
@@ -629,6 +632,7 @@ class Plan:
             msg = self.errmsg(code, prm)
             self.logger.error(msg)
         if call_support:
-            self.logger.error('Please contact Greenplum support.')
+            self.logger.error('Please send %s to Greenplum support.' % self.logfilename)
         self.logger.debug('exiting with status %(rc)s' % locals())
         sys.exit(rc)
+

@@ -12,7 +12,7 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 
-import os, sys, time
+import os, sys, time, signal
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
@@ -44,7 +44,8 @@ class SegStopStatus:
         self.reason=reason
     
     def __str__(self):
-        return "STATUS--DIR:%s--STARTED:%s--REASON:%s" % (self.datadir,self.stopped,self.reason)
+        return "STATUS--DIR:%s--STOPPED:%s--REASON:%s" % (self.datadir,self.stopped,self.reason)
+
     
 #-------------------------------------------------------------------------    
 class GpSegStop:
@@ -61,57 +62,65 @@ class GpSegStop:
                             "The local software version is: '%s'\n"
                             "But we were expecting it to be: '%s'\n"
                             "Please review and correct" % (self.actual_gpversion,self.expected_gpversion))                
-        pass
+        self.logger = logger
     
     ######
     def run(self):
-        results=[]
-        failures=[]
+        results  = []
+        failures = []
         
-        logger.info("Issuing shutdown commands to local segments...")
-
+        self.logger.info("Issuing shutdown commands to local segments...")
         for db in self.dblist:
-            fields=db.split(':')
-            datadir=fields[0]
-            port=fields[1]
-            cmd=gp.SegmentStop('segment shutdown' , datadir,mode=self.mode,timeout=self.timeout)
+            datadir, port = db.split(':')[0:2]
+
+            cmd = gp.SegmentStop('segment shutdown', datadir, mode=self.mode, timeout=self.timeout)
             cmd.run()
-            
             res = cmd.get_results()
-            
             if res.rc == 0:
-                results.append(SegStopStatus(datadir,True,"Shutdown Succeeded"))                
-            else:     
-                #read in /tmp/.s.PGXXX file
-                name="failed segment '%s'" % db
-                (succeeded,mypid,file_datadir)=pg.ReadPostmasterTempFile.local(name,port).getResults()
-                
-                if succeeded and file_datadir == datadir:
-                    if unix.check_pid(mypid):
-                        os.kill(mypid,3)  #SIGQUIT
-                        time.sleep(5)
-                        
-                        if unix.check_pid(mypid):
-                            os.kill(mypid,6)  #SIGABORT  ? should this be 11 SIGSEGV?                      
-                            time.sleep(5)
-                        
-                        if not unix.check_pid(mypid):
-                            lockfile="/tmp/.s.PGSQL.%s" % port    
-                            if os.path.exists(lockfile):
-                                logger.info("Clearing segment instance lock files")        
-                                os.remove(lockfile)
-                
-                results.append(SegStopStatus(datadir,False,"Shutdown failed: rc: %d stdout: %s stderr: %s" % 
-                                             (res.rc,res.stdout,res.stderr)))
+
+                # MPP-15208
+                #
+                cmd2 = gp.SegmentIsShutDown('check if shutdown', datadir)
+                cmd2.run()
+                if cmd2.is_shutdown():
+                    status = SegStopStatus(datadir, True, "Shutdown Succeeded")
+                    results.append(status)                
+                    continue
+
+                # MPP-16171
+                # 
+                if self.mode == 'immediate':
+                    status = SegStopStatus(datadir, True, "Shutdown Immediate")
+                    results.append(status)
+                    continue
+
+            # read pid and datadir from /tmp/.s.PGSQL.<port>.lock file
+            name = "failed segment '%s'" % db
+            (succeeded, mypid, file_datadir) = pg.ReadPostmasterTempFile.local(name,port).getResults()
+            if succeeded and file_datadir == datadir:
+
+                # now try to terminate the process, first trying with
+                # SIGTERM and working our way up to SIGABRT sleeping
+                # in between to give the process a moment to exit
+                #
+                unix.kill_sequence(mypid)
+
+                if not unix.check_pid(mypid):
+                    lockfile = "/tmp/.s.PGSQL.%s" % port    
+                    if os.path.exists(lockfile):
+                        self.logger.info("Clearing segment instance lock files")        
+                        os.remove(lockfile)
+            
+            status = SegStopStatus(datadir,False,"Shutdown failed: rc: %d stdout: %s stderr: %s" % (res.rc,res.stdout,res.stderr))
+            failures.append(status)
+            results.append(status)
         
         #Log the results!
         status = '\nCOMMAND RESULTS\n'
-        
         for result in results:
             status += str(result) + "\n"
         
-        logger.info(status)
-        
+        self.logger.info(status)
         return 1 if failures else 0
     
     ######

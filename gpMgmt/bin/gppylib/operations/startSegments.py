@@ -87,7 +87,7 @@ class StartSegmentsOperation:
         self.__wrapper = wrapper
         self.__wrapper_args = wrapper_args
 
-    def startSegments(self, gpArray, segments, startMethod):
+    def startSegments(self, gpArray, segments, startMethod, era):
         """
 
         gpArray: the system to which the segments to start belong
@@ -124,7 +124,7 @@ class StartSegmentsOperation:
         if numWorkers >= numNodes:
             # We are in a situation where we can start the entire cluster at once.
             assert startMethod == START_AS_PRIMARY_OR_MIRROR or startMethod == START_AS_MIRRORLESS
-            self.__runStartCommand(segments, startMethod, numContentsInCluster, result, gpArray)
+            self.__runStartCommand(segments, startMethod, numContentsInCluster, result, gpArray, era)
         else:
             # We don't have enough workers to guarantee that a given primary and mirror are started at the same time.
             # Note, we could try to be really clever here and attempt to only start a set of segments on numWorkers
@@ -135,12 +135,12 @@ class StartSegmentsOperation:
                 mirrorDbs = [seg for seg in segments if seg.isSegmentMirror(True)]
                 primaryDbs = [seg for seg in segments if seg.isSegmentPrimary(True)]
 
-                self.__runStartCommand(mirrorDbs, startMethod, numContentsInCluster, result, gpArray)
-                self.__runStartCommand(primaryDbs, startMethod, numContentsInCluster, result, gpArray)
+                self.__runStartCommand(mirrorDbs, startMethod, numContentsInCluster, result, gpArray, era)
+                self.__runStartCommand(primaryDbs, startMethod, numContentsInCluster, result, gpArray, era)
 
             elif startMethod == START_AS_MIRRORLESS:
                 # bring them up in mirrorless mode
-                self.__runStartCommand(segments, startMethod, numContentsInCluster, result, gpArray)
+                self.__runStartCommand(segments, startMethod, numContentsInCluster, result, gpArray, era)
             else:
                 raise Exception("Invalid startMethod %s" % startMethod)
 
@@ -163,7 +163,7 @@ class StartSegmentsOperation:
         assert len(segments) == len(result.getFailedSegmentObjs()) + len(result.getSuccessfulSegments())
         return result
 
-    def __runStartCommand(self, segments, startMethod, numContentsInCluster, resultOut, gpArray):
+    def __runStartCommand(self, segments, startMethod, numContentsInCluster, resultOut, gpArray, era):
         """
         Putt results into the resultOut object
         """
@@ -202,6 +202,7 @@ class StartSegmentsOperation:
                                    self.__gpVersion,
                                    mirroringModePreTransition,
                                    numContentsInCluster,
+                                   era,
                                    self.__timeout,
                                    verbose=logging_is_verbose(),
                                    ctxt=base.REMOTE,

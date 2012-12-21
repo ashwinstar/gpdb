@@ -30,6 +30,7 @@ try:
     from gppylib.commands import dca
     from gppylib.gpcoverage import GpCoverage
     from gppylib.utils import TableLogger
+    from gppylib.gp_era import GpEraFile
 except ImportError, e:    
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -128,7 +129,8 @@ class GpStop:
                         logger.info("Unregistered with DCA")
          
                 if self.hadFailures:
-                    return 1
+                    # MPP-15208
+                    return 2 
         return 0
     
     
@@ -206,6 +208,9 @@ class GpStop:
             
         self.conn.close()
     
+        e = GpEraFile(self.master_datadir, logger=get_logger_if_verbose())
+        e.end_era()
+
         logger.info("Commencing Master instance shutdown with mode=%s" % self.mode)
         logger.info("Master segment instance directory=%s" % self.master_datadir)
         
@@ -411,6 +416,7 @@ class GpStop:
                                     #dbs that are marked invalid are 'skipped' but we dispatch to them
                                     #anyway since we want to try and shutdown any runaway pg processes.
                                     failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )
+
                     elif line.strip().startswith('stderr: pg_ctl: server does not shut down'):
                         failed_seg_status[-1].timedOut=True
             else:

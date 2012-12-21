@@ -2538,4 +2538,26 @@ class GpArray:
             """
         self.__strategyLoadedFromDb = strategy
 
+
+def get_segment_hosts(master_port):
+    """
+    """
+    gparray = GpArray.initFromCatalog( dbconn.DbURL(port=master_port), utility=True )
+    segments = GpArray.getSegmentsByHostName( gparray.getDbList() )
+    return segments.keys()
+
+
+def get_session_ids(master_port):
+    """
+    """
+    conn = dbconn.connect( dbconn.DbURL(port=master_port), utility=True )
+    try:
+        rows = dbconn.execSQL(conn, "SELECT sess_id from pg_stat_activity where sess_id > 0;")
+        ids  = set(row[0] for row in rows)
+        return ids
+    finally:
+        conn.close()
+
+
+
 # === EOF ====

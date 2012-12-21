@@ -102,6 +102,57 @@ def check_pid(pid):
     else:
         return True
 
+
+def logandkill(pid, sig):
+    msgs = {
+        signal.SIGCONT: "Sending SIGSCONT to %d",
+        signal.SIGTERM: "Sending SIGTERM to %d (smart shutdown)",
+        signal.SIGINT:  "Sending SIGINT to %d (fast shutdown)",
+        signal.SIGQUIT: "Sending SIGQUIT to %d (immediate shutdown)",
+        signal.SIGABRT: "Sending SIGABRT to %d"
+    }
+    logger.info(msgs[sig] % pid)
+    os.kill(pid, sig)
+
+
+def kill_sequence(pid):
+    if not check_pid(pid): return
+
+    # first send SIGCONT in case the process is stopped
+    logandkill(pid, signal.SIGCONT)
+
+    # next try SIGTERM (smart shutdown)
+    logandkill(pid, signal.SIGTERM)
+
+    # give process a few seconds to exit
+    for i in range(0,3):
+        time.sleep(1)
+        if not check_pid(pid): 
+            return
+
+    # next try SIGINT (fast shutdown)
+    logandkill(pid, signal.SIGINT)
+
+    # give process a few more seconds to exit
+    for i in range(0,3):
+        time.sleep(1)
+        if not check_pid(pid): 
+            return
+
+    # next try SIGQUIT (immediate shutdown)
+    logandkill(pid, signal.SIGQUIT)
+
+    # give process a final few seconds to exit
+    for i in range(0,5):
+        time.sleep(1)
+        if not check_pid(pid): 
+            return
+
+    # all else failed - try SIGABRT
+    logandkill(pid, signal.SIGABRT)
+
+
+
 #---------------Platform Framework--------------------
 
 """ The following platform framework is used to handle any differences between

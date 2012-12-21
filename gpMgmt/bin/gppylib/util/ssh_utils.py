@@ -35,6 +35,10 @@ def ssh_prefix(host):
     ssh = 'ssh -o "BatchMode yes" -o "StrictHostKeyChecking no" ' + host
     return ssh
 
+def get_hosts(hostsfile):
+    hostlist = HostList()
+    hostlist.parseFile(hostsfile)
+    return hostlist.get()
 
 
 class HostList():
