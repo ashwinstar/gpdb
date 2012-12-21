@@ -2670,8 +2670,10 @@ dumpTypeStorageOptions(Archive *fout, TypeStorageOptions *tstorageoptions)
 	q = createPQExpBuffer();
 	delq = createPQExpBuffer();
 
-	appendPQExpBuffer(q, "ALTER TYPE %s ",
-					  fmtId(tstorageoptions->dobj.name));
+	/* Set proper schema search path so regproc references list correctly */
+	selectSourceSchema(tstorageoptions->dobj.namespace->dobj.name);
+
+	appendPQExpBuffer(q, "ALTER TYPE %s ", tstorageoptions->dobj.name);
 	appendPQExpBuffer(q, " SET DEFAULT ENCODING (%s);\n", tstorageoptions->typoptions);
 
 	ArchiveEntry(	fout

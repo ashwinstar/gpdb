@@ -960,8 +960,21 @@ getTypeStorageOptions(int *numTypes)
 	/* Make sure we are in proper schema */
 	selectSourceSchema("pg_catalog");
 
+	/*
+	 * The following statement used format_type to resolve an internal name to its equivalent sql name.
+	 * The format_type seems to do two things, it translates an internal type name (e.g. bpchar) into its
+	 * sql equivalent (e.g. character), and it puts trailing "[]" on a type if it is an array.
+	 * For any user defined type (ie. oid > 10000) or any type that might be an array (ie. starts with '_'),
+	 * then we will call quote_ident. If the type is a system defined type (i.e. oid <= 10000)
+	 * and can not possibly be an array (i.e. does not start with '_'), then call format_type to get the name. The
+	 * reason we do not call format_type for arrays is that it will return a '[]' on the end, which can not be used
+	 * when dumping the type.
+	 */
 	appendPQExpBuffer(query, "SELECT "
-			"  t.typname AS typname"
+      " CASE WHEN t.oid > 10000 OR substring(t.typname from 1 for 1) = '_' "
+      " THEN  quote_ident(t.typname) "
+      " ELSE  pg_catalog.format_type(t.oid, NULL) "
+      " END   as typname "
 			", t.oid AS oid"
 			", t.typnamespace AS typnamespace"
 			", (%s typowner) as rolname"
@@ -1406,7 +1419,7 @@ getExtProtocols(int *numExtProtocols)
 		if (strlen(ptcinfo[i].ptcowner) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of external protocol \"%s\" appears to be invalid\n",
 						ptcinfo[i].dobj.name);
-		
+
 
 		if (PQgetisnull(res, i, i_ptcreadid))
 			ptcinfo[i].ptcreadid = InvalidOid;
