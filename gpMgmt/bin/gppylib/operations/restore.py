@@ -32,6 +32,7 @@ DBDUMP_PREFIX = 'gp_dump_'
 MASTER_DBDUMP_PREFIX = 'gp_dump_1_1_'
 GLOBAL_PREFIX = 'gp_global_1_1_'
 CREATEDB_PREFIX = 'gp_cdatabase_1_1_'
+POST_DATA_SUFFIX = '_post_data'
 
 # TODO: use CLI-agnostic custom exceptions instead of ExceptionNoStackTraceNeeded
 
@@ -154,7 +155,7 @@ class ValidateTimestamp(Operation):
             compressed_file = os.path.join(path, "%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
             compress = CheckFile(compressed_file).run()
         else:
-            compressed_file = os.path.join(path, "%s%s_post_data.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
+            compressed_file = os.path.join(path, "%s%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp, POST_DATA_SUFFIX))
             compress = CheckFile(compressed_file).run()	
         return (self.candidate_timestamp, restore_db, compress)
 
@@ -437,8 +438,8 @@ class CopyPostData(Operation):
         self.master_datadir = master_datadir
     def execute(self):
          # Build master _post_data file:
-        real_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s_post_data" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp))
-        fake_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s_post_data" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
+        real_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.restore_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp, POST_DATA_SUFFIX))
+        fake_post_data = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp, POST_DATA_SUFFIX))
         if (self.compress):
             real_post_data = real_post_data + ".gz"
             fake_post_data = fake_post_data + ".gz"
@@ -589,7 +590,7 @@ class ClearAllTableDumps(Operation):
             logger.warn('Failed to remove %s on master' % path)
 
         # Remove master _post_data file
-        path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s_post_data" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp))
+        path = os.path.join(self.master_datadir, DUMP_DIR, self.fake_timestamp[0:8], "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.fake_timestamp, POST_DATA_SUFFIX))
         if self.compress:
             path += '.gz'
         try:
@@ -774,6 +775,13 @@ class RecoverRemoteDumps(Operation):
                             srcHost=from_host,
                             srcFile=os.path.join(from_path, createdb_file),
                             dstFile=os.path.join(to_path, createdb_file)))
+        post_data_file = "%s%s%s" % (MASTER_DBDUMP_PREFIX, self.restore_timestamp, POST_DATA_SUFFIX)
+        if self.compress:
+            post_data_file += ".gz"
+        pool.addCommand(Scp('Copying post data schema dump',
+                            srcHost=from_host,
+                            srcFile=os.path.join(from_path, post_data_file),
+                            dstFile=os.path.join(to_path, post_data_file)))
         if self.restore_global:
             global_file = "%s%s" % (GLOBAL_PREFIX, self.restore_timestamp)
             pool.addCommand(Scp("Copying global dump",
