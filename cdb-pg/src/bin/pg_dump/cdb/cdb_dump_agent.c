@@ -266,7 +266,7 @@ static void dumpDatabaseDefinitionToDDBoost(void);
 static int cleanupDDSystem(void);
 
 static char *g_pszDDBoostDir = "db_dumps";
-static ddp_client_info_t cl_info = {DDP_CL_DDP, "Greenplum Database 4.2"};
+extern ddp_client_info_t dd_client_info;
 
 static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
 static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
@@ -705,7 +705,7 @@ main(int argc, char **argv)
 #ifdef USE_DDBOOST
 	if (dd_boost_enabled)
 	{
-		ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME, true);
+		ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, true);
 		if (ret)
 		{
 			mpp_err_msg(logError, progname, "Error connecting to DDboost. Check parameters\n");

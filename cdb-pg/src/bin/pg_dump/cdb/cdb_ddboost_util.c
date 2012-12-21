@@ -129,7 +129,7 @@ static char * addPassThroughLongParm(const char *Parm, const char *pszValue, cha
 static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
 static int dd_boost_enabled = 1;
 
-static ddp_client_info_t cl_info = {DDP_CL_DDP, "Greenplum Database version " GP_VERSION};
+extern ddp_client_info_t dd_client_info;
 
 static int readFileFromDDBoost(struct ddboost_options *dd_options);
 static int copyFileFromDDBoost(struct ddboost_options *dd_options);
@@ -256,7 +256,7 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	ret = initDDSystem(&ddp_inst, &ddp_conn, &cl_info, &DDP_SU_NAME, false);
+	ret = initDDSystem(&ddp_inst, &ddp_conn, &dd_client_info, &DDP_SU_NAME, false);
 	
 	if (ret)
 	{
@@ -503,7 +503,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("gpddboost (Greenplum Database) " GP_VERSION);
+			printf("gpddboost (%s)\n", dd_client_info.cl_info);
 			exit(0);
 		}
 	}

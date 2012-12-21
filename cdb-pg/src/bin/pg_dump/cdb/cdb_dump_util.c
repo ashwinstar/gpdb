@@ -851,6 +851,7 @@ parseDbidSet(int *dbidset, char *dump_set)
 
 #define	NO_ERR	0
 
+ddp_client_info_t dd_client_info = {DDP_CL_DDP, "Greenplum Database version " GP_VERSION};
 struct ddboost_logs
 {
 	ddp_severity_t logLevel ;
