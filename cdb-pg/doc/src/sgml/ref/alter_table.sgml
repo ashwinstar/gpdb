@@ -133,7 +133,6 @@ where storage_directive is:
 Where column_reference_storage_directive is:
 
    COLUMN column_name ENCODING ( storage_directive [, ... ] ), ... 
- | column_name data_type ENCODING ( storage_directive [, ... ] ), ...
  | DEFAULT COLUMN ENCODING ( storage_directive [, ... ] )
 
 </synopsis>
