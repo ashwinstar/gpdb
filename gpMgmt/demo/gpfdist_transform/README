@@ -11,13 +11,27 @@ This package contains example programs of Greenplum gpfdist transformations:
 	  Config Files:       config.yaml
           Data Files:         data/dblp.xml (downloaded)
 
+
+2. mef  - Example loading IRS Modernized eFile format data
+       
+          Specification File: 2_mef.yaml
+	  Config Files:       config.yaml
+          Data Files:         data/RET990EZ_2006.xml
+
+
+3. rig  - Example loading WITSML oil well data
+
+          Specification File: 3_rig.yaml
+	  Config Files:       config.yaml
+          Data Files:         data/rig.xml (downloaded)
+
  
 **************************************************************************
 BEFORE YOU BEGIN
 **************************************************************************
 
-1. Download the demo data and jar files from www.cs.washington.edu and
-   sourceforge.net:
+1. Download the demo data and jar files from www.cs.washington.edu,
+   w3.energistics.org and sourceforge.net:
 
     $ cd data
     $ make
@@ -31,6 +45,9 @@ BEFORE YOU BEGIN
 **************************************************************************
 RUNNING DEMO 1: input transformation via gpload
 **************************************************************************
+
+DBLP example
+------------
 
 1. Edit the 1_dblp.yaml file and change the LOCAL_HOSTNAME setting
    reflect the name of the host (e.g. myhostname) you where you will 
@@ -55,6 +72,58 @@ RUNNING DEMO 1: input transformation via gpload
 
     $ psql -d gptransform -c "select * from dblp_thesis limit 5;"
 
+
+MeF example
+------------
+
+5. Edit the 2_mef.yaml file and change the LOCAL_HOSTNAME setting
+   reflect the name of the host (e.g. myhostname) you where you will 
+   run gpload.
+
+      LOCAL_HOSTNAME: [ myhostname ]
+
+   GPDB will attempt to connect to this host to access the data.
+
+
+6. Create the mef_xml table
+
+    $ psql -d gptransform -f mef/create.sql
+
+
+7. load the data
+
+    $ gpload -f 2_mef.yaml
+
+
+8. review the data
+
+    $ psql -d gptransform -c "select id, substring(text(doc) from 1 for 200) as doctext from mef_xml;"
+
+
+WITSML example
+--------------
+
+9. Edit the 3_rig.yaml file and change the LOCAL_HOSTNAME setting
+   reflect the name of the host (e.g. myhostname) you where you will 
+   run gpload.
+
+      LOCAL_HOSTNAME: [ myhostname ]
+
+   GPDB will attempt to connect to this host to access the data.
+
+
+10. Create the rig_xml table
+
+    $ psql -d gptransform -f rig/create.sql
+
+
+11. load the data
+
+    $ gpload -f 3_rig.yaml
+
+12. review some data
+
+    $ psql -d gptransform -c "select well_uid, well_name, rig_uid, rig_name, rig_owner from rig_xml;"
 
 
 **************************************************************************
@@ -126,5 +195,3 @@ After you have run the demos, run the following commands to clean up:
 
     $ cd data
     $ make clean
-
-
