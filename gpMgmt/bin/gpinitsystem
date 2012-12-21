@@ -19,9 +19,6 @@
 #******************************************************************************
 #******************************************************************************
 # Prep Code
-if [ -z "$GPKILL" ]; then
-    exec env GPKILL=CONFIRM gpinitsystem "$@"
-fi
 
 WORKDIR=`dirname $0`
 
@@ -1173,126 +1170,103 @@ SET_VAR () {
 }
 
 CREATE_QD_DB () {
-    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-    LOG_MSG "[INFO]:-Building the Master instance database, please wait..." 1
-    SET_VAR $QD_PRIMARY_ARRAY
-    LOG_MSG "[INFO]:-Initializing Master Postgres instance $GP_DIR"
-    $EXPORT_LIB_PATH
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Building the Master instance database, please wait..." 1
+		SET_VAR $QD_PRIMARY_ARRAY
+		LOG_MSG "[INFO]:-Initializing Master Postgres instance $GP_DIR"
+		$EXPORT_LIB_PATH
 
-    #
-    # note: is_filerep_mirrored is no because the QD is not mirrored by filerep right now (standby master works differently)
-    #
-    
-    if [ x"" != x"$LCCOLLATE" ]; then
-	LC_COLLATE_SETTING="--lc-collate=$LCCOLLATE"
-    fi
-    
-    if [ x"" != x"$LCCTYPE" ]; then
-	LC_CTYPE_SETTING="--lc-ctype=$LCCTYPE"
-    fi
-    
-    if [ x"" != x"$LCMESSAGES" ]; then
-	LC_MESSAGES_SETTING="--lc-messages=$LCMESSAGES"
-    fi
-    
-    if [ x"" != x"$LCMONETARY" ]; then
-	LC_MONETARY_SETTING="--lc-monetary=$LCMONETARY"
-    fi
-    
-    if [ x"" != x"$LCNUMERIC" ]; then
-	LC_NUMERIC_SETTING="--lc-numeric=$LCNUMERIC"
-    fi
-    
-    if [ x"" != x"$LCTIME" ]; then
-	LC_TIME_SETTING="--lc-time=$LCTIME"
-    fi
-    
-    LC_ALL_SETTINGS=" $LC_COLLATE_SETTING $LC_CTYPE_SETTING $LC_MESSAGES_SETTING $LC_MONETARY_SETTING $LC_NUMERIC_SETTING $LC_TIME_SETTING"
+        #
+        # note: is_filerep_mirrored is no because the QD is not mirrored by filerep right now (standby master works differently)
+        #
+        
+        if [ x"" != x"$LCCOLLATE" ]; then
+			LC_COLLATE_SETTING="--lc-collate=$LCCOLLATE"
+		fi
+		
+        if [ x"" != x"$LCCTYPE" ]; then
+			LC_CTYPE_SETTING="--lc-ctype=$LCCTYPE"
+		fi
+		
+		if [ x"" != x"$LCMESSAGES" ]; then
+			LC_MESSAGES_SETTING="--lc-messages=$LCMESSAGES"
+		fi
+		
+		if [ x"" != x"$LCMONETARY" ]; then
+			LC_MONETARY_SETTING="--lc-monetary=$LCMONETARY"
+		fi
+		
+		if [ x"" != x"$LCNUMERIC" ]; then
+			LC_NUMERIC_SETTING="--lc-numeric=$LCNUMERIC"
+		fi
+		
+        if [ x"" != x"$LCTIME" ]; then
+			LC_TIME_SETTING="--lc-time=$LCTIME"
+		fi
+		
+		LC_ALL_SETTINGS=" $LC_COLLATE_SETTING $LC_CTYPE_SETTING $LC_MESSAGES_SETTING $LC_MONETARY_SETTING $LC_NUMERIC_SETTING $LC_TIME_SETTING"
 
-    # build initdb command, capturing output in ${GP_DIR}.initdb
-    cmd="$INITDB"
-    cmd="$cmd -E $ENCODING"
-    cmd="$cmd -D $GP_DIR"
-    cmd="$cmd --locale=$LOCALE_SETTING"
-    cmd="$cmd $LC_ALL_SETTINGS"
-    cmd="$cmd --max_connections=$MASTER_MAX_CONNECT"
-    cmd="$cmd --shared_buffers=$MASTER_SHARED_BUFFERS"
-    cmd="$cmd --is_filerep_mirrored=no"
-    cmd="$cmd --backend_output=$GP_DIR.initdb"
-
-    LOG_MSG "[INFO]:-Commencing local $cmd"
-    $cmd >> $LOG_FILE 2>&1
-    RETVAL=$?
-
-    # if there was an error, copy ${GP_DIR}.initdb to the log
-    if [ $RETVAL -ne 0 ]; then
-	$CAT ${GP_DIR}.initdb >> $LOG_FILE
-    fi    
-    $RM -f ${GP_DIR}.initdb
-    if [ $RETVAL -ne 0 ]; then
-	ERROR_EXIT "[FATAL]:- Command $cmd failed with error status $RETVAL, see log file $LOG_FILE for more detail" 2
-    fi
-
-    BACKOUT_COMMAND "if [ -d $GP_DIR ]; then $RM -Rf $GP_DIR; fi"
-    BACKOUT_COMMAND "$ECHO Removing Master data directory files"
-    LOG_MSG "[INFO]:-Completed Master instance initialization"
-    $ECHO "#Greenplum specific configuration parameters for Master instance database" >> ${GP_DIR}/$PG_CONF
-    $ECHO "#------------------------------------------------------------------------" >> ${GP_DIR}/$PG_CONF
-    LOG_MSG "[INFO]:-Setting the Master port to $GP_PORT"
-    ED_PG_CONF ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0
-    ERROR_CHK $? "set Master port=$GP_PORT in $PG_CONF" 2
-    LOG_MSG "[INFO]:-Completed setting the Master port to $MASTER_PORT"
-    LOG_MSG "[INFO]:-Setting Master logging option"
-    ED_PG_CONF ${GP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
-    ERROR_CHK $? "set log_statement=all in ${GP_DIR}/$PG_CONF" 1
-    LOG_MSG "[INFO]:-Setting Master instance check point segments"
-    ED_PG_CONF ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
-    ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${GP_DIR}/$PG_CONF" 1
-    
-    if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
-	LOG_MSG "[INFO]:-Processing additional configuration parameters"
-	for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-	do
-	    LOG_MSG "[INFO]:-Adding config $NEW_PARAM to Master"
-	    SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-	    ED_PG_CONF ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0
-	    ERROR_CHK $? "set $NEW_PARAM ${GP_DIR}/$PG_CONF" 1
-	done
-    fi
-    LOG_MSG "[INFO]:-Adding gp_dumpall access to $PG_HBA for master host"
-    BUILD_MASTER_PG_HBA_FILE $GP_DIR
-    LOG_MSG "[INFO]:-Creating perfmon directories and configuration file"
-    BUILD_PERFMON $GP_DIR
-    ERROR_CHK $? "create perfmon directories and configuration file" 1
-    LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
-    export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility -M master -b -1 -C -1 -z 0 -m" start >> /dev/null 2>&1
-    RET_TEXT="`$PG_CTL status -D $GP_DIR`"
-    RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
-    if [ $RUNNING -ne 0 ]; then
-	$CAT ${GP_DIR}.log|$TEE -a $LOG_FILE
-	ERROR_EXIT "[FATAL]:-Failed to start the Master database in admin mode" 2
-    fi
-    BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${GP_PORT}*"
-    BACKOUT_COMMAND "$ECHO \"Removing Master lock files\""
-    BACKOUT_COMMAND "$RM -f ${GP_DIR}.log"
-    BACKOUT_COMMAND "$ECHO Removing Master log file"
-    BACKOUT_COMMAND "if [ -d $GP_DIR ]; then $EXPORT_LIB_PATH;export PGPORT=$GP_PORT; $PG_CTL -D $GP_DIR stop; fi"
-    BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
-    LOG_MSG "[INFO]:-Completed starting the Master in admin mode"
-    $SLEEP 2
-    GP_HOSTNAME=`HOST_LOOKUP $GP_HOSTADDRESS`
-    if [ x"$GP_HOSTNAME" = x"__lookup_of_hostname_failed__" ]; then
-	ERROR_EXIT "[FATAL]:-Hostname lookup for host $GP_HOSTADDRESS failed." 2
-    fi
-    PING_HOST $GP_HOSTNAME
-    RETVAL=$?
-    if [ $RETVAL -ne 0 ]; then
-	ERROR_EXIT "[FATAL]:-Could not establish connection to hostname $GP_HOSTNAME. Please check your configuration." 2
-    fi
-    UPDATE_GPCONFIG $GP_PORT $GP_DBID $GP_CONTENT $GP_HOSTNAME $GP_HOSTADDRESS $GP_PORT $GP_DIR p $GP_REPLICATION_PORT
-    LOAD_QE_SYSTEM_DATA $DEFAULTDB
-    SET_VAR $QD_PRIMARY_ARRAY
-    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+		RUN_COMMAND "$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING $LC_ALL_SETTINGS --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS --is_filerep_mirrored=no"
+		BACKOUT_COMMAND "if [ -d $GP_DIR ]; then $RM -Rf $GP_DIR; fi"
+		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
+		LOG_MSG "[INFO]:-Completed Master instance initialization"
+		$ECHO "#Greenplum specific configuration parameters for Master instance database" >> ${GP_DIR}/$PG_CONF
+		$ECHO "#------------------------------------------------------------------------" >> ${GP_DIR}/$PG_CONF
+		LOG_MSG "[INFO]:-Setting the Master port to $GP_PORT"
+		ED_PG_CONF ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0
+		ERROR_CHK $? "set Master port=$GP_PORT in $PG_CONF" 2
+		LOG_MSG "[INFO]:-Completed setting the Master port to $MASTER_PORT"
+		LOG_MSG "[INFO]:-Setting Master logging option"
+		ED_PG_CONF ${GP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
+		ERROR_CHK $? "set log_statement=all in ${GP_DIR}/$PG_CONF" 1
+		LOG_MSG "[INFO]:-Setting Master instance check point segments"
+		ED_PG_CONF ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
+		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${GP_DIR}/$PG_CONF" 1
+		
+		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
+				LOG_MSG "[INFO]:-Processing additional configuration parameters"
+				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
+						do
+						LOG_MSG "[INFO]:-Adding config $NEW_PARAM to Master"
+						SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+						ED_PG_CONF ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0
+						ERROR_CHK $? "set $NEW_PARAM ${GP_DIR}/$PG_CONF" 1
+				done
+		fi
+		LOG_MSG "[INFO]:-Adding gp_dumpall access to $PG_HBA for master host"
+		BUILD_MASTER_PG_HBA_FILE $GP_DIR
+		LOG_MSG "[INFO]:-Creating perfmon directories and configuration file"
+		BUILD_PERFMON $GP_DIR
+		ERROR_CHK $? "create perfmon directories and configuration file" 1
+		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
+		export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility -M master -b -1 -C -1 -z 0 -m" start >> /dev/null 2>&1
+		RET_TEXT="`$PG_CTL status -D $GP_DIR`"
+		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
+		if [ $RUNNING -ne 0 ]; then
+				$CAT ${GP_DIR}.log|$TEE -a $LOG_FILE
+				ERROR_EXIT "[FATAL]:-Failed to start the Master database in admin mode" 2
+		fi
+		BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${GP_PORT}*"
+		BACKOUT_COMMAND "$ECHO \"Removing Master lock files\""
+		BACKOUT_COMMAND "$RM -f ${GP_DIR}.log"
+		BACKOUT_COMMAND "$ECHO Removing Master log file"
+		BACKOUT_COMMAND "if [ -d $GP_DIR ]; then $EXPORT_LIB_PATH;export PGPORT=$GP_PORT; $PG_CTL -D $GP_DIR stop; fi"
+		BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
+		LOG_MSG "[INFO]:-Completed starting the Master in admin mode"
+		$SLEEP 2
+		GP_HOSTNAME=`HOST_LOOKUP $GP_HOSTADDRESS`
+		if [ x"$GP_HOSTNAME" = x"__lookup_of_hostname_failed__" ]; then
+			ERROR_EXIT "[FATAL]:-Hostname lookup for host $GP_HOSTADDRESS failed." 2
+		fi
+		PING_HOST $GP_HOSTNAME
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+			ERROR_EXIT "[FATAL]:-Could not establish connection to hostname $GP_HOSTNAME. Please check your configuration." 2
+		fi
+		UPDATE_GPCONFIG $GP_PORT $GP_DBID $GP_CONTENT $GP_HOSTNAME $GP_HOSTADDRESS $GP_PORT $GP_DIR p $GP_REPLICATION_PORT
+		LOAD_QE_SYSTEM_DATA $DEFAULTDB
+		SET_VAR $QD_PRIMARY_ARRAY
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 # returns hostname for given address or "__lookup_of_hostname_failed__" if hostname not found
