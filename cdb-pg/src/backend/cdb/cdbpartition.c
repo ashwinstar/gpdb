@@ -8145,6 +8145,7 @@ selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
 		/**
 		 * Start new level
 		 */
+		list_free(inputList);
 		inputList = levelOutput;
 	}
 

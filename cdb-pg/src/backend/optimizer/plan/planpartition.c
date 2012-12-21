@@ -1151,6 +1151,7 @@ static void AddRecordPMI(PartitionMatchInfo *pmi, HeapTupleHeader record)
 		AddPartitionMatch(pmi, partId);
 	}
 
+	list_free(partIds);
 	MemoryContextSwitchTo(oldCtx);
 }
 
