@@ -1880,90 +1880,88 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 			else
 				res = SPI_OK_SELECT;
 
-            /* 
-             * Checking if we need to put this through resource queue.
-             * Same as in pquery.c, except we check ActivePortal->releaseResLock.
-             * If the Active portal already hold a lock on the queue, we cannot
-             * acquire it again.
-             */
-            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
-                    !superuser()
-               )
-            {
+			/* 
+			 * Checking if we need to put this through resource queue.
+			 * Same as in pquery.c, except we check ActivePortal->releaseResLock.
+			 * If the Active portal already hold a lock on the queue, we cannot
+			 * acquire it again.
+			 */
+			if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
+					!superuser()
+			   )
+			{
 				/*
 				 * This is SELECT, so we should have planTree anyway.
 				 */
 				Assert(queryDesc->plannedstmt->planTree);
 
-                /* 
-                 * MPP-6421
-                 *
-                 * If everything goes right, at this moment, we should already have
-                 * an valid portal.  However, if user (mistakenly) declared a stable
-                 * or volatile function as immutable, we will try to do constant folding
-                 * for the immutable function.  Constand folding happends at planning
-                 * time, when we did not start portal yet.
-                 *
-                 * Ideally we catch this in create function ddl, but that is hard.
-                 * So at least we should not fail with SIGSEGV.  The RIGHT way is to
-                 * elog error here. However, customer depends on this constant folding
-                 * feature in order to do partition pruning.  So we will issue a warning
-                 * instead.
-                 *
-                 * NOTE: This is tricky, in under certain work, it may give the wrong
-                 * , or, should I say, unexpected results!
-                 *
-                 * We need better partition pruning strategy.  
-                 */
-                if (!ActivePortal)
+				/* 
+				 * MPP-6421 - An active portal may not yet be defined if we're
+				 * constant folding a stable or volatile function marked as
+				 * immutable -- a hack some customers use for partition pruning.
+				 *
+				 * MPP-16571 - Don't warn about such an event because there are
+				 * legitimate parts of the code where we evaluate stable and
+				 * volatile functions without an active portal -- describe
+				 * functions for table functions, for example.
+				 */
+				if (ActivePortal)
 				{
-                    ereport(WARNING,
-                            (errcode(ERRCODE_WARNING),
-                             errmsg("A stable or volatile function is used as if it is immutable"),
-                             errhint("The function should be declared as stable or volatile in create function statement.")));
-				}
-                else if (!ActivePortal->releaseResLock)
-                {
-                	/** TODO: siva - can we ever reach this point? */
-                    PortalSetStatus(ActivePortal, PORTAL_QUEUE);
-            		
-                    if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-                    {
-            			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);
-                    }
-                    
-                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc);
-                    PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
-                } 
-                else
-                {
-                	/**
-                	 * If we're in this case, then we already have a resource queue lock which means we're calling an SPI query after
-                	 * we've gone through the resource queue. We need to determine how much memory this query deserves. There are two possibilities:
-                	 * 1) We're not in a function scan. We calculate the query's limit using the queue. We don't go through the queue, though.
-                	 * 2) We're inside a function scan. We use the memory allocated to the function scan operator.
-                	 */
-                	Assert(ActivePortal);
-                	Assert(ActivePortal->releaseResLock);
+					if (!ActivePortal->releaseResLock)
+					{
+						/** TODO: siva - can we ever reach this point? */
+						PortalSetStatus(ActivePortal, PORTAL_QUEUE);
+					
+						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+						{
+							queryDesc->plannedstmt->query_mem =
+								ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, 
+																 ActivePortal->queueId);
+						}
 
-                	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
-                	{
-                		if (SPIIsEmptyMemoryReserved())
-                		{
-                			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);                		
-                		}
-                		else
-                		{
-                			queryDesc->plannedstmt->query_mem = SPICurrentMemoryReserved();
-                		}
-                		Assert(queryDesc->plannedstmt->query_mem > 0);
-                	}
-                }
-            }
+						ActivePortal->releaseResLock =
+							ResLockPortal(ActivePortal, queryDesc);
+						PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
+					} 
+					else
+					{
+						/**
+						 * If we're in this case, then we already have a
+						 * resource queue lock which means we're calling an SPI
+						 * query after we've gone through the resource queue. We
+						 * need to determine how much memory this query
+						 * deserves. There are two possibilities:
+						 * 1) We're not in a function scan. We calculate the
+						 * query's limit using the queue. We don't go through
+						 * the queue, though.
+						 * 2) We're inside a function scan. We use the memory
+						 * allocated to the function scan operator.
+						 */
+						Assert(ActivePortal);
+						Assert(ActivePortal->releaseResLock);
+
+						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
+						{
+							if (SPIIsEmptyMemoryReserved())
+							{
+								queryDesc->plannedstmt->query_mem = 
+									ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt,
+																	 ActivePortal->queueId);						
+							}
+							else
+							{
+								queryDesc->plannedstmt->query_mem = 
+									SPICurrentMemoryReserved();
+							}
+							Assert(queryDesc->plannedstmt->query_mem > 0);
+						}
+					}
+				}
+			}
 
 			break;
-		/* TODO Find a better way to indicate "returning".  When PlannedStmt support is finished, the
-		 *      queryTree field will be gone.
+		/* TODO Find a better way to indicate "returning".  When PlannedStmt
+		 * support is finished, the queryTree field will be gone.
 		 */
 		case CMD_INSERT:
 			if (queryDesc->plannedstmt->returningLists)
