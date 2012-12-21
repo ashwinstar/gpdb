@@ -35,7 +35,7 @@
 #include "cdb/cdbpersistentrecovery.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 
-static void tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid, 
+static void tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid,
 									   int16 mirror_dbid,
 									   char **master_path, char **mirror_path);
 static void get_filespace_paths(Oid filespace, char **master_path, char **mirror_path);
@@ -63,17 +63,19 @@ obj_get_path(xl_mm_fs_obj *xlrec)
 		path = xlrec->mirror_path;
 	else
 	{
-		/* 
-		 * Not as serious as it looks, must be a recover from before we existed
+		/*
+		 * We should never get here. We can not call elog here, because it will trigger a recursive
+		 * call back via the resource manager redo logic.
+		 *
+		 * Return a NULL path pointer and allow the caller to log the event.
 		 */
-		elog(LOG, "mmxlog record not for my dbid %u - [%u, %u]",
-			 GpIdentity.dbid, xlrec->u.dbid.master, xlrec->u.dbid.mirror);
+	path = NULL;
 	}
 
 	return path;
 }
 
-/* 
+/*
  * Unlink the object referenced by path. Tolerate it not existing but
  * do not tolerate any other error.
  *
@@ -112,6 +114,40 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	xl_mm_fs_obj *xlrec = (xl_mm_fs_obj *) XLogRecGetData(record);
 	char *path = obj_get_path(xlrec);
 
+	if (path == NULL)
+	{
+		/*
+		 * A NULL path indicates a problem in looking up the path specified in the xlog record.
+		 * The record contains both the master and master mirror dbids and corresponding object
+		 * paths. If obj_get_path() returns a NULL pointer, it is most likely xlog record's
+		 * master or master mirror dbid does not match the dbid of the current master
+		 * (i.e. this process).
+		 *
+		 * Although this situation should never occur, it is possible that the dbid of the
+		 * master and master mirror have changed over time due to adding and dropping a standby
+		 * master before and after an expansion. Older xlog records would contain pre-expansion
+		 * dbids for the standby master, and post expansion records would contain the new dbid
+		 * for the standby master. If this process is the new standby master (i.e. after a
+		 * master mirror takeover), then it will not recognize the older standby master dbid
+		 * in the xlog record.
+		 *
+		 * This situation should never occur, because a standby takeover should never be
+		 * in a situation where it needs to read the xlog before the more recent stand by
+		 * master initialization (i.e. the latest standby master initialization would have
+		 * generated a checkpoint with no active transaction before that checkpoint.
+		 *
+		 * Another possibility is that a user copied the xlog from another system (i.e. master),
+		 * and placed it here. The user should never do this, but if they do, then the dbids
+		 * would not match.
+		 *
+		 * The other possibility is that the xlog record contained a NULL path for the object.
+		 * This should also never happen.
+		 */
+		elog(ERROR, "The object's path can not be constructed based on the xlog record. "
+				        "The dbid in the xlog record, master %u and mirror %u, does no match the current dbid %u.",
+				 GpIdentity.dbid, xlrec->u.dbid.master, xlrec->u.dbid.mirror);
+	}
+
 	bool found;
 	void *entry;
 
@@ -124,7 +160,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			 xlrec->mirror_path);
 		if (Debug_persistent_recovery_print)
 		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
+			elog(PersistentRecovery_DebugPrintLevel(),
 				 "mmxlog_redo: create directory request %d: path \"%s\", filespace %u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
 				 info,
 				 path,
@@ -135,7 +171,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 				 xlrec->mirror_path);
 		}
 
-		/* 
+		/*
 		 * Inform the persistent table code about the new filespace or
 		 * tablespace.
 		 */
@@ -147,7 +183,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 
 			m.dbid1 = xlrec->u.dbid.master;
     		strncpy(m.path1, xlrec->master_path, MAXPGPATH);
-			
+
 			m.dbid2 = xlrec->u.dbid.mirror;
 			strncpy(m.path2, xlrec->mirror_path, MAXPGPATH);
 			add_filespace_map_entry(&m, &beginLoc, "mmxlog_redo");
@@ -166,7 +202,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		{
 			if (Debug_persistent_recovery_print)
 			{
-				elog(PersistentRecovery_DebugPrintLevel(), 
+				elog(PersistentRecovery_DebugPrintLevel(),
 					 "mmxlog_redo: Re-created directory \"%s\"",
 					 path);
 			}
@@ -193,14 +229,14 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			{
 				if (Debug_persistent_recovery_print)
 				{
-					elog(PersistentRecovery_DebugPrintLevel(), 
+					elog(PersistentRecovery_DebugPrintLevel(),
 						 "mmxlog_redo: Directory \"%s\" already exists",
 						 path);
 				}
 			}
 			// UNDONE: This isn't idempotent!  What if the directory create succeeds but the PG_VERSION create fails in a system crash?
 			dir_created = false;
-			
+
 		}
 
 		/* need to add PG_VERSION for newly created databases */
@@ -211,7 +247,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	{
 		if (Debug_persistent_recovery_print)
 		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
+			elog(PersistentRecovery_DebugPrintLevel(),
 				 "mmxlog_redo: remove directory request %s: path \"%s\", filespace %u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
 				 (xlrec->objtype == MM_OBJ_FILESPACE ? "filespace" :
 				    (xlrec->objtype == MM_OBJ_TABLESPACE ? "tablespace" :
@@ -228,7 +264,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		/* tablespace and database should be fine */
 		unlink_obj(path, info);
 
-		
+
 		if (GpIdentity.dbid == MASTER_DBID)
 		{
 			// We only maintain the master mirroring hash tables on the standby.
@@ -239,13 +275,13 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			{
 				if (filespace_map_ht == NULL)
 					elog(ERROR, "Master mirroring hash table for filespaces not initialized");
-				
+
 				entry = hash_search(filespace_map_ht,
 									&(xlrec->filespace),
 									HASH_REMOVE,
 									&found);
 				if (entry == NULL)
-					elog(ERROR, 
+					elog(ERROR,
 						 "Master mirroring hash table entry for filespace %u not found",
 						 xlrec->filespace);
 			}
@@ -253,13 +289,13 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			{
 				if (tablespace_map_ht == NULL)
 					elog(ERROR, "Master mirroring hash table for tablespaces not initialized");
-				
+
 				entry = hash_search(tablespace_map_ht,
 									&(xlrec->tablespace),
 									HASH_REMOVE,
 									&found);
 				if (entry == NULL)
-					elog(ERROR, 
+					elog(ERROR,
 						 "Master mirroring hash table entry for tablespace %u not found",
 						 xlrec->tablespace);
 			}
@@ -269,7 +305,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	{
 		if (Debug_persistent_recovery_print)
 		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
+			elog(PersistentRecovery_DebugPrintLevel(),
 				 "mmxlog_redo: create file request %d: path \"%s\", filespace %u, %u/%u/%u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
 				 info,
 				 path,
@@ -309,7 +345,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 
 		if (Debug_persistent_recovery_print)
 		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
+			elog(PersistentRecovery_DebugPrintLevel(),
 				 "mmxlog_redo: remove file request %d: path \"%s\", filespace %u, %u/%u/%u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
 				 info,
 				 path,
@@ -337,7 +373,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			char *mirrorFilespaceLocation;
 
 			Oid filespaceOid;
-			
+
 			/*
 			 * If we are re-doing Master Mirroring work on the Master and the tablespace
 			 * doesn't exist in the shared-memory persistent hash-table, skip the unlink...
@@ -352,7 +388,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			{
 			case PersistentTablespaceGetFilespaces_Ok:
 				break;
-				
+
 			case PersistentTablespaceGetFilespaces_TablespaceNotFound:
 				elog(LOG, "Note: unable find tablespace %u from Master Mirroring redo",
 					 rnode.spcNode);
@@ -368,9 +404,9 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 					 tablespaceGetFilespaces);
 			}
 		}
-		
+
 		smgrdounlink(
-				&rnode, 
+				&rnode,
 				/* isLocalBuf */ false,
 				/* relationName */ NULL,
 				/* primaryOnly */ true,
@@ -391,18 +427,52 @@ mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	char		*rec = XLogRecGetData(record);
 	xl_mm_fs_obj *xlrec = (xl_mm_fs_obj *) rec;
-	char *path = obj_get_path(xlrec); 
+	char *path = obj_get_path(xlrec);
+
+	if (path == NULL)
+	{
+		/*
+		 * A NULL path indicates a problem in looking up the path specified in the xlog record.
+		 * The record contains both the master and master mirror dbids and corresponding object
+		 * paths. If obj_get_path() returns a NULL pointer, it is most likely xlog record's
+		 * master or master mirror dbid does not match the dbid of the current master
+		 * (i.e. this process).
+		 *
+		 * Although this situation should never occur, it is possible that the dbid of the
+		 * master and master mirror have changed over time due to adding and dropping a standby
+		 * master before and after an expansion. Older xlog records would contain pre-expansion
+		 * dbids for the standby master, and post expansion records would contain the new dbid
+		 * for the standby master. If this process is the new standby master (i.e. after a
+		 * master mirror takeover), then it will not recognize the older standby master dbid
+		 * in the xlog record.
+		 *
+		 * This situation should never occur, because a standby takeover should never be
+		 * in a situation where it needs to read the xlog before the more recent stand by
+		 * master initialization (i.e. the latest standby master initialization would have
+		 * generated a checkpoint with no active transaction before that checkpoint.
+		 *
+		 * Another possibility is that a user copied the xlog from another system (i.e. master),
+		 * and placed it here. The user should never do this, but if they do, then the dbids
+		 * would not match.
+		 *
+		 * The other possibility is that the xlog record contained a NULL path for the object.
+		 * This should also never happen.
+		 */
+		elog(ERROR, "The object's path can not be constructed based on the xlog record. "
+				        "The dbid in the xlog record, master %u and mirror %u, does no match the current dbid %u.",
+				 GpIdentity.dbid, xlrec->u.dbid.master, xlrec->u.dbid.mirror);
+	}
 
 	if (info == MMXLOG_CREATE_DIR)
-		appendStringInfo(buf, "create directory: path \"%s\", filespace %u", 
+		appendStringInfo(buf, "create directory: path \"%s\", filespace %u",
 						 path,
 						 xlrec->filespace);
 	else if (info == MMXLOG_REMOVE_DIR)
-		appendStringInfo(buf, "remove directory: path \"%s\", filespace %u", 
+		appendStringInfo(buf, "remove directory: path \"%s\", filespace %u",
 						 path,
 						 xlrec->filespace);
 	else if (info == MMXLOG_CREATE_FILE)
-		appendStringInfo(buf, "create file: path \"%s\", filespace %u", 
+		appendStringInfo(buf, "create file: path \"%s\", filespace %u",
 						 path,
 						 xlrec->filespace);
 	else if (info == MMXLOG_REMOVE_FILE)
@@ -479,7 +549,7 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 		char *mirror_path;
 		int16 master_dbid = GpIdentity.dbid;
 		int16 mirror_dbid = GpStandbyDbid;
-		
+
 		Insist(Gp_role == GP_ROLE_DISPATCH ||
 			   Gp_role == GP_ROLE_UTILITY);
 
@@ -525,7 +595,7 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 					sizeof(xlrec.master_path));
 		else
 		{
-			/* 
+			/*
 			 * Allow relative paths if we didn't get anything when we looked up
 			 * the filespace. We must allow this for the default filespace.
 			 */
@@ -548,7 +618,7 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 
 		append_file_parts(type, xlrec.mirror_path, tablespace, database,
 						  relfilenode, segnum);
-		
+
 		if (Debug_print_qd_mirroring)
 			elog(DEBUG1, "XLOG: type = %i, flags = %i, dbid = (%u, %u), path = (%s, %s)",
 				 type, flags, xlrec.u.dbid.master, xlrec.u.dbid.mirror,
@@ -558,7 +628,7 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 		rdata.len = sizeof(xlrec);
 		rdata.buffer = InvalidBuffer;
 		rdata.next = NULL;
-		
+
 		XLogInsert(RM_MMXLOG_ID, flags | XLOG_NO_TRAN, &rdata);
 		*beginLoc = XLogLastInsertBeginLoc();
 
@@ -594,7 +664,7 @@ mmxlog_log_remove_filespace(Oid filespace)
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_remove_filespace: delete filespace %u (emitted %s, beginLoc %s)",
 			 filespace,
 			 (emitted ? "true" : "false"),
@@ -630,7 +700,7 @@ mmxlog_log_remove_tablespace(Oid tablespace)
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_remove_tablespace: delete tablespace %u (emitted %s, beginLoc %s)",
 			 tablespace,
 			 (emitted ? "true" : "false"),
@@ -666,7 +736,7 @@ mmxlog_log_remove_database(Oid tablespace, Oid database)
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_remove_database: delete database directory %u/%u (emitted %s, beginLoc %s)",
 			 tablespace,
 			 database,
@@ -704,7 +774,7 @@ mmxlog_log_remove_relfilenode(Oid tablespace, Oid database, Oid relfilenode,
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_remove_relfilenode: delete relation %u/%u/%u, segment file #%d (emitted %s, beginLoc %s)",
 			 tablespace,
 			 database,
@@ -740,7 +810,7 @@ mmxlog_log_create_filespace(Oid filespace)
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_create_filespace: create filespace %u (emitted %s, beginLoc %s)",
 			 filespace,
 			 (emitted ? "true" : "false"),
@@ -773,7 +843,7 @@ mmxlog_log_create_tablespace(Oid filespace, Oid tablespace)
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_create_tablespace: create tablespace %u (filespace %u, emitted %s, beginLoc %s)",
 			 tablespace,
 			 filespace,
@@ -807,7 +877,7 @@ mmxlog_log_create_database(Oid tablespace, Oid database)
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_create_database: create database directory %u/%u (emitted %s, beginLoc %s)",
 			 tablespace,
 			 database,
@@ -842,7 +912,7 @@ mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_log_create_relfilenode: create relation %u/%u/%u, segment file #%d (emitted %s, beginLoc %s)",
 			 tablespace,
 			 database,
@@ -896,7 +966,7 @@ mmxlog_empty_filespace_hashtable(char *caller)
 	i = 0;
 	while (true)
 	{
-		entry = 
+		entry =
 			(fspc_map*)
 					hash_seq_search(&iterateStatus);
 		if (entry == NULL)
@@ -904,7 +974,7 @@ mmxlog_empty_filespace_hashtable(char *caller)
 
 		if (Debug_persistent_recovery_print)
 		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
+			elog(PersistentRecovery_DebugPrintLevel(),
 				 "mmxlog_empty_filespace_hashtable[%d]: filespace %u, dbid1 %d, dbid2 %d (caller '%s')",
 				 i,
 				 entry->filespaceoid,
@@ -922,7 +992,7 @@ mmxlog_empty_filespace_hashtable(char *caller)
 	}
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_empty_filespace_hashtable: filespace remove count %d (caller '%s')",
 			 i,
 			 caller);
@@ -942,7 +1012,7 @@ mmxlog_empty_tablespace_hashtable(char *caller)
 	i = 0;
 	while (true)
 	{
-		entry = 
+		entry =
 			(tspc_map*)
 					hash_seq_search(&iterateStatus);
 		if (entry == NULL)
@@ -950,7 +1020,7 @@ mmxlog_empty_tablespace_hashtable(char *caller)
 
 		if (Debug_persistent_recovery_print)
 		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
+			elog(PersistentRecovery_DebugPrintLevel(),
 				 "mmxlog_empty_tablespace_hashtable[%d]: tablespace %u, (filespace %u, caller '%s')",
 				 i,
 				 entry->tablespaceoid,
@@ -967,7 +1037,7 @@ mmxlog_empty_tablespace_hashtable(char *caller)
 	}
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_empty_tablespace_hashtable: tablespace remove count %d (caller '%s')",
 			 i,
 			 caller);
@@ -994,13 +1064,13 @@ mmxlog_print_filespaces(int elevel, char *caller)
 	i = 0;
 	while (true)
 	{
-		entry = 
+		entry =
 			(fspc_map*)
 					hash_seq_search(&iterateStatus);
 		if (entry == NULL)
 			break;
 
-		elog(elevel, 
+		elog(elevel,
 			 "mmxlog_print_filespaces[%d]: filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
 			 i,
 			 entry->filespaceoid,
@@ -1011,7 +1081,7 @@ mmxlog_print_filespaces(int elevel, char *caller)
 			 caller);
 		i++;
 	}
-	elog(elevel, 
+	elog(elevel,
 		 "mmxlog_print_filespaces: filespace count %d (caller '%s')",
 		 i,
 		 caller);
@@ -1029,13 +1099,13 @@ mmxlog_print_tablespaces(int elevel, char *caller)
 	i = 0;
 	while (true)
 	{
-		entry = 
+		entry =
 			(tspc_map*)
 					hash_seq_search(&iterateStatus);
 		if (entry == NULL)
 			break;
 
-		elog(elevel, 
+		elog(elevel,
 			 "mmxlog_print_tablespaces[%d]: tablespace %u, (filespace %u, caller '%s')",
 			 i,
 			 entry->tablespaceoid,
@@ -1043,7 +1113,7 @@ mmxlog_print_tablespaces(int elevel, char *caller)
 			 caller);
 		i++;
 	}
-	elog(elevel, 
+	elog(elevel,
 		 "mmxlog_print_tablespaces: tablespace count %d (caller '%s')",
 		 i,
 		 caller);
@@ -1063,7 +1133,7 @@ add_filespace_map_entry(fspc_map *m, XLogRecPtr *beginLoc, char *caller)
 	void *entry;
 	bool found;
 
-	/* 
+	/*
 	 * The table is lazily initialised.
 	 */
 	if (!filespace_map_ht)
@@ -1077,15 +1147,15 @@ add_filespace_map_entry(fspc_map *m, XLogRecPtr *beginLoc, char *caller)
 						HASH_ENTER,
 						&found);
 	/*
-	 * If this is a new entry, we need to add the data, if we found 
-	 * an entry, we need to update it, so just copy our data 
+	 * If this is a new entry, we need to add the data, if we found
+	 * an entry, we need to update it, so just copy our data
 	 * right over the top.
 	 */
 	memcpy(entry, m, sizeof(fspc_map));
 
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "add_filespace_map_entry: add filespace %u, dbid1 %d, dbid2 %d (beginLoc %s, caller '%s')",
 			 m->filespaceoid,
 			 m->dbid1,
@@ -1104,7 +1174,7 @@ add_tablespace_map_entry(tspc_map *m, XLogRecPtr *beginLoc, char *caller)
 	void *entry;
 	bool found;
 
-	/* 
+	/*
 	 * The table is lazily initialised.
 	 */
 	if (!tablespace_map_ht)
@@ -1124,7 +1194,7 @@ add_tablespace_map_entry(tspc_map *m, XLogRecPtr *beginLoc, char *caller)
 
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "add_tablespace_map_entry: add tablespace %u (filespace %u, beginLoc %s, caller '%s')",
 			 m->tablespaceoid,
 			 m->filespaceoid,
@@ -1151,7 +1221,7 @@ mmxlog_filespace_get_path(
 	Insist(fspcoid != SYSTEMFILESPACE_OID);
 	*filespacePath = NULL;
 
-	/* 
+	/*
 	 * The table is lazily initialised.
 	 */
 	if (!filespace_map_ht)
@@ -1207,7 +1277,7 @@ mmxlog_tablespace_get_filespace(
 
 	*filespaceOid = InvalidOid;
 
-	/* 
+	/*
 	 * The table is lazily initialised.
 	 */
 	if (!tablespace_map_ht)
@@ -1243,7 +1313,7 @@ mmxlog_add_filespace_init(
 	int len;
 
 	Assert (*fas == NULL);
-	
+
 	*maxCount = 10;		// Start off with at least this much room.
 	len = FSPC_CHECKPOINT_BYTES(*maxCount);
 	*fas = (fspc_agg_state*)palloc0(len);
@@ -1252,9 +1322,9 @@ mmxlog_add_filespace_init(
 void
 mmxlog_add_filespace(
 	fspc_agg_state **fas, int *maxCount,
-	Oid filespace, 
+	Oid filespace,
 	int16 dbid1, char *path1,
-	int16 dbid2, char *path2, 
+	int16 dbid2, char *path2,
 	char *caller)
 {
 	int len;
@@ -1275,7 +1345,7 @@ mmxlog_add_filespace(
 		fspc_agg_state *oldFas;
 
 		oldFas = *fas;
-		
+
 		(*maxCount) *= 2;		// Double.
 		len = FSPC_CHECKPOINT_BYTES(*maxCount);
 		*fas = (fspc_agg_state*)palloc0(len);
@@ -1299,7 +1369,7 @@ mmxlog_add_filespace(
 	else
 	{
 		// UNDONE: Do we ever not have both a master and mirror path???
-		/* 
+		/*
 		 * Allow relative paths if we didn't get anything when we looked up
 		 * the filespace. We must allow this for the default filespace.
 		 */
@@ -1320,7 +1390,7 @@ mmxlog_add_filespace(
 	else
 	{
 		// UNDONE: Do we ever not have both a master and mirror path???
-		/* 
+		/*
 		 * Allow relative paths if we didn't get anything when we looked up
 		 * the filespace. We must allow this for the default filespace.
 		 */
@@ -1334,7 +1404,7 @@ mmxlog_add_filespace(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_add_filespace[%d]: add filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
 			 count,
 			 filespace,
@@ -1357,14 +1427,14 @@ mmxlog_add_tablespace_init(
 	int len;
 
 	Assert (*tas == NULL);
-	
+
 	*maxCount = 10;		// Start off with at least this much room.
 	len = TSPC_CHECKPOINT_BYTES(*maxCount);
 	*tas = (tspc_agg_state*)palloc0(len);
 }
 
 void
-mmxlog_add_tablespace( 
+mmxlog_add_tablespace(
 	tspc_agg_state **tas, int *maxCount,
 	Oid filespace, Oid tablespace, char *caller)
 {
@@ -1383,7 +1453,7 @@ mmxlog_add_tablespace(
 		tspc_agg_state *oldTas;
 
 		oldTas = *tas;
-		
+
 		(*maxCount) *= 2;		// Double.
 		len = TSPC_CHECKPOINT_BYTES(*maxCount);
 		*tas = (tspc_agg_state*)palloc0(len);
@@ -1394,14 +1464,14 @@ mmxlog_add_tablespace(
 	m = &(*tas)->maps[count];
 	m->filespaceoid = filespace;
 	m->tablespaceoid = tablespace;
-	
+
 	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_add_tablespace[%d]: add tablespace %u (filespace %u, caller '%s')",
 			 count,
 			 tablespace,
@@ -1421,14 +1491,14 @@ mmxlog_add_database_init(
 	int len;
 
 	Assert (*das == NULL);
-	
+
 	*maxCount = 10;		// Start off with at least this much room.
 	len = DBDIR_CHECKPOINT_BYTES(*maxCount);
 	*das = (dbdir_agg_state*)palloc0(len);
 }
 
 void
-mmxlog_add_database( 
+mmxlog_add_database(
 	dbdir_agg_state **das, int *maxCount,
 	Oid database, Oid tablespace, char *caller)
 {
@@ -1447,7 +1517,7 @@ mmxlog_add_database(
 		dbdir_agg_state *oldDas;
 
 		oldDas = *das;
-		
+
 		(*maxCount) *= 2;		// Double.
 		len = DBDIR_CHECKPOINT_BYTES(*maxCount);
 		*das = (dbdir_agg_state*)palloc0(len);
@@ -1458,14 +1528,14 @@ mmxlog_add_database(
 	m = &(*das)->maps[count];
 	m->databaseoid = database;
 	m->tablespaceoid = tablespace;
-	
+
 	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_add_database[%d]: add database %u (tablespace %u, caller '%s')",
 			 count,
 			 database,
@@ -1493,8 +1563,8 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[6])
 	fspc_agg_state *f;
 	tspc_agg_state *t;
 	dbdir_agg_state *d;
-        
-	/* 
+
+	/*
 	 * We must make sure no one traverses the rdata chain into uninitialised
 	 * data if we exit early, below.
 	 */
@@ -1508,12 +1578,12 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[6])
 		if (Debug_persistent_recovery_print)
 		{
 			SUPPRESS_ERRCONTEXT_DECLARE;
-		
+
 			SUPPRESS_ERRCONTEXT_PUSH();
-		
-			elog(PersistentRecovery_DebugPrintLevel(), 
+
+			elog(PersistentRecovery_DebugPrintLevel(),
 				 "mmxlog_append_checkpoint_data: no tablespace and filespace information for checkpoint because gp_before_filespace_setup GUC is true");
-		
+
 			SUPPRESS_ERRCONTEXT_POP();
 		}
 		return;
@@ -1532,7 +1602,7 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[6])
 	  {
    	  f = NULL;
 	  get_filespace_data(&f, "mmxlog_append_checkpoint_data");
-	
+
 	  t = NULL;
 	  get_tablespace_data(&t, "mmxlog_append_checkpoint_data");
 
@@ -1557,15 +1627,15 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[6])
 	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
-	
+
 		SUPPRESS_ERRCONTEXT_PUSH();
-	
-		elog(PersistentRecovery_DebugPrintLevel(), 
+
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_append_checkpoint_data: %d filespaces, %d tablespaces, %d databases checkpoint information",
 			 f->count,
 			 t->count,
 		         d->count);
-	
+
 		SUPPRESS_ERRCONTEXT_POP();
 	}
 }
@@ -1618,9 +1688,9 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	int databaseInfoLen;
 
 	SUPPRESS_ERRCONTEXT_DECLARE;
-	
+
 	SUPPRESS_ERRCONTEXT_PUSH();
-	
+
 	remainderLen = masterMirroringLen;
 	if (remainderLen < FSPC_CHECKPOINT_BYTES(0))
 	{
@@ -1631,7 +1701,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 (uint32)FSPC_CHECKPOINT_BYTES(0),
 						 remainderLen,
 						 XLogLocationToString(beginLoc))));
-	
+
 		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
@@ -1639,7 +1709,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	filespaceInfoLen = FSPC_CHECKPOINT_BYTES((*f)->count);
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_get_checkpoint_info: Checkpoint record length %u, %d filespaces, filespaceInfoLen %d, remainder length %d, location %s",
 			 checkpointLen,
 			 (*f)->count,
@@ -1657,7 +1727,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 remainderLen,
 						 (*f)->count,
 						 XLogLocationToString(beginLoc))));
-	
+
 		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
@@ -1672,7 +1742,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 (uint32)TSPC_CHECKPOINT_BYTES(0),
 						 remainderLen,
 						 XLogLocationToString(beginLoc))));
-	
+
 		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
@@ -1680,7 +1750,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	tablespaceInfoLen = TSPC_CHECKPOINT_BYTES((*t)->count);
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_get_checkpoint_info: Checkpoint record length %u, %d tablespaces, tablespaceInfoLen %d, remainder length %d, location %s",
 			 checkpointLen,
 			 (*t)->count,
@@ -1698,7 +1768,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 remainderLen,
 						 (*t)->count,
 						 XLogLocationToString(beginLoc))));
-	
+
 		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
@@ -1713,7 +1783,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 (uint32)DBDIR_CHECKPOINT_BYTES(0),
 						 remainderLen,
 						 XLogLocationToString(beginLoc))));
-	
+
 		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
@@ -1721,7 +1791,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	databaseInfoLen = DBDIR_CHECKPOINT_BYTES((*d)->count);
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_get_checkpoint_info: Checkpoint record length %u, %d databases, databaseInfoLen %d, remainder length %d, location %s",
 			 checkpointLen,
 			 (*d)->count,
@@ -1744,7 +1814,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 			     remainderLen,
 			     (*d)->count,
 			     XLogLocationToString(beginLoc))));
-	    
+
 	  SUPPRESS_ERRCONTEXT_POP();
 	  return false;
 	}
@@ -1764,7 +1834,7 @@ mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpoi
 	return mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, errlevel, &f, &t, &d);
 }
 
-/* 
+/*
  * If we're on the master standby, we expect to receive filespace and tablespace
  * meta data from a checkpoint.
  */
@@ -1787,12 +1857,12 @@ mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpoin
 	*filespaceCount = f->count;
 
 	*tablespaceCount = t->count;
-	
+
 	*databaseCount = t->count;
 	return true;
 }
 
-/* 
+/*
  * If we're on the master standby, we expect to receive filespace and tablespace
  * meta data from a checkpoint.
  */
@@ -1806,7 +1876,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 	fspc_map *fmap;
 	tspc_map *tmap;
 	dbdir_map *dmap;
-	
+
 	int i;
 
 	Assert(cpdata != NULL);
@@ -1830,12 +1900,12 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 			elog(ERROR, "bad filespace checkpoint information for entry %d", i);
 
 		add_filespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
-		
+
 		if (mkdir(fmap[i].path2, 0700) == 0)
 		{
 			if (Debug_persistent_recovery_print)
 			{
-				elog(PersistentRecovery_DebugPrintLevel(), 
+				elog(PersistentRecovery_DebugPrintLevel(),
 					 "mmxlog_read_checkpoint_data: Re-created filespace directory \"%s\"",
 					 fmap[i].path2);
 			}
@@ -1854,7 +1924,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 			{
 				if (Debug_persistent_recovery_print)
 				{
-					elog(PersistentRecovery_DebugPrintLevel(), 
+					elog(PersistentRecovery_DebugPrintLevel(),
 						 "mmxlog_read_checkpoint_data: Filespace directory \"%s\" already exists",
 						 fmap[i].path2);
 				}
@@ -1887,7 +1957,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 		{
 			if (Debug_persistent_recovery_print)
 			{
-				elog(PersistentRecovery_DebugPrintLevel(), 
+				elog(PersistentRecovery_DebugPrintLevel(),
 					 "mmxlog_read_checkpoint_data: Re-created tablespace directory \"%s\"",
 					 path);
 			}
@@ -1906,7 +1976,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 			{
 				if (Debug_persistent_recovery_print)
 				{
-					elog(PersistentRecovery_DebugPrintLevel(), 
+					elog(PersistentRecovery_DebugPrintLevel(),
 						 "mmxlog_read_checkpoint_data: Tablespace directory \"%s\" already exists",
 						 path);
 				}
@@ -1958,7 +2028,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 		{
 			if (Debug_persistent_recovery_print)
 			{
-				elog(PersistentRecovery_DebugPrintLevel(), 
+				elog(PersistentRecovery_DebugPrintLevel(),
 					 "mmxlog_read_checkpoint_data: Re-created database directory \"%s\"",
 					 path);
 			}
@@ -1977,7 +2047,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 			{
 				if (Debug_persistent_recovery_print)
 				{
-					elog(PersistentRecovery_DebugPrintLevel(), 
+					elog(PersistentRecovery_DebugPrintLevel(),
 						 "mmxlog_read_checkpoint_data: Database directory \"%s\" already exists",
 						 path);
 				}
@@ -1988,7 +2058,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 
 	if (Debug_persistent_recovery_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "mmxlog_read_checkpoint_data: %d filespaces, %d tablespaces, %d databases (beginLoc %s)",
 			 f->count,
 			 t->count,
@@ -2015,7 +2085,7 @@ static void
 tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid, int16 mirror_dbid,
 						   char **master_path, char **mirror_path)
 {
-	/* 
+	/*
 	 * Built in tablespaces are not known by the PersistentTablespace code
 	 * so we need to handle them here.
 	 */
