@@ -1739,6 +1739,25 @@ PersistentRecovery_CrashAbort(void)
 				{
 					fsObjEntry->updateNeeded = true;
 					fsObjEntry->state = PersistentFileSysState_AbortingCreate;
+					if (fsObjEntry->fsObjName.type == PersistentFsObjType_RelationFile)
+					{
+						bool exists;
+						Pass2RecoveryHashEntry_s *entry;
+						RelFileNode *relFileNode = 
+										PersistentFileSysObjName_GetRelFileNodePtr(
+												 			&fsObjEntry->fsObjName);
+						entry = Pass2Recovery_InsertHashEntry(
+													relFileNode->relNode,
+													&exists);
+						if (entry == NULL)
+							elog(WARNING, 
+							 	 "Pass2Recovery_InsertHashEntry"
+								 " failed to insert AbortingCreate entry into"
+								 " shared memory hash table, there might be"
+								 " entries in gp_fastsequence left uncleaned,"
+								 " it could cause inconsistency between"
+								 " pg_class and gp_fastsequence.");
+					}
 				}
 				else
 				{
