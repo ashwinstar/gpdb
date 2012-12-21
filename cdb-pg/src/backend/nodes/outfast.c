@@ -114,6 +114,10 @@
 #define WRITE_BINARY_FIELD(fldname, sz) \
 { appendBinaryStringInfo(str, (const char *) &node->fldname, (sz)); }
 
+/* Write a bytea field */
+#define WRITE_BYTEA_FIELD(fldname) \
+	(_outDatum(str, PointerGetDatum(node->fldname), -1, false))
+
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
 	{ /*int * dummy = 0; appendBinaryStringInfo(str,(const char *)&dummy, sizeof(int *)) ;*/ }
@@ -222,8 +226,6 @@ _outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 	Size		length;
 	char	   *s;
 
-	length = datumGetSize(value, typbyval, typlen);
-
 	if (typbyval)
 	{
 		s = (char *) (&value);
@@ -239,6 +241,7 @@ _outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 		}
 		else
 		{
+			length = datumGetSize(value, typbyval, typlen);
 			appendBinaryStringInfo(str, (char *)&length, sizeof(Size));
 			appendBinaryStringInfo(str, s, length);
 		}
@@ -2958,6 +2961,7 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			WRITE_NODE_FIELD(funcexpr);
 			WRITE_NODE_FIELD(funccoltypes);
 			WRITE_NODE_FIELD(funccoltypmods);
+			WRITE_BYTEA_FIELD(funcuserdata);
 			break;
 		case RTE_VALUES:
 			WRITE_NODE_FIELD(values_lists);

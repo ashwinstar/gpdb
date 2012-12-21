@@ -142,6 +142,10 @@ inline static char extended_char(char* token, size_t length)
 	    local_node->fldname = bitmapsetRead(); \
     } while (0)
 
+/* Read a bytea field */
+#define READ_BYTEA_FIELD(fldname) \
+	local_node->fldname = DatumGetPointer(readDatum(false))
+
 /* Set field to a given value, ignoring the value read from the input */
 #define READ_DUMMY_FIELD(fldname,fldvalue)  READ_SCALAR_FIELD(fldname, fldvalue)
 
@@ -2055,6 +2059,10 @@ _readRangeTblEntry(void)
 			READ_NODE_FIELD(funcexpr);
 			READ_NODE_FIELD(funccoltypes);
 			READ_NODE_FIELD(funccoltypmods);
+			if (pg_strtok_peek_fldname("funcuserdata"))
+			{
+				READ_BYTEA_FIELD(funcuserdata);
+			}
 			break;
 		case RTE_VALUES:
 			READ_NODE_FIELD(values_lists);

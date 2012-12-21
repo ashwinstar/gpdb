@@ -670,6 +670,7 @@ typedef struct RangeTblEntry
 	Node	   *funcexpr;		/* expression tree for func call */
 	List	   *funccoltypes;	/* OID list of column type OIDs */
 	List	   *funccoltypmods; /* integer list of column typmods */
+	bytea	   *funcuserdata;	/* describe function user data. assume bytea */
 
 	/*
 	 * Fields valid for a values RTE (else NIL):

@@ -1616,7 +1616,7 @@ LookupAggNameTypeNames(List *aggname, List *argtypes, bool noError)
 
 
 /*
- * parseCheckAggregates
+ * parseCheckTableFunctions
  *
  *	Check for TableValueExpr where they shouldn't be.  Currently the only
  *  valid location for a TableValueExpr is within a call to a table function.

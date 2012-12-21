@@ -94,6 +94,10 @@
 #define READ_BINARY_FIELD(fldname, sz) \
 	memcpy(&local_node->fldname, *str, (sz)); (*str) += (sz)
 
+/* Read a bytea field */
+#define READ_BYTEA_FIELD(fldname) \
+	local_node->fldname = DatumGetPointer(readDatum(str, false))
+
 /* Read a dummy field */
 #define READ_DUMMY_FIELD(fldname,fldvalue) \
 	{ local_node->fldname = (0); /*(*str) += sizeof(int*);*/ }
@@ -1749,6 +1753,7 @@ _readRangeTblEntry(const char ** str)
 			READ_NODE_FIELD(funcexpr);
 			READ_NODE_FIELD(funccoltypes);
 			READ_NODE_FIELD(funccoltypmods);
+			READ_BYTEA_FIELD(funcuserdata);
 			break;
 		case RTE_VALUES:
 			READ_NODE_FIELD(values_lists);

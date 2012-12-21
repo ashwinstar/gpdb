@@ -1791,6 +1791,8 @@ _copyRangeTblEntry(RangeTblEntry *from)
 	COPY_NODE_FIELD(funcexpr);
 	COPY_NODE_FIELD(funccoltypes);
 	COPY_NODE_FIELD(funccoltypmods);
+	/* we copy pointer instead of chunk copy */
+	COPY_SCALAR_FIELD(funcuserdata);
 	COPY_NODE_FIELD(values_lists);
 	COPY_SCALAR_FIELD(jointype);
 	COPY_NODE_FIELD(joinaliasvars);

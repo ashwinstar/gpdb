@@ -1066,18 +1066,31 @@ addRangeTableEntryForFunction(ParseState *pstate,
 		FuncExpr *func = (FuncExpr *) funcexpr;
 		Datum     d;
 		int       i;
-		
+
 		Insist(TypeSupportsDescribe(funcrettype));
 
 		funcDescribe = lookupProcCallback(func->funcid, PROMETHOD_DESCRIBE);
 		if (OidIsValid(funcDescribe))
 		{
-			/* 
+			FmgrInfo	flinfo;
+			FunctionCallInfoData fcinfo;
+
+			/*
 			 * Describe functions have the signature  d(internal) => internal
 			 * where the parameter is the untransformed FuncExpr node and the result
-			 * is a tuple descriptor.
+			 * is a tuple descriptor. Its context is RangeTblEntry which has
+			 * funcuserdata field to store arbitrary binary data to transport
+			 * to executor.
 			 */
-			d = OidFunctionCall1(funcDescribe, PointerGetDatum(funcexpr));
+			rte->funcuserdata = NULL;
+			fmgr_info(funcDescribe, &flinfo);
+			InitFunctionCallInfoData(fcinfo, &flinfo, 1, (Node *) rte, NULL);
+			fcinfo.arg[0] = PointerGetDatum(funcexpr);
+			fcinfo.argnull[0] = false;
+
+			d = FunctionCallInvoke(&fcinfo);
+			if (fcinfo.isnull)
+				elog(ERROR, "function %u returned NULL", flinfo.fn_oid);
 			tupdesc = (TupleDesc) DatumGetPointer(d);
 
 			/* 

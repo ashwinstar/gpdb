@@ -57,6 +57,9 @@ extern Datum describe(PG_FUNCTION_ARGS);
 extern Datum project(PG_FUNCTION_ARGS);
 extern Datum project_describe(PG_FUNCTION_ARGS);
 
+extern Datum userdata_describe(PG_FUNCTION_ARGS);
+extern Datum userdata_project(PG_FUNCTION_ARGS);
+
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -2044,7 +2047,7 @@ project(PG_FUNCTION_ARGS)
 	 * correctly.
 	 */
 	if (PG_NARGS() != 2 || PG_ARGISNULL(0) || PG_ARGISNULL(1))
-		elog(ERROR, "invalid invocation of mytransform");
+		elog(ERROR, "invalid invocation of project");
 	scan = PG_GETARG_ANYTABLE(0);  /* Should be the first parameter */
 	position = PG_GETARG_INT32(1);
 
@@ -2116,7 +2119,7 @@ project_describe(PG_FUNCTION_ARGS)
 
 	/* Fetch and validate input */
 	if (PG_NARGS() != 1 || PG_ARGISNULL(0))
-		elog(ERROR, "invalid invocation of dynamic_describe");	
+		elog(ERROR, "invalid invocation of project_describe");
 
 	fexpr = (FuncExpr*) PG_GETARG_POINTER(0);
 	Insist(IsA(fexpr, FuncExpr));   /* Assert we got what we expected */
@@ -2149,7 +2152,7 @@ project_describe(PG_FUNCTION_ARGS)
 	Insist(argtypes[0] == ANYTABLEOID);
 	Insist(argtypes[1] == INT4OID);
 
-	/* Now get th tuple descriptor for the ANYTABLE we received */
+	/* Now get the tuple descriptor for the ANYTABLE we received */
 	texpr = (TableValueExpr*) linitial(fargs);
 	Insist(IsA(texpr, TableValueExpr));  /* double check that cast */
 	
@@ -2206,6 +2209,98 @@ project_describe(PG_FUNCTION_ARGS)
 
 	/* Finally return that tupdesc */
 	PG_RETURN_POINTER(odesc);
+}
+
+/*
+ *
+ */
+PG_FUNCTION_INFO_V1(userdata_project);
+Datum
+userdata_project(PG_FUNCTION_ARGS)
+{
+	FuncCallContext		*fctx;
+	ReturnSetInfo		*rsi;
+	AnyTable			 scan;
+	HeapTuple			 tuple;
+	TupleDesc			 out_tupdesc;
+	Datum				 tup_datum;
+	Datum				 values[1];
+	bool				 nulls[1];
+	bytea				*userdata;
+	char				*message;
+
+	/*
+	 * Sanity checking, shouldn't occur if our CREATE FUNCTION in SQL is done
+	 * correctly.
+	 */
+	if (PG_NARGS() != 1 || PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		elog(ERROR, "invalid invocation of userdata_project");
+	scan = PG_GETARG_ANYTABLE(0);  /* Should be the first parameter */
+	if (SRF_IS_FIRSTCALL())
+	{
+		fctx = SRF_FIRSTCALL_INIT();
+	}
+	fctx = SRF_PERCALL_SETUP();
+
+	/* Get the next value from the input scan */
+	rsi			= (ReturnSetInfo *) fcinfo->resultinfo;
+	out_tupdesc = rsi->expectedDesc;
+	tuple       = AnyTable_GetNextTuple(scan);
+	if (tuple == NULL)
+		SRF_RETURN_DONE(fctx);
+
+	/* Receive message from describe function */
+	userdata = TF_GET_USERDATA();
+	if (userdata != NULL)
+	{
+		message = (char *) VARDATA(userdata);
+		values[0] = CStringGetTextDatum(message);
+		nulls[0] = false;
+	}
+	else
+	{
+		values[0] = (Datum) 0;
+		nulls[0] = true;
+	}
+	/* Construct the output tuple and convert to a datum */
+	tuple = heap_form_tuple(out_tupdesc, values, nulls);
+	tup_datum = HeapTupleGetDatum(tuple);
+
+	/* Return the next result */
+	SRF_RETURN_NEXT(fctx, tup_datum);
+}
+
+PG_FUNCTION_INFO_V1(userdata_describe);
+Datum
+userdata_describe(PG_FUNCTION_ARGS)
+{
+	FuncExpr *fexpr;
+	TupleDesc tupdesc;
+	bytea	   *userdata;
+	size_t		bytes;
+	const char *message = "copied data from describe function";
+
+	/* Fetch and validate input */
+	if (PG_NARGS() != 1 || PG_ARGISNULL(0))
+		elog(ERROR, "invalid invocation of userdata_describe");	
+
+	fexpr = (FuncExpr*) PG_GETARG_POINTER(0);
+	Insist(IsA(fexpr, FuncExpr));   /* Assert we got what we expected */
+
+	/* Build a result tuple descriptor */
+	tupdesc = CreateTemplateTupleDesc(1, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "message", TEXTOID, -1, 0);
+
+	/* Prepare user data */
+	bytes = VARHDRSZ + 256;
+	userdata = (bytea *) palloc0(bytes);
+	SET_VARSIZE(userdata, bytes);
+	strcpy(VARDATA(userdata), message);
+
+	/* Set to send */
+	TF_SET_USERDATA(userdata);
+
+	PG_RETURN_POINTER(tupdesc);
 }
 
 /*

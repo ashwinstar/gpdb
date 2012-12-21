@@ -409,6 +409,7 @@ ExecInitTableFunction(TableFunctionScan *node, EState *estate, int eflags)
 	scanstate->rsinfo.setResult    = NULL;
 	scanstate->rsinfo.setDesc	   = NULL;
 
+	scanstate->userdata = rte->funcuserdata;
 	/* Initialize a function cache for the function expression */
 	init_fcache(func->funcid, scanstate->fcache, 
 				econtext->ecxt_per_query_memory, 
@@ -418,7 +419,7 @@ ExecInitTableFunction(TableFunctionScan *node, EState *estate, int eflags)
 	InitFunctionCallInfoData(scanstate->fcinfo,               /* Fcinfo  */
 							 &(scanstate->fcache->func),      /* Flinfo  */
 							 0,                               /* Nargs   */
-							 NULL,                            /* Context */
+							 (Node*) scanstate,               /* Context */
 							 (Node*) &(scanstate->rsinfo));   /* ResultInfo */
 
 	/* setup the AnyTable input */
@@ -536,4 +537,48 @@ AnyTable_GetNextTuple(AnyTable t)
 	 * ----------------------------------------
 	 */
 	return ExecRemoveJunk(t->junkfilter, t->econtext->ecxt_outertuple);
+}
+
+/*
+ * tf_set_userdata_internal
+ * This is the entity of TF_SET_USERDATA() API. Sets bytea datum to
+ * RangeTblEntry, which is transported to project function via serialized
+ * plan tree.
+ */
+void
+tf_set_userdata_internal(FunctionCallInfo fcinfo, bytea *userdata)
+{
+	if (!fcinfo->context || !IsA(fcinfo->context, RangeTblEntry))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("expected RangeTblEntry node, found %d",
+				 fcinfo->context ? nodeTag(fcinfo->context) : 0)));
+
+	/* Make sure it gets detoasted, but packed is allowed */
+	((RangeTblEntry *) fcinfo->context)->funcuserdata =
+						userdata ? pg_detoast_datum_packed(userdata) : NULL;
+}
+
+/*
+ * tf_get_userdata_internal
+ * This is the entity of TF_GET_USERDATA() API. Extracts userdata from
+ * its scan node which was transported via serialized plan tree.
+ */
+bytea *
+tf_get_userdata_internal(FunctionCallInfo fcinfo)
+{
+	bytea	   *userdata;
+
+	if (!fcinfo->context || !IsA(fcinfo->context, TableFunctionState))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("expected TableFunctionState node, found %d",
+				 fcinfo->context ? nodeTag(fcinfo->context) : 0)));
+
+	userdata = ((TableFunctionState *) fcinfo->context)->userdata;
+	if (!userdata)
+		return NULL;
+
+	/* unpack, just in case */
+	return pg_detoast_datum(userdata);
 }
