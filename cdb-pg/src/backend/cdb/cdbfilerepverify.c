@@ -6924,6 +6924,7 @@ FileRepMirror_CompareDirectoryContents(
 		fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.finalBatch = true;
 		fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.numChildrenInBatch = 0;
 		fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.startOver = false;
+		fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.directoryExists = false;
 
 		*responseSizeBytes = 0;
 
@@ -7132,7 +7133,7 @@ FileRepMirror_CompareDirectoryContents(
 	fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.finalBatch = !bufferFull;
 	fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.numChildrenInBatch = numThisSend;
 	fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.startOver = startOver;
-
+	fileRepMessageHeader->fileRepOperationDescription.verify.desc.dirContentsMirror.directoryExists = true;
 
 
 
@@ -7516,6 +7517,7 @@ int FileRepPrimary_CompareDirectoryListing(
 	char		 primary_child_path[MAXPGPATH+1];
 	char		 mirror_child_path[MAXPGPATH+1];
 	int currOffset = 0;
+	bool directoryExists = false;
 
 	verifyLog(
 		request->logControl,
@@ -7597,6 +7599,32 @@ int FileRepPrimary_CompareDirectoryListing(
 		finalBatch = 	responseDesc.verify.desc.dirContentsMirror.finalBatch;
 		numChildrenInBatch = 	responseDesc.verify.desc.dirContentsMirror.numChildrenInBatch;
 		startOver = responseDesc.verify.desc.dirContentsMirror.startOver;
+		directoryExists = responseDesc.verify.desc.dirContentsMirror.directoryExists;
+
+		if (!directoryExists)
+		{
+			Assert(numChildrenInBatch ==0);
+			writeFixFileRecord(
+				logControl,
+				"extra_p",
+				fileRepPrimaryHostAddress,
+				primaryDirectoryName,
+				fileRepMirrorHostAddress,
+				mirrorDirectoryName);
+			
+			writeDiffTableRecord(
+				logControl,
+				logControl.logOptions.token,
+				"FileRepVerifyDirectoryMissingOnMirror",
+				fileRepPrimaryHostAddress,
+				primaryDirectoryName,
+				fileRepMirrorHostAddress,
+				mirrorDirectoryName,
+				-1, -1, -1, -1, -1,
+				NULL); /* Not applicable for directories */
+
+		}
+
 		if (startOver)
 		{
 			numStartOvers++;
@@ -7624,12 +7652,13 @@ int FileRepPrimary_CompareDirectoryListing(
 		verifyLog(
 			request->logControl,
 			DEBUG1,
-			"FileRepPrimary_CompareDirectoryListing finalBatch %d numChildrenInBatch %d startOver %d numStartOvers %d responseDataLength %d",
+			"FileRepPrimary_CompareDirectoryListing finalBatch %d numChildrenInBatch %d startOver %d numStartOvers %d responseDataLength %d directoryExists %d",
 			finalBatch,
 			numChildrenInBatch,
 			startOver,
 			numStartOvers,
-			responseDataLength);
+			responseDataLength,
+			directoryExists);
 	  
 		if (numChildrenInBatch > 0){
 			Assert(responseData != NULL);
@@ -7713,7 +7742,7 @@ int FileRepPrimary_CompareDirectoryListing(
 		}
 		
 		
-	} while (!finalBatch);
+	} while (!finalBatch && directoryExists);
 
 	if (responseData != NULL)
 	{
