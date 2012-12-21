@@ -67,7 +67,17 @@
 		Size _size = (sz); \
 		memcpy(&newnode->fldname, &from->fldname, _size); \
 	} while (0)
-	
+
+/* Copy a field that is a varlena datum */
+#define COPY_VARLENA_FIELD(fldname, len) \
+	do { \
+		if (from->fldname) \
+		{ \
+			newnode->fldname = DatumGetPointer( \
+					datumCopy(PointerGetDatum(from->fldname), false, len)); \
+		} \
+	} while (0)
+
 /* Copy a parse location field (for Copy, this is same as scalar case) */
 #define COPY_LOCATION_FIELD(fldname) \
 	(newnode->fldname = from->fldname)
@@ -1808,8 +1818,7 @@ _copyRangeTblEntry(RangeTblEntry *from)
 	COPY_NODE_FIELD(funcexpr);
 	COPY_NODE_FIELD(funccoltypes);
 	COPY_NODE_FIELD(funccoltypmods);
-	/* we copy pointer instead of chunk copy */
-	COPY_SCALAR_FIELD(funcuserdata);
+	COPY_VARLENA_FIELD(funcuserdata, -1);
 	COPY_NODE_FIELD(values_lists);
 	COPY_SCALAR_FIELD(jointype);
 	COPY_NODE_FIELD(joinaliasvars);

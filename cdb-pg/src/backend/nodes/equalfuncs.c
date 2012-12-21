@@ -81,6 +81,23 @@
 			return false; \
 	} while (0)
 
+/*
+ * Compare a field that is a varlena datum to the other.
+ * Note the result will be false if one is toasted and the other is untoasted.
+ * It depends on the context if we can say those are equal or not.
+ */
+#define COMPARE_VARLENA_FIELD(fldname, len) \
+	do{ \
+		if (a->fldname != b->fldname) \
+		{ \
+			if (a->fldname == NULL || b->fldname == NULL) \
+				return false; \
+			if (!datumIsEqual(PointerGetDatum(a->fldname), \
+							  PointerGetDatum(b->fldname), false, len)) \
+				return false; \
+		} \
+	} while (0)
+
 /* Compare a parse location field (this is a no-op, per note above) */
 #define COMPARE_LOCATION_FIELD(fldname) \
 	((void) 0)
@@ -2137,7 +2154,7 @@ _equalRangeTblEntry(RangeTblEntry *a, RangeTblEntry *b)
 	COMPARE_NODE_FIELD(funcexpr);
 	COMPARE_NODE_FIELD(funccoltypes);
 	COMPARE_NODE_FIELD(funccoltypmods);
-	COMPARE_SCALAR_FIELD(funcuserdata);
+	COMPARE_VARLENA_FIELD(funcuserdata, -1);
 	COMPARE_NODE_FIELD(values_lists);
 	COMPARE_SCALAR_FIELD(jointype);
 	COMPARE_NODE_FIELD(joinaliasvars);
