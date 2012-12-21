@@ -124,6 +124,19 @@ BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REM
 # Add names to the BASE list here to enable the thirdparty-integrate target to populate
 # the BASE directory structure for you from the //tools depot in Perforce
 # --------------------------------------------------------------------------------
+
+ifeq "$(findstring hpux_ia64,$(BLD_ARCH))" "hpux_ia64"
+define tmpBLD_THIRDPARTY_LIBS_BASE
+	apr/1.4.6
+	bzip2/1.0.6
+	curl/7.21.7
+	libevent/1.4.6
+	openssl/0.9.8u
+	python/2.5.6
+	yaml/0.1.1
+	zlib/1.2.3
+endef
+else
 define tmpBLD_THIRDPARTY_LIBS_BASE
 	DDBoostSDK/2.4.1.0-289644
 	apr/1.2.12
@@ -149,6 +162,8 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	yaml/0.1.1
 	zlib/1.2.3
 endef
+endif
+
 BLD_THIRDPARTY_LIBS_BASE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE))
 
 define unusedAUTHLIBS

@@ -754,7 +754,7 @@ pg_foreach_ifaddr(PgIfAddrCallback callback, void *cb_data)
  * and HP/UX. So we prefer SIOCGLIFCONF if it's available.
  */
 
-#if defined(SIOCGLIFCONF)
+#if defined(SIOCGLIFCONF) && !defined(__hpux)
 
 /*
  * Enumerate the system's network interface addresses and call the callback

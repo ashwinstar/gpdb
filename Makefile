@@ -248,6 +248,7 @@ CONFIGFLAGS+= $(LIBXML2FLAGS)
 # Platform-specific config flags
 aix5_ppc_64_CONFIG_ADDITIONS=LDFLAGS="-Wl,-bbigtoc -L/usr/lib/threads"
 aix5_ppc_32_CONFIG_ADDITIONS=LDFLAGS="-L/usr/lib/threads"
+hpux_ia64_CONFIG_ADDITIONS=--without-readline --without-ldap
 win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/local/mingw32/bin/mingw32-gcc LDFLAGS=-L/usr/local/mingw32/mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw32/mingw32/include
 win64_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=x86_64-pc-mingw64 --without-zlib --enable-debug CC=/usr/local/mingw64/bin/x86_64-w64-mingw32-gcc LDFLAGS=-L/usr/local/mingw64/x86_64-w64-mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw64/x86_64-w64-mingw32/include
 CONFIG_ADDITIONS=$($(BLD_ARCH)_CONFIG_ADDITIONS)
@@ -335,6 +336,7 @@ export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$(BLD_LD_LIBRARY_PATH)
 #$(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 
 # how much of GPDB to build by platform (default is "full")
+hpux_ia64_GPDB_BUILDSET=partial
 rhel4_x86_64_GPDB_BUILDSET=partial
 rhel4_x86_32_GPDB_BUILDSET=partial
 aix5_ppc_64_GPDB_BUILDSET=partial
@@ -423,7 +425,9 @@ define BUILD_STEPS
 	$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
-	if [ "$(findstring win,$(BLD_ARCH))" != "win" ]; then \
+	if [ "$(findstring hpux_ia64,$(BLD_ARCH))" = "hpux_ia64" ]; then \
+	  cd $(GPMGMT)/bin && $(MAKE) pygresql LDFLAGS="" INSTLOC=$(INSTLOC) ; \
+	elif [ "$(findstring win,$(BLD_ARCH))" != "win" ]; then \
 	  cd $(GPMGMT)/bin && $(MAKE) pygresql INSTLOC=$(INSTLOC) ; \
 	fi
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
@@ -676,6 +680,7 @@ BLD_OS:=$(shell uname -s)
 endif
 AIX_LOADERS_LIBS=libbz2.a libz.a libpq.a liblber*.a libldap*.a libyaml*.a
 Darwin_LOADERS_LIBS=libcrypto.*.dylib libssl.*.dylib libpq.*.dylib* libkrb5.*.dylib libcom_err.*.dylib libldap_r-*.dylib libk5crypto.*.dylib libkrb5support.*.dylib liblber-*.dylib
+HP-UX_LOADERS_LIBS=libcrypto.so* libssl.so.* libz.so* libpq.so* libapr*
 Linux_LOADERS_LIBS=libcrypto.so* libssl.so.* libz.so* libpq.so* libkrb5.so* libcom_err.so* libk5crypto.so* libkrb5support.so* liblber*.so* libldap_r-*so*
 SunOS_LOADERS_LIBS=libcrypto.so* libssl.so.* libgcc_s.so.1 libz.so* libpq.so* libk5crypto.so* libkrb5support.so* liblber*.so* libldap_r-*so* libcom_err.so* libkrb5.so*
 Windows_LOADERS_LIBS=libpq.dll
@@ -683,6 +688,12 @@ define tmpLOADERS_FILESET_LIB
 	$($(BLD_OS)_LOADERS_LIBS)
 endef
 LOADERS_FILESET_LIB = $(strip $(tmpLOADERS_FILESET_LIB))
+
+hpux_ia64_LOADERS_LIBS_GCC=libgcc_s.so libgcc_s.so.0
+hpux_ia64_LOADERS_LIBS_GCC_LOC=/opt/hp-gcc/lib/hpux64
+
+FILESET_LIB_GCC=$($(BLD_ARCH)_LOADERS_LIBS_GCC)
+FILESET_LIB_GCC_LOC=$($(BLD_ARCH)_LOADERS_LIBS_GCC_LOC)
 
 aix5_ppc_32_LOADERS_LIBS_PERZL=libz.a
 aix5_ppc_64_LOADERS_LIBS_PERZL=libz.so libz.so.1 libz.so.1.2.4 libcrypto.so libcrypto.so.0.9.8 libssl.so libssl.so.0.9.8
@@ -824,6 +835,9 @@ else
 	(cd $(INSTLOC)/include && $(TAR) cf - *) | (cd $(CLIENTINSTLOC_INCLUDE)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(CLIENTINSTLOC_LIB)
 	(cd $(INSTLOC)/lib && $(TAR) cf - *) | (cd $(CLIENTINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
+ifneq "$(FILESET_LIB_GCC)" ""
+	(cd $(CLIENTINSTLOC_LIB)/ && $(TAR) cf - -C $(FILESET_LIB_GCC_LOC) $(FILESET_LIB_GCC) | $(TAR) xvpf -)$(check_pipe_for_errors)
+endif
 ifneq "$(findstring $(BLD_ARCH),sol8_sparc_32 sol9_sparc_32)" ""
 	(cd /usr/local/lib/ && $(TAR) cf - libiconv.so* libidn.so* libintl.so* libsasl2.so*) | (cd $(CLIENTINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(CLIENTINSTLOC_OPENSOURCE)
@@ -898,6 +912,9 @@ endif
 	mkdir -p $(LOADERSINSTLOC_LIB)
 ifneq "$(LOADERS_FILESET_LIB)" ""
 	(cd $(INSTLOC)/lib/ && $(TAR) cf - $(LOADERS_FILESET_LIB)) | (cd $(LOADERSINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
+endif
+ifneq "$(FILESET_LIB_GCC)" ""
+	(cd $(LOADERSINSTLOC_LIB)/ && $(TAR) cf - -C $(FILESET_LIB_GCC_LOC) $(FILESET_LIB_GCC) | $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
 ifneq "$(LOADERS_FILESET_LIB_PERZL)" ""
 	# include libraries from www.perzl.org needed by the pware Python-2.6.1 build

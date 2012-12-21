@@ -61,7 +61,11 @@ PYGRESQL_BIN_MAPPINGS_DIR=$($(BLD_ARCH)_PYGRESQL_BIN_MAPPINGS_DIR)
 pygresql:
 	@echo "--- PyGreSQL"
 	export PATH=$(PYGRESQL_BIN_MAPPINGS_DIR)$(PATH) && cd $(INSTLOC)/ && . greenplum_path.sh && unset PYTHONHOME &&\
-	  cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
+	if [ `uname -s` = 'HP-UX' ]; then \
+	  cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="-L$(BLD_THIRDPARTY_DIR)/python-2.5.6/lib" python setup.py build; \
+	else \
+	  cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build; \
+	fi; \
 	mkdir -p $(PYLIB_DIR)/pygresql
 	cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/* $(PYLIB_DIR)/pygresql
 	touch $(PYLIB_DIR)/__init__.py

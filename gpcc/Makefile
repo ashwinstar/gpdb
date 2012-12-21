@@ -12,6 +12,10 @@ CC=$(strip $(BLD_CC) $(BLD_CFLAGS))
 GPCC=$(CURDIR)
 CDBINCL=-I$(GPCC)/../cdb-pg/src/include
 
+ifeq "$(BLD_ARCH)" "hpux_ia64"
+GPFDIST_EXTRA_LIBS="-lxnet"
+endif
+
 ifeq "$(BLD_ARCH)" "win32"
 override CC=$(strip /usr/local/mingw32/bin/mingw32-gcc $(BLD_CFLAGS))
 override BLD_CFLAGS += -L/usr/local/mingw32/mingw32/lib -I/usr/local/mingw32/mingw32/include -DWIN32 $(CDBINCL)/port/win32 $(CDBINCL)/port/win32_msvc -DFRONTEND
@@ -28,7 +32,7 @@ GPFDISTOBJSFILES=$(subst .c,.o,$(GPFDISTFILES))
 ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
 GPFDIST_LIBS=-lyaml -lz -lbz2
 else
-GPFDIST_LIBS=$(BLD_THIRDPARTY_LIB_DIR)/libyaml.a -lz -lbz2
+GPFDIST_LIBS=$(BLD_THIRDPARTY_LIB_DIR)/libyaml.a -lz -lbz2 $(GPFDIST_EXTRA_LIBS)
 endif
 endif
 

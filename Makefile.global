@@ -45,6 +45,7 @@ endif
 
 # take over the gcc version we use
 BLD_CC=gcc
+hpux_ia64_CC=gcc
 osx106_x86_CC=gcc
 osx105_x86_CC=gcc
 osx104_x86_CC=gcc-4.0
@@ -94,6 +95,7 @@ export BLD_LD_LIBRARY_PATH_FIXED=true
 # specify python version to use for build-time and run-time
 aix5_ppc_32_PYTHON=/opt/pware
 aix5_ppc_64_PYTHON=/opt/pware64
+hpux_ia64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.5.6
 osx104_x86_PYTHON=/opt/python-2.5.1
 osx105_x86_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel4_x86_32_PYTHON=/opt/python-2.5.1
@@ -168,6 +170,7 @@ endif
 export NO_M64=1
 
 # 32-bit/64-bit compiler/linker flag settings
+hpux_ia64_BLD_CFLAGS=-mlp64 -D_XOPEN_SOURCE_EXTENDED
 rhel4_x86_64_BLD_CFLAGS=-m64
 rhel4_x86_32_BLD_CFLAGS=-m32
 rhel6_x86_64_BLD_CFLAGS=-m64
