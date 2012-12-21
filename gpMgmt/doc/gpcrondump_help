@@ -14,7 +14,9 @@ gpcrondump -x <database_name>
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
      { [-E <encoding>] [--inserts | --column-inserts] [--oids] 
-       [--no-owner | --use-set-session-authorization] [--no-privileges] } 
+       [--no-owner | --use-set-session-authorization] 
+       [--no-privileges] [--rsyncable] [--ddboost] }
+     
 
 gpcrondump -? 
 
@@ -104,6 +106,21 @@ OPTIONS
  The master host data directory. If not specified, the value 
  set for $MASTER_DATA_DIRECTORY will be used.
 
+--ddboost
+ Use Data Domain DD Boost for this backup. Before using DD Boost 
+ make sure the one-time DD Boost credential setup is completed.
+ The following options are recommended if --ddboost is specified.
+
+    * Use the --rsyncable option with DD Boost
+    
+    * When running a mixed backup that backs up to both
+      a local disk and to Data Domain, use the -u option
+      to specify that the backup to the local disk does not
+      use the default directory. 
+  
+  The -f, -G, -g, -R, and -u options change if 
+  --ddboost is specified. See the options for details.
+
 
 -E encoding
 
@@ -115,7 +132,9 @@ OPTIONS
 
  When doing the check to ensure that there is enough free disk space to 
  create the dump files, specifies a percentage of free disk space that 
- should remain after the dump completes. The default is 10 percent
+ should remain after the dump completes. The default is 10 percent.
+
+ -f is not supported if --ddboost is specified.
 
 
 -g (copy config files)
@@ -125,12 +144,18 @@ OPTIONS
  configuration files are dumped in the master or segment data 
  directory to db_dumps/YYYYMMDD/config_files_<timestamp>.tar
 
+ If --ddboost is specified, the files are located in the 
+ db_dumps directory on the default storage unit. 
+
 
 -G (dump global objects)
 
  Use pg_dumpall to dump global objects such as roles and tablespaces. 
  Global objects are dumped in the master data directory to 
  db_dumps/YYYYMMDD/gp_global_1_1_<timestamp>.
+
+ If --ddboost is specified, the files are located in the 
+ db_dumps directory on the default storage unit. 
 
 
 -h (record dump details)
@@ -177,6 +202,8 @@ OPTIONS
  the oldest dump directory except the current date's dump directory. 
  All dump sets within that directory will be removed.
 
+ If --ddboost is specified, only the old files on DD Boost are deleted.
+
 
 --oids
 
@@ -194,6 +221,8 @@ OPTIONS
  Rollback the dump files (delete a partial dump) if a failure 
  is detected. The default is to not rollback.
 
+ -r is not supported if --ddboost is specified.
+
 
 -R <post_dump_script>
 
@@ -201,6 +230,19 @@ OPTIONS
  For example, you might want a script that moves completed dump files 
  to a backup host. This script must reside in the same location on 
  the master and all segment hosts.
+
+
+--rsyncable
+
+ Passes the --rsyncable flag to the gpzip utility to synchronize
+ the output occasionally, based on the input during compression.
+ This synchronization increases the file size by less than 1% in
+ most cases. When this flag is passed, the rsync(1) program can
+ synchronize compressed files much more efficiently. The gunzip
+ utility cannot differentiate between a compressed file created
+ with this option, and one created without it.  
+
+ Recommendation: Specify this option when using --ddboost.
 
 
 -s <schema_name>
@@ -229,6 +271,8 @@ OPTIONS
  may be desirable if each segment host has multiple segment 
  instances as it will create the dump files in a centralized 
  location rather than the segment data directories.
+
+ -u is not supported if --ddboost is specified.
 
 
 --use-set-session-authorization
@@ -280,21 +324,18 @@ Call gpcrondump directly and dump mydatabase (and global objects):
 
   gpcrondump -x mydatabase -c -g -G
 
-
-A Linux crontab entry that runs a backup of the sales database 
+A crontab entry that runs a backup of the sales database 
 (and global objects) nightly at one past midnight:
 
-  SHELL=/bin/bash
-  GPHOME=/usr/local/greenplum-db-4.0.0.0
-  MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1
-  PATH=$PATH:$GPHOME/bin
-  01 0 * * * gpadmin gpcrondump -x sales -c -g -G -a -q >> gp_salesdump.log
+  01 0 * * * /home/gpadmin/gpdump.sh >> gpdump.log
 
+The content of dump script gpdump.sh is:
 
-A Solaris crontab entry that runs a backup of the sales database 
-(and global objects) nightly at one past midnight (no line breaks):
-
-  01 0 * * * SHELL=/bin/bash ; GPHOME=/usr/local/greenplum-db-4.0.0.0 ; PATH=$PATH:$GPHOME/bin ; HOME=/export/home/gpadmin ; MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1 ; /usr/local/greenplum-db/bin/gpcrondump -x sales -c -g -G -a -q >> gp_salesdump.log
+  #!/bin/bash
+  export GPHOME=/usr/local/greenplum-db
+  export MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1
+  . $GPHOME/greenplum_path.sh  
+  gpcrondump -x sales -c -g -G -a -q 
 
 
 *****************************************************
