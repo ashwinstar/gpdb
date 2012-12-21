@@ -679,11 +679,39 @@ class GPUpgradeBase(object):
     #------------------------------------------------------------
     def PreUpgradeCheck(self):
         '''
-        Check GUC, free space, catalog
+        Check master/segment binary version, GUC, free space, catalog
         '''
+        self.CheckBinaryVersion()
         self.CheckGUCs()
         self.CheckFreeSpace()
         self.CheckCatalog()
+
+    #------------------------------------------------------------
+    def CheckBinaryVersion(self):
+        '''
+        Validate that the correct binary is installed in all segments
+        '''
+        logger.info('Checking Segment binary version')
+        hosts = self.Select("select distinct hostname from gp_segment_configuration");
+        masterversion = self.getversion(self.newhome, self.newenv)
+
+        cmdStr = '%s/bin/pg_ctl --gp-version' % self.newhome
+        for uh in hosts:
+            cmd = base.Command(uh, cmdStr, base.REMOTE, uh)
+            self.pool.addCommand(cmd)
+        self.pool.join()
+        items = self.pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                logger.error("error on host %s with error: %s" % (i.remoteHost, i.results.stderr))
+                raise UpgradeError('Cannot verify segment GPDB binary')
+            if not i.results.stdout:
+                logger.error("could not find version string from host %s with command: %s" % (i.remoteHost, cmdStr))
+                raise UpgradeError('Cannot verify segment GPDB binary')
+            version_string = i.results.stdout.strip()
+            if version_string != masterversion:
+                logger.error("version string on host %s: '%s' does not match expected: '%s'" % (i.remoteHost, version_string, masterversion))
+                raise UpgradeError('Master/Segment binary mismatch')
 
     #------------------------------------------------------------
     def CheckGUCs(self):
@@ -691,6 +719,7 @@ class GPUpgradeBase(object):
         Validate that the GUCs are set properly
         - gp_external_enable_exec must be set to true
         '''
+        logger.info('Checking GUCs')
         disable_exec_ext = self.Select("select current_setting('gp_external_enable_exec')");
         if (disable_exec_ext[0] == 'off'):
             logger.fatal('***************************************')
