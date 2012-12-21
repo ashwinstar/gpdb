@@ -12591,6 +12591,7 @@ unreserved_keyword:
 			| VIEW
 			| VOLATILE
 			| WEB /* gp */
+			| WITHIN
 			| WITHOUT
 			| WORK
 			| WRAPPER
@@ -13092,7 +13093,6 @@ reserved_keyword:
 			| USING
 			| WINDOW
 			| WITH
-			| WITHIN
 			| WHEN
 			| WHERE
 		;
