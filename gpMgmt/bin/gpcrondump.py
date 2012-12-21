@@ -159,7 +159,7 @@ class GpCronDump(Operation):
                 hostset = self.getHostSet(self.getGpArray())
                 p = getpass()
                 self.validatePassword(password = p)
-                credentials = self.ddboost_host + "\n"  + self.ddboost_user + "\n" + p
+                credentials = self.ddboost_host + "\n"  + self.ddboost_user + "\n" + p + "\n"
                 self.scpToHosts(hostset, credentials)
                 return 0;
             elif (bool(self.ddboost_host) and bool(self.ddboost_user)):
