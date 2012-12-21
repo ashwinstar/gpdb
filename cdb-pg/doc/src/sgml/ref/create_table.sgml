@@ -43,16 +43,15 @@ PostgreSQL documentation
 <synopsis>
 
 CREATE [[GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE table_name ( 
-       [ { column_name data_type 
-          [ ENCODING ( storage_directive [,...] ) ]
-            DEFAULT default_expr] 
-           [column_constraint [ ... ]]
-           | table_constraint
-           | LIKE other_table [{INCLUDING | EXCLUDING} 
-                               {DEFAULTS | CONSTRAINTS}] ...}
-           [, ... ] ]
-           [column_reference_storage_directive [, ...] ]
-           )
+[ { column_name data_type [ DEFAULT default_expr ]     [column_constraint [ ... ]
+[ ENCODING ( storage_directive [,...] ) ]
+] 
+   | table_constraint
+   | LIKE other_table [{INCLUDING | EXCLUDING} 
+                      {DEFAULTS | CONSTRAINTS}] ...}
+   [, ... ] ]
+   [column_reference_storage_directive [, …] ]
+   )
    [ INHERITS ( parent_table [, ... ] ) ]
    [ WITH ( storage_parameter=value [, ... ] )
    [ ON COMMIT {PRESERVE ROWS | DELETE ROWS | DROP} ]
