@@ -157,3 +157,20 @@ insert into foo(t) select f.t || '100' from nextfoo(1) f;
 
 select * from foo order by 1,2;
 
+--
+-- Nested function calls.
+--
+
+
+create table t1 as select substring(f1_dist('booya'),0,3);
+
+select * from t1;
+
+drop table if exists t1;
+
+create table t1 as select * from substring(f1_dist('booya'),0,3);
+
+select * from t1;
+
+drop table if exists t1;
+

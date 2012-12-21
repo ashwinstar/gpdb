@@ -353,8 +353,8 @@ static bool safe_to_replace_sirvf_tle(Query *query)
 
 
 /**
- * Is it safe to replace rte's in this query? If any range table entry is not a sirvf, then it is
- * unsafe.
+ * Is it safe to replace rte's in this query? If every range table entry is a
+ * non-set returning function, this should be safe.
  */
 static bool safe_to_replace_sirvf_rte(Query *query)
 {
@@ -367,7 +367,7 @@ static bool safe_to_replace_sirvf_rte(Query *query)
 			return false;
 		}
 		FuncExpr *fe = (FuncExpr *) rte->funcexpr;
-		if (!is_sirv_funcexpr(fe))
+		if (fe->funcretset)
 		{
 			return false;
 		}
@@ -389,33 +389,52 @@ static void replace_sirvf_rte(Query *query, int rteIndex)
 	{
 		FuncExpr *fe = (FuncExpr *) rte->funcexpr;
 		Assert(fe);
-		Assert(is_sirv_funcexpr(fe));
-
-		bool returns_record = (get_typtype(fe->funcresulttype) == 'c');
-
-		if (returns_record)
-		{
-			/**
-			 * Need to extract out relevant vars using fieldselect
-			 */
-			wrap_vars_with_fieldselect(query->targetList,
-					rteIndex,
-					fe->funcresulttype
-					);
-		}
-
-		Query *subquery = make_sirvf_subquery(fe);
-
-		rte->funcexpr = NULL;
-		rte->funccoltypes = NIL;
-		rte->funcuserdata = NULL;
-		rte->funccoltypmods = NIL;
 
 		/**
-		 * Turn the range table entry to the kind RTE_SUBQUERY
+		 * Transform function expression's inputs
 		 */
-		rte->rtekind = RTE_SUBQUERY;
-		rte->subquery = subquery;
+		fe->args = (List *) replace_sirvf_tle_expr_mutator((Node *) fe->args, NULL);
+
+		/**
+		 * If the resulting targetlist entry has a sublink, the query's flag must be set
+		 */
+		if (contain_subplans((Node *) fe->args))
+		{
+			query->hasSubLinks = true;
+		}
+
+		/**
+		 * If function expression is a SIRV, then further transformations
+		 * need to happen
+		 */
+		if (is_sirv_funcexpr(fe))
+		{
+			bool returns_record = (get_typtype(fe->funcresulttype) == 'c');
+
+			if (returns_record)
+			{
+				/**
+				 * Need to extract out relevant vars using fieldselect
+				 */
+				wrap_vars_with_fieldselect(query->targetList,
+						rteIndex,
+						fe->funcresulttype
+				);
+			}
+
+			Query *subquery = make_sirvf_subquery(fe);
+
+			rte->funcexpr = NULL;
+			rte->funccoltypes = NIL;
+			rte->funcuserdata = NULL;
+			rte->funccoltypmods = NIL;
+
+			/**
+			 * Turn the range table entry to the kind RTE_SUBQUERY
+			 */
+			rte->rtekind = RTE_SUBQUERY;
+			rte->subquery = subquery;
+		}
 	}
 
 }
