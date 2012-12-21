@@ -5923,11 +5923,11 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_hadoop_connector_version", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("The Hadoop connector version that external table should use."),
-			gettext_noop("Valid values are CE_1.0.0.0, EE_1.0.0.0. See admin guide for details."),
+			gettext_noop("Valid values are HD_1.0.0.0, MR_1.0.0.0. See admin guide for details."),
 			GUC_GPDB_ADDOPT
 		},
 		&gp_hadoop_connector_version,
-		"CE_1.0.0.0", NULL, NULL
+		"HD_1.0.0.0", NULL, NULL
 	},
 
 	{
