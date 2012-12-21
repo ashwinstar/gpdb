@@ -365,6 +365,8 @@ class GpInjectFaultProgram:
                               "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
                               "segment_transition_request (inject fault after segment receives state transition request), " \
                               "segment_probe_response (inject fault after segment is probed by FTS), " \
+				  "sync_persistent_table (inject fault to sync persistent table to disk), " \
+				  "xlog_insert (inject fault to skip insert record into xlog), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

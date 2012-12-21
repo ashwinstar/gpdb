@@ -18,6 +18,7 @@
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "utils/guc.h"
+#include "utils/faultinjector.h"
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 #include "cdb/cdbglobalsequence.h"
@@ -863,6 +864,17 @@ static void PersistentStore_InsertTuple(
 								flushToXLog,
 								persistentTid);
 
+#ifdef FAULT_INJECTOR
+    if (FaultInjector_InjectFaultIfSet(SyncPersistentTable,
+                                        DDLNotSpecified,
+                                        "" /* databaseName */,
+                                        "" /* tableName */)== FaultInjectorTypeSkip)
+    {
+        FlushRelationBuffers(persistentRel);
+        smgrimmedsync(persistentRel->rd_smgr);
+    }
+#endif
+
 	(*storeData->closeRel)(persistentRel);
 	
 	if (Debug_persistent_store_print)
@@ -939,6 +951,17 @@ void PersistentStore_UpdateTuple(
 	xlogUpdateEndLoc = XLogLastInsertEndLoc();
 
 	heap_freetuple(persistentTuple);
+
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet(SyncPersistentTable,
+										DDLNotSpecified,
+										"" /* databaseName */,
+										"" /* tableName */)== FaultInjectorTypeSkip)
+	{
+		FlushRelationBuffers(persistentRel);
+		smgrimmedsync(persistentRel->rd_smgr);
+	}
+#endif
 
 	(*storeData->closeRel)(persistentRel);
 	

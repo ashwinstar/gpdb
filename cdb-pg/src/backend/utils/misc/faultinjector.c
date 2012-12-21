@@ -224,6 +224,10 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before sub-transaction commit is recorded in xlog */
 	_("SubtransactionRollback"),
 		/* inject fault before sub-transaction abort is recorded in xlog */
+	_("sync_persistent_table"),
+		/* inject fault to sync persistent table to disk */
+	_("xlog_insert"),
+		/* inject fault to skip insert record into xlog  */
 
 	_("not recognized"),
 };
@@ -803,6 +807,9 @@ FaultInjector_NewHashEntry(
 				
 			case FinishPreparedTransactionAbortPass1AbortingCreateNeeded:
 			case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
+
+			case SyncPersistentTable:
+			case XLOGInsert:
 			
 				break;
 			default:

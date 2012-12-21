@@ -148,6 +148,8 @@ typedef enum FaultInjectorIdentifier_e {
 	SubtransactionReadFromFile,
 	SubtransactionRelease,
 	SubtransactionRollback,
+	SyncPersistentTable,
+	XLOGInsert,
 	
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,

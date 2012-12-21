@@ -58,6 +58,7 @@
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/faultinjector.h"
 #include "storage/freespace.h"
 #include "utils/guc.h"
 #include "cdb/cdbfilerepprimary.h"
@@ -3792,6 +3793,27 @@ heap_inplace_update_internal(Relation relation, HeapTuple tuple, TransactionId x
 		   newlen);
 
 	MarkBufferDirty(buffer);
+
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet(
+									XLOGInsert,
+									DDLNotSpecified,
+									"" /* databaseName */,
+									"" /* tableName */) == FaultInjectorTypeSkip)
+	{
+		END_CRIT_SECTION();
+
+		UnlockReleaseBuffer(buffer);
+
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
+		/* Send out shared cache inval if necessary */
+		if (!IsBootstrapProcessingMode())
+			CacheInvalidateHeapTuple(relation, tuple);
+		return;
+	}
+#endif
 
 	/* XLOG stuff */
 	if (!relation->rd_istemp)
