@@ -255,10 +255,57 @@ fill_null_with_blanks_list(FormatConfig *format_in_config)
 	}
 }
 
+/*
+ * validate_format_params
+ *
+ * verifies that every field specified in the table creation list is also present in the formatting string
+ * and vice versa
+ */
+static void
+validate_format_params(FormatConfig *format_in_config, TupleDesc tupdesc)
+{
+	ListCell   *l;
+	int num_fields_in_format_string = list_length(format_in_config->fldNames);
+	int num_fields_in_table_list = tupdesc->natts;
+	
+	if (num_fields_in_format_string != num_fields_in_table_list)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				errmsg("the fixed width formatter requires a length specification for each one of the"
+					   " external table columns being used (currently <%d>, however format string has <%d>",
+					   num_fields_in_table_list, num_fields_in_format_string)));
+	}
+	
+	foreach(l, format_in_config->fldNames)
+	{
+		int i;
+		bool is_in_both_lists = false;
+		char *name = strVal(lfirst(l));
+		for (i = 0; i < num_fields_in_table_list; i++)
+		{
+			if (namestrcmp(&(tupdesc->attrs[i]->attname), name) == 0)
+			{
+				is_in_both_lists = true;
+				break;
+			}			
+		}
+		
+		if (is_in_both_lists == false)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("the fixed width formatter requires a length specification for each one of the "
+							"external table columns being used (missing field <%s>", name)));			
+		}
+	}
+}
+
 static void
 init_format_in_config(FormatConfig *format_in_config, int ncolumns, TupleDesc tupdesc, FunctionCallInfo fcinfo)
 {
 	load_format_config(format_in_config, fcinfo);
+	validate_format_params(format_in_config, tupdesc);
 	
 	if (format_in_config->null_value != NULL)
 	{
@@ -274,6 +321,7 @@ static void
 init_format_out_config(FormatConfig *format_out_config, int ncolumns, TupleDesc tupdesc, FunctionCallInfo fcinfo)
 {
 	load_format_config(format_out_config, fcinfo);
+	validate_format_params(format_out_config, tupdesc);
 	
 	if (format_out_config->null_value != NULL)
 	{
