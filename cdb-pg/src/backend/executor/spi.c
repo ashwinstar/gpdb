@@ -1101,12 +1101,15 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	else
 		paramLI = NULL;
 
+	/* Copy the plan's query string into the portal */
+	char *query_string = pstrdup(spiplan->query);
+
 	/*
 	 * Set up the portal.
 	 */
 	PortalDefineQuery(portal,
 					  NULL,		/* no statement name */
-					  spiplan->query,
+					  query_string,
 					  T_SelectStmt,
 					  CreateCommandTag(PortalListGetPrimaryStmt(qtlist)),
 					  ptlist,

@@ -1248,10 +1248,15 @@ exec_mpp_query(const char *query_string,
 		portal = CreatePortal("", true, true);
 		/* Don't display the portal in pg_cursors */
 		portal->visible = false;
+
+		/* Copy the plan's query string into the portal */
+		Assert(query_string != NULL); 
+		char *portal_query_string = MemoryContextStrdup(PortalGetHeapMemory(portal),
+				query_string);
 		
 		PortalDefineQuery(portal,
 						  NULL,
-						  query_string,
+						  portal_query_string,
 						  T_Query, /* not a parsed statement, so not T_SelectStmt */
 						  commandTag,
 						  list_make1(plan ? (Node*)plan : (Node*)utilityStmt),
@@ -1659,9 +1664,14 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		/* Don't display the portal in pg_cursors */
 		portal->visible = false;
 
+		/* Copy the plan's query string into the portal */
+		Assert(query_string != NULL); 
+		char *portal_query_string = MemoryContextStrdup(PortalGetHeapMemory(portal),
+				query_string);
+
 		PortalDefineQuery(portal,
 						  NULL,
-						  query_string,
+						  portal_query_string,
 						  nodeTag(parsetree),
 						  commandTag,
 						  plantree_list,
@@ -2413,13 +2423,18 @@ exec_bind_message(StringInfo input_message)
 	}
 
 	Assert(qContext);
-	
+
+	/* Copy the plan's query string into the portal */
+	Assert(debug_query_string != NULL); 
+	char *query_string = MemoryContextStrdup(PortalGetHeapMemory(portal),
+						 debug_query_string);
+
 	/*
 	 * Define portal and start execution.
 	 */
 	PortalDefineQuery(portal,
 					  *pstmt->stmt_name ? pstmt->stmt_name : NULL,
-					  pstmt->query_string,
+					  query_string,
 					  pstmt->sourceTag,
 					  pstmt->commandTag,
 					  stmt_list,
