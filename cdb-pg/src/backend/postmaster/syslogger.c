@@ -1262,6 +1262,9 @@ syslogger_log_segv_chunk(PipeProtoChunk *chunk)
 	fillinErrorDataFromSegvChunk(&errorData, chunk);
 	syslogger_write_errordata(&chunk->hdr, &errorData, chunk->hdr.log_format == 'c');
 	freeErrorDataFields(&errorData);
+	
+	/* mark chunk as unused */
+	chunk->hdr.pid = 0;
 }
 
 void syslogger_log_chunk_list(PipeProtoChunk *chunk)
