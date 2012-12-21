@@ -786,10 +786,10 @@ serializeValue(Datum value, bool isnull,
 	char *written_pos = (*p_serial_entry) + start_pos;
 	
 	written_pos = ensureSpace(p_serial_entry, p_max_size,
-							  written_pos, TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool)));
+							  written_pos, sizeof(bool));
 
 	memcpy(written_pos, &isnull, sizeof(bool));
-	written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool)); /* isnull col */
+	written_pos += sizeof(bool); /* isnull col */
 
 	if (!isnull)
 	{
@@ -804,15 +804,24 @@ serializeValue(Datum value, bool isnull,
 		else
 		{
 			Size real_size = datumGetSize(value, byvalue, typelen);
+
+			/*
+			 * The pointer needs to be properly aligned since
+			 * the deserializer will not make a copy for this Datum, but
+			 * simply convert this pointer address to a Datum.
+			 */
+			Size alignmentBytes = ((char *)MAXALIGN(written_pos)) - written_pos;
 					
 			written_pos = ensureSpace(p_serial_entry, p_max_size,
-									  written_pos, TYPEALIGN(TUPLE_CHUNK_ALIGN,real_size));
+									  written_pos, real_size + alignmentBytes);
+			written_pos += alignmentBytes;
+			
 			Assert(DatumGetPointer(value) != NULL);
 			memcpy(written_pos,
 				   DatumGetPointer(value),
 				   real_size);
 			
-			written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,real_size);
+			written_pos += real_size;
 		}
 	}
 
@@ -961,7 +970,7 @@ deserializeValue(char *read_pos, WindowValue *value,
 				 bool byvalue, int16 typelen)
 {
 	memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
-	read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
+	read_pos += sizeof(bool);
 
 	if (!value->valueIsNull)
 	{
@@ -972,10 +981,15 @@ deserializeValue(char *read_pos, WindowValue *value,
 		}
 		else
 		{
+			/*
+			 * Make read_pos properly aligned, since it is the start
+			 * address of a Datum that is passed by reference.
+			 */
+			read_pos = (char *)MAXALIGN(read_pos);
+			
 			value->value = PointerGetDatum(read_pos);
-			read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,datumGetSize(value->value,
-									 byvalue,
-									 typelen));
+			Size valueLen = datumGetSize(value->value, byvalue, typelen);
+			read_pos += valueLen;
 		}
 	}
 	else
@@ -991,13 +1005,13 @@ deserializeValue(char *read_pos, WindowValue *value,
 static List *
 deserializeFuncs(WindowStatePerLevel level_state,
 				 FrameBufferEntry *entry_buf,
-				 char *serial_entry,
+				 char *start_pos,
 				 Size len)
 {
 	List *func_values = entry_buf->func_values;
 
 	ListCell *lc;
-	char *read_pos = serial_entry;
+	char *read_pos = start_pos;
 
 	/* the value for each function. */
 	foreach (lc, level_state->level_funcs)
@@ -1080,7 +1094,7 @@ deserializeFuncs(WindowStatePerLevel level_state,
 		}
 	}
 
-	Assert((read_pos - serial_entry) == len);
+	Assert((read_pos - start_pos) == len);
 
 	return func_values;
 }
@@ -1106,6 +1120,9 @@ serializeEntry(WindowStatePerLevel level_state,
 
 	*p_len = 0;
 	Assert(*p_serial_entry != NULL);
+
+	/* We rely on the address of the char array is maxaligned. */
+	Assert(*p_serial_entry == (char *)MAXALIGN(*p_serial_entry));
 	
 	written_pos = *p_serial_entry;
 	
@@ -1117,31 +1134,41 @@ serializeEntry(WindowStatePerLevel level_state,
 			AttrNumber attnum = level_state->sortColIdx[key_no];
 			Datum key;
 			bool isnull;
-			Size keylen = 0;
 
 			key = slot_getattr(slot, attnum, &isnull);
 
 			written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
 									  sizeof(bool));
 			memcpy(written_pos, &(isnull), sizeof(bool));
-			written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
+			written_pos += sizeof(bool);
 
 			if (!isnull)
 			{
+				Size keylen = 0;
+				Size alignmentBytes = 0;
+				
 				if (level_state->col_typbyvals[key_no])
-					keylen += sizeof(Datum);
+				{
+					keylen = sizeof(Datum);
+				}
+				
 				else
-					keylen += datumGetSize(key, level_state->col_typbyvals[key_no],
-										   level_state->col_typlens[key_no]);
+				{
+					alignmentBytes = ((char *)MAXALIGN(written_pos)) - written_pos;
+					keylen = datumGetSize(key, level_state->col_typbyvals[key_no],
+										  level_state->col_typlens[key_no]);
+				}
 	
 				written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
-										  TYPEALIGN(TUPLE_CHUNK_ALIGN,keylen));
+										  keylen + alignmentBytes);
+
+				written_pos += alignmentBytes;
 
 				if (level_state->col_typbyvals[key_no])
-					memcpy(written_pos, &(key), sizeof(Datum));
+					memcpy(written_pos, &(key), keylen);
 				else
 					memcpy(written_pos, DatumGetPointer(key), keylen);
-				written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,keylen);
+				written_pos += keylen;
 			}
 		}
 	}
@@ -1168,6 +1195,9 @@ deserializeEntry(WindowStatePerLevel level_state,
 	Size keylen = 0;
 	int key_no;
 
+	/* We rely on the address of serial_entry is maxaligned. */
+	Assert(serial_entry == (char *)MAXALIGN(serial_entry));
+
 	if (!level_state->is_rows)
 	{
 		for (key_no=0; key_no < level_state->numSortCols; key_no++)
@@ -1175,7 +1205,8 @@ deserializeEntry(WindowStatePerLevel level_state,
 			Size curr_keylen = 0;
 
 			memcpy(&(entry->nulls[key_no]), read_pos, sizeof(bool));
-			read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
+			read_pos += sizeof(bool);
+			keylen += sizeof(bool);
 
 			if (!entry->nulls[key_no])
 			{
@@ -1187,22 +1218,24 @@ deserializeEntry(WindowStatePerLevel level_state,
 			
 				else
 				{
+					Size alignmentBytes = ((char *)MAXALIGN(read_pos)) - read_pos;
+					read_pos += alignmentBytes;
+					keylen += alignmentBytes;
+
 					curr_keylen = datumGetSize(PointerGetDatum(read_pos),
 											   level_state->col_typbyvals[key_no],
 											   level_state->col_typlens[key_no]);
 					entry->keys[key_no] = PointerGetDatum(read_pos);
 				}
-				read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,curr_keylen);
-				keylen += TYPEALIGN(TUPLE_CHUNK_ALIGN,curr_keylen);
+				read_pos += curr_keylen;
+				keylen += curr_keylen;
 			}
-		
-			keylen += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 		}
 	}
 
 	/* deserial function values */
-	entry->func_values = deserializeFuncs(level_state, entry_buf, read_pos,
-										  len - keylen);
+	entry->func_values = deserializeFuncs(level_state, entry_buf,
+										  read_pos, len - keylen);
 
 	return entry;
 }

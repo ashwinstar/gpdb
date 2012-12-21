@@ -1536,3 +1536,18 @@ select rank() over (wx)
 	window w as (partition by y order by z), wx as (w);
 -- End MPP-13802
 
+drop table if exists test;
+create table test (n numeric, d date);
+insert into test values (12, '2011-05-01'), (34, '2011-05-02'), (89, '2011-05-03');
+
+select stddev(n) over(order by d range interval '1 day' preceding), n from test;
+select stddev(n) over(order by d range interval '1 day' preceding),
+       sum(n) over(order by d range interval '1 day' preceding),
+       avg(n) over(order by d range interval '1 day' preceding), n from test;
+select stddev(n) over(order by d range interval '2 day' preceding),
+       sum(n) over(order by d range interval '2 day' preceding),
+       avg(n) over(order by d range interval '2 day' preceding), n from test;
+select stddev(n) over(order by d range between current row and interval '1 day' following),
+       sum(n) over(order by d range between current row and interval '1 day' following),
+       avg(n) over(order by d range between current row and interval '1 day' following), n from test;
+
