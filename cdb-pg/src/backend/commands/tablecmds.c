@@ -444,6 +444,10 @@ DefineRelation_int(CreateStmt *stmt,
 	Datum		reloptions;
 	ListCell   *listptr;
 	AttrNumber	attnum;
+
+	ItemPointerData	persistentTid;
+	int64			persistentSerialNum;
+
 	TidycatOptions *tidycatOptions = NULL;
 
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH &&
@@ -760,8 +764,8 @@ DefineRelation_int(CreateStmt *stmt,
                                           reloptions,
 										  allowSystemTableModsDDL,
 										  &stmt->oidInfo.comptypeOid,
-										  /* persistentTid */ NULL,
-										  /* persistentSerialNum */ NULL);
+										  &persistentTid,
+										  &persistentSerialNum);
 
 	StoreCatalogInheritance(relationId, inheritOids);
 
@@ -783,6 +787,16 @@ DefineRelation_int(CreateStmt *stmt,
 		rel = relation_open(relationId, NoLock);
 	else
 		rel = relation_open(relationId, AccessExclusiveLock);
+
+	/*
+	 * For some reason, even though we have bumped the command counter above, 
+	 * occasionally we are not able to see the persistent info just stored in gp_relation_node
+	 * at the XLOG level.  So, we save the values here for debugging purposes.
+	 */
+	rel->rd_haveCreateDebugInfo = true;
+	rel->rd_createDebugIsZeroTid = PersistentStore_IsZeroTid(&persistentTid);
+	rel->rd_createDebugPersistentTid = persistentTid;
+	rel->rd_createDebugPersistentSerialNum = persistentSerialNum;
 
 	/*
 	 * Now add any newly specified column default values and CHECK constraints

@@ -143,6 +143,14 @@ typedef struct RelationData
 	SubTransactionId rd_createSubid;	/* rel was created in current xact */
 
 	/*
+	 * Debugging information, Values from CREATE TABLE, if present.
+	 */
+	bool				rd_haveCreateDebugInfo;
+	bool				rd_createDebugIsZeroTid;
+	ItemPointerData		rd_createDebugPersistentTid;
+	int64				rd_createDebugPersistentSerialNum;
+
+	/*
 	 * rd_createSubid is the ID of the highest subtransaction the rel has
 	 * survived into; or zero if the rel was not created in the current top
 	 * transaction.  This should be relied on only for optimization purposes;
