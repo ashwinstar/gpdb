@@ -83,6 +83,19 @@ where queue_attribute is:
       </listitem>
      </varlistentry>
 
+<varlistentry>
+      <term><literal>MEMORY_LIMIT</literal> <replaceable class="parameter">float</replaceable></term>
+       <listitem>
+       <para>
+        Sets the total memory quota for all statements submitted from users 
+        in this resource queue. Memory units can be specified in kB, MB or GB. 
+        The minimum memory quota for a resource queue is 10MB. There is no maximum; 
+        however the upper boundary at query execution time is limited by the physical 
+        memory of a segment host. The default value is no limit (-1).
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry>
       <term><literal>MAX_COST</literal> <replaceable class="parameter">float</replaceable></term>
        <listitem>
