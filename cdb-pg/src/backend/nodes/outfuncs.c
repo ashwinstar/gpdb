@@ -2852,6 +2852,7 @@ _outSelectStmt(StringInfo str, SelectStmt *node)
 	{
 		WRITE_NODE_FIELD(scatterClause);
 	}
+	WRITE_NODE_FIELD(withClause);
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(lockingClause);
