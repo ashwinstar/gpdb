@@ -7,10 +7,10 @@ import shutil
 import hashlib
 import signal
 
-from gppylib.db import dbconn
+from gppylib.db import dbconn, catalog
 from gppylib.db.dbconn import UnexpectedRowsError
 from gppylib import gplog
-from gppylib.commands.gp import GpStop, GpStart 
+from gppylib.commands.gp import GpStop, GpStart, get_local_db_mode 
 from gppylib.commands.unix import Ping
 from gppylib.operations import Operation
 from gppylib.operations.utils import RemoteOperation, ParallelOperation
@@ -22,6 +22,7 @@ logger = gplog.get_default_logger()
 GP_TRANSACTION_FILES_FILESPACE = 'gp_transaction_files_filespace'
 GP_TEMPORARY_FILES_FILESPACE = 'gp_temporary_files_filespace'
 PG_SYSTEM_FILESPACE = 'pg_system'
+MASTER_DATA_DIR = os.environ.get('MASTER_DATA_DIRECTORY')
 NUM_WORKERS = 16  #Number of simultaneous parallel process that are started by ParallelOperation
 
 class FileType:
@@ -31,10 +32,6 @@ class FileType:
 
     TRANSACTION_FILES, TEMPORARY_FILES = range(2)
     lookup = ['TRANSACTION_FILES', 'TEMPORARY_FILES']
-
-class InvalidFilespaceError(Exception):
-    def __init__(self, msg):
-        Exception.__init__(self, msg)
 
 class MoveFilespaceError(Exception):
     def __init__(self, msg):
@@ -48,7 +45,8 @@ class CheckFilespaceIsSame(Operation):
         @return: True if Filespace is different False otherwise
     """
 
-    def __init__(self, filespace_name, file_type):
+    def __init__(self, gparray, filespace_name, file_type):
+        self.gparray = gparray
         self.filespace_name = filespace_name
         self.file_type = file_type
     
@@ -56,14 +54,12 @@ class CheckFilespaceIsSame(Operation):
         logger.info('Checking if filespace is same as current filespace') 
         
         try:
-            gparray = GpArray.initFromCatalog(dbconn.DbURL()) 
-        
             if self.file_type == FileType.TRANSACTION_FILES:
                 filename = GP_TRANSACTION_FILES_FILESPACE 
             else:
                 filename = GP_TEMPORARY_FILES_FILESPACE 
 
-            pg_system_filespace_entries = GetFilespaceEntries(gparray, PG_SYSTEM_FILESPACE).run()
+            pg_system_filespace_entries = GetFilespaceEntries(self.gparray, PG_SYSTEM_FILESPACE).run()
 
             file_path = os.path.join(pg_system_filespace_entries[0][2], filename)
 
@@ -73,10 +69,10 @@ class CheckFilespaceIsSame(Operation):
             if CheckFile(file_path).run():
                 with open(file_path) as file:
                     oid = int(file.readline().strip())
-                    if gparray.getFileSpaceName(oid) == self.filespace_name:
+                    if self.gparray.getFileSpaceName(oid) == self.filespace_name:
                         return True 
         except Exception, e:
-            raise MoveFilespaceError('Failed to check for filespace consistency')
+            raise MoveFilespaceError('Failed to check if filespace is same.')
 
         return False
 
@@ -111,6 +107,31 @@ class CheckFilespace(Operation):
 
         return True
 
+class CheckSuperUser(Operation):
+    """
+        Checks if the user running the gpfilespace utility
+        is a super user or not.
+    """
+    def __init__(self, dburl):
+        self.dburl = dburl
+
+    def execute(self):
+        is_super = None
+        conn = dbconn.connect(self.dburl, utility=True)
+        try:
+            q = "SELECT usesuper FROM pg_user where usename = user"
+            rows = catalog.basicSQLExec(conn, q)
+            is_super = rows[0][0]
+        except Exception, e:
+            raise MoveFilespaceError(str(e))
+        finally:
+           conn.close() 
+
+        if not is_super:
+            return False
+
+        return True
+        
 class CheckConnectivity(Operation):
     """
         Check if all hosts are reachable 
@@ -728,7 +749,7 @@ class GetFilespaceEntries(Operation):
                 filespace_oid = fs.getOid()
 
         if filespace_oid is None:
-            raise InvalidFilespaceError('Invalid filespace name.')
+            raise MoveFilespaceError('Invalid filespace name.')
         
         for seg in self.gparray.getDbList(includeExpansionSegs=True):
             filespace_entries.append((filespace_oid, seg.getSegmentDbId(), seg.getSegmentFilespaces()[filespace_oid]))
@@ -929,42 +950,57 @@ class MoveFilespace(Operation):
         if cmd.get_results().rc != 0:
             logger.error('Failed to stop Greenplum Database.')
             cmd.validate()
-        
+
+    def check_database_stopped(self):
+        try:
+            mode = get_local_db_mode(MASTER_DATA_DIR)
+            logger.info('Database was started in %s mode' % mode)
+        except Exception, e:
+            logger.info('Database might already be stopped.')
+            return True 
+
+        return False
+
     def execute(self):
 
         try:
             #Disable Ctrl+C
             signal.signal(signal.SIGINT,signal.SIG_IGN)
     
-            #1 CheckFilespace - Check if new filespace exists
-            if not CheckFilespace(self.new_filespace_name).run():
-                raise InvalidFilespaceError('Filespace %s does not exist' % self.new_filespace_name) 
+            #StopGPDB - Check for GPDB connections first and fail if connections exist
+            if not self.check_database_stopped():
+                self.stop_database()
 
-            #2 CheckFilespaceIsSame - Check if filespace is different from the old one
-            if CheckFilespaceIsSame(self.new_filespace_name, self.file_type).run():
-                raise InvalidFilespaceError('Filespace %s is same as the current filespace' % self.new_filespace_name)
-
-            gparray = GpArray.initFromCatalog(dbconn.DbURL(), utility=True)
-            
-            if not CheckConnectivity(gparray).run():
-                raise MoveFilespaceError('Failed connectivity test.') 
- 
-            #3 StopGPDB - Check for GPDB connections first and fail if connections exist
-            self.stop_database()
-
-            #4 StartGPDB in Master only mode
+            #StartGPDB in Master only mode
             self.start_master_only()
 
-            #5 CheckFilespace - Check if the new filespace exists
-            if not CheckFilespace(self.new_filespace_name).run():
-                raise InvalidFilespaceError('Filespace %s does not exist' % self.new_filespace_name)
+            try:
+                
+                if not CheckSuperUser(dbconn.DbURL()).run():
+                    raise MoveFilespaceError('gpfilespace requires database super user privileges')  
+                
+                gparray = GpArray.initFromCatalog(dbconn.DbURL(), utility=True)
 
+                #CheckFilespace - Check if new filespace exists
+                if not CheckFilespace(self.new_filespace_name).run():
+                    raise MoveFilespaceError('Filespace %s does not exist' % self.new_filespace_name) 
+
+                #CheckFilespaceIsSame - Check if filespace is different from the old one
+                if CheckFilespaceIsSame(gparray, self.new_filespace_name, self.file_type).run():
+                    raise MoveFilespaceError('Filespace %s is same as the current filespace' % self.new_filespace_name)
+            finally:
+                #Bring GPDB Offline
+                self.stop_master_only()
+
+            if not CheckConnectivity(gparray).run():
+                raise MoveFilespaceError('Failed connectivity test') 
+ 
             logger.info('Obtaining current filespace information')
-            #6 Find the filespace directory used for each segment
-            #6.1 query using pg_filespace, pg_filespace_entry, gp_segment_configuration
-            # If gp_transaction/temporary flat files exist and is not empty, then we know 
-            # the filespace being used. Otherwise, we assume that it is the pg_system 
-            # filespace by default 
+            #Find the filespace directory used for each segment
+            #query using pg_filespace, pg_filespace_entry, gp_segment_configuration
+            #If gp_transaction/temporary flat files exist and is not empty, then we know 
+            #the filespace being used. Otherwise, we assume that it is the pg_system 
+            #filespace by default 
 
             cur_filespace_entries = GetFilespaceEntriesDict(GetCurrentFilespaceEntries(gparray,
                                                                                self.file_type).run()).run()
@@ -978,10 +1014,7 @@ class MoveFilespace(Operation):
             logger.info('Obtaining segment information ...')
             segments = gparray.getDbList() 
 
-            #8 Bring GPDB Offline
-            self.stop_master_only()
-
-            #7 MoveTemp/Trans files
+            #MoveTemp/Trans files
 
             try:
                 operations = GetMoveOperationList(segments,
@@ -1008,7 +1041,7 @@ class MoveFilespace(Operation):
                 except Exception, e:
                     raise MoveFilespaceError('Rollback Failed !')
         
-            #9 Bring GPDB online in normal mode
+            #Bring GPDB online in normal mode
             self.start_database()
 
         finally:
