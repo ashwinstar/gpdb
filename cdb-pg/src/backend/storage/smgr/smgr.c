@@ -87,13 +87,13 @@ static HTAB *SMgrRelationHash = NULL;
  */
 typedef struct PendingDelete
 {
-	PersistentFileSysObjName fsObjName;		
+	PersistentFileSysObjName fsObjName;
 							/* File-system object that may need to be deleted */
-	
+
 	PersistentFileSysRelStorageMgr relStorageMgr;
 
 	char		*relationName;
-	
+
 	bool		isLocalBuf;	    /* CDB: true => uses local buffer mgr */
 	bool		bufferPoolBulkLoad;
 	bool		dropForCommit;		/* T=delete at commit; F=delete at abort */
@@ -121,7 +121,7 @@ static PendingDelete *PendingDelete_AddEntry(
 
 	bool					dropForCommit)
 {
-	PendingDelete *pending; 
+	PendingDelete *pending;
 
 	/* Add the filespace to the list of stuff to delete at abort */
 	pending = (PendingDelete *)
@@ -197,17 +197,17 @@ typedef struct AppendOnlyMirrorResyncEofsKey
 
 typedef struct AppendOnlyMirrorResyncEofs
 {
-	AppendOnlyMirrorResyncEofsKey key;		
+	AppendOnlyMirrorResyncEofsKey key;
 
 	char		*relationName;
-	
+
 	ItemPointerData persistentTid;
 	int64			persistentSerialNum;
 
 	bool			didIncrementCommitCount;
 	bool			isDistributedTransaction;
 	char 			gid[TMGIDSIZE];
-	
+
 	bool						mirrorCatchupRequired;
 
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
@@ -227,7 +227,7 @@ static HTAB* AppendOnlyMirrorResyncEofsTable = NULL;
  * actions is handled by xact.c, because it is part of transaction commit.
  */
 
-/* 
+/*
  * XLOG gives us high 4 bits. Unlike in the xlog code, we need not
  * make the flags OR-able, we we have 16 bits to play with here.
  */
@@ -257,7 +257,7 @@ static void smgr_internal_unlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
-	
+
 	bool  						primaryOnly,
 
 	bool						isRedo,
@@ -286,12 +286,12 @@ AppendOnlyMirrorResyncEofs_Merge(
 	int32			segmentFileNum,
 
 	int				nestLevel,		/* Transaction nesting level. */
-	
+
 	char			*relationName,
-	
+
 	ItemPointer 	persistentTid,
 	int64			persistentSerialNum,
-	
+
 	bool						mirrorCatchupRequired,
 
 	MirrorDataLossTrackingState mirrorDataLossTrackingState,
@@ -510,12 +510,12 @@ smgrcreatefilespacedirpending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;		
-	
+	PersistentFileSysObjName fsObjName;
+
 	PersistentFileSysObjName_SetFilespaceDir(
 										&fsObjName,
 										filespaceOid);
-	
+
 	PersistentFilespace_MarkCreatePending(
 								filespaceOid,
 								primaryDbId,
@@ -542,7 +542,7 @@ smgrcreatefilespacedir(
 	Oid 						filespaceOid,
 
 	char						*primaryFilespaceLocation,
-								/* 
+								/*
 								 * The primary filespace directory path.  NOT Blank padded.
 								 * Just a NULL terminated string.
 								 */
@@ -558,9 +558,9 @@ smgrcreatefilespacedir(
 	bool						*mirrorDataLossOccurred)
 {
 	mdcreatefilespacedir(
-					filespaceOid, 
-					primaryFilespaceLocation, 
-					mirrorFilespaceLocation, 
+					filespaceOid,
+					primaryFilespaceLocation,
+					mirrorFilespaceLocation,
 					mirrorMode,
 					ignoreAlreadyExists,
 					primaryError,
@@ -583,7 +583,7 @@ smgrcreatetablespacedirpending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;		
+	PersistentFileSysObjName fsObjName;
 
 	PersistentFileSysObjName_SetTablespaceDir(
 								&fsObjName,
@@ -596,7 +596,7 @@ smgrcreatetablespacedirpending(
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
-	
+
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
 						persistentTid,
@@ -620,7 +620,7 @@ smgrcreatetablespacedir(
 	bool						*mirrorDataLossOccurred)
 {
 	mdcreatetablespacedir(
-					tablespaceOid, 
+					tablespaceOid,
 					mirrorMode,
 					ignoreAlreadyExists,
 					primaryError,
@@ -643,11 +643,11 @@ smgrcreatedbdirpending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;		
-	
+	PersistentFileSysObjName fsObjName;
+
 	Oid tablespace = dbDirNode->tablespace;
 	Oid database = dbDirNode->database;
-		
+
 	PersistentFileSysObjName_SetDatabaseDir(
 									&fsObjName,
 									tablespace,
@@ -659,7 +659,7 @@ smgrcreatedbdirpending(
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
-	
+
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
 						persistentTid,
@@ -683,7 +683,7 @@ smgrcreatedbdir(
 	bool						*mirrorDataLossOccurred)
 {
 	mdcreatedbdir(
-			dbDirNode, 
+			dbDirNode,
 			mirrorMode,
 			ignoreAlreadyExists,
 			primaryError,
@@ -699,11 +699,11 @@ smgrcreatedbdirjustintime(
 	StorageManagerMirrorMode 	mirrorMode,
 
 	ItemPointer 				persistentTid,
-	
+
 	int64 						*persistentSerialNum,
 
 	int 						*primaryError,
-	
+
 	bool 						*mirrorDataLossOccurred)
 {
 
@@ -714,7 +714,7 @@ smgrcreatedbdirjustintime(
 											persistentSerialNum);
 
 	mdcreatedbdir(
-				justInTimeDbDirNode, 
+				justInTimeDbDirNode,
 				mirrorMode,
 				/* ignoreAlreadyExists */ false,
 				primaryError,
@@ -763,15 +763,15 @@ void smgrcreatepending(
 
 	bool							flushToXLog)
 {
-	PersistentFileSysObjName fsObjName;		
-	
+	PersistentFileSysObjName fsObjName;
+
 	PendingDelete *pending;
-		
+
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName,
 										relFileNode,
 										segmentFileNum);
-		
+
 	PersistentRelation_AddCreatePending(
 								relFileNode,
 								segmentFileNum,
@@ -784,9 +784,9 @@ void smgrcreatepending(
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
-	
-	
-	
+
+
+
 	pending = PendingDelete_AddCreatePendingEntry(
 								&fsObjName,
 								persistentTid,
@@ -813,7 +813,7 @@ void
 smgrcreate(
 	SMgrRelation 				reln,
 
-	bool 						isLocalBuf, 
+	bool 						isLocalBuf,
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
@@ -821,7 +821,7 @@ smgrcreate(
 	MirrorDataLossTrackingState mirrorDataLossTrackingState,
 
 	int64						mirrorDataLossTrackingSessionNum,
-	
+
 	bool						ignoreAlreadyExists,
 
 	int							*primaryError,
@@ -864,9 +864,9 @@ smgrscheduleunlink(
 	int64 			persistentSerialNum)
 {
 	SUPPRESS_ERRCONTEXT_DECLARE;
-	
-	PersistentFileSysObjName fsObjName;		
-	
+
+	PersistentFileSysObjName fsObjName;
+
 	PendingDelete *pending;
 
 
@@ -931,11 +931,11 @@ void
 smgrdounlink(
 	RelFileNode 				*relFileNode,
 
-	bool 						isLocalBuf, 
+	bool 						isLocalBuf,
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
-	
+
 	bool  						primaryOnly,
 
 	bool						isRedo,
@@ -945,7 +945,7 @@ smgrdounlink(
 	bool						*mirrorDataLossOccurred)
 {
 	smgr_internal_unlink(
-				*relFileNode, 
+				*relFileNode,
 				isLocalBuf,
 				relationName,
 				primaryOnly,
@@ -965,7 +965,7 @@ smgr_internal_unlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
-	
+
 	bool  						primaryOnly,
 
 	bool						isRedo,
@@ -1033,12 +1033,12 @@ smgrschedulermfilespacedir(
 
 	int64				persistentSerialNum)
 {
-	PersistentFileSysObjName fsObjName;		
-		
+	PersistentFileSysObjName fsObjName;
+
 	PersistentFileSysObjName_SetFilespaceDir(
 									&fsObjName,
 									filespaceOid);
-	
+
 	PendingDelete_AddDropEntry(
 						&fsObjName,
 						persistentTid,
@@ -1050,13 +1050,13 @@ smgrdormfilespacedir(
 	Oid							filespaceOid,
 
 	char						*primaryFilespaceLocation,
-								/* 
+								/*
 								 * The primary filespace directory path.  NOT Blank padded.
 								 * Just a NULL terminated string.
 								 */
-	
+
 	char						*mirrorFilespaceLocation,
-	
+
 	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
@@ -1100,12 +1100,12 @@ smgrschedulermtablespacedir(
 
 	int64				persistentSerialNum)
 {
-	PersistentFileSysObjName fsObjName;		
-	
+	PersistentFileSysObjName fsObjName;
+
 	PersistentFileSysObjName_SetTablespaceDir(
 									&fsObjName,
 									tablespaceOid);
-	
+
 	PendingDelete_AddDropEntry(
 						&fsObjName,
 						persistentTid,
@@ -1121,24 +1121,24 @@ smgrschedulermtablespacedir(
 void
 smgrschedulermdbdir(
 	DbDirNode			*dbDirNode,
-	
+
 	ItemPointer			persistentTid,
 
 	int64 				persistentSerialNum)
 {
-	PersistentFileSysObjName fsObjName;		
-	
+	PersistentFileSysObjName fsObjName;
+
 	Oid tablespace;
 	Oid database;
 
 	tablespace = dbDirNode->tablespace;
 	database = dbDirNode->database;
-	
+
 	PersistentFileSysObjName_SetDatabaseDir(
 									&fsObjName,
 									tablespace,
 									database);
-	
+
 	PendingDelete_AddDropEntry(
 						&fsObjName,
 						persistentTid,
@@ -1148,7 +1148,7 @@ smgrschedulermdbdir(
 void
 smgrdormtablespacedir(
 	Oid							tablespaceOid,
-	
+
 	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
@@ -1176,7 +1176,7 @@ smgrdormtablespacedir(
 static void
 smgr_internal_rmdbdir(
 	DbDirNode					*dbDirNode,
-	
+
 	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
@@ -1202,7 +1202,7 @@ smgr_internal_rmdbdir(
 void
 smgrdormdbdir(
 	DbDirNode					*dbDirNode,
-	
+
 	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
@@ -1213,7 +1213,7 @@ smgrdormdbdir(
 {
 	smgr_internal_rmdbdir(
 					dbDirNode,
-					primaryOnly, 
+					primaryOnly,
 					mirrorOnly,
 					ignoreNonExistence,
 					mirrorDataLossOccurred);
@@ -1229,7 +1229,7 @@ void smgrappendonlymirrorresynceofs(
 	ItemPointer						persistentTid,
 
 	int64							persistentSerialNum,
-	
+
 	bool							mirrorCatchupRequired,
 
 	MirrorDataLossTrackingState 	mirrorDataLossTrackingState,
@@ -1277,10 +1277,10 @@ smgrgetappendonlyinfo(
 	*mirrorCatchupRequired = false;
 	*mirrorDataLossTrackingState = (MirrorDataLossTrackingState)-1;
 	*mirrorDataLossTrackingSessionNum = 0;
-	
+
 	if (AppendOnlyMirrorResyncEofsTable == NULL)
 		AppendOnlyMirrorResyncEofs_HashTableInit();
-	
+
 	/*
 	 * The hash table is keyed by RelFileNode, segmentFileNum, AND transaction nesting level...
 	 *
@@ -1298,14 +1298,14 @@ smgrgetappendonlyinfo(
 										relFileNode,
 										segmentFileNum,
 										nestLevel);
-		
-		entry = 
-			(AppendOnlyMirrorResyncEofs*) 
+
+		entry =
+			(AppendOnlyMirrorResyncEofs*)
 							hash_search(AppendOnlyMirrorResyncEofsTable,
 										(void *) &key,
 										HASH_FIND,
 										&found);
-		
+
 		if (found)
 		{
 			Assert(entry != NULL);
@@ -1485,7 +1485,7 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBu
 	return newblks;
 }
 
-bool smgrgetpersistentinfo(	
+bool smgrgetpersistentinfo(
 	XLogRecord		*record,
 
 	RelFileNode	*relFileNode,
@@ -1497,7 +1497,7 @@ bool smgrgetpersistentinfo(
 	uint8 info;
 
 	Assert (record->xl_rmid == RM_SMGR_ID);
-	
+
 	info = record->xl_info & ~XLR_INFO_MASK;
 
 	if (info == XLOG_SMGR_TRUNCATE)
@@ -1579,7 +1579,7 @@ AppendOnlyMirrorResyncEofs_HashTableInit(void)
 
 	if (Debug_persistent_print ||
 		Debug_persistent_appendonly_commit_count_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "Storage Manager: Append-Only mirror resync eofs hash-table created");
 }
 
@@ -1595,7 +1595,7 @@ AppendOnlyMirrorResyncEofs_HashTableRemove(
 
 	if (Debug_persistent_print ||
 		Debug_persistent_appendonly_commit_count_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "Storage Manager (%s): Append-Only mirror resync eofs hash-table removed",
 			 procName);
 }
@@ -1623,12 +1623,12 @@ AppendOnlyMirrorResyncEofs_Merge(
 	int32			segmentFileNum,
 
 	int				nestLevel,		/* Transaction nesting level. */
-	
+
 	char			*relationName,
-	
+
 	ItemPointer		persistentTid,
 	int64			persistentSerialNum,
-	
+
 	bool						mirrorCatchupRequired,
 
 	MirrorDataLossTrackingState mirrorDataLossTrackingState,
@@ -1651,9 +1651,9 @@ AppendOnlyMirrorResyncEofs_Merge(
 									relFileNode,
 									segmentFileNum,
 									nestLevel);
-	
-	entry = 
-		(AppendOnlyMirrorResyncEofs*) 
+
+	entry =
+		(AppendOnlyMirrorResyncEofs*)
 						hash_search(AppendOnlyMirrorResyncEofsTable,
 									(void *) &key,
 									HASH_ENTER,
@@ -1683,7 +1683,7 @@ AppendOnlyMirrorResyncEofs_Merge(
 		/*
 		 * We adopt the newer FileRep state because we accurately track the state of mirror
 		 * data.  For example, the first write session might have had loss because the mirror
-		 * was down.  But then the second write session discovered we were in sync and 
+		 * was down.  But then the second write session discovered we were in sync and
 		 * copied both the first and second write session to the mirror and flushed it.
 		 */
 		entry->mirrorCatchupRequired = mirrorCatchupRequired;
@@ -1693,7 +1693,7 @@ AppendOnlyMirrorResyncEofs_Merge(
 
 	if (Debug_persistent_print ||
 		Debug_persistent_appendonly_commit_count_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "Storage Manager: %s Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", "
 			 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
 			 "previous mirror new EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
@@ -1723,7 +1723,7 @@ AppendOnlyMirrorResyncEofs_Remove(
 
 	if (Debug_persistent_print ||
 		Debug_persistent_appendonly_commit_count_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "Storage Manager (%s): Remove Append-Only mirror resync eofs entry: "
 			 "%u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, saved mirror new EOF " INT64_FORMAT ")",
 			 procName,
@@ -1742,9 +1742,9 @@ AppendOnlyMirrorResyncEofs_Remove(
 		pfree(entry->relationName);
 
 	hash_search(
-			AppendOnlyMirrorResyncEofsTable, 
-			(void *) &entry->key, 
-			HASH_REMOVE, 
+			AppendOnlyMirrorResyncEofsTable,
+			(void *) &entry->key,
+			HASH_REMOVE,
 			NULL);
 }
 
@@ -1793,9 +1793,9 @@ AppendOnlyMirrorResyncEofs_RemoveForDrop(
 									relFileNode,
 									segmentFileNum,
 									nestLevel);
-	
-	entry = 
-		(AppendOnlyMirrorResyncEofs*) 
+
+	entry =
+		(AppendOnlyMirrorResyncEofs*)
 						hash_search(AppendOnlyMirrorResyncEofsTable,
 									(void *) &key,
 									HASH_FIND,
@@ -1841,7 +1841,7 @@ PostPrepare_smgr(void)
 
 	// UNDONE: We are passing the responsibility on to PersistentFileSysObj_PreparedEndXactAction...
 	pendingAppendOnlyMirrorResyncIntentCount = 0;
-	
+
 
 }
 
@@ -1854,11 +1854,13 @@ smgrDoDeleteActions(
 {
 	MIRRORED_LOCK_DECLARE;
 
+	CHECKPOINT_START_LOCK_DECLARE;
+
 	PendingDelete *current;
 	int entryIndex;
 
 	PersistentEndXactFileSysAction action;
-	
+
 	bool dropPending;
 	bool abortingCreate;
 
@@ -1867,9 +1869,22 @@ smgrDoDeleteActions(
 	if (*listCount == 0)
 		stateChangeResults = NULL;
 	else
-		stateChangeResults = 
+		stateChangeResults =
 				(PersistentFileSysObjStateChangeResult*)
 						palloc0((*listCount) * sizeof(PersistentFileSysObjStateChangeResult));
+
+	/*
+	 * There are two situations where we get here. CommitTransaction()/AbortTransaction() or via
+	 * AbortSubTransaction(). In the first case, we have already obtained the MirroredLock and
+	 * CheckPointStartLock. In the second case, we have not obtained the locks, so we attempt
+	 * to get them to make sure proper lock order is maintained.
+	 *
+	 * Normally, if a relation lock is needed, it is obtained before the MirroredLock and CheckPointStartLock,
+	 * but we have not yet obtained an EXCLUSIVE LockRelationForResynchronize. This lock will be obtained in
+	 * PersistentFileSysObj_EndXactDrop(). This is an exception to the normal lock ordering, which is done
+	 * to reduce the time that the lock is held, thus allowing a larger window of time for filerep
+	 * resynchronization to obtain the lock.
+	 */
 
 	/*
 	 * We need to do the transition to 'Aborting Create' or 'Drop Pending' and perform
@@ -1877,6 +1892,15 @@ smgrDoDeleteActions(
 	 * we could race with resynchronize's ReDrop.
 	 */
 	MIRRORED_LOCK;
+
+	/*
+	 * The logic will eventually obtain a CheckpointStartLock in PersistentRelation_Dropped(),
+	 * but functions called from this function my obtain Exclusive locks before the
+	 * CheckpointStartLock is obtained. This could cause a potential deadlock in the future.
+	 * We need to take a CheckpointStartLock here to maintain proper lock ordering
+	 * (i.e. MirrorLock -> CheckpointStartLock ).
+	 */
+	CHECKPOINT_START_LOCK;
 
 	/*
 	 * First pass does the initial State-Changes.
@@ -1890,13 +1914,13 @@ smgrDoDeleteActions(
 		 */
 		if (current == NULL)
 			break;
-		
+
 		action = PendingDelete_Action(current);
 
 		if (Debug_persistent_print)
 		{
 			if (current->relationName == NULL)
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "Storage Manager: Do 1st delete state-change action for list entry #%d: '%s' (persistent end transaction action '%s', transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
@@ -1905,7 +1929,7 @@ smgrDoDeleteActions(
 					 ItemPointerToString(&current->persistentTid),
 					 current->persistentSerialNum);
 			else
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "Storage Manager: Do 1st delete state-change action for list entry #%d: '%s', relation name '%s' (persistent end transaction action '%s', transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
@@ -1915,7 +1939,7 @@ smgrDoDeleteActions(
 					 ItemPointerToString(&current->persistentTid),
 					 current->persistentSerialNum);
 		}
-		
+
 		switch (action)
 		{
 		case PersistentEndXactFileSysAction_Create:
@@ -1961,7 +1985,7 @@ smgrDoDeleteActions(
 							current->persistentSerialNum,
 							/* retryPossible */ false);
 			break;
-				
+
 		default:
 			elog(ERROR, "Unexpected persistent end transaction file-system action: %d",
 				 action);
@@ -1989,7 +2013,7 @@ smgrDoDeleteActions(
 		current = *list;
 		if (current == NULL)
 			break;
-		
+
  		Assert(*listCount > 0);
 		(*listCount)--;
 
@@ -2007,28 +2031,28 @@ smgrDoDeleteActions(
 			{
 				abortingCreate = true;
 			}
-#ifdef FAULT_INJECTOR	
+#ifdef FAULT_INJECTOR
 				FaultInjector_InjectFaultIfSet(
 											   forCommit ?
 											   TransactionCommitPass1FromCreatePendingToCreated :
-											   TransactionAbortPass1FromCreatePendingToAbortingCreate, 
+											   TransactionAbortPass1FromCreatePendingToAbortingCreate,
 											   DDLNotSpecified,
 											   "",	// databaseName
 											   ""); // tableName
-#endif					
+#endif
 			break;
 
 		case PersistentEndXactFileSysAction_Drop:
 			if (forCommit)
 			{
 				dropPending = true;
-#ifdef FAULT_INJECTOR	
+#ifdef FAULT_INJECTOR
 				FaultInjector_InjectFaultIfSet(
-											   TransactionCommitPass1FromDropInMemoryToDropPending, 
+											   TransactionCommitPass1FromDropInMemoryToDropPending,
 											   DDLNotSpecified,
 											   "",	// databaseName
 											   ""); // tableName
-#endif									
+#endif
 			}
 			break;
 
@@ -2037,23 +2061,23 @@ smgrDoDeleteActions(
 			 * Always whether transaction commits or aborts.
 			 */
 			abortingCreate = true;
-				
-#ifdef FAULT_INJECTOR	
+
+#ifdef FAULT_INJECTOR
 				FaultInjector_InjectFaultIfSet(
 											   forCommit ?
 											   TransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
-											   TransactionAbortPass1FromAbortingCreateNeededToAbortingCreate, 
+											   TransactionAbortPass1FromAbortingCreateNeededToAbortingCreate,
 											   DDLNotSpecified,
 											   "",	// databaseName
 											   ""); // tableName
-#endif																		
+#endif
 			break;
-				
+
 		default:
 			elog(ERROR, "Unexpected persistent end transaction file-system action: %d",
 				 action);
 		}
-		
+
 		if (abortingCreate || dropPending)
 		{
 			if (stateChangeResults[entryIndex] == PersistentFileSysObjStateChangeResult_StateChangeOk)
@@ -2067,26 +2091,26 @@ smgrDoDeleteActions(
 								/* ignoreNonExistence */ abortingCreate);
 			}
 		}
-		
-#ifdef FAULT_INJECTOR			
+
+#ifdef FAULT_INJECTOR
 		if (abortingCreate && !forCommit)
 		{
 			FaultInjector_InjectFaultIfSet(
 										   TransactionAbortPass2FromCreatePendingToAbortingCreate,
 										   DDLNotSpecified,
 										   "",	// databaseName
-										   ""); // tableName															
+										   ""); // tableName
 		}
-		
+
 		if (dropPending && forCommit)
 		{
 			FaultInjector_InjectFaultIfSet(
 										   TransactionCommitPass2FromDropInMemoryToDropPending,
 										   DDLNotSpecified,
 										   "",	// databaseName
-										   ""); // tableName																		
+										   ""); // tableName
 		}
-		
+
 		switch (action)
 		{
 			case PersistentEndXactFileSysAction_Create:
@@ -2096,10 +2120,10 @@ smgrDoDeleteActions(
 												   TransactionAbortPass2FromCreatePendingToAbortingCreate,
 												   DDLNotSpecified,
 												   "",	// databaseName
-												   ""); // tableName																			
+												   ""); // tableName
 				}
 				break;
-				
+
 			case PersistentEndXactFileSysAction_Drop:
 				if (forCommit)
 				{
@@ -2107,10 +2131,10 @@ smgrDoDeleteActions(
 												   TransactionCommitPass2FromDropInMemoryToDropPending,
 												   DDLNotSpecified,
 												   "",	// databaseName
-												   ""); // tableName																		
+												   ""); // tableName
 				}
 				break;
-				
+
 			case PersistentEndXactFileSysAction_AbortingCreateNeeded:
 				FaultInjector_InjectFaultIfSet(
 											   forCommit ?
@@ -2118,25 +2142,27 @@ smgrDoDeleteActions(
 											   TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,
 											   DDLNotSpecified,
 											   "",	// databaseName
-											   ""); // tableName																		
+											   ""); // tableName
 				break;
-				
+
 			default:
 				break;
-		}		
-		
-#endif		
+		}
+
+#endif
 
 		/* must explicitly free the list entry */
 		PendingDelete_Free(&current);
 
 		entryIndex++;
-		
+
 	}
 	Assert(*listCount == 0);
 	Assert(*list == NULL);
 
 	PersistentFileSysObj_FlushXLog();
+
+	CHECKPOINT_START_UNLOCK;
 
 	MIRRORED_UNLOCK;
 
@@ -2150,22 +2176,22 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 {
 	HASH_SEQ_STATUS iterateStatus;
 	AppendOnlyMirrorResyncEofs *entry;
-	
+
 	AppendOnlyMirrorResyncEofs *entryExample = NULL;
 
 	int appendOnlyMirrorResyncEofsCount;
-	
+
 	if (AppendOnlyMirrorResyncEofsTable == NULL)
 		return;
 
 	if (Debug_persistent_print ||
 		Debug_persistent_appendonly_commit_count_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "Storage Manager: Enter Append-Only mirror resync eofs list entries (Append-Only commit work count %d)",
 			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
 
 	hash_seq_init(
-			&iterateStatus, 
+			&iterateStatus,
 			AppendOnlyMirrorResyncEofsTable);
 
 	appendOnlyMirrorResyncEofsCount = 0;
@@ -2198,10 +2224,10 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				int systemAppendOnlyCommitWorkCount;
 
 				LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
-				
+
 				systemAppendOnlyCommitWorkCount =
 						FileRepPrimary_FinishedAppendOnlyCommitWork(1);
-								
+
 				if (entry->isDistributedTransaction)
 				{
 					PrepareDecrAppendOnlyCommitWork(entry->gid);
@@ -2209,7 +2235,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 
 				if (Debug_persistent_print ||
 					Debug_persistent_appendonly_commit_count_print)
-					elog(Persistent_DebugPrintLevel(), 
+					elog(Persistent_DebugPrintLevel(),
 						 "Storage Manager: Append-Only Mirror Resync EOFs decrementing commit work for aborted transaction "
 						 "(system count %d). "
 						 "Relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)	",
@@ -2222,14 +2248,14 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 						 ItemPointerToString(&entry->persistentTid));
 
 				pendingAppendOnlyMirrorResyncIntentCount--;
-				
+
 				LWLockRelease(FileRepAppendOnlyCommitCountLock);
 			}
 		}
 
 		if (Debug_persistent_print ||
 			Debug_persistent_appendonly_commit_count_print)
-			elog(Persistent_DebugPrintLevel(), 
+			elog(Persistent_DebugPrintLevel(),
 				 "Storage Manager: Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' "
 				 "(forCommit %s, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s,  mirror new EOF " INT64_FORMAT ")",
 				 appendOnlyMirrorResyncEofsCount,
@@ -2243,7 +2269,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 entry->persistentSerialNum,
 				 (entry->mirrorCatchupRequired ? "true" : "false"),
 				 entry->mirrorNewEof);
-		
+
 		appendOnlyMirrorResyncEofsCount++;
 	}
 
@@ -2269,17 +2295,17 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 pendingAppendOnlyMirrorResyncIntentCount);
 
 		MIRRORED_LOCK;	// NOTE: When we use the MirroredLock for the whole routine, this can go.
-		
+
 		LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
 
 		oldSystemAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();
 
-		newSystemAppendOnlyCommitWorkCount = 
-						oldSystemAppendOnlyCommitWorkCount - 
+		newSystemAppendOnlyCommitWorkCount =
+						oldSystemAppendOnlyCommitWorkCount -
 						pendingAppendOnlyMirrorResyncIntentCount;
 
 		if (newSystemAppendOnlyCommitWorkCount < 0)
-			elog(ERROR, 
+			elog(ERROR,
 				 "Append-Only Mirror Resync EOFs intent count would go negative "
 				 "(system count %d, entry count %d).  "
 				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)",
@@ -2291,19 +2317,19 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 entryExample->key.segmentFileNum,
 				 entryExample->persistentSerialNum,
 				 ItemPointerToString(&entryExample->persistentTid));
-		
-		resultSystemAppendOnlyCommitWorkCount = 
+
+		resultSystemAppendOnlyCommitWorkCount =
 					FileRepPrimary_FinishedAppendOnlyCommitWork(
 									pendingAppendOnlyMirrorResyncIntentCount);
-		
+
 		// Should match since we are under FileRepAppendOnlyCommitCountLock EXCLUSIVE.
-		Assert(newSystemAppendOnlyCommitWorkCount == resultSystemAppendOnlyCommitWorkCount);		
+		Assert(newSystemAppendOnlyCommitWorkCount == resultSystemAppendOnlyCommitWorkCount);
 
 		pendingAppendOnlyMirrorResyncIntentCount = 0;
 
 		if (Debug_persistent_print ||
 			Debug_persistent_appendonly_commit_count_print)
-			elog(Persistent_DebugPrintLevel(), 
+			elog(Persistent_DebugPrintLevel(),
 				 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing %s work with system count %d remaining "
 				 "(enter system count %d, entry count %d, result system count %d).  "
 				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)",
@@ -2320,7 +2346,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 ItemPointerToString(&entryExample->persistentTid));
 
 		LWLockRelease(FileRepAppendOnlyCommitCountLock);
-			
+
 		MIRRORED_UNLOCK;
 	}
 
@@ -2335,7 +2361,7 @@ PendingDelete_Compare(const PendingDelete *entry1, const PendingDelete *entry2)
 	int cmp;
 
 	cmp = PersistentFileSysObjName_Compare(
-								&entry1->fsObjName, 
+								&entry1->fsObjName,
 								&entry2->fsObjName);
 	if (cmp == 0)
 	{
@@ -2349,7 +2375,7 @@ PendingDelete_Compare(const PendingDelete *entry1, const PendingDelete *entry2)
 		else
 			return -1;
 	}
-	else 
+	else
 		return cmp;
 }
 
@@ -2369,7 +2395,7 @@ PendingDeletePtr_Compare(const void *p1, const void *p2)
 
 static void
 smgrSortDeletesList(
-	PendingDelete 	**list, 
+	PendingDelete 	**list,
 	int 			*listCount,
 	int				nestLevel)
 {
@@ -2382,10 +2408,10 @@ smgrSortDeletesList(
 	if (*listCount == 0)
 		return;
 
-	ptrArray = 
+	ptrArray =
 			(PendingDeletePtr*)
 						palloc(*listCount * sizeof(PendingDeletePtr));
-	
+
 
 	i = 0;
 	for (current = *list; current != NULL; current = current->next)
@@ -2402,7 +2428,7 @@ smgrSortDeletesList(
 	 */
 	qsort(
 		ptrArray,
-		*listCount, 
+		*listCount,
 		sizeof(PendingDeletePtr),
 		PendingDeletePtr_Compare);
 
@@ -2432,7 +2458,7 @@ smgrSortDeletesList(
 		if (current->nestLevel >= nestLevel &&
 			prev->nestLevel >= nestLevel &&
 			(PersistentFileSysObjName_Compare(
-								&prev->fsObjName, 
+								&prev->fsObjName,
 								&current->fsObjName) == 0))
 		{
 			if (prev->dropForCommit)
@@ -2447,7 +2473,7 @@ smgrSortDeletesList(
 			collapseCount++;
 
 			if (Debug_persistent_print)
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "Storage Manager: CREATE (transaction level %d) - DROP (transaction level %d) collapse for %s, filter transaction level %d, TID %s, serial " INT64_FORMAT,
 					 current->nestLevel,
 					 prev->nestLevel,
@@ -2455,7 +2481,7 @@ smgrSortDeletesList(
 					 nestLevel,
 					 ItemPointerToString(&current->persistentTid),
 					 current->persistentSerialNum);
-			
+
 			PendingDelete_Free(&current);
 
 			// Don't advance prev pointer.
@@ -2464,7 +2490,7 @@ smgrSortDeletesList(
 		{
 			// Re-link.
 			prev->next = current;
-			
+
 			prev = current;
 		}
 	}
@@ -2478,7 +2504,7 @@ smgrSortDeletesList(
 
 #ifdef suppress
 	{
-		PendingDelete	*check; 
+		PendingDelete	*check;
 		PendingDelete	*checkPrev;
 		int checkCount;
 
@@ -2490,7 +2516,7 @@ smgrSortDeletesList(
 			if (checkPrev != NULL)
 			{
 				int cmp;
-			
+
 				cmp = PendingDelete_Compare(
 										checkPrev,
 										check);
@@ -2498,7 +2524,7 @@ smgrSortDeletesList(
 					elog(ERROR, "Not sorted correctly ('%s' >= '%s')",
 						 PersistentFileSysObjName_ObjectName(&checkPrev->fsObjName),
 						 PersistentFileSysObjName_ObjectName(&check->fsObjName));
-					
+
 			}
 
 			checkPrev = check;
@@ -2564,7 +2590,7 @@ smgrSubTransAbort(void)
 	 * And, collapse same transaction create-deletes.
 	 */
 	smgrSortDeletesList(
-					&subTransList, 
+					&subTransList,
 					&subTransCount,
 					nestLevel);
 
@@ -2574,7 +2600,7 @@ smgrSubTransAbort(void)
 	 * Do abort actions for the sub-transaction's creates and deletes.
 	 */
 	smgrDoDeleteActions(
-					&subTransList, 
+					&subTransList,
 					&subTransCount,
 					/* forCommit */ false);
 
@@ -2585,9 +2611,9 @@ smgrSubTransAbort(void)
 	 * Throw away sub-transaction Append-Only mirror resync EOFs.
 	 */
 	hash_seq_init(
-			&iterateStatus, 
+			&iterateStatus,
 			AppendOnlyMirrorResyncEofsTable);
-	
+
 	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
 		if (entry->key.nestLevel >= nestLevel)
@@ -2638,13 +2664,13 @@ smgrGetPendingFileSysWork(
 		 * And, collapse same transaction create-deletes.
 		 */
 		smgrSortDeletesList(
-						&pendingDeletes, 
+						&pendingDeletes,
 						&pendingDeletesCount,
 						nestLevel);
 
 		pendingDeletesSorted = (nestLevel <= 1);
 	}
-	
+
 	nrels = 0;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
@@ -2663,12 +2689,12 @@ smgrGetPendingFileSysWork(
 	}
 
 	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "Storage Manager: Get list entries (transaction kind '%s', current transaction nest level %d)",
 			 EndXactRecKind_Name(endXactRecKind),
 			 nestLevel);
 
-	rptr = (PersistentEndXactFileSysActionInfo *) 
+	rptr = (PersistentEndXactFileSysActionInfo *)
 							palloc(nrels * sizeof(PersistentEndXactFileSysActionInfo));
 	*ptr = rptr;
 	entryIndex = 0;
@@ -2679,7 +2705,7 @@ smgrGetPendingFileSysWork(
 		action = PendingDelete_Action(pending);
 		returned = false;
 
-		if (pending->nestLevel >= nestLevel && 
+		if (pending->nestLevel >= nestLevel &&
 			EndXactRecKind_NeedsAction(endXactRecKind, action))
 		{
 			rptr->action = action;
@@ -2695,7 +2721,7 @@ smgrGetPendingFileSysWork(
 		if (Debug_persistent_print)
 		{
 			if (pending->relationName == NULL)
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "Storage Manager: Get list entry #%d: '%s' (transaction kind '%s', returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
@@ -2706,7 +2732,7 @@ smgrGetPendingFileSysWork(
 					 ItemPointerToString(&pending->persistentTid),
 					 pending->persistentSerialNum);
 			else
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "Storage Manager: Get list entry #%d: '%s', relation name '%s' (transaction kind '%s', returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
@@ -2750,7 +2776,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 	if (AppendOnlyMirrorResyncEofsTable !=  NULL)
 	{
 		hash_seq_init(
-				&iterateStatus, 
+				&iterateStatus,
 				AppendOnlyMirrorResyncEofsTable);
 
 		while ((entry = hash_seq_search(&iterateStatus)) != NULL)
@@ -2767,23 +2793,23 @@ smgrGetAppendOnlyMirrorResyncEofs(
 
 	if (Debug_persistent_print ||
 		Debug_persistent_appendonly_commit_count_print)
-		elog(Persistent_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(),
 			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d, Append-Only commit work system count %d)",
 			 nestLevel,
 			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
 
-	rptr = (PersistentEndXactAppendOnlyMirrorResyncEofs *) 
+	rptr = (PersistentEndXactAppendOnlyMirrorResyncEofs *)
 							palloc(nentries * sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs));
 	*ptr = rptr;
 	entryIndex = 0;
 	hash_seq_init(
-			&iterateStatus, 
+			&iterateStatus,
 			AppendOnlyMirrorResyncEofsTable);
-	
+
 	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
 		MIRRORED_LOCK_DECLARE;
-		
+
 		bool returned;
 		int resultSystemAppendOnlyCommitCount;
 
@@ -2832,8 +2858,8 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			START_CRIT_SECTION();
 
 			LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
-			
-			resultSystemAppendOnlyCommitCount = 
+
+			resultSystemAppendOnlyCommitCount =
 							FileRepPrimary_IntentAppendOnlyCommitWork();
 
 			// Set this inside the Critical Section.
@@ -2842,12 +2868,12 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			if (endXactRecKind == EndXactRecKind_Prepare)
 			{
 				char gid[TMGIDSIZE];
-				
+
 				if (!getDistributedTransactionIdentifier(gid))
 					elog(ERROR, "Unable to obtain gid during prepare");
 
 				PrepareIntentAppendOnlyCommitWork(gid);
-				
+
 				entry->isDistributedTransaction = true;
 				memcpy(entry->gid, gid, TMGIDSIZE);
 			}
@@ -2862,8 +2888,8 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			START_CRIT_SECTION();
 
 			LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
-			
-			resultSystemAppendOnlyCommitCount = 
+
+			resultSystemAppendOnlyCommitCount =
 							FileRepPrimary_GetAppendOnlyCommitWorkCount();
 		}
 
@@ -2871,7 +2897,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			Debug_persistent_appendonly_commit_count_print)
 		{
 			if (entry->relationName == NULL)
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d "
 					 "(returned %s, result system Append-Only commit count %d, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
@@ -2887,7 +2913,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 					 (entry->mirrorCatchupRequired ? "true" : "false"),
 					 entry->mirrorNewEof);
 			else
-				elog(Persistent_DebugPrintLevel(), 
+				elog(Persistent_DebugPrintLevel(),
 					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' "
 					 "(returned %s, result system Append-Only commit count %d, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
@@ -2906,9 +2932,9 @@ smgrGetAppendOnlyMirrorResyncEofs(
 		}
 
 		LWLockRelease(FileRepAppendOnlyCommitCountLock);
-		
+
 		END_CRIT_SECTION();
-		
+
 		MIRRORED_UNLOCK;
 
 		entryIndex++;
@@ -2936,7 +2962,7 @@ smgrIsPendingFileSysWork(
 	Assert(endXactRecKind == EndXactRecKind_Commit ||
 		   endXactRecKind == EndXactRecKind_Abort ||
 		   endXactRecKind == EndXactRecKind_Prepare);
-	
+
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		action = PendingDelete_Action(pending);
@@ -2970,9 +2996,9 @@ smgrIsAppendOnlyMirrorResyncEofs(
 	{
 		return false;
 	}
-	
+
 	hash_seq_init(
-			&iterateStatus, 
+			&iterateStatus,
 			AppendOnlyMirrorResyncEofsTable);
 
 	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
@@ -3005,7 +3031,7 @@ AtSubCommit_smgr(void)
 		if (pending->nestLevel >= nestLevel)
 		{
 			pending->nestLevel = nestLevel - 1;
-			
+
 			if (pending->fsObjName.type == PersistentFsObjType_RelationFile &&
 				pending->relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly)
 			{
@@ -3023,9 +3049,9 @@ AtSubCommit_smgr(void)
 	}
 
 	hash_seq_init(
-			&iterateStatus, 
+			&iterateStatus,
 			AppendOnlyMirrorResyncEofsTable);
-	
+
 	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
 		if (entry->key.nestLevel >= nestLevel)
@@ -3069,7 +3095,7 @@ AtEOXact_smgr(bool forCommit)
 	if (!pendingDeletesSorted)
 	{
 		smgrSortDeletesList(
-						&pendingDeletes, 
+						&pendingDeletes,
 						&pendingDeletesCount,
 						/* nestLevel */ 0);
 
@@ -3087,7 +3113,7 @@ AtEOXact_smgr(bool forCommit)
 		 * Do abort actions for the sub-transaction's creates and deletes.
 		 */
 		smgrDoDeleteActions(
-						&pendingDeletes, 
+						&pendingDeletes,
 						&pendingDeletesCount,
 						forCommit);
 
@@ -3100,7 +3126,7 @@ AtEOXact_smgr(bool forCommit)
 		 * Update the Append-Only mirror resync EOFs.
 		 */
 		smgrDoAppendOnlyResyncEofs(forCommit);
-		
+
 		pendingAppendOnlyMirrorResyncIntentCount = 0;
 
 		/*
@@ -3160,12 +3186,12 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 
 		reln = smgropen(xlrec->rnode);
 
-		mirrorDataLossTrackingState = 
+		mirrorDataLossTrackingState =
 					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 													&mirrorDataLossTrackingSessionNum);
 		smgrcreate(
 				reln,
-				/* isLocalBuf */ false, 
+				/* isLocalBuf */ false,
 				/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 				mirrorDataLossTrackingState,
 				mirrorDataLossTrackingSessionNum,
@@ -3180,7 +3206,7 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		BlockNumber newblks;
 
 		reln = smgropen(xlrec->rnode);
-		
+
 		/* Can't use smgrtruncate because it would try to xlog */
 
 		/*
