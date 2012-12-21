@@ -207,7 +207,7 @@ encoding_check_str(FunctionCallInfo fcinfo, char *str, int len, bool is_import)
 
 	FORMATTER_ENCODE_STRING(fcinfo, str, len, cvt, is_import);
 
-	if (cvt != str)
+	if (cvt != NULL && cvt != str)
 	{
 		pfree(cvt);
 		return true;
@@ -229,7 +229,7 @@ encoding_encode_strinfo(FunctionCallInfo fcinfo, StringInfo strinfo, bool is_imp
 
 	FORMATTER_ENCODE_STRING(fcinfo, strinfo->data, strinfo->len, cvt, is_import);
 
-	if (cvt != strinfo->data)
+	if (cvt != NULL && cvt != strinfo->data)
 	{
 		/* transfer converted data back to strinfo */
 		resetStringInfo(strinfo);
