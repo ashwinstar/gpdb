@@ -153,7 +153,8 @@ select median(10);
      10
 (1 row)
 
-select count(*), median(b+1) from perct group by b+2;
+select count(*), median(b+1) from perct group by b+2
+	having median(b+1) in (select avg(b+1) from perct group by b+2);
  count | median 
 -------+--------
      1 |     11
@@ -583,7 +584,8 @@ select median(10);
      10
 (1 row)
 
-select count(*), median(b+1) from perct group by b+2;
+select count(*), median(b+1) from perct group by b+2
+	having median(b+1) in (select avg(b+1) from perct group by b+2);
  count | median 
 -------+--------
      1 |     11

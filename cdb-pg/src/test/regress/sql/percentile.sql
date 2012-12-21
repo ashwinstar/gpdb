@@ -30,7 +30,8 @@ select percentile_cont(0.3) within group (order by a) + count(*) from perct grou
 select median(a) from perct group by b having median(a) = 5;
 select median(a), percentile_cont(0.6) within group (order by a desc) from perct group by b having count(*) > 1 order by 1;
 select median(10);
-select count(*), median(b+1) from perct group by b+2;
+select count(*), median(b+1) from perct group by b+2
+	having median(b+1) in (select avg(b+1) from perct group by b+2);
 select median(a) from perct2;
 select median(a) from perct2 group by b order by b;
 select b, count(*), count(distinct a), median(a) from perct3 group by b order by b;
@@ -87,7 +88,8 @@ select percentile_cont(0.3) within group (order by a) + count(*) from perct grou
 select median(a) from perct group by b having median(a) = 5;
 select median(a), percentile_cont(0.6) within group (order by a desc) from perct group by b having count(*) > 1 order by 1;
 select median(10);
-select count(*), median(b+1) from perct group by b+2;
+select count(*), median(b+1) from perct group by b+2
+	having median(b+1) in (select avg(b+1) from perct group by b+2);
 select median(a) from perct2;
 select median(a) from perct2 group by b order by b;
 select b, count(*), count(distinct a), median(a) from perct3 group by b order by b;
