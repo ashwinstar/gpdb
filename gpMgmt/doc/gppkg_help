@@ -1,8 +1,8 @@
 COMMAND NAME: gppkg
 
 Installs Greenplum Database extensions such as 
-pgcrypto, PL/R, PL/Java, PL/Perl, and PostGIS, along 
-with their dependencies, across an entire cluster.
+pgcrypto, PL/R, PL/Java, PL/Perl, MADlib and PostGIS, 
+along with their dependencies, across an entire cluster.
 
 *****************************************************
 SYNOPSIS
@@ -43,6 +43,7 @@ EMC Download Center.
 * PL/Java
 * PL/R
 * PL/Perl
+* MADlib
 * Pgcrypto
 
 *****************************************************
