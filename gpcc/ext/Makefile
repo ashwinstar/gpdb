@@ -30,7 +30,7 @@ endif
 
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
-OPENSSL=openssl-0.9.8h
+OPENSSL=openssl-0.9.8r
 
 ifeq "$(BLD_ARCH)" "win32"
 MINGWRANLIB=/usr/local/mingw32/mingw32/bin/ranlib
@@ -41,7 +41,7 @@ CPPFLAGS=-I/usr/local/mingw32/mingw32/include
 endif
 
 ifeq "$(BLD_ARCH)" "win32"
-all: mkdir mkdbgen mklibapr mklibapu mklibevent mklibjson
+all: mkdir mklibssl mkdbgen mklibapr mklibapu mklibevent mklibjson
 else
 all: mkdir mkdbgen
 endif
@@ -136,6 +136,7 @@ lib/libevent.a:
 	fi
 
 lib/libssl.a:
+	# openssl is compiled only on win32 (see all:)
 	@echo     -- openssl
 	if [ ! -f $(OPENSSL)/Makefile ]; then \
 		gzip -d -c $(OPENSSL).tar.gz | tar xf - ;\
@@ -149,19 +150,19 @@ lib/libssl.a:
 	        exit $${retval}; \
 	    fi ; \
 	fi
-	# shut the make files up, win32 build doesn't need ssl
-	if [ "$(BLD_ARCH)"x == "win32"x ]; then \
-		touch lib/libssl.a; \
-	else \
-		cd $(OPENSSL) && $(MAKE) all install >LOG.$(@F)-make 2>&1 ; \
-		retval=$$?; \
-		if [ $${retval} != 0 ]; then \
-		    cat LOG.$(@F)-make; \
-		    exit $${retval}; \
-		fi; \
-	fi
 
+	cd $(OPENSSL) && $(MAKE) clean build_libs >LOG.$(@F)-make 2>&1 ; \
+	retval=$$?; \
+	if [ $${retval} != 0 ]; then \
+	    cat LOG.$(@F)-make; \
+	    exit $${retval}; \
+	fi;
 
+	# copy the following files to ext/lib directroy - this is a workaround, since '--prefix' was ignored during './configure'
+	cp -f $(OPENSSL)/libssl.a $(GPCC)/ext/lib
+	cp -f $(OPENSSL)/libcrypto.a  $(GPCC)/ext/lib
+	$(MINGWRANLIB) $(GPCC)/ext/lib/libssl.a;
+	$(MINGWRANLIB) $(GPCC)/ext/lib/libcrypto.a;
 
 lib/libaprutil-1.a: lib/libapr-1.a
 	@echo     -- apu
