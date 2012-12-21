@@ -4,7 +4,6 @@
 from contextlib import closing
 import os
 import platform
-from Queue import Queue
 import shutil
 import sys
 import tarfile
@@ -232,7 +231,9 @@ class Gppkg:
 
 class LocalCommand(Operation):
     '''
-        Executes a command locally
+    DEPRECATED
+
+    TODO: AK: Eliminate this. Replace invocations with Command(...).run(validateAfter = True)
     '''
 
     def __init__(self, cmd_str, echo = False):
@@ -252,9 +253,9 @@ class LocalCommand(Operation):
 
 class RemoteCommand(Operation):
     """
-    Executes commands on remote hosts
+    DEPRECATED
 
-    TODO: AK: Isn't this the exact same thing as gpssh?! 
+    TODO: AK: Rename as GpSsh, like GpScp below. 
     """
 
     def __init__(self, cmd_str, host_list):
@@ -302,84 +303,7 @@ class ListPackages(Operation):
 
         return package_name_list
 
-class ArchivePackageOnHost(Operation):
-    '''
-        Stores a package in $GPHOME/share/packages/archive
-        on a specified host.
-    '''
-
-    def __init__(self, host, gppkg):
-        self.host = host
-        self.gppkg = gppkg
-
-    def execute(self):
-
-        if not CheckRemoteDir(GPPKG_ARCHIVE_PATH, self.host).run():
-            MakeRemoteDir(GPPKG_ARCHIVE_PATH, self.host).run()    
-        
-        scp = Scp(name = 'copy gppkg to segments', srcFile = os.path.join(GPPKG_ARCHIVE_PATH, self.gppkg), dstFile = os.path.join(GPPKG_ARCHIVE_PATH, self.gppkg), 
-                srcHost = None, dstHost = self.host, recursive = True)
-        scp.run(validateAfter = True)
-
-class UnArchivePackageOnHost(Operation):
-    '''
-        Removes a package from $GPHOME/share/packages/archive
-        on a specified host
-    '''
-
-    def __init__(self, host, gppkg):
-        self.host = host
-        self.gppkg = gppkg
-
-    def execute(self):
-
-        pkg = os.path.join(GPPKG_ARCHIVE_PATH, self.gppkg)
-        if not CheckRemoteFile(pkg, self.host).run():
-            return
             
-        RemoveRemoteFile(pkg, self.host).run()
-            
-
-class TransferPackageContents(Operation):
-    '''
-      Transfer the package contents which have been upacked in 
-      the $GPHOME/.tmp directory to the segment hosts 
-      and also the standby
-    '''
-    
-    def __init__(self, master_host, standby_host, segment_host_list):
-        self.segment_host_list = segment_host_list
-        self.standby_host = standby_host
-        self.master_host = master_host
-
-    def execute(self):
-          
-        pool = WorkerPool()
-         
-        #clean up the .tmp dir first before transferring
-        for host in self.segment_host_list:
-            if CheckRemoteDir(TEMP_EXTRACTION_PATH, host).run():
-                RemoveRemoteTree(TEMP_EXTRACTION_PATH, host).run()
-
-        #transfer to segments
-        for host in self.segment_host_list:
-            logger.info('Transferring package to segment %s' % host)
-            scp = Scp(name = 'copy gppkg to segments', srcFile = TEMP_EXTRACTION_PATH, dstFile = TEMP_EXTRACTION_PATH, srcHost = None, dstHost = host, recursive = True)
-            pool.addCommand(scp)
-        pool.join()
-         
-        pool.check_results()
-          
-        #clean up the .tmp dir first before transferring
-        if self.standby_host:
-            if CheckRemoteDir(TEMP_EXTRACTION_PATH, self.standby_host).run():
-                RemoveRemoteTree(TEMP_EXTRACTION_PATH, self.standby_host).run()
-
-        #transfer to standby
-        if self.standby_host:
-            logger.info('Transferring package to standby %s' % self.standby_host)
-            scp = Scp(name = 'copy gppkg to standby', srcFile = TEMP_EXTRACTION_PATH, dstFile = TEMP_EXTRACTION_PATH, srcHost =  None, dstHost = self.standby_host, recursive = True)
-            scp.run(validateAfter = True)
 
 class CleanupDir(Operation):
     '''
@@ -473,61 +397,6 @@ class IsVersionCompatible(Operation):
         version = gp.GpVersion.local('local GP software version check', self.gphome)
         gpdb_version = GpVersion(version.strip()) 
         return gpdb_version
-
-class StorePackageInArchive(Operation):
-    '''
-        Stores gppkg in $GPHOME/arhive
-        The packages need to be store in both 
-        Master and the Standby
-    '''
-
-    def __init__(self, gppkg, standby):
-        self.gppkg = gppkg
-        self.standby = standby
-
-    def execute(self):
-
-        gppkg = self.gppkg
-      
-        #Store the package on the standby master
-        if self.standby:
-            if not CheckRemoteDir(GPPKG_ARCHIVE_PATH, self.standby).run():
-                MakeRemoteDir(GPPKG_ARCHIVE_PATH, self.standby).run()
-
-            #Scp the package 
-            scp = Scp(name = 'copy gppkg to segments', srcFile = gppkg.abspath, dstFile = os.path.join(GPPKG_ARCHIVE_PATH, gppkg.pkg), srcHost = None, dstHost = self.standby, recursive = False)
-            scp.run(validateAfter = True)
-
-        #Store the package from the archive on master
-        if not os.path.exists(GPPKG_ARCHIVE_PATH):
-            os.mkdir(GPPKG_ARCHIVE_PATH)
-        shutil.copyfile(gppkg.abspath, os.path.join(GPPKG_ARCHIVE_PATH, gppkg.pkg))
-
-class RemovePackageFromArchive(Operation):
-    '''
-        Removes packages from $GPHOME/archive
-        The packages need to be removed from both
-        Master and Standby
-    '''
-
-    def __init__(self, pkg_path, standby):
-        self.pkg_path = pkg_path
-        self.standby = standby
-
-    def execute(self):
-     
-        #gppkg = self.gppkg
-
-        #Remove from the master
-        if os.path.exists(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_path)):
-            os.remove(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_path))
-
-        #Remove from the standby
-        if self.standby:
-            if not CheckRemoteDir(GPPKG_ARCHIVE_PATH, self.standby).run():
-                return
-            else:
-                RemoveRemoteFile(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_path), self.standby).run()
 
 
 
