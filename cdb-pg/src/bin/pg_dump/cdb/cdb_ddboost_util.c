@@ -56,6 +56,8 @@
 #define MAX_PATH_NAME 1024
 #define DDB_POOL_SIZE (32 * 1024 * 2048)
 
+#define DDP_FILECOPY_EXTENT_LEN 262144
+
 /* This is necessary on platforms where optreset variable is not available.
  * Look at "man getopt" documentation for details.
  */
@@ -83,16 +85,20 @@ struct ddboost_options
 	char *to_file;
 	char *deleteDir;
 	char *deleteFile;
+    char *listDirFull;
 	struct schemaTableList *tableList;
 	char *database;
+	char *syncFilesFromTimestamp;
 	bool listDir;
 	bool copyFromDDBoost;	
 	bool copyToDDBoost;
+        bool copy;
 	bool readFile;	
 	bool getFreePercent;
 	bool getLatestTimestamp;
 	bool syncFiles;
 	bool writeToDDFileFromInput;
+        bool rename;
 };
 
 static struct ddboost_options *dd_options = NULL;
@@ -144,6 +150,10 @@ static void deleteTableName(char *table, char *schema, struct ddboost_options **
 static void cleanupTableList(struct ddboost_options **dd_options);
 static int isFileCompressed(const char *full_path);
 static int createDbdumpsDir(char *filePath);
+static int listDirectoryFull(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
+static int syncFilesFromDDBoostTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath);
+static int renameFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
+static int copyWithinDDboost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn);
 
 /* Helper routines for handling multiple -T options using a linked list */
 struct schemaTableList *getNode(char *schemaTable)
@@ -254,6 +264,12 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
+    if (dd_options->copy)
+    {
+        failCount = copyWithinDDboost(dd_options, ddp_conn);
+        goto cleanup;
+    }
+
 	if (dd_options->deleteDir)
 	{
 		failCount = deleteDir(dd_options, ddp_conn);
@@ -289,6 +305,12 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
+    if (dd_options->listDirFull)
+    {
+        failCount = listDirectoryFull(dd_options, ddp_conn);
+        goto cleanup;
+    }
+ 
 	if (dd_options->tableList)
 	{
 		failCount = createFakeRestoreFile(dd_options, ddp_conn);
@@ -308,12 +330,23 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
+    if (dd_options->syncFilesFromTimestamp)
+    {
+        failCount = syncFilesFromDDBoostTimestamp(dd_options, ddp_conn, dd_options->directory);
+        goto cleanup;
+    }
+
 	if (dd_options->writeToDDFileFromInput)
 	{
 		failCount = writeToDDFileFromInput(dd_options->to_file);
 		goto cleanup;
 	}
 
+    if (dd_options->rename)
+    {
+        failCount = renameFile(dd_options, ddp_conn);
+        goto cleanup;
+    }
 cleanup:
 	FreeInputOptions(&inputOpts);
 	if (opts != NULL)
@@ -325,6 +358,8 @@ cleanup:
 	if (ddp_inst != DDP_INVALID_DESCRIPTOR)
 		ddp_instance_destroy(ddp_inst);
 
+    ddp_shutdown();
+
 	if (dd_options != NULL)
 		free(dd_options);	
 	
@@ -334,28 +369,52 @@ cleanup:
 static void
 usage(void)
 {
-	printf(("%s Utility routine to access DDBoost from Greenplum Database\n\n"), progname);
-	printf(("Usage:\n"));
-	printf(("  %s [OPTIONS]\n"), progname);
+	printf(("\n%s Utility routine to access DDBoost from Greenplum Database\n\n"), progname);
+    printf("WARNING !! gpddboost should not be used as a standalone utility\n\n");
+    printf(("  %s [OPTIONS]\n"), progname);
 
 	printf(("\nGeneral options:\n"));
-	printf("  --copyFromDDBoost		Copy the backup file from DDBoost to GPDB\n");	
-	printf("  --copyToDDBoost		Copy the backup file from GPDB to DDBoost\n");
-	printf("  --from-file			The pathname of the source file\n");
-	printf("  --to-file			The pathname of the destination file\n");
-	printf("  --del-dir=DIR			To delete the specified DIR on DDBoost\n");	
-	printf("  --getFreePercent		Get free space percentage on DDBoost\n");
-	printf("  --del-file=FILE		To cleanup a specific file on DDboost\n"); 
-	printf("  --listDirectory		To list the contents of a directory\n");	
-	printf("  --readFile			To read a file on DDBoost\n");	 
-	printf("  --write-file-from-stdin 	To write a file to DDBoost from stdin\n");
-	printf("  --dir=DIR			Pathname of directory to list contents or find latest timestamp\n");
-	printf("  --database=<Databasename>	Database name \n");	
-	printf("  --table				To restore a specific table\n");
-	printf("  --sync			To copy over the config and global dump files\n"); 		
-	printf("  --dd_boost_buf_size		DDboost I/O buffer size\n");
-	printf(("  --help                   	show this help, then exit\n"));
-	printf(("  --version                	output version information, then exit\n"));
+    printf("  --copyFromDDBoost   --from-file=<ddboost_full_path_name>   --to-file=<local_disk_full_path_name> \n");  
+    printf("  Copy a file from DDBoost to GPDB\n");	
+    printf("  The destination directory on local disk should exist.\n\n\n");
+    printf("  --copyToDDBoost    --from-file=<local_disk_full_path_name> --to-file=<ddboost_full_path_name> \n");  
+    printf("  Copy a file from GPDB to DDBoost.\n\n\n");
+    printf("  --copy   --from-file=<ddboost_source_full_path_name> --to-file=<ddboost_dest_full_path_name> \n");  
+    printf("  Copy a file from one location to another within DDBoost.\n\n\n");  
+    printf("  --del-dir=<ddboost_full_path_name>			\n");
+    printf("  To delete a directory on DDboost specified by ddboost_full_path_name.\n\n\n");	
+    printf("  --del-file=<ddboost_full_path_name>           \n");
+    printf("  To delete a specific file on DDboost.\n\n\n"); 
+    printf("  --listDirectory  --dir=<ddboost_directory_full_path_name> \n");
+    printf("  To list the contents of a directory on DDboost. \n");
+    printf("  If ddboost_directory_full_path_name is empty or / then the contents of the root directory \n");
+    printf("  in the default storage unit is displayed.\n\n\n");
+    printf("  --ls   --dir=<ddboost_directory_full_path_name>\n");	
+    printf("  To list the size and permissions of the contents of a directory on DDboost.\n"); 
+    printf("  If ddboost_directory_full_path_name is empty or / then the contents of the root directory \n");
+    printf("  in the default storage unit is displayed.\n\n\n");
+    printf("  --readFile	--from-file=<ddboost_full_path_name>\n");
+    printf("  To read a file on DDBoost. By default the output is redirected to standard output.\n\n\n");	 
+    printf("  --write-file-from-stdin 	--to-file=<ddboost_full_path_name>\n");
+    printf("  To write a file to DDBoost from stdin.\n\n\n");
+    printf("  --table=<schemaName.tableName>  --from-file=<ddboost_full_path_name>  --to-file=<local_disk_full_path_name>\n");
+    printf("  To create a fake backup file containing only the data for the specified table. \n");
+    printf("  The destination directory should exist on the local disk.\n\n\n");        
+    printf("  --sync	--dir=<local_disk_full_path_name>\n");
+    printf("  To copy over the config, global dump, post_data and cdatabase files from DDBoost to GPDB\n"); 
+    printf("  Generally we specify the master data directory as the destination.\n\n\n");		
+    printf("  --syncTimestamp=<timestamp>     --dir=<local_disk_full_path_name>\n");
+    printf("  To sync all the files having a particular timestamp from DDboost to local disk\n");
+    printf("  The destination is specified by local_disk_full_path_name and it needs to exist.\n\n\n");
+    printf("  --dd_boost_buf_size=<size_in_bytes>\n");
+    printf("  DDboost I/O buffer size. Max IO buffer size is 1MB\n\n\n");
+    printf("  --rename  --from-file=<ddboost_full_path_name_source>  --to-file=<ddboost_full_path_name_dest>\n");
+    printf("  Rename file specified by --from-file to a destination specified by --to-file on DDBoost\n");  
+    printf("  Warning !! This operation will overwrite/delete an existing file if specified as destination.\n\n\n");  
+    printf("  --help                   \n");
+    printf("  Show this help, then exit.\n\n\n");
+    printf("  --version \n");
+    printf("  Output version information, then exit.\n\n\n");
 }
 
 bool
@@ -385,6 +444,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"sync", no_argument, NULL, 15},
 		{"write-file-from-stdin", no_argument, NULL, 16},
 		{"dd_boost_buf_size", required_argument, NULL, 18},
+		{"ls", required_argument, NULL, 19},
+        {"syncTimestamp", required_argument, NULL, 20},
+        {"rename", no_argument, NULL, 21},
+        {"copy", no_argument, NULL, 22},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -521,6 +584,19 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 					dd_boost_buf_size = 512*1024; /* reset to default value */
 				}
 				break;
+            case 19:
+                /* Long listing of directories */
+				dd_options->listDirFull = Safe_strdup(optarg);
+                break;
+            case 20:
+                dd_options->syncFilesFromTimestamp = Safe_strdup(optarg);;
+                break;
+            case 21:
+                dd_options->rename = true;
+                break;
+            case 22:
+                dd_options->copy = true;
+                break;
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				return false;
@@ -726,10 +802,10 @@ readFromDDFile(FILE *fp, char *ddBoostFileName)
         i++;
     } while((err == 0) && (ret_count > 0));
 
-    fclose(fp);
-	ddp_close_file(handle);
 
 cleanup:
+    if (handle != DDP_INVALID_DESCRIPTOR)
+        ddp_close_file(handle);
 	if (buf)	
 		free(buf);
 	if (full_path)
@@ -743,69 +819,100 @@ cleanup:
 int 
 copyFileFromDDBoost(struct ddboost_options *dd_options)
 {
-	char *ddboostFile = strdup(dd_options->from_file);
-	char *gpdbFile = strdup(dd_options->to_file);
+	char *ddboostFile = Safe_strdup(dd_options->from_file);
+	char *gpdbFile = Safe_strdup(dd_options->to_file);
 	FILE *fp = NULL;
+    int err = 0;
 
 	if (!ddboostFile)
 	{
 		mpp_err_msg(logError, progname, "Source File on DDboost not specified\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 
 	if (!gpdbFile)
 	{
 		mpp_err_msg(logError, progname, "Destination file on GPDB not specified\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 
 	fp = fopen(gpdbFile, "w");
 	if (fp == NULL)
 	{
 		mpp_err_msg(logError, progname, "Cannot open file %s on GPDB\n", gpdbFile);
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 
-	/* Close both files in the called function */
-	return readFromDDFile(fp, ddboostFile);	
+	/* Close ddboostFile in the called function */
+	err = readFromDDFile(fp, ddboostFile);	
+
+cleanup:
+    if (gpdbFile)
+        free(gpdbFile);
+    if (fp)
+        fclose(fp);
+    if (ddboostFile)
+        free(ddboostFile);
+
+    return err;
 
 }
 
 int 
 copyFileToDDBoost(struct ddboost_options *dd_options)
 {
-	char *gpdbFile = strdup(dd_options->from_file);
-	char *ddBoostFile = strdup(dd_options->to_file);
+	char *gpdbFile = Safe_strdup(dd_options->from_file);
+	char *ddBoostFile = Safe_strdup(dd_options->to_file);
 	FILE *fp = NULL;
+    int err = 0;
 
 	if (!ddBoostFile)
 	{
 		mpp_err_msg(logError, progname, "Destination file on DDboost not specified\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 
 	if (!gpdbFile)
 	{
 		mpp_err_msg(logError, progname, "Source file on GPDB not specified\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 
 	fp = fopen(gpdbFile, "r");
 	if (fp == NULL)
 	{
 		mpp_err_msg(logError, progname, "Cannot open file %s on GPDB\n", gpdbFile);
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 
-	/* Close both the files in the called function */
-	return writeToDDFile(fp, ddBoostFile);
+	/* Close ddBoostFile in the called function */
+	err = writeToDDFile(fp, ddBoostFile);
+
+cleanup:
+    if (gpdbFile)
+        free(gpdbFile);
+
+    if(ddBoostFile)
+        free(ddBoostFile);
+
+    if (fp)
+        fclose(fp);
+
+    return err;
 
 }
 
 int 
 readFileFromDDBoost(struct ddboost_options *dd_options)
 {
-	char *ddBoostFile = strdup(dd_options->from_file);
+	char *ddBoostFile = Safe_strdup(dd_options->from_file);
+    int err = 0;
 
 	if (!ddBoostFile)
 	{
@@ -813,15 +920,19 @@ readFileFromDDBoost(struct ddboost_options *dd_options)
 		return -1;
 	}
 
-	return readFromDDFileToOutput(ddBoostFile);
+	err = readFromDDFileToOutput(ddBoostFile);
+    if (ddBoostFile)
+        free(ddBoostFile);
+    
+    return err;
 
 }
 
 int 
 deleteDir(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 {
-	char *ddboostDir = strdup(dd_options->deleteDir);
-        int err = 0;
+	char *ddboostDir = Safe_strdup(dd_options->deleteDir);
+    int err = 0;
 	ddp_path_t path1 = {0};
 	char *storage_unit_name = NULL;
 	char *full_path = NULL;       
@@ -833,22 +944,22 @@ deleteDir(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 	}	
         
     storage_unit_name = (char*)malloc(MAX_PATH_NAME);
-    sprintf(storage_unit_name, "%s", "GPDB");
 	if (storage_unit_name == NULL)
 	{
 		err= -1;
         mpp_err_msg(logError, progname, "Memory allocation failed\n");
 		goto cleanup;
 	}
+    sprintf(storage_unit_name, "%s", "GPDB");
 	
 	full_path = (char*)malloc(MAX_PATH_NAME);
-	sprintf(full_path, "%s", ddboostDir);
 	if (full_path == NULL)
 	{
 		err = -1;
         mpp_err_msg(logError, progname, "Memory allocation failed\n");
 		goto cleanup;
 	}
+	sprintf(full_path, "%s", ddboostDir);
 
 	path1.su_name = storage_unit_name;
 	path1.path_name = ddboostDir;
@@ -862,6 +973,8 @@ deleteDir(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 	}
 
 cleanup:
+    if (ddboostDir)
+        free(ddboostDir);
 	if (storage_unit_name)
 		free(storage_unit_name);
 	if (full_path)
@@ -897,7 +1010,8 @@ ddBoostRmdir(char *dir_path, ddp_conn_desc_t ddp_conn, char *parent_dir)
 	if (!cur_path)
 	{
 		mpp_err_msg(logError, progname, "Memory allocation failure\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 	memset(cur_path, 0, MAX_PATH_NAME);	
 
@@ -1012,6 +1126,8 @@ cleanup:
 		free(cur_path);
 	if (full_path)
 		free(full_path);
+    if (dird != DDP_INVALID_DESCRIPTOR)
+        ddp_close_dir(dird);
 
 	return err;
 }
@@ -1030,7 +1146,7 @@ static int writeToDDFile(FILE *fp, char *ddBoostFileName)
 	char *storage_unit_name = NULL;
 	char *full_path = NULL;       
 	ddp_stat_t stat_buf;
- 
+
 	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
 	if (storage_unit_name == NULL)
 	{	
@@ -1108,16 +1224,21 @@ static int writeToDDFile(FILE *fp, char *ddBoostFileName)
 	if (stat_buf.st_size < rw_size )
 		rw_size = stat_buf.st_size;	
 
-    fclose(fp);
-	ddp_close_file(handle);
-
 cleanup:
-	if (full_path == NULL)
+    if (handle != DDP_INVALID_DESCRIPTOR)
+	    ddp_close_file(handle);
+
+    /* Cleanup the file if copy failed */
+    if (err)
+        ddp_unlink(ddp_conn, &path1);    
+	if (full_path)
 		free(full_path);
 	if (storage_unit_name)
 		free(storage_unit_name);
+    if (buf)
+        free(buf);
 
-        return err;
+    return err;
 }
 
 float getFreePercent(struct ddboost_options *dd_options)
@@ -1263,8 +1384,14 @@ readFromDDFileToOutput(char *ddBoostFileName)
     } while((err == 0) && (ret_count > 0));
 
 cleanup:
-	free(storage_unit_name);
-	free(full_path);
+    if (handle != DDP_INVALID_DESCRIPTOR)
+        ddp_close_file(handle);
+    if (buf)
+        free(buf);
+    if (storage_unit_name)
+        free(storage_unit_name);
+    if (full_path)
+        free(full_path);
     return err;
 }
 
@@ -1275,15 +1402,22 @@ createDDboostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, const char *
     ddp_path_t path = {0};
     int err = 0;
     char *full_path = NULL;
-	char *path_name = strdup(filePath);
+	char *path_name = Safe_strdup(filePath);
 
 	if (!filePath)
 	{
 		mpp_err_msg(logError, progname, "Specify path for directory\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 
     full_path = (char*)malloc(MAX_PATH_NAME);
+    if (!full_path)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
     memset(full_path, 0, MAX_PATH_NAME);
 	if (filePath[0] == '/')
 		strcat(full_path, "/");
@@ -1301,7 +1435,7 @@ createDDboostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, const char *
             if ((err != 0) && (err != DD_ERR_EXIST))
             {
                 mpp_err_msg(logError, progname, "mkdir failed. err %d\n", err);
-				return err;
+				break;
             }
 
             strcat(full_path, "/");
@@ -1309,15 +1443,23 @@ createDDboostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, const char *
 		}
 		else
 			break;
-        }
+    }
 
-	free(full_path);
-    return 0;
+    /* It is not an error if the directory already exists */
+    if (err == DD_ERR_EXIST)
+        err = 0;
+
+cleanup:
+    if (full_path)
+        free(full_path);
+    if (path_name)
+        free(path_name);        
+    return err;
 }
 
 int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 {
-    char *ddboostDir = strdup(dd_options->directory);
+    char *ddboostDir = Safe_strdup(dd_options->directory);
     int err = 0;
     ddp_path_t path1 = {0};
     char *storage_unit_name = NULL;
@@ -1328,13 +1470,26 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
     if (!ddboostDir)
     {
         mpp_err_msg(logError, progname, "Directory on DDboost is not specified\n");
-        return -1;
+        err = -1;
+        goto cleanup;
     }
 
     storage_unit_name = (char*)malloc(MAX_PATH_NAME);
+    if (!storage_unit_name)
+    {
+        err = -1;
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        goto cleanup;
+    }
     sprintf(storage_unit_name, "%s", "GPDB");
 
     full_path = (char*)malloc(MAX_PATH_NAME);
+    if (!full_path)
+    {
+        err = -1;
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        goto cleanup;
+    }
     sprintf(full_path, "%s", ddboostDir);
 
     path1.su_name = storage_unit_name;
@@ -1343,10 +1498,9 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 	err = ddp_open_dir(ddp_conn, &path1, &dird);
     if (err)
     {
-		free(storage_unit_name);
-		free(full_path);
         mpp_err_msg(logError, progname, "Opening directory %s on ddboost failed. Err %d\n", ddboostDir, err);
-        return -1;
+        err = -1;
+        goto cleanup;
     }
 
 	while (1)
@@ -1363,7 +1517,7 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
             else
             {
                 mpp_err_msg(logError, progname, "Reading directory %s on ddboost failed. Err %d\n", ddboostDir, err);
-                return err;
+                break;
             }
         }
 
@@ -1384,8 +1538,15 @@ int listDirectory(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
 	}
 	printf("\n");
 
-	free(storage_unit_name);
-	free(full_path);
+cleanup:
+    if (storage_unit_name)
+	    free(storage_unit_name);
+    if (full_path)
+	    free(full_path);
+    if (ddboostDir)
+        free(ddboostDir);
+    if (dird != DDP_INVALID_DESCRIPTOR)
+        ddp_close_dir(dird); 
 	return err;
 }
 
@@ -1422,9 +1583,21 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
 	}
 
 	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
+    if (!storage_unit_name)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
     sprintf(storage_unit_name, "%s", "GPDB");
 
 	full_path = (char*)malloc(MAX_PATH_NAME);
+    if (!full_path)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
 	sprintf(full_path, "%s", dd_options->from_file);
 
 	path1.su_name = storage_unit_name;
@@ -1433,19 +1606,17 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
     err = ddp_open_file(ddp_conn, &path1, DDP_O_READ , 0400, &handle);
     if (err)
     {
-        free(storage_unit_name);
-        free(full_path);
         mpp_err_msg(logError, progname,"File %s open on ddboost failed. Err %d\n", path1.path_name, err);
-        return -1;
+        err = -1;
+        goto cleanup;
     }
 
     buf = (char*)malloc(rw_size);
     if (buf == NULL)
     {
-		free(storage_unit_name);
-		free(full_path);
        	mpp_err_msg(logError, progname, "Memory allocation failed\n");
-       	return -1;
+       	err = -1;
+        goto cleanup;
     }
 
 	isCompress = isFileCompressed(full_path);
@@ -1459,7 +1630,8 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
     if (err)
     {
         mpp_err_msg(logError, progname, "Creating directory %s on ddboost failed. Err %d\n", dd_options->to_file, err);
-        return -1;
+        err = -1;
+        goto cleanup;
     }
 
 	/* Create two processes. In one write to named pipe.
@@ -1513,18 +1685,25 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
         if (ddfp == NULL)
         {
             mpp_err_msg(logError, progname, "ddboost read failed on %s \n", path1.path_name);
-            return -1;
+            err = -1;
+            goto cleanup;
         }
 
 		ddfpTemp = DDOPEN(dd_options->to_file, "w", isCompress);
 		if (ddfpTemp == NULL)
 		{
             mpp_err_msg(logError, progname, "Opening file %s failed\n", dd_options->to_file);
-			DDCLOSE(ddfp, isCompress);
-			return -1;
+			err= -1;
+            goto cleanup;
 		} 
 
 		endString = (char*)malloc(MAX_PATH_NAME);
+        if (endString == NULL)
+        {
+            mpp_err_msg(logError, progname, "Memory allocation failed\n");
+            err = -1;
+            goto cleanup;
+        }
 		memset(endString, 0, MAX_PATH_NAME);
 		sprintf(endString, "\\.");
 	
@@ -1567,16 +1746,30 @@ createFakeRestoreFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_co
 			else
 			{
 				DDCLOSE(ddfp, isCompress);		
-				DDCLOSE(ddfpTemp, isCompress);		
+                ddfp = NULL;
+				DDCLOSE(ddfpTemp, isCompress);	
+                ddfpTemp = NULL;	
 				done = true;
 			}
 		} while (!done);
 		close(fd[0]);
-		ddp_close_file(handle);
 	}
-	free(storage_unit_name);
-    free(full_path);
-	free(buf);	
+
+cleanup:
+    if (handle != DDP_INVALID_DESCRIPTOR)
+        ddp_close_file(handle);
+    if (storage_unit_name)
+	    free(storage_unit_name);
+    if (full_path)
+        free(full_path);
+    if (buf)
+	    free(buf);	
+    if (curSchema)
+        free(curSchema);
+    if (ddfp)
+        DDCLOSE(ddfp, isCompress);
+    if (ddfpTemp)
+        DDCLOSE(ddfpTemp, isCompress);
 	return 0;
 }
 
@@ -1644,7 +1837,7 @@ lineEndsWith(char *line, char *pattern)
 int 
 splitSchemaAndTableName(char *schemaTable, char **schema, char **table)
 {
-	char *pch = NULL;
+    char *pch = NULL;
 	pch = strtok(schemaTable, ". ");
 	*schema = Safe_strdup(pch);
 
@@ -1657,7 +1850,7 @@ splitSchemaAndTableName(char *schemaTable, char **schema, char **table)
 static int 
 getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath, char *databaseName)
 {
-	char *ddboostDir = strdup(dd_options->directory);
+	char *ddboostDir = Safe_strdup(dd_options->directory);
     int err = 0;
     ddp_path_t path1 = {0};
     char *storage_unit_name = NULL;
@@ -1675,9 +1868,21 @@ getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn,
     }
 
     storage_unit_name = (char*)malloc(MAX_PATH_NAME);
+    if (!storage_unit_name)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
     sprintf(storage_unit_name, "%s", "GPDB");
 
     full_path = (char*)malloc(MAX_PATH_NAME);
+    if (!full_path)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
     sprintf(full_path, "%s", ddboostDir);
 
     path1.su_name = storage_unit_name;
@@ -1687,27 +1892,25 @@ getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn,
     if (err)
     {
         mpp_err_msg(logError, progname, "Directory %s open failed on ddboost. Err %d\n", ddboostDir, err);
-        return -1;
+        err = -1;
+        goto cleanup;
     }
 
 	recentTimestamp = (char*)malloc(MAX_PATH_NAME);
 	if (!recentTimestamp)
 	{
-		free(storage_unit_name);
-        free(full_path);
         mpp_err_msg(logError, progname, "Memory allocation failed in gpddboost\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}	
 	memset(recentTimestamp, 0, MAX_PATH_NAME);
 
 	filePath = (char*)malloc(MAX_PATH_NAME);
 	if (!filePath)
 	{
-		free(recentTimestamp);
-		free(storage_unit_name);
-       	free(full_path);
         mpp_err_msg(logError, progname, "Memory allocation failed in gpddboost\n");
-		return -1;
+		err = -1;
+        goto cleanup;
 	}
 	memset(filePath, 0, MAX_PATH_NAME);
 
@@ -1725,7 +1928,7 @@ getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn,
             else
             {
                 mpp_err_msg(logError, progname, "ddboost readdir on %s failed. Err %d\n", ddboostDir, err);
-                return err;
+                break;
             }
         }
 
@@ -1769,9 +1972,17 @@ getLatestTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn,
 	else
 		printf("\nNo dump file with the specified database exists\n");
 
-	free(recentTimestamp);
-	free(storage_unit_name);
-    free(full_path);
+cleanup:
+    if (recentTimestamp)
+	    free(recentTimestamp);
+    if (storage_unit_name)
+	    free(storage_unit_name);
+    if (full_path)
+        free(full_path);
+    if (filePath)
+        free(filePath);
+    if (ddboostDir)
+        free(ddboostDir);
 		
 	return err;
 }
@@ -1793,22 +2004,22 @@ dumpFileHasDatabaseName(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_
 	char *searchString = NULL;
 
 	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
-    sprintf(storage_unit_name, "%s", "GPDB");
 	if (storage_unit_name == NULL)
 	{
         mpp_err_msg(logError, progname, "Memory allocation failed\n");
 		ret = 0;
 		goto cleanup;
 	}
+    sprintf(storage_unit_name, "%s", "GPDB");
 	
 	full_path = (char*)malloc(MAX_PATH_NAME);
-	sprintf(full_path, "%s", fullPath);
 	if (full_path == NULL)
 	{
         mpp_err_msg(logError, progname, "Memory allocation failed\n");
 		ret = 0;
 		goto cleanup;
 	}
+	sprintf(full_path, "%s", fullPath);
 
 	path1.su_name = storage_unit_name;
     path1.path_name = full_path;
@@ -1837,6 +2048,7 @@ dumpFileHasDatabaseName(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_
 	if (err)
 	{
 		ret = 0;
+        mpp_err_msg(logError, progname, "DDboost Stat on file %s failed. Err %d\n", path1.path_name, err);
 		goto cleanup;
 	}	
 		
@@ -1854,6 +2066,12 @@ dumpFileHasDatabaseName(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_
 	}
 	
 	searchString = (char*)malloc(MAX_PATH_NAME);
+    if (!searchString)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        ret = 0;
+        goto cleanup;
+    }
 	memset(searchString, 0, MAX_PATH_NAME);
 	sprintf(searchString, "CREATE DATABASE %s", databaseName);
 
@@ -1867,6 +2085,8 @@ cleanup:
 		free(full_path);
 	if(storage_unit_name)
 		free(storage_unit_name);
+    if (searchString)
+        free(searchString);
 	
 	return ret;
 }
@@ -1922,6 +2142,12 @@ syncFilesFromDDBoost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_con
 
 	/* Create the db_dumps directory if it doesn't exist already */
 	dest_path = (char*)malloc(MAX_PATH_NAME);
+    if (!dest_path)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
 	memset(dest_path, 0, MAX_PATH_NAME);
 	sprintf(dest_path, "%s/%s", dirPath, ddboostDir); 
 	
@@ -1976,6 +2202,9 @@ cleanup:
 		free(storage_unit_name);
 	if (full_path)
 		free(full_path);
+    if (dest_path)
+        free(dest_path);
+
 	return err;
 }
 
@@ -2019,6 +2248,12 @@ copyFilesFromDir(const char *fromDir, char *toDir, ddp_conn_desc_t ddp_conn)
     sprintf(full_path, "%s", ddboostDir);
 
 	dest_path = (char*)malloc(MAX_PATH_NAME);
+    if (!dest_path)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
 	memset(dest_path, 0, MAX_PATH_NAME);
 	sprintf(dest_path, "%s/%s", toDir, fromDir); 
 
@@ -2088,6 +2323,7 @@ copyFilesFromDir(const char *fromDir, char *toDir, ddp_conn_desc_t ddp_conn)
 				goto cleanup;	
 			}
 
+            /* File full_path is closed in the callee */
 			err = readFromDDFile(fp, full_path);
 		}
 	}
@@ -2095,10 +2331,14 @@ copyFilesFromDir(const char *fromDir, char *toDir, ddp_conn_desc_t ddp_conn)
 cleanup:
 	if (full_path)
 		free(full_path);
-
 	if (storage_unit_name)
 		free(storage_unit_name);
-
+    if (dest_path)
+        free(dest_path);
+    if (ddboostDir)
+        free(ddboostDir);
+    if (fp)
+        fclose(fp);
 	return err;
 }
 
@@ -2199,7 +2439,7 @@ static int writeToDDFileFromInput(char *ddBoostFileName)
 	if (buf_iogroup == NULL)
 	{
 		mpp_err_msg(logError, progname, "Memory allocation failed\n");
-		err = -2;
+		err = -1;
 		goto cleanup;
 	}
 	memset(buf_iogroup, 0, rw_size);
@@ -2234,7 +2474,8 @@ static int writeToDDFileFromInput(char *ddBoostFileName)
 				if (err)
                 {
                     mpp_err_msg(logError, progname,"ddboost File %s write failed. Err %d\n", path1.path_name, err); 
-					break;
+					err = -1;
+                    goto cleanup;
                 }
 				total_bytes += ret_count;
 			}
@@ -2252,7 +2493,8 @@ static int writeToDDFileFromInput(char *ddBoostFileName)
 					if (err)
                     {
                         mpp_err_msg(logError, progname,"ddboost File %s write failed. Err %d\n", path1.path_name, err); 
-						break;
+						err = -1;
+                        goto cleanup;
                     }
 					total_bytes += ret_count;
 					
@@ -2284,7 +2526,8 @@ cleanup:
 	if (buf_iogroup)
 		free(buf_iogroup);
 
-	ddp_close_file(handle);
+    if (handle != DDP_INVALID_DESCRIPTOR)
+	    ddp_close_file(handle);
 	return err;
 }
 
@@ -2352,6 +2595,548 @@ createDbdumpsDir(char *filePath)
             break;
     }
     return 0;
+}
+
+int listDirectoryFull(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
+{
+    char *ddboostDir = strdup(dd_options->listDirFull);
+    int err = 0;
+    ddp_path_t path1 = {0};
+    ddp_path dd_file_path = {0};
+    char *storage_unit_name = NULL;
+    char *full_path = NULL;
+    char *temp_path = NULL;
+    ddp_dir_desc_t dird = DDP_INVALID_DESCRIPTOR;
+    ddp_dirent_t ret_dirent;
+    ddp_stat_t stat_buf;
+    ddp_file_desc_t handle = DDP_INVALID_DESCRIPTOR;        
+
+    if (!ddboostDir)
+    {
+        mpp_err_msg(logError, progname, "Directory on DDboost is not specified\n");
+        return -1;
+    }
+
+    storage_unit_name = (char*)malloc(MAX_PATH_NAME);
+    if (!storage_unit_name)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
+    sprintf(storage_unit_name, "%s", "GPDB");
+
+    full_path = (char*)malloc(MAX_PATH_NAME);
+    if (!full_path)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
+    sprintf(full_path, "%s", ddboostDir);
+
+    path1.su_name = storage_unit_name;
+    path1.path_name = ddboostDir;
+
+	err = ddp_open_dir(ddp_conn, &path1, &dird);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "Opening directory %s on ddboost failed. Err %d\n", ddboostDir, err);
+        err = -1;
+        goto cleanup;
+    }
+
+    temp_path = (char*)malloc(MAX_PATH_NAME);
+    if (!temp_path)
+    {
+        mpp_err_msg(logError, progname, "Opening directory %s on ddboost failed. Err %d\n", ddboostDir, err);
+        err = -1;
+        goto cleanup;
+    }
+
+    printf("\n%20s%23s\t\t\t\t%s\t%s", "NAME", "", "MODE", "SIZE(bytes)");
+    printf("\n===============================================================================================");
+	while (1)
+    {
+        memset(&ret_dirent, 0, sizeof(ddp_dirent_t));
+        err = ddp_readdir(dird, &ret_dirent);
+        if (err != DD_OK)
+        {
+            if (err == DD_ERR_UNDERFLOW)
+            {
+                err = DD_OK;
+                break;
+            }
+            else
+            {
+                mpp_err_msg(logError, progname, "Reading directory %s on ddboost failed. Err %d\n", ddboostDir, err);
+                break;
+            }
+        }
+
+        else
+        {
+            /* Skip deleting . and .. */
+            if (strcmp("..", ret_dirent.d_name) == 0)
+            {
+                continue;
+            }
+            if (strcmp(".", ret_dirent.d_name) == 0)
+            {
+                continue;
+            }
+
+            memset(temp_path, 0, MAX_PATH_NAME);
+			sprintf(temp_path, "%s/%s", ddboostDir, ret_dirent.d_name);
+
+            dd_file_path.su_name = storage_unit_name;
+            dd_file_path.path_name = temp_path;
+
+            err = ddp_open_file(ddp_conn, &dd_file_path, DDP_O_READ, 0, &handle);
+            if (err)
+            {
+                mpp_err_msg(logError, progname, "Reading file %s on ddboost failed. Err %d\n", temp_path, err);
+                break;
+            }
+
+            err = ddp_fstat(handle, &stat_buf);
+            if (err)
+            {
+                mpp_err_msg(logError, progname, "Stat on file %s on ddboost failed. Err %d\n", temp_path, err);
+                ddp_close_file(handle);
+                break;
+            }
+
+            if (S_ISDIR(stat_buf.st_mode))
+                printf("\n%-50s\t\t\tD%o\t%llu", ret_dirent.d_name, (stat_buf.st_mode & 07777), stat_buf.st_size);
+            else
+                printf("\n%-50s\t\t\t%o\t%llu", ret_dirent.d_name, (stat_buf.st_mode & 07777), stat_buf.st_size);
+
+            ddp_close_file(handle);
+		}
+	}
+	printf("\n");
+
+cleanup:
+    if (dird != DDP_INVALID_DESCRIPTOR)
+        ddp_close_dir(dird);
+    if (temp_path)
+        free(temp_path);
+    if (storage_unit_name)
+	    free(storage_unit_name);
+    if (full_path)
+	    free(full_path);
+    if (ddboostDir)
+        free(ddboostDir);
+	return err;
+}
+
+/* Copy over files from DDboost to GPDB master segment directory */
+int 
+syncFilesFromDDBoostTimestamp(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn, char *dirPath)
+{
+    char *ddboostDir = "db_dumps";
+    int err = 0;
+    ddp_path_t path1 = {0};
+    char *storage_unit_name = NULL;
+    char *ddboostPath = NULL;
+    char *gpdbPath = NULL;
+    ddp_dir_desc_t dird = DDP_INVALID_DESCRIPTOR;
+    ddp_dirent_t ret_dirent;
+    char tempDate[10];
+    FILE *fp = NULL;
+
+    if (!dd_options->syncFilesFromTimestamp)
+    {
+        mpp_err_msg(logError, progname, "Timestamp not specified for sync\n");
+        err = -1;
+        goto cleanup;
+    }
+
+    /*  Form Directory path from the timestamp. The first 8 characters of the timestamp
+        is of the form YYYYMMDD and we need to go to the directory db_dumps/YYYYMMDD.
+        Then we search for the file whcih has the <timestamp> in its name.
+    */
+    memset(tempDate, 0, 10);
+    snprintf(tempDate, 9, "%s", dd_options->syncFilesFromTimestamp);
+             
+    storage_unit_name = (char*)malloc(MAX_PATH_NAME);
+    if (storage_unit_name == NULL)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }	
+    sprintf(storage_unit_name, "%s", "GPDB");
+
+    ddboostPath = (char*)malloc(MAX_PATH_NAME);
+    if (ddboostPath == NULL)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
+    sprintf(ddboostPath, "%s/%s", ddboostDir, tempDate);
+
+    path1.su_name = storage_unit_name;
+    path1.path_name = ddboostPath;
+
+    /* Start traversing the db_dumps/<date> directory */
+    err = ddp_open_dir(ddp_conn, &path1, &dird);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "Opening directory %s on ddboost failed. Err %d\n", ddboostPath, err);
+        err = -1;
+        goto cleanup;
+    }
+
+    /* Create the db_dumps directory if it doesn't exist already */
+    gpdbPath = (char*)malloc(MAX_PATH_NAME);
+    if (gpdbPath == NULL)
+    {
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup;
+    }
+    memset(gpdbPath, 0, MAX_PATH_NAME);
+    sprintf(gpdbPath, "%s/%s", dirPath, ddboostDir); 
+	
+    /* Create the db_dumps directory on the destination if it doesn't exist */
+    err = mkdir(gpdbPath, S_IRWXU);
+    if (err && (err != EEXIST) && (err != -1))
+    {
+        mpp_err_msg(logError, progname, "Directory %s creation on GPDB path failed .Err %d\n", gpdbPath, err);
+        err = -1;
+        goto cleanup;	
+    }
+
+    /* Create the destination directory on the destination if it doesn't exist */
+    memset(gpdbPath, 0, MAX_PATH_NAME);
+    sprintf(gpdbPath, "%s/%s/%s", dirPath, ddboostDir, tempDate);
+    err = mkdir(gpdbPath, S_IRWXU);
+    if (err && (err != EEXIST) && (err != -1))
+    {
+        mpp_err_msg(logError, progname, "Directory %s creation on GPDB path failed .Err %d\n", gpdbPath, err);
+        err = -1;
+        goto cleanup;	
+    }
+
+    while (1)
+    {
+        memset(&ret_dirent, 0, sizeof(ddp_dirent_t));
+        err = ddp_readdir(dird, &ret_dirent);
+        if (err != DD_OK)
+        {
+            if (err == DD_ERR_UNDERFLOW)
+            {
+                err = DD_OK;
+                break;
+            }
+            else
+            {
+                mpp_err_msg(logError, progname, "ddboost readdir failed on %s Err %d\n", ddboostDir, err);
+                goto cleanup;
+            }
+        }
+        else
+        {
+            /* Only check directories of the form YYYYMMDD */
+            if (!strstr(ret_dirent.d_name, dd_options->syncFilesFromTimestamp))
+                continue;
+
+            /* For every matching file , copy the required files over to GPDB */
+            memset(ddboostPath, 0, MAX_PATH_NAME);
+            sprintf(ddboostPath, "%s/%s/%s", ddboostDir, tempDate, ret_dirent.d_name);  
+
+            memset(gpdbPath, 0, MAX_PATH_NAME);
+            sprintf(gpdbPath, "%s/%s/%s/%s", dirPath, ddboostDir, tempDate, ret_dirent.d_name);
+            fp = fopen(gpdbPath, "w");
+            if (fp == NULL)
+            {
+                mpp_err_msg(logError, progname, "Cannot open file %s on GPDB\n", gpdbPath);
+                err = -1;
+                break;
+            }
+
+            /* Close both files in the called function */
+            err = readFromDDFile(fp, ddboostPath);  
+            if (err)
+            {
+                mpp_err_msg(logError, progname, "Copy failed from DDboost file %s to GPDB file %s\n", ddboostPath, gpdbPath);
+                break;
+            }      
+                 
+        }
+    }
+
+cleanup:
+	if (storage_unit_name)
+		free(storage_unit_name);
+	if (gpdbPath)
+		free(gpdbPath);
+    if (ddboostPath)
+        free(ddboostPath);
+	return err;
+}
+
+int 
+renameFile(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
+{
+    char *fromFile = Safe_strdup(dd_options->from_file);
+    char *toFile = Safe_strdup(dd_options->to_file);
+    int err = 0;
+    ddp_path_t path1 = {0};
+    ddp_path_t path2 = {0};
+    char *storage_unit_name = NULL;
+    char *full_path_source = NULL;       
+    char *full_path_dest = NULL;       
+
+    if (!fromFile)
+    {
+        mpp_err_msg(logError, progname, "Source file on DDboost not specified\n");
+        return -1;
+    }
+
+    if (!toFile)
+    {
+        mpp_err_msg(logError, progname, "Destination file on GPDB not specified\n");
+        err = -1;
+        goto cleanup;
+    }
+
+    storage_unit_name = (char*)malloc(MAX_PATH_NAME);
+    if (storage_unit_name == NULL)
+    {	
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup; 
+    }
+    sprintf(storage_unit_name, "%s", "GPDB");
+
+    full_path_source = (char*)malloc(MAX_PATH_NAME);
+    if (full_path_source == NULL)
+    {	
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup; 
+    }
+    sprintf(full_path_source, "%s", fromFile);
+
+    path1.su_name = storage_unit_name;
+    path1.path_name = full_path_source;
+
+    full_path_dest = (char*)malloc(MAX_PATH_NAME);
+    if (full_path_dest == NULL)
+    {	
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup; 
+    }
+    sprintf(full_path_dest, "%s", toFile);
+    path2.su_name = storage_unit_name;
+    path2.path_name = full_path_dest;
+
+    /* Create a directory on the destination if it doesn't exist */
+    err = createDDboostDir(ddp_conn, storage_unit_name, toFile);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "Creating path %s on ddboost failed. Err %d\n", fromFile, err);
+        err = -1;
+        goto cleanup;			
+    }
+
+    /* Now try to rename the original file to the new name */
+    err = ddp_rename(ddp_conn, &path1, &path2);
+    if (err)
+    {
+        mpp_err_msg(logError, progname,"ddboost File %s rename to %s failed. Err %d\n", path1.path_name, path2.path_name, err);
+        err = -1;
+        goto cleanup;
+    }
+
+cleanup:
+    if (full_path_source)
+        free(full_path_source);
+    if (full_path_dest)
+        free(full_path_dest);
+    if (storage_unit_name)
+        free(storage_unit_name);
+    if (fromFile)
+        free(fromFile);
+    if (toFile)
+        free(toFile);
+
+    return 0;
+}
+
+int 
+copyWithinDDboost(struct ddboost_options *dd_options, ddp_conn_desc_t ddp_conn)
+{
+    char *fromFile = Safe_strdup(dd_options->from_file);
+    char *toFile = Safe_strdup(dd_options->to_file);
+    int err = 0;
+    ddp_path_t path1 = {0};
+    ddp_path_t path2 = {0};
+    char *storage_unit_name = NULL;
+    char *full_path_source = NULL;
+    char *full_path_dest = NULL;
+    ddp_file_desc_t src_fh = DDP_INVALID_DESCRIPTOR;
+    ddp_file_desc_t dst_fh = DDP_INVALID_DESCRIPTOR;
+    ddp_uint64_t done_offset = 0;
+    ddp_uint64_t bytescopied = 0;
+    ddp_stat_t stat_buf;
+
+    if (!fromFile)
+    {
+        mpp_err_msg(logError, progname, "Source file on DDboost not specified\n");
+        return -1;
+    }
+
+    if (!toFile)
+    {
+        mpp_err_msg(logError, progname, "Destination file on GPDB not specified\n");
+        free(fromFile);
+        return -1;
+    }
+
+    storage_unit_name = (char*)malloc(MAX_PATH_NAME);
+    if (storage_unit_name == NULL)
+    {	
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup; 
+    }
+    sprintf(storage_unit_name, "%s", "GPDB");
+
+    full_path_source = (char*)malloc(MAX_PATH_NAME);
+    if (full_path_source == NULL)
+    {	
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup; 
+    }
+    sprintf(full_path_source, "%s", fromFile);
+
+    path1.su_name = storage_unit_name;
+    path1.path_name = full_path_source;
+
+    full_path_dest = (char*)malloc(MAX_PATH_NAME);
+    if (full_path_dest == NULL)
+    {	
+        mpp_err_msg(logError, progname, "Memory allocation failed\n");
+        err = -1;
+        goto cleanup; 
+    }
+    sprintf(full_path_dest, "%s", toFile);
+    path2.su_name = storage_unit_name;
+    path2.path_name = full_path_dest;
+
+    /* Create a directory on the destination if it doesn't exist */
+    err = createDDboostDir(ddp_conn, storage_unit_name, toFile);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "Creating path %s on ddboost failed. Err %d\n", fromFile, err);
+        err = -1;
+        goto cleanup;
+    }
+
+    /* Open the file on source before we start the copy */
+    err = ddp_open_file(ddp_conn, &path1, DDP_O_READ, 0400, &src_fh);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "Opening file %s on ddboost failed. Err %d\n", fromFile, err);
+        err = -1;
+        goto cleanup;
+    }
+
+    /* Open the file on destination before we start the copy */
+    err = ddp_open_file(ddp_conn, &path2, DDP_O_CREAT | DDP_O_RDWR, 0644, &dst_fh);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "Opening file %s on ddboost failed. Err %d\n", toFile, err);
+        err = -1;
+        goto cleanup;
+    }
+
+    /* Get the size of the source file to be copied */
+    err = ddp_stat(ddp_conn, &path1, &stat_buf);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "Stat on ddboost file %s failed. error %d\n", fromFile, err);
+        err = -1;
+        goto cleanup;
+    }
+
+    /* Now start the copy Before we start the filecopy, try to stop it *
+     * It should not be found DDFS should exit with no error *
+     */
+    ddp_filecopy_stop(ddp_conn, dst_fh);
+    
+    /* Start the file copy */
+    err = ddp_filecopy_start(src_fh, dst_fh, NULL);
+    if (err)
+    {
+        mpp_err_msg(logError, progname, "File copy failed to start on DDboost. Src file %s Dest file %s. Err %d\n", 
+                    fromFile, toFile, err);
+        err = -1;
+        goto cleanup;
+    }     
+    
+    done_offset = 0;
+    while (done_offset != stat_buf.st_size) 
+    {
+        bytescopied = 0;
+        err = ddp_filecopy_status(src_fh, dst_fh,
+                                   done_offset,
+                                   DDP_FILECOPY_EXTENT_LEN,
+                                   &bytescopied);
+        if (err != DD_OK) 
+        {
+            ddp_filecopy_stop(ddp_conn, dst_fh);
+            mpp_err_msg(logError, progname, "File copy on ddboost failed. Src file %s Dest file %s. Err %d\n",
+                        fromFile, toFile, err);
+            err = -1;
+            goto cleanup;
+        }
+        done_offset += bytescopied;
+    }
+
+    /* Check if all the data has been copied */
+    if (done_offset != stat_buf.st_size) 
+    {
+        ddp_filecopy_stop(ddp_conn, dst_fh);
+        mpp_err_msg(logError, progname, "File copy on ddboost failed to complete. Src file %s Dest file %s"
+                                        "Total size %lld completed size %lld. Err %d\n",
+                    fromFile, toFile, stat_buf.st_size, done_offset, err);
+        err = -1;
+        goto cleanup;
+    }
+    
+    ddp_filecopy_stop(ddp_conn, dst_fh);
+
+cleanup:
+    if (full_path_source)
+        free(full_path_source);
+    if (full_path_dest)
+        free(full_path_dest);
+    if (storage_unit_name)
+        free(storage_unit_name);
+    if (fromFile)
+        free(fromFile);
+    if (toFile)
+        free(toFile);
+
+    if (src_fh != DDP_INVALID_DESCRIPTOR)
+        ddp_close_file(src_fh);
+    if(dst_fh != DDP_INVALID_DESCRIPTOR)
+        ddp_close_file(dst_fh);
+    /* If err then delete the partially copied file */
+    if (err)
+    {
+        ddp_unlink(ddp_conn, &path2); 
+    }
+        
+    return err;
 }
 
 #else
