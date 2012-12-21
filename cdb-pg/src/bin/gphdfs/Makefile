@@ -2,10 +2,6 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 ANT=/opt/releng/apache-ant/bin/ant
-gphdver = gphd-gnet-1.1.0.0
-gpmrver = gpmr-gnet-1.0.0.1
-gpcdh3u2ver = cdh3u2-gnet-1.1.0.0
-
 all: gphdfs protocol_formatter
 
 protocol_formatter:
@@ -13,38 +9,43 @@ protocol_formatter:
 
 gphdfs:
 	$(ANT) clean
-	$(ANT) dist -Dorg=emc \
-                -Dname=hadoop-core-0.20.205.0-gphd \
-                -Drevision=1.1.0.0 \
-                -Dgphdgnet.version=$(gphdver) \
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=0.20.1-gphdce-1.0.0.0 \
+                -Dgphdgnet.version=gphd-1.0-gnet-1.0.0.1 \
+                -Dgpgnet.src=1.0
+	$(ANT) clean
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
+                -Drevision=0.20.205.0-gphd-1.1.0.0 \
+                -Dgphdgnet.version=gphd-1.1-gnet-1.1.0.0 \
                 -Dgpgnet.src=1.1
 	$(ANT) clean
 	$(ANT) dist -Dorg=org.apache.hadoop \
                 -Dname=hadoop-core \
                 -Drevision=0.20.2 \
-                -Dgphdgnet.version=$(gpmrver) \
+                -Dgphdgnet.version=gpmr-1.0-gnet-1.0.0.1 \
                 -Dgpgnet.src=1.0
 	$(ANT) clean
 	$(ANT) dist -Dorg=org.apache.hadoop \
                 -Dname=hadoop-core \
                 -Drevision=0.20.2-cdh3u2 \
-                -Dgphdgnet.version=$(gpcdh3u2ver) \
+                -Dgphdgnet.version=cdh3u2-gnet-1.1.0.0 \
                 -Dgpgnet.src=1.1
 
 gphdfsdoc:
 	$(ANT) javadoc -Dorg=emc \
                    -Dname=hadoop-core-0.20.205.0-gphd \
                    -Drevision=1.1.0.0 \
-                   -Dgphdgnet.version=$(gphdver) \
+                   -Dgphdgnet.version=gnet-1.1 \
                    -Dgpgnet.src=1.1
-	$(TAR) -cf $(gphdver)-javadoc.tar $(gphdver)-javadoc
+	$(TAR) -cf gnet-1.1-javadoc.tar gnet-1.1-javadoc
 	$(ANT) javadoc -Dorg=org.apache.hadoop \
                    -Dname=hadoop-core \
                    -Drevision=0.20.2 \
-                   -Dgphdgnet.version=$(gpmrver) \
+                   -Dgphdgnet.version=gnet-1.0 \
                    -Dgpgnet.src=1.0
-	$(TAR) -cf $(gpmrver)-javadoc.tar $(gpmrver)-javadoc
-
+	$(TAR) -cf gnet-1.0-javadoc.tar gnet-1.0-javadoc
 
 install: all installdirs gphdfsdoc
 	$(MAKE) -C src/protocol_formatter install
@@ -64,5 +65,5 @@ uninstall:
 clean:
 	$(MAKE) -C src/protocol_formatter clean
 	$(ANT) clean
-	rm -rf $(gphdver)-javadoc
-	rm -f $(gphdver)-javadoc.tar
+	rm -rf *-javadoc
+	rm -f *-javadoc.tar
