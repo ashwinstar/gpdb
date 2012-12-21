@@ -864,19 +864,15 @@ typedef struct FileRepOperationDescriptionVerify_SummaryItems_s
 
 typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Primary_s 
 {
-	uint32          numChildrenOnPrimary;
-	bool            lastMatch;
-	bool            finalBatch;
+	bool            firstBatch;
 
 } FileRepOperationDescriptionVerify_DirectoryContents_Primary_s;
 
 typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s 
 {
-	uint32          numChildrenAddedOnMirror;
-	uint32          numChildrenMissingOnMirror;
-	uint32          numLeftOnMirrorToCompare;
-	bool            newLastMatch;
-	bool            endCompares;  //could just use this as numLeftOnMirrorToCompare == 0??
+	uint32          numChildrenInBatch;
+	bool            startOver;
+	bool            finalBatch;
 
 } FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s;
 
@@ -894,8 +890,8 @@ typedef enum FileRepVerify_CompareException_e
 
 typedef struct FileRepOperationDescriptionVerify_EnhancedBlockHash_s 
 {
-	int32		offset;
-	uint32		dataLength; //amount of data to be compute the hash over
+	uint64		offset;
+	uint64		dataLength; //amount of data to be compute the hash over
 	
 	pg_crc32		hashcode;
 	

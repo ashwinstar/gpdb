@@ -316,6 +316,7 @@ BEGIN {
 	$glob_filename = \@filnam;
 
 	push @{$glob_dirignore}, "pgsql_tmp"; # this directory only on primaries
+	push @{$glob_dirignore}, "pg_verify"; # this directory may be just on primary
 
 	$glob_content = \@content;
 
