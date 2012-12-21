@@ -36,6 +36,7 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
+#include "postmaster/backoff.h"
 
 extern char *savedSeqServerHost;
 extern int savedSeqServerPort;
@@ -372,6 +373,17 @@ PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 		portal->releaseResLock = false;
         ResUnLockPortal(portal);
 	}
+
+	/**
+	 * Clean up backend's backoff entry
+	 */
+	if (gp_enable_resqueue_priority
+			&& Gp_role == GP_ROLE_DISPATCH
+			&& gp_session_id > -1)
+	{
+		BackoffBackendEntryExit();
+	}
+
 }                               /* PortalCleanupHelper */
 
 
