@@ -562,7 +562,8 @@ show_allow_system_table_mods(void);
 
 /* Hadoop Integration GUCs */
 char  *gp_hadoop_connector_jardir;
-char  *gp_hadoop_connector_version;
+char  *gp_hadoop_connector_version = ""; /* old GUC; now it's a global var. */
+char  *gp_hadoop_target_version;
 char  *gp_hadoop_home;
 
 /* Time based authentication GUC */
@@ -6033,13 +6034,13 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"gp_hadoop_gnet_version", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("The Hadoop Cross Connect version that external table should use."),
-			gettext_noop("Valid values are gphd-1.0-gnet-1.0.0.1, gphd-1.1-gnet-1.1.0.0, gpmr-1.0-gnet-1.0.0.1, cdh3u2-gnet-1.1.0.0. See admin guide for details."),
+		{"gp_hadoop_target_version", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("The distro/version of Hadoop that external table is connecting to."),
+			gettext_noop("See release notes or gppkg readme for details."),
 			GUC_GPDB_ADDOPT
 		},
-		&gp_hadoop_connector_version,
-		"gphd-1.1-gnet-1.1.0.0", NULL, NULL
+		&gp_hadoop_target_version,
+		"gphd-1.1", NULL, NULL
 	},
 
 	{

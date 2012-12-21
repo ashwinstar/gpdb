@@ -42,13 +42,58 @@ typedef struct {
 	bool      importDone;
 } gphdfs_import_t;
 
+typedef struct {
+	const char *targetHadoopVersion;
+	const char *connectorVersion;
+} hadoop_vers_to_connector_ver;
+
+/**
+ * Mapping from "target hadoop version" (gp_hadoop_target_version GUC)
+ * to the connecto version (actually, this is also the jar file without the .jar).
+ */
+static hadoop_vers_to_connector_ver hdVer_to_connVer[] =
+{
+	{"gphd-1.0", "gphd-1.0-gnet-1.0.0.1"},
+	{"gphd-1.1", "gphd-1.1-gnet-1.1.0.0"},
+	{"gpmr-1.0", "gpmr-1.0-gnet-1.0.0.1"},
+	{"gpmr-1.2", "gpmr-1.2-gnet-1.0.0.1"},
+	{"cdh3u2",   "cdh3u2-gnet-1.1.0.0"},
+	/* End-of-list marker */
+	{NULL, NULL}
+};
+
+static const char*
+getConnectorVersion()
+{
+	int i=0;
+	Insist(gp_hadoop_target_version);
+	for(; hdVer_to_connVer[i].connectorVersion; i++)
+	{
+		if ((strlen(gp_hadoop_target_version) ==
+			 strlen(hdVer_to_connVer[i].targetHadoopVersion)) &&
+			(strncmp(gp_hadoop_target_version,
+					 hdVer_to_connVer[i].targetHadoopVersion,
+					 strlen(gp_hadoop_target_version)) == 0))
+			return hdVer_to_connVer[i].connectorVersion;
+	}
+
+	ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("target Hadoop version \"%s\" is not supported", gp_hadoop_target_version),
+					errhint("please use one of 'gphd-1.0', 'gphd-1.1', 'gpmr-1.0', 'gpmr-1.2', 'cdh3u2'"),
+					errOmitLocation(true)));
+
+	return "N/A";
+}
+
 /*
  * Using the Hadoop connector requires proper setup of GUCs
  * This procedure does sanity check on gp_hadoop_connector_jardir,
- * gp_hadoop_version and gp_hadoop_home.
- * and HADOOP_EDITION.
+ * gp_hadoop_target_version and gp_hadoop_home.
+ * It also update GUC gp_hadoop_connector_version for the current gp_hadoop_target_version.
+ *
+ * It checks the following:
  * 1. $GPHOME/<gp_hadoop_jardir>/$GP_HADOOP_CONN_VERSION.jar must exists.
- * 2. gp_hadoop_home must exists
+ * 2. if gp_hadoop_home is set, then gp_hadoop_home must exists.
  */
 static void
 checkHadoopGUCs()
@@ -57,21 +102,20 @@ checkHadoopGUCs()
 	StringInfoData path;
 	int  jarFD;
 
-
 	/* Check the existence of $GPHOME/<gp_hadoop_jardir>/$GP_HADOOP_CONN_VERSION.jar
 	 *
 	 * To get $GPHOME, we go from my_exec_path, which is $GPHOME/bin/postgres, and
 	 * go up 2 levels.
 	 *
-	 * Currently, gp_hadoop_connector_jardir is fixed. User only need to change
-	 * gp_hadoop_version. So, the hint would only ask users to check the
-	 * gp_hadoop_version guc.
+	 * Currently, gp_hadoop_connector_jardir is fixed. We look up $GP_HADOOP_CONN_VERSION
+	 * using gp_hadoop_target_version.
 	 */
 	snprintf(gphome, sizeof(gphome), "%s", my_exec_path);
 	get_parent_directory(gphome);
 	get_parent_directory(gphome);
 
 	initStringInfoOfSize(&path, MAXPGPATH);
+	gp_hadoop_connector_version = (char*)getConnectorVersion();
 	appendStringInfo(&path, "%s/%s/%s.jar",
 			gphome, gp_hadoop_connector_jardir, gp_hadoop_connector_version);
 
@@ -169,7 +213,9 @@ static URL_FILE
 	ExtTableEntry *exttbl;
 	char          *format;
 
-	/* Before we start, make sure that all the GUCs are set properly. */
+	/* Before we start, make sure that all the GUCs are set properly.
+	 * This will also set the gp_hadoop_connector_version global var.
+	 */
 	checkHadoopGUCs();
 
 	/* The env setup script */

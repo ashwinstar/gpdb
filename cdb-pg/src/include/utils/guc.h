@@ -311,7 +311,8 @@ extern char   *gp_snmp_debug_log;
 
 /* Hadoop Integration GUCs */
 extern char  *gp_hadoop_connector_jardir;  /* relative dir on $GPHOME of the Hadoop connector jar is located */
-extern char  *gp_hadoop_connector_version; /* connector version */
+extern char  *gp_hadoop_connector_version; /* connector version (internal use only) */
+extern char  *gp_hadoop_target_version; /* the target hadoop distro/version */
 extern char  *gp_hadoop_home;    /* $HADOOP_HOME on all segments */
 
 /* Time based authentication GUC */

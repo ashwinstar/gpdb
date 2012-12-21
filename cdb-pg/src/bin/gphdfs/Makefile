@@ -29,6 +29,13 @@ gphdfs:
 	$(ANT) clean
 	$(ANT) dist -Dorg=org.apache.hadoop \
                 -Dname=hadoop-core \
+                -Drevision=0.20.2 \
+                -Dgphdgnet.version=gpmr-1.2-gnet-1.0.0.1 \
+                -Dgpgnet.src=1.0
+
+	$(ANT) clean
+	$(ANT) dist -Dorg=org.apache.hadoop \
+                -Dname=hadoop-core \
                 -Drevision=0.20.2-cdh3u2 \
                 -Dgphdgnet.version=cdh3u2-gnet-1.1.0.0 \
                 -Dgpgnet.src=1.1
