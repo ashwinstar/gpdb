@@ -24,6 +24,7 @@
 #include <regex.h>
 #include <gpfxdist.h>
 #endif
+#include <fstream/fstream.h>
 
 #ifndef WIN32
 #include <unistd.h>
@@ -53,8 +54,6 @@
 #include <openssl/ssl.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
-
-#include "fstream/fstream.h"
 
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
@@ -133,14 +132,11 @@ static gnet_request_t* gnet_parse_request(const char* buf, int* len,
 static char* gstring_trim(char* s);
 static void percent_encoding_to_char(char* p, char* pp, char* path);
 
-#ifndef GPFDIST_VERSION
-#define GPFDIST_VERSION unknown
+#ifndef GP_VERSION
+#define GP_VERSION unknown
 #endif
 
-#define GP_VERSIONX APR_STRINGIFY(GPFDIST_VERSION)
-
-/* this macro must be the same as EMPTY_DELIM_STR in fileam.c */
-#define EMPTY_DELIM_STR "empty"
+#define GP_VERSIONX APR_STRINGIFY(GP_VERSION)
 
 /* CR-2723 */
 #define GPFDIST_MAX_LINE_LOWER_LIMIT (32*1024)
@@ -168,7 +164,7 @@ static struct
 	const char *b; /* IP address to bind (internal, not documented) */
 	int			m; /* max data line len */
 	int			S; /* use O_SYNC when opening files for write  */
-	int			z; /* listen queue size (hidden option currently for debugging) */
+	int			z; /* listen queue size (hidden option currently for debuging) */
 	const char* c; /* config file */
 	struct transform* trlist; /* transforms from config file */
 	const char* ssl; /* path to certificates in case we use gpfdist with ssl */
@@ -1794,10 +1790,9 @@ static void do_accept(int fd, short event, void* arg)
 
     r->outblock.data = apr_palloc(pool, opt.m); /* use the block size specified by -m option */
 
-	/* initialize EOL params with default values */
-	r->line_delim_str = "\n";
-	r->line_delim_length = 1;
-	
+	r->line_delim_str = "";
+	r->line_delim_length = -1;
+
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
 	r->is_final = 0;	/* initialize */
@@ -2668,27 +2663,22 @@ static int request_validate(request_t *r)
 	return 0;
 }
 
-/*
- * Inplace decode 'data' from base 16.
- */
-static void base16_decode(char *data)
-{	
+static void base16_decode(char* data)
+{
 	int i = 0;
 	char *encoded_bytes = data;
 
 	char buf[3];
 	buf[2] = '\0';
-	
-	/* assert that data != NULL */
-	if(!data)
-		return;
 
-	for(; encoded_bytes[0]; i++)
+	while (encoded_bytes[0])
 	{
 		buf[0] = encoded_bytes[0];
 		buf[1] = encoded_bytes[1];
 
         data[i] = strtoul(buf, NULL, 16);
+
+		i++;
         encoded_bytes += 2;
      }
      data[i] = '\0';
@@ -2731,33 +2721,31 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->segid = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-LINE-DELIM-STR", r->in.req->hname[i]))
 		{
-			/* if the delimiter is not empty, its len should be even */
-			if (NULL == r->in.req->hvalue[i] ||
-			   (strcmp(r->in.req->hvalue[i], EMPTY_DELIM_STR) != 0 && ((int)strlen(r->in.req->hvalue[i])) % 2 == 1))
+			if (NULL == r->in.req->hvalue[i] || ((int)strlen(r->in.req->hvalue[i]))%2 == 1)
 			{
 				gwarning(FLINE, "reject invalid request from %s, invalid EOL encoding: %s", r->peer, r->in.req->hvalue[i]);
 				http_error(r, FDIST_BAD_REQUEST, "invalid EOL encoding");
 				request_end(r, 1, 0);
 			}
-
-			if (strcmp(r->in.req->hvalue[i], EMPTY_DELIM_STR) != 0)
-			{
-				/* the delimiter length must be calculated before the decoding */
-				r->line_delim_length = strlen(r->in.req->hvalue[i]) / 2;
-				base16_decode(r->in.req->hvalue[i]);
-			}
-			else /* empty delimiter */
-			{
-				r->in.req->hvalue[i] = "";
-				r->line_delim_length = 0;				
-			}
-
+			base16_decode(r->in.req->hvalue[i]);
 			r->line_delim_str = r->in.req->hvalue[i];
 		}
+		else if (0 == strcmp("X-GP-LINE-DELIM-LENGTH", r->in.req->hname[i]))
+			r->line_delim_length = atoi(r->in.req->hvalue[i]);
 #ifdef GPFXDIST
 		else if (0 == strcmp("X-GP-TRANSFORM", r->in.req->hname[i]))
 			r->trans.name = r->in.req->hvalue[i];
 #endif
+	}
+
+	if (r->line_delim_length > 0)
+	{
+		if (NULL == r->line_delim_str || (((int)strlen(r->line_delim_str)) != r->line_delim_length))
+		{
+			gwarning(FLINE, "reject invalid request from %s, invalid EOL length: %s, EOL: %s", r->peer, r->line_delim_length, r->line_delim_str);
+			http_error(r, FDIST_BAD_REQUEST, "invalid EOL length");
+			request_end(r, 1, 0);
+		}
 	}
 	r->gp_proto = strtol(gp_proto, 0, 0);
 
