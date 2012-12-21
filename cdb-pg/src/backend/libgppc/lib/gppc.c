@@ -1543,17 +1543,5 @@ GppcDatabaseEncodingMaxLength(void)
 const char *
 GppcDatabaseEncodingName(GppcEncoding enc)
 {
-	int i = 0;
-
-	/* 
-	 * Inconvenient that we cannot look up enc as an offset into
-	 * pg_enc2gettext_tbl but I'd rather leave that table in tack.
-	 */
-	while (pg_enc2gettext_tbl[i].encoding)
-	{
-		if (pg_enc2gettext_tbl[i].encoding == enc)
-			return pg_enc2gettext_tbl[i].name;
-		i++;
-	}
-	return NULL;
+	return pg_encoding_to_char(enc);
 }

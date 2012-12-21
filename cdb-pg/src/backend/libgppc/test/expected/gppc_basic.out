@@ -268,6 +268,6 @@ ERROR:  error emit (gppc.c:1270)
 SELECT test_encoding_name();
  test_encoding_name 
 --------------------
- UTF-8
+ UTF8
 (1 row)
 
